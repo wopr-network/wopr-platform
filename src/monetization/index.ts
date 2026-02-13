@@ -16,6 +16,9 @@
  * - stripe/    -- Stripe usage-based billing (WOP-300)
  */
 
+// Feature gating middleware (WOP-283)
+export { createFeatureGate, type FeatureGateConfig, type GetUserTier } from "./feature-gate.js";
+
 // Adapters (WOP-301)
 export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/replicate.js";
 export {
@@ -41,7 +44,7 @@ export type {
 export { initMeterSchema, MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
 export { buildQuotaUsage, checkInstanceQuota, type QuotaCheckResult, type QuotaUsage } from "./quotas/quota-check.js";
 export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
-export { DEFAULT_TIERS, type PlanTier, TierStore } from "./quotas/tier-definitions.js";
+export { DEFAULT_TIERS, type PlanTier, TIER_HIERARCHY, type TierName, tierSatisfies, TierStore } from "./quotas/tier-definitions.js";
 export type {
   CheckoutSessionOpts,
   PortalSessionOpts,
