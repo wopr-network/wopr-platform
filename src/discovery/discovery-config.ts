@@ -24,7 +24,9 @@ export function buildDiscoveryEnv(
   const defaultTopic = platformConfig?.defaultTopic ?? DEFAULT_DISCOVERY_TOPIC;
 
   if (!config.enabled) {
-    return {};
+    // Explicitly remove the env var so pre-existing values in profile.env
+    // don't bypass the opt-out (the fleet manager uses spread merge)
+    return { [DISCOVERY_TOPICS_ENV]: "" };
   }
 
   // Start with the global default topic, then add any instance-specific topics

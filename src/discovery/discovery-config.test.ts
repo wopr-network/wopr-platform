@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildDiscoveryEnv } from "./discovery-config.js";
-import { DEFAULT_DISCOVERY_TOPIC, DISCOVERY_TOPICS_ENV, discoveryConfigSchema } from "./types.js";
+import {
+  DEFAULT_DISCOVERY_TOPIC,
+  DISCOVERY_TOPICS_ENV,
+  discoveryConfigSchema,
+  platformDiscoveryConfigSchema,
+} from "./types.js";
 
 describe("buildDiscoveryEnv", () => {
   it("returns default topic when no config provided", () => {
@@ -13,14 +18,14 @@ describe("buildDiscoveryEnv", () => {
     expect(env).toEqual({ [DISCOVERY_TOPICS_ENV]: "wopr-service" });
   });
 
-  it("returns empty object when discovery is disabled", () => {
+  it("returns empty-string env var when discovery is disabled (overrides pre-existing)", () => {
     const env = buildDiscoveryEnv({ enabled: false, topics: [] });
-    expect(env).toEqual({});
+    expect(env).toEqual({ [DISCOVERY_TOPICS_ENV]: "" });
   });
 
-  it("returns empty object when disabled even with extra topics", () => {
+  it("returns empty-string env var when disabled even with extra topics", () => {
     const env = buildDiscoveryEnv({ enabled: false, topics: ["wopr-org-acme"] });
-    expect(env).toEqual({});
+    expect(env).toEqual({ [DISCOVERY_TOPICS_ENV]: "" });
   });
 
   it("includes extra topics alongside default topic", () => {
@@ -81,6 +86,33 @@ describe("discoveryConfigSchema", () => {
 
   it("accepts topics at max length", () => {
     const result = discoveryConfigSchema.safeParse({ topics: ["x".repeat(128)] });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects topics containing commas", () => {
+    const result = discoveryConfigSchema.safeParse({ topics: ["wopr-org,acme"] });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts topics without commas", () => {
+    const result = discoveryConfigSchema.safeParse({ topics: ["wopr-org-acme"] });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("platformDiscoveryConfigSchema", () => {
+  it("applies default topic", () => {
+    const result = platformDiscoveryConfigSchema.parse({});
+    expect(result.defaultTopic).toBe(DEFAULT_DISCOVERY_TOPIC);
+  });
+
+  it("rejects defaultTopic exceeding max length", () => {
+    const result = platformDiscoveryConfigSchema.safeParse({ defaultTopic: "x".repeat(129) });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts defaultTopic at max length", () => {
+    const result = platformDiscoveryConfigSchema.safeParse({ defaultTopic: "x".repeat(128) });
     expect(result.success).toBe(true);
   });
 });
