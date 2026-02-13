@@ -25,14 +25,7 @@ describe("dockerVolumeNameSchema", () => {
 
   // --- Host path rejection ---
 
-  const hostPaths = [
-    "/etc",
-    "/var/run/docker.sock",
-    "/home/user",
-    "/",
-    "/tmp/evil",
-    "/root/.ssh",
-  ];
+  const hostPaths = ["/etc", "/var/run/docker.sock", "/home/user", "/", "/tmp/evil", "/root/.ssh"];
 
   for (const path of hostPaths) {
     it(`rejects host path: "${path}"`, () => {
@@ -42,12 +35,7 @@ describe("dockerVolumeNameSchema", () => {
 
   // --- Path traversal rejection ---
 
-  const traversalNames = [
-    "..",
-    "../etc",
-    "vol/../escape",
-    "a..",
-  ];
+  const traversalNames = ["..", "../etc", "vol/../escape", "a.."];
 
   for (const name of traversalNames) {
     it(`rejects path traversal: "${name}"`, () => {
@@ -58,14 +46,14 @@ describe("dockerVolumeNameSchema", () => {
   // --- Other invalid names ---
 
   const invalidNames = [
-    "",           // empty string
-    ".hidden",    // starts with dot
-    "-dashed",    // starts with dash
-    "_under",     // starts with underscore
-    "has space",  // contains space
-    "has/slash",  // contains forward slash
-    "has:colon",  // contains colon
-    "has@at",     // contains special char
+    "", // empty string
+    ".hidden", // starts with dot
+    "-dashed", // starts with dash
+    "_under", // starts with underscore
+    "has space", // contains space
+    "has/slash", // contains forward slash
+    "has:colon", // contains colon
+    "has@at", // contains special char
   ];
 
   for (const name of invalidNames) {
