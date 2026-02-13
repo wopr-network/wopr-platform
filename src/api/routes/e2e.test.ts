@@ -4,10 +4,10 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
+import { TierStore } from "../../monetization/quotas/tier-definitions.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
-import { TierStore } from "../../monetization/quotas/tier-definitions.js";
 
 // ---------------------------------------------------------------------------
 // Shared test token and auth header
@@ -50,9 +50,7 @@ function makeBotStatus(profile: BotProfile, running: boolean): BotStatus {
     startedAt: running ? "2026-01-01T00:00:00Z" : null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
-    stats: running
-      ? { cpuPercent: 2.5, memoryUsageMb: 128, memoryLimitMb: 512, memoryPercent: 25 }
-      : null,
+    stats: running ? { cpuPercent: 2.5, memoryUsageMb: 128, memoryLimitMb: 512, memoryPercent: 25 } : null,
   };
 }
 
@@ -123,7 +121,17 @@ const fleetMock = {
 const updaterMock = {
   updateBot: vi.fn().mockImplementation(async (id: string) => {
     const profile = createdBots.get(id);
-    if (!profile) return { botId: id, success: false, error: "Bot not found", previousImage: "", newImage: "", previousDigest: null, newDigest: null, rolledBack: false };
+    if (!profile)
+      return {
+        botId: id,
+        success: false,
+        error: "Bot not found",
+        previousImage: "",
+        newImage: "",
+        previousDigest: null,
+        newDigest: null,
+        rolledBack: false,
+      };
     return {
       botId: id,
       success: true,
@@ -538,13 +546,13 @@ describe("E2E: Billing flow", () => {
     // Step 5: Verify the tenant is now mapped to a Stripe customer
     const mapping = tenantStore.getByTenant(tenantId);
     expect(mapping).not.toBeNull();
-    expect(mapping!.stripe_customer_id).toBe("cus_e2e_123");
-    expect(mapping!.stripe_subscription_id).toBe("sub_e2e_456");
+    expect(mapping?.stripe_customer_id).toBe("cus_e2e_123");
+    expect(mapping?.stripe_subscription_id).toBe("sub_e2e_456");
 
     // Step 6: Upgrade the tenant's tier in the store
     tenantStore.setTier(tenantId, "pro");
     const updatedMapping = tenantStore.getByTenant(tenantId);
-    expect(updatedMapping!.tier).toBe("pro");
+    expect(updatedMapping?.tier).toBe("pro");
 
     // Step 7: Check pro tier quota — should allow 5 instances
     const proQuotaRes = await app.request(`/api/quota?tier=pro&activeInstances=1`, {
@@ -620,8 +628,8 @@ describe("E2E: Billing flow", () => {
 
     // Step 13: Verify tenant is downgraded to free tier
     const downgradedMapping = tenantStore.getByTenant(tenantId);
-    expect(downgradedMapping!.tier).toBe("free");
-    expect(downgradedMapping!.stripe_subscription_id).toBeNull();
+    expect(downgradedMapping?.tier).toBe("free");
+    expect(downgradedMapping?.stripe_subscription_id).toBeNull();
 
     // Step 14: Verify free tier quota is enforced again
     const downgradeQuotaRes = await app.request(`/api/quota?tier=free&activeInstances=1`, {
