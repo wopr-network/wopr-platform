@@ -54,9 +54,7 @@ describe("friends routes", () => {
 
   describe("GET /api/instances/:id/friends", () => {
     it("returns friends list from instance", async () => {
-      const friends = [
-        { peerId: "peer-1", name: "bot-a", status: "online", capabilities: ["message-only"] },
-      ];
+      const friends = [{ peerId: "peer-1", name: "bot-a", status: "online", capabilities: ["message-only"] }];
       mockProxyToInstance.mockResolvedValue({ ok: true, status: 200, data: { friends } });
 
       const res = await app.request("/api/instances/bot-1/friends", { headers: authHeader });
@@ -100,12 +98,10 @@ describe("friends routes", () => {
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.ok).toBe(true);
-      expect(mockProxyToInstance).toHaveBeenCalledWith(
-        "bot-1",
-        "POST",
-        "/p2p/friends/requests",
-        { peerId: "peer-2", message: "Hello!" },
-      );
+      expect(mockProxyToInstance).toHaveBeenCalledWith("bot-1", "POST", "/p2p/friends/requests", {
+        peerId: "peer-2",
+        message: "Hello!",
+      });
     });
 
     it("rejects request with missing peerId", async () => {
@@ -155,11 +151,7 @@ describe("friends routes", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockProxyToInstance).toHaveBeenCalledWith(
-        "bot-1",
-        "POST",
-        "/p2p/friends/requests/req-1/accept",
-      );
+      expect(mockProxyToInstance).toHaveBeenCalledWith("bot-1", "POST", "/p2p/friends/requests/req-1/accept");
     });
 
     it("returns 404 when request not found", async () => {
@@ -184,11 +176,7 @@ describe("friends routes", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockProxyToInstance).toHaveBeenCalledWith(
-        "bot-1",
-        "POST",
-        "/p2p/friends/requests/req-1/reject",
-      );
+      expect(mockProxyToInstance).toHaveBeenCalledWith("bot-1", "POST", "/p2p/friends/requests/req-1/reject");
     });
   });
 
@@ -203,12 +191,9 @@ describe("friends routes", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockProxyToInstance).toHaveBeenCalledWith(
-        "bot-1",
-        "PATCH",
-        "/p2p/friends/friend-1/capabilities",
-        { capabilities: ["message-only", "inject"] },
-      );
+      expect(mockProxyToInstance).toHaveBeenCalledWith("bot-1", "PATCH", "/p2p/friends/friend-1/capabilities", {
+        capabilities: ["message-only", "inject"],
+      });
     });
 
     it("rejects empty capabilities array", async () => {
@@ -279,12 +264,7 @@ describe("friends routes", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockProxyToInstance).toHaveBeenCalledWith(
-        "bot-1",
-        "PUT",
-        "/p2p/friends/auto-accept",
-        rules,
-      );
+      expect(mockProxyToInstance).toHaveBeenCalledWith("bot-1", "PUT", "/p2p/friends/auto-accept", rules);
     });
 
     it("rejects missing enabled field", async () => {

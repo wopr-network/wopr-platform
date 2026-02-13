@@ -3,11 +3,7 @@ import { bearerAuth } from "hono/bearer-auth";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { logger } from "../../config/logger.js";
 import { proxyToInstance } from "./friends-proxy.js";
-import {
-  autoAcceptRuleSchema,
-  sendFriendRequestSchema,
-  updateCapabilitiesSchema,
-} from "./friends-types.js";
+import { autoAcceptRuleSchema, sendFriendRequestSchema, updateCapabilitiesSchema } from "./friends-types.js";
 
 const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 
@@ -134,12 +130,7 @@ friendsRoutes.patch("/:friendId/capabilities", async (c) => {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
   }
 
-  const result = await proxyToInstance(
-    instanceId,
-    "PATCH",
-    `/p2p/friends/${friendId}/capabilities`,
-    parsed.data,
-  );
+  const result = await proxyToInstance(instanceId, "PATCH", `/p2p/friends/${friendId}/capabilities`, parsed.data);
   return c.json(result.data ?? { error: result.error }, result.status as ContentfulStatusCode);
 });
 
