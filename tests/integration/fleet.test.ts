@@ -123,7 +123,7 @@ describe("integration: fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ name: "!!bad!!", image: "test" }),
+        body: JSON.stringify({ name: "!!bad!!", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
       expect(res.status).toBe(400);
     });
@@ -200,7 +200,7 @@ describe("integration: fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ name: "bot", image: "img" }),
+        body: JSON.stringify({ name: "bot", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
       expect(res.status).toBe(500);
     });

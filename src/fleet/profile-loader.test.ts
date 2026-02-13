@@ -18,7 +18,7 @@ provider:
   config:
     KEY: xyz
 release: canary
-image: "ghcr.io/test:canary"
+image: "ghcr.io/wopr-network/test:canary"
 `;
     const result = parseProfileTemplate(yaml, "test.yaml");
     expect(result.name).toBe("test-bot");
@@ -55,7 +55,7 @@ channel:
 provider:
   plugin: test-provider
 release: stable
-image: "ghcr.io/test:stable"
+image: "ghcr.io/wopr-network/test:stable"
 `;
 
   it("loads all .yaml files from directory", () => {

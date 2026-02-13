@@ -2,10 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Docker from "dockerode";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../../src/fleet/fleet-manager.js";
 import { ProfileStore } from "../../src/fleet/profile-store.js";
 import type { BotProfile } from "../../src/fleet/types.js";
+
+// Allow alpine images for e2e tests (real Docker pulls)
+vi.stubEnv("FLEET_IMAGE_ALLOWLIST", "ghcr.io/wopr-network/,alpine:");
 
 // ---------------------------------------------------------------------------
 // Docker availability check — skip entire suite when Docker is not reachable
