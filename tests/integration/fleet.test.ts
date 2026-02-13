@@ -134,7 +134,7 @@ describe("integration: fleet routes", () => {
         headers: JSON_HEADERS,
         body: JSON.stringify({
           name: "bot",
-          image: "img",
+          image: "ghcr.io/wopr-network/wopr:stable",
           volumeName: "/var/run/docker.sock",
         }),
       });
@@ -147,7 +147,7 @@ describe("integration: fleet routes", () => {
         headers: JSON_HEADERS,
         body: JSON.stringify({
           name: "bot",
-          image: "img",
+          image: "ghcr.io/wopr-network/wopr:stable",
           volumeName: "vol/../escape",
         }),
       });
@@ -158,7 +158,7 @@ describe("integration: fleet routes", () => {
       fleetMock.create.mockResolvedValue({
         id: "new-bot",
         name: "bot",
-        image: "img",
+        image: "ghcr.io/wopr-network/wopr:stable",
         volumeName: "my-data-vol",
       });
 
@@ -167,7 +167,7 @@ describe("integration: fleet routes", () => {
         headers: JSON_HEADERS,
         body: JSON.stringify({
           name: "bot",
-          image: "img",
+          image: "ghcr.io/wopr-network/wopr:stable",
           volumeName: "my-data-vol",
         }),
       });
