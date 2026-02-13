@@ -7,8 +7,15 @@ import { validateProviderKey } from "../../security/key-validation.js";
 import { validateKeyRequestSchema, writeSecretsRequestSchema } from "../../security/types.js";
 
 const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
-const PLATFORM_SECRET = process.env.PLATFORM_SECRET || "";
+const PLATFORM_SECRET = process.env.PLATFORM_SECRET;
 const INSTANCE_DATA_DIR = process.env.INSTANCE_DATA_DIR || "/data/instances";
+
+/** Allowlist: only alphanumeric, hyphens, and underscores. */
+const INSTANCE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+function isValidInstanceId(id: string): boolean {
+  return INSTANCE_ID_RE.test(id);
+}
 
 export const secretsRoutes = new Hono();
 
@@ -30,6 +37,9 @@ secretsRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
  */
 secretsRoutes.put("/instances/:id/config/secrets", async (c) => {
   const instanceId = c.req.param("id");
+  if (!isValidInstanceId(instanceId)) {
+    return c.json({ error: "Invalid instance ID" }, 400);
+  }
   const mode = c.req.query("mode") || "proxy";
 
   if (mode === "seed") {
@@ -107,6 +117,9 @@ secretsRoutes.post("/validate-key", async (c) => {
     const instanceId = c.req.query("instanceId");
     if (!instanceId) {
       return c.json({ error: "instanceId query parameter required" }, 400);
+    }
+    if (!isValidInstanceId(instanceId)) {
+      return c.json({ error: "Invalid instance ID" }, 400);
     }
     if (!PLATFORM_SECRET) {
       return c.json({ error: "Platform secret not configured" }, 500);
