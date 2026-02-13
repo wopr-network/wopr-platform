@@ -1,0 +1,140 @@
+import Database from "better-sqlite3";
+import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth";
+import { enforceRetention } from "../../backup/retention.js";
+import { SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
+import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
+import { logger } from "../../config/logger.js";
+
+const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
+const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
+const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
+const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
+
+/** Lazy-initialized snapshot manager (avoids opening DB at module load time) */
+let _manager: SnapshotManager | null = null;
+function getManager(): SnapshotManager {
+  if (!_manager) {
+    const db = new Database(SNAPSHOT_DB_PATH);
+    _manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db });
+  }
+  return _manager;
+}
+
+export const snapshotRoutes = new Hono<{ Bindings: Record<string, never> }>();
+
+if (!FLEET_API_TOKEN) {
+  logger.warn("FLEET_API_TOKEN is not set -- snapshot routes will reject all requests");
+}
+snapshotRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
+
+/** POST /api/instances/:id/snapshots -- Create a snapshot */
+snapshotRoutes.post("/", async (c) => {
+  const instanceId = c.req.param("id") as string;
+  const userId = c.req.header("X-User-Id") || "system";
+  const tierHeader = c.req.header("X-Tier") || "free";
+
+  const tier = tierSchema.safeParse(tierHeader);
+  if (!tier.success) {
+    return c.json({ error: "Invalid tier" }, 400);
+  }
+
+  let body: unknown = {};
+  try {
+    const text = await c.req.text();
+    if (text) body = JSON.parse(text);
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = createSnapshotSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+  }
+
+  // Only free tier is restricted to manual triggers
+  if (tier.data === "free" && parsed.data.trigger !== "manual") {
+    return c.json({ error: "Free tier only supports manual snapshots" }, 403);
+  }
+
+  const woprHomePath = `${WOPR_HOME_BASE}/${instanceId}`;
+  const manager = getManager();
+
+  try {
+    const snapshot = await manager.create({
+      instanceId,
+      userId,
+      woprHomePath,
+      trigger: parsed.data.trigger,
+    });
+
+    // Enforce retention after creating
+    await enforceRetention(manager, instanceId, tier.data);
+
+    return c.json(snapshot, 201);
+  } catch (err) {
+    logger.error(`Failed to create snapshot for instance ${instanceId}`, { err });
+    return c.json({ error: "Failed to create snapshot" }, 500);
+  }
+});
+
+/** GET /api/instances/:id/snapshots -- List snapshots */
+snapshotRoutes.get("/", (c) => {
+  const instanceId = c.req.param("id") as string;
+  const snapshots = getManager().list(instanceId);
+  return c.json({ snapshots });
+});
+
+/** POST /api/instances/:id/snapshots/:sid/restore -- Restore from snapshot */
+snapshotRoutes.post("/:sid/restore", async (c) => {
+  const instanceId = c.req.param("id") as string;
+  const snapshotId = c.req.param("sid");
+  const woprHomePath = `${WOPR_HOME_BASE}/${instanceId}`;
+  const manager = getManager();
+
+  // Verify the snapshot belongs to this instance
+  const snapshot = manager.get(snapshotId);
+  if (!snapshot) {
+    return c.json({ error: `Snapshot not found: ${snapshotId}` }, 404);
+  }
+  if (snapshot.instanceId !== instanceId) {
+    return c.json({ error: "Snapshot does not belong to this instance" }, 403);
+  }
+
+  try {
+    await manager.restore(snapshotId, woprHomePath);
+    return c.json({ ok: true, restored: snapshotId });
+  } catch (err) {
+    if (err instanceof SnapshotNotFoundError) {
+      return c.json({ error: err.message }, 404);
+    }
+    logger.error(`Failed to restore snapshot ${snapshotId}`, { err });
+    return c.json({ error: "Failed to restore snapshot" }, 500);
+  }
+});
+
+/** DELETE /api/instances/:id/snapshots/:sid -- Delete a snapshot */
+snapshotRoutes.delete("/:sid", async (c) => {
+  const instanceId = c.req.param("id") as string;
+  const snapshotId = c.req.param("sid");
+  const manager = getManager();
+
+  // Verify the snapshot belongs to this instance
+  const snapshot = manager.get(snapshotId);
+  if (!snapshot) {
+    return c.json({ error: `Snapshot not found: ${snapshotId}` }, 404);
+  }
+  if (snapshot.instanceId !== instanceId) {
+    return c.json({ error: "Snapshot does not belong to this instance" }, 403);
+  }
+
+  const deleted = await manager.delete(snapshotId);
+  if (!deleted) {
+    return c.json({ error: `Snapshot not found: ${snapshotId}` }, 404);
+  }
+
+  return c.body(null, 204);
+});
+
+/** Export for testing */
+export { getManager };
