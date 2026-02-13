@@ -1,8 +1,8 @@
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
 import type { FleetManager } from "./fleet-manager.js";
-import { getContainerDigest } from "./image-poller.js";
 import type { ImagePoller } from "./image-poller.js";
+import { getContainerDigest } from "./image-poller.js";
 import type { ProfileStore } from "./profile-store.js";
 
 /** How long to wait for a container to become healthy after update (ms) */
