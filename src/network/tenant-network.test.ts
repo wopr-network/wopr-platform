@@ -1,6 +1,11 @@
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { InvalidTenantIdError, NetworkInUseError, NetworkNotFoundError, TenantNetworkManager } from "./tenant-network.js";
+import {
+  InvalidTenantIdError,
+  NetworkInUseError,
+  NetworkNotFoundError,
+  TenantNetworkManager,
+} from "./tenant-network.js";
 import { NETWORK_LABELS, PLATFORM_NETWORK_NAME, TENANT_NETWORK_PREFIX } from "./types.js";
 
 // --- Mock helpers ---
