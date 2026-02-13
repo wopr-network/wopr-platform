@@ -1,0 +1,48 @@
+## Local staging simulation for wopr-platform.
+##
+## Mirrors the Fly.io staging environment locally using Docker Compose.
+## Includes the platform service with Docker socket access and a persistent
+## SQLite volume.
+##
+## Run:
+##   docker compose -f docker-compose.staging.yml up -d
+##
+## Load env from file:
+##   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+
+services:
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wopr-platform-staging
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      NODE_ENV: production
+      PORT: "3100"
+      LOG_LEVEL: debug
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_DEFAULT_PRICE_ID: ${STRIPE_DEFAULT_PRICE_ID:-}
+    volumes:
+      - staging-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - wopr-staging
+
+networks:
+  wopr-staging:
+    name: wopr-staging
+    driver: bridge
+
+volumes:
+  staging-data:
+    name: wopr-staging-data
