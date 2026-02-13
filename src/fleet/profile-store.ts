@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import yaml from "js-yaml";
-import { botProfileSchema, type BotProfile } from "./types.js";
+import { type BotProfile, botProfileSchema } from "./types.js";
 
 /**
  * Persists bot profiles as YAML files in a data directory.
