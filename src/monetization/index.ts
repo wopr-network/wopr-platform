@@ -14,6 +14,8 @@
  * - adapters/  -- hosted adapters like woprReplicateAdapter (WOP-301)
  */
 
+export type { MeterEvent, MeterEventRow, UsageSummary } from "./metering/index.js";
+export { initMeterSchema, MeterAggregator, MeterEmitter } from "./metering/index.js";
 export { buildQuotaUsage, checkInstanceQuota, type QuotaCheckResult, type QuotaUsage } from "./quotas/quota-check.js";
 export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
 export { DEFAULT_TIERS, type PlanTier, TierStore } from "./quotas/tier-definitions.js";
