@@ -31,11 +31,11 @@ export const profileTemplateSchema = z.object({
   description: z.string().min(1),
   channel: z.object({
     plugin: z.string().min(1),
-    config: z.record(z.string(), z.string()).default({}),
+    config: z.record(z.string(), z.string()).default(() => ({})),
   }),
   provider: z.object({
     plugin: z.string().min(1),
-    config: z.record(z.string(), z.string()).default({}),
+    config: z.record(z.string(), z.string()).default(() => ({})),
   }),
   release: releaseChannelSchema,
   image: z.string().min(1),
@@ -46,8 +46,8 @@ export const profileTemplateSchema = z.object({
     timeoutSeconds: 5,
     retries: 3,
   })),
-  volumes: z.array(volumeMountSchema).default([]),
-  env: z.record(z.string(), z.string()).default({}),
+  volumes: z.array(volumeMountSchema).default(() => []),
+  env: z.record(z.string(), z.string()).default(() => ({})),
 });
 
 export type ProfileTemplate = z.infer<typeof profileTemplateSchema>;

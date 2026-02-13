@@ -19,7 +19,8 @@ export interface SeedResult {
 
 /**
  * Seed bots from profile templates.
- * Accepts an optional `templatesDir` for testing; defaults to the bundled templates directory.
+ * @param templates - Parsed profile templates to seed from.
+ * @param existingNames - Set of bot names that already exist (mutated in place).
  */
 export function seedBots(templates: ProfileTemplate[], existingNames: Set<string>): SeedResult {
   const created: string[] = [];

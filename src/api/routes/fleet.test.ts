@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { app } from "../app.js";
 import { seedBots } from "./fleet.js";
@@ -11,11 +12,38 @@ describe("fleet routes", () => {
     expect(body).toEqual({ bots: [] });
   });
 
-  it("POST /api/fleet/seed returns created and skipped bots", async () => {
-    const res = await app.request("/api/fleet/seed", { method: "POST" });
-    // The bundled templates directory should be found relative to src at build time.
-    // In test mode (running from src via vitest), the path resolves to <root>/templates/.
-    expect([200, 404, 500]).toContain(res.status);
+  describe("POST /api/fleet/seed", () => {
+    let origEnv: string | undefined;
+
+    beforeEach(() => {
+      origEnv = process.env.FLEET_TEMPLATES_DIR;
+    });
+
+    afterEach(() => {
+      if (origEnv === undefined) {
+        delete process.env.FLEET_TEMPLATES_DIR;
+      } else {
+        process.env.FLEET_TEMPLATES_DIR = origEnv;
+      }
+    });
+
+    it("returns 200 with created bots when templates exist", async () => {
+      process.env.FLEET_TEMPLATES_DIR = path.resolve(import.meta.dirname, "..", "..", "..", "templates");
+      const res = await app.request("/api/fleet/seed", { method: "POST" });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toHaveProperty("created");
+      expect(body).toHaveProperty("skipped");
+      expect(Array.isArray(body.created)).toBe(true);
+    });
+
+    it("returns 404 when templates directory is empty", async () => {
+      process.env.FLEET_TEMPLATES_DIR = path.resolve(import.meta.dirname);
+      const res = await app.request("/api/fleet/seed", { method: "POST" });
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body).toHaveProperty("error");
+    });
   });
 });
 

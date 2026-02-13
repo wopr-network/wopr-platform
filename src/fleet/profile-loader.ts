@@ -32,6 +32,9 @@ export function loadProfileTemplates(templatesDir: string): ProfileTemplate[] {
 
 /** Resolve the default templates directory (relative to project root) */
 export function defaultTemplatesDir(): string {
+  if (process.env.FLEET_TEMPLATES_DIR) {
+    return path.resolve(process.env.FLEET_TEMPLATES_DIR);
+  }
   // In production, templates are bundled alongside the dist output.
   // The repo layout puts them at <root>/templates/.
   // __dirname at runtime is dist/fleet/, so we go up two levels.
