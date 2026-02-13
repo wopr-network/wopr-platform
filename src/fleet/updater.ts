@@ -1,6 +1,7 @@
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
 import type { FleetManager } from "./fleet-manager.js";
+import { getContainerDigest } from "./image-poller.js";
 import type { ImagePoller } from "./image-poller.js";
 import type { ProfileStore } from "./profile-store.js";
 
@@ -22,7 +23,7 @@ export interface UpdateResult {
 
 /**
  * Handles container updates with rollback capability.
- * Orchestrates: pull new image -> stop -> recreate -> start -> verify -> cleanup.
+ * Orchestrates: pull new image -> delegate recreation to FleetManager -> start -> verify health.
  * On health check failure within timeout, rolls back to the previous image.
  */
 export class ContainerUpdater {
@@ -82,7 +83,19 @@ export class ContainerUpdater {
     const previousImage = profile.image;
     let previousDigest: string | null = null;
 
-    // Get the current container's digest before update
+    // Get the current container's manifest digest before update.
+    // Uses RepoDigests (manifest digest) instead of container config digest
+    // so it can be compared consistently with registry digests.
+    try {
+      previousDigest = await getContainerDigest(this.docker, botId);
+    } catch {
+      // Non-fatal: we just won't have the previous digest
+    }
+
+    logger.info(`Starting update for bot ${botId} (image: ${previousImage})`);
+
+    // Track whether the old container was running so rollback preserves original state
+    let wasRunning = false;
     try {
       const containers = await this.docker.listContainers({
         all: true,
@@ -91,16 +104,15 @@ export class ContainerUpdater {
       if (containers.length > 0) {
         const container = this.docker.getContainer(containers[0].Id);
         const info = await container.inspect();
-        previousDigest = info.Image ?? null;
+        wasRunning = info.State.Running;
       }
     } catch {
-      // Non-fatal: we just won't have the previous digest
+      // Non-fatal: assume stopped if we can't determine state
     }
 
-    logger.info(`Starting update for bot ${botId} (image: ${previousImage})`);
-
     try {
-      // Step 1: Pull the latest image
+      // Step 1: Pull the latest image before touching the running container.
+      // If the pull fails, the old container is untouched.
       logger.info(`Pulling latest image for bot ${botId}: ${profile.image}`);
       const pullStream = await this.docker.pull(profile.image);
       await new Promise<void>((resolve, reject) => {
@@ -110,54 +122,30 @@ export class ContainerUpdater {
         });
       });
 
-      // Step 2: Find and stop existing container
-      const containers = await this.docker.listContainers({
-        all: true,
-        filters: { label: [`wopr.bot-id=${botId}`] },
-      });
-
-      let wasRunning = false;
-      if (containers.length > 0) {
-        const container = this.docker.getContainer(containers[0].Id);
-        const info = await container.inspect();
-        wasRunning = info.State.Running;
-
-        if (wasRunning) {
-          await container.stop();
-        }
-        await container.remove();
-      }
-
-      // Step 3: Recreate using FleetManager's update which handles container recreation
-      // We use the fleet manager's restart flow to recreate with the same config
-      // but we've already pulled and stopped, so we just need to recreate
+      // Step 2: Delegate stop -> remove -> recreate to FleetManager.update().
+      // fleet.update() already implements: stop old -> remove old -> create new,
+      // with profile rollback if container creation fails.
       await this.fleet.update(botId, { image: profile.image });
 
-      // Step 4: Start the new container if the old one was running
+      // Step 3: Start the new container only if the old one was running
       if (wasRunning) {
         await this.fleet.start(botId);
       }
 
-      // Step 5: Verify health
-      const healthy = await this.waitForHealthy(botId);
+      // Step 4: Verify health (only meaningful if container is running)
+      if (wasRunning) {
+        const healthy = await this.waitForHealthy(botId);
 
-      if (!healthy) {
-        logger.warn(`Health check failed for bot ${botId} after update, rolling back`);
-        return await this.rollback(botId, previousImage, previousDigest);
+        if (!healthy) {
+          logger.warn(`Health check failed for bot ${botId} after update, rolling back`);
+          return await this.rollback(botId, previousImage, previousDigest, wasRunning);
+        }
       }
 
-      // Step 6: Get new digest for reporting
+      // Step 5: Get new digest for reporting using manifest digest (RepoDigests)
       let newDigest: string | null = null;
       try {
-        const newContainers = await this.docker.listContainers({
-          all: true,
-          filters: { label: [`wopr.bot-id=${botId}`] },
-        });
-        if (newContainers.length > 0) {
-          const c = this.docker.getContainer(newContainers[0].Id);
-          const cInfo = await c.inspect();
-          newDigest = cInfo.Image ?? null;
-        }
+        newDigest = await getContainerDigest(this.docker, botId);
       } catch {
         // Non-fatal
       }
@@ -178,7 +166,7 @@ export class ContainerUpdater {
 
       // Attempt rollback
       try {
-        return await this.rollback(botId, previousImage, previousDigest);
+        return await this.rollback(botId, previousImage, previousDigest, wasRunning);
       } catch (rollbackErr) {
         logger.error(`Rollback also failed for bot ${botId}`, { rollbackErr });
         return {
@@ -235,15 +223,25 @@ export class ContainerUpdater {
 
   /**
    * Roll back to a previous image by updating the bot profile and recreating.
+   * Only starts the container on rollback if it was running before the update.
    */
-  private async rollback(botId: string, previousImage: string, previousDigest: string | null): Promise<UpdateResult> {
+  private async rollback(
+    botId: string,
+    previousImage: string,
+    previousDigest: string | null,
+    wasRunning: boolean,
+  ): Promise<UpdateResult> {
     logger.info(`Rolling back bot ${botId} to ${previousImage}`);
 
     try {
       await this.fleet.update(botId, { image: previousImage });
-      await this.fleet.start(botId).catch((err) => {
-        logger.warn(`Failed to start bot ${botId} during rollback (may already be running)`, { err });
-      });
+
+      // Only start on rollback if the container was running before the update
+      if (wasRunning) {
+        await this.fleet.start(botId).catch((err) => {
+          logger.warn(`Failed to start bot ${botId} during rollback (may already be running)`, { err });
+        });
+      }
 
       return {
         botId,
