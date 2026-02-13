@@ -10,9 +10,7 @@
  */
 
 import type {
-  AdapterCapability,
   AdapterResult,
-  MeterEvent,
   ProviderAdapter,
   TranscriptionInput,
   TranscriptionOutput,
@@ -49,8 +47,6 @@ export interface ReplicateAdapterConfig {
   maxPollAttempts?: number;
   /** Poll interval in milliseconds (default: 1000) */
   pollIntervalMs?: number;
-  /** Callback for meter events (fire-and-forget to metering layer) */
-  onMeterEvent?: (event: MeterEvent) => void;
 }
 
 const DEFAULT_BASE_URL = "https://api.replicate.com";
@@ -73,7 +69,7 @@ export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
  * Uses factory function pattern (not class) to keep the API surface minimal
  * and to allow easy dependency injection of fetch for testing.
  */
-export function createReplicateAdapter(config: ReplicateAdapterConfig, fetchFn: FetchFn = fetch): ProviderAdapter {
+export function createReplicateAdapter(config: ReplicateAdapterConfig, fetchFn: FetchFn = fetch): ProviderAdapter & Required<Pick<ProviderAdapter, "transcribe">> {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const costPerSecond = config.costPerSecond ?? DEFAULT_COST_PER_SECOND;
   const marginMultiplier = config.marginMultiplier ?? DEFAULT_MARGIN;
@@ -118,7 +114,7 @@ export function createReplicateAdapter(config: ReplicateAdapterConfig, fetchFn: 
       const prediction = await getPrediction(id);
 
       if (prediction.status === "succeeded") return prediction;
-      if (prediction.status === "failed") throw new Error(`Replicate prediction failed: ${prediction.error}`);
+      if (prediction.status === "failed") throw new Error(`Replicate prediction failed: ${prediction.error ?? "unknown error"}`);
       if (prediction.status === "canceled") throw new Error("Replicate prediction was canceled");
 
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -130,26 +126,6 @@ export function createReplicateAdapter(config: ReplicateAdapterConfig, fetchFn: 
   function extractCost(prediction: ReplicatePrediction): number {
     const predictTime = prediction.metrics?.predict_time ?? 0;
     return predictTime * costPerSecond;
-  }
-
-  function emitMeterEvent(capability: AdapterCapability, cost: number, charge: number, tenantId: string): void {
-    if (!config.onMeterEvent) return;
-
-    const event: MeterEvent = {
-      adapter: "replicate",
-      capability,
-      cost,
-      charge,
-      timestamp: new Date().toISOString(),
-      tenantId,
-    };
-
-    // Fire-and-forget — metering failures must never block the response
-    try {
-      config.onMeterEvent(event);
-    } catch {
-      // Swallow — metering is best-effort
-    }
   }
 
   return {
@@ -182,22 +158,25 @@ export function createReplicateAdapter(config: ReplicateAdapterConfig, fetchFn: 
       if (typeof output === "string") {
         text = output;
         detectedLanguage = input.language ?? "en";
-        durationSeconds = prediction.metrics?.predict_time ?? 0;
+        durationSeconds = 0;
       } else if (output && typeof output === "object") {
         text = output.text ?? "";
         detectedLanguage = output.detected_language ?? input.language ?? "en";
-        durationSeconds = prediction.metrics?.predict_time ?? 0;
+        // Derive audio duration from the last segment's end time when available.
+        // predict_time is GPU compute time, not audio duration.
+        const segments = output.segments as Array<{ end?: number }> | undefined;
+        const lastEnd = segments?.length ? segments[segments.length - 1]?.end : undefined;
+        durationSeconds = lastEnd ?? 0;
       } else {
         throw new Error("Unexpected Replicate output format");
       }
 
-      // Emit meter event (fire-and-forget)
-      // tenantId is not available at this layer — the socket injects it
-      emitMeterEvent("transcription", cost, charge, "");
-
+      // Metering is the socket layer's responsibility — it has the tenantId.
+      // The adapter returns cost + charge so the caller can emit the event.
       return {
         result: { text, detectedLanguage, durationSeconds },
         cost,
+        charge,
       };
     },
   };

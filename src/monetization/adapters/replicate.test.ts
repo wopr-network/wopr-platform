@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FetchFn, ReplicateAdapterConfig } from "./replicate.js";
 import { createReplicateAdapter } from "./replicate.js";
-import type { MeterEvent } from "./types.js";
 import { withMargin } from "./types.js";
 
 /** Helper to create a mock Response */
@@ -77,10 +76,13 @@ describe("createReplicateAdapter", () => {
       // Verify result
       expect(result.result.text).toBe("Hello world, this is a test transcription.");
       expect(result.result.detectedLanguage).toBe("en");
-      expect(result.result.durationSeconds).toBe(4.2);
+      // No segments with end times in default prediction, so durationSeconds = 0
+      expect(result.result.durationSeconds).toBe(0);
 
       // Verify cost: 4.2 seconds * $0.000225/sec = $0.000945
       expect(result.cost).toBeCloseTo(0.000945, 6);
+      // Verify charge is returned (cost * 1.3 margin)
+      expect(result.charge).toBeCloseTo(0.001229, 4);
     });
 
     it("polls when prediction is not immediately complete", async () => {
@@ -217,49 +219,72 @@ describe("createReplicateAdapter", () => {
     });
   });
 
-  describe("meter events", () => {
-    it("emits meter event with correct cost and charge", async () => {
-      const events: MeterEvent[] = [];
-      const prediction = succeededPrediction();
-      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
-
-      const adapter = createReplicateAdapter(makeConfig({ onMeterEvent: (e) => events.push(e) }), fetchFn);
-      await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
-
-      expect(events).toHaveLength(1);
-      expect(events[0].adapter).toBe("replicate");
-      expect(events[0].capability).toBe("transcription");
-      expect(events[0].cost).toBeCloseTo(0.000945, 6);
-      // charge = cost * 1.3 margin
-      expect(events[0].charge).toBeCloseTo(0.001229, 4);
-      expect(events[0].timestamp).toBeDefined();
-    });
-
-    it("does not throw when onMeterEvent is not provided", async () => {
+  describe("charge in result", () => {
+    it("returns charge (cost + margin) in the result", async () => {
       const prediction = succeededPrediction();
       const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
 
       const adapter = createReplicateAdapter(makeConfig(), fetchFn);
-      // Should not throw
-      await expect(adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" })).resolves.toBeDefined();
-    });
+      const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
 
-    it("swallows meter event callback errors", async () => {
-      const prediction = succeededPrediction();
+      expect(result.cost).toBeCloseTo(0.000945, 6);
+      // charge = cost * 1.3 margin
+      expect(result.charge).toBeCloseTo(0.001229, 4);
+    });
+  });
+
+  describe("durationSeconds from segments", () => {
+    it("derives audio duration from last segment end time", async () => {
+      const prediction = succeededPrediction({
+        output: {
+          text: "Hello world",
+          detected_language: "en",
+          segments: [{ end: 5.0 }, { end: 12.5 }],
+        },
+      });
       const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
 
-      const adapter = createReplicateAdapter(
-        makeConfig({
-          onMeterEvent: () => {
-            throw new Error("metering service down");
-          },
-        }),
-        fetchFn,
-      );
-
-      // Should not throw despite meter event failure
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
       const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
-      expect(result.result.text).toBe("Hello world, this is a test transcription.");
+
+      expect(result.result.durationSeconds).toBe(12.5);
+    });
+
+    it("returns 0 when segments array is empty", async () => {
+      const prediction = succeededPrediction({
+        output: { text: "Hello", detected_language: "en", segments: [] },
+      });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
+
+      expect(result.result.durationSeconds).toBe(0);
+    });
+
+    it("returns 0 for string output format", async () => {
+      const prediction = succeededPrediction({ output: "Plain text" });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
+
+      expect(result.result.durationSeconds).toBe(0);
+    });
+  });
+
+  describe("error messages", () => {
+    it("includes fallback when prediction.error is undefined", async () => {
+      const failedPrediction = { id: "pred_abc123", status: "failed" };
+      const fetchFn = vi
+        .fn<FetchFn>()
+        .mockResolvedValueOnce(mockResponse({ ...failedPrediction, status: "processing" }))
+        .mockResolvedValueOnce(mockResponse(failedPrediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await expect(adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" })).rejects.toThrow(
+        "Replicate prediction failed: unknown error",
+      );
     });
   });
 });

@@ -12,6 +12,8 @@ export interface AdapterResult<T = unknown> {
   result: T;
   /** Wholesale cost in USD (what we paid the provider) */
   cost: number;
+  /** User-facing charge in USD (cost + margin). Present when the adapter computes margin. */
+  charge?: number;
 }
 
 /** A capability the adapter supports (extensible as we add more) */
@@ -48,7 +50,7 @@ export interface ProviderAdapter {
   /** Which capabilities this adapter supports */
   readonly capabilities: ReadonlyArray<AdapterCapability>;
   /** Transcribe audio — returns result + wholesale cost */
-  transcribe(input: TranscriptionInput): Promise<AdapterResult<TranscriptionOutput>>;
+  transcribe?(input: TranscriptionInput): Promise<AdapterResult<TranscriptionOutput>>;
 }
 
 /**
