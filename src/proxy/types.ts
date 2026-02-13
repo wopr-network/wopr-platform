@@ -53,7 +53,7 @@ export interface CaddyConfig {
 
 /** Interface for proxy management operations. */
 export interface ProxyManagerInterface {
-  addRoute(route: ProxyRoute): void;
+  addRoute(route: ProxyRoute): Promise<void>;
   removeRoute(instanceId: string): void;
   updateHealth(instanceId: string, healthy: boolean): void;
   getRoutes(): ProxyRoute[];

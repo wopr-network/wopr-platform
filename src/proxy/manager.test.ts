@@ -1,6 +1,12 @@
+import * as dnsPromises from "node:dns/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProxyManager } from "./manager.js";
 import type { ProxyRoute } from "./types.js";
+
+vi.mock("node:dns/promises", () => ({
+  resolve4: vi.fn(),
+  resolve6: vi.fn(),
+}));
 
 function makeRoute(overrides: Partial<ProxyRoute> = {}): ProxyRoute {
   return {
@@ -19,6 +25,9 @@ describe("ProxyManager", () => {
   beforeEach(() => {
     manager = new ProxyManager({ caddyAdminUrl: "http://localhost:2019" });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("") }));
+    // Default: DNS resolution returns the host as-is for IPs, public IPs for hostnames
+    vi.mocked(dnsPromises.resolve4).mockResolvedValue(["203.0.113.50"]);
+    vi.mocked(dnsPromises.resolve6).mockRejectedValue(new Error("ENODATA"));
   });
 
   afterEach(() => {
@@ -26,15 +35,15 @@ describe("ProxyManager", () => {
   });
 
   describe("route management", () => {
-    it("adds a route", () => {
+    it("adds a route", async () => {
       const route = makeRoute();
-      manager.addRoute(route);
+      await manager.addRoute(route);
 
       expect(manager.getRoutes()).toEqual([route]);
     });
 
-    it("removes a route", () => {
-      manager.addRoute(makeRoute());
+    it("removes a route", async () => {
+      await manager.addRoute(makeRoute());
       manager.removeRoute("inst-1");
 
       expect(manager.getRoutes()).toEqual([]);
@@ -45,8 +54,8 @@ describe("ProxyManager", () => {
       expect(manager.getRoutes()).toEqual([]);
     });
 
-    it("updates health status", () => {
-      manager.addRoute(makeRoute({ healthy: true }));
+    it("updates health status", async () => {
+      await manager.addRoute(makeRoute({ healthy: true }));
       manager.updateHealth("inst-1", false);
 
       expect(manager.getRoutes()[0].healthy).toBe(false);
@@ -57,18 +66,18 @@ describe("ProxyManager", () => {
       expect(manager.getRoutes()).toEqual([]);
     });
 
-    it("replaces route with same instanceId", () => {
-      manager.addRoute(makeRoute({ upstreamHost: "203.0.113.1" }));
-      manager.addRoute(makeRoute({ upstreamHost: "203.0.113.2" }));
+    it("replaces route with same instanceId", async () => {
+      await manager.addRoute(makeRoute({ upstreamHost: "203.0.113.1" }));
+      await manager.addRoute(makeRoute({ upstreamHost: "203.0.113.2" }));
 
       expect(manager.getRoutes()).toHaveLength(1);
       expect(manager.getRoutes()[0].upstreamHost).toBe("203.0.113.2");
     });
 
-    it("manages multiple routes", () => {
-      manager.addRoute(makeRoute({ instanceId: "a" }));
-      manager.addRoute(makeRoute({ instanceId: "b" }));
-      manager.addRoute(makeRoute({ instanceId: "c" }));
+    it("manages multiple routes", async () => {
+      await manager.addRoute(makeRoute({ instanceId: "a" }));
+      await manager.addRoute(makeRoute({ instanceId: "b" }));
+      await manager.addRoute(makeRoute({ instanceId: "c" }));
 
       expect(manager.getRoutes()).toHaveLength(3);
 
@@ -111,7 +120,7 @@ describe("ProxyManager", () => {
     });
 
     it("sends config to Caddy on reload", async () => {
-      manager.addRoute(makeRoute());
+      await manager.addRoute(makeRoute());
       await manager.start();
 
       // Clear the start() call
@@ -143,70 +152,141 @@ describe("ProxyManager", () => {
   });
 
   describe("SSRF upstream validation", () => {
-    it("rejects loopback IPv4 (127.0.0.1)", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "127.0.0.1" }))).toThrow("private IP");
+    it("rejects loopback IPv4 (127.0.0.1)", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "127.0.0.1" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects 10.x.x.x private range", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "10.0.0.5" }))).toThrow("private IP");
+    it("rejects 10.x.x.x private range", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "10.0.0.5" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects 172.16.x.x private range", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "172.16.0.1" }))).toThrow("private IP");
+    it("rejects 172.16.x.x private range", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "172.16.0.1" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects 192.168.x.x private range", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "192.168.1.1" }))).toThrow("private IP");
+    it("rejects 192.168.x.x private range", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "192.168.1.1" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects cloud metadata IP (169.254.169.254)", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "169.254.169.254" }))).toThrow("private IP");
+    it("rejects cloud metadata IP (169.254.169.254)", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "169.254.169.254" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects IPv6 loopback (::1)", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "::1" }))).toThrow("private IP");
+    it("rejects IPv6 loopback (::1)", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "::1" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects localhost hostname", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "localhost" }))).toThrow("private IP");
+    it("rejects localhost hostname", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "localhost" }))).rejects.toThrow("private IP");
     });
 
-    it("accepts public IP addresses", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "203.0.113.50" }))).not.toThrow();
+    it("accepts public IP addresses", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "203.0.113.50" }))).resolves.toBeUndefined();
     });
 
-    it("accepts external hostnames", () => {
-      expect(() => manager.addRoute(makeRoute({ upstreamHost: "example.com" }))).not.toThrow();
+    it("accepts external hostnames that resolve to public IPs", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["203.0.113.50"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "example.com" }))).resolves.toBeUndefined();
+    });
+  });
+
+  describe("DNS rebinding protection", () => {
+    it("rejects hostname resolving to loopback (127.0.0.1)", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["127.0.0.1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname resolving to private 10.x range", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["10.0.0.1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname resolving to private 172.16.x range", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["172.16.5.1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname resolving to private 192.168.x range", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["192.168.0.1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname resolving to cloud metadata (169.254.169.254)", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["169.254.169.254"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "metadata.evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname resolving to IPv6 loopback (::1)", async () => {
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENODATA"));
+      vi.mocked(dnsPromises.resolve6).mockResolvedValue(["::1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname resolving to IPv6 unique local (fd00::)", async () => {
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENODATA"));
+      vi.mocked(dnsPromises.resolve6).mockResolvedValue(["fd00::1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname resolving to IPv6 link-local (fe80::)", async () => {
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENODATA"));
+      vi.mocked(dnsPromises.resolve6).mockResolvedValue(["fe80::1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects when any resolved IP is private (mixed results)", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["203.0.113.50", "10.0.0.1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "sneaky.com" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects hostname that cannot be resolved", async () => {
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENOTFOUND"));
+      vi.mocked(dnsPromises.resolve6).mockRejectedValue(new Error("ENOTFOUND"));
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "nonexistent.invalid" }))).rejects.toThrow(
+        "could not be resolved",
+      );
+    });
+
+    it("rejects .internal hostname before DNS lookup", async () => {
+      vi.mocked(dnsPromises.resolve4).mockClear();
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "secret.internal" }))).rejects.toThrow("private IP");
+      expect(dnsPromises.resolve4).not.toHaveBeenCalled();
+    });
+
+    it("rejects .local hostname before DNS lookup", async () => {
+      vi.mocked(dnsPromises.resolve4).mockClear();
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "printer.local" }))).rejects.toThrow("private IP");
+      expect(dnsPromises.resolve4).not.toHaveBeenCalled();
     });
   });
 
   describe("subdomain validation", () => {
-    it("rejects subdomain with path traversal", () => {
-      expect(() => manager.addRoute(makeRoute({ subdomain: "../etc" }))).toThrow("Invalid subdomain");
+    it("rejects subdomain with path traversal", async () => {
+      await expect(manager.addRoute(makeRoute({ subdomain: "../etc" }))).rejects.toThrow("Invalid subdomain");
     });
 
-    it("rejects subdomain with slash", () => {
-      expect(() => manager.addRoute(makeRoute({ subdomain: "foo/bar" }))).toThrow("Invalid subdomain");
+    it("rejects subdomain with slash", async () => {
+      await expect(manager.addRoute(makeRoute({ subdomain: "foo/bar" }))).rejects.toThrow("Invalid subdomain");
     });
 
-    it("rejects subdomain starting with hyphen", () => {
-      expect(() => manager.addRoute(makeRoute({ subdomain: "-invalid" }))).toThrow("Invalid subdomain");
+    it("rejects subdomain starting with hyphen", async () => {
+      await expect(manager.addRoute(makeRoute({ subdomain: "-invalid" }))).rejects.toThrow("Invalid subdomain");
     });
 
-    it("rejects subdomain with uppercase", () => {
-      expect(() => manager.addRoute(makeRoute({ subdomain: "UPPER" }))).toThrow("Invalid subdomain");
+    it("rejects subdomain with uppercase", async () => {
+      await expect(manager.addRoute(makeRoute({ subdomain: "UPPER" }))).rejects.toThrow("Invalid subdomain");
     });
 
-    it("rejects empty subdomain", () => {
-      expect(() => manager.addRoute(makeRoute({ subdomain: "" }))).toThrow("Invalid subdomain");
+    it("rejects empty subdomain", async () => {
+      await expect(manager.addRoute(makeRoute({ subdomain: "" }))).rejects.toThrow("Invalid subdomain");
     });
 
-    it("accepts valid subdomain", () => {
-      expect(() => manager.addRoute(makeRoute({ subdomain: "my-app-1" }))).not.toThrow();
+    it("accepts valid subdomain", async () => {
+      await expect(manager.addRoute(makeRoute({ subdomain: "my-app-1" }))).resolves.toBeUndefined();
     });
 
-    it("accepts single-char subdomain", () => {
-      expect(() => manager.addRoute(makeRoute({ subdomain: "a" }))).not.toThrow();
+    it("accepts single-char subdomain", async () => {
+      await expect(manager.addRoute(makeRoute({ subdomain: "a" }))).resolves.toBeUndefined();
     });
   });
 
@@ -232,7 +312,7 @@ describe("ProxyManager", () => {
         caddyAdminUrl: "http://localhost:2019",
         domain: "test.dev",
       });
-      custom.addRoute(makeRoute());
+      await custom.addRoute(makeRoute());
       await custom.start();
 
       const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);

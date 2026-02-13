@@ -1,3 +1,4 @@
+import { resolve4, resolve6 } from "node:dns/promises";
 import { isIP } from "node:net";
 import { logger } from "../config/logger.js";
 import type { CaddyConfigOptions } from "./caddy-config.js";
@@ -42,9 +43,10 @@ function isPrivateIPv6(ip: string): boolean {
 
 /**
  * Validate that an upstream host is not a private/internal IP address.
+ * Resolves hostnames via DNS and checks all resolved IPs against private ranges.
  * Throws if the host resolves to or is a private IP.
  */
-function validateUpstreamHost(host: string): void {
+async function validateUpstreamHost(host: string): Promise<void> {
   const ipVersion = isIP(host);
   if (ipVersion === 4) {
     if (isPrivateIPv4(host)) {
@@ -58,9 +60,38 @@ function validateUpstreamHost(host: string): void {
     }
     return;
   }
-  // It's a hostname — we cannot resolve DNS synchronously, but reject obviously dangerous names
+
+  // It's a hostname — reject obviously dangerous names first
   if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
     throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+  }
+
+  // Resolve DNS and validate all resulting IPs
+  const ips: string[] = [];
+  try {
+    const ipv4 = await resolve4(host);
+    ips.push(...ipv4);
+  } catch {
+    // No A records — not an error, host may be IPv6-only
+  }
+  try {
+    const ipv6 = await resolve6(host);
+    ips.push(...ipv6);
+  } catch {
+    // No AAAA records — not an error, host may be IPv4-only
+  }
+
+  if (ips.length === 0) {
+    throw new Error(`Upstream host "${host}" could not be resolved`);
+  }
+
+  for (const ip of ips) {
+    if (isIP(ip) === 4 && isPrivateIPv4(ip)) {
+      throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+    }
+    if (isIP(ip) === 6 && isPrivateIPv6(ip)) {
+      throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+    }
   }
 }
 
@@ -84,11 +115,11 @@ export class ProxyManager implements ProxyManagerInterface {
     this.configOptions = configOptions;
   }
 
-  addRoute(route: ProxyRoute): void {
+  async addRoute(route: ProxyRoute): Promise<void> {
     if (!SUBDOMAIN_RE.test(route.subdomain)) {
       throw new Error(`Invalid subdomain "${route.subdomain}": must match /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/`);
     }
-    validateUpstreamHost(route.upstreamHost);
+    await validateUpstreamHost(route.upstreamHost);
     this.routes.set(route.instanceId, route);
     logger.info(`Added proxy route for instance ${route.instanceId} -> ${route.upstreamHost}:${route.upstreamPort}`);
   }
