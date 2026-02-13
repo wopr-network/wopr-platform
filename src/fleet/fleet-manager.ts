@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
+import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
 import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile, BotStatus, ContainerStats } from "./types.js";
 
@@ -19,15 +20,18 @@ export class FleetManager {
   /**
    * Create a new bot: persist profile, pull image, create container.
    * Rolls back profile on container creation failure.
+   *
+   * @param params - Bot profile fields (without id)
+   * @param resourceLimits - Optional Docker resource constraints (from tier)
    */
-  async create(params: Omit<BotProfile, "id">): Promise<BotProfile> {
+  async create(params: Omit<BotProfile, "id">, resourceLimits?: ContainerResourceLimits): Promise<BotProfile> {
     const profile: BotProfile = { id: randomUUID(), ...params };
 
     await this.store.save(profile);
 
     try {
       await this.pullImage(profile.image);
-      await this.createContainer(profile);
+      await this.createContainer(profile, resourceLimits);
     } catch (err) {
       logger.error(`Failed to create container for bot ${profile.id}, rolling back profile`, { err });
       await this.store.delete(profile.id);
@@ -199,7 +203,10 @@ export class FleetManager {
     });
   }
 
-  private async createContainer(profile: BotProfile): Promise<Docker.Container> {
+  private async createContainer(
+    profile: BotProfile,
+    resourceLimits?: ContainerResourceLimits,
+  ): Promise<Docker.Container> {
     const restartPolicyMap: Record<string, string> = {
       no: "no",
       always: "always",
@@ -212,6 +219,20 @@ export class FleetManager {
       binds.push(`${profile.volumeName}:/data`);
     }
 
+    const hostConfig: Docker.ContainerCreateOptions["HostConfig"] = {
+      RestartPolicy: {
+        Name: restartPolicyMap[profile.restartPolicy] || "",
+      },
+      Binds: binds.length > 0 ? binds : undefined,
+    };
+
+    // Apply resource limits from tier if provided
+    if (resourceLimits) {
+      hostConfig.Memory = resourceLimits.Memory;
+      hostConfig.CpuQuota = resourceLimits.CpuQuota;
+      hostConfig.PidsLimit = resourceLimits.PidsLimit;
+    }
+
     const container = await this.docker.createContainer({
       Image: profile.image,
       name: `wopr-${profile.name}`,
@@ -220,12 +241,7 @@ export class FleetManager {
         [CONTAINER_LABEL]: "true",
         [CONTAINER_ID_LABEL]: profile.id,
       },
-      HostConfig: {
-        RestartPolicy: {
-          Name: restartPolicyMap[profile.restartPolicy] || "",
-        },
-        Binds: binds.length > 0 ? binds : undefined,
-      },
+      HostConfig: hostConfig,
       Healthcheck: {
         Test: ["CMD-SHELL", "node -e 'process.exit(0)'"],
         Interval: 30_000_000_000, // 30s in nanoseconds
