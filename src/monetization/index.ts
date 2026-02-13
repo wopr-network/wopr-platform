@@ -27,6 +27,8 @@ export {
   type TranscriptionOutput,
   withMargin,
 } from "./adapters/types.js";
+// Feature gating middleware (WOP-283)
+export { createFeatureGate, type FeatureGateConfig, type GetUserTier } from "./feature-gate.js";
 
 // Metering (WOP-299 + WOP-284)
 export type {
@@ -41,7 +43,14 @@ export type {
 export { initMeterSchema, MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
 export { buildQuotaUsage, checkInstanceQuota, type QuotaCheckResult, type QuotaUsage } from "./quotas/quota-check.js";
 export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
-export { DEFAULT_TIERS, type PlanTier, TierStore } from "./quotas/tier-definitions.js";
+export {
+  DEFAULT_TIERS,
+  type PlanTier,
+  TIER_HIERARCHY,
+  type TierName,
+  TierStore,
+  tierSatisfies,
+} from "./quotas/tier-definitions.js";
 export type {
   CheckoutSessionOpts,
   PortalSessionOpts,

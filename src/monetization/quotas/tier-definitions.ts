@@ -16,6 +16,18 @@ export const planTierSchema = z.object({
 
 export type PlanTier = z.infer<typeof planTierSchema>;
 
+/** Ordered tier hierarchy — higher index = higher tier */
+export const TIER_HIERARCHY = ["free", "pro", "team", "enterprise"] as const;
+export type TierName = (typeof TIER_HIERARCHY)[number];
+
+/** Returns true when `current` tier is >= `required` tier in the hierarchy */
+export function tierSatisfies(current: string, required: string): boolean {
+  const currentIdx = TIER_HIERARCHY.indexOf(current as TierName);
+  const requiredIdx = TIER_HIERARCHY.indexOf(required as TierName);
+  if (currentIdx === -1 || requiredIdx === -1) return false;
+  return currentIdx >= requiredIdx;
+}
+
 /** Default tier definitions seeded on first run */
 export const DEFAULT_TIERS: PlanTier[] = [
   {
@@ -38,7 +50,7 @@ export const DEFAULT_TIERS: PlanTier[] = [
     cpuQuota: 200_000, // 2 CPUs
     storageLimitMb: 10_240,
     maxProcesses: 512,
-    features: ["priority-support", "custom-domains"],
+    features: ["premium_plugins", "priority-support", "custom-domains"],
   },
   {
     id: "team",
@@ -49,7 +61,7 @@ export const DEFAULT_TIERS: PlanTier[] = [
     cpuQuota: 400_000, // 4 CPUs
     storageLimitMb: 51_200,
     maxProcesses: 1024,
-    features: ["priority-support", "custom-domains", "team-management", "audit-logs"],
+    features: ["premium_plugins", "priority-support", "custom-domains", "team-management", "audit-logs"],
   },
   {
     id: "enterprise",
@@ -60,7 +72,15 @@ export const DEFAULT_TIERS: PlanTier[] = [
     cpuQuota: 800_000, // 8 CPUs
     storageLimitMb: 102_400,
     maxProcesses: 4096,
-    features: ["priority-support", "custom-domains", "team-management", "audit-logs", "sso", "dedicated-support"],
+    features: [
+      "premium_plugins",
+      "priority-support",
+      "custom-domains",
+      "team-management",
+      "audit-logs",
+      "sso",
+      "dedicated-support",
+    ],
   },
 ];
 

@@ -57,7 +57,7 @@ describe("TierStore", () => {
     it("parses features as array", () => {
       const pro = store.get("pro");
       expect(pro).not.toBeNull();
-      expect(pro?.features).toEqual(["priority-support", "custom-domains"]);
+      expect(pro?.features).toEqual(["premium_plugins", "priority-support", "custom-domains"]);
     });
 
     it("handles null maxPluginsPerInstance", () => {
