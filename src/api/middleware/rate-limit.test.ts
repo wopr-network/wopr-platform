@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  type RateLimitConfig,
-  type RateLimitRule,
   platformDefaultLimit,
   platformRateLimitRules,
+  type RateLimitConfig,
+  type RateLimitRule,
   rateLimit,
   rateLimitByRoute,
 } from "./rate-limit.js";
@@ -131,10 +131,7 @@ describe("rateLimit", () => {
 
   it("supports custom key generator", async () => {
     const app = new Hono();
-    app.use(
-      "/test",
-      rateLimit({ max: 1, keyGenerator: (c) => c.req.header("x-api-key") ?? "anon" }),
-    );
+    app.use("/test", rateLimit({ max: 1, keyGenerator: (c) => c.req.header("x-api-key") ?? "anon" }));
     app.get("/test", (c) => c.json({ ok: true }));
 
     const r1 = new Request("http://localhost/test", { headers: { "x-api-key": "key-a" } });
@@ -160,9 +157,7 @@ describe("rateLimitByRoute", () => {
   });
 
   it("applies rule-specific limits based on path prefix", async () => {
-    const rules: RateLimitRule[] = [
-      { method: "POST", pathPrefix: "/strict", config: { max: 1 } },
-    ];
+    const rules: RateLimitRule[] = [{ method: "POST", pathPrefix: "/strict", config: { max: 1 } }];
     const app = new Hono();
     app.use("*", rateLimitByRoute(rules, { max: 100 }));
     app.post("/strict", (c) => c.json({ ok: true }));
@@ -177,9 +172,7 @@ describe("rateLimitByRoute", () => {
   });
 
   it("falls back to default config when no rule matches", async () => {
-    const rules: RateLimitRule[] = [
-      { method: "POST", pathPrefix: "/special", config: { max: 1 } },
-    ];
+    const rules: RateLimitRule[] = [{ method: "POST", pathPrefix: "/special", config: { max: 1 } }];
     const app = new Hono();
     app.use("*", rateLimitByRoute(rules, { max: 2 }));
     app.get("/other", (c) => c.json({ ok: true }));

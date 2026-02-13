@@ -56,9 +56,7 @@ function defaultKeyGenerator(c: Context): string {
     if (first) return first;
   }
   // Hono on @hono/node-server exposes env.incoming with the socket
-  const incoming = (c.env as Record<string, unknown>)?.incoming as
-    | { socket?: { remoteAddress?: string } }
-    | undefined;
+  const incoming = (c.env as Record<string, unknown>)?.incoming as { socket?: { remoteAddress?: string } } | undefined;
   if (incoming?.socket?.remoteAddress) return incoming.socket.remoteAddress;
   return "unknown";
 }
@@ -111,10 +109,7 @@ export function rateLimit(cfg: RateLimitConfig): MiddlewareHandler {
 
     if (entry.count > cfg.max) {
       c.header("Retry-After", String(retryAfterSec));
-      return c.json(
-        { error: cfg.message ?? "Too many requests, please try again later" },
-        429,
-      );
+      return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
     }
 
     return next();
@@ -136,10 +131,7 @@ export function rateLimit(cfg: RateLimitConfig): MiddlewareHandler {
  * app.use("*", rateLimitByRoute(rules, { max: 60 }));
  * ```
  */
-export function rateLimitByRoute(
-  rules: RateLimitRule[],
-  defaultConfig: RateLimitConfig,
-): MiddlewareHandler {
+export function rateLimitByRoute(rules: RateLimitRule[], defaultConfig: RateLimitConfig): MiddlewareHandler {
   // Each rule gets its own independent store keyed by index so that two rules
   // sharing the same config object (e.g. billing checkout & portal both using
   // BILLING_LIMIT) still maintain separate counters.
@@ -191,10 +183,7 @@ export function rateLimitByRoute(
 
     if (entry.count > cfg.max) {
       c.header("Retry-After", String(retryAfterSec));
-      return c.json(
-        { error: cfg.message ?? "Too many requests, please try again later" },
-        429,
-      );
+      return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
     }
 
     return next();
