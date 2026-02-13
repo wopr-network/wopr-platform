@@ -124,8 +124,6 @@ jobs:
 
       - name: E2E tests
         run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/e2e-junit.xml "src/**/*.e2e.test.ts"
-        env:
-          DOCKER_HOST: unix:///var/run/docker.sock
         continue-on-error: true
 
       - name: Upload E2E test results
