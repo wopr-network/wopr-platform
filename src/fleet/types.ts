@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 
 /** Schema for a bot instance managed by the fleet */
 export const botInstanceSchema = z.object({
@@ -7,8 +7,8 @@ export const botInstanceSchema = z.object({
   image: z.string(),
   status: z.enum(["running", "stopped", "error", "pulling"]),
   containerId: z.string().optional(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
 });
 
 export type BotInstance = z.infer<typeof botInstanceSchema>;
