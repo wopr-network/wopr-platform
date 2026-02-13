@@ -1,0 +1,21 @@
+name: whatsapp-opencode
+description: WhatsApp bot using OpenCode provider for WhatsApp channel testing
+channel:
+  plugin: "@wopr-network/wopr-plugin-channel-whatsapp"
+  config:
+    WHATSAPP_API_TOKEN: "${WHATSAPP_API_TOKEN}"
+    WHATSAPP_PHONE_ID: "${WHATSAPP_PHONE_ID}"
+provider:
+  plugin: "@wopr-network/wopr-plugin-provider-opencode"
+  config:
+    OPENCODE_API_KEY: "${OPENCODE_API_KEY}"
+release: canary
+image: "ghcr.io/wopr-network/wopr:canary"
+restartPolicy: unless-stopped
+healthCheck:
+  endpoint: /health
+  intervalSeconds: 30
+  timeoutSeconds: 5
+  retries: 3
+volumes: []
+env: {}
