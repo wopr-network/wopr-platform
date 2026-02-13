@@ -1,0 +1,21 @@
+name: canary-discord
+description: Bleeding edge Discord bot for testing latest changes
+channel:
+  plugin: "@wopr-network/wopr-plugin-channel-discord"
+  config:
+    DISCORD_TOKEN: "${DISCORD_CANARY_TOKEN}"
+    DISCORD_CLIENT_ID: "${DISCORD_CANARY_CLIENT_ID}"
+provider:
+  plugin: "@wopr-network/wopr-plugin-provider-anthropic"
+  config:
+    ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+release: canary
+image: "ghcr.io/wopr-network/wopr:canary"
+restartPolicy: unless-stopped
+healthCheck:
+  endpoint: /health
+  intervalSeconds: 15
+  timeoutSeconds: 5
+  retries: 5
+volumes: []
+env: {}

@@ -1,0 +1,21 @@
+name: staging-discord
+description: Staging Discord bot for soak testing before stable promotion
+channel:
+  plugin: "@wopr-network/wopr-plugin-channel-discord"
+  config:
+    DISCORD_TOKEN: "${DISCORD_STAGING_TOKEN}"
+    DISCORD_CLIENT_ID: "${DISCORD_STAGING_CLIENT_ID}"
+provider:
+  plugin: "@wopr-network/wopr-plugin-provider-anthropic"
+  config:
+    ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+release: staging
+image: "ghcr.io/wopr-network/wopr:staging"
+restartPolicy: unless-stopped
+healthCheck:
+  endpoint: /health
+  intervalSeconds: 30
+  timeoutSeconds: 5
+  retries: 3
+volumes: []
+env: {}

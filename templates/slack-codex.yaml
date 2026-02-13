@@ -1,0 +1,21 @@
+name: slack-codex
+description: Slack bot using OpenAI provider for alternative channel testing
+channel:
+  plugin: "@wopr-network/wopr-plugin-channel-slack"
+  config:
+    SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN}"
+    SLACK_APP_TOKEN: "${SLACK_APP_TOKEN}"
+provider:
+  plugin: "@wopr-network/wopr-plugin-provider-openai"
+  config:
+    OPENAI_API_KEY: "${OPENAI_API_KEY}"
+release: canary
+image: "ghcr.io/wopr-network/wopr:canary"
+restartPolicy: unless-stopped
+healthCheck:
+  endpoint: /health
+  intervalSeconds: 30
+  timeoutSeconds: 5
+  retries: 3
+volumes: []
+env: {}

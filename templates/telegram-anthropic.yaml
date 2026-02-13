@@ -1,0 +1,20 @@
+name: telegram-anthropic
+description: Telegram bot using Anthropic provider for Telegram channel testing
+channel:
+  plugin: "@wopr-network/wopr-plugin-channel-telegram"
+  config:
+    TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+provider:
+  plugin: "@wopr-network/wopr-plugin-provider-anthropic"
+  config:
+    ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+release: canary
+image: "ghcr.io/wopr-network/wopr:canary"
+restartPolicy: unless-stopped
+healthCheck:
+  endpoint: /health
+  intervalSeconds: 30
+  timeoutSeconds: 5
+  retries: 3
+volumes: []
+env: {}
