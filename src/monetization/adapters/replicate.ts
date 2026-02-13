@@ -9,12 +9,7 @@
  * "WOPR Hosted" and this adapter is the invisible layer.
  */
 
-import type {
-  AdapterResult,
-  ProviderAdapter,
-  TranscriptionInput,
-  TranscriptionOutput,
-} from "./types.js";
+import type { AdapterResult, ProviderAdapter, TranscriptionInput, TranscriptionOutput } from "./types.js";
 import { withMargin } from "./types.js";
 
 /** Replicate prediction status */
@@ -69,7 +64,10 @@ export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
  * Uses factory function pattern (not class) to keep the API surface minimal
  * and to allow easy dependency injection of fetch for testing.
  */
-export function createReplicateAdapter(config: ReplicateAdapterConfig, fetchFn: FetchFn = fetch): ProviderAdapter & Required<Pick<ProviderAdapter, "transcribe">> {
+export function createReplicateAdapter(
+  config: ReplicateAdapterConfig,
+  fetchFn: FetchFn = fetch,
+): ProviderAdapter & Required<Pick<ProviderAdapter, "transcribe">> {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const costPerSecond = config.costPerSecond ?? DEFAULT_COST_PER_SECOND;
   const marginMultiplier = config.marginMultiplier ?? DEFAULT_MARGIN;
@@ -114,7 +112,8 @@ export function createReplicateAdapter(config: ReplicateAdapterConfig, fetchFn: 
       const prediction = await getPrediction(id);
 
       if (prediction.status === "succeeded") return prediction;
-      if (prediction.status === "failed") throw new Error(`Replicate prediction failed: ${prediction.error ?? "unknown error"}`);
+      if (prediction.status === "failed")
+        throw new Error(`Replicate prediction failed: ${prediction.error ?? "unknown error"}`);
       if (prediction.status === "canceled") throw new Error("Replicate prediction was canceled");
 
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
