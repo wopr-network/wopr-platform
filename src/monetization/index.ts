@@ -9,11 +9,11 @@
  *
  * Planned modules (see WOP-216 epic):
  * - socket/    -- withMargin() wrapper (WOP-298)
- * - metering/  -- fire-and-forget usage events (WOP-299)
- * - stripe/    -- Stripe usage-based billing (WOP-300)
  *
  * Implemented modules:
  * - adapters/  -- hosted adapters like woprReplicateAdapter (WOP-301)
+ * - metering/  -- fire-and-forget usage events (WOP-299)
+ * - stripe/    -- Stripe usage-based billing (WOP-300)
  */
 
 // Adapters (WOP-301)
@@ -42,3 +42,23 @@ export { initMeterSchema, MeterAggregator, MeterEmitter, UsageAggregationWorker 
 export { buildQuotaUsage, checkInstanceQuota, type QuotaCheckResult, type QuotaUsage } from "./quotas/quota-check.js";
 export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
 export { DEFAULT_TIERS, type PlanTier, TierStore } from "./quotas/tier-definitions.js";
+export type {
+  CheckoutSessionOpts,
+  PortalSessionOpts,
+  StripeBillingConfig,
+  StripeUsageReportRow,
+  TenantCustomerRow,
+  UsageReporterOpts,
+  WebhookResult,
+} from "./stripe/index.js";
+// Stripe billing (WOP-300)
+export {
+  createCheckoutSession,
+  createPortalSession,
+  createStripeClient,
+  handleWebhookEvent,
+  initStripeSchema,
+  loadStripeConfig,
+  StripeUsageReporter,
+  TenantCustomerStore,
+} from "./stripe/index.js";
