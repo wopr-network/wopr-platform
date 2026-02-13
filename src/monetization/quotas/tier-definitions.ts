@@ -72,7 +72,15 @@ export const DEFAULT_TIERS: PlanTier[] = [
     cpuQuota: 800_000, // 8 CPUs
     storageLimitMb: 102_400,
     maxProcesses: 4096,
-    features: ["premium_plugins", "priority-support", "custom-domains", "team-management", "audit-logs", "sso", "dedicated-support"],
+    features: [
+      "premium_plugins",
+      "priority-support",
+      "custom-domains",
+      "team-management",
+      "audit-logs",
+      "sso",
+      "dedicated-support",
+    ],
   },
 ];
 

@@ -56,7 +56,15 @@ const enterpriseTier: PlanTier = {
   cpuQuota: 800_000,
   storageLimitMb: 102_400,
   maxProcesses: 4096,
-  features: ["premium_plugins", "priority-support", "custom-domains", "team-management", "audit-logs", "sso", "dedicated-support"],
+  features: [
+    "premium_plugins",
+    "priority-support",
+    "custom-domains",
+    "team-management",
+    "audit-logs",
+    "sso",
+    "dedicated-support",
+  ],
 };
 
 const tiers: Record<string, PlanTier> = {
