@@ -1,0 +1,63 @@
+## Private Hyperswarm DHT bootstrap cluster for the WaaS network.
+##
+## Run:
+##   docker compose -f docker-compose.dht.yml up -d
+##
+## This spins up 3 bootstrap nodes. WOPR instances should set p2p.bootstrap
+## to point at these addresses (or the DNS names if behind a load balancer).
+
+x-dht-common: &dht-common
+  build:
+    context: .
+    dockerfile: Dockerfile.dht-bootstrap
+  image: wopr-dht-bootstrap:latest
+  restart: unless-stopped
+  networks:
+    - wopr-dht
+
+services:
+  dht-bootstrap-0:
+    <<: *dht-common
+    container_name: wopr-dht-bootstrap-0
+    environment:
+      DHT_PORT: "49737"
+      DHT_PEERS: "dht-bootstrap-1:49738,dht-bootstrap-2:49739"
+    ports:
+      - "49737:49737/udp"
+    volumes:
+      - dht-state-0:/data
+
+  dht-bootstrap-1:
+    <<: *dht-common
+    container_name: wopr-dht-bootstrap-1
+    environment:
+      DHT_PORT: "49738"
+      DHT_PEERS: "dht-bootstrap-0:49737,dht-bootstrap-2:49739"
+    ports:
+      - "49738:49738/udp"
+    volumes:
+      - dht-state-1:/data
+
+  dht-bootstrap-2:
+    <<: *dht-common
+    container_name: wopr-dht-bootstrap-2
+    environment:
+      DHT_PORT: "49739"
+      DHT_PEERS: "dht-bootstrap-0:49737,dht-bootstrap-1:49738"
+    ports:
+      - "49739:49739/udp"
+    volumes:
+      - dht-state-2:/data
+
+networks:
+  wopr-dht:
+    name: wopr-dht
+    driver: bridge
+
+volumes:
+  dht-state-0:
+    name: wopr-dht-state-0
+  dht-state-1:
+    name: wopr-dht-state-1
+  dht-state-2:
+    name: wopr-dht-state-2
