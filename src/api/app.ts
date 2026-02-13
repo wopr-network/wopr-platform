@@ -5,4 +5,4 @@ import { healthRoutes } from "./routes/health.js";
 export const app = new Hono();
 
 app.route("/health", healthRoutes);
-app.route("/api/fleet", fleetRoutes);
+app.route("/fleet", fleetRoutes);
