@@ -178,6 +178,44 @@ describe("queryAuditLog", () => {
     expect(results[0].id).toBe("new");
   });
 
+  it("filters by until time boundary", () => {
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("old", now - 10000, "user-1", "session", "instance.create", "instance");
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("new", now, "user-1", "session", "instance.destroy", "instance");
+
+    const results = queryAuditLog(db, { until: now - 5000 });
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe("old");
+  });
+
+  it("combines multiple filters", () => {
+    logger.log(makeInput({ userId: "user-1", action: "instance.create", resourceType: "instance" }));
+    logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
+    logger.log(makeInput({ userId: "user-2", action: "instance.create", resourceType: "instance" }));
+
+    const results = queryAuditLog(db, { userId: "user-1", resourceType: "instance" });
+    expect(results).toHaveLength(1);
+    expect(results[0].action).toBe("instance.create");
+    expect(results[0].user_id).toBe("user-1");
+  });
+
+  it("returns empty array when no entries match", () => {
+    const results = queryAuditLog(db, { userId: "nonexistent" });
+    expect(results).toHaveLength(0);
+  });
+
+  it("enforces minimum limit of 1", () => {
+    logger.log(makeInput());
+    logger.log(makeInput());
+
+    const results = queryAuditLog(db, { limit: 0 });
+    expect(results).toHaveLength(1);
+  });
+
   it("respects limit", () => {
     for (let i = 0; i < 10; i++) {
       logger.log(makeInput());
@@ -245,6 +283,42 @@ describe("countAuditLog", () => {
     logger.log(makeInput({ userId: "user-1" }));
     logger.log(makeInput({ userId: "user-2" }));
     expect(countAuditLog(db, { userId: "user-1" })).toBe(1);
+  });
+
+  it("counts with wildcard action filter", () => {
+    logger.log(makeInput({ action: "instance.create" }));
+    logger.log(makeInput({ action: "instance.destroy" }));
+    logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
+    expect(countAuditLog(db, { action: "instance.*" })).toBe(2);
+  });
+
+  it("counts with time range filter", () => {
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("old", now - 10000, "user-1", "session", "instance.create", "instance");
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("new", now, "user-1", "session", "instance.destroy", "instance");
+
+    expect(countAuditLog(db, { since: now - 5000 })).toBe(1);
+    expect(countAuditLog(db, { until: now - 5000 })).toBe(1);
+    expect(countAuditLog(db, { since: now - 15000, until: now + 1000 })).toBe(2);
+  });
+
+  it("counts with resourceType and resourceId filters", () => {
+    logger.log(makeInput({ resourceType: "instance", resourceId: "inst-1" }));
+    logger.log(makeInput({ resourceType: "instance", resourceId: "inst-2" }));
+    logger.log(makeInput({ resourceType: "plugin", resourceId: "plug-1", action: "plugin.install" }));
+
+    expect(countAuditLog(db, { resourceType: "instance" })).toBe(2);
+    expect(countAuditLog(db, { resourceId: "inst-1" })).toBe(1);
+    expect(countAuditLog(db, { resourceType: "plugin", resourceId: "plug-1" })).toBe(1);
+  });
+
+  it("returns zero for no matches", () => {
+    expect(countAuditLog(db, {})).toBe(0);
+    expect(countAuditLog(db, { userId: "nonexistent" })).toBe(0);
   });
 });
 
@@ -323,6 +397,56 @@ describe("retention", () => {
 
     const deleted = purgeExpiredEntries(db, "pro");
     expect(deleted).toBe(0);
+  });
+
+  it("team tier retains entries for 90 days", () => {
+    const now = Date.now();
+    const fiftyDaysAgo = now - 50 * 24 * 60 * 60 * 1000;
+    const ninetyFiveDaysAgo = now - 95 * 24 * 60 * 60 * 1000;
+
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("within-team", fiftyDaysAgo, "user-1", "session", "instance.create", "instance");
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("expired-team", ninetyFiveDaysAgo, "user-1", "session", "instance.destroy", "instance");
+
+    const deleted = purgeExpiredEntries(db, "team");
+    expect(deleted).toBe(1);
+
+    const remaining = db.prepare("SELECT id FROM audit_log").all() as { id: string }[];
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].id).toBe("within-team");
+  });
+
+  it("enterprise tier retains entries for 365 days", () => {
+    const now = Date.now();
+    const oneHundredDaysAgo = now - 100 * 24 * 60 * 60 * 1000;
+
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("within-enterprise", oneHundredDaysAgo, "user-1", "session", "instance.create", "instance");
+
+    const deleted = purgeExpiredEntries(db, "enterprise");
+    expect(deleted).toBe(0);
+  });
+
+  it("purgeExpiredEntriesForUser does not affect other users", () => {
+    const now = Date.now();
+    const recentTime = now - 1000;
+
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("u1-recent", recentTime, "user-1", "session", "instance.create", "instance");
+    db.prepare(
+      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("u2-recent", recentTime, "user-2", "session", "instance.create", "instance");
+
+    const deleted = purgeExpiredEntriesForUser(db, "user-1", "free");
+    expect(deleted).toBe(0);
+
+    const remaining = db.prepare("SELECT id FROM audit_log").all() as { id: string }[];
+    expect(remaining).toHaveLength(2);
   });
 });
 
@@ -420,6 +544,61 @@ describe("auditLog middleware", () => {
     expect(entries).toHaveLength(0);
   });
 
+  it("logs api_key auth method", async () => {
+    const app = new Hono<AuditEnv>();
+    app.use("*", async (c, next) => {
+      c.set("user", { id: "user-1" });
+      c.set("authMethod", "api_key");
+      await next();
+    });
+    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.post("/instance/:id", (c) => c.json({ ok: true }));
+
+    await app.request("/instance/inst-1", { method: "POST" });
+
+    const entries = queryAuditLog(db, {});
+    expect(entries).toHaveLength(1);
+    expect(entries[0].auth_method).toBe("api_key");
+  });
+
+  it("extracts first IP from x-forwarded-for with multiple IPs", async () => {
+    const app = new Hono<AuditEnv>();
+    app.use("*", async (c, next) => {
+      c.set("user", { id: "user-1" });
+      c.set("authMethod", "session");
+      await next();
+    });
+    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.post("/instance/:id", (c) => c.json({ ok: true }));
+
+    await app.request("/instance/inst-1", {
+      method: "POST",
+      headers: { "x-forwarded-for": "10.0.0.1, 192.168.1.1, 172.16.0.1" },
+    });
+
+    const entries = queryAuditLog(db, {});
+    expect(entries).toHaveLength(1);
+    expect(entries[0].ip_address).toBe("10.0.0.1");
+  });
+
+  it("handles missing headers gracefully", async () => {
+    const app = new Hono<AuditEnv>();
+    app.use("*", async (c, next) => {
+      c.set("user", { id: "user-1" });
+      c.set("authMethod", "session");
+      await next();
+    });
+    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.post("/instance/:id", (c) => c.json({ ok: true }));
+
+    await app.request("/instance/inst-1", { method: "POST" });
+
+    const entries = queryAuditLog(db, {});
+    expect(entries).toHaveLength(1);
+    expect(entries[0].ip_address).toBeNull();
+    expect(entries[0].user_agent).toBeNull();
+  });
+
   it("does not break the request on logging error", async () => {
     const badDb = new BetterSqlite3(":memory:");
     initAuditSchema(badDb);
@@ -490,6 +669,103 @@ describe("audit API routes", () => {
       const body = await res.json();
       expect(body.entries).toHaveLength(1);
       expect(body.entries[0].action).toBe("instance.create");
+    });
+
+    it("defaults to free tier retention when tier is not set", async () => {
+      const now = Date.now();
+      const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
+      db.prepare(
+        "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run("old-no-tier", eightDaysAgo, "user-1", "session", "instance.create", "instance");
+      logger.log(makeInput({ userId: "user-1" }));
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "user-1" });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/audit", createAuditRoutes(db));
+
+      const res = await app.request("/audit");
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].id).not.toBe("old-no-tier");
+    });
+
+    it("supports limit and offset query params", async () => {
+      for (let i = 0; i < 5; i++) {
+        logger.log(makeInput({ userId: "user-1" }));
+      }
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "user-1" });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/audit", createAuditRoutes(db));
+
+      const res = await app.request("/audit?limit=2&offset=1");
+      const body = await res.json();
+      expect(body.entries).toHaveLength(2);
+    });
+
+    it("filters by resourceType query param", async () => {
+      logger.log(makeInput({ userId: "user-1", resourceType: "instance" }));
+      logger.log(makeInput({ userId: "user-1", resourceType: "plugin", action: "plugin.install" }));
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "user-1" });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/audit", createAuditRoutes(db));
+
+      const res = await app.request("/audit?resourceType=plugin");
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].resource_type).toBe("plugin");
+    });
+
+    it("filters by resourceId query param", async () => {
+      logger.log(makeInput({ userId: "user-1", resourceId: "inst-1" }));
+      logger.log(makeInput({ userId: "user-1", resourceId: "inst-2" }));
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "user-1" });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/audit", createAuditRoutes(db));
+
+      const res = await app.request("/audit?resourceId=inst-1");
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].resource_id).toBe("inst-1");
+    });
+
+    it("filters by time range query params", async () => {
+      const now = Date.now();
+      db.prepare(
+        "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run("old-time", now - 100000, "user-1", "session", "instance.create", "instance");
+      logger.log(makeInput({ userId: "user-1" }));
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "user-1" });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/audit", createAuditRoutes(db));
+
+      const res = await app.request(`/audit?since=${now - 5000}`);
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].id).not.toBe("old-time");
     });
 
     it("applies retention cleanup on query", async () => {
@@ -584,6 +860,75 @@ describe("audit API routes", () => {
       const body = await res.json();
       expect(body.entries).toHaveLength(1);
       expect(body.entries[0].id).not.toBe("old");
+    });
+
+    it("filters by action", async () => {
+      logger.log(makeInput({ userId: "user-1", action: "instance.create" }));
+      logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "admin-1", isAdmin: true });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/admin/audit", createAdminAuditRoutes(db));
+
+      const res = await app.request("/admin/audit?action=plugin.install");
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].action).toBe("plugin.install");
+    });
+
+    it("filters by resourceType and resourceId", async () => {
+      logger.log(makeInput({ resourceType: "instance", resourceId: "inst-1" }));
+      logger.log(makeInput({ resourceType: "plugin", resourceId: "plug-1", action: "plugin.install" }));
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "admin-1", isAdmin: true });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/admin/audit", createAdminAuditRoutes(db));
+
+      const res = await app.request("/admin/audit?resourceType=plugin&resourceId=plug-1");
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].resource_type).toBe("plugin");
+      expect(body.entries[0].resource_id).toBe("plug-1");
+    });
+
+    it("supports limit and offset", async () => {
+      for (let i = 0; i < 5; i++) {
+        logger.log(makeInput());
+      }
+
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "admin-1", isAdmin: true });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/admin/audit", createAdminAuditRoutes(db));
+
+      const res = await app.request("/admin/audit?limit=2&offset=1");
+      const body = await res.json();
+      expect(body.entries).toHaveLength(2);
+      expect(body.total).toBe(5);
+    });
+
+    it("returns 403 when isAdmin is undefined", async () => {
+      const app = new Hono<AuditEnv>();
+      app.use("*", async (c, next) => {
+        c.set("user", { id: "user-1" });
+        c.set("authMethod", "session");
+        await next();
+      });
+      app.route("/admin/audit", createAdminAuditRoutes(db));
+
+      const res = await app.request("/admin/audit");
+      expect(res.status).toBe(403);
     });
   });
 });
