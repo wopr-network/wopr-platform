@@ -466,10 +466,10 @@ describe("MeterAggregator - edge cases", () => {
     expect(summaries[0].event_count).toBe(1);
 
     // Sentinel rows fill the empty windows; verify they exist via raw query.
-    const sentinels = db
-      .prepare("SELECT COUNT(*) as cnt FROM usage_summaries WHERE tenant = '__sentinel__'")
-      .get() as { cnt: number };
-    expect(sentinels.cnt).toBeGreaterThanOrEqual(1);
+    const sentinels = db.prepare("SELECT COUNT(*) as cnt FROM usage_summaries WHERE tenant = '__sentinel__'").get() as {
+      cnt: number;
+    };
+    expect(sentinels.cnt).toBe(2);
   });
 
   it("handles single-event windows correctly", () => {
@@ -556,7 +556,7 @@ describe("MeterAggregator - edge cases", () => {
 
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: threeWindowsAgo + 100 }));
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.03, charge: 0.06, timestamp: twoWindowsAgo + 100 }));
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.05, charge: 0.10, timestamp: oneWindowAgo + 100 }));
+    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.05, charge: 0.1, timestamp: oneWindowAgo + 100 }));
     emitter.flush();
 
     aggregator.aggregate(now);
@@ -585,10 +585,20 @@ describe("MeterAggregator - edge cases", () => {
 // -- Aggregation accuracy verification --------------------------------------
 
 describe("MeterAggregator - billing accuracy", () => {
+  let db: BetterSqlite3.Database;
+  let emitter: MeterEmitter;
+  let aggregator: MeterAggregator;
+
+  afterEach(() => {
+    aggregator?.stop();
+    emitter?.close();
+    db?.close();
+  });
+
   it("aggregated totals exactly match sum of individual events", () => {
-    const db = createTestDb();
-    const emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
-    const aggregator = new MeterAggregator(db, { windowMs: 60_000 });
+    db = createTestDb();
+    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
@@ -599,7 +609,7 @@ describe("MeterAggregator - billing accuracy", () => {
       makeEvent({ tenant: "billing-test", cost: 0.002, charge: 0.004, timestamp: pastWindow + 20 }),
       makeEvent({ tenant: "billing-test", cost: 0.003, charge: 0.006, timestamp: pastWindow + 30 }),
       makeEvent({ tenant: "billing-test", cost: 0.004, charge: 0.008, timestamp: pastWindow + 40 }),
-      makeEvent({ tenant: "billing-test", cost: 0.005, charge: 0.010, timestamp: pastWindow + 50 }),
+      makeEvent({ tenant: "billing-test", cost: 0.005, charge: 0.01, timestamp: pastWindow + 50 }),
     ];
 
     const expectedCost = events.reduce((s, e) => s + e.cost, 0);
@@ -613,26 +623,22 @@ describe("MeterAggregator - billing accuracy", () => {
     expect(total.eventCount).toBe(5);
     expect(total.totalCost).toBeCloseTo(expectedCost, 10);
     expect(total.totalCharge).toBeCloseTo(expectedCharge, 10);
-
-    aggregator.stop();
-    emitter.close();
-    db.close();
   });
 
   it("per-capability breakdown sums match tenant total", () => {
-    const db = createTestDb();
-    const emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
-    const aggregator = new MeterAggregator(db, { windowMs: 60_000 });
+    db = createTestDb();
+    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.10, charge: 0.20, capability: "chat", timestamp: pastWindow + 10 }));
+    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.1, charge: 0.2, capability: "chat", timestamp: pastWindow + 10 }));
     emitter.emit(
-      makeEvent({ tenant: "t-1", cost: 0.05, charge: 0.10, capability: "embeddings", timestamp: pastWindow + 20 }),
+      makeEvent({ tenant: "t-1", cost: 0.05, charge: 0.1, capability: "embeddings", timestamp: pastWindow + 20 }),
     );
     emitter.emit(
-      makeEvent({ tenant: "t-1", cost: 0.15, charge: 0.30, capability: "voice", timestamp: pastWindow + 30 }),
+      makeEvent({ tenant: "t-1", cost: 0.15, charge: 0.3, capability: "voice", timestamp: pastWindow + 30 }),
     );
     emitter.flush();
     aggregator.aggregate(now);
@@ -644,13 +650,9 @@ describe("MeterAggregator - billing accuracy", () => {
 
     expect(sumCost).toBeCloseTo(total.totalCost, 10);
     expect(sumCharge).toBeCloseTo(total.totalCharge, 10);
-    expect(total.totalCost).toBeCloseTo(0.30, 10);
-    expect(total.totalCharge).toBeCloseTo(0.60, 10);
+    expect(total.totalCost).toBeCloseTo(0.3, 10);
+    expect(total.totalCharge).toBeCloseTo(0.6, 10);
     expect(total.eventCount).toBe(3);
-
-    aggregator.stop();
-    emitter.close();
-    db.close();
   });
 });
 
