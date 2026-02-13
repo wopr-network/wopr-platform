@@ -31,5 +31,9 @@ export default defineConfig({
         "src/instance/index.ts",
       ],
     },
+    reporters: ["default", "junit"],
+    outputFile: {
+      junit: "test-results/junit.xml",
+    },
   },
 });
