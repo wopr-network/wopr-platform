@@ -3,9 +3,11 @@ import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { logger } from "../../config/logger.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
+import { ImagePoller } from "../../fleet/image-poller.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
+import { ContainerUpdater } from "../../fleet/updater.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
@@ -14,6 +16,22 @@ const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
 const fleet = new FleetManager(docker, store);
+const imagePoller = new ImagePoller(docker, store);
+const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
+
+// Wire up the poller to trigger updates via the updater
+imagePoller.onUpdateAvailable = async (botId: string) => {
+  try {
+    const result = await updater.updateBot(botId);
+    if (result.success) {
+      logger.info(`Auto-updated bot ${botId}`);
+    } else {
+      logger.warn(`Auto-update failed for bot ${botId}: ${result.error}`);
+    }
+  } catch (err) {
+    logger.error(`Auto-update error for bot ${botId}`, { err });
+  }
+};
 
 export const fleetRoutes = new Hono();
 
@@ -147,6 +165,35 @@ fleetRoutes.get("/bots/:id/logs", async (c) => {
   }
 });
 
+/** POST /fleet/bots/:id/update — Force update to latest image */
+fleetRoutes.post("/bots/:id/update", async (c) => {
+  try {
+    const result = await updater.updateBot(c.req.param("id"));
+    if (result.success) {
+      return c.json(result);
+    }
+    return c.json(result, result.error === "Bot not found" ? 404 : 500);
+  } catch (err) {
+    if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
+  }
+});
+
+/** GET /fleet/bots/:id/image-status — Current vs available digest + last check time */
+fleetRoutes.get("/bots/:id/image-status", async (c) => {
+  const botId = c.req.param("id");
+  try {
+    const profile = await fleet.profiles.get(botId);
+    if (!profile) return c.json({ error: `Bot not found: ${botId}` }, 404);
+
+    const status = imagePoller.getImageStatus(botId, profile);
+    return c.json(status);
+  } catch (err) {
+    if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
+  }
+});
+
 /** In-memory set of bot names that have been seeded (placeholder until fleet manager provides real storage) */
 const seededBots = new Set<string>();
 
@@ -195,5 +242,5 @@ fleetRoutes.post("/seed", (c) => {
   return c.json(result, 200);
 });
 
-/** Export fleet manager for testing */
-export { fleet, FleetManager };
+/** Export fleet manager and related modules for testing */
+export { fleet, FleetManager, imagePoller, updater };

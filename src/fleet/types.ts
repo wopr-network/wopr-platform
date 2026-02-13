@@ -3,6 +3,17 @@ import { z } from "zod";
 /** Regex for valid bot names: alphanumeric, hyphens, underscores, 1-63 chars */
 const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/;
 
+/** Release channels for container images */
+export const releaseChannelSchema = z.enum(["canary", "staging", "stable", "pinned"]);
+export type ReleaseChannel = z.infer<typeof releaseChannelSchema>;
+
+/** Update policy for automatic container updates */
+export const updatePolicySchema = z.union([
+  z.enum(["on-push", "nightly", "manual"]),
+  z.string().regex(/^cron:.+$/, "Cron policy must be in format 'cron:<expression>'"),
+]);
+export type UpdatePolicy = z.infer<typeof updatePolicySchema>;
+
 /** Schema for a bot profile template (persisted as YAML) */
 export const botProfileSchema = z.object({
   id: z.string().uuid(),
@@ -12,6 +23,8 @@ export const botProfileSchema = z.object({
   env: z.record(z.string(), z.string()).default({}),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).default("unless-stopped"),
   volumeName: z.string().optional(),
+  releaseChannel: releaseChannelSchema.default("stable"),
+  updatePolicy: updatePolicySchema.default("manual"),
 });
 
 export type BotProfile = z.infer<typeof botProfileSchema>;
@@ -27,6 +40,8 @@ export const createBotSchema = z.object({
   env: z.record(z.string(), z.string()).default({}),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).default("unless-stopped"),
   volumeName: z.string().optional(),
+  releaseChannel: releaseChannelSchema.default("stable"),
+  updatePolicy: updatePolicySchema.default("manual"),
 });
 
 /** Schema for updating a bot via the API */
@@ -41,6 +56,8 @@ export const updateBotSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).optional(),
   volumeName: z.string().optional(),
+  releaseChannel: releaseChannelSchema.optional(),
+  updatePolicy: updatePolicySchema.optional(),
 });
 
 /** Container resource usage stats */
@@ -65,4 +82,15 @@ export interface BotStatus {
   createdAt: string;
   updatedAt: string;
   stats: ContainerStats | null;
+}
+
+/** Image status showing current vs available digest */
+export interface ImageStatus {
+  botId: string;
+  currentDigest: string | null;
+  availableDigest: string | null;
+  updateAvailable: boolean;
+  releaseChannel: ReleaseChannel;
+  updatePolicy: UpdatePolicy;
+  lastCheckedAt: string | null;
 }
