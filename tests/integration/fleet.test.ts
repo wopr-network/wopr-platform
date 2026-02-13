@@ -95,6 +95,52 @@ describe("integration: fleet routes", () => {
       expect(res.status).toBe(400);
     });
 
+    it("returns 400 for host path in volumeName", async () => {
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          name: "bot",
+          image: "img",
+          volumeName: "/var/run/docker.sock",
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for path traversal in volumeName", async () => {
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          name: "bot",
+          image: "img",
+          volumeName: "vol/../escape",
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("accepts valid named Docker volume", async () => {
+      fleetMock.create.mockResolvedValue({
+        id: "new-bot",
+        name: "bot",
+        image: "img",
+        volumeName: "my-data-vol",
+      });
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          name: "bot",
+          image: "img",
+          volumeName: "my-data-vol",
+        }),
+      });
+      expect(res.status).toBe(201);
+    });
+
     it("returns 400 for missing image", async () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -167,6 +213,15 @@ describe("integration: fleet routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.name).toBe("updated");
+    });
+
+    it("returns 400 for host path in volumeName", async () => {
+      const res = await app.request("/fleet/bots/bot-1", {
+        method: "PATCH",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ volumeName: "/etc" }),
+      });
+      expect(res.status).toBe(400);
     });
 
     it("returns 400 for empty update body", async () => {
