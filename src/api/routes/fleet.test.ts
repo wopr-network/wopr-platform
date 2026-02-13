@@ -373,7 +373,7 @@ describe("fleet routes", () => {
 
     it("returns 200 with created bots when templates exist", async () => {
       process.env.FLEET_TEMPLATES_DIR = path.resolve(import.meta.dirname, "..", "..", "..", "templates");
-      const res = await app.request("/fleet/seed", { method: "POST" });
+      const res = await app.request("/fleet/seed", { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toHaveProperty("created");
@@ -383,7 +383,7 @@ describe("fleet routes", () => {
 
     it("returns 404 when templates directory is empty", async () => {
       process.env.FLEET_TEMPLATES_DIR = path.resolve(import.meta.dirname);
-      const res = await app.request("/fleet/seed", { method: "POST" });
+      const res = await app.request("/fleet/seed", { method: "POST", headers: authHeader });
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body).toHaveProperty("error");
