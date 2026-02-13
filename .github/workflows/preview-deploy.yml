@@ -117,6 +117,7 @@ jobs:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
     environment: preview
+    permissions: {}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
