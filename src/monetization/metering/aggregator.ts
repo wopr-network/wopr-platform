@@ -60,18 +60,7 @@ export class MeterAggregator {
         lastEnd = Math.floor(earliest.ts / this.windowMs) * this.windowMs;
       } else {
         // No events at all — insert a single sentinel to mark we've processed up to now.
-        insertStmt.run(
-          crypto.randomUUID(),
-          "__sentinel__",
-          "__none__",
-          "__none__",
-          0,
-          0,
-          0,
-          0,
-          0,
-          currentWindowStart,
-        );
+        insertStmt.run(crypto.randomUUID(), "__sentinel__", "__none__", "__none__", 0, 0, 0, 0, 0, currentWindowStart);
         return 0;
       }
     }
@@ -107,18 +96,7 @@ export class MeterAggregator {
 
       if (rows.length === 0) {
         // Advance past this empty window by inserting a sentinel with zero counts.
-        insertStmt.run(
-          crypto.randomUUID(),
-          "__sentinel__",
-          "__none__",
-          "__none__",
-          0,
-          0,
-          0,
-          0,
-          windowStart,
-          windowEnd,
-        );
+        insertStmt.run(crypto.randomUUID(), "__sentinel__", "__none__", "__none__", 0, 0, 0, 0, windowStart, windowEnd);
       } else {
         const insertAll = this.db.transaction(
           (
