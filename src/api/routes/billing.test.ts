@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+
 // Set env var BEFORE importing billing routes so bearer auth uses this token
 const TEST_TOKEN = "test-billing-token";
 vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
@@ -20,25 +21,31 @@ function createTestDb() {
   return db;
 }
 
-function createMockStripe(overrides: {
-  checkoutCreate?: ReturnType<typeof vi.fn>;
-  portalCreate?: ReturnType<typeof vi.fn>;
-  constructEvent?: ReturnType<typeof vi.fn>;
-} = {}) {
+function createMockStripe(
+  overrides: {
+    checkoutCreate?: ReturnType<typeof vi.fn>;
+    portalCreate?: ReturnType<typeof vi.fn>;
+    constructEvent?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
   return {
     checkout: {
       sessions: {
-        create: overrides.checkoutCreate ?? vi.fn().mockResolvedValue({
-          id: "cs_test_123",
-          url: "https://checkout.stripe.com/cs_test_123",
-        }),
+        create:
+          overrides.checkoutCreate ??
+          vi.fn().mockResolvedValue({
+            id: "cs_test_123",
+            url: "https://checkout.stripe.com/cs_test_123",
+          }),
       },
     },
     billingPortal: {
       sessions: {
-        create: overrides.portalCreate ?? vi.fn().mockResolvedValue({
-          url: "https://billing.stripe.com/session_xyz",
-        }),
+        create:
+          overrides.portalCreate ??
+          vi.fn().mockResolvedValue({
+            url: "https://billing.stripe.com/session_xyz",
+          }),
       },
     },
     webhooks: {
@@ -74,7 +81,11 @@ describe("billing routes", () => {
     it("rejects checkout without bearer token", async () => {
       const res = await billingRoutes.request("/checkout", {
         method: "POST",
-        body: JSON.stringify({ tenant: "t-1", successUrl: "https://example.com/s", cancelUrl: "https://example.com/c" }),
+        body: JSON.stringify({
+          tenant: "t-1",
+          successUrl: "https://example.com/s",
+          cancelUrl: "https://example.com/c",
+        }),
         headers: { "Content-Type": "application/json" },
       });
       expect(res.status).toBe(401);
@@ -92,7 +103,11 @@ describe("billing routes", () => {
     it("rejects checkout with wrong token", async () => {
       const res = await billingRoutes.request("/checkout", {
         method: "POST",
-        body: JSON.stringify({ tenant: "t-1", successUrl: "https://example.com/s", cancelUrl: "https://example.com/c" }),
+        body: JSON.stringify({
+          tenant: "t-1",
+          successUrl: "https://example.com/s",
+          cancelUrl: "https://example.com/c",
+        }),
         headers: { Authorization: "Bearer wrong-token", "Content-Type": "application/json" },
       });
       expect(res.status).toBe(401);
@@ -134,7 +149,9 @@ describe("billing routes", () => {
     });
 
     it("uses default priceId when not provided", async () => {
-      const checkoutCreate = vi.fn().mockResolvedValue({ id: "cs_test_456", url: "https://checkout.stripe.com/cs_test_456" });
+      const checkoutCreate = vi
+        .fn()
+        .mockResolvedValue({ id: "cs_test_456", url: "https://checkout.stripe.com/cs_test_456" });
       const mockStripe = createMockStripe({ checkoutCreate });
       setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test", defaultPriceId: "price_default" });
 

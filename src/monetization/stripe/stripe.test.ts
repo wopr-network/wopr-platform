@@ -591,7 +591,9 @@ describe("createCheckoutSession", () => {
   it("reuses existing Stripe customer when mapping exists", async () => {
     tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_existing" });
 
-    const sessionsCreate = vi.fn().mockResolvedValue({ id: "cs_test_456", url: "https://checkout.stripe.com/cs_test_456" });
+    const sessionsCreate = vi
+      .fn()
+      .mockResolvedValue({ id: "cs_test_456", url: "https://checkout.stripe.com/cs_test_456" });
     const stripe = createMockStripe(sessionsCreate);
 
     await createCheckoutSession(stripe, tenantStore, {
@@ -601,13 +603,13 @@ describe("createCheckoutSession", () => {
       cancelUrl: "https://example.com/cancel",
     });
 
-    expect(sessionsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ customer: "cus_existing" }),
-    );
+    expect(sessionsCreate).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_existing" }));
   });
 
   it("does not set customer param for new tenants", async () => {
-    const sessionsCreate = vi.fn().mockResolvedValue({ id: "cs_test_789", url: "https://checkout.stripe.com/cs_test_789" });
+    const sessionsCreate = vi
+      .fn()
+      .mockResolvedValue({ id: "cs_test_789", url: "https://checkout.stripe.com/cs_test_789" });
     const stripe = createMockStripe(sessionsCreate);
 
     await createCheckoutSession(stripe, tenantStore, {
