@@ -22,21 +22,29 @@ const DEFAULT_IMAGE_ALLOWLIST = ["ghcr.io/wopr-network/"];
 function getImageAllowlist(): string[] {
   const envVal = process.env.FLEET_IMAGE_ALLOWLIST;
   if (envVal) {
-    return envVal.split(",").map((s) => s.trim()).filter(Boolean);
+    const parsed = envVal
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => (p.endsWith("/") || p.endsWith(":") ? p : `${p}/`));
+    if (parsed.length > 0) return parsed;
   }
   return DEFAULT_IMAGE_ALLOWLIST;
 }
 
 /** Zod refinement that restricts Docker images to allowlisted registry prefixes. */
-export const imageSchema = z.string().min(1, "Image is required").superRefine((image, ctx) => {
-  const allowlist = getImageAllowlist();
-  if (!allowlist.some((prefix) => image.startsWith(prefix))) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `Image "${image}" is not from an allowlisted registry. Allowed prefixes: ${allowlist.join(", ")}`,
-    });
-  }
-});
+export const imageSchema = z
+  .string()
+  .min(1, "Image is required")
+  .superRefine((image, ctx) => {
+    const allowlist = getImageAllowlist();
+    if (!allowlist.some((prefix) => image.startsWith(prefix))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Image "${image}" is not from an allowlisted registry. Allowed prefixes: ${allowlist.join(", ")}`,
+      });
+    }
+  });
 
 /** Release channels for container images */
 export const releaseChannelSchema = z.enum(["canary", "staging", "stable", "pinned"]);
