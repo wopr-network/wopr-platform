@@ -177,6 +177,7 @@ describe("FleetManager", () => {
 
   describe("remove", () => {
     it("stops running container, removes it, and deletes profile", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
       await fleet.remove("bot-id");
@@ -187,6 +188,7 @@ describe("FleetManager", () => {
     });
 
     it("removes volumes when requested", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
       await fleet.remove("bot-id", true);
@@ -195,10 +197,15 @@ describe("FleetManager", () => {
     });
 
     it("deletes profile even when no container exists", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
       docker.listContainers.mockResolvedValue([]);
 
       await fleet.remove("bot-id");
       expect(store.delete).toHaveBeenCalledWith("bot-id");
+    });
+
+    it("throws BotNotFoundError for missing profile", async () => {
+      await expect(fleet.remove("missing")).rejects.toThrow(BotNotFoundError);
     });
   });
 

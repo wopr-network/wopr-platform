@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import yaml from "js-yaml";
-import type { BotProfile } from "./types.js";
+import { botProfileSchema, type BotProfile } from "./types.js";
 
 /**
  * Persists bot profiles as YAML files in a data directory.
@@ -26,7 +26,8 @@ export class ProfileStore {
   async get(id: string): Promise<BotProfile | null> {
     try {
       const content = await readFile(this.filePath(id), "utf-8");
-      return yaml.load(content) as BotProfile;
+      const raw = yaml.load(content, { schema: yaml.JSON_SCHEMA });
+      return botProfileSchema.parse(raw);
     } catch {
       return null;
     }
@@ -39,7 +40,11 @@ export class ProfileStore {
     for (const file of files) {
       if (!file.endsWith(".yaml")) continue;
       const content = await readFile(join(this.dataDir, file), "utf-8");
-      profiles.push(yaml.load(content) as BotProfile);
+      const raw = yaml.load(content, { schema: yaml.JSON_SCHEMA });
+      const parsed = botProfileSchema.safeParse(raw);
+      if (parsed.success) {
+        profiles.push(parsed.data);
+      }
     }
     return profiles;
   }

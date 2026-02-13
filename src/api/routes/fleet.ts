@@ -1,5 +1,6 @@
 import Docker from "dockerode";
 import { Hono } from "hono";
+import { bearerAuth } from "hono/bearer-auth";
 import { logger } from "../../config/logger.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
@@ -8,12 +9,19 @@ import { ProfileStore } from "../../fleet/profile-store.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
+const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
 const fleet = new FleetManager(docker, store);
 
 export const fleetRoutes = new Hono();
+
+// CRITICAL: Require bearer token authentication on all fleet routes
+if (!FLEET_API_TOKEN) {
+  logger.warn("FLEET_API_TOKEN is not set — fleet routes will reject all requests");
+}
+fleetRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
 
 /** GET /fleet/bots — List all bots with live status */
 fleetRoutes.get("/bots", async (c) => {
@@ -23,7 +31,12 @@ fleetRoutes.get("/bots", async (c) => {
 
 /** POST /fleet/bots — Create a new bot from profile config */
 fleetRoutes.post("/bots", async (c) => {
-  const body = await c.req.json();
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const parsed = createBotSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
@@ -51,7 +64,12 @@ fleetRoutes.get("/bots/:id", async (c) => {
 
 /** PATCH /fleet/bots/:id — Update bot config (triggers restart if running) */
 fleetRoutes.patch("/bots/:id", async (c) => {
-  const body = await c.req.json();
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const parsed = updateBotSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
@@ -117,7 +135,9 @@ fleetRoutes.post("/bots/:id/restart", async (c) => {
 
 /** GET /fleet/bots/:id/logs — Tail bot container logs */
 fleetRoutes.get("/bots/:id/logs", async (c) => {
-  const tail = Number(c.req.query("tail")) || 100;
+  const raw = c.req.query("tail");
+  const parsed = raw != null ? Number.parseInt(raw, 10) : 100;
+  const tail = Number.isNaN(parsed) || parsed < 1 ? 100 : Math.min(parsed, 10_000);
   try {
     const logs = await fleet.logs(c.req.param("id"), tail);
     return c.text(logs);

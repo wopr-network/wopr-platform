@@ -77,6 +77,9 @@ export class FleetManager {
    * Remove a bot: stop container, remove it, optionally remove volumes, delete profile.
    */
   async remove(id: string, removeVolumes = false): Promise<void> {
+    const profile = await this.store.get(id);
+    if (!profile) throw new BotNotFoundError(id);
+
     const container = await this.findContainer(id);
     if (container) {
       const info = await container.inspect();
@@ -128,34 +131,51 @@ export class FleetManager {
     return logBuffer.toString("utf-8");
   }
 
+  /** Fields that require container recreation when changed. */
+  private static readonly CONTAINER_FIELDS = new Set<string>(["image", "env", "restartPolicy", "volumeName", "name"]);
+
   /**
-   * Update a bot profile. If the bot is running, restart it to apply changes.
+   * Update a bot profile. Only recreates the container if container-relevant
+   * fields changed. Rolls back the profile if container recreation fails.
    */
   async update(id: string, updates: Partial<Omit<BotProfile, "id">>): Promise<BotProfile> {
     const existing = await this.store.get(id);
     if (!existing) throw new BotNotFoundError(id);
 
     const updated: BotProfile = { ...existing, ...updates };
-    await this.store.save(updated);
 
-    // If image changed and container exists, recreate
+    const needsRecreate = Object.keys(updates).some((k) => FleetManager.CONTAINER_FIELDS.has(k));
+
     const container = await this.findContainer(id);
-    if (container) {
+    if (container && needsRecreate) {
       const info = await container.inspect();
       const wasRunning = info.State.Running;
 
+      // Save the updated profile only after pre-checks succeed
       if (updates.image) {
         await this.pullImage(updated.image);
       }
 
-      await container.stop().catch(() => {});
-      await container.remove().catch(() => {});
-      await this.createContainer(updated);
+      await this.store.save(updated);
 
-      if (wasRunning) {
-        const newContainer = await this.findContainer(id);
-        if (newContainer) await newContainer.start();
+      try {
+        await container.stop().catch(() => {});
+        await container.remove().catch(() => {});
+        await this.createContainer(updated);
+
+        if (wasRunning) {
+          const newContainer = await this.findContainer(id);
+          if (newContainer) await newContainer.start();
+        }
+      } catch (err) {
+        // Rollback profile to the previous state
+        logger.error(`Failed to recreate container for bot ${id}, rolling back profile`, { err });
+        await this.store.save(existing);
+        throw err;
       }
+    } else {
+      // Metadata-only change or no container — just save the profile
+      await this.store.save(updated);
     }
 
     return updated;
@@ -181,7 +201,7 @@ export class FleetManager {
 
   private async createContainer(profile: BotProfile): Promise<Docker.Container> {
     const restartPolicyMap: Record<string, string> = {
-      no: "",
+      no: "no",
       always: "always",
       "on-failure": "on-failure",
       "unless-stopped": "unless-stopped",
