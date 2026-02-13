@@ -26,9 +26,19 @@ jobs:
 
       - name: Create Fly app if it does not exist
         run: |
-          if ! flyctl apps list --json | grep -q "\"$FLY_APP\""; then
-            flyctl apps create "$FLY_APP" --org personal
+          if ! flyctl apps list --json | jq -e --arg name "$FLY_APP" '.[] | select(.Name == $name)' > /dev/null 2>&1; then
+            flyctl apps create "$FLY_APP" --org "$FLY_ORG"
           fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_ORG: ${{ vars.FLY_ORG || 'personal' }}
+
+      - name: Set preview secrets
+        run: |
+          flyctl secrets set \
+            STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
+            STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
+            --app "$FLY_APP"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -44,16 +54,22 @@ jobs:
 
       - name: Wait for healthy deployment
         run: |
+          HEALTHY=false
           for i in $(seq 1 30); do
-            STATUS=$(flyctl status --app "$FLY_APP" --json 2>/dev/null | grep -o '"Status":"[^"]*"' | head -1 || true)
-            if echo "$STATUS" | grep -q "running"; then
+            STATUS=$(flyctl status --app "$FLY_APP" --json 2>/dev/null | jq -r '.Machines[0].state // empty' || true)
+            if [ "$STATUS" = "started" ] || [ "$STATUS" = "running" ]; then
               echo "Preview is running"
+              HEALTHY=true
               break
             fi
             echo "Waiting for preview to start... ($i/30)"
             sleep 5
           done
           flyctl status --app "$FLY_APP"
+          if [ "$HEALTHY" != "true" ]; then
+            echo "::error::Health check timed out — preview never became healthy"
+            exit 1
+          fi
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
@@ -100,12 +116,13 @@ jobs:
   destroy-preview:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
+    environment: preview
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Destroy preview app
         run: |
-          if flyctl apps list --json | grep -q "\"$FLY_APP\""; then
+          if flyctl apps list --json | jq -e --arg name "$FLY_APP" '.[] | select(.Name == $name)' > /dev/null 2>&1; then
             flyctl apps destroy "$FLY_APP" --yes
             echo "Destroyed preview app: $FLY_APP"
           else

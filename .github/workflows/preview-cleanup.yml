@@ -18,14 +18,24 @@ jobs:
           CUTOFF=$(date -u -d '24 hours ago' +%s 2>/dev/null || date -u -v-24H +%s)
 
           flyctl apps list --json | \
-            jq -r '.[] | select(.Name | startswith("wopr-platform-pr-")) | .Name' | \
-            while read -r APP; do
+            jq -r '.[] | select(.Name | startswith("wopr-platform-pr-")) | "\(.Name)\t\(.CreatedAt // "")"' | \
+            while IFS=$'\t' read -r APP CREATED_AT; do
               # Get the app's last activity timestamp
               UPDATED=$(flyctl status --app "$APP" --json 2>/dev/null | \
                 jq -r '.Machines[0].updated_at // empty' 2>/dev/null || true)
 
               if [ -z "$UPDATED" ]; then
-                echo "No machine data for $APP — destroying"
+                # No machine data — only destroy if app is older than 1 hour
+                # to avoid racing with apps that are still being deployed
+                if [ -n "$CREATED_AT" ]; then
+                  CREATED_TS=$(date -u -d "$CREATED_AT" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$CREATED_AT" +%s 2>/dev/null || echo 0)
+                  AGE_CUTOFF=$(date -u -d '1 hour ago' +%s 2>/dev/null || date -u -v-1H +%s)
+                  if [ "$CREATED_TS" -gt "$AGE_CUTOFF" ]; then
+                    echo "No machine data for $APP but created recently — skipping (may still be deploying)"
+                    continue
+                  fi
+                fi
+                echo "No machine data for $APP and older than 1h — destroying"
                 flyctl apps destroy "$APP" --yes
                 continue
               fi
