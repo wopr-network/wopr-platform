@@ -94,6 +94,7 @@ export class UsageAggregationWorker {
         total_cost = excluded.total_cost,
         total_charge = excluded.total_charge,
         total_duration = excluded.total_duration,
+        period_end = excluded.period_end,
         updated_at = excluded.updated_at
     `);
 
@@ -212,6 +213,21 @@ export class UsageAggregationWorker {
     }>;
 
     if (groupedRows.length === 0) {
+      // Persist a sentinel row so that MAX(period_end) advances past this empty
+      // range. Without this, every subsequent run rescans the entire gap.
+      this.upsertStmt.run(
+        crypto.randomUUID(),
+        "__sentinel__",
+        "__none__",
+        "__none__",
+        0,
+        0,
+        0,
+        0,
+        upperBound - this.periodMs,
+        upperBound,
+        now,
+      );
       return 0;
     }
 
