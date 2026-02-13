@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { fleetRoutes } from "./routes/fleet.js";
+import { friendsRoutes } from "./routes/friends.js";
 import { healthRoutes } from "./routes/health.js";
 import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
@@ -12,3 +13,4 @@ app.route("/fleet", fleetRoutes);
 app.route("/api/quota", quotaRoutes);
 app.route("/api", secretsRoutes);
 app.route("/api/instances/:id/snapshots", snapshotRoutes);
+app.route("/api/instances/:id/friends", friendsRoutes);
