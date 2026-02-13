@@ -1,0 +1,71 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_ref:
+        description: >
+          Git ref (commit SHA or tag) currently deployed to staging.
+          Leave empty to deploy the latest commit on main.
+        required: false
+        default: ""
+      confirm:
+        description: "Type 'promote' to confirm production deployment"
+        required: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require confirmation
+        if: inputs.confirm != 'promote'
+        run: |
+          echo "::error::You must type 'promote' to confirm production deployment."
+          exit 1
+
+  ci:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.staging_ref || 'main' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: ci
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.staging_ref || 'main' }}
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to production
+        run: flyctl deploy --config fly.production.toml --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify deployment health
+        run: |
+          sleep 15
+          flyctl status --config fly.production.toml
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
