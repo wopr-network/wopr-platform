@@ -49,3 +49,44 @@ export interface UsageSummary {
   /** End of the aggregation window (unix epoch ms). */
   window_end: number;
 }
+
+/** A billing period boundary (e.g., hourly). */
+export interface BillingPeriod {
+  /** Start of the billing period (unix epoch ms, inclusive). */
+  start: number;
+  /** End of the billing period (unix epoch ms, exclusive). */
+  end: number;
+}
+
+/** A per-tenant, per-billing-period rolled-up summary row as stored in SQLite. */
+export interface BillingPeriodSummary {
+  id: string;
+  tenant: string;
+  capability: string;
+  provider: string;
+  event_count: number;
+  total_cost: number;
+  total_charge: number;
+  total_duration: number;
+  period_start: number;
+  period_end: number;
+  /** Unix epoch ms when this row was last (re-)computed. */
+  updated_at: number;
+}
+
+/**
+ * A record formatted for the Stripe Meters API (POST /v1/billing/meter_events).
+ * See https://docs.stripe.com/api/billing/meter-event
+ */
+export interface StripeMeterRecord {
+  /** Stripe meter event name (maps to a Stripe Meter configured in the dashboard). */
+  event_name: string;
+  /** Unix epoch seconds (Stripe expects seconds, not ms). */
+  timestamp: number;
+  payload: {
+    /** Stripe customer ID or external reference (tenant). */
+    stripe_customer_id: string;
+    /** Numeric value to report (e.g., total_charge in cents). */
+    value: string;
+  };
+}

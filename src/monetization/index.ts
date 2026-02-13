@@ -28,9 +28,17 @@ export {
   withMargin,
 } from "./adapters/types.js";
 
-// Metering (WOP-299)
-export type { MeterEventRow, UsageSummary } from "./metering/index.js";
-export { initMeterSchema, MeterAggregator, MeterEmitter } from "./metering/index.js";
+// Metering (WOP-299 + WOP-284)
+export type {
+  BillingPeriod,
+  BillingPeriodSummary,
+  MeterEventNameMap,
+  MeterEventRow,
+  StripeMeterRecord,
+  UsageAggregationWorkerOpts,
+  UsageSummary,
+} from "./metering/index.js";
+export { initMeterSchema, MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
 export { buildQuotaUsage, checkInstanceQuota, type QuotaCheckResult, type QuotaUsage } from "./quotas/quota-check.js";
 export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
 export { DEFAULT_TIERS, type PlanTier, TierStore } from "./quotas/tier-definitions.js";
