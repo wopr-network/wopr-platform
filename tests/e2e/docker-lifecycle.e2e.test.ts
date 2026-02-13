@@ -14,10 +14,13 @@ import type { BotProfile } from "../../src/fleet/types.js";
 let dockerAvailable = false;
 try {
   const probe = new Docker();
-  await probe.ping();
+  await Promise.race([
+    probe.ping(),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3_000)),
+  ]);
   dockerAvailable = true;
 } catch {
-  // Docker not available
+  // Docker not available or unreachable
 }
 
 /** Unique prefix so we never collide with real containers */
@@ -62,7 +65,7 @@ async function removeAllWoprTestContainers(docker: Docker): Promise<void> {
   for (const info of containers) {
     // Only remove containers whose names match our test prefix
     const isOurs = info.Names.some(
-      (n) => n.includes(TEST_PREFIX) || n.includes("e2e-test"),
+      (n) => n.includes(TEST_PREFIX),
     );
     if (!isOurs) continue;
     const c = docker.getContainer(info.Id);
@@ -197,6 +200,7 @@ describe.skipIf(!dockerAvailable)("E2E: Docker container lifecycle", () => {
         all: true,
         filters: { label: [`wopr.bot-id=${profile.id}`] },
       });
+      expect(beforeContainers).toHaveLength(1);
       const oldContainerId = beforeContainers[0].Id;
 
       // Update to a different image tag
