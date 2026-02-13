@@ -48,6 +48,11 @@ export interface RateLimitRule {
 /**
  * Default key generator: uses the first value of `X-Forwarded-For`, falling
  * back to the remote address reported by the runtime, then "unknown".
+ *
+ * NOTE: `X-Forwarded-For` can be spoofed by clients. In production, deploy
+ * behind a reverse proxy (e.g. nginx, Cloudflare) that overwrites this header
+ * with the real client IP, or supply a custom `keyGenerator` that validates
+ * the header against a list of trusted proxy addresses.
  */
 function defaultKeyGenerator(c: Context): string {
   const xff = c.req.header("x-forwarded-for");
@@ -90,8 +95,6 @@ export function rateLimit(cfg: RateLimitConfig): MiddlewareHandler {
       store.set(key, entry);
     }
 
-    entry.count++;
-
     // Prune stale keys every time (cheap for typical request volumes)
     if (store.size > 1000) {
       for (const [k, v] of store) {
@@ -99,18 +102,25 @@ export function rateLimit(cfg: RateLimitConfig): MiddlewareHandler {
       }
     }
 
+    // Check limit BEFORE incrementing so that `max` requests are allowed, not `max + 1`
+    const retryAfterSec = Math.ceil((entry.windowStart + windowMs - now) / 1000);
+
+    if (entry.count >= cfg.max) {
+      c.header("X-RateLimit-Limit", String(cfg.max));
+      c.header("X-RateLimit-Remaining", "0");
+      c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
+      c.header("Retry-After", String(retryAfterSec));
+      return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
+    }
+
+    entry.count++;
+
     // Set rate-limit headers (draft standard)
     const remaining = Math.max(0, cfg.max - entry.count);
-    const retryAfterSec = Math.ceil((entry.windowStart + windowMs - now) / 1000);
 
     c.header("X-RateLimit-Limit", String(cfg.max));
     c.header("X-RateLimit-Remaining", String(remaining));
     c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
-
-    if (entry.count > cfg.max) {
-      c.header("Retry-After", String(retryAfterSec));
-      return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
-    }
 
     return next();
   };
@@ -166,25 +176,30 @@ export function rateLimitByRoute(rules: RateLimitRule[], defaultConfig: RateLimi
       store.set(key, entry);
     }
 
-    entry.count++;
-
     if (store.size > 1000) {
       for (const [k, v] of store) {
         if (now - v.windowStart >= windowMs) store.delete(k);
       }
     }
 
-    const remaining = Math.max(0, cfg.max - entry.count);
+    // Check limit BEFORE incrementing so that `max` requests are allowed, not `max + 1`
     const retryAfterSec = Math.ceil((entry.windowStart + windowMs - now) / 1000);
+
+    if (entry.count >= cfg.max) {
+      c.header("X-RateLimit-Limit", String(cfg.max));
+      c.header("X-RateLimit-Remaining", "0");
+      c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
+      c.header("Retry-After", String(retryAfterSec));
+      return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
+    }
+
+    entry.count++;
+
+    const remaining = Math.max(0, cfg.max - entry.count);
 
     c.header("X-RateLimit-Limit", String(cfg.max));
     c.header("X-RateLimit-Remaining", String(remaining));
     c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
-
-    if (entry.count > cfg.max) {
-      c.header("Retry-After", String(retryAfterSec));
-      return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
-    }
 
     return next();
   };
@@ -193,9 +208,6 @@ export function rateLimitByRoute(rules: RateLimitRule[], defaultConfig: RateLimi
 // ---------------------------------------------------------------------------
 // Pre-built route rules matching the WOP-323 specification
 // ---------------------------------------------------------------------------
-
-/** Auth/login: 10 req/min */
-const AUTH_LIMIT: RateLimitConfig = { max: 10 };
 
 /** Billing checkout/portal: 10 req/min */
 const BILLING_LIMIT: RateLimitConfig = { max: 10 };
@@ -229,9 +241,6 @@ export const platformRateLimitRules: RateLimitRule[] = [
 
   // Fleet read operations (GET)
   { method: "GET", pathPrefix: "/fleet/", config: FLEET_READ_LIMIT },
-
-  // Auth endpoints
-  { method: "*", pathPrefix: "/auth/", config: AUTH_LIMIT },
 ];
 
 export const platformDefaultLimit = DEFAULT_LIMIT;

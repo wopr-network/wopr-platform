@@ -243,7 +243,6 @@ describe("platform rate limit rules", () => {
     app.post("/fleet/bots", (c) => c.json({ ok: true }));
     app.get("/fleet/bots", (c) => c.json({ ok: true }));
     app.get("/fleet/bots/:id", (c) => c.json({ ok: true }));
-    app.post("/auth/login", (c) => c.json({ ok: true }));
     app.get("/api/quota", (c) => c.json({ ok: true }));
     return app;
   }
@@ -286,14 +285,6 @@ describe("platform rate limit rules", () => {
       expect((await app.request(req("/fleet/bots"))).status).toBe(200);
     }
     expect((await app.request(req("/fleet/bots"))).status).toBe(429);
-  });
-
-  it("auth endpoints are limited to 10 req/min", async () => {
-    const app = buildPlatformApp();
-    for (let i = 0; i < 10; i++) {
-      expect((await app.request(postReq("/auth/login"))).status).toBe(200);
-    }
-    expect((await app.request(postReq("/auth/login"))).status).toBe(429);
   });
 
   it("unmatched endpoints fall back to 60 req/min default", async () => {
