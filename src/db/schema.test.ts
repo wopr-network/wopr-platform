@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initAuditSchema } from "../audit/schema.js";
 import { initSnapshotSchema } from "../backup/schema.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
-import { initStripeSchema } from "../monetization/stripe/schema.js";
 import { TierStore } from "../monetization/quotas/tier-definitions.js";
+import { initStripeSchema } from "../monetization/stripe/schema.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -15,9 +15,9 @@ function freshDb(): BetterSqlite3.Database {
 }
 
 function tableNames(db: BetterSqlite3.Database): string[] {
-  return (db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[]).map(
-    (r) => r.name,
-  );
+  return (
+    db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[]
+  ).map((r) => r.name);
 }
 
 function indexNames(db: BetterSqlite3.Database, prefix: string): string[] {
@@ -63,9 +63,7 @@ describe("initSnapshotSchema", () => {
   it("enforces NOT NULL on instance_id", () => {
     expect(() =>
       db
-        .prepare(
-          "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
         .run("s1", null, "u1", "manual", "/path"),
     ).toThrow();
   });
@@ -73,9 +71,7 @@ describe("initSnapshotSchema", () => {
   it("enforces NOT NULL on user_id", () => {
     expect(() =>
       db
-        .prepare(
-          "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
         .run("s1", "i1", null, "manual", "/path"),
     ).toThrow();
   });
@@ -83,9 +79,7 @@ describe("initSnapshotSchema", () => {
   it("enforces NOT NULL on trigger", () => {
     expect(() =>
       db
-        .prepare(
-          "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
         .run("s1", "i1", "u1", null, "/path"),
     ).toThrow();
   });
@@ -93,53 +87,67 @@ describe("initSnapshotSchema", () => {
   it("enforces NOT NULL on storage_path", () => {
     expect(() =>
       db
-        .prepare(
-          "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
         .run("s1", "i1", "u1", "manual", null),
     ).toThrow();
   });
 
   it("enforces CHECK constraint on trigger column", () => {
     // Valid values: manual, scheduled, pre_update
-    db.prepare(
-      "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-    ).run("s-manual", "i1", "u1", "manual", "/a");
-    db.prepare(
-      "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-    ).run("s-scheduled", "i1", "u1", "scheduled", "/b");
-    db.prepare(
-      "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-    ).run("s-pre", "i1", "u1", "pre_update", "/c");
+    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
+      "s-manual",
+      "i1",
+      "u1",
+      "manual",
+      "/a",
+    );
+    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
+      "s-scheduled",
+      "i1",
+      "u1",
+      "scheduled",
+      "/b",
+    );
+    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
+      "s-pre",
+      "i1",
+      "u1",
+      "pre_update",
+      "/c",
+    );
 
     // Invalid value should fail
     expect(() =>
       db
-        .prepare(
-          "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
         .run("s-bad", "i1", "u1", "invalid_trigger", "/d"),
     ).toThrow();
   });
 
   it("enforces PRIMARY KEY uniqueness on id", () => {
-    db.prepare(
-      "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-    ).run("dup-id", "i1", "u1", "manual", "/a");
+    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
+      "dup-id",
+      "i1",
+      "u1",
+      "manual",
+      "/a",
+    );
 
     expect(() =>
       db
-        .prepare(
-          "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
         .run("dup-id", "i2", "u2", "scheduled", "/b"),
     ).toThrow();
   });
 
   it("provides defaults for size_mb, plugins, and config_hash", () => {
-    db.prepare(
-      "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)",
-    ).run("s-defaults", "i1", "u1", "manual", "/path");
+    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
+      "s-defaults",
+      "i1",
+      "u1",
+      "manual",
+      "/path",
+    );
 
     const row = db.prepare("SELECT size_mb, plugins, config_hash FROM snapshots WHERE id = ?").get("s-defaults") as {
       size_mb: number;
