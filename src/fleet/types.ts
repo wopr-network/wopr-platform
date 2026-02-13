@@ -4,6 +4,15 @@ import { discoveryConfigSchema } from "../discovery/types.js";
 /** Regex for valid bot names: alphanumeric, hyphens, underscores, 1-63 chars */
 const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/;
 
+/**
+ * Docker named volume format: starts with alphanumeric, then alphanumeric plus `_`, `.`, `-`.
+ * Rejects host paths (starting with `/`, `./`, `~`) and path traversal (`..`).
+ */
+export const dockerVolumeNameSchema = z
+  .string()
+  .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/, "Must be a valid named Docker volume")
+  .refine((v) => !v.startsWith("/") && !v.includes(".."), "Host paths and path traversal are not allowed");
+
 /** Release channels for container images */
 export const releaseChannelSchema = z.enum(["canary", "staging", "stable", "pinned"]);
 export type ReleaseChannel = z.infer<typeof releaseChannelSchema>;
@@ -23,7 +32,7 @@ export const botProfileSchema = z.object({
   image: z.string().min(1),
   env: z.record(z.string(), z.string()).default({}),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).default("unless-stopped"),
-  volumeName: z.string().optional(),
+  volumeName: dockerVolumeNameSchema.optional(),
   releaseChannel: releaseChannelSchema.default("stable"),
   updatePolicy: updatePolicySchema.default("manual"),
   /** Optional P2P discovery configuration. Defaults to enabled with no extra topics. */
@@ -42,7 +51,7 @@ export const createBotSchema = z.object({
   image: z.string().min(1, "Image is required"),
   env: z.record(z.string(), z.string()).default({}),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).default("unless-stopped"),
-  volumeName: z.string().optional(),
+  volumeName: dockerVolumeNameSchema.optional(),
   releaseChannel: releaseChannelSchema.default("stable"),
   updatePolicy: updatePolicySchema.default("manual"),
   /** Optional P2P discovery configuration. */
@@ -60,7 +69,7 @@ export const updateBotSchema = z.object({
   image: z.string().min(1).optional(),
   env: z.record(z.string(), z.string()).optional(),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).optional(),
-  volumeName: z.string().optional(),
+  volumeName: dockerVolumeNameSchema.optional(),
   releaseChannel: releaseChannelSchema.optional(),
   updatePolicy: updatePolicySchema.optional(),
   /** Optional P2P discovery configuration override. */
