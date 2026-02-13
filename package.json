@@ -17,7 +17,8 @@
     "check": "biome check src/ && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
