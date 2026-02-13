@@ -20,7 +20,11 @@ const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 
 // -- Zod schemas for input validation ----------------------------------------
 
-const tenantIdSchema = z.string().min(1).max(128).regex(/^[a-zA-Z0-9_-]+$/);
+const tenantIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9_-]+$/);
 const urlSchema = z.string().url().max(2048);
 
 const checkoutBodySchema = z.object({
