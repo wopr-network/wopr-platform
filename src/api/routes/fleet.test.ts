@@ -12,8 +12,13 @@ const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
 
 // --- Mock FleetManager ---
 
+/** Stable UUIDs for test bots. */
+const TEST_BOT_ID = "00000000-0000-4000-8000-000000000001";
+/** A valid UUID for a bot that does not exist. */
+const MISSING_BOT_ID = "ffffffff-ffff-4fff-bfff-ffffffffffff";
+
 const mockProfile: BotProfile = {
-  id: "test-uuid",
+  id: TEST_BOT_ID,
   name: "test-bot",
   description: "A test bot",
   image: "ghcr.io/wopr-network/wopr:stable",
@@ -24,7 +29,7 @@ const mockProfile: BotProfile = {
 };
 
 const mockStatus: BotStatus = {
-  id: "test-uuid",
+  id: TEST_BOT_ID,
   name: "test-bot",
   description: "A test bot",
   image: "ghcr.io/wopr-network/wopr:stable",
@@ -226,16 +231,16 @@ describe("fleet routes", () => {
     it("returns bot status", async () => {
       fleetMock.status.mockResolvedValue(mockStatus);
 
-      const res = await app.request("/fleet/bots/test-uuid", { headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, { headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.state).toBe("running");
     });
 
     it("returns 404 for missing bot", async () => {
-      fleetMock.status.mockRejectedValue(new MockBotNotFoundError("missing"));
+      fleetMock.status.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
 
-      const res = await app.request("/fleet/bots/missing", { headers: authHeader });
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}`, { headers: authHeader });
       expect(res.status).toBe(404);
     });
   });
@@ -244,7 +249,7 @@ describe("fleet routes", () => {
     it("updates bot config", async () => {
       fleetMock.update.mockResolvedValue({ ...mockProfile, name: "updated-bot" });
 
-      const res = await app.request("/fleet/bots/test-uuid", {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ name: "updated-bot" }),
@@ -256,7 +261,7 @@ describe("fleet routes", () => {
     });
 
     it("rejects empty update", async () => {
-      const res = await app.request("/fleet/bots/test-uuid", {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({}),
@@ -266,7 +271,7 @@ describe("fleet routes", () => {
     });
 
     it("returns 400 on malformed JSON body", async () => {
-      const res = await app.request("/fleet/bots/test-uuid", {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: "{bad json",
@@ -278,9 +283,9 @@ describe("fleet routes", () => {
     });
 
     it("returns 404 for missing bot", async () => {
-      fleetMock.update.mockRejectedValue(new MockBotNotFoundError("missing"));
+      fleetMock.update.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
 
-      const res = await app.request("/fleet/bots/missing", {
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ name: "new-name" }),
@@ -294,15 +299,15 @@ describe("fleet routes", () => {
     it("removes a bot", async () => {
       fleetMock.remove.mockResolvedValue(undefined);
 
-      const res = await app.request("/fleet/bots/test-uuid", { method: "DELETE", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, { method: "DELETE", headers: authHeader });
       expect(res.status).toBe(204);
     });
 
     it("passes removeVolumes query param", async () => {
       fleetMock.remove.mockResolvedValue(undefined);
 
-      await app.request("/fleet/bots/test-uuid?removeVolumes=true", { method: "DELETE", headers: authHeader });
-      expect(fleetMock.remove).toHaveBeenCalledWith("test-uuid", true);
+      await app.request(`/fleet/bots/${TEST_BOT_ID}?removeVolumes=true`, { method: "DELETE", headers: authHeader });
+      expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID, true);
     });
   });
 
@@ -310,16 +315,16 @@ describe("fleet routes", () => {
     it("starts a bot", async () => {
       fleetMock.start.mockResolvedValue(undefined);
 
-      const res = await app.request("/fleet/bots/test-uuid/start", { method: "POST", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
     });
 
     it("returns 404 for missing bot", async () => {
-      fleetMock.start.mockRejectedValue(new MockBotNotFoundError("missing"));
+      fleetMock.start.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
 
-      const res = await app.request("/fleet/bots/missing/start", { method: "POST", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(404);
     });
   });
@@ -328,7 +333,7 @@ describe("fleet routes", () => {
     it("stops a bot", async () => {
       fleetMock.stop.mockResolvedValue(undefined);
 
-      const res = await app.request("/fleet/bots/test-uuid/stop", { method: "POST", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/stop`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
     });
   });
@@ -337,7 +342,7 @@ describe("fleet routes", () => {
     it("restarts a bot", async () => {
       fleetMock.restart.mockResolvedValue(undefined);
 
-      const res = await app.request("/fleet/bots/test-uuid/restart", { method: "POST", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/restart`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
     });
   });
@@ -345,7 +350,7 @@ describe("fleet routes", () => {
   describe("POST /fleet/bots/:id/update", () => {
     it("triggers force update and returns result", async () => {
       updaterMock.updateBot.mockResolvedValue({
-        botId: "test-uuid",
+        botId: TEST_BOT_ID,
         success: true,
         previousImage: "ghcr.io/wopr-network/wopr:stable",
         newImage: "ghcr.io/wopr-network/wopr:stable",
@@ -354,16 +359,16 @@ describe("fleet routes", () => {
         rolledBack: false,
       });
 
-      const res = await app.request("/fleet/bots/test-uuid/update", { method: "POST", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/update`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
-      expect(updaterMock.updateBot).toHaveBeenCalledWith("test-uuid");
+      expect(updaterMock.updateBot).toHaveBeenCalledWith(TEST_BOT_ID);
     });
 
     it("returns 404 when bot not found", async () => {
       updaterMock.updateBot.mockResolvedValue({
-        botId: "missing",
+        botId: MISSING_BOT_ID,
         success: false,
         previousImage: "",
         newImage: "",
@@ -373,13 +378,13 @@ describe("fleet routes", () => {
         error: "Bot not found",
       });
 
-      const res = await app.request("/fleet/bots/missing/update", { method: "POST", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/update`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(404);
     });
 
     it("returns 500 on update failure", async () => {
       updaterMock.updateBot.mockResolvedValue({
-        botId: "test-uuid",
+        botId: TEST_BOT_ID,
         success: false,
         previousImage: "ghcr.io/wopr-network/wopr:stable",
         newImage: "ghcr.io/wopr-network/wopr:stable",
@@ -389,7 +394,7 @@ describe("fleet routes", () => {
         error: "Health check failed",
       });
 
-      const res = await app.request("/fleet/bots/test-uuid/update", { method: "POST", headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/update`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(500);
     });
   });
@@ -398,7 +403,7 @@ describe("fleet routes", () => {
     it("returns image status for tracked bot", async () => {
       fleetMock.profiles.get.mockResolvedValue(mockProfile);
       pollerMock.getImageStatus.mockReturnValue({
-        botId: "test-uuid",
+        botId: TEST_BOT_ID,
         currentDigest: "sha256:abc",
         availableDigest: "sha256:def",
         updateAvailable: true,
@@ -407,7 +412,7 @@ describe("fleet routes", () => {
         lastCheckedAt: "2026-01-01T00:00:00Z",
       });
 
-      const res = await app.request("/fleet/bots/test-uuid/image-status", { headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/image-status`, { headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.updateAvailable).toBe(true);
@@ -418,7 +423,7 @@ describe("fleet routes", () => {
     it("returns 404 when bot not found", async () => {
       fleetMock.profiles.get.mockResolvedValue(null);
 
-      const res = await app.request("/fleet/bots/missing/image-status", { headers: authHeader });
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/image-status`, { headers: authHeader });
       expect(res.status).toBe(404);
     });
   });
@@ -427,7 +432,7 @@ describe("fleet routes", () => {
     it("returns container logs", async () => {
       fleetMock.logs.mockResolvedValue("2026-01-01 log line");
 
-      const res = await app.request("/fleet/bots/test-uuid/logs", { headers: authHeader });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/logs`, { headers: authHeader });
       expect(res.status).toBe(200);
       const text = await res.text();
       expect(text).toContain("log line");
@@ -436,35 +441,35 @@ describe("fleet routes", () => {
     it("passes tail parameter", async () => {
       fleetMock.logs.mockResolvedValue("logs");
 
-      await app.request("/fleet/bots/test-uuid/logs?tail=50", { headers: authHeader });
-      expect(fleetMock.logs).toHaveBeenCalledWith("test-uuid", 50);
+      await app.request(`/fleet/bots/${TEST_BOT_ID}/logs?tail=50`, { headers: authHeader });
+      expect(fleetMock.logs).toHaveBeenCalledWith(TEST_BOT_ID, 50);
     });
 
     it("clamps tail to upper bound of 10000", async () => {
       fleetMock.logs.mockResolvedValue("logs");
 
-      await app.request("/fleet/bots/test-uuid/logs?tail=99999", { headers: authHeader });
-      expect(fleetMock.logs).toHaveBeenCalledWith("test-uuid", 10_000);
+      await app.request(`/fleet/bots/${TEST_BOT_ID}/logs?tail=99999`, { headers: authHeader });
+      expect(fleetMock.logs).toHaveBeenCalledWith(TEST_BOT_ID, 10_000);
     });
 
     it("defaults negative tail to 100", async () => {
       fleetMock.logs.mockResolvedValue("logs");
 
-      await app.request("/fleet/bots/test-uuid/logs?tail=-5", { headers: authHeader });
-      expect(fleetMock.logs).toHaveBeenCalledWith("test-uuid", 100);
+      await app.request(`/fleet/bots/${TEST_BOT_ID}/logs?tail=-5`, { headers: authHeader });
+      expect(fleetMock.logs).toHaveBeenCalledWith(TEST_BOT_ID, 100);
     });
 
     it("defaults tail=0 to 100", async () => {
       fleetMock.logs.mockResolvedValue("logs");
 
-      await app.request("/fleet/bots/test-uuid/logs?tail=0", { headers: authHeader });
-      expect(fleetMock.logs).toHaveBeenCalledWith("test-uuid", 100);
+      await app.request(`/fleet/bots/${TEST_BOT_ID}/logs?tail=0`, { headers: authHeader });
+      expect(fleetMock.logs).toHaveBeenCalledWith(TEST_BOT_ID, 100);
     });
 
     it("returns 404 for missing bot", async () => {
-      fleetMock.logs.mockRejectedValue(new MockBotNotFoundError("missing"));
+      fleetMock.logs.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
 
-      const res = await app.request("/fleet/bots/missing/logs", { headers: authHeader });
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/logs`, { headers: authHeader });
       expect(res.status).toBe(404);
     });
   });

@@ -26,8 +26,15 @@ const jsonAuth = { "Content-Type": "application/json", ...authHeader };
 const createdBots = new Map<string, BotProfile>();
 let botRunningState = new Map<string, boolean>();
 
+/** Counter-based deterministic UUID generator for tests. */
+let botCounter = 0;
+function nextBotUuid(): string {
+  botCounter++;
+  return `00000000-0000-4000-8000-${String(botCounter).padStart(12, "0")}`;
+}
+
 const mockProfile: BotProfile = {
-  id: "bot-deploy-1",
+  id: "00000000-0000-4000-8000-000000000001",
   name: "my-discord-bot",
   description: "E2E test bot",
   image: "ghcr.io/wopr-network/wopr:stable",
@@ -65,7 +72,7 @@ const fleetMock = {
   create: vi.fn().mockImplementation(async (data: { name: string; image: string }) => {
     const profile: BotProfile = {
       ...mockProfile,
-      id: `bot-${data.name}`,
+      id: nextBotUuid(),
       name: data.name,
       image: data.image,
     };
@@ -234,6 +241,7 @@ describe("E2E: Bot deployment flow", () => {
     vi.clearAllMocks();
     createdBots.clear();
     botRunningState = new Map();
+    botCounter = 0;
     app = buildApp();
   });
 
@@ -255,7 +263,7 @@ describe("E2E: Bot deployment flow", () => {
     expect(createRes.status).toBe(201);
     const created = await createRes.json();
     expect(created.name).toBe("my-discord-bot");
-    expect(created.id).toBe("bot-my-discord-bot");
+    expect(created.id).toMatch(/^[a-f0-9-]{36}$/);
     const botId = created.id;
 
     // Step 2: Verify the bot appears in the list (initially stopped)
@@ -309,6 +317,7 @@ describe("E2E: Bot management flow", () => {
     vi.clearAllMocks();
     createdBots.clear();
     botRunningState = new Map();
+    botCounter = 0;
     app = buildApp();
 
     // Pre-create a running bot for management tests
@@ -454,6 +463,7 @@ describe("E2E: Billing flow", () => {
     vi.clearAllMocks();
     createdBots.clear();
     botRunningState = new Map();
+    botCounter = 0;
 
     // Set up in-memory DB with schemas
     db = new BetterSqlite3(":memory:");
