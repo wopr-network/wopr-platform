@@ -34,6 +34,9 @@ imagePoller.onUpdateAvailable = async (botId: string) => {
   }
 };
 
+/** UUID v4 format (lowercase hex with dashes). */
+const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
 export const fleetRoutes = new Hono();
 
 // CRITICAL: Require bearer token authentication on all fleet routes
@@ -41,6 +44,22 @@ if (!FLEET_API_TOKEN) {
   logger.warn("FLEET_API_TOKEN is not set — fleet routes will reject all requests");
 }
 fleetRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
+
+/** Validate :id param as UUID on all /bots/:id routes. */
+fleetRoutes.use("/bots/:id/*", async (c, next) => {
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: "Invalid bot ID" }, 400);
+  }
+  return next();
+});
+fleetRoutes.use("/bots/:id", async (c, next) => {
+  const id = c.req.param("id");
+  if (!UUID_RE.test(id)) {
+    return c.json({ error: "Invalid bot ID" }, 400);
+  }
+  return next();
+});
 
 /** GET /fleet/bots — List all bots with live status */
 fleetRoutes.get("/bots", async (c) => {
