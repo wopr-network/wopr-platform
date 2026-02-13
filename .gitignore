@@ -4,5 +4,6 @@ dist/
 *.tsbuildinfo
 .cache/
 coverage/
+test-results/
 .env
 .env.local
