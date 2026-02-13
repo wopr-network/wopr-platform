@@ -6,6 +6,7 @@
  * - Bearer token verification
  * - `requireAuth` middleware for Hono routes
  * - `requireRole` middleware for role-based access control
+ * - `scopedBearerAuth` middleware for operation-scoped API tokens
  */
 
 import { randomUUID } from "node:crypto";
@@ -222,6 +223,134 @@ export function requireRole(role: string) {
 
     if (!user.roles.includes(role)) {
       return c.json({ error: "Insufficient permissions", required: role }, 403);
+    }
+
+    return next();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Scoped API Tokens
+// ---------------------------------------------------------------------------
+
+/** Operation scopes ordered by privilege level. */
+export type TokenScope = "read" | "write" | "admin";
+
+/** Privilege hierarchy: admin > write > read. */
+const SCOPE_LEVEL: Record<TokenScope, number> = {
+  read: 0,
+  write: 1,
+  admin: 2,
+};
+
+const VALID_SCOPES = new Set<string>(["read", "write", "admin"]);
+
+/**
+ * Parse a token's scope from the `wopr_<scope>_<random>` format.
+ *
+ * - `wopr_read_abc123`  -> `"read"`
+ * - `wopr_write_abc123` -> `"write"`
+ * - `wopr_admin_abc123` -> `"admin"`
+ * - Any other format    -> `null` (not a scoped token)
+ */
+export function parseTokenScope(token: string): TokenScope | null {
+  if (!token.startsWith("wopr_")) return null;
+  const parts = token.split("_");
+  // Must be at least 3 parts: "wopr", scope, random
+  if (parts.length < 3) return null;
+  const scope = parts[1];
+  if (!VALID_SCOPES.has(scope)) return null;
+  // The random portion (everything after wopr_<scope>_) must be non-empty
+  const random = parts.slice(2).join("_");
+  if (!random) return null;
+  return scope as TokenScope;
+}
+
+/**
+ * Check whether a token's scope satisfies the required minimum scope.
+ * admin >= write >= read.
+ */
+export function scopeSatisfies(tokenScope: TokenScope, requiredScope: TokenScope): boolean {
+  return SCOPE_LEVEL[tokenScope] >= SCOPE_LEVEL[requiredScope];
+}
+
+export interface ScopedTokenConfig {
+  /**
+   * Map of token string -> its scope.
+   * Tokens can be in `wopr_<scope>_<random>` format (scope parsed automatically)
+   * or plain strings mapped explicitly.
+   */
+  tokens: Map<string, TokenScope>;
+}
+
+/**
+ * Build a token-to-scope map from environment variables.
+ *
+ * Accepts:
+ * - `FLEET_API_TOKEN` (legacy single token, treated as admin)
+ * - `FLEET_API_TOKEN_READ` (read-scoped token)
+ * - `FLEET_API_TOKEN_WRITE` (write-scoped token)
+ * - `FLEET_API_TOKEN_ADMIN` (admin-scoped token)
+ * - Any `wopr_<scope>_<random>` formatted token has its scope inferred.
+ */
+export function buildTokenMap(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): Map<string, TokenScope> {
+  const tokens = new Map<string, TokenScope>();
+
+  // Scoped env vars
+  const scopedVars: [string, TokenScope][] = [
+    ["FLEET_API_TOKEN_READ", "read"],
+    ["FLEET_API_TOKEN_WRITE", "write"],
+    ["FLEET_API_TOKEN_ADMIN", "admin"],
+  ];
+
+  for (const [envVar, scope] of scopedVars) {
+    const val = env[envVar];
+    if (val) tokens.set(val, scope);
+  }
+
+  // Legacy single token -- admin scope for backwards compatibility
+  const legacyToken = env.FLEET_API_TOKEN;
+  if (legacyToken && !tokens.has(legacyToken)) {
+    // If the token is in wopr_ format, parse its actual scope
+    const parsed = parseTokenScope(legacyToken);
+    tokens.set(legacyToken, parsed ?? "admin");
+  }
+
+  return tokens;
+}
+
+/**
+ * Create a scoped bearer auth middleware.
+ *
+ * Validates the bearer token against the token map and checks that the
+ * token's scope satisfies the required minimum scope for the route.
+ *
+ * @param tokenMap - Map of token -> scope (use `buildTokenMap()` to create)
+ * @param requiredScope - Minimum scope required for this route/group
+ */
+export function scopedBearerAuth(tokenMap: Map<string, TokenScope>, requiredScope: TokenScope) {
+  return async (c: Context, next: Next) => {
+    const authHeader = c.req.header("Authorization");
+    const token = extractBearerToken(authHeader);
+
+    if (!token) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    // Look up the token in the map
+    let scope = tokenMap.get(token);
+
+    // If not in map, try to parse scope from token format for dynamic tokens
+    if (scope === undefined) {
+      return c.json({ error: "Invalid or expired token" }, 401);
+    }
+
+    // Check scope hierarchy
+    if (!scopeSatisfies(scope, requiredScope)) {
+      return c.json(
+        { error: "Insufficient scope", required: requiredScope, provided: scope },
+        403,
+      );
     }
 
     return next();

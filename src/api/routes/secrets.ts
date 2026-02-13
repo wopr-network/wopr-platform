@@ -1,12 +1,11 @@
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
+import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { decrypt, deriveInstanceKey } from "../../security/encryption.js";
 import { forwardSecretsToInstance, writeEncryptedSeed } from "../../security/key-injection.js";
 import { validateProviderKey } from "../../security/key-validation.js";
 import { validateKeyRequestSchema, writeSecretsRequestSchema } from "../../security/types.js";
 
-const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;
 const INSTANCE_DATA_DIR = process.env.INSTANCE_DATA_DIR || "/data/instances";
 
@@ -19,11 +18,12 @@ function isValidInstanceId(id: string): boolean {
 
 export const secretsRoutes = new Hono();
 
-// Require bearer token for all secrets endpoints
-if (!FLEET_API_TOKEN) {
-  logger.warn("FLEET_API_TOKEN is not set — secrets routes will reject all requests");
+// Secrets management requires write scope
+const tokenMap = buildTokenMap();
+if (tokenMap.size === 0) {
+  logger.warn("No API tokens configured — secrets routes will reject all requests");
 }
-secretsRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
+secretsRoutes.use("/*", scopedBearerAuth(tokenMap, "write"));
 
 /**
  * PUT /instances/:id/config/secrets

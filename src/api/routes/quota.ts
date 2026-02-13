@@ -1,13 +1,13 @@
 import Database from "better-sqlite3";
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
+import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { buildQuotaUsage, checkInstanceQuota } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
 import { TierStore } from "../../monetization/quotas/tier-definitions.js";
 
 const DB_PATH = process.env.QUOTA_DB_PATH || "/data/platform/quotas.db";
-const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
+const quotaTokenMap = buildTokenMap();
 
 /**
  * Create the quota database and tier store.
@@ -23,11 +23,11 @@ export function createTierStore(db?: Database.Database): TierStore {
 
 export const quotaRoutes = new Hono();
 
-// Auth — same token as fleet for now
-if (!FLEET_API_TOKEN) {
-  logger.warn("FLEET_API_TOKEN is not set — quota routes will reject all requests");
+// Quota viewing = admin scope (billing/quota management is an admin operation)
+if (quotaTokenMap.size === 0) {
+  logger.warn("No API tokens configured — quota routes will reject all requests");
 }
-quotaRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
+quotaRoutes.use("/*", scopedBearerAuth(quotaTokenMap, "admin"));
 
 let tierStore: TierStore | null = null;
 
