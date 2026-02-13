@@ -1,0 +1,133 @@
+name: PR Preview Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  FLY_APP: wopr-platform-pr-${{ github.event.pull_request.number }}
+
+jobs:
+  deploy-preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Create Fly app if it does not exist
+        run: |
+          if ! flyctl apps list --json | jq -e --arg name "$FLY_APP" '.[] | select(.Name == $name)' > /dev/null 2>&1; then
+            flyctl apps create "$FLY_APP" --org "$FLY_ORG"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_ORG: ${{ vars.FLY_ORG || 'personal' }}
+
+      - name: Set preview secrets
+        run: |
+          flyctl secrets set \
+            STRIPE_SECRET_KEY="${{ secrets.STRIPE_SECRET_KEY }}" \
+            STRIPE_WEBHOOK_SECRET="${{ secrets.STRIPE_WEBHOOK_SECRET }}" \
+            --app "$FLY_APP"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy preview
+        run: |
+          flyctl deploy \
+            --config fly.preview.toml \
+            --app "$FLY_APP" \
+            --remote-only \
+            --strategy immediate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Wait for healthy deployment
+        run: |
+          HEALTHY=false
+          for i in $(seq 1 30); do
+            STATUS=$(flyctl status --app "$FLY_APP" --json 2>/dev/null | jq -r '.Machines[0].state // empty' || true)
+            if [ "$STATUS" = "started" ] || [ "$STATUS" = "running" ]; then
+              echo "Preview is running"
+              HEALTHY=true
+              break
+            fi
+            echo "Waiting for preview to start... ($i/30)"
+            sleep 5
+          done
+          flyctl status --app "$FLY_APP"
+          if [ "$HEALTHY" != "true" ]; then
+            echo "::error::Health check timed out — preview never became healthy"
+            exit 1
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = [
+              '## Preview Environment',
+              '',
+              `**URL:** https://${process.env.FLY_APP}.fly.dev`,
+              '',
+              `Deployed from commit \`${context.sha.slice(0, 7)}\``,
+              '',
+              '_This preview will be destroyed when the PR is closed or after 24h of inactivity._',
+            ].join('\n');
+
+            // Find existing preview comment to update
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('## Preview Environment')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+
+  destroy-preview:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    environment: preview
+    permissions: {}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Destroy preview app
+        run: |
+          if flyctl apps list --json | jq -e --arg name "$FLY_APP" '.[] | select(.Name == $name)' > /dev/null 2>&1; then
+            flyctl apps destroy "$FLY_APP" --yes
+            echo "Destroyed preview app: $FLY_APP"
+          else
+            echo "Preview app $FLY_APP does not exist, skipping"
+          fi
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

@@ -1,0 +1,57 @@
+name: Preview Cleanup
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Destroy stale preview apps
+        run: |
+          echo "Checking for stale preview apps..."
+          CUTOFF=$(date -u -d '24 hours ago' +%s 2>/dev/null || date -u -v-24H +%s)
+
+          flyctl apps list --json | \
+            jq -r '.[] | select(.Name | startswith("wopr-platform-pr-")) | "\(.Name)\t\(.CreatedAt // "")"' | \
+            while IFS=$'\t' read -r APP CREATED_AT; do
+              # Get the app's last activity timestamp
+              UPDATED=$(flyctl status --app "$APP" --json 2>/dev/null | \
+                jq -r '.Machines[0].updated_at // empty' 2>/dev/null || true)
+
+              if [ -z "$UPDATED" ]; then
+                # No machine data — only destroy if app is older than 1 hour
+                # to avoid racing with apps that are still being deployed
+                if [ -n "$CREATED_AT" ]; then
+                  CREATED_TS=$(date -u -d "$CREATED_AT" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$CREATED_AT" +%s 2>/dev/null || echo 0)
+                  AGE_CUTOFF=$(date -u -d '1 hour ago' +%s 2>/dev/null || date -u -v-1H +%s)
+                  if [ "$CREATED_TS" -gt "$AGE_CUTOFF" ]; then
+                    echo "No machine data for $APP but created recently — skipping (may still be deploying)"
+                    continue
+                  fi
+                fi
+                echo "No machine data for $APP and older than 1h — destroying"
+                flyctl apps destroy "$APP" --yes
+                continue
+              fi
+
+              UPDATED_TS=$(date -u -d "$UPDATED" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$UPDATED" +%s 2>/dev/null || echo 0)
+
+              if [ "$UPDATED_TS" -lt "$CUTOFF" ]; then
+                echo "Stale preview: $APP (last updated: $UPDATED) — destroying"
+                flyctl apps destroy "$APP" --yes
+              else
+                echo "Active preview: $APP (last updated: $UPDATED) — keeping"
+              fi
+            done
+
+          echo "Cleanup complete"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
