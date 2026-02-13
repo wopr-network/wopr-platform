@@ -19,6 +19,8 @@ const mockProfile: BotProfile = {
   image: "ghcr.io/wopr-network/wopr:stable",
   env: { TOKEN: "abc" },
   restartPolicy: "unless-stopped",
+  releaseChannel: "stable",
+  updatePolicy: "manual",
 };
 
 const mockStatus: BotStatus = {
@@ -53,6 +55,18 @@ const fleetMock = {
   listAll: vi.fn(),
   logs: vi.fn(),
   update: vi.fn(),
+  profiles: {
+    get: vi.fn(),
+  },
+};
+
+const updaterMock = {
+  updateBot: vi.fn(),
+};
+
+const pollerMock = {
+  getImageStatus: vi.fn(),
+  onUpdateAvailable: null as ((botId: string, digest: string) => Promise<void>) | null,
 };
 
 // Mock the modules before importing fleet routes
@@ -76,8 +90,26 @@ vi.mock("../../fleet/fleet-manager.js", () => {
       listAll = fleetMock.listAll;
       logs = fleetMock.logs;
       update = fleetMock.update;
+      profiles = fleetMock.profiles;
     },
     BotNotFoundError: MockBotNotFoundError,
+  };
+});
+
+vi.mock("../../fleet/image-poller.js", () => {
+  return {
+    ImagePoller: class {
+      getImageStatus = pollerMock.getImageStatus;
+      onUpdateAvailable = pollerMock.onUpdateAvailable;
+    },
+  };
+});
+
+vi.mock("../../fleet/updater.js", () => {
+  return {
+    ContainerUpdater: class {
+      updateBot = updaterMock.updateBot;
+    },
   };
 });
 
@@ -307,6 +339,87 @@ describe("fleet routes", () => {
 
       const res = await app.request("/fleet/bots/test-uuid/restart", { method: "POST", headers: authHeader });
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe("POST /fleet/bots/:id/update", () => {
+    it("triggers force update and returns result", async () => {
+      updaterMock.updateBot.mockResolvedValue({
+        botId: "test-uuid",
+        success: true,
+        previousImage: "ghcr.io/wopr-network/wopr:stable",
+        newImage: "ghcr.io/wopr-network/wopr:stable",
+        previousDigest: "sha256:old",
+        newDigest: "sha256:new",
+        rolledBack: false,
+      });
+
+      const res = await app.request("/fleet/bots/test-uuid/update", { method: "POST", headers: authHeader });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(updaterMock.updateBot).toHaveBeenCalledWith("test-uuid");
+    });
+
+    it("returns 404 when bot not found", async () => {
+      updaterMock.updateBot.mockResolvedValue({
+        botId: "missing",
+        success: false,
+        previousImage: "",
+        newImage: "",
+        previousDigest: null,
+        newDigest: null,
+        rolledBack: false,
+        error: "Bot not found",
+      });
+
+      const res = await app.request("/fleet/bots/missing/update", { method: "POST", headers: authHeader });
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 500 on update failure", async () => {
+      updaterMock.updateBot.mockResolvedValue({
+        botId: "test-uuid",
+        success: false,
+        previousImage: "ghcr.io/wopr-network/wopr:stable",
+        newImage: "ghcr.io/wopr-network/wopr:stable",
+        previousDigest: null,
+        newDigest: null,
+        rolledBack: true,
+        error: "Health check failed",
+      });
+
+      const res = await app.request("/fleet/bots/test-uuid/update", { method: "POST", headers: authHeader });
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("GET /fleet/bots/:id/image-status", () => {
+    it("returns image status for tracked bot", async () => {
+      fleetMock.profiles.get.mockResolvedValue(mockProfile);
+      pollerMock.getImageStatus.mockReturnValue({
+        botId: "test-uuid",
+        currentDigest: "sha256:abc",
+        availableDigest: "sha256:def",
+        updateAvailable: true,
+        releaseChannel: "stable",
+        updatePolicy: "manual",
+        lastCheckedAt: "2026-01-01T00:00:00Z",
+      });
+
+      const res = await app.request("/fleet/bots/test-uuid/image-status", { headers: authHeader });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.updateAvailable).toBe(true);
+      expect(body.currentDigest).toBe("sha256:abc");
+      expect(body.availableDigest).toBe("sha256:def");
+    });
+
+    it("returns 404 when bot not found", async () => {
+      fleetMock.profiles.get.mockResolvedValue(null);
+
+      const res = await app.request("/fleet/bots/missing/image-status", { headers: authHeader });
+      expect(res.status).toBe(404);
     });
   });
 

@@ -65,6 +65,8 @@ const PROFILE_PARAMS = {
   image: "ghcr.io/wopr-network/wopr:stable",
   env: { TOKEN: "abc123" },
   restartPolicy: "unless-stopped" as const,
+  releaseChannel: "stable" as const,
+  updatePolicy: "manual" as const,
 };
 
 describe("FleetManager", () => {
