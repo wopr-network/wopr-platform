@@ -7,8 +7,8 @@ import { ImagePoller } from "../../fleet/image-poller.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
-import { ContainerUpdater } from "../../fleet/updater.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
+import { ContainerUpdater } from "../../fleet/updater.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;

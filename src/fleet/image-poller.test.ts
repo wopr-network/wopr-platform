@@ -1,10 +1,10 @@
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ImagePoller, getContainerDigest, parseImageRef } from "./image-poller.js";
+import { FleetManager } from "./fleet-manager.js";
+import { getContainerDigest, ImagePoller, parseImageRef } from "./image-poller.js";
 import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile } from "./types.js";
 import { ContainerUpdater } from "./updater.js";
-import { FleetManager } from "./fleet-manager.js";
 
 // --- Mock helpers ---
 
@@ -160,11 +160,18 @@ describe("ImagePoller", () => {
     });
 
     it("tracks canary bots", () => {
-      const canaryProfile = makeProfile({ id: "canary-bot", releaseChannel: "canary", image: "ghcr.io/wopr-network/wopr:latest" });
+      const canaryProfile = makeProfile({
+        id: "canary-bot",
+        releaseChannel: "canary",
+        image: "ghcr.io/wopr-network/wopr:latest",
+      });
       // Mock the fetch calls that checkBot will make
-      vi.stubGlobal("fetch", vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
-        .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new123" }) }),
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new123" }) }),
       );
       poller.trackBot(canaryProfile);
       // The bot should be tracked (timer created)
@@ -177,9 +184,12 @@ describe("ImagePoller", () => {
   describe("untrackBot", () => {
     it("removes a bot from tracking", () => {
       const profile = makeProfile();
-      vi.stubGlobal("fetch", vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
-        .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new123" }) }),
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new123" }) }),
       );
       poller.trackBot(profile);
       poller.untrackBot(profile.id);
@@ -211,9 +221,12 @@ describe("ImagePoller", () => {
     it("detects when update is available", async () => {
       const profile = makeProfile();
 
-      vi.stubGlobal("fetch", vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
-        .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
       );
 
       // Mock container inspect returns sha256:abc123 (different from sha256:new999)
@@ -235,9 +248,12 @@ describe("ImagePoller", () => {
     it("detects when no update is available", async () => {
       const profile = makeProfile();
 
-      vi.stubGlobal("fetch", vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
-        .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:abc123" }) }),
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:abc123" }) }),
       );
 
       // Make container inspect return same digest
@@ -258,9 +274,12 @@ describe("ImagePoller", () => {
       const onUpdate = vi.fn().mockResolvedValue(undefined);
       poller.onUpdateAvailable = onUpdate;
 
-      vi.stubGlobal("fetch", vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
-        .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
       );
 
       // Re-create store with the on-push profile
@@ -281,9 +300,12 @@ describe("ImagePoller", () => {
       const onUpdate = vi.fn().mockResolvedValue(undefined);
       poller.onUpdateAvailable = onUpdate;
 
-      vi.stubGlobal("fetch", vi.fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
-        .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
       );
 
       poller.trackBot(profile);
@@ -299,8 +321,9 @@ describe("ImagePoller", () => {
     it("handles GHCR fetch errors gracefully", async () => {
       const profile = makeProfile();
 
-      vi.stubGlobal("fetch", vi.fn()
-        .mockResolvedValueOnce({ ok: false, status: 500, statusText: "Internal Server Error" }),
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValueOnce({ ok: false, status: 500, statusText: "Internal Server Error" }),
       );
 
       poller.trackBot(profile);
@@ -387,6 +410,43 @@ describe("ContainerUpdater", () => {
     expect(result.success).toBe(true);
     expect(result.rolledBack).toBe(false);
     expect(docker.pull).toHaveBeenCalled();
+  });
+
+  it("rejects concurrent updates to the same bot", async () => {
+    // Make the first update take a while by making pull hang
+    let resolvePull: ((err: Error | null) => void) | null = null;
+    docker.modem.followProgress.mockImplementationOnce((_stream: unknown, cb: (err: Error | null) => void) => {
+      resolvePull = cb;
+    });
+
+    docker.listContainers
+      .mockResolvedValueOnce([{ Id: "container-123" }]) // first update: getContainerDigest
+      .mockResolvedValueOnce([{ Id: "container-123" }]) // first update: step 2
+      .mockResolvedValueOnce([{ Id: "container-123" }]) // fleet.update
+      .mockResolvedValueOnce([{ Id: "container-123" }]) // fleet.start
+      .mockResolvedValueOnce([{ Id: "container-123" }]) // waitForHealthy
+      .mockResolvedValueOnce([{ Id: "container-123" }]); // get new digest
+
+    docker.getContainer.mockReturnValue(container);
+
+    // Start first update (will block on pull)
+    const first = updater.updateBot("bot-1");
+
+    // Wait for the pull to be called so the lock is held
+    await vi.waitFor(() => {
+      expect(resolvePull).not.toBeNull();
+    });
+
+    // Second call should fail immediately with lock error
+    const second = await updater.updateBot("bot-1");
+    expect(second.success).toBe(false);
+    expect(second.error).toBe("Update already in progress");
+
+    // Unblock first update and let it complete
+    // biome-ignore lint/style/noNonNullAssertion: guaranteed by waitFor above
+    resolvePull!(null);
+    const firstResult = await first;
+    expect(firstResult.success).toBe(true);
   });
 
   it("rolls back when health check returns unhealthy", async () => {

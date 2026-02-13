@@ -105,7 +105,9 @@ export function parseImageRef(image: string): ImageRef {
 }
 
 /**
- * Gets the current running image digest for a bot's container.
+ * Gets the current running image's manifest digest for a bot's container.
+ * Uses RepoDigests which contains the manifest digest (matching the registry's
+ * docker-content-digest header), not the config digest from container.Image.
  */
 export async function getContainerDigest(docker: Docker, botId: string): Promise<string | null> {
   const containers = await docker.listContainers({
@@ -118,13 +120,9 @@ export async function getContainerDigest(docker: Docker, botId: string): Promise
   const container = docker.getContainer(containers[0].Id);
   const info = await container.inspect();
 
-  // Docker stores the image digest in the Image field as sha256:...
-  // or in RepoDigests
-  if (info.Image && info.Image.startsWith("sha256:")) {
-    return info.Image;
-  }
-
-  // Try RepoDigests
+  // Always use RepoDigests for the manifest digest — this matches the
+  // docker-content-digest header returned by fetchRemoteDigest().
+  // container.Image is the config digest which is a different hash.
   const imageInfo = await docker.getImage(info.Image).inspect();
   if (imageInfo.RepoDigests && imageInfo.RepoDigests.length > 0) {
     const digest = imageInfo.RepoDigests[0];
@@ -272,7 +270,11 @@ export class ImagePoller {
       botId,
       currentDigest: tracking?.currentDigest ?? null,
       availableDigest: tracking?.availableDigest ?? null,
-      updateAvailable: tracking != null && tracking.currentDigest != null && tracking.availableDigest != null && tracking.currentDigest !== tracking.availableDigest,
+      updateAvailable:
+        tracking != null &&
+        tracking.currentDigest != null &&
+        tracking.availableDigest != null &&
+        tracking.currentDigest !== tracking.availableDigest,
       releaseChannel: profile.releaseChannel,
       updatePolicy: profile.updatePolicy,
       lastCheckedAt: tracking?.lastCheckedAt ?? null,

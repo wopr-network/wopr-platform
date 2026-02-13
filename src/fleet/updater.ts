@@ -29,6 +29,8 @@ export class ContainerUpdater {
   private readonly docker: Docker;
   private readonly store: ProfileStore;
   private readonly fleet: FleetManager;
+  /** Per-bot lock to prevent concurrent updates to the same bot. */
+  private readonly updating = new Set<string>();
 
   constructor(docker: Docker, store: ProfileStore, fleet: FleetManager, _poller: ImagePoller) {
     this.docker = docker;
@@ -41,6 +43,28 @@ export class ContainerUpdater {
    * Rolls back if the new container fails health checks within 60s.
    */
   async updateBot(botId: string): Promise<UpdateResult> {
+    if (this.updating.has(botId)) {
+      return {
+        botId,
+        success: false,
+        previousImage: "",
+        newImage: "",
+        previousDigest: null,
+        newDigest: null,
+        rolledBack: false,
+        error: "Update already in progress",
+      };
+    }
+
+    this.updating.add(botId);
+    try {
+      return await this.doUpdateBot(botId);
+    } finally {
+      this.updating.delete(botId);
+    }
+  }
+
+  private async doUpdateBot(botId: string): Promise<UpdateResult> {
     const profile = await this.store.get(botId);
     if (!profile) {
       return {
@@ -190,7 +214,10 @@ export class ContainerUpdater {
 
           if (info.State.Running) {
             // If no healthcheck configured, running is enough
-            if (!info.State.Health) return true;
+            if (!info.State.Health) {
+              logger.warn(`Container for bot ${botId} has no HEALTHCHECK configured, assuming healthy`);
+              return true;
+            }
             if (info.State.Health.Status === "healthy") return true;
             if (info.State.Health.Status === "unhealthy") return false;
             // "starting" — keep waiting
@@ -214,8 +241,8 @@ export class ContainerUpdater {
 
     try {
       await this.fleet.update(botId, { image: previousImage });
-      await this.fleet.start(botId).catch(() => {
-        // May already be running or not exist
+      await this.fleet.start(botId).catch((err) => {
+        logger.warn(`Failed to start bot ${botId} during rollback (may already be running)`, { err });
       });
 
       return {
