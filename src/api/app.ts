@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 import { billingRoutes } from "./routes/billing.js";
 import { fleetRoutes } from "./routes/fleet.js";
 import { friendsRoutes } from "./routes/friends.js";
@@ -19,6 +20,7 @@ app.use(
     allowHeaders: ["Content-Type", "Authorization"],
   }),
 );
+app.use("/*", secureHeaders());
 
 app.route("/health", healthRoutes);
 app.route("/fleet", fleetRoutes);
