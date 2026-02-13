@@ -1,9 +1,68 @@
+import { isIP } from "node:net";
 import { logger } from "../config/logger.js";
 import type { CaddyConfigOptions } from "./caddy-config.js";
 import { generateCaddyConfig } from "./caddy-config.js";
 import type { ProxyManagerInterface, ProxyRoute } from "./types.js";
 
 const DEFAULT_CADDY_ADMIN_URL = "http://localhost:2019";
+
+/** Regex for valid DNS subdomain labels (RFC 1123). */
+const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * Returns true if the given IPv4 address string belongs to a private/reserved range.
+ */
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4) return false;
+  const [a, b] = parts;
+  return (
+    a === 127 || // 127.0.0.0/8  loopback
+    a === 10 || // 10.0.0.0/8   private
+    (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12 private
+    (a === 192 && b === 168) || // 192.168.0.0/16 private
+    (a === 169 && b === 254) || // 169.254.0.0/16 link-local
+    a === 0 // 0.0.0.0/8
+  );
+}
+
+/**
+ * Returns true if the given IPv6 address string belongs to a private/reserved range.
+ */
+function isPrivateIPv6(ip: string): boolean {
+  const normalized = ip.toLowerCase();
+  return (
+    normalized === "::1" || // loopback
+    normalized.startsWith("fe80") || // link-local
+    normalized.startsWith("fc") || // unique local
+    normalized.startsWith("fd") || // unique local
+    normalized === "::" // unspecified
+  );
+}
+
+/**
+ * Validate that an upstream host is not a private/internal IP address.
+ * Throws if the host resolves to or is a private IP.
+ */
+function validateUpstreamHost(host: string): void {
+  const ipVersion = isIP(host);
+  if (ipVersion === 4) {
+    if (isPrivateIPv4(host)) {
+      throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+    }
+    return;
+  }
+  if (ipVersion === 6) {
+    if (isPrivateIPv6(host)) {
+      throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+    }
+    return;
+  }
+  // It's a hostname — we cannot resolve DNS synchronously, but reject obviously dangerous names
+  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
+    throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+  }
+}
 
 export interface ProxyManagerOptions extends CaddyConfigOptions {
   /** Caddy admin API URL (default: "http://localhost:2019") */
@@ -26,6 +85,10 @@ export class ProxyManager implements ProxyManagerInterface {
   }
 
   addRoute(route: ProxyRoute): void {
+    if (!SUBDOMAIN_RE.test(route.subdomain)) {
+      throw new Error(`Invalid subdomain "${route.subdomain}": must match /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/`);
+    }
+    validateUpstreamHost(route.upstreamHost);
     this.routes.set(route.instanceId, route);
     logger.info(`Added proxy route for instance ${route.instanceId} -> ${route.upstreamHost}:${route.upstreamPort}`);
   }
@@ -56,7 +119,12 @@ export class ProxyManager implements ProxyManagerInterface {
   async start(): Promise<void> {
     this.running = true;
     logger.info("Proxy manager started");
-    await this.reload();
+    try {
+      await this.reload();
+    } catch (err) {
+      await this.stop();
+      throw err;
+    }
   }
 
   async stop(): Promise<void> {

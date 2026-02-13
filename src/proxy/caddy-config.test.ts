@@ -5,7 +5,7 @@ import type { ProxyRoute } from "./types.js";
 function makeRoute(overrides: Partial<ProxyRoute> = {}): ProxyRoute {
   return {
     instanceId: "inst-1",
-    upstreamHost: "172.17.0.2",
+    upstreamHost: "203.0.113.2",
     upstreamPort: 7437,
     subdomain: "inst-1",
     healthy: true,
@@ -30,11 +30,11 @@ describe("generateCaddyConfig", () => {
 
     // Subdomain route
     expect(routes[0].match).toEqual([{ host: ["inst-1.wopr.network"] }]);
-    expect(routes[0].handle).toEqual([{ handler: "reverse_proxy", upstreams: [{ dial: "172.17.0.2:7437" }] }]);
+    expect(routes[0].handle).toEqual([{ handler: "reverse_proxy", upstreams: [{ dial: "203.0.113.2:7437" }] }]);
 
     // Path route
     expect(routes[1].match).toEqual([{ path: ["/instance/inst-1/*"] }]);
-    expect(routes[1].handle).toEqual([{ handler: "reverse_proxy", upstreams: [{ dial: "172.17.0.2:7437" }] }]);
+    expect(routes[1].handle).toEqual([{ handler: "reverse_proxy", upstreams: [{ dial: "203.0.113.2:7437" }] }]);
   });
 
   it("generates 503 responses for unhealthy instances", () => {
@@ -55,9 +55,9 @@ describe("generateCaddyConfig", () => {
 
   it("handles multiple routes", () => {
     const routes = [
-      makeRoute({ instanceId: "a", subdomain: "a", upstreamHost: "10.0.0.1" }),
-      makeRoute({ instanceId: "b", subdomain: "b", upstreamHost: "10.0.0.2" }),
-      makeRoute({ instanceId: "c", subdomain: "c", upstreamHost: "10.0.0.3", healthy: false }),
+      makeRoute({ instanceId: "a", subdomain: "a", upstreamHost: "203.0.113.1" }),
+      makeRoute({ instanceId: "b", subdomain: "b", upstreamHost: "203.0.113.2" }),
+      makeRoute({ instanceId: "c", subdomain: "c", upstreamHost: "203.0.113.3", healthy: false }),
     ];
 
     const config = generateCaddyConfig(routes);
@@ -103,7 +103,7 @@ describe("generateCaddyConfig", () => {
   });
 
   it("uses correct upstream dial format", () => {
-    const route = makeRoute({ upstreamHost: "192.168.1.100", upstreamPort: 9000 });
+    const route = makeRoute({ upstreamHost: "198.51.100.50", upstreamPort: 9000 });
     const config = generateCaddyConfig([route]);
     const caddyRoutes = config.apps.http.servers.proxy.routes;
 
@@ -111,7 +111,7 @@ describe("generateCaddyConfig", () => {
     expect(handler).toEqual(
       expect.objectContaining({
         handler: "reverse_proxy",
-        upstreams: [{ dial: "192.168.1.100:9000" }],
+        upstreams: [{ dial: "198.51.100.50:9000" }],
       }),
     );
   });

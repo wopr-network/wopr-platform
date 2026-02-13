@@ -5,7 +5,7 @@ import type { ProxyRoute } from "./types.js";
 function makeRoute(overrides: Partial<ProxyRoute> = {}): ProxyRoute {
   return {
     instanceId: "inst-1",
-    upstreamHost: "172.17.0.2",
+    upstreamHost: "203.0.113.2",
     upstreamPort: 7437,
     subdomain: "inst-1",
     healthy: true,
@@ -58,11 +58,11 @@ describe("ProxyManager", () => {
     });
 
     it("replaces route with same instanceId", () => {
-      manager.addRoute(makeRoute({ upstreamHost: "10.0.0.1" }));
-      manager.addRoute(makeRoute({ upstreamHost: "10.0.0.2" }));
+      manager.addRoute(makeRoute({ upstreamHost: "203.0.113.1" }));
+      manager.addRoute(makeRoute({ upstreamHost: "203.0.113.2" }));
 
       expect(manager.getRoutes()).toHaveLength(1);
-      expect(manager.getRoutes()[0].upstreamHost).toBe("10.0.0.2");
+      expect(manager.getRoutes()[0].upstreamHost).toBe("203.0.113.2");
     });
 
     it("manages multiple routes", () => {
@@ -128,13 +128,10 @@ describe("ProxyManager", () => {
     });
 
     it("throws on Caddy API failure", async () => {
-      vi.mocked(fetch).mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve("Internal Server Error"),
-      } as Response);
+      // Start successfully first
+      await manager.start();
 
-      await manager.start().catch(() => {});
+      // Now make fetch fail for the next reload
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
         status: 500,
@@ -142,6 +139,83 @@ describe("ProxyManager", () => {
       } as Response);
 
       await expect(manager.reload()).rejects.toThrow("Caddy reload failed (500)");
+    });
+  });
+
+  describe("SSRF upstream validation", () => {
+    it("rejects loopback IPv4 (127.0.0.1)", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "127.0.0.1" }))).toThrow("private IP");
+    });
+
+    it("rejects 10.x.x.x private range", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "10.0.0.5" }))).toThrow("private IP");
+    });
+
+    it("rejects 172.16.x.x private range", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "172.16.0.1" }))).toThrow("private IP");
+    });
+
+    it("rejects 192.168.x.x private range", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "192.168.1.1" }))).toThrow("private IP");
+    });
+
+    it("rejects cloud metadata IP (169.254.169.254)", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "169.254.169.254" }))).toThrow("private IP");
+    });
+
+    it("rejects IPv6 loopback (::1)", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "::1" }))).toThrow("private IP");
+    });
+
+    it("rejects localhost hostname", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "localhost" }))).toThrow("private IP");
+    });
+
+    it("accepts public IP addresses", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "203.0.113.50" }))).not.toThrow();
+    });
+
+    it("accepts external hostnames", () => {
+      expect(() => manager.addRoute(makeRoute({ upstreamHost: "example.com" }))).not.toThrow();
+    });
+  });
+
+  describe("subdomain validation", () => {
+    it("rejects subdomain with path traversal", () => {
+      expect(() => manager.addRoute(makeRoute({ subdomain: "../etc" }))).toThrow("Invalid subdomain");
+    });
+
+    it("rejects subdomain with slash", () => {
+      expect(() => manager.addRoute(makeRoute({ subdomain: "foo/bar" }))).toThrow("Invalid subdomain");
+    });
+
+    it("rejects subdomain starting with hyphen", () => {
+      expect(() => manager.addRoute(makeRoute({ subdomain: "-invalid" }))).toThrow("Invalid subdomain");
+    });
+
+    it("rejects subdomain with uppercase", () => {
+      expect(() => manager.addRoute(makeRoute({ subdomain: "UPPER" }))).toThrow("Invalid subdomain");
+    });
+
+    it("rejects empty subdomain", () => {
+      expect(() => manager.addRoute(makeRoute({ subdomain: "" }))).toThrow("Invalid subdomain");
+    });
+
+    it("accepts valid subdomain", () => {
+      expect(() => manager.addRoute(makeRoute({ subdomain: "my-app-1" }))).not.toThrow();
+    });
+
+    it("accepts single-char subdomain", () => {
+      expect(() => manager.addRoute(makeRoute({ subdomain: "a" }))).not.toThrow();
+    });
+  });
+
+  describe("start rollback on failure", () => {
+    it("calls stop() if reload fails during start()", async () => {
+      vi.mocked(fetch).mockRejectedValueOnce(new Error("connection refused"));
+
+      await expect(manager.start()).rejects.toThrow("connection refused");
+      expect(manager.isRunning).toBe(false);
     });
   });
 
