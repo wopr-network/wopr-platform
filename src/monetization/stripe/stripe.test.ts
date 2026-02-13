@@ -5,7 +5,9 @@ import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
 import type { MeterEvent } from "../metering/types.js";
 import { UsageAggregationWorker } from "../metering/usage-aggregation-worker.js";
+import { createCheckoutSession } from "./checkout.js";
 import { loadStripeConfig } from "./client.js";
+import { createPortalSession } from "./portal.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 import { StripeUsageReporter } from "./usage-reporter.js";
@@ -539,6 +541,167 @@ describe("handleWebhookEvent", () => {
 
     const result = handleWebhookEvent(tenantStore, event);
     expect(result.handled).toBe(true);
+  });
+});
+
+// -- createCheckoutSession --------------------------------------------------
+
+describe("createCheckoutSession", () => {
+  let db: BetterSqlite3.Database;
+  let tenantStore: TenantCustomerStore;
+
+  beforeEach(() => {
+    db = createTestDb();
+    tenantStore = new TenantCustomerStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  function createMockStripe(sessionsCreate: ReturnType<typeof vi.fn>) {
+    return {
+      checkout: { sessions: { create: sessionsCreate } },
+    } as unknown as Stripe;
+  }
+
+  it("creates a checkout session with correct params", async () => {
+    const mockSession = { id: "cs_test_123", url: "https://checkout.stripe.com/cs_test_123" };
+    const sessionsCreate = vi.fn().mockResolvedValue(mockSession);
+    const stripe = createMockStripe(sessionsCreate);
+
+    const result = await createCheckoutSession(stripe, tenantStore, {
+      tenant: "t-1",
+      priceId: "price_abc",
+      successUrl: "https://example.com/success",
+      cancelUrl: "https://example.com/cancel",
+    });
+
+    expect(result).toBe(mockSession);
+    expect(sessionsCreate).toHaveBeenCalledWith({
+      mode: "subscription",
+      line_items: [{ price: "price_abc" }],
+      success_url: "https://example.com/success",
+      cancel_url: "https://example.com/cancel",
+      client_reference_id: "t-1",
+      metadata: { wopr_tenant: "t-1" },
+    });
+  });
+
+  it("reuses existing Stripe customer when mapping exists", async () => {
+    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_existing" });
+
+    const sessionsCreate = vi.fn().mockResolvedValue({ id: "cs_test_456", url: "https://checkout.stripe.com/cs_test_456" });
+    const stripe = createMockStripe(sessionsCreate);
+
+    await createCheckoutSession(stripe, tenantStore, {
+      tenant: "t-1",
+      priceId: "price_abc",
+      successUrl: "https://example.com/success",
+      cancelUrl: "https://example.com/cancel",
+    });
+
+    expect(sessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ customer: "cus_existing" }),
+    );
+  });
+
+  it("does not set customer param for new tenants", async () => {
+    const sessionsCreate = vi.fn().mockResolvedValue({ id: "cs_test_789", url: "https://checkout.stripe.com/cs_test_789" });
+    const stripe = createMockStripe(sessionsCreate);
+
+    await createCheckoutSession(stripe, tenantStore, {
+      tenant: "t-new",
+      priceId: "price_abc",
+      successUrl: "https://example.com/success",
+      cancelUrl: "https://example.com/cancel",
+    });
+
+    const callArgs = sessionsCreate.mock.calls[0][0] as Record<string, unknown>;
+    expect(callArgs).not.toHaveProperty("customer");
+  });
+
+  it("propagates Stripe API errors", async () => {
+    const sessionsCreate = vi.fn().mockRejectedValue(new Error("Stripe API rate limited"));
+    const stripe = createMockStripe(sessionsCreate);
+
+    await expect(
+      createCheckoutSession(stripe, tenantStore, {
+        tenant: "t-1",
+        priceId: "price_abc",
+        successUrl: "https://example.com/success",
+        cancelUrl: "https://example.com/cancel",
+      }),
+    ).rejects.toThrow("Stripe API rate limited");
+  });
+});
+
+// -- createPortalSession ----------------------------------------------------
+
+describe("createPortalSession", () => {
+  let db: BetterSqlite3.Database;
+  let tenantStore: TenantCustomerStore;
+
+  beforeEach(() => {
+    db = createTestDb();
+    tenantStore = new TenantCustomerStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  function createMockStripe(portalCreate: ReturnType<typeof vi.fn>) {
+    return {
+      billingPortal: { sessions: { create: portalCreate } },
+    } as unknown as Stripe;
+  }
+
+  it("creates a portal session for existing customer", async () => {
+    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+    const mockSession = { url: "https://billing.stripe.com/session_xyz" };
+    const portalCreate = vi.fn().mockResolvedValue(mockSession);
+    const stripe = createMockStripe(portalCreate);
+
+    const result = await createPortalSession(stripe, tenantStore, {
+      tenant: "t-1",
+      returnUrl: "https://example.com/billing",
+    });
+
+    expect(result).toBe(mockSession);
+    expect(portalCreate).toHaveBeenCalledWith({
+      customer: "cus_abc123",
+      return_url: "https://example.com/billing",
+    });
+  });
+
+  it("throws when tenant has no Stripe customer", async () => {
+    const portalCreate = vi.fn();
+    const stripe = createMockStripe(portalCreate);
+
+    await expect(
+      createPortalSession(stripe, tenantStore, {
+        tenant: "t-unknown",
+        returnUrl: "https://example.com/billing",
+      }),
+    ).rejects.toThrow("No Stripe customer found for tenant: t-unknown");
+
+    expect(portalCreate).not.toHaveBeenCalled();
+  });
+
+  it("propagates Stripe API errors", async () => {
+    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+    const portalCreate = vi.fn().mockRejectedValue(new Error("Portal config not found"));
+    const stripe = createMockStripe(portalCreate);
+
+    await expect(
+      createPortalSession(stripe, tenantStore, {
+        tenant: "t-1",
+        returnUrl: "https://example.com/billing",
+      }),
+    ).rejects.toThrow("Portal config not found");
   });
 });
 
