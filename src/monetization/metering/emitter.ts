@@ -68,8 +68,9 @@ export class MeterEmitter {
     try {
       this.flushTransaction(batch);
     } catch {
-      // Fire-and-forget: swallow errors so we never impact the caller.
-      // In production, a logger would capture this.
+      // Re-add events to the buffer so they are retried on the next flush.
+      // For a billing/metering system, losing events is unacceptable.
+      this.buffer.unshift(...batch);
       return 0;
     }
     return batch.length;

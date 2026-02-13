@@ -30,7 +30,7 @@ export class MeterAggregator {
       last_end: number | null;
     };
 
-    const lastEnd = lastRow.last_end ?? 0;
+    let lastEnd = lastRow.last_end ?? 0;
 
     // Calculate the current window boundary. We only aggregate *completed* windows.
     const currentWindowStart = Math.floor(now / this.windowMs) * this.windowMs;
@@ -40,80 +40,130 @@ export class MeterAggregator {
       return 0;
     }
 
-    const windowStart = lastEnd === 0 ? 0 : lastEnd;
-    const windowEnd = currentWindowStart;
-
-    // Group events by tenant + capability + provider within the window.
-    const rows = this.db
-      .prepare(
-        `SELECT
-          tenant,
-          capability,
-          provider,
-          COUNT(*) as event_count,
-          SUM(cost) as total_cost,
-          SUM(charge) as total_charge,
-          COALESCE(SUM(duration), 0) as total_duration
-        FROM meter_events
-        WHERE timestamp >= ? AND timestamp < ?
-        GROUP BY tenant, capability, provider`,
-      )
-      .all(windowStart, windowEnd) as Array<{
-      tenant: string;
-      capability: string;
-      provider: string;
-      event_count: number;
-      total_cost: number;
-      total_charge: number;
-      total_duration: number;
-    }>;
-
-    if (rows.length === 0) {
-      // Insert a sentinel so we advance past this window even if empty.
-      return 0;
-    }
-
     const insertStmt = this.db.prepare(`
       INSERT INTO usage_summaries
         (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, window_start, window_end)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const insertAll = this.db.transaction(
-      (
-        summaries: Array<{
-          tenant: string;
-          capability: string;
-          provider: string;
-          event_count: number;
-          total_cost: number;
-          total_charge: number;
-          total_duration: number;
-        }>,
-      ) => {
-        for (const s of summaries) {
-          insertStmt.run(
-            crypto.randomUUID(),
-            s.tenant,
-            s.capability,
-            s.provider,
-            s.event_count,
-            s.total_cost,
-            s.total_charge,
-            s.total_duration,
-            windowStart,
-            windowEnd,
-          );
-        }
-      },
-    );
+    let totalInserted = 0;
 
-    insertAll(rows);
-    return rows.length;
+    // Process one window at a time to respect fixed time window boundaries.
+    // On first run (lastEnd === 0), align to the first window boundary at or
+    // before currentWindowStart so we don't create thousands of empty sentinels.
+    if (lastEnd === 0) {
+      // Find earliest event to anchor the first window.
+      const earliest = this.db
+        .prepare("SELECT MIN(timestamp) as ts FROM meter_events WHERE timestamp < ?")
+        .get(currentWindowStart) as { ts: number | null };
+      if (earliest.ts != null) {
+        lastEnd = Math.floor(earliest.ts / this.windowMs) * this.windowMs;
+      } else {
+        // No events at all — insert a single sentinel to mark we've processed up to now.
+        insertStmt.run(
+          crypto.randomUUID(),
+          "__sentinel__",
+          "__none__",
+          "__none__",
+          0,
+          0,
+          0,
+          0,
+          0,
+          currentWindowStart,
+        );
+        return 0;
+      }
+    }
+
+    while (lastEnd < currentWindowStart) {
+      const windowStart = lastEnd;
+      const windowEnd = Math.min(lastEnd + this.windowMs, currentWindowStart);
+
+      // Group events by tenant + capability + provider within this single window.
+      const rows = this.db
+        .prepare(
+          `SELECT
+            tenant,
+            capability,
+            provider,
+            COUNT(*) as event_count,
+            SUM(cost) as total_cost,
+            SUM(charge) as total_charge,
+            COALESCE(SUM(duration), 0) as total_duration
+          FROM meter_events
+          WHERE timestamp >= ? AND timestamp < ?
+          GROUP BY tenant, capability, provider`,
+        )
+        .all(windowStart, windowEnd) as Array<{
+        tenant: string;
+        capability: string;
+        provider: string;
+        event_count: number;
+        total_cost: number;
+        total_charge: number;
+        total_duration: number;
+      }>;
+
+      if (rows.length === 0) {
+        // Advance past this empty window by inserting a sentinel with zero counts.
+        insertStmt.run(
+          crypto.randomUUID(),
+          "__sentinel__",
+          "__none__",
+          "__none__",
+          0,
+          0,
+          0,
+          0,
+          windowStart,
+          windowEnd,
+        );
+      } else {
+        const insertAll = this.db.transaction(
+          (
+            summaries: Array<{
+              tenant: string;
+              capability: string;
+              provider: string;
+              event_count: number;
+              total_cost: number;
+              total_charge: number;
+              total_duration: number;
+            }>,
+          ) => {
+            for (const s of summaries) {
+              insertStmt.run(
+                crypto.randomUUID(),
+                s.tenant,
+                s.capability,
+                s.provider,
+                s.event_count,
+                s.total_cost,
+                s.total_charge,
+                s.total_duration,
+                windowStart,
+                windowEnd,
+              );
+            }
+          },
+        );
+
+        insertAll(rows);
+        totalInserted += rows.length;
+      }
+
+      lastEnd = windowEnd;
+    }
+
+    return totalInserted;
   }
 
   /** Start periodic aggregation. */
   start(intervalMs?: number): void {
+    if (this.timer) {
+      return; // Already running — avoid leaking a second interval timer.
+    }
     const interval = intervalMs ?? this.windowMs;
     this.timer = setInterval(() => this.aggregate(), interval);
     if (this.timer.unref) {

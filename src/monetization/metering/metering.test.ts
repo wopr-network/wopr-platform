@@ -172,12 +172,18 @@ describe("MeterEmitter", () => {
     expect(emitter.pending).toBe(0);
   });
 
-  it("swallows errors on flush (fire and forget)", () => {
+  it("re-adds events to buffer on flush failure", () => {
     emitter.emit(makeEvent());
+    emitter.emit(makeEvent());
+    expect(emitter.pending).toBe(2);
+
     db.close();
     // Should not throw even though db is closed.
     const flushed = emitter.flush();
     expect(flushed).toBe(0);
+    // Events should be back in the buffer for retry.
+    expect(emitter.pending).toBe(2);
+
     // Re-open db for afterEach cleanup.
     db = createTestDb();
   });
