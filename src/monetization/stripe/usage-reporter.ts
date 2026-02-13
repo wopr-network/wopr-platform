@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import type Stripe from "stripe";
+import { logger } from "../../config/logger.js";
 import type { MeterEventNameMap } from "../metering/usage-aggregation-worker.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
 import type { StripeUsageReportRow } from "./types.js";
@@ -116,10 +117,15 @@ export class StripeUsageReporter {
 
         this.recordReport(row, eventName, valueCents);
         reported++;
-      } catch {
-        // Log and continue — we'll retry on the next pass.
-        // The idempotent design means we won't double-report.
-        break; // Stop on first error to avoid hammering a failing API.
+      } catch (err) {
+        logger.error("Failed to report usage to Stripe", {
+          tenant: row.tenant,
+          capability: row.capability,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        // Stop on first error to avoid hammering a failing API.
+        // The idempotent design means we'll retry on the next pass.
+        break;
       }
     }
 

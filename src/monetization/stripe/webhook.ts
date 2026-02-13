@@ -63,6 +63,7 @@ export function handleWebhookEvent(tenantStore: TenantCustomerStore, event: Stri
 
       if (mapping) {
         tenantStore.setTier(mapping.tenant, "free");
+        tenantStore.setSubscription(mapping.tenant, null);
         return { handled: true, event_type: event.type, tenant: mapping.tenant };
       }
 

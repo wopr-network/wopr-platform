@@ -472,8 +472,13 @@ describe("handleWebhookEvent", () => {
     expect(mapping?.stripe_subscription_id).toBe("sub_new");
   });
 
-  it("handles customer.subscription.deleted - resets to free tier", () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123", tier: "pro" });
+  it("handles customer.subscription.deleted - resets to free tier and clears subscription", () => {
+    tenantStore.upsert({
+      tenant: "t-1",
+      stripeCustomerId: "cus_abc123",
+      stripeSubscriptionId: "sub_old",
+      tier: "pro",
+    });
 
     const event = {
       type: "customer.subscription.deleted",
@@ -490,6 +495,7 @@ describe("handleWebhookEvent", () => {
 
     const mapping = tenantStore.getByTenant("t-1");
     expect(mapping?.tier).toBe("free");
+    expect(mapping?.stripe_subscription_id).toBeNull();
   });
 
   it("returns unhandled for unknown event types", () => {

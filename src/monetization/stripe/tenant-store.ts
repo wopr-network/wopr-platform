@@ -44,8 +44,8 @@ export class TenantCustomerStore {
       .run(row.tenant, row.stripeCustomerId, row.stripeSubscriptionId ?? null, row.tier ?? "free", now, now);
   }
 
-  /** Update the subscription ID for a tenant. */
-  setSubscription(tenant: string, subscriptionId: string): void {
+  /** Update the subscription ID for a tenant. Pass null to clear. */
+  setSubscription(tenant: string, subscriptionId: string | null): void {
     this.db
       .prepare("UPDATE tenant_customers SET stripe_subscription_id = ?, updated_at = ? WHERE tenant = ?")
       .run(subscriptionId, Date.now(), tenant);
