@@ -1,6 +1,7 @@
 import Docker from "dockerode";
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
+import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
@@ -15,7 +16,7 @@ const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
-const fleet = new FleetManager(docker, store);
+const fleet = new FleetManager(docker, store, config.discovery);
 const imagePoller = new ImagePoller(docker, store);
 const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
 

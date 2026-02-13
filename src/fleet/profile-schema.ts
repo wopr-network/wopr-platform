@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { discoveryConfigSchema } from "../discovery/types.js";
 
 /** Release channels for bot deployments */
 export const releaseChannelSchema = z.enum(["stable", "canary", "staging"]);
@@ -48,6 +49,8 @@ export const profileTemplateSchema = z.object({
   })),
   volumes: z.array(volumeMountSchema).default(() => []),
   env: z.record(z.string(), z.string()).default(() => ({})),
+  /** Optional P2P discovery configuration. Defaults to enabled with no extra topics. */
+  discovery: discoveryConfigSchema.optional(),
 });
 
 export type ProfileTemplate = z.infer<typeof profileTemplateSchema>;

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
+import { buildDiscoveryEnv } from "../discovery/discovery-config.js";
+import type { PlatformDiscoveryConfig } from "../discovery/types.js";
 import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
 import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile, BotStatus, ContainerStats } from "./types.js";
@@ -11,10 +13,12 @@ const CONTAINER_ID_LABEL = "wopr.bot-id";
 export class FleetManager {
   private readonly docker: Docker;
   private readonly store: ProfileStore;
+  private readonly platformDiscovery: PlatformDiscoveryConfig | undefined;
 
-  constructor(docker: Docker, store: ProfileStore) {
+  constructor(docker: Docker, store: ProfileStore, platformDiscovery?: PlatformDiscoveryConfig) {
     this.docker = docker;
     this.store = store;
+    this.platformDiscovery = platformDiscovery;
   }
 
   /**
@@ -136,7 +140,14 @@ export class FleetManager {
   }
 
   /** Fields that require container recreation when changed. */
-  private static readonly CONTAINER_FIELDS = new Set<string>(["image", "env", "restartPolicy", "volumeName", "name"]);
+  private static readonly CONTAINER_FIELDS = new Set<string>([
+    "image",
+    "env",
+    "restartPolicy",
+    "volumeName",
+    "name",
+    "discovery",
+  ]);
 
   /**
    * Update a bot profile. Only recreates the container if container-relevant
@@ -233,10 +244,14 @@ export class FleetManager {
       hostConfig.PidsLimit = resourceLimits.PidsLimit;
     }
 
+    // Merge discovery env vars into the container environment
+    const discoveryEnv = buildDiscoveryEnv(profile.discovery, this.platformDiscovery);
+    const mergedEnv = { ...profile.env, ...discoveryEnv };
+
     const container = await this.docker.createContainer({
       Image: profile.image,
       name: `wopr-${profile.name}`,
-      Env: Object.entries(profile.env).map(([k, v]) => `${k}=${v}`),
+      Env: Object.entries(mergedEnv).map(([k, v]) => `${k}=${v}`),
       Labels: {
         [CONTAINER_LABEL]: "true",
         [CONTAINER_ID_LABEL]: profile.id,
