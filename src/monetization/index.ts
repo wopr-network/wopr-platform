@@ -11,10 +11,25 @@
  * - socket/    -- withMargin() wrapper (WOP-298)
  * - metering/  -- fire-and-forget usage events (WOP-299)
  * - stripe/    -- Stripe usage-based billing (WOP-300)
+ *
+ * Implemented modules:
  * - adapters/  -- hosted adapters like woprReplicateAdapter (WOP-301)
  */
 
-export type { MeterEvent, MeterEventRow, UsageSummary } from "./metering/index.js";
+// Adapters (WOP-301)
+export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/replicate.js";
+export {
+  type AdapterCapability,
+  type AdapterResult,
+  type MeterEvent,
+  type ProviderAdapter,
+  type TranscriptionInput,
+  type TranscriptionOutput,
+  withMargin,
+} from "./adapters/types.js";
+
+// Metering (WOP-299)
+export type { MeterEventRow, UsageSummary } from "./metering/index.js";
 export { initMeterSchema, MeterAggregator, MeterEmitter } from "./metering/index.js";
 export { buildQuotaUsage, checkInstanceQuota, type QuotaCheckResult, type QuotaUsage } from "./quotas/quota-check.js";
 export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
