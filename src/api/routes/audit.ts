@@ -24,21 +24,29 @@ export function createAuditRoutes(db: Database.Database): Hono<AuditEnv> {
     const tier = user.tier ?? "free";
     purgeExpiredEntriesForUser(db, user.id, tier);
 
+    const sinceRaw = c.req.query("since") ? Number(c.req.query("since")) : undefined;
+    const untilRaw = c.req.query("until") ? Number(c.req.query("until")) : undefined;
+    const limitRaw = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
+    const offsetRaw = c.req.query("offset") ? Number(c.req.query("offset")) : undefined;
+
     const filters = {
       userId: user.id,
       action: c.req.query("action") ?? undefined,
       resourceType: c.req.query("resourceType") ?? undefined,
       resourceId: c.req.query("resourceId") ?? undefined,
-      since: c.req.query("since") ? Number(c.req.query("since")) : undefined,
-      until: c.req.query("until") ? Number(c.req.query("until")) : undefined,
-      limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined,
-      offset: c.req.query("offset") ? Number(c.req.query("offset")) : undefined,
+      since: sinceRaw !== undefined && Number.isFinite(sinceRaw) ? sinceRaw : undefined,
+      until: untilRaw !== undefined && Number.isFinite(untilRaw) ? untilRaw : undefined,
+      limit: limitRaw !== undefined && Number.isFinite(limitRaw) ? limitRaw : undefined,
+      offset: offsetRaw !== undefined && Number.isFinite(offsetRaw) ? offsetRaw : undefined,
     };
 
-    const entries = queryAuditLog(db, filters);
-    const total = countAuditLog(db, filters);
-
-    return c.json({ entries, total });
+    try {
+      const entries = queryAuditLog(db, filters);
+      const total = countAuditLog(db, filters);
+      return c.json({ entries, total });
+    } catch {
+      return c.json({ error: "Internal server error" }, 500);
+    }
   });
 
   return routes;
@@ -60,21 +68,29 @@ export function createAdminAuditRoutes(db: Database.Database): Hono<AuditEnv> {
     const user = c.get("user");
     if (!user?.isAdmin) return c.json({ error: "Forbidden" }, 403);
 
+    const sinceRaw = c.req.query("since") ? Number(c.req.query("since")) : undefined;
+    const untilRaw = c.req.query("until") ? Number(c.req.query("until")) : undefined;
+    const limitRaw = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
+    const offsetRaw = c.req.query("offset") ? Number(c.req.query("offset")) : undefined;
+
     const filters = {
       userId: c.req.query("userId") ?? undefined,
       action: c.req.query("action") ?? undefined,
       resourceType: c.req.query("resourceType") ?? undefined,
       resourceId: c.req.query("resourceId") ?? undefined,
-      since: c.req.query("since") ? Number(c.req.query("since")) : undefined,
-      until: c.req.query("until") ? Number(c.req.query("until")) : undefined,
-      limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined,
-      offset: c.req.query("offset") ? Number(c.req.query("offset")) : undefined,
+      since: sinceRaw !== undefined && Number.isFinite(sinceRaw) ? sinceRaw : undefined,
+      until: untilRaw !== undefined && Number.isFinite(untilRaw) ? untilRaw : undefined,
+      limit: limitRaw !== undefined && Number.isFinite(limitRaw) ? limitRaw : undefined,
+      offset: offsetRaw !== undefined && Number.isFinite(offsetRaw) ? offsetRaw : undefined,
     };
 
-    const entries = queryAuditLog(db, filters);
-    const total = countAuditLog(db, filters);
-
-    return c.json({ entries, total });
+    try {
+      const entries = queryAuditLog(db, filters);
+      const total = countAuditLog(db, filters);
+      return c.json({ entries, total });
+    } catch {
+      return c.json({ error: "Internal server error" }, 500);
+    }
   });
 
   return routes;

@@ -49,7 +49,7 @@ export function auditLog(logger: AuditLogger, action: AuditAction) {
         action,
         resourceType: extractResourceType(c.req.path),
         resourceId: c.req.param("id") ?? null,
-        ipAddress: c.req.header("x-forwarded-for") ?? null,
+        ipAddress: c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? null,
         userAgent: c.req.header("user-agent") ?? null,
       });
     } catch {
