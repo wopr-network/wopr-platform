@@ -10,7 +10,8 @@ RUN npm init -y && npm install @hyperswarm/dht
 # Copy the bootstrap entrypoint
 COPY scripts/dht-bootstrap.mjs ./dht-bootstrap.mjs
 
-# Persistent state directory
+# Persistent state directory — create with correct ownership before switching user
+RUN mkdir -p /data && chown node:node /data
 VOLUME /data
 
 # Default DHT port (overridden by DHT_PORT env)
@@ -19,6 +20,6 @@ EXPOSE 49737/udp
 USER node
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "process.exit(0)"
+  CMD node -e "const dgram = require('dgram'); const s = dgram.createSocket('udp4'); s.bind(undefined, undefined, () => { const msg = Buffer.alloc(1); s.send(msg, 0, 1, Number(process.env.DHT_PORT || 49737), '127.0.0.1', (err) => { s.close(); process.exit(err ? 1 : 0); }); });"
 
 CMD ["node", "dht-bootstrap.mjs"]

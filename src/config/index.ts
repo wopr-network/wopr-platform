@@ -12,11 +12,19 @@ function parseBootstrapAddresses(raw: string | undefined) {
     .map((s) => s.trim())
     .filter(Boolean)
     .map((addr) => {
-      const [host, portStr] = addr.split(":");
-      return bootstrapNodeSchema.parse({
-        host,
-        port: portStr ? Number.parseInt(portStr, 10) : DEFAULT_DHT_PORT,
-      });
+      const parts = addr.split(":");
+      const host = parts[0];
+      const portStr = parts[1];
+      const port = portStr ? Number.parseInt(portStr, 10) : DEFAULT_DHT_PORT;
+
+      if (!host) {
+        throw new Error(`Invalid DHT_BOOTSTRAP_ADDRESSES entry "${addr}": missing host`);
+      }
+      if (Number.isNaN(port)) {
+        throw new Error(`Invalid DHT_BOOTSTRAP_ADDRESSES entry "${addr}": port is not a number`);
+      }
+
+      return bootstrapNodeSchema.parse({ host, port });
     });
 }
 

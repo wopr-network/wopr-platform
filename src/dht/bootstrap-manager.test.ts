@@ -76,7 +76,7 @@ describe("DhtBootstrapManager", () => {
       expect(status.index).toBe(0);
       expect(status.containerId).toBe("c-0");
       expect(status.state).toBe("running");
-      expect(status.address).toEqual({ host: "0.0.0.0", port: 49737 });
+      expect(status.address).toEqual({ host: `${DHT_CONTAINER_PREFIX}0`, port: 49737 });
       expect(status.volumeName).toBe(`${DHT_VOLUME_PREFIX}0`);
       expect(docker.createContainer).toHaveBeenCalledOnce();
       expect(container.start).toHaveBeenCalledOnce();
@@ -124,7 +124,7 @@ describe("DhtBootstrapManager", () => {
       const createCall = docker.createContainer.mock.calls[0][0];
       const peersEnv = createCall.Env.find((e: string) => e.startsWith("DHT_PEERS="));
       // Node 1 should reference nodes 0 and 2
-      expect(peersEnv).toBe("DHT_PEERS=0.0.0.0:49737,0.0.0.0:49739");
+      expect(peersEnv).toBe(`DHT_PEERS=${DHT_CONTAINER_PREFIX}0:49737,${DHT_CONTAINER_PREFIX}2:49739`);
     });
 
     it("uses correct port for each node index", async () => {
@@ -256,9 +256,9 @@ describe("DhtBootstrapManager", () => {
       const addresses = manager.getBootstrapAddresses();
 
       expect(addresses).toEqual([
-        { host: "0.0.0.0", port: 49737 },
-        { host: "0.0.0.0", port: 49738 },
-        { host: "0.0.0.0", port: 49739 },
+        { host: `${DHT_CONTAINER_PREFIX}0`, port: 49737 },
+        { host: `${DHT_CONTAINER_PREFIX}1`, port: 49738 },
+        { host: `${DHT_CONTAINER_PREFIX}2`, port: 49739 },
       ]);
     });
 

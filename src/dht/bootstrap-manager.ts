@@ -221,7 +221,7 @@ export class DhtBootstrapManager {
     if (this.config.externalAddresses[index]) {
       return this.config.externalAddresses[index];
     }
-    return { host: "0.0.0.0", port: this.config.basePort + index };
+    return { host: DhtBootstrapManager.containerName(index), port: this.config.basePort + index };
   }
 
   /**
@@ -257,9 +257,14 @@ export class DhtBootstrapManager {
     try {
       const volume = this.docker.getVolume(name);
       await volume.inspect();
-    } catch {
-      await this.docker.createVolume({ Name: name });
-      logger.info(`Created DHT state volume ${name}`);
+    } catch (inspectErr: unknown) {
+      try {
+        await this.docker.createVolume({ Name: name });
+        logger.info(`Created DHT state volume ${name}`);
+      } catch (createErr: unknown) {
+        logger.error(`Failed to create DHT state volume ${name}`, { error: createErr });
+        throw createErr;
+      }
     }
   }
 }

@@ -33,7 +33,7 @@ export const dhtConfigSchema = z.object({
   image: z.string().default("wopr-dht-bootstrap:latest"),
   /**
    * Externally-reachable bootstrap addresses for WOPR instances.
-   * If empty, derived from Docker container inspection.
+   * If empty, derived from the container name and base port offset.
    */
   externalAddresses: z.array(bootstrapNodeSchema).default([]),
 });

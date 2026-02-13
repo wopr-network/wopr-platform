@@ -7,6 +7,7 @@
  *
  * Persistent state is written to /data so the node's keypair survives restarts.
  */
+import crypto from "node:crypto";
 import DHT from "@hyperswarm/dht";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -34,7 +35,7 @@ if (existsSync(keyPath)) {
   console.log(`Loaded existing keypair from ${keyPath}`);
 } else {
   mkdirSync(dataDir, { recursive: true });
-  const seed = DHT.hash(Buffer.from(crypto.getRandomValues(new Uint8Array(32))));
+  const seed = DHT.hash(crypto.randomBytes(32));
   keyPair = DHT.keyPair(seed);
   writeFileSync(keyPath, JSON.stringify({ seed: seed.toString("hex") }));
   console.log(`Generated new keypair, saved to ${keyPath}`);
