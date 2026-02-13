@@ -130,13 +130,13 @@ export function verifyBearerToken(
   // 1. Static API token lookup
   if (apiTokens) {
     const user = apiTokens.get(token);
-    if (user) return user;
+    if (user) return { ...user, roles: [...user.roles] };
   }
 
   // 2. Session-based lookup
   const session = sessionStore.validate(token);
   if (session) {
-    return { id: session.userId, roles: session.roles };
+    return { id: session.userId, roles: [...session.roles] };
   }
 
   return null;
@@ -185,7 +185,7 @@ export function requireAuth(sessionStore: SessionStore, apiTokens?: Map<string, 
     if (apiTokens) {
       const apiUser = apiTokens.get(token);
       if (apiUser) {
-        c.set("user", apiUser);
+        c.set("user", { ...apiUser, roles: [...apiUser.roles] });
         c.set("authMethod", "api_key");
         return next();
       }
@@ -194,7 +194,7 @@ export function requireAuth(sessionStore: SessionStore, apiTokens?: Map<string, 
     // Check session store
     const session = sessionStore.validate(token);
     if (session) {
-      c.set("user", { id: session.userId, roles: session.roles });
+      c.set("user", { id: session.userId, roles: [...session.roles] });
       c.set("authMethod", "session");
       return next();
     }

@@ -266,8 +266,7 @@ describe("verifyBearerToken", () => {
     expect(user?.id).toBe("session-user");
   });
 
-  it("prefers API token over session", () => {
-    // Create a session with the same ID as an API token (unlikely but tests priority)
+  it("authenticates via API token header", () => {
     const user = verifyBearerToken("api-key-admin", store, apiTokens);
     expect(user).toEqual({ id: "admin-1", roles: ["admin"] });
   });
