@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^12.6.2",
     "dockerode": "^4.0.9",
     "hono": "^4.11.9",
     "js-yaml": "^4.1.1",
