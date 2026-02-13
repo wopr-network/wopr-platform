@@ -244,14 +244,18 @@ export class FleetManager {
       hostConfig.PidsLimit = resourceLimits.PidsLimit;
     }
 
-    // Merge discovery env vars into the container environment
+    // Merge discovery env vars into the container environment.
+    // discoveryEnv overrides profile.env (spread order matters).
+    // Empty-string values mean "explicitly remove" — filter them out.
     const discoveryEnv = buildDiscoveryEnv(profile.discovery, this.platformDiscovery);
     const mergedEnv = { ...profile.env, ...discoveryEnv };
 
     const container = await this.docker.createContainer({
       Image: profile.image,
       name: `wopr-${profile.name}`,
-      Env: Object.entries(mergedEnv).map(([k, v]) => `${k}=${v}`),
+      Env: Object.entries(mergedEnv)
+        .filter(([, v]) => v !== "")
+        .map(([k, v]) => `${k}=${v}`),
       Labels: {
         [CONTAINER_LABEL]: "true",
         [CONTAINER_ID_LABEL]: profile.id,

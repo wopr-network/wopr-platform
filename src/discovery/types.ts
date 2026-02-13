@@ -22,7 +22,15 @@ export const discoveryConfigSchema = z.object({
    * Useful for per-org or per-user private discovery groups.
    * Example: ["wopr-org-acme", "wopr-team-red"]
    */
-  topics: z.array(z.string().min(1).max(128)).default([]),
+  topics: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .max(128)
+        .refine((t) => !t.includes(","), "Topic must not contain commas"),
+    )
+    .default([]),
 });
 
 export type DiscoveryConfig = z.infer<typeof discoveryConfigSchema>;
@@ -32,7 +40,7 @@ export type DiscoveryConfig = z.infer<typeof discoveryConfigSchema>;
  */
 export const platformDiscoveryConfigSchema = z.object({
   /** The default global topic. All instances join this unless discovery is disabled. */
-  defaultTopic: z.string().min(1).default(DEFAULT_DISCOVERY_TOPIC),
+  defaultTopic: z.string().min(1).max(128).default(DEFAULT_DISCOVERY_TOPIC),
 });
 
 export type PlatformDiscoveryConfig = z.infer<typeof platformDiscoveryConfigSchema>;
