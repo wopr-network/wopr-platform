@@ -92,6 +92,20 @@ describe("NetworkPolicy", () => {
       // Should not throw — count returns 0, remove is a no-op
       await policy.cleanupAfterRemoval("user-123");
     });
+
+    it("does not throw when concurrent removal races", async () => {
+      const net = mockNetwork("net-1", `${TENANT_NETWORK_PREFIX}user-123`, {});
+      docker.listNetworks.mockResolvedValue([{ Id: "net-1", Name: `${TENANT_NETWORK_PREFIX}user-123` }]);
+      docker.getNetwork.mockReturnValue(net);
+      // Simulate the network being removed by another process between
+      // getContainerCount (returns 0) and removeTenantNetwork
+      net.inspect
+        .mockResolvedValueOnce({ Id: "net-1", Name: `${TENANT_NETWORK_PREFIX}user-123`, Containers: {} }) // getContainerCount
+        .mockRejectedValueOnce(new Error("network not found")); // removeTenantNetwork inspect
+
+      // Should not throw — race condition is handled gracefully
+      await policy.cleanupAfterRemoval("user-123");
+    });
   });
 
   describe("isIsolated", () => {

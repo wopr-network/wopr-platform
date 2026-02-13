@@ -26,9 +26,22 @@ export class TenantNetworkManager {
 
   /**
    * Get the Docker network name for a tenant.
+   * Sanitizes the tenantId so the resulting name is valid for Docker
+   * (must match [a-zA-Z0-9][a-zA-Z0-9_.-]*).
    */
   static networkNameFor(tenantId: string): string {
-    return `${TENANT_NETWORK_PREFIX}${tenantId}`;
+    if (!tenantId) {
+      throw new InvalidTenantIdError(tenantId);
+    }
+    // Replace any character not in [a-zA-Z0-9_.-] with a hyphen
+    const sanitized = tenantId.replace(/[^a-zA-Z0-9_.-]/g, "-");
+    // Ensure the first character of the full name is alphanumeric.
+    // The prefix starts with a letter so this is already satisfied,
+    // but guard against an empty sanitized string.
+    if (!sanitized) {
+      throw new InvalidTenantIdError(tenantId);
+    }
+    return `${TENANT_NETWORK_PREFIX}${sanitized}`;
   }
 
   /**
@@ -72,16 +85,30 @@ export class TenantNetworkManager {
       };
     }
 
-    const network = await this.docker.createNetwork(networkOpts);
-    logger.info(`Created tenant network ${networkName} (id: ${network.id})`);
+    try {
+      const network = await this.docker.createNetwork(networkOpts);
+      logger.info(`Created tenant network ${networkName} (id: ${network.id})`);
 
-    return {
-      networkId: network.id,
-      tenantId: options.tenantId,
-      networkName,
-      containerCount: 0,
-      createdAt: new Date().toISOString(),
-    };
+      return {
+        networkId: network.id,
+        tenantId: options.tenantId,
+        networkName,
+        containerCount: 0,
+        createdAt: new Date().toISOString(),
+      };
+    } catch (err: unknown) {
+      // Handle race condition: another process created the network between
+      // our findNetwork check and createNetwork call (Docker 409 Conflict).
+      const statusCode = (err as { statusCode?: number }).statusCode;
+      if (statusCode === 409) {
+        logger.info(`Tenant network ${networkName} was created concurrently, using existing`);
+        const existing = await this.findNetwork(networkName);
+        if (existing) {
+          return this.inspectToTenantNetwork(existing, options.tenantId);
+        }
+      }
+      throw err;
+    }
   }
 
   /**
@@ -247,6 +274,13 @@ export class TenantNetworkManager {
       containerCount: Object.keys(info.Containers || {}).length,
       createdAt: info.Created || new Date().toISOString(),
     };
+  }
+}
+
+export class InvalidTenantIdError extends Error {
+  constructor(tenantId: string) {
+    super(`Invalid tenant ID: "${tenantId}" cannot be used in a Docker network name`);
+    this.name = "InvalidTenantIdError";
   }
 }
 

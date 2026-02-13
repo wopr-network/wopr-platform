@@ -43,7 +43,16 @@ export class NetworkPolicy {
 
     if (count === 0) {
       logger.info(`No containers left for tenant ${tenantId}, removing network`);
-      await this.networkManager.removeTenantNetwork(tenantId);
+      try {
+        await this.networkManager.removeTenantNetwork(tenantId);
+      } catch (err: unknown) {
+        // Handle race condition: another concurrent removal already deleted
+        // the network, or containers were attached between our count check
+        // and the removal attempt. Both are benign -- log and move on.
+        logger.warn(`Failed to remove network for tenant ${tenantId}, may have been removed concurrently`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     } else {
       logger.info(`Tenant ${tenantId} still has ${count} container(s), keeping network`);
     }

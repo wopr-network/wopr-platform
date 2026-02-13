@@ -1,6 +1,6 @@
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NetworkInUseError, NetworkNotFoundError, TenantNetworkManager } from "./tenant-network.js";
+import { InvalidTenantIdError, NetworkInUseError, NetworkNotFoundError, TenantNetworkManager } from "./tenant-network.js";
 import { NETWORK_LABELS, PLATFORM_NETWORK_NAME, TENANT_NETWORK_PREFIX } from "./types.js";
 
 // --- Mock helpers ---
@@ -44,6 +44,25 @@ describe("TenantNetworkManager", () => {
   describe("networkNameFor", () => {
     it("returns prefixed network name", () => {
       expect(TenantNetworkManager.networkNameFor("user-123")).toBe(`${TENANT_NETWORK_PREFIX}user-123`);
+    });
+
+    it("sanitizes special characters in tenantId", () => {
+      expect(TenantNetworkManager.networkNameFor("user 123")).toBe(`${TENANT_NETWORK_PREFIX}user-123`);
+      expect(TenantNetworkManager.networkNameFor("user@foo!bar")).toBe(`${TENANT_NETWORK_PREFIX}user-foo-bar`);
+    });
+
+    it("preserves valid characters: alphanumeric, underscore, dot, hyphen", () => {
+      expect(TenantNetworkManager.networkNameFor("user_1.test-2")).toBe(`${TENANT_NETWORK_PREFIX}user_1.test-2`);
+    });
+
+    it("throws InvalidTenantIdError for empty string", () => {
+      expect(() => TenantNetworkManager.networkNameFor("")).toThrow(InvalidTenantIdError);
+    });
+
+    it("sanitizes unicode and special characters to hyphens", () => {
+      // "!!!" becomes "---" — valid because the prefix provides the leading alphanumeric
+      expect(TenantNetworkManager.networkNameFor("!!!")).toBe(`${TENANT_NETWORK_PREFIX}---`);
+      expect(TenantNetworkManager.networkNameFor("user\u00e9")).toBe(`${TENANT_NETWORK_PREFIX}user-`);
     });
   });
 
@@ -101,6 +120,30 @@ describe("TenantNetworkManager", () => {
           }),
         }),
       );
+    });
+
+    it("handles 409 conflict by returning existing network", async () => {
+      const conflictError = new Error("Conflict") as Error & { statusCode: number };
+      conflictError.statusCode = 409;
+      docker.createNetwork.mockRejectedValue(conflictError);
+      docker.listNetworks
+        .mockResolvedValueOnce([]) // first findNetwork call returns empty
+        .mockResolvedValueOnce([{ Id: "net-1", Name: `${TENANT_NETWORK_PREFIX}user-123` }]); // retry findNetwork
+      const net = mockNetwork("net-1", `${TENANT_NETWORK_PREFIX}user-123`);
+      docker.getNetwork.mockReturnValue(net);
+
+      const result = await manager.ensureTenantNetwork({ tenantId: "user-123" });
+
+      expect(result.networkId).toBe("net-1");
+    });
+
+    it("rethrows non-409 errors from createNetwork", async () => {
+      const otherError = new Error("Internal Server Error") as Error & { statusCode: number };
+      otherError.statusCode = 500;
+      docker.createNetwork.mockRejectedValue(otherError);
+      docker.listNetworks.mockResolvedValue([]);
+
+      await expect(manager.ensureTenantNetwork({ tenantId: "user-123" })).rejects.toThrow("Internal Server Error");
     });
 
     it("uses custom subnet when provided", async () => {
