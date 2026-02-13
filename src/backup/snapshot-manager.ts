@@ -11,6 +11,9 @@ import { rowToSnapshot } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
+/** Only allow safe characters in IDs used for filesystem paths. */
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
 export interface SnapshotManagerOptions {
   /** Directory where snapshot tar files are stored */
   snapshotDir: string;
@@ -42,6 +45,10 @@ export class SnapshotManager {
     trigger: SnapshotTrigger;
     plugins?: string[];
   }): Promise<Snapshot> {
+    if (!SAFE_ID_RE.test(params.instanceId)) {
+      throw new Error(`Invalid instanceId: ${params.instanceId}`);
+    }
+
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     const tarPath = join(this.snapshotDir, params.instanceId, `${id}.tar.gz`);
@@ -74,23 +81,28 @@ export class SnapshotManager {
 
     const plugins = params.plugins ?? [];
 
-    // Store metadata in SQLite
-    this.db
-      .prepare(
-        `INSERT INTO snapshots (id, instance_id, user_id, created_at, size_mb, trigger, plugins, config_hash, storage_path)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        params.instanceId,
-        params.userId,
-        createdAt,
-        sizeMb,
-        params.trigger,
-        JSON.stringify(plugins),
-        configHash,
-        tarPath,
-      );
+    // Store metadata in SQLite -- clean up tar if insert fails
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO snapshots (id, instance_id, user_id, created_at, size_mb, trigger, plugins, config_hash, storage_path)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          params.instanceId,
+          params.userId,
+          createdAt,
+          sizeMb,
+          params.trigger,
+          JSON.stringify(plugins),
+          configHash,
+          tarPath,
+        );
+    } catch (err) {
+      await rm(tarPath, { force: true });
+      throw err;
+    }
 
     logger.info(`Snapshot ${id} created for instance ${params.instanceId} (${sizeMb}MB)`);
 
@@ -123,15 +135,16 @@ export class SnapshotManager {
     const backupPath = `${woprHomePath}.pre-restore-${Date.now()}`;
     try {
       await rename(woprHomePath, backupPath);
-    } catch {
-      // WOPR_HOME doesn't exist yet, that's OK
+    } catch (err: unknown) {
+      // WOPR_HOME doesn't exist yet -- that's OK; anything else is a real failure
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
 
     try {
       await mkdir(woprHomePath, { recursive: true });
 
-      // Extract the snapshot tar into the parent directory
-      await execFileAsync("tar", ["-xzf", snapshot.storagePath, "-C", dirname(woprHomePath)]);
+      // Extract snapshot directly into woprHomePath, stripping the original basename
+      await execFileAsync("tar", ["-xzf", snapshot.storagePath, "-C", woprHomePath, "--strip-components=1"]);
 
       logger.info(`Restored snapshot ${snapshotId} to ${woprHomePath}`);
 

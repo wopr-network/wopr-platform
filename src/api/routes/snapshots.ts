@@ -11,6 +11,9 @@ const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
 const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 
+/** Validates that an instance/snapshot ID contains only safe characters (no path traversal). */
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
 /** Lazy-initialized snapshot manager (avoids opening DB at module load time) */
 let _manager: SnapshotManager | null = null;
 function getManager(): SnapshotManager {
@@ -28,9 +31,18 @@ if (!FLEET_API_TOKEN) {
 }
 snapshotRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
 
-/** POST /api/instances/:id/snapshots -- Create a snapshot */
+/**
+ * POST /api/instances/:id/snapshots -- Create a snapshot
+ *
+ * Auth: Fleet-level bearer token (FLEET_API_TOKEN). The token authorises the
+ * fleet control plane, which is responsible for its own instance-ownership
+ * checks before calling this API.  Per-instance ownership is NOT enforced here.
+ */
 snapshotRoutes.post("/", async (c) => {
   const instanceId = c.req.param("id") as string;
+  if (!SAFE_ID_RE.test(instanceId)) {
+    return c.json({ error: "Invalid instance ID" }, 400);
+  }
   const userId = c.req.header("X-User-Id") || "system";
   const tierHeader = c.req.header("X-Tier") || "free";
 
@@ -81,6 +93,9 @@ snapshotRoutes.post("/", async (c) => {
 /** GET /api/instances/:id/snapshots -- List snapshots */
 snapshotRoutes.get("/", (c) => {
   const instanceId = c.req.param("id") as string;
+  if (!SAFE_ID_RE.test(instanceId)) {
+    return c.json({ error: "Invalid instance ID" }, 400);
+  }
   const snapshots = getManager().list(instanceId);
   return c.json({ snapshots });
 });
@@ -89,6 +104,9 @@ snapshotRoutes.get("/", (c) => {
 snapshotRoutes.post("/:sid/restore", async (c) => {
   const instanceId = c.req.param("id") as string;
   const snapshotId = c.req.param("sid");
+  if (!SAFE_ID_RE.test(instanceId) || !SAFE_ID_RE.test(snapshotId)) {
+    return c.json({ error: "Invalid instance or snapshot ID" }, 400);
+  }
   const woprHomePath = `${WOPR_HOME_BASE}/${instanceId}`;
   const manager = getManager();
 
@@ -117,6 +135,9 @@ snapshotRoutes.post("/:sid/restore", async (c) => {
 snapshotRoutes.delete("/:sid", async (c) => {
   const instanceId = c.req.param("id") as string;
   const snapshotId = c.req.param("sid");
+  if (!SAFE_ID_RE.test(instanceId) || !SAFE_ID_RE.test(snapshotId)) {
+    return c.json({ error: "Invalid instance or snapshot ID" }, 400);
+  }
   const manager = getManager();
 
   // Verify the snapshot belongs to this instance

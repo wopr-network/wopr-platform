@@ -94,6 +94,33 @@ describe("snapshot routes", () => {
     });
   });
 
+  describe("path traversal protection", () => {
+    it("rejects instance ID with dots", async () => {
+      const res = await app.request("/api/instances/..%2F..%2Fetc/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ trigger: "manual" }),
+      });
+      // Either 400 (validation) or 404 (router rejects) is acceptable
+      expect([400, 404]).toContain(res.status);
+    });
+
+    it("rejects instance ID with special characters on list", async () => {
+      const res = await app.request("/api/instances/inst%20bad/snapshots", {
+        headers: authHeader,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("allows valid instance IDs with alphanumeric, dash, underscore", async () => {
+      managerMock.list.mockReturnValue([]);
+      const res = await app.request("/api/instances/my-inst_01/snapshots", {
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+  });
+
   describe("POST /api/instances/:id/snapshots", () => {
     it("creates a snapshot", async () => {
       managerMock.create.mockResolvedValue(mockSnapshot);

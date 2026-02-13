@@ -55,6 +55,13 @@ export const createSnapshotSchema = z.object({
 
 /** Convert a SQLite row to a Snapshot object */
 export function rowToSnapshot(row: SnapshotRow): Snapshot {
+  let plugins: string[] = [];
+  try {
+    plugins = JSON.parse(row.plugins) as string[];
+  } catch {
+    // Corrupted JSON -- fall back to empty array
+  }
+
   return {
     id: row.id,
     instanceId: row.instance_id,
@@ -62,7 +69,7 @@ export function rowToSnapshot(row: SnapshotRow): Snapshot {
     createdAt: row.created_at,
     sizeMb: row.size_mb,
     trigger: row.trigger as SnapshotTrigger,
-    plugins: JSON.parse(row.plugins) as string[],
+    plugins,
     configHash: row.config_hash,
     storagePath: row.storage_path,
   };
