@@ -49,3 +49,9 @@ primary_region = "iad"
   source = "wopr_production_data"
   destination = "/data"
   initial_size = 5
+
+# NOTE: Fly.io VMs do not expose /var/run/docker.sock. The platform's
+# FleetManager (dockerode) requires Docker socket access for container
+# orchestration. Before deploying to Fly.io, one of the following is needed:
+# TODO: Integrate with the Fly Machines API as an alternative to dockerode, or
+# run a Docker-in-Docker sidecar to provide a socket inside the VM.

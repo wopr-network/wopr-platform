@@ -26,9 +26,14 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       STRIPE_DEFAULT_PRICE_ID: ${STRIPE_DEFAULT_PRICE_ID:-}
+      FLEET_API_TOKEN: ${FLEET_API_TOKEN:-}
+      DHT_NODE_COUNT: ${DHT_NODE_COUNT:-3}
+      DHT_BASE_PORT: ${DHT_BASE_PORT:-49737}
+      DHT_IMAGE: ${DHT_IMAGE:-wopr-dht-bootstrap:latest}
+      DISCOVERY_DEFAULT_TOPIC: ${DISCOVERY_DEFAULT_TOPIC:-}
     volumes:
       - staging-data:/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
       interval: 30s
