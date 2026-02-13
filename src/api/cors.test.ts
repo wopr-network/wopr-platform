@@ -42,8 +42,6 @@ describe("CORS middleware", () => {
     const res = await app.request("/health", {
       headers: { Origin: "https://evil.example.com" },
     });
-    expect(res.headers.get("Access-Control-Allow-Origin")).not.toBe(
-      "https://evil.example.com",
-    );
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 });
