@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { discoveryConfigSchema } from "../discovery/types.js";
 
 /** Regex for valid bot names: alphanumeric, hyphens, underscores, 1-63 chars */
 const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/;
@@ -25,6 +26,8 @@ export const botProfileSchema = z.object({
   volumeName: z.string().optional(),
   releaseChannel: releaseChannelSchema.default("stable"),
   updatePolicy: updatePolicySchema.default("manual"),
+  /** Optional P2P discovery configuration. Defaults to enabled with no extra topics. */
+  discovery: discoveryConfigSchema.optional(),
 });
 
 export type BotProfile = z.infer<typeof botProfileSchema>;
@@ -42,6 +45,8 @@ export const createBotSchema = z.object({
   volumeName: z.string().optional(),
   releaseChannel: releaseChannelSchema.default("stable"),
   updatePolicy: updatePolicySchema.default("manual"),
+  /** Optional P2P discovery configuration. */
+  discovery: discoveryConfigSchema.optional(),
 });
 
 /** Schema for updating a bot via the API */
@@ -58,6 +63,8 @@ export const updateBotSchema = z.object({
   volumeName: z.string().optional(),
   releaseChannel: releaseChannelSchema.optional(),
   updatePolicy: updatePolicySchema.optional(),
+  /** Optional P2P discovery configuration override. */
+  discovery: discoveryConfigSchema.optional(),
 });
 
 /** Container resource usage stats */

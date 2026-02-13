@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { bootstrapNodeSchema, DEFAULT_DHT_PORT } from "../dht/types.js";
+import { DEFAULT_DISCOVERY_TOPIC } from "../discovery/types.js";
 
 /**
  * Parse a comma-separated list of host:port addresses into BootstrapNode[].
@@ -47,6 +48,16 @@ const configSchema = z.object({
       image: "wopr-dht-bootstrap:latest",
       externalAddresses: [],
     }),
+
+  /** P2P discovery configuration. */
+  discovery: z
+    .object({
+      /** The default global discovery topic all instances join. */
+      defaultTopic: z.string().min(1).default(DEFAULT_DISCOVERY_TOPIC),
+    })
+    .default({
+      defaultTopic: DEFAULT_DISCOVERY_TOPIC,
+    }),
 });
 
 export const config = configSchema.parse({
@@ -58,6 +69,9 @@ export const config = configSchema.parse({
     basePort: process.env.DHT_BASE_PORT,
     image: process.env.DHT_IMAGE,
     externalAddresses: parseBootstrapAddresses(process.env.DHT_BOOTSTRAP_ADDRESSES),
+  },
+  discovery: {
+    defaultTopic: process.env.DISCOVERY_DEFAULT_TOPIC,
   },
 });
 

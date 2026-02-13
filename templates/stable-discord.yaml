@@ -19,3 +19,6 @@ healthCheck:
   retries: 3
 volumes: []
 env: {}
+discovery:
+  enabled: true
+  topics: []
