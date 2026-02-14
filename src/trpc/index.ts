@@ -10,12 +10,14 @@ import { router } from "./init.js";
 import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
 import { capabilitiesRouter } from "./routers/capabilities.js";
+import { credentialsRouter } from "./routers/credentials.js";
 import { settingsRouter } from "./routers/settings.js";
 import { usageRouter } from "./routers/usage.js";
 
 export const appRouter = router({
   billing: billingRouter,
   capabilities: capabilitiesRouter,
+  credentials: credentialsRouter,
   usage: usageRouter,
   settings: settingsRouter,
   admin: adminRouter,
@@ -30,3 +32,4 @@ export { setAdminRouterDeps } from "./routers/admin.js";
 // Re-export dep setters for initialization
 export { setBillingRouterDeps } from "./routers/billing.js";
 export { setCapabilitiesRouterDeps } from "./routers/capabilities.js";
+export { setCredentialsRouterDeps } from "./routers/credentials.js";

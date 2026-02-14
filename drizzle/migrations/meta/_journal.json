@@ -29,6 +29,13 @@
       "when": 1771089478027,
       "tag": "0003_soft_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1771103989197,
+      "tag": "0004_icy_champions",
+      "breakpoints": true
     }
   ]
 }
