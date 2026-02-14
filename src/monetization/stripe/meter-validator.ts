@@ -56,7 +56,9 @@ export async function validateStripeMeters(
   meterEventNames: MeterEventNameMap,
   opts: MeterValidatorOpts = {},
 ): Promise<ValidationResult> {
-  const mode = opts.mode ?? "warn";
+  // Allow env var to override mode (strict | warn)
+  const envMode = process.env.STRIPE_METER_VALIDATION as ValidationMode | undefined;
+  const mode = opts.mode ?? envMode ?? "warn";
   const criticalCapabilities = opts.criticalCapabilities ?? CRITICAL_CAPABILITIES;
 
   logger.info("Validating Stripe Meter configuration", {
@@ -64,11 +66,10 @@ export async function validateStripeMeters(
     configuredCapabilities: Object.keys(meterEventNames).length,
   });
 
-  // Fetch all Stripe Meters from the dashboard
+  // Fetch all Stripe Meters from the dashboard (with pagination)
   let stripeMeters: Stripe.Billing.Meter[];
   try {
-    const response = await stripe.billing.meters.list({ limit: 100 });
-    stripeMeters = response.data;
+    stripeMeters = await stripe.billing.meters.list({ limit: 100 }).autoPagingToArray({ limit: 10000 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error("Failed to list Stripe Meters", { error: message });
