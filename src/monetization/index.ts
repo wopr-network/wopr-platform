@@ -19,6 +19,8 @@ export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/
 export {
   type AdapterCapability,
   type AdapterResult,
+  type EmbeddingsInput,
+  type EmbeddingsOutput,
   type ImageGenerationInput,
   type ImageGenerationOutput,
   type MeterEvent,
@@ -27,6 +29,8 @@ export {
   type TextGenerationOutput,
   type TranscriptionInput,
   type TranscriptionOutput,
+  type TTSInput,
+  type TTSOutput,
   withMargin,
 } from "./adapters/types.js";
 export type { BudgetCheckerConfig, BudgetCheckResult } from "./budget/index.js";

@@ -17,7 +17,7 @@ export interface AdapterResult<T = unknown> {
 }
 
 /** A capability the adapter supports (extensible as we add more) */
-export type AdapterCapability = "transcription" | "image-generation" | "embeddings" | "text-generation";
+export type AdapterCapability = "transcription" | "image-generation" | "embeddings" | "text-generation" | "tts";
 
 /** Input for a transcription request */
 export interface TranscriptionInput {
@@ -84,6 +84,50 @@ export interface TextGenerationOutput {
   };
 }
 
+/** Input for a text-to-speech request */
+export interface TTSInput {
+  /** The text to synthesize */
+  text: string;
+  /** Voice identifier */
+  voice?: string;
+  /** Output audio format (e.g. "mp3", "wav") */
+  format?: string;
+  /** Playback speed multiplier */
+  speed?: number;
+}
+
+/** Output from a text-to-speech request */
+export interface TTSOutput {
+  /** URL of the generated audio */
+  audioUrl: string;
+  /** Duration of the generated audio in seconds */
+  durationSeconds: number;
+  /** Audio format used */
+  format: string;
+  /** Number of characters synthesized */
+  characterCount: number;
+}
+
+/** Input for an embeddings request */
+export interface EmbeddingsInput {
+  /** Text or texts to embed */
+  input: string | string[];
+  /** Model to use for embeddings */
+  model?: string;
+  /** Output embedding dimensions */
+  dimensions?: number;
+}
+
+/** Output from an embeddings request */
+export interface EmbeddingsOutput {
+  /** The embedding vectors */
+  embeddings: number[][];
+  /** Model used */
+  model: string;
+  /** Total tokens consumed */
+  totalTokens: number;
+}
+
 /**
  * Provider adapter interface.
  *
@@ -102,6 +146,10 @@ export interface ProviderAdapter {
   generateImage?(input: ImageGenerationInput): Promise<AdapterResult<ImageGenerationOutput>>;
   /** Generate text from a prompt — returns result + wholesale cost */
   generateText?(input: TextGenerationInput): Promise<AdapterResult<TextGenerationOutput>>;
+  /** Synthesize speech from text — returns result + wholesale cost */
+  synthesizeSpeech?(input: TTSInput): Promise<AdapterResult<TTSOutput>>;
+  /** Generate embeddings — returns result + wholesale cost */
+  embed?(input: EmbeddingsInput): Promise<AdapterResult<EmbeddingsOutput>>;
 }
 
 /**
