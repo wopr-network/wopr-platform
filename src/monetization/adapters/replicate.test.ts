@@ -47,7 +47,7 @@ describe("createReplicateAdapter", () => {
     const fetchFn: FetchFn = () => Promise.resolve(mockResponse({}));
     const adapter = createReplicateAdapter(makeConfig(), fetchFn);
     expect(adapter.name).toBe("replicate");
-    expect(adapter.capabilities).toEqual(["transcription"]);
+    expect(adapter.capabilities).toEqual(["transcription", "image-generation", "text-generation"]);
   });
 
   describe("transcribe", () => {
@@ -285,6 +285,274 @@ describe("createReplicateAdapter", () => {
       await expect(adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" })).rejects.toThrow(
         "Replicate prediction failed: unknown error",
       );
+    });
+  });
+
+  describe("generateImage", () => {
+    function imageSucceeded(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "pred_img123",
+        status: "succeeded",
+        output: ["https://replicate.delivery/img1.png"],
+        metrics: { predict_time: 8.5 },
+        ...overrides,
+      };
+    }
+
+    it("creates prediction and returns image URLs with cost", async () => {
+      const prediction = imageSucceeded();
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig({ imageCostPerSecond: 0.0023 }), fetchFn);
+      const result = await adapter.generateImage({ prompt: "a cat in space" });
+
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchFn.mock.calls[0];
+      expect(url).toBe("https://api.replicate.com/v1/predictions");
+      const body = JSON.parse(init?.body as string);
+      expect(body.input.prompt).toBe("a cat in space");
+
+      expect(result.result.images).toEqual(["https://replicate.delivery/img1.png"]);
+      expect(result.result.model).toBe("sdxl");
+
+      // Cost: 8.5s * $0.0023/s = $0.01955
+      expect(result.cost).toBeCloseTo(0.01955, 5);
+      expect(result.charge).toBeCloseTo(withMargin(0.01955, 1.3), 5);
+    });
+
+    it("passes optional image parameters", async () => {
+      const prediction = imageSucceeded();
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await adapter.generateImage({
+        prompt: "a dog",
+        negativePrompt: "blurry",
+        width: 1024,
+        height: 768,
+        count: 2,
+      });
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1]?.body as string);
+      expect(body.input.prompt).toBe("a dog");
+      expect(body.input.negative_prompt).toBe("blurry");
+      expect(body.input.width).toBe(1024);
+      expect(body.input.height).toBe(768);
+      expect(body.input.num_outputs).toBe(2);
+    });
+
+    it("does not send num_outputs when count is 1", async () => {
+      const prediction = imageSucceeded();
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await adapter.generateImage({ prompt: "a bird", count: 1 });
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1]?.body as string);
+      expect(body.input.num_outputs).toBeUndefined();
+    });
+
+    it("handles multiple image URLs in output", async () => {
+      const prediction = imageSucceeded({
+        output: ["https://replicate.delivery/img1.png", "https://replicate.delivery/img2.png"],
+      });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateImage({ prompt: "cats" });
+
+      expect(result.result.images).toEqual([
+        "https://replicate.delivery/img1.png",
+        "https://replicate.delivery/img2.png",
+      ]);
+    });
+
+    it("handles single string output", async () => {
+      const prediction = imageSucceeded({ output: "https://replicate.delivery/single.png" });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateImage({ prompt: "a fish" });
+
+      expect(result.result.images).toEqual(["https://replicate.delivery/single.png"]);
+    });
+
+    it("throws on unexpected output format", async () => {
+      const prediction = imageSucceeded({ output: null });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await expect(adapter.generateImage({ prompt: "fail" })).rejects.toThrow(
+        "Unexpected Replicate image output format",
+      );
+    });
+
+    it("polls when prediction is not immediately complete", async () => {
+      const pending = { id: "pred_img123", status: "processing" };
+      const completed = imageSucceeded();
+
+      const fetchFn = vi
+        .fn<FetchFn>()
+        .mockResolvedValueOnce(mockResponse(pending))
+        .mockResolvedValueOnce(mockResponse(completed));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateImage({ prompt: "async image" });
+
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(result.result.images).toEqual(["https://replicate.delivery/img1.png"]);
+    });
+
+    it("throws on API error", async () => {
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse({ detail: "Bad Request" }, 400));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await expect(adapter.generateImage({ prompt: "fail" })).rejects.toThrow("Replicate API error (400)");
+    });
+  });
+
+  describe("generateText", () => {
+    function textSucceeded(overrides: Record<string, unknown> = {}) {
+      return {
+        id: "pred_txt123",
+        status: "succeeded",
+        output: ["Hello", ", ", "world", "!"],
+        metrics: {
+          predict_time: 2.1,
+          input_token_count: 10,
+          output_token_count: 50,
+        },
+        ...overrides,
+      };
+    }
+
+    it("creates prediction and returns text with token-based cost", async () => {
+      const prediction = textSucceeded();
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(
+        makeConfig({ textInputTokenCost: 0.00000065, textOutputTokenCost: 0.00000275 }),
+        fetchFn,
+      );
+      const result = await adapter.generateText({ prompt: "Hello world" });
+
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchFn.mock.calls[0];
+      expect(url).toBe("https://api.replicate.com/v1/predictions");
+      const body = JSON.parse(init?.body as string);
+      expect(body.input.prompt).toBe("Hello world");
+
+      expect(result.result.text).toBe("Hello, world!");
+      expect(result.result.model).toBe("llama");
+      expect(result.result.usage.inputTokens).toBe(10);
+      expect(result.result.usage.outputTokens).toBe(50);
+
+      // Cost: 10 * $0.00000065 + 50 * $0.00000275 = $0.0000065 + $0.0001375 = $0.000144
+      expect(result.cost).toBeCloseTo(0.000144, 6);
+      expect(result.charge).toBeCloseTo(withMargin(0.000144, 1.3), 6);
+    });
+
+    it("passes optional text parameters", async () => {
+      const prediction = textSucceeded();
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await adapter.generateText({
+        prompt: "Explain quantum computing",
+        maxTokens: 500,
+        temperature: 0.7,
+      });
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1]?.body as string);
+      expect(body.input.prompt).toBe("Explain quantum computing");
+      expect(body.input.max_new_tokens).toBe(500);
+      expect(body.input.temperature).toBe(0.7);
+    });
+
+    it("passes temperature=0 correctly", async () => {
+      const prediction = textSucceeded();
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await adapter.generateText({ prompt: "test", temperature: 0 });
+
+      const body = JSON.parse(fetchFn.mock.calls[0][1]?.body as string);
+      expect(body.input.temperature).toBe(0);
+    });
+
+    it("uses custom model name when provided", async () => {
+      const prediction = textSucceeded();
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateText({ prompt: "test", model: "mistral" });
+
+      expect(result.result.model).toBe("mistral");
+    });
+
+    it("handles single string output", async () => {
+      const prediction = textSucceeded({ output: "Complete text response" });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateText({ prompt: "test" });
+
+      expect(result.result.text).toBe("Complete text response");
+    });
+
+    it("returns zero cost when token counts are missing", async () => {
+      const prediction = textSucceeded({ metrics: { predict_time: 1.0 } });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateText({ prompt: "test" });
+
+      expect(result.cost).toBe(0);
+      expect(result.result.usage.inputTokens).toBe(0);
+      expect(result.result.usage.outputTokens).toBe(0);
+    });
+
+    it("returns zero cost when metrics are missing entirely", async () => {
+      const prediction = textSucceeded({ metrics: undefined });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateText({ prompt: "test" });
+
+      expect(result.cost).toBe(0);
+    });
+
+    it("throws on unexpected output format", async () => {
+      const prediction = textSucceeded({ output: null });
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await expect(adapter.generateText({ prompt: "fail" })).rejects.toThrow(
+        "Unexpected Replicate text output format",
+      );
+    });
+
+    it("polls when prediction is not immediately complete", async () => {
+      const pending = { id: "pred_txt123", status: "processing" };
+      const completed = textSucceeded();
+
+      const fetchFn = vi
+        .fn<FetchFn>()
+        .mockResolvedValueOnce(mockResponse(pending))
+        .mockResolvedValueOnce(mockResponse(completed));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      const result = await adapter.generateText({ prompt: "async text" });
+
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(result.result.text).toBe("Hello, world!");
+    });
+
+    it("throws on API error", async () => {
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse({ detail: "Forbidden" }, 403));
+
+      const adapter = createReplicateAdapter(makeConfig(), fetchFn);
+      await expect(adapter.generateText({ prompt: "fail" })).rejects.toThrow("Replicate API error (403)");
     });
   });
 });

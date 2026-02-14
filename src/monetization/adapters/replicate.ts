@@ -9,7 +9,16 @@
  * "WOPR Hosted" and this adapter is the invisible layer.
  */
 
-import type { AdapterResult, ProviderAdapter, TranscriptionInput, TranscriptionOutput } from "./types.js";
+import type {
+  AdapterResult,
+  ImageGenerationInput,
+  ImageGenerationOutput,
+  ProviderAdapter,
+  TextGenerationInput,
+  TextGenerationOutput,
+  TranscriptionInput,
+  TranscriptionOutput,
+} from "./types.js";
 import { withMargin } from "./types.js";
 
 /** Replicate prediction status */
@@ -38,6 +47,16 @@ export interface ReplicateAdapterConfig {
   marginMultiplier?: number;
   /** Whisper model version on Replicate */
   whisperVersion?: string;
+  /** SDXL model version on Replicate */
+  imageModelVersion?: string;
+  /** Cost per GPU second for image generation */
+  imageCostPerSecond?: number;
+  /** Llama model version on Replicate */
+  textModelVersion?: string;
+  /** Cost per input token for text generation */
+  textInputTokenCost?: number;
+  /** Cost per output token for text generation */
+  textOutputTokenCost?: number;
   /** Max poll attempts when waiting for prediction (default: 60) */
   maxPollAttempts?: number;
   /** Poll interval in milliseconds (default: 1000) */
@@ -48,6 +67,11 @@ const DEFAULT_BASE_URL = "https://api.replicate.com";
 const DEFAULT_COST_PER_SECOND = 0.000225; // Whisper large-v3 on Replicate
 const DEFAULT_MARGIN = 1.3;
 const DEFAULT_WHISPER_VERSION = "cdd97b257f93cb89dede1c7b1be00e6ed895be431c2e8a9877826e5d7999875b";
+const DEFAULT_IMAGE_MODEL_VERSION = "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc"; // SDXL
+const DEFAULT_IMAGE_COST_PER_SECOND = 0.0023; // SDXL on Replicate (A40 GPU)
+const DEFAULT_TEXT_MODEL_VERSION = "2c1608e18606fad2812020dc541930f2d0495ce32eee50182cc5642f4243027"; // Llama 2 70b
+const DEFAULT_TEXT_INPUT_TOKEN_COST = 0.00000065; // $0.65 per 1M input tokens
+const DEFAULT_TEXT_OUTPUT_TOKEN_COST = 0.00000275; // $2.75 per 1M output tokens
 const DEFAULT_MAX_POLL = 60;
 const DEFAULT_POLL_INTERVAL = 1000;
 
@@ -67,11 +91,16 @@ export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
 export function createReplicateAdapter(
   config: ReplicateAdapterConfig,
   fetchFn: FetchFn = fetch,
-): ProviderAdapter & Required<Pick<ProviderAdapter, "transcribe">> {
+): ProviderAdapter & Required<Pick<ProviderAdapter, "transcribe" | "generateImage" | "generateText">> {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const costPerSecond = config.costPerSecond ?? DEFAULT_COST_PER_SECOND;
   const marginMultiplier = config.marginMultiplier ?? DEFAULT_MARGIN;
   const whisperVersion = config.whisperVersion ?? DEFAULT_WHISPER_VERSION;
+  const imageModelVersion = config.imageModelVersion ?? DEFAULT_IMAGE_MODEL_VERSION;
+  const imageCostPerSecond = config.imageCostPerSecond ?? DEFAULT_IMAGE_COST_PER_SECOND;
+  const textModelVersion = config.textModelVersion ?? DEFAULT_TEXT_MODEL_VERSION;
+  const textInputTokenCost = config.textInputTokenCost ?? DEFAULT_TEXT_INPUT_TOKEN_COST;
+  const textOutputTokenCost = config.textOutputTokenCost ?? DEFAULT_TEXT_OUTPUT_TOKEN_COST;
   const maxPollAttempts = config.maxPollAttempts ?? DEFAULT_MAX_POLL;
   const pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_INTERVAL;
 
@@ -81,11 +110,11 @@ export function createReplicateAdapter(
     Prefer: "wait",
   };
 
-  async function createPrediction(input: Record<string, unknown>): Promise<ReplicatePrediction> {
+  async function createPrediction(version: string, input: Record<string, unknown>): Promise<ReplicatePrediction> {
     const res = await fetchFn(`${baseUrl}/v1/predictions`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ version: whisperVersion, input }),
+      body: JSON.stringify({ version, input }),
     });
 
     if (!res.ok) {
@@ -122,18 +151,18 @@ export function createReplicateAdapter(
     throw new Error(`Replicate prediction timed out after ${maxPollAttempts} poll attempts`);
   }
 
-  function extractCost(prediction: ReplicatePrediction): number {
+  function extractCost(prediction: ReplicatePrediction, perSecondRate = costPerSecond): number {
     const predictTime = prediction.metrics?.predict_time ?? 0;
-    return predictTime * costPerSecond;
+    return predictTime * perSecondRate;
   }
 
   return {
     name: "replicate",
-    capabilities: ["transcription"] as const,
+    capabilities: ["transcription", "image-generation", "text-generation"] as const,
 
     async transcribe(input: TranscriptionInput): Promise<AdapterResult<TranscriptionOutput>> {
       // Create prediction using Whisper model
-      let prediction = await createPrediction({
+      let prediction = await createPrediction(whisperVersion, {
         audio: input.audioUrl,
         ...(input.language ? { language: input.language } : {}),
       });
@@ -174,6 +203,84 @@ export function createReplicateAdapter(
       // The adapter returns cost + charge so the caller can emit the event.
       return {
         result: { text, detectedLanguage, durationSeconds },
+        cost,
+        charge,
+      };
+    },
+
+    async generateImage(input: ImageGenerationInput): Promise<AdapterResult<ImageGenerationOutput>> {
+      let prediction = await createPrediction(imageModelVersion, {
+        prompt: input.prompt,
+        ...(input.negativePrompt ? { negative_prompt: input.negativePrompt } : {}),
+        ...(input.width ? { width: input.width } : {}),
+        ...(input.height ? { height: input.height } : {}),
+        ...(input.count && input.count > 1 ? { num_outputs: input.count } : {}),
+      });
+
+      if (prediction.status !== "succeeded") {
+        prediction = await waitForPrediction(prediction.id);
+      }
+
+      const cost = extractCost(prediction, imageCostPerSecond);
+      const charge = withMargin(cost, marginMultiplier);
+
+      // Replicate image models return an array of URLs
+      const output = prediction.output;
+      let images: string[];
+      if (Array.isArray(output)) {
+        images = output as string[];
+      } else if (typeof output === "string") {
+        images = [output];
+      } else {
+        throw new Error("Unexpected Replicate image output format");
+      }
+
+      return {
+        result: { images, model: "sdxl" },
+        cost,
+        charge,
+      };
+    },
+
+    async generateText(input: TextGenerationInput): Promise<AdapterResult<TextGenerationOutput>> {
+      let prediction = await createPrediction(textModelVersion, {
+        prompt: input.prompt,
+        ...(input.maxTokens ? { max_new_tokens: input.maxTokens } : {}),
+        ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
+      });
+
+      if (prediction.status !== "succeeded") {
+        prediction = await waitForPrediction(prediction.id);
+      }
+
+      // Replicate text models return an array of string tokens or a single string
+      const output = prediction.output;
+      let text: string;
+      if (Array.isArray(output)) {
+        text = (output as string[]).join("");
+      } else if (typeof output === "string") {
+        text = output;
+      } else {
+        throw new Error("Unexpected Replicate text output format");
+      }
+
+      // Token-based cost: Replicate provides token counts in metrics
+      const metrics = prediction.metrics as {
+        predict_time?: number;
+        input_token_count?: number;
+        output_token_count?: number;
+      } | undefined;
+      const inputTokens = metrics?.input_token_count ?? 0;
+      const outputTokens = metrics?.output_token_count ?? 0;
+      const cost = inputTokens * textInputTokenCost + outputTokens * textOutputTokenCost;
+      const charge = withMargin(cost, marginMultiplier);
+
+      return {
+        result: {
+          text,
+          model: input.model ?? "llama",
+          usage: { inputTokens, outputTokens },
+        },
         cost,
         charge,
       };
