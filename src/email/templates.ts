@@ -54,7 +54,7 @@ function paragraph(html: string): string {
 function button(url: string, label: string, color = "#2563eb"): string {
   return `<tr>
   <td style="padding: 0 40px 30px 40px; text-align: center;">
-    <a href="${url}" style="display: inline-block; padding: 12px 32px; background-color: ${color}; color: #ffffff; text-decoration: none; font-weight: 600; border-radius: 6px; font-size: 16px;">${escapeHtml(label)}</a>
+    <a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 32px; background-color: ${color}; color: #ffffff; text-decoration: none; font-weight: 600; border-radius: 6px; font-size: 16px;">${escapeHtml(label)}</a>
   </td>
 </tr>`;
 }

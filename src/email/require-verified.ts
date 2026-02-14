@@ -8,6 +8,7 @@
 
 import type Database from "better-sqlite3";
 import type { Context, Next } from "hono";
+import { logger } from "../config/logger.js";
 import { isEmailVerified } from "./verification.js";
 
 /**
@@ -51,8 +52,9 @@ export function requireEmailVerified(getAuthDb: () => Database.Database) {
             403,
           );
         }
-      } catch {
+      } catch (error) {
         // If we can't check verification (DB issue), don't block the user
+        logger.warn("Email verification check failed", { error });
       }
     }
 

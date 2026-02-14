@@ -10,6 +10,7 @@
 
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import Database from "better-sqlite3";
+import { logger } from "../config/logger.js";
 import { getEmailClient } from "../email/client.js";
 import { passwordResetEmailTemplate, verifyEmailTemplate } from "../email/templates.js";
 import { generateVerificationToken, initVerificationSchema } from "../email/verification.js";
@@ -42,7 +43,7 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
           });
         } catch (error) {
           // Log the error but do NOT expose it to the user (prevents user enumeration)
-          console.error("Failed to send password reset email:", error);
+          logger.error("Failed to send password reset email:", error);
           // Return silently - same response whether email sends or not
         }
       },
@@ -67,7 +68,7 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
               });
             } catch (error) {
               // Log but don't block signup — user can request resend later
-              console.error("Failed to send verification email:", error);
+              logger.error("Failed to send verification email:", error);
             }
           },
         },
