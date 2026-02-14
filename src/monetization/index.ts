@@ -7,12 +7,10 @@
  * Modules:
  * - quotas/   -- instance quotas and resource limits per user/tier (WOP-282)
  *
- * Planned modules (see WOP-216 epic):
- * - socket/    -- withMargin() wrapper (WOP-298)
- *
  * Implemented modules:
  * - adapters/  -- hosted adapters like woprReplicateAdapter (WOP-301)
  * - metering/  -- fire-and-forget usage events (WOP-299)
+ * - socket/    -- adapter orchestrator with metering + tenant routing (WOP-376)
  * - stripe/    -- Stripe usage-based billing (WOP-300)
  */
 
@@ -55,6 +53,8 @@ export {
   TierStore,
   tierSatisfies,
 } from "./quotas/tier-definitions.js";
+// Socket layer — adapter orchestrator (WOP-376)
+export { AdapterSocket, type SocketConfig, type SocketRequest } from "./socket/socket.js";
 export type {
   CheckoutSessionOpts,
   PortalSessionOpts,
