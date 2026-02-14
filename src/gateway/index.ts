@@ -7,7 +7,16 @@
  */
 
 export { mapProviderError } from "./error-mapping.js";
-export { buildProxyDeps, type ProxyDeps } from "./proxy.js";
+export {
+  buildProxyDeps,
+  type ProxyDeps,
+  phoneNumberList,
+  phoneNumberProvision,
+  phoneNumberRelease,
+  smsDeliveryStatus,
+  smsInbound,
+  smsOutbound,
+} from "./proxy.js";
 export { createGatewayRoutes } from "./routes.js";
 export { type GatewayAuthEnv, serviceKeyAuth } from "./service-key-auth.js";
 export type {

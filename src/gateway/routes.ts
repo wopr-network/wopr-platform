@@ -7,6 +7,7 @@
  */
 
 import { Hono } from "hono";
+import { rateLimit } from "../api/middleware/rate-limit.js";
 import {
   audioSpeech,
   audioTranscriptions,
@@ -15,7 +16,11 @@ import {
   embeddings,
   imageGenerations,
   phoneInbound,
+  phoneNumberList,
+  phoneNumberProvision,
+  phoneNumberRelease,
   phoneOutbound,
+  smsDeliveryStatus,
   smsInbound,
   smsOutbound,
   textCompletions,
@@ -54,9 +59,25 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   gateway.post("/phone/outbound", phoneOutbound(deps));
   gateway.post("/phone/inbound", phoneInbound(deps));
 
-  // SMS/MMS (Twilio/Telnyx)
-  gateway.post("/messages/sms", smsOutbound(deps));
+  // Phone Number Management
+  gateway.post("/phone/numbers", phoneNumberProvision(deps));
+  gateway.get("/phone/numbers", phoneNumberList(deps));
+  gateway.delete("/phone/numbers/:id", phoneNumberRelease(deps));
+
+  // SMS/MMS (Twilio/Telnyx) — rate-limited per tenant to prevent spam
+  const smsRateLimit = rateLimit({
+    max: config.smsRateLimit ?? 100,
+    windowMs: 60_000,
+    keyGenerator: (c) => {
+      const tenant = c.get("gatewayTenant") as { id: string } | undefined;
+      return tenant?.id ?? "unknown";
+    },
+    message: "SMS rate limit exceeded. Please slow down.",
+  });
+
+  gateway.post("/messages/sms", smsRateLimit, smsOutbound(deps));
   gateway.post("/messages/sms/inbound", smsInbound(deps));
+  gateway.post("/messages/sms/status", smsDeliveryStatus(deps));
 
   return gateway;
 }

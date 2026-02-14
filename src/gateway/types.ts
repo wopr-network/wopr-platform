@@ -72,6 +72,8 @@ export interface GatewayConfig {
   fetchFn?: FetchFn;
   /** Function to resolve a service key to a tenant */
   resolveServiceKey: (key: string) => GatewayTenant | null;
+  /** Maximum outbound SMS per tenant per minute (default: 100) */
+  smsRateLimit?: number;
 }
 
 /** Standard gateway error response. */

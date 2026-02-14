@@ -120,8 +120,10 @@ describe("Gateway proxy endpoints", () => {
         "/v1/video/generations",
         "/v1/phone/outbound",
         "/v1/phone/inbound",
+        "/v1/phone/numbers",
         "/v1/messages/sms",
         "/v1/messages/sms/inbound",
+        "/v1/messages/sms/status",
       ];
 
       for (const path of endpoints) {
@@ -418,41 +420,101 @@ describe("Gateway proxy endpoints", () => {
   // -----------------------------------------------------------------------
 
   describe("POST /v1/messages/sms", () => {
-    it("sends SMS without metering (stub)", async () => {
-      const app = makeGatewayApp();
+    it("sends SMS via Twilio and emits meter event", async () => {
+      const stubFetch = createStubFetch({
+        body: JSON.stringify({ sid: "SM123", status: "queued" }),
+      });
+
+      const app = makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ to: "+15551234567", from: "+15559876543", body: "Hello!" }),
+        body: JSON.stringify({ to: "+15551234567", body: "Hello!", from: "+15559999999" }),
       });
 
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: string; capability: string };
-      expect(body.status).toBe("sent");
+      const body = (await res.json()) as { sid: string; status: string; capability: string };
+      expect(body.sid).toBe("SM123");
+      expect(body.status).toBe("queued");
       expect(body.capability).toBe("sms-outbound");
 
-      // No meter event -- handler is stubbed, no upstream call is made
-      expect(meterEvents.length).toBe(0);
+      // Meter event emitted with per-message cost
+      expect(meterEvents.length).toBe(1);
+      expect(meterEvents[0].tenant).toBe("tenant-1");
+      expect(meterEvents[0].capability).toBe("sms-outbound");
+      expect(meterEvents[0].provider).toBe("twilio");
+      expect((meterEvents[0].cost as number)).toBeCloseTo(0.0079, 4);
     });
 
-    it("detects MMS when media_url is present", async () => {
-      const app = makeGatewayApp();
+    it("sends MMS when media_url is present and meters at MMS rate", async () => {
+      const stubFetch = createStubFetch({
+        body: JSON.stringify({ sid: "MM456", status: "queued" }),
+      });
+
+      const app = makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
           to: "+15551234567",
-          from: "+15559876543",
           body: "Check this out",
+          from: "+15559999999",
           media_url: ["https://example.com/image.jpg"],
         }),
       });
 
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { capability: string };
+      const body = (await res.json()) as { sid: string; capability: string };
+      expect(body.sid).toBe("MM456");
       expect(body.capability).toBe("mms-outbound");
 
-      // No meter event -- handler is stubbed, no upstream call is made
+      expect(meterEvents.length).toBe(1);
+      expect(meterEvents[0].capability).toBe("mms-outbound");
+      expect((meterEvents[0].cost as number)).toBeCloseTo(0.02, 4);
+    });
+
+    it("rejects requests missing required fields", async () => {
+      const app = makeGatewayApp();
+      const res = await app.request("/v1/messages/sms", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ to: "+15551234567" }), // missing body field
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("missing_field");
+      expect(meterEvents.length).toBe(0);
+    });
+
+    it("does not meter when Twilio returns an error", async () => {
+      const failFetch = createStubFetch({
+        status: 400,
+        body: JSON.stringify({ code: 21211, message: "Invalid To number" }),
+      });
+
+      const app = makeGatewayApp({ fetchFn: failFetch });
+      const res = await app.request("/v1/messages/sms", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ to: "invalid", body: "test", from: "+15559999999" }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(meterEvents.length).toBe(0);
+    });
+
+    it("budget-checks before sending", async () => {
+      const app = makeGatewayApp({ budgetAllowed: false });
+      const res = await app.request("/v1/messages/sms", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ to: "+15551234567", body: "test", from: "+15559999999" }),
+      });
+
+      expect(res.status).toBe(429);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("insufficient_credits");
       expect(meterEvents.length).toBe(0);
     });
   });
@@ -462,20 +524,202 @@ describe("Gateway proxy endpoints", () => {
   // -----------------------------------------------------------------------
 
   describe("POST /v1/messages/sms/inbound", () => {
-    it("meters inbound SMS", async () => {
+    it("meters inbound SMS at wholesale rate", async () => {
       const app = makeGatewayApp();
       const res = await app.request("/v1/messages/sms/inbound", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ from: "+15551234567", to: "+15559876543", body: "Hi there" }),
+        body: JSON.stringify({ from: "+15551234567", to: "+15559876543", body: "Hi there", message_sid: "SM789" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { capability: string; message_sid: string };
+      expect(body.capability).toBe("sms-inbound");
+      expect(body.message_sid).toBe("SM789");
+
+      expect(meterEvents.length).toBe(1);
+      expect(meterEvents[0].capability).toBe("sms-inbound");
+      expect((meterEvents[0].cost as number)).toBeCloseTo(0.0079, 4);
+    });
+
+    it("meters inbound MMS at higher rate", async () => {
+      const app = makeGatewayApp();
+      const res = await app.request("/v1/messages/sms/inbound", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "+15551234567",
+          to: "+15559876543",
+          body: "Photo",
+          media_url: ["https://example.com/photo.jpg"],
+        }),
       });
 
       expect(res.status).toBe(200);
       const body = (await res.json()) as { capability: string };
-      expect(body.capability).toBe("sms-inbound");
+      expect(body.capability).toBe("mms-inbound");
 
       expect(meterEvents.length).toBe(1);
-      expect(meterEvents[0].capability).toBe("sms-inbound");
+      expect(meterEvents[0].capability).toBe("mms-inbound");
+      expect((meterEvents[0].cost as number)).toBeCloseTo(0.02, 4);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // SMS Delivery Status
+  // -----------------------------------------------------------------------
+
+  describe("POST /v1/messages/sms/status", () => {
+    it("acknowledges delivery status callbacks", async () => {
+      const app = makeGatewayApp();
+      const res = await app.request("/v1/messages/sms/status", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_sid: "SM123",
+          message_status: "delivered",
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string; message_sid: string; message_status: string };
+      expect(body.status).toBe("acknowledged");
+      expect(body.message_sid).toBe("SM123");
+      expect(body.message_status).toBe("delivered");
+    });
+
+    it("handles failed delivery status", async () => {
+      const app = makeGatewayApp();
+      const res = await app.request("/v1/messages/sms/status", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message_sid: "SM456",
+          message_status: "failed",
+          error_code: 30008,
+          error_message: "Unknown error",
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { message_status: string };
+      expect(body.message_status).toBe("failed");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Phone Number Management
+  // -----------------------------------------------------------------------
+
+  describe("POST /v1/phone/numbers (provision)", () => {
+    it("provisions a phone number via Twilio", async () => {
+      let callCount = 0;
+      const stubFetch: FetchFn = async (url) => {
+        callCount++;
+        // First call: search for available numbers
+        if (callCount === 1) {
+          return new Response(JSON.stringify({
+            available_phone_numbers: [{
+              phone_number: "+15551112222",
+              friendly_name: "(555) 111-2222",
+              capabilities: { sms: true, voice: true, mms: true },
+            }],
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        // Second call: purchase the number
+        return new Response(JSON.stringify({
+          sid: "PN123",
+          phone_number: "+15551112222",
+          friendly_name: "(555) 111-2222",
+          capabilities: { sms: true, voice: true, mms: true },
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      };
+
+      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const res = await app.request("/v1/phone/numbers", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ area_code: "555" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { id: string; phone_number: string };
+      expect(body.id).toBe("PN123");
+      expect(body.phone_number).toBe("+15551112222");
+
+      // Should meter the phone number cost
+      expect(meterEvents.length).toBe(1);
+      expect(meterEvents[0].capability).toBe("phone-number-provision");
+    });
+
+    it("returns 404 when no numbers are available", async () => {
+      const stubFetch = createStubFetch({
+        body: JSON.stringify({ available_phone_numbers: [] }),
+      });
+
+      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const res = await app.request("/v1/phone/numbers", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ area_code: "999" }),
+      });
+
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("no_numbers_available");
+    });
+  });
+
+  describe("GET /v1/phone/numbers (list)", () => {
+    it("lists tenant phone numbers", async () => {
+      const stubFetch = createStubFetch({
+        body: JSON.stringify({
+          incoming_phone_numbers: [
+            { sid: "PN123", phone_number: "+15551112222", friendly_name: "Main", capabilities: { sms: true, voice: true, mms: true } },
+            { sid: "PN456", phone_number: "+15553334444", friendly_name: "Support", capabilities: { sms: true, voice: false, mms: false } },
+          ],
+        }),
+      });
+
+      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const res = await app.request("/v1/phone/numbers", {
+        method: "GET",
+        headers: authHeaders(),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: Array<{ id: string; phone_number: string }> };
+      expect(body.data).toHaveLength(2);
+      expect(body.data[0].id).toBe("PN123");
+      expect(body.data[1].phone_number).toBe("+15553334444");
+    });
+  });
+
+  describe("DELETE /v1/phone/numbers/:id (release)", () => {
+    it("releases a phone number", async () => {
+      let callCount = 0;
+      const stubFetch: FetchFn = async () => {
+        callCount++;
+        // First call: GET to verify ownership (returns number info with tenant FriendlyName)
+        if (callCount === 1) {
+          return new Response(JSON.stringify({
+            friendly_name: "wopr:tenant:tenant-1",
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        // Second call: DELETE
+        return new Response(null, { status: 204 });
+      };
+
+      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const res = await app.request("/v1/phone/numbers/PN123", {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string; id: string };
+      expect(body.status).toBe("released");
+      expect(body.id).toBe("PN123");
     });
   });
 
