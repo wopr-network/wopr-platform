@@ -1,9 +1,13 @@
+import { unlinkSync } from "node:fs";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MeterEmitter } from "./emitter.js";
 import { initMeterSchema } from "./schema.js";
 import type { MeterEvent } from "./types.js";
 import { UsageAggregationWorker } from "./usage-aggregation-worker.js";
+
+const TEST_WAL_PATH = `/tmp/wopr-worker-wal-${Date.now()}.jsonl`;
+const TEST_DLQ_PATH = `/tmp/wopr-worker-dlq-${Date.now()}.jsonl`;
 
 function createTestDb() {
   const db = new BetterSqlite3(":memory:");
@@ -73,7 +77,11 @@ describe("UsageAggregationWorker", () => {
 
   beforeEach(() => {
     db = createTestDb();
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = new MeterEmitter(db, {
+      flushIntervalMs: 60_000,
+      walPath: TEST_WAL_PATH,
+      dlqPath: TEST_DLQ_PATH,
+    });
     worker = new UsageAggregationWorker(db, {
       periodMs: BILLING_PERIOD,
       lateArrivalGraceMs: BILLING_PERIOD, // Re-check 1 period back
@@ -84,6 +92,18 @@ describe("UsageAggregationWorker", () => {
     worker.stop();
     emitter.close();
     db.close();
+
+    // Clean up test files.
+    try {
+      unlinkSync(TEST_WAL_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+    try {
+      unlinkSync(TEST_DLQ_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
   });
 
   it("aggregates meter events into billing period summaries", () => {
@@ -244,6 +264,18 @@ describe("UsageAggregationWorker.getTenantPeriodTotal", () => {
     worker.stop();
     emitter.close();
     db.close();
+
+    // Clean up test files.
+    try {
+      unlinkSync(TEST_WAL_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+    try {
+      unlinkSync(TEST_DLQ_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
   });
 
   it("returns aggregate totals across capabilities", () => {
@@ -299,6 +331,18 @@ describe("UsageAggregationWorker.toStripeMeterRecords", () => {
     worker.stop();
     emitter.close();
     db.close();
+
+    // Clean up test files.
+    try {
+      unlinkSync(TEST_WAL_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+    try {
+      unlinkSync(TEST_DLQ_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
   });
 
   it("produces Stripe-compatible meter records", () => {
@@ -386,6 +430,18 @@ describe("UsageAggregationWorker.querySummaries", () => {
     worker.stop();
     emitter.close();
     db.close();
+
+    // Clean up test files.
+    try {
+      unlinkSync(TEST_WAL_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+    try {
+      unlinkSync(TEST_DLQ_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
   });
 
   it("respects since/until filters", () => {

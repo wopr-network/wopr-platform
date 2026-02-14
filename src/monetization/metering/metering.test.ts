@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MeterAggregator } from "./aggregator.js";
@@ -66,16 +67,35 @@ describe("initMeterSchema", () => {
 describe("MeterEmitter", () => {
   let db: BetterSqlite3.Database;
   let emitter: MeterEmitter;
+  const TEST_WAL_PATH = `/tmp/wopr-test-wal-${Date.now()}.jsonl`;
+  const TEST_DLQ_PATH = `/tmp/wopr-test-dlq-${Date.now()}.jsonl`;
 
   beforeEach(() => {
     db = createTestDb();
     // Disable auto-flush timer in tests; we flush manually.
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, batchSize: 100 });
+    emitter = new MeterEmitter(db, {
+      flushIntervalMs: 60_000,
+      batchSize: 100,
+      walPath: TEST_WAL_PATH,
+      dlqPath: TEST_DLQ_PATH,
+    });
   });
 
   afterEach(() => {
     emitter.close();
     db.close();
+
+    // Clean up test files.
+    try {
+      unlinkSync(TEST_WAL_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+    try {
+      unlinkSync(TEST_DLQ_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
   });
 
   it("buffers events without writing until flush", () => {
@@ -748,5 +768,165 @@ describe("append-only guarantee", () => {
 
     emitter.close();
     db.close();
+  });
+});
+
+// -- Fail-closed policy with WAL and DLQ -----------------------------------
+
+describe("MeterEmitter - fail-closed policy", () => {
+  let db: BetterSqlite3.Database;
+  let emitter: MeterEmitter;
+  const TEST_WAL_PATH = "/tmp/wopr-test-wal.jsonl";
+  const TEST_DLQ_PATH = "/tmp/wopr-test-dlq.jsonl";
+
+  beforeEach(() => {
+    // Clean up test files before each test.
+    try {
+      unlinkSync(TEST_WAL_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+    try {
+      unlinkSync(TEST_DLQ_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+
+    db = createTestDb();
+    emitter = new MeterEmitter(db, {
+      flushIntervalMs: 60_000,
+      walPath: TEST_WAL_PATH,
+      dlqPath: TEST_DLQ_PATH,
+      maxRetries: 3,
+    });
+  });
+
+  afterEach(() => {
+    emitter.close();
+    db.close();
+
+    // Clean up test files after each test.
+    try {
+      unlinkSync(TEST_WAL_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+    try {
+      unlinkSync(TEST_DLQ_PATH);
+    } catch {
+      // Ignore if file doesn't exist.
+    }
+  });
+
+  it("writes events to WAL before buffering", () => {
+    emitter.emit(makeEvent({ tenant: "t-1" }));
+
+    // WAL should exist immediately.
+    expect(existsSync(TEST_WAL_PATH)).toBe(true);
+
+    const content = readFileSync(TEST_WAL_PATH, "utf8");
+    const lines = content.trim().split("\n");
+    expect(lines).toHaveLength(1);
+
+    const event = JSON.parse(lines[0]);
+    expect(event.tenant).toBe("t-1");
+    expect(event.id).toBeDefined();
+  });
+
+  it("clears WAL after successful flush", () => {
+    emitter.emit(makeEvent({ tenant: "t-1" }));
+    expect(existsSync(TEST_WAL_PATH)).toBe(true);
+
+    emitter.flush();
+
+    // WAL should not exist after successful flush.
+    expect(existsSync(TEST_WAL_PATH)).toBe(false);
+  });
+
+  it("moves events to DLQ after max retries", () => {
+    emitter.emit(makeEvent({ tenant: "t-1" }));
+
+    // Close the database to force flush failures.
+    db.close();
+
+    // Trigger max retries.
+    emitter.flush(); // retry 1
+    emitter.flush(); // retry 2
+    emitter.flush(); // retry 3
+
+    // Event should move to DLQ.
+    expect(existsSync(TEST_DLQ_PATH)).toBe(true);
+
+    const dlqContent = readFileSync(TEST_DLQ_PATH, "utf8");
+    const dlqLines = dlqContent.trim().split("\n");
+    expect(dlqLines).toHaveLength(1);
+
+    const dlqEntry = JSON.parse(dlqLines[0]);
+    expect(dlqEntry.tenant).toBe("t-1");
+    expect(dlqEntry.dlq_retries).toBe(3);
+    expect(dlqEntry.dlq_error).toBeDefined();
+
+    // Re-open for cleanup.
+    db = createTestDb();
+  });
+
+  it("replays WAL events on startup", () => {
+    // Manually write events to WAL (simulating crash).
+    const walEvents = [
+      { ...makeEvent({ tenant: "t-1" }), id: "wal-event-1" },
+      { ...makeEvent({ tenant: "t-2" }), id: "wal-event-2" },
+    ];
+    const walContent = walEvents.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    writeFileSync(TEST_WAL_PATH, walContent, "utf8");
+
+    // Create a new emitter — it should replay the WAL.
+    const newEmitter = new MeterEmitter(db, {
+      flushIntervalMs: 60_000,
+      walPath: TEST_WAL_PATH,
+      dlqPath: TEST_DLQ_PATH,
+    });
+
+    // Events should be in the database.
+    const rows = db.prepare("SELECT * FROM meter_events WHERE tenant IN (?, ?)").all("t-1", "t-2") as Array<{
+      tenant: string;
+    }>;
+    expect(rows).toHaveLength(2);
+
+    newEmitter.close();
+  });
+
+  it("WAL replay is idempotent (skips already-flushed events)", () => {
+    // Insert an event directly into the database.
+    const existingEvent = { ...makeEvent({ tenant: "t-existing" }), id: "existing-id" };
+    db.prepare(
+      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp, session_id, duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      existingEvent.id,
+      existingEvent.tenant,
+      existingEvent.cost,
+      existingEvent.charge,
+      existingEvent.capability,
+      existingEvent.provider,
+      existingEvent.timestamp,
+      null,
+      null,
+    );
+
+    // Write the same event to WAL (simulating crash after flush).
+    writeFileSync(TEST_WAL_PATH, JSON.stringify(existingEvent) + "\n", "utf8");
+
+    // Create a new emitter — it should NOT duplicate the event.
+    const newEmitter = new MeterEmitter(db, {
+      flushIntervalMs: 60_000,
+      walPath: TEST_WAL_PATH,
+      dlqPath: TEST_DLQ_PATH,
+    });
+
+    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events WHERE id = ?").get("existing-id") as {
+      cnt: number;
+    };
+    expect(rows.cnt).toBe(1);
+
+    newEmitter.close();
   });
 });
