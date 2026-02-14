@@ -14,5 +14,6 @@ vitest.config.*
 biome.json
 Dockerfile*
 docker-compose*.yml
-scripts
+scripts/*
+!scripts/dht-bootstrap.mjs
 .dockerignore

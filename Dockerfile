@@ -55,9 +55,9 @@ RUN chown -R wopr:wopr /app
 USER wopr
 
 ENV NODE_ENV=production
-ENV PORT=3001
+ENV PORT=3100
 
-EXPOSE 3001
+EXPOSE 3100
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:${PORT}/health || exit 1
