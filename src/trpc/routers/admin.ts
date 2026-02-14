@@ -211,14 +211,12 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get tenant account status. */
-  tenantStatus: protectedProcedure
-    .input(z.object({ tenantId: tenantIdSchema }))
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getTenantStatusStore } = deps();
-      const row = getTenantStatusStore().get(input.tenantId);
-      return row ?? { tenantId: input.tenantId, status: "active" };
-    }),
+  tenantStatus: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getTenantStatusStore } = deps();
+    const row = getTenantStatusStore().get(input.tenantId);
+    return row ?? { tenantId: input.tenantId, status: "active" };
+  }),
 
   /** Suspend a tenant account. Requires platform_admin role. */
   suspendTenant: protectedProcedure
@@ -376,12 +374,7 @@ export const adminRouter = router({
       let refundedCents = 0;
       const balance = getCreditStore().getBalance(input.tenantId);
       if (balance > 0) {
-        getCreditStore().refund(
-          input.tenantId,
-          balance,
-          `Auto-refund on account ban: ${input.reason}`,
-          adminUserId,
-        );
+        getCreditStore().refund(input.tenantId, balance, `Auto-refund on account ban: ${input.reason}`, adminUserId);
         refundedCents = balance;
       }
 

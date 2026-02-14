@@ -46,11 +46,7 @@ export class TenantStatusStore {
 
   /** Ensure a tenant has a status row (upsert). */
   ensureExists(tenantId: string): void {
-    this.db
-      .insert(tenantStatus)
-      .values({ tenantId, status: "active" })
-      .onConflictDoNothing()
-      .run();
+    this.db.insert(tenantStatus).values({ tenantId, status: "active" }).onConflictDoNothing().run();
   }
 
   /**
@@ -155,9 +151,7 @@ export class TenantStatusStore {
     const expired = this.db
       .select({ tenantId: tenantStatus.tenantId })
       .from(tenantStatus)
-      .where(
-        sql`${tenantStatus.status} = 'grace_period' AND ${tenantStatus.graceDeadline} <= datetime('now')`,
-      )
+      .where(sql`${tenantStatus.status} = 'grace_period' AND ${tenantStatus.graceDeadline} <= datetime('now')`)
       .all();
 
     const now = Date.now();

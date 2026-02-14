@@ -152,9 +152,7 @@ describe("admin tenant status tRPC routes", () => {
 
     it("requires platform_admin role", async () => {
       const caller = createCaller(nonAdminContext());
-      await expect(caller.admin.tenantStatus({ tenantId: "tenant-1" })).rejects.toThrow(
-        "Platform admin role required",
-      );
+      await expect(caller.admin.tenantStatus({ tenantId: "tenant-1" })).rejects.toThrow("Platform admin role required");
     });
   });
 
@@ -178,32 +176,30 @@ describe("admin tenant status tRPC routes", () => {
 
     it("requires a reason", async () => {
       const caller = createCaller(adminContext());
-      await expect(
-        caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "" }),
-      ).rejects.toThrow();
+      await expect(caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "" })).rejects.toThrow();
     });
 
     it("requires platform_admin role", async () => {
       const caller = createCaller(nonAdminContext());
-      await expect(
-        caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "test" }),
-      ).rejects.toThrow("Platform admin role required");
+      await expect(caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "test" })).rejects.toThrow(
+        "Platform admin role required",
+      );
     });
 
     it("rejects if already suspended", async () => {
       statusStore.suspend("tenant-1", "initial", "admin-1");
       const caller = createCaller(adminContext());
-      await expect(
-        caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "again" }),
-      ).rejects.toThrow("already suspended");
+      await expect(caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "again" })).rejects.toThrow(
+        "already suspended",
+      );
     });
 
     it("rejects if banned", async () => {
       statusStore.ban("tenant-1", "tos", "admin-1");
       const caller = createCaller(adminContext());
-      await expect(
-        caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "suspend" }),
-      ).rejects.toThrow("Cannot suspend a banned account");
+      await expect(caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "suspend" })).rejects.toThrow(
+        "Cannot suspend a banned account",
+      );
     });
 
     it("suspends all bots for the tenant", async () => {
@@ -264,25 +260,23 @@ describe("admin tenant status tRPC routes", () => {
 
     it("requires platform_admin role", async () => {
       const caller = createCaller(nonAdminContext());
-      await expect(
-        caller.admin.reactivateTenant({ tenantId: "tenant-1" }),
-      ).rejects.toThrow("Platform admin role required");
+      await expect(caller.admin.reactivateTenant({ tenantId: "tenant-1" })).rejects.toThrow(
+        "Platform admin role required",
+      );
     });
 
     it("rejects if already active", async () => {
       statusStore.ensureExists("tenant-1");
       const caller = createCaller(adminContext());
-      await expect(
-        caller.admin.reactivateTenant({ tenantId: "tenant-1" }),
-      ).rejects.toThrow("already active");
+      await expect(caller.admin.reactivateTenant({ tenantId: "tenant-1" })).rejects.toThrow("already active");
     });
 
     it("rejects if banned", async () => {
       statusStore.ban("tenant-1", "tos", "admin-1");
       const caller = createCaller(adminContext());
-      await expect(
-        caller.admin.reactivateTenant({ tenantId: "tenant-1" }),
-      ).rejects.toThrow("Cannot reactivate a banned account");
+      await expect(caller.admin.reactivateTenant({ tenantId: "tenant-1" })).rejects.toThrow(
+        "Cannot reactivate a banned account",
+      );
     });
 
     it("can reactivate a grace_period tenant", async () => {
