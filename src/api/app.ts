@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { resolveSessionUser } from "../auth/index.js";
+import { logger } from "../config/logger.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
@@ -48,3 +49,25 @@ app.route("/api/instances/:id/snapshots", snapshotRoutes);
 app.route("/api/instances/:id/friends", friendsRoutes);
 app.route("/api/audit", auditRoutes);
 app.route("/api/admin/audit", adminAuditRoutes);
+
+// Global error handler — catches all errors from routes and middleware.
+// This prevents unhandled errors from crashing the process.
+export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
+  logger.error("Unhandled error in request", {
+    error: err.message,
+    stack: err.stack,
+    path: c.req.path,
+    method: c.req.method,
+  });
+
+  // Return a safe error response to the client
+  return c.json(
+    {
+      error: "Internal server error",
+      message: "An unexpected error occurred while processing your request",
+    },
+    500,
+  );
+};
+
+app.onError(errorHandler);
