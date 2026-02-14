@@ -13,6 +13,8 @@ import { vi } from "vitest";
 
 export const TEST_TOKEN = "integration-test-token";
 export const TEST_PLATFORM_SECRET = "test-platform-secret-32bytes!!ok";
+export const TENANT_A_TOKEN = "wopr_write_tenantA123";
+export const TENANT_B_TOKEN = "wopr_write_tenantB456";
 
 vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
 vi.stubEnv("PLATFORM_SECRET", TEST_PLATFORM_SECRET);
@@ -20,6 +22,8 @@ vi.stubEnv("INSTANCE_DATA_DIR", "/tmp/wopr-int-test-instances");
 vi.stubEnv("SNAPSHOT_DB_PATH", ":memory:");
 vi.stubEnv("SNAPSHOT_DIR", "/tmp/wopr-int-test-snapshots");
 vi.stubEnv("WOPR_HOME_BASE", "/tmp/wopr-int-test-instances");
+vi.stubEnv("FLEET_TOKEN_TENANT_A", `write:${TENANT_A_TOKEN}`);
+vi.stubEnv("FLEET_TOKEN_TENANT_B", `write:${TENANT_B_TOKEN}`);
 
 export const AUTH_HEADER = { Authorization: `Bearer ${TEST_TOKEN}` };
 export const JSON_HEADERS = { "Content-Type": "application/json", ...AUTH_HEADER };

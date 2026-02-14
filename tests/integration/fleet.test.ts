@@ -5,7 +5,7 @@
  * middleware chains (bearer auth) but mocked Docker/FleetManager.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTH_HEADER, JSON_HEADERS, fleetMock, pollerMock, updaterMock } from "./setup.js";
+import { AUTH_HEADER, JSON_HEADERS, TENANT_A_TOKEN, TENANT_B_TOKEN, fleetMock, pollerMock, updaterMock } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
 
@@ -447,4 +447,5 @@ describe("integration: fleet routes", () => {
       expect(res.status).toBe(404);
     });
   });
+
 });

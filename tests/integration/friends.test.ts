@@ -5,7 +5,7 @@
  * The proxy to bot instances is mocked since containers aren't available.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTH_HEADER, JSON_HEADERS, mockProxyToInstance } from "./setup.js";
+import { AUTH_HEADER, JSON_HEADERS, TENANT_A_TOKEN, TENANT_B_TOKEN, mockProxyToInstance } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
 
@@ -258,4 +258,5 @@ describe("integration: friends routes", () => {
       expect(res.status).toBe(400);
     });
   });
+
 });

@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_HEADER,
   JSON_HEADERS,
+  TENANT_A_TOKEN,
+  TENANT_B_TOKEN,
   TEST_PLATFORM_SECRET,
   TEST_TOKEN,
   mockForwardSecretsToInstance,
@@ -199,4 +201,5 @@ describe("integration: secrets routes", () => {
       expect(body.error).toContain("decrypt");
     });
   });
+
 });

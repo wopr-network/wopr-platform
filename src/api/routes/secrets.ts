@@ -147,7 +147,7 @@ secretsRoutes.post("/validate-key", async (c) => {
     const tenantId = await getInstanceTenantId(instanceId);
     const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
     if (ownershipError) {
-      return;
+      return ownershipError;
     }
     if (!PLATFORM_SECRET) {
       return c.json({ error: "Platform secret not configured" }, 500);

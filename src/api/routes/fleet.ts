@@ -370,8 +370,12 @@ fleetRoutes.get("/bots/:id/image-status", readAuth, async (c) => {
   }
 
   // If we reach here, profile cannot be null (validated above)
+  if (!profile) {
+    return c.json({ error: "Bot not found" }, 404);
+  }
+
   try {
-    const status = imagePoller.getImageStatus(botId, profile!);
+    const status = imagePoller.getImageStatus(botId, profile);
     return c.json(status);
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
