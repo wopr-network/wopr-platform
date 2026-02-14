@@ -930,7 +930,14 @@ export function phoneNumberProvision(deps: ProxyDeps) {
       // TODO(WOP-444): Phone numbers are a recurring monthly cost ($1.15/mo).
       // This only bills the first month. A recurring billing scheduler should
       // enumerate active numbers per tenant and emit monthly meter events.
-      emitMeterEvent(deps, tenant.id, "phone-number-provision", "twilio", PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN);
+      emitMeterEvent(
+        deps,
+        tenant.id,
+        "phone-number-provision",
+        "twilio",
+        PHONE_NUMBER_MONTHLY_COST,
+        PHONE_NUMBER_MARGIN,
+      );
 
       logger.info("Gateway proxy: phone/numbers provisioned", {
         tenant: tenant.id,
