@@ -50,7 +50,9 @@ export const usageRouter = router({
 
   /** Get Docker resource constraints for bot containers. */
   resourceLimits: protectedProcedure.query(async () => {
-    const { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } = await import("../../monetization/quotas/resource-limits.js");
+    const { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } = await import(
+      "../../monetization/quotas/resource-limits.js"
+    );
 
     return buildResourceLimits(DEFAULT_RESOURCE_CONFIG);
   }),
