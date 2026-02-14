@@ -62,10 +62,7 @@ describe("createGeminiAdapter", () => {
       });
       const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(response));
 
-      const adapter = createGeminiAdapter(
-        makeConfig({ inputTokenCostPer1M: 0.1, outputTokenCostPer1M: 0.4 }),
-        fetchFn,
-      );
+      const adapter = createGeminiAdapter(makeConfig({ inputTokenCostPer1M: 0.1, outputTokenCostPer1M: 0.4 }), fetchFn);
       const result = await adapter.generateText({ prompt: "Hello" });
 
       // (1000 / 1M) * $0.10 + (500 / 1M) * $0.40 = $0.0001 + $0.0002 = $0.0003
