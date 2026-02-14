@@ -256,7 +256,7 @@ describe("UsageAggregationWorker.getTenantPeriodTotal", () => {
 
   beforeEach(() => {
     db = createTestDb();
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, walPath: TEST_WAL_PATH, dlqPath: TEST_DLQ_PATH });
     worker = new UsageAggregationWorker(db, { periodMs: BILLING_PERIOD, lateArrivalGraceMs: BILLING_PERIOD });
   });
 
@@ -323,7 +323,7 @@ describe("UsageAggregationWorker.toStripeMeterRecords", () => {
 
   beforeEach(() => {
     db = createTestDb();
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, walPath: TEST_WAL_PATH, dlqPath: TEST_DLQ_PATH });
     worker = new UsageAggregationWorker(db, { periodMs: BILLING_PERIOD, lateArrivalGraceMs: BILLING_PERIOD });
   });
 
@@ -422,7 +422,7 @@ describe("UsageAggregationWorker.querySummaries", () => {
 
   beforeEach(() => {
     db = createTestDb();
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, walPath: TEST_WAL_PATH, dlqPath: TEST_DLQ_PATH });
     worker = new UsageAggregationWorker(db, { periodMs: BILLING_PERIOD, lateArrivalGraceMs: BILLING_PERIOD });
   });
 
