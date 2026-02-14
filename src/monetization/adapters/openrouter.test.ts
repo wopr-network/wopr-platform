@@ -4,11 +4,7 @@ import { createOpenRouterAdapter } from "./openrouter.js";
 import { withMargin } from "./types.js";
 
 /** Helper to create a mock Response with headers */
-function mockResponse(
-  body: unknown,
-  status = 200,
-  headers: Record<string, string> = {},
-): Response {
+function mockResponse(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
   const headerMap = new Map(Object.entries(headers));
   return {
     ok: status >= 200 && status < 300,
@@ -62,9 +58,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.000042" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.000042" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({ prompt: "Hello" });
@@ -77,9 +71,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.01" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.01" }));
 
       const adapter = createOpenRouterAdapter(makeConfig({ marginMultiplier: 1.5 }), fetchFn);
       const result = await adapter.generateText({ prompt: "test" });
@@ -92,9 +84,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion({ model: "anthropic/claude-sonnet-4-5-20250929" });
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.003" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.003" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({
@@ -115,9 +105,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion({ model: "openai/gpt-4o" });
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.005" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.005" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({
@@ -137,9 +125,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion({
         usage: { prompt_tokens: 100, completion_tokens: 50 },
       });
-      const fetchFn = vi
-        .fn<FetchFn>()
-        .mockResolvedValueOnce(mockResponse(completion, 200));
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(completion, 200));
 
       const adapter = createOpenRouterAdapter(
         makeConfig({
@@ -158,9 +144,7 @@ describe("createOpenRouterAdapter", () => {
     it("propagates 429 rate limit error with retry-after", async () => {
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse({ error: "rate limited" }, 429, { "retry-after": "30" }),
-        );
+        .mockResolvedValueOnce(mockResponse({ error: "rate limited" }, 429, { "retry-after": "30" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       try {
@@ -178,9 +162,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
       const adapter = createOpenRouterAdapter(
         makeConfig({
@@ -200,9 +182,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       await adapter.generateText({ prompt: "test" });
@@ -216,14 +196,9 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
-      const adapter = createOpenRouterAdapter(
-        makeConfig({ defaultModel: "meta-llama/llama-3-8b" }),
-        fetchFn,
-      );
+      const adapter = createOpenRouterAdapter(makeConfig({ defaultModel: "meta-llama/llama-3-8b" }), fetchFn);
       await adapter.generateText({ prompt: "test" });
 
       const body = JSON.parse(fetchFn.mock.calls[0][1]?.body as string);
@@ -234,9 +209,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       await adapter.generateText({
@@ -265,9 +238,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       await adapter.generateText({ prompt: "test", temperature: 0 });
@@ -280,9 +251,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       await adapter.generateText({ prompt: "test" });
@@ -298,9 +267,7 @@ describe("createOpenRouterAdapter", () => {
       });
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.005" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.005" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({ prompt: "test" });
@@ -313,9 +280,7 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion({ usage: undefined });
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({ prompt: "test" });
@@ -325,37 +290,21 @@ describe("createOpenRouterAdapter", () => {
     });
 
     it("throws on non-429 API error", async () => {
-      const fetchFn = vi
-        .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse({ error: "Unauthorized" }, 401),
-        );
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse({ error: "Unauthorized" }, 401));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
-      await expect(adapter.generateText({ prompt: "test" })).rejects.toThrow(
-        "OpenRouter API error (401)",
-      );
+      await expect(adapter.generateText({ prompt: "test" })).rejects.toThrow("OpenRouter API error (401)");
     });
 
     it("throws on 500 server error", async () => {
-      const fetchFn = vi
-        .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse({ error: "Internal server error" }, 500),
-        );
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse({ error: "Internal server error" }, 500));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
-      await expect(adapter.generateText({ prompt: "test" })).rejects.toThrow(
-        "OpenRouter API error (500)",
-      );
+      await expect(adapter.generateText({ prompt: "test" })).rejects.toThrow("OpenRouter API error (500)");
     });
 
     it("handles 429 without retry-after header", async () => {
-      const fetchFn = vi
-        .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse({ error: "rate limited" }, 429),
-        );
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse({ error: "rate limited" }, 429));
 
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       try {
@@ -372,14 +321,9 @@ describe("createOpenRouterAdapter", () => {
       const completion = chatCompletion();
       const fetchFn = vi
         .fn<FetchFn>()
-        .mockResolvedValueOnce(
-          mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }),
-        );
+        .mockResolvedValueOnce(mockResponse(completion, 200, { "x-openrouter-cost": "0.001" }));
 
-      const adapter = createOpenRouterAdapter(
-        makeConfig({ baseUrl: "https://custom.openrouter.ai/api" }),
-        fetchFn,
-      );
+      const adapter = createOpenRouterAdapter(makeConfig({ baseUrl: "https://custom.openrouter.ai/api" }), fetchFn);
       await adapter.generateText({ prompt: "test" });
 
       const [url] = fetchFn.mock.calls[0];

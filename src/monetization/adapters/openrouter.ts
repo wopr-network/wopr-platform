@@ -9,12 +9,7 @@
  * falling back to token-based calculation when the header is absent.
  */
 
-import type {
-  AdapterResult,
-  ProviderAdapter,
-  TextGenerationInput,
-  TextGenerationOutput,
-} from "./types.js";
+import type { AdapterResult, ProviderAdapter, TextGenerationInput, TextGenerationOutput } from "./types.js";
 import { withMargin } from "./types.js";
 
 /** Configuration for the OpenRouter adapter */
