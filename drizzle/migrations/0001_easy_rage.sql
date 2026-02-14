@@ -16,5 +16,5 @@ INSERT INTO `__new_snapshots`("id", "instance_id", "user_id", "created_at", "siz
 DROP TABLE `snapshots`;--> statement-breakpoint
 ALTER TABLE `__new_snapshots` RENAME TO `snapshots`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint
-CREATE INDEX `idx_snapshots_instance` ON `snapshots` (`instance_id`,`"created_at" desc`);--> statement-breakpoint
+CREATE INDEX `idx_snapshots_instance` ON `snapshots` (`instance_id`, `created_at` DESC);--> statement-breakpoint
 CREATE INDEX `idx_snapshots_user` ON `snapshots` (`user_id`);

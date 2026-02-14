@@ -118,5 +118,5 @@ CREATE TABLE `snapshots` (
 	`storage_path` text NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `idx_snapshots_instance` ON `snapshots` (`instance_id`,"created_at" desc);--> statement-breakpoint
+CREATE INDEX `idx_snapshots_instance` ON `snapshots` (`instance_id`, `created_at` DESC);--> statement-breakpoint
 CREATE INDEX `idx_snapshots_user` ON `snapshots` (`user_id`);
