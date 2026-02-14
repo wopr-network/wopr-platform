@@ -8,6 +8,23 @@ export interface WebhookResult {
   handled: boolean;
   event_type: string;
   tenant?: string;
+  /** The previous tier before a downgrade, if applicable. */
+  previousTier?: string;
+}
+
+/**
+ * Callbacks invoked during tier-change webhook processing.
+ *
+ * All callbacks are optional -- callers that do not need side-effects
+ * (e.g. unit tests) can omit them entirely.
+ */
+export interface WebhookHooks {
+  /** Invalidate any in-memory tier/budget caches for the tenant. */
+  onCacheInvalidate?: (tenant: string) => void;
+  /** Log an audit event for the tier change. */
+  onAuditLog?: (entry: { tenant: string; action: "tier.downgrade"; previousTier: string; newTier: string }) => void;
+  /** Emit a tier-change event so other running instances can refresh. */
+  onTierChange?: (entry: { tenant: string; previousTier: string; newTier: string }) => void;
 }
 
 /**
@@ -20,7 +37,11 @@ export interface WebhookResult {
  *
  * All other event types are acknowledged but not processed.
  */
-export function handleWebhookEvent(tenantStore: TenantCustomerStore, event: Stripe.Event): WebhookResult {
+export function handleWebhookEvent(
+  tenantStore: TenantCustomerStore,
+  event: Stripe.Event,
+  hooks?: WebhookHooks,
+): WebhookResult {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -36,6 +57,9 @@ export function handleWebhookEvent(tenantStore: TenantCustomerStore, event: Stri
           stripeCustomerId: customerId,
           stripeSubscriptionId: subscriptionId,
         });
+
+        // Clear any billing hold from a previous cancellation
+        tenantStore.setBillingHold(tenant, false);
 
         return { handled: true, event_type: event.type, tenant };
       }
@@ -62,9 +86,42 @@ export function handleWebhookEvent(tenantStore: TenantCustomerStore, event: Stri
       const mapping = tenantStore.getByStripeCustomerId(customerId);
 
       if (mapping) {
+        const previousTier = mapping.tier;
+
+        // 1. Set billing hold to block new API calls during transition
+        tenantStore.setBillingHold(mapping.tenant, true);
+
+        // 2. Downgrade tier to free and clear subscription
         tenantStore.setTier(mapping.tenant, "free");
         tenantStore.setSubscription(mapping.tenant, null);
-        return { handled: true, event_type: event.type, tenant: mapping.tenant };
+
+        // 3. Invalidate any cached tier/budget data
+        hooks?.onCacheInvalidate?.(mapping.tenant);
+
+        // 4. Log audit event
+        hooks?.onAuditLog?.({
+          tenant: mapping.tenant,
+          action: "tier.downgrade",
+          previousTier,
+          newTier: "free",
+        });
+
+        // 5. Emit tier-change event for other instances
+        hooks?.onTierChange?.({
+          tenant: mapping.tenant,
+          previousTier,
+          newTier: "free",
+        });
+
+        // 6. Clear billing hold now that transition is complete
+        tenantStore.setBillingHold(mapping.tenant, false);
+
+        return {
+          handled: true,
+          event_type: event.type,
+          tenant: mapping.tenant,
+          previousTier,
+        };
       }
 
       return { handled: false, event_type: event.type };

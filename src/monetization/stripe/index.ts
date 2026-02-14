@@ -14,5 +14,5 @@ export type {
 } from "./types.js";
 export type { UsageReporterOpts } from "./usage-reporter.js";
 export { StripeUsageReporter } from "./usage-reporter.js";
-export type { WebhookResult } from "./webhook.js";
+export type { WebhookHooks, WebhookResult } from "./webhook.js";
 export { handleWebhookEvent } from "./webhook.js";

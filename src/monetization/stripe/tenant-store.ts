@@ -58,6 +58,21 @@ export class TenantCustomerStore {
       .run(tier, Date.now(), tenant);
   }
 
+  /** Set or clear the billing hold flag for a tenant. */
+  setBillingHold(tenant: string, hold: boolean): void {
+    this.db
+      .prepare("UPDATE tenant_customers SET billing_hold = ?, updated_at = ? WHERE tenant = ?")
+      .run(hold ? 1 : 0, Date.now(), tenant);
+  }
+
+  /** Check whether a tenant has an active billing hold. */
+  hasBillingHold(tenant: string): boolean {
+    const row = this.db.prepare("SELECT billing_hold FROM tenant_customers WHERE tenant = ?").get(tenant) as
+      | { billing_hold: number }
+      | undefined;
+    return row?.billing_hold === 1;
+  }
+
   /** List all tenants with Stripe mappings. */
   list(): TenantCustomerRow[] {
     return this.db.prepare("SELECT * FROM tenant_customers ORDER BY created_at DESC").all() as TenantCustomerRow[];
