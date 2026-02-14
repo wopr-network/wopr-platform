@@ -612,15 +612,22 @@ export function phoneInbound(deps: ProxyDeps) {
 // SMS Outbound — POST /v1/messages/sms
 // -----------------------------------------------------------------------
 
+/** Wholesale per-message costs (USD). */
+const SMS_WHOLESALE_COST = 0.0079;
+const MMS_WHOLESALE_COST = 0.02;
+
+/** SMS outbound margin (retail / wholesale). ~2.5x markup. */
+const SMS_OUTBOUND_MARGIN = 2.53;
+const MMS_OUTBOUND_MARGIN = 2.5;
+
 export function smsOutbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const providerCfg = deps.providers.twilio ?? deps.providers.telnyx;
-    const providerName = deps.providers.twilio ? "twilio" : "telnyx";
-    if (!providerCfg) {
+    const twilioCfg = deps.providers.twilio;
+    if (!twilioCfg) {
       return c.json(
         { error: { message: "SMS service not configured", type: "server_error", code: "service_unavailable" } },
         503,
@@ -630,31 +637,92 @@ export function smsOutbound(deps: ProxyDeps) {
     try {
       const body = await c.req.json<{
         to: string;
-        from: string;
         body: string;
+        from?: string;
         media_url?: string[];
       }>();
 
-      // Determine if MMS (has media attachments)
+      if (!body.to || !body.body) {
+        return c.json(
+          {
+            error: {
+              message: "Missing required fields: to, body",
+              type: "invalid_request_error",
+              code: "missing_field",
+            },
+          },
+          400,
+        );
+      }
+
       const isMMS = body.media_url && body.media_url.length > 0;
       const capability = isMMS ? "mms-outbound" : "sms-outbound";
 
-      // TODO: Make HTTP call to Twilio/Telnyx API to actually send the message.
-      // Metering should only happen after a successful upstream response.
-      logger.info("Gateway proxy: messages/sms (stub)", {
+      // Build Twilio Messages API request (form-encoded)
+      const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
+      const twilioUrl = `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/Messages.json`;
+
+      const params = new URLSearchParams();
+      params.set("To", body.to);
+      params.set("Body", body.body);
+      if (body.from) params.set("From", body.from);
+
+      // Attach media URLs for MMS
+      if (body.media_url) {
+        for (const url of body.media_url) {
+          params.append("MediaUrl", url);
+        }
+      }
+
+      const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
+
+      const res = await deps.fetchFn(twilioUrl, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+
+      const responseBody = await res.text();
+
+      if (!res.ok) {
+        throw Object.assign(new Error(`Twilio API error (${res.status}): ${responseBody}`), {
+          httpStatus: res.status,
+        });
+      }
+
+      const twilioMsg = JSON.parse(responseBody) as {
+        sid?: string;
+        status?: string;
+        error_code?: number | null;
+        error_message?: string | null;
+      };
+
+      // Meter the message
+      const cost = isMMS ? MMS_WHOLESALE_COST : SMS_WHOLESALE_COST;
+      const margin = isMMS ? MMS_OUTBOUND_MARGIN : SMS_OUTBOUND_MARGIN;
+
+      logger.info("Gateway proxy: messages/sms", {
         tenant: tenant.id,
         capability,
         to: body.to,
+        sid: twilioMsg.sid,
+        status: twilioMsg.status,
+        cost,
       });
 
+      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin);
+
       return c.json({
-        status: "sent",
+        sid: twilioMsg.sid,
+        status: twilioMsg.status ?? "queued",
         capability,
-        message: `${isMMS ? "MMS" : "SMS"} sent successfully.`,
       });
     } catch (error) {
       logger.error("Gateway proxy error: messages/sms", { tenant: tenant.id, error });
-      const mapped = mapProviderError(error, providerName);
+      const mapped = mapProviderError(error, "twilio");
       return c.json(mapped.body, mapped.status as 502);
     }
   };
@@ -664,35 +732,331 @@ export function smsOutbound(deps: ProxyDeps) {
 // SMS Inbound — POST /v1/messages/sms/inbound (webhook from Twilio/Telnyx)
 // -----------------------------------------------------------------------
 
+/** Inbound SMS margin (~1.3x markup). */
+const SMS_INBOUND_MARGIN = 1.27;
+const MMS_INBOUND_MARGIN = 1.25;
+
 export function smsInbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const providerName = deps.providers.twilio ? "twilio" : "telnyx";
 
     try {
       const body = await c.req.json<{
+        message_sid?: string;
         from: string;
         to: string;
         body: string;
         media_url?: string[];
+        num_media?: number;
       }>();
 
-      const isMMS = body.media_url && body.media_url.length > 0;
+      const isMMS = (body.media_url && body.media_url.length > 0) || (body.num_media && body.num_media > 0);
       const capability = isMMS ? "mms-inbound" : "sms-inbound";
-      const costPerMessage = isMMS ? 0.02 : 0.0075;
+      const cost = isMMS ? MMS_WHOLESALE_COST : SMS_WHOLESALE_COST;
+      const margin = isMMS ? MMS_INBOUND_MARGIN : SMS_INBOUND_MARGIN;
 
       logger.info("Gateway proxy: messages/sms/inbound", {
         tenant: tenant.id,
         capability,
         from: body.from,
+        sid: body.message_sid,
       });
 
-      emitMeterEvent(deps, tenant.id, capability, providerName, costPerMessage);
+      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin);
 
-      return c.json({ status: "received", capability });
+      return c.json({
+        status: "received",
+        capability,
+        message_sid: body.message_sid ?? null,
+      });
     } catch (error) {
       logger.error("Gateway proxy error: messages/sms/inbound", { tenant: tenant.id, error });
-      const mapped = mapProviderError(error, providerName);
+      const mapped = mapProviderError(error, "twilio");
+      return c.json(mapped.body, mapped.status as 502);
+    }
+  };
+}
+
+// -----------------------------------------------------------------------
+// SMS Delivery Status — POST /v1/messages/sms/status (Twilio status callback)
+// -----------------------------------------------------------------------
+
+export function smsDeliveryStatus(_deps: ProxyDeps) {
+  return async (c: Context<GatewayAuthEnv>) => {
+    const tenant = c.get("gatewayTenant");
+
+    try {
+      const body = await c.req.json<{
+        message_sid: string;
+        message_status: string;
+        error_code?: number | null;
+        error_message?: string | null;
+      }>();
+
+      logger.info("Gateway proxy: messages/sms/status", {
+        tenant: tenant.id,
+        sid: body.message_sid,
+        status: body.message_status,
+        errorCode: body.error_code,
+      });
+
+      return c.json({
+        status: "acknowledged",
+        message_sid: body.message_sid,
+        message_status: body.message_status,
+      });
+    } catch (error) {
+      logger.error("Gateway proxy error: messages/sms/status", { tenant: tenant.id, error });
+      const mapped = mapProviderError(error, "twilio");
+      return c.json(mapped.body, mapped.status as 502);
+    }
+  };
+}
+
+// -----------------------------------------------------------------------
+// Phone Number Provisioning — POST /v1/phone/numbers
+// -----------------------------------------------------------------------
+
+/** Phone number monthly wholesale cost. */
+const PHONE_NUMBER_MONTHLY_COST = 1.15;
+const PHONE_NUMBER_MARGIN = 2.6;
+
+export function phoneNumberProvision(deps: ProxyDeps) {
+  return async (c: Context<GatewayAuthEnv>) => {
+    const tenant = c.get("gatewayTenant");
+    const budgetErr = budgetCheck(c, deps);
+    if (budgetErr) return budgetErr;
+
+    const twilioCfg = deps.providers.twilio;
+    if (!twilioCfg) {
+      return c.json(
+        { error: { message: "Phone service not configured", type: "server_error", code: "service_unavailable" } },
+        503,
+      );
+    }
+
+    try {
+      const body = await c.req.json<{
+        area_code?: string;
+        country?: string;
+        capabilities?: { sms?: boolean; voice?: boolean; mms?: boolean };
+      }>();
+
+      const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
+      const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
+      const country = body.country ?? "US";
+
+      // Step 1: Search for available numbers
+      const searchParams = new URLSearchParams();
+      if (body.area_code) searchParams.set("AreaCode", body.area_code);
+      searchParams.set("SmsEnabled", "true");
+      searchParams.set("VoiceEnabled", String(body.capabilities?.voice ?? true));
+      searchParams.set("MmsEnabled", String(body.capabilities?.mms ?? true));
+      searchParams.set("PageSize", "1");
+
+      const searchRes = await deps.fetchFn(
+        `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/AvailablePhoneNumbers/${country}/Local.json?${searchParams.toString()}`,
+        {
+          method: "GET",
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (!searchRes.ok) {
+        const errText = await searchRes.text();
+        throw Object.assign(new Error(`Twilio search error (${searchRes.status}): ${errText}`), {
+          httpStatus: searchRes.status,
+        });
+      }
+
+      const searchBody = (await searchRes.json()) as {
+        available_phone_numbers?: Array<{
+          phone_number: string;
+          friendly_name: string;
+          capabilities: { sms: boolean; voice: boolean; mms: boolean };
+        }>;
+      };
+
+      if (!searchBody.available_phone_numbers?.length) {
+        return c.json(
+          {
+            error: {
+              message: "No phone numbers available for the requested criteria",
+              type: "not_found_error",
+              code: "no_numbers_available",
+            },
+          },
+          404,
+        );
+      }
+
+      const selectedNumber = searchBody.available_phone_numbers[0];
+
+      // Step 2: Purchase the number
+      const purchaseParams = new URLSearchParams();
+      purchaseParams.set("PhoneNumber", selectedNumber.phone_number);
+
+      const purchaseRes = await deps.fetchFn(
+        `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers.json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: authHeader,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: purchaseParams.toString(),
+        },
+      );
+
+      if (!purchaseRes.ok) {
+        const errText = await purchaseRes.text();
+        throw Object.assign(new Error(`Twilio purchase error (${purchaseRes.status}): ${errText}`), {
+          httpStatus: purchaseRes.status,
+        });
+      }
+
+      const purchased = (await purchaseRes.json()) as {
+        sid: string;
+        phone_number: string;
+        friendly_name: string;
+        capabilities: { sms: boolean; voice: boolean; mms: boolean };
+      };
+
+      // Meter the monthly phone number cost
+      emitMeterEvent(deps, tenant.id, "phone-number", "twilio", PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN);
+
+      logger.info("Gateway proxy: phone/numbers provisioned", {
+        tenant: tenant.id,
+        sid: purchased.sid,
+        number: purchased.phone_number,
+      });
+
+      return c.json({
+        id: purchased.sid,
+        phone_number: purchased.phone_number,
+        friendly_name: purchased.friendly_name,
+        capabilities: purchased.capabilities,
+      });
+    } catch (error) {
+      logger.error("Gateway proxy error: phone/numbers provision", { tenant: tenant.id, error });
+      const mapped = mapProviderError(error, "twilio");
+      return c.json(mapped.body, mapped.status as 502);
+    }
+  };
+}
+
+// -----------------------------------------------------------------------
+// Phone Number List — GET /v1/phone/numbers
+// -----------------------------------------------------------------------
+
+export function phoneNumberList(deps: ProxyDeps) {
+  return async (c: Context<GatewayAuthEnv>) => {
+    const tenant = c.get("gatewayTenant");
+
+    const twilioCfg = deps.providers.twilio;
+    if (!twilioCfg) {
+      return c.json(
+        { error: { message: "Phone service not configured", type: "server_error", code: "service_unavailable" } },
+        503,
+      );
+    }
+
+    try {
+      const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
+      const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
+
+      const res = await deps.fetchFn(
+        `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers.json`,
+        {
+          method: "GET",
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw Object.assign(new Error(`Twilio API error (${res.status}): ${errText}`), {
+          httpStatus: res.status,
+        });
+      }
+
+      const twilioBody = (await res.json()) as {
+        incoming_phone_numbers?: Array<{
+          sid: string;
+          phone_number: string;
+          friendly_name: string;
+          capabilities: { sms: boolean; voice: boolean; mms: boolean };
+        }>;
+      };
+
+      const numbers = (twilioBody.incoming_phone_numbers ?? []).map((n) => ({
+        id: n.sid,
+        phone_number: n.phone_number,
+        friendly_name: n.friendly_name,
+        capabilities: n.capabilities,
+      }));
+
+      return c.json({ data: numbers });
+    } catch (error) {
+      logger.error("Gateway proxy error: phone/numbers list", { tenant: tenant.id, error });
+      const mapped = mapProviderError(error, "twilio");
+      return c.json(mapped.body, mapped.status as 502);
+    }
+  };
+}
+
+// -----------------------------------------------------------------------
+// Phone Number Release — DELETE /v1/phone/numbers/:id
+// -----------------------------------------------------------------------
+
+export function phoneNumberRelease(deps: ProxyDeps) {
+  return async (c: Context<GatewayAuthEnv>) => {
+    const tenant = c.get("gatewayTenant");
+
+    const twilioCfg = deps.providers.twilio;
+    if (!twilioCfg) {
+      return c.json(
+        { error: { message: "Phone service not configured", type: "server_error", code: "service_unavailable" } },
+        503,
+      );
+    }
+
+    try {
+      const numberId = c.req.param("id");
+      if (!numberId) {
+        return c.json(
+          { error: { message: "Missing phone number ID", type: "invalid_request_error", code: "missing_field" } },
+          400,
+        );
+      }
+
+      const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
+      const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
+
+      const res = await deps.fetchFn(
+        `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers/${numberId}.json`,
+        {
+          method: "DELETE",
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw Object.assign(new Error(`Twilio API error (${res.status}): ${errText}`), {
+          httpStatus: res.status,
+        });
+      }
+
+      logger.info("Gateway proxy: phone/numbers released", {
+        tenant: tenant.id,
+        numberId,
+      });
+
+      return c.json({ status: "released", id: numberId });
+    } catch (error) {
+      logger.error("Gateway proxy error: phone/numbers release", { tenant: tenant.id, error });
+      const mapped = mapProviderError(error, "twilio");
       return c.json(mapped.body, mapped.status as 502);
     }
   };
