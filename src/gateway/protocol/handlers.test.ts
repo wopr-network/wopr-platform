@@ -75,8 +75,15 @@ function mockFetchOk(body: unknown, headers?: Record<string, string>) {
 }
 
 function mockFetchError(status: number, body: string) {
+  return vi.fn().mockResolvedValue(new Response(body, { status, headers: { "Content-Type": "text/plain" } }));
+}
+
+function mockFetchStream(sseData: string, headers?: Record<string, string>) {
   return vi.fn().mockResolvedValue(
-    new Response(body, { status, headers: { "Content-Type": "text/plain" } }),
+    new Response(sseData, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream", ...headers },
+    }),
   );
 }
 
@@ -284,6 +291,51 @@ describe("Anthropic protocol handler", () => {
       expect(res.status).toBe(529);
       const body = await res.json();
       expect(body.type).toBe("error");
+    });
+  });
+
+  describe("streaming", () => {
+    it("pipes upstream response without JSON parsing when stream is true", async () => {
+      const ssePayload = 'data: {"type":"content_block_delta"}\n\ndata: [DONE]\n\n';
+      deps.fetchFn = mockFetchStream(ssePayload);
+
+      const res = await app.request("/v1/anthropic/v1/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "claude-3-5-sonnet-20241022",
+          messages: [{ role: "user", content: "Hi" }],
+          max_tokens: 100,
+          stream: true,
+        }),
+        headers: { "Content-Type": "application/json", "x-api-key": VALID_KEY },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+      const body = await res.text();
+      expect(body).toBe(ssePayload);
+    });
+
+    it("does not attempt JSON parsing for streaming response", async () => {
+      // SSE data is not valid JSON - if the handler tried to parse it, it would throw
+      const ssePayload = "data: {partial}\n\ndata: [DONE]\n\n";
+      deps.fetchFn = mockFetchStream(ssePayload);
+
+      const res = await app.request("/v1/anthropic/v1/messages", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "claude-3-5-sonnet-20241022",
+          messages: [{ role: "user", content: "Stream me" }],
+          max_tokens: 200,
+          stream: true,
+        }),
+        headers: { "Content-Type": "application/json", "x-api-key": VALID_KEY },
+      });
+
+      // Should succeed without JSON parse errors
+      expect(res.status).toBe(200);
+      const body = await res.text();
+      expect(body).toContain("[DONE]");
     });
   });
 
@@ -500,6 +552,66 @@ describe("OpenAI protocol handler", () => {
       expect(res.status).toBe(429);
       const body = await res.json();
       expect(body.error.code).toBe("insufficient_quota");
+    });
+  });
+
+  describe("streaming", () => {
+    it("pipes upstream SSE response when stream is true", async () => {
+      const ssePayload = 'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n';
+      deps.fetchFn = mockFetchStream(ssePayload);
+
+      const res = await app.request("/v1/openai/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${VALID_KEY}` },
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+      const body = await res.text();
+      expect(body).toBe(ssePayload);
+    });
+
+    it("skips cost estimation for streaming responses", async () => {
+      const ssePayload = "data: {not json}\n\ndata: [DONE]\n\n";
+      deps.fetchFn = mockFetchStream(ssePayload);
+
+      const res = await app.request("/v1/openai/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${VALID_KEY}` },
+      });
+
+      // Should succeed — no JSON parse error from cost estimation
+      expect(res.status).toBe(200);
+      // No meter event since cost is 0 and no cost header
+      expect(deps.meterEvents).toHaveLength(0);
+    });
+
+    it("meters streaming cost when x-openrouter-cost header is present", async () => {
+      const ssePayload = 'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n';
+      deps.fetchFn = mockFetchStream(ssePayload, { "x-openrouter-cost": "0.002" });
+
+      await app.request("/v1/openai/v1/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({
+          model: "gpt-4",
+          messages: [{ role: "user", content: "Hello" }],
+          stream: true,
+        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${VALID_KEY}` },
+      });
+
+      expect(deps.meterEvents).toHaveLength(1);
+      expect(deps.meterEvents[0].cost).toBe(0.002);
     });
   });
 

@@ -47,10 +47,7 @@ export interface AnthropicTool {
   input_schema: Record<string, unknown>;
 }
 
-export type AnthropicToolChoice =
-  | { type: "auto" }
-  | { type: "any" }
-  | { type: "tool"; name: string };
+export type AnthropicToolChoice = { type: "auto" } | { type: "any" } | { type: "tool"; name: string };
 
 export interface AnthropicResponse {
   id: string;
@@ -140,10 +137,7 @@ export function anthropicToOpenAI(req: AnthropicRequest): OpenAIRequest {
 
   // System message: Anthropic has top-level `system`, OpenAI uses a system role message
   if (req.system) {
-    const systemText =
-      typeof req.system === "string"
-        ? req.system
-        : req.system.map((b) => b.text).join("\n\n");
+    const systemText = typeof req.system === "string" ? req.system : req.system.map((b) => b.text).join("\n\n");
     messages.push({ role: "system", content: systemText });
   }
 

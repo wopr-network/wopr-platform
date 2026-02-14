@@ -161,6 +161,15 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
+      // Detect streaming before forwarding
+      let isStreaming = false;
+      try {
+        const parsed = JSON.parse(body) as { stream?: boolean };
+        isStreaming = parsed.stream === true;
+      } catch {
+        // If body isn't valid JSON, proceed without streaming detection
+      }
+
       const res = await deps.fetchFn(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         headers: {
@@ -169,6 +178,40 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
         },
         body,
       });
+
+      // For streaming responses, pipe the SSE stream through without JSON parsing.
+      // Cost estimation requires a JSON body, so skip it for streams.
+      if (isStreaming && res.ok) {
+        const costHeader = res.headers.get("x-openrouter-cost");
+        const cost = costHeader ? parseFloat(costHeader) : 0;
+
+        logger.info("OpenAI handler: chat/completions (streaming)", {
+          tenant: tenant.id,
+          status: res.status,
+          cost,
+        });
+
+        if (cost > 0) {
+          deps.meter.emit({
+            tenant: tenant.id,
+            cost,
+            charge: deps.withMarginFn(cost, deps.defaultMargin),
+            capability: "chat-completions",
+            provider: "openrouter",
+            timestamp: Date.now(),
+          });
+        }
+
+        return new Response(res.body, {
+          status: res.status,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Transfer-Encoding": "chunked",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      }
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");

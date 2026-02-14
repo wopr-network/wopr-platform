@@ -18,10 +18,10 @@ import type { ProtocolDeps } from "./deps.js";
 import {
   type AnthropicError,
   type AnthropicRequest,
-  type OpenAIResponse,
   anthropicToOpenAI,
   estimateAnthropicCost,
   mapToAnthropicError,
+  type OpenAIResponse,
   openAIResponseToAnthropic,
 } from "./translate.js";
 
@@ -172,6 +172,25 @@ function messagesHandler(deps: ProtocolDeps) {
         });
         const mapped = mapToAnthropicError(res.status, `Upstream error: ${errText}`);
         return anthropicErrorResponse(mapped.status, mapped.body);
+      }
+
+      // If the request asked for streaming, pipe the upstream response through
+      // without JSON parsing. The upstream SSE stream is not valid JSON.
+      if (anthropicReq.stream) {
+        logger.info("Anthropic handler: streaming messages", {
+          tenant: tenant.id,
+          model: anthropicReq.model,
+        });
+
+        return new Response(res.body, {
+          status: res.status,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Transfer-Encoding": "chunked",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
       }
 
       const openaiRes = (await res.json()) as OpenAIResponse;
