@@ -95,7 +95,7 @@ export function createDeepgramAdapter(
         method: "POST",
         headers: {
           Authorization: `Token ${config.apiKey}`,
-          "Content-Type": "audio/wav",
+          "Content-Type": "application/octet-stream",
         },
         body: audioBody,
       });

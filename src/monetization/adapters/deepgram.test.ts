@@ -192,10 +192,7 @@ describe("createDeepgramAdapter", () => {
         .mockResolvedValueOnce(mockResponse(new ArrayBuffer(8)))
         .mockResolvedValueOnce(mockResponse(response));
 
-      const adapter = createDeepgramAdapter(
-        makeConfig({ baseUrl: "https://custom.deepgram.com" }),
-        fetchFn,
-      );
+      const adapter = createDeepgramAdapter(makeConfig({ baseUrl: "https://custom.deepgram.com" }), fetchFn);
       await adapter.transcribe({ audioUrl: "https://example.com/audio.wav" });
 
       const [url] = fetchFn.mock.calls[1];
