@@ -8,11 +8,14 @@
 
 import type { AdapterCapability, AdapterResult, ProviderAdapter } from "../adapters/types.js";
 import { withMargin } from "../adapters/types.js";
+import type { BudgetChecker } from "../budget/budget-checker.js";
 import type { MeterEmitter } from "../metering/emitter.js";
 
 export interface SocketConfig {
   /** MeterEmitter instance for usage tracking */
   meter: MeterEmitter;
+  /** BudgetChecker instance for pre-call budget validation */
+  budgetChecker?: BudgetChecker;
   /** Default margin multiplier (default: 1.3) */
   defaultMargin?: number;
 }
@@ -32,6 +35,8 @@ export interface SocketRequest {
   sessionId?: string;
   /** Whether the tenant is using their own API key (BYOK) */
   byok?: boolean;
+  /** Optional: tenant's tier (for budget checking) */
+  tier?: string;
 }
 
 /** Map from capability to the adapter method name that fulfills it */
@@ -45,10 +50,12 @@ const CAPABILITY_METHOD: Record<AdapterCapability, keyof ProviderAdapter> = {
 export class AdapterSocket {
   private readonly adapters = new Map<string, ProviderAdapter>();
   private readonly meter: MeterEmitter;
+  private readonly budgetChecker?: BudgetChecker;
   private readonly defaultMargin: number;
 
   constructor(config: SocketConfig) {
     this.meter = config.meter;
+    this.budgetChecker = config.budgetChecker;
     this.defaultMargin = config.defaultMargin ?? 1.3;
   }
 
@@ -59,6 +66,18 @@ export class AdapterSocket {
 
   /** Execute a capability request against the best adapter. */
   async execute<T>(request: SocketRequest): Promise<T> {
+    // Pre-call budget check — fail-closed if enabled and budget exceeded
+    if (this.budgetChecker && request.tier && !request.byok) {
+      const budgetResult = this.budgetChecker.check(request.tenantId, request.tier);
+      if (!budgetResult.allowed) {
+        const error = Object.assign(new Error(budgetResult.reason ?? "Budget exceeded"), {
+          httpStatus: budgetResult.httpStatus ?? 429,
+          budgetCheck: budgetResult,
+        });
+        throw error;
+      }
+    }
+
     const adapter = this.resolveAdapter(request);
     const method = CAPABILITY_METHOD[request.capability];
     const fn = adapter[method] as ((input: unknown) => Promise<AdapterResult<T>>) | undefined;
