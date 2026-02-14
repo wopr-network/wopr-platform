@@ -34,7 +34,7 @@ describe("validateStripeMeters", () => {
     return {
       billing: {
         meters: {
-          list: vi.fn().mockResolvedValue({ data: meters }),
+          list: vi.fn().mockReturnValue({ autoPagingToArray: vi.fn().mockResolvedValue(meters) }),
         },
       },
     } as unknown as Stripe;
