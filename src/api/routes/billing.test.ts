@@ -1,9 +1,10 @@
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
+import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
@@ -22,6 +23,7 @@ function createBillingTestDb() {
   initMeterSchema(sqlite);
   initStripeSchema(sqlite);
   initCreditAdjustmentSchema(sqlite);
+  initCreditSchema(sqlite);
   const db = createDb(sqlite);
   return { sqlite, db };
 }
@@ -407,8 +409,8 @@ describe("billing routes", () => {
       const mapping = store.getByTenant("t-new");
       expect(mapping?.stripe_customer_id).toBe("cus_new");
 
-      const credits = new CreditAdjustmentStore(sqlite);
-      const balance = credits.getBalance("t-new");
+      const ledger = new CreditLedger(db);
+      const balance = ledger.balance("t-new");
       expect(balance).toBe(2500);
     });
 

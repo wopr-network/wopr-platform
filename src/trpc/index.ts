@@ -30,4 +30,3 @@ export { setAdminRouterDeps } from "./routers/admin.js";
 // Re-export dep setters for initialization
 export { setBillingRouterDeps } from "./routers/billing.js";
 export { setCapabilitiesRouterDeps } from "./routers/capabilities.js";
-export { setUsageRouterDeps } from "./routers/usage.js";

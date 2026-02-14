@@ -2,12 +2,12 @@ import BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
+import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
-import { TierStore } from "../../monetization/quotas/tier-definitions.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
@@ -227,7 +227,7 @@ vi.mock("../../network/network-policy.js", () => {
 // Import AFTER mocks
 const { fleetRoutes } = await import("./fleet.js");
 const { billingRoutes, setBillingDeps } = await import("./billing.js");
-const { quotaRoutes, setTierStore } = await import("./quota.js");
+const { quotaRoutes, setLedger } = await import("./quota.js");
 const { healthRoutes } = await import("./health.js");
 
 // ---------------------------------------------------------------------------
@@ -457,8 +457,7 @@ describe("E2E: Billing flow (credit model)", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
   let tenantStore: TenantCustomerStore;
-  let creditStore: CreditAdjustmentStore;
-  let tierStore: TierStore;
+  let creditLedger: CreditLedger;
 
   const mockStripe = {
     checkout: {
@@ -487,14 +486,13 @@ describe("E2E: Billing flow (credit model)", () => {
     initMeterSchema(sqlite);
     initStripeSchema(sqlite);
     initCreditAdjustmentSchema(sqlite);
+    initCreditSchema(sqlite);
     db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
-    creditStore = new CreditAdjustmentStore(sqlite);
+    creditLedger = new CreditLedger(db);
 
-    // Set up tier store
-    tierStore = new TierStore(sqlite);
-    tierStore.seed();
-    setTierStore(tierStore);
+    // Inject credit ledger for quota routes
+    setLedger(creditLedger);
 
     // Inject billing deps
     setBillingDeps({
@@ -513,23 +511,21 @@ describe("E2E: Billing flow (credit model)", () => {
   it("Credit checkout -> webhook credits ledger -> verify balance -> portal access", async () => {
     const tenantId = "tenant-e2e-1";
 
-    // Step 1: Check initial quota (free tier — 1 instance max)
-    const freeQuotaRes = await app.request(`/api/quota?tier=free&activeInstances=0`, {
+    // Step 1: Check initial quota (no credits yet — should show zero balance)
+    const quotaRes = await app.request(`/api/quota?tenant=${tenantId}&activeInstances=0`, {
       headers: authHeader,
     });
-    expect(freeQuotaRes.status).toBe(200);
-    const freeQuota = await freeQuotaRes.json();
-    expect(freeQuota.tier.id).toBe("free");
-    expect(freeQuota.instances.max).toBe(1);
-    expect(freeQuota.instances.remaining).toBe(1);
+    expect(quotaRes.status).toBe(200);
+    const quota = await quotaRes.json();
+    expect(quota.balanceCents).toBe(0);
 
-    // Step 2: Verify free tier blocks creating more than 1 instance
+    // Step 2: Verify zero balance blocks instance creation
     const quotaCheckRes = await app.request("/api/quota/check", {
       method: "POST",
       headers: jsonAuth,
-      body: JSON.stringify({ tier: "free", activeInstances: 1 }),
+      body: JSON.stringify({ tenant: tenantId, activeInstances: 0 }),
     });
-    expect(quotaCheckRes.status).toBe(403);
+    expect(quotaCheckRes.status).toBe(402);
     const quotaCheck = await quotaCheckRes.json();
     expect(quotaCheck.allowed).toBe(false);
 
@@ -569,7 +565,7 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const webhookResult = handleWebhookEvent({ tenantStore, creditStore }, checkoutEvent);
+    const webhookResult = handleWebhookEvent({ tenantStore, creditLedger }, checkoutEvent);
     expect(webhookResult.handled).toBe(true);
     expect(webhookResult.tenant).toBe(tenantId);
     expect(webhookResult.creditedCents).toBe(2500);
@@ -580,19 +576,16 @@ describe("E2E: Billing flow (credit model)", () => {
     expect(mapping?.stripe_customer_id).toBe("cus_e2e_123");
 
     // Step 6: Verify credits were granted
-    const balance = creditStore.getBalance(tenantId);
+    const balance = creditLedger.balance(tenantId);
     expect(balance).toBe(2500);
 
-    // Step 7: List available tiers
-    const tiersRes = await app.request("/api/quota/tiers", { headers: authHeader });
-    expect(tiersRes.status).toBe(200);
-    const tiersBody = await tiersRes.json();
-    expect(tiersBody.tiers.length).toBeGreaterThanOrEqual(4);
-    const tierIds = tiersBody.tiers.map((t: { id: string }) => t.id);
-    expect(tierIds).toContain("free");
-    expect(tierIds).toContain("pro");
-    expect(tierIds).toContain("team");
-    expect(tierIds).toContain("enterprise");
+    // Step 7: Check balance via quota route
+    const balanceRes = await app.request(`/api/quota/balance/${tenantId}`, {
+      headers: authHeader,
+    });
+    expect(balanceRes.status).toBe(200);
+    const balanceBody = await balanceRes.json();
+    expect(balanceBody.balanceCents).toBe(2500);
 
     // Step 8: Access billing portal
     (mockStripe.billingPortal.sessions.create as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -611,7 +604,7 @@ describe("E2E: Billing flow (credit model)", () => {
     const portal = await portalRes.json();
     expect(portal.url).toContain("billing.stripe.com");
 
-    // Step 9: Make another credit purchase ($50 with 5% bonus)
+    // Step 9: Make another credit purchase ($50)
     const secondCheckoutEvent = {
       type: "checkout.session.completed" as const,
       data: {
@@ -625,12 +618,12 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const secondResult = handleWebhookEvent({ tenantStore, creditStore }, secondCheckoutEvent);
+    const secondResult = handleWebhookEvent({ tenantStore, creditLedger }, secondCheckoutEvent);
     expect(secondResult.handled).toBe(true);
     expect(secondResult.creditedCents).toBe(5000); // 1:1 without priceMap
 
     // Step 10: Verify accumulated balance
-    const finalBalance = creditStore.getBalance(tenantId);
+    const finalBalance = creditLedger.balance(tenantId);
     expect(finalBalance).toBe(7500); // 2500 + 5000
   });
 });

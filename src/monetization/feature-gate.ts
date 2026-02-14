@@ -1,39 +1,29 @@
 import type { Context, Next } from "hono";
-import type { PlanTier } from "./quotas/tier-definitions.js";
-import { type TierName, tierSatisfies } from "./quotas/tier-definitions.js";
+import type { CreditLedger } from "./credits/credit-ledger.js";
 
 /**
- * Callback to resolve the user's current plan tier.
- * Platform wires this up to look up the tier from the auth session / organization.
+ * Callback to resolve the user's current credit balance in cents.
  */
-export type GetUserTier = (userId: string) => PlanTier | Promise<PlanTier>;
-
-/**
- * Callback to check whether a tenant has an active billing hold.
- * When a billing hold is active, all tier-gated requests are rejected
- * until the tier transition completes.
- */
-export type HasBillingHold = (tenantId: string) => boolean | Promise<boolean>;
+export type GetUserBalance = (tenantId: string) => number | Promise<number>;
 
 export interface FeatureGateConfig {
-  /** Resolve the authenticated user's plan tier */
-  getUserTier: GetUserTier;
-  /** Check whether the tenant has an active billing hold (optional) */
-  hasBillingHold?: HasBillingHold;
+  /** Resolve the authenticated tenant's credit balance in cents */
+  getUserBalance: GetUserBalance;
   /** Key on the Hono context where the authenticated user object lives (default: "user") */
   userKey?: string;
-  /** Property on the user object that holds the user ID (default: "id") */
+  /** Property on the user object that holds the tenant ID (default: "id") */
   userIdField?: string;
 }
 
 /**
- * Create a `requireTier` middleware factory.
+ * Create a `requireBalance` middleware factory.
  *
  * Usage:
  * ```ts
- * const { requireTier, requireFeature } = createFeatureGate({ getUserTier });
- * app.post('/api/premium', requireAuth, requireTier('pro'), handler);
- * app.post('/api/sso', requireAuth, requireTier('pro'), requireFeature('sso'), handler);
+ * const { requireBalance } = createFeatureGate({
+ *   getUserBalance: (tenantId) => creditLedger.balance(tenantId),
+ * });
+ * app.post('/api/bots', requireAuth, requireBalance(), handler);
  * ```
  */
 export function createFeatureGate(cfg: FeatureGateConfig) {
@@ -41,96 +31,51 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
   const userIdField = cfg.userIdField ?? "id";
 
   /**
-   * Middleware that rejects requests when the user's tier is below `minTier`.
-   * On success, sets `c.set('tier', tier)` for downstream handlers.
+   * Middleware that rejects requests when the user's credit balance is zero.
+   * Optionally requires a minimum balance (in cents).
+   * On success, sets `c.set('balance', balanceCents)` for downstream handlers.
    */
-  const requireTier = (minTier: TierName) => {
+  const requireBalance = (minBalanceCents = 0) => {
     return async (c: Context, next: Next) => {
       const user = c.get(userKey) as Record<string, unknown> | undefined;
       if (!user) {
         return c.json({ error: "Authentication required" }, 401);
       }
 
-      const userId = user[userIdField] as string | undefined;
-      if (!userId) {
+      const tenantId = user[userIdField] as string | undefined;
+      if (!tenantId) {
         return c.json({ error: "Authentication required" }, 401);
       }
 
-      // Check billing hold before resolving tier
-      if (cfg.hasBillingHold && (await cfg.hasBillingHold(userId))) {
+      const balanceCents = await cfg.getUserBalance(tenantId);
+
+      if (balanceCents <= minBalanceCents) {
         return c.json(
           {
-            error: "Billing transition in progress",
-            upgradeUrl: "/settings/billing",
+            error: "Insufficient credit balance",
+            currentBalanceCents: balanceCents,
+            requiredBalanceCents: minBalanceCents,
+            purchaseUrl: "/settings/billing",
           },
-          403,
+          402,
         );
       }
 
-      const tier = await cfg.getUserTier(userId);
-      if (!tierSatisfies(tier.name, minTier)) {
-        return c.json(
-          {
-            error: "Upgrade required",
-            required: minTier,
-            current: tier.name,
-            upgradeUrl: "/settings/billing",
-          },
-          403,
-        );
-      }
-
-      c.set("tier", tier);
+      c.set("balance", balanceCents);
       return next();
     };
   };
 
-  /**
-   * Middleware that rejects requests when the user's tier does not include `feature`.
-   * If `requireTier` ran first, reuses the tier from context; otherwise resolves it.
-   */
-  const requireFeature = (feature: string) => {
-    return async (c: Context, next: Next) => {
-      let tier = c.get("tier") as PlanTier | undefined;
+  return { requireBalance };
+}
 
-      if (!tier) {
-        const user = c.get(userKey) as Record<string, unknown> | undefined;
-        if (!user) {
-          return c.json({ error: "Authentication required" }, 401);
-        }
-        const userId = user[userIdField] as string | undefined;
-        if (!userId) {
-          return c.json({ error: "Authentication required" }, 401);
-        }
-        tier = await cfg.getUserTier(userId);
-        c.set("tier", tier);
-      }
-
-      if (!tier.features.includes(feature)) {
-        return c.json(
-          {
-            error: "Feature not available on your plan",
-            feature,
-            current: tier.name,
-            upgradeUrl: "/settings/billing",
-          },
-          403,
-        );
-      }
-
-      return next();
-    };
-  };
-
-  /**
-   * Check whether a plugin's tier requirement is satisfied by the user's plan.
-   * Defaults to "free" when the manifest omits `tier`.
-   */
-  const checkPluginAccess = (pluginTier: "free" | "premium" | undefined, userTier: PlanTier): boolean => {
-    if (!pluginTier || pluginTier === "free") return true;
-    // premium plugins require the premium_plugins feature flag
-    return userTier.features.includes("premium_plugins");
-  };
-
-  return { requireTier, requireFeature, checkPluginAccess };
+/**
+ * Convenience factory that creates a requireBalance middleware from a CreditLedger instance.
+ */
+export function createBalanceGate(ledger: CreditLedger, userKey?: string, userIdField?: string) {
+  return createFeatureGate({
+    getUserBalance: (tenantId) => ledger.balance(tenantId),
+    userKey,
+    userIdField,
+  });
 }

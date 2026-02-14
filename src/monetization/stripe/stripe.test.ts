@@ -1,9 +1,10 @@
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
+import { CreditLedger } from "../credits/credit-ledger.js";
+import { initCreditSchema } from "../credits/schema.js";
 import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
 import type { MeterEvent } from "../metering/types.js";
@@ -580,13 +581,14 @@ describe("createPortalSession", () => {
 describe("handleWebhookEvent (credit model)", () => {
   let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
-  let creditStore: CreditAdjustmentStore;
+  let creditLedger: CreditLedger;
 
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
+    initCreditSchema(sqlite);
     tenantStore = new TenantCustomerStore(testDb.db);
-    creditStore = new CreditAdjustmentStore(sqlite);
+    creditLedger = new CreditLedger(testDb.db);
   });
 
   afterEach(() => {
@@ -607,14 +609,14 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
 
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-1");
     expect(result.creditedCents).toBe(1000);
 
     // Verify credit was granted
-    const balance = creditStore.getBalance("t-1");
+    const balance = creditLedger.balance("t-1");
     expect(balance).toBe(1000);
 
     // Verify tenant mapping was created
@@ -636,7 +638,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-2");
     expect(result.creditedCents).toBe(500);
@@ -656,7 +658,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
     expect(result.handled).toBe(false);
   });
 
@@ -671,7 +673,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
     expect(result.handled).toBe(false);
   });
 
@@ -681,7 +683,7 @@ describe("handleWebhookEvent (credit model)", () => {
       data: { object: {} },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
     expect(result.handled).toBe(false);
     expect(result.event_type).toBe("payment_intent.succeeded");
   });
@@ -700,7 +702,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
     expect(result.handled).toBe(true);
     const mapping = tenantStore.getByTenant("t-1");
     expect(mapping?.stripe_customer_id).toBe("cus_abc123");

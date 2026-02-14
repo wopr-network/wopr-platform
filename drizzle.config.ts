@@ -2,6 +2,7 @@ import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
   schema: [
+    "./src/db/schema/credits.ts",
     "./src/db/schema/meter-events.ts",
     "./src/db/schema/stripe.ts",
     "./src/db/schema/audit.ts",

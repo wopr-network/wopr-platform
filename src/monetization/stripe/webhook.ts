@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { CreditLedger } from "../credits/credit-ledger.js";
 import type { CreditPriceMap } from "./credit-prices.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
 
@@ -19,7 +19,7 @@ export interface WebhookResult {
  */
 export interface WebhookDeps {
   tenantStore: TenantCustomerStore;
-  creditStore: CreditAdjustmentStore;
+  creditLedger: CreditLedger;
   /** Map of Stripe Price ID -> CreditPricePoint for bonus calculation. */
   priceMap?: CreditPriceMap;
 }
@@ -59,7 +59,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
 
       // Idempotency: skip if this session was already processed.
       const stripeSessionId = session.id ?? "unknown";
-      if (deps.creditStore.hasReferenceId(stripeSessionId)) {
+      if (deps.creditLedger.hasReferenceId(stripeSessionId)) {
         return { handled: true, event_type: event.type, tenant, creditedCents: 0 };
       }
 
@@ -82,12 +82,12 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       }
 
       // Credit the ledger with session ID as reference for idempotency.
-      deps.creditStore.grant(
+      deps.creditLedger.credit(
         tenant,
         creditCents,
+        "purchase",
         `Stripe credit purchase (session: ${stripeSessionId})`,
-        "stripe-webhook",
-        [stripeSessionId],
+        stripeSessionId,
       );
 
       return { handled: true, event_type: event.type, tenant, creditedCents: creditCents };

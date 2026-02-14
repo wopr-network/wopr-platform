@@ -1,60 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { buildResourceLimits } from "./resource-limits.js";
-import type { PlanTier } from "./tier-definitions.js";
+import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG, type ResourceConfig } from "./resource-limits.js";
 
-const freeTier: PlanTier = {
-  id: "free",
-  name: "free",
-  maxInstances: 1,
-  maxPluginsPerInstance: 5,
+const customConfig: ResourceConfig = {
   memoryLimitMb: 512,
   cpuQuota: 50_000,
-  storageLimitMb: 1024,
   maxProcesses: 128,
-  features: [],
-  maxSpendPerHour: 0.5,
-  maxSpendPerMonth: 5,
-  platformFeeUsd: 0,
-  includedTokens: 50_000,
-  overageMarkupPercent: 20,
-  byokAllowed: false,
-};
-
-const proTier: PlanTier = {
-  id: "pro",
-  name: "pro",
-  maxInstances: 5,
-  maxPluginsPerInstance: null,
-  memoryLimitMb: 2048,
-  cpuQuota: 200_000,
-  storageLimitMb: 10_240,
-  maxProcesses: 512,
-  features: [],
-  maxSpendPerHour: 10,
-  maxSpendPerMonth: 200,
-  platformFeeUsd: 19,
-  includedTokens: 2_000_000,
-  overageMarkupPercent: 10,
-  byokAllowed: true,
 };
 
 describe("buildResourceLimits", () => {
-  it("converts free tier to Docker resource constraints", () => {
-    const limits = buildResourceLimits(freeTier);
+  it("converts custom config to Docker resource constraints", () => {
+    const limits = buildResourceLimits(customConfig);
     expect(limits.Memory).toBe(512 * 1024 * 1024); // 536870912 bytes
     expect(limits.CpuQuota).toBe(50_000);
     expect(limits.PidsLimit).toBe(128);
   });
 
-  it("converts pro tier to Docker resource constraints", () => {
-    const limits = buildResourceLimits(proTier);
-    expect(limits.Memory).toBe(2048 * 1024 * 1024); // 2147483648 bytes
-    expect(limits.CpuQuota).toBe(200_000);
-    expect(limits.PidsLimit).toBe(512);
+  it("uses default config when no argument provided", () => {
+    const limits = buildResourceLimits();
+    expect(limits.Memory).toBe(DEFAULT_RESOURCE_CONFIG.memoryLimitMb * 1024 * 1024);
+    expect(limits.CpuQuota).toBe(DEFAULT_RESOURCE_CONFIG.cpuQuota);
+    expect(limits.PidsLimit).toBe(DEFAULT_RESOURCE_CONFIG.maxProcesses);
   });
 
   it("correctly calculates memory in bytes", () => {
-    const limits = buildResourceLimits(freeTier);
+    const limits = buildResourceLimits(customConfig);
     // 512 MB = 512 * 1024 * 1024 = 536870912
     expect(limits.Memory).toBe(536_870_912);
   });
