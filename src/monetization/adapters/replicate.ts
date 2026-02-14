@@ -265,11 +265,13 @@ export function createReplicateAdapter(
       }
 
       // Token-based cost: Replicate provides token counts in metrics
-      const metrics = prediction.metrics as {
-        predict_time?: number;
-        input_token_count?: number;
-        output_token_count?: number;
-      } | undefined;
+      const metrics = prediction.metrics as
+        | {
+            predict_time?: number;
+            input_token_count?: number;
+            output_token_count?: number;
+          }
+        | undefined;
       const inputTokens = metrics?.input_token_count ?? 0;
       const outputTokens = metrics?.output_token_count ?? 0;
       const cost = inputTokens * textInputTokenCost + outputTokens * textOutputTokenCost;

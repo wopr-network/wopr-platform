@@ -527,9 +527,7 @@ describe("createReplicateAdapter", () => {
       const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(prediction));
 
       const adapter = createReplicateAdapter(makeConfig(), fetchFn);
-      await expect(adapter.generateText({ prompt: "fail" })).rejects.toThrow(
-        "Unexpected Replicate text output format",
-      );
+      await expect(adapter.generateText({ prompt: "fail" })).rejects.toThrow("Unexpected Replicate text output format");
     });
 
     it("polls when prediction is not immediately complete", async () => {
