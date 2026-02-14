@@ -8,8 +8,8 @@
  * at module import time (which breaks tests).
  */
 
-import Database from "better-sqlite3";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
+import Database from "better-sqlite3";
 
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "";
