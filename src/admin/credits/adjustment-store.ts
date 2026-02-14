@@ -56,16 +56,19 @@ export class CreditAdjustmentStore {
     if (amountCents <= 0) throw new Error("amount_cents must be positive for refunds");
     if (!reason.trim()) throw new Error("reason is required");
 
-    const balance = this.getBalance(tenant);
-    if (balance - amountCents < 0) {
-      throw new BalanceError(
-        `Insufficient balance: current ${balance} cents, requested refund ${amountCents} cents`,
-        balance,
-      );
-    }
-
     const refIds = referenceIds && referenceIds.length > 0 ? JSON.stringify(referenceIds) : null;
-    return this.insert(tenant, "refund", -amountCents, reason, adminUser, refIds);
+
+    return this.db.transaction(() => {
+      const balance = this.getBalance(tenant);
+      if (balance - amountCents < 0) {
+        throw new BalanceError(
+          `Insufficient balance: current ${balance} cents, requested refund ${amountCents} cents`,
+          balance,
+        );
+      }
+
+      return this.insert(tenant, "refund", -amountCents, reason, adminUser, refIds);
+    })();
   }
 
   /** Apply a balance correction. amount_cents is signed (positive adds, negative removes). */
@@ -73,13 +76,17 @@ export class CreditAdjustmentStore {
     if (!reason.trim()) throw new Error("reason is required");
 
     if (amountCents < 0) {
-      const balance = this.getBalance(tenant);
-      if (balance + amountCents < 0) {
-        throw new BalanceError(
-          `Correction would result in negative balance: current ${balance} cents, correction ${amountCents} cents`,
-          balance,
-        );
-      }
+      return this.db.transaction(() => {
+        const balance = this.getBalance(tenant);
+        if (balance + amountCents < 0) {
+          throw new BalanceError(
+            `Correction would result in negative balance: current ${balance} cents, correction ${amountCents} cents`,
+            balance,
+          );
+        }
+
+        return this.insert(tenant, "correction", amountCents, reason, adminUser, null);
+      })();
     }
 
     return this.insert(tenant, "correction", amountCents, reason, adminUser, null);
