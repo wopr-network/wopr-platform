@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { decrypt, deriveInstanceKey } from "../../security/encryption.js";
 import { forwardSecretsToInstance, writeEncryptedSeed } from "../../security/key-injection.js";
@@ -8,6 +8,7 @@ import { validateKeyRequestSchema, writeSecretsRequestSchema } from "../../secur
 
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;
 const INSTANCE_DATA_DIR = process.env.INSTANCE_DATA_DIR || "/data/instances";
+const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
 /** Allowlist: only alphanumeric, hyphens, and underscores. */
 const INSTANCE_ID_RE = /^[a-zA-Z0-9_-]+$/;
@@ -16,14 +17,26 @@ function isValidInstanceId(id: string): boolean {
   return INSTANCE_ID_RE.test(id);
 }
 
+/** Helper to get instance tenantId from bot profile */
+async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
+  try {
+    const { ProfileStore } = await import("../../fleet/profile-store.js");
+    const store = new ProfileStore(FLEET_DATA_DIR);
+    const profile = await store.get(instanceId);
+    return profile?.tenantId;
+  } catch {
+    return undefined;
+  }
+}
+
 export const secretsRoutes = new Hono();
 
 // Secrets management requires write scope
-const tokenMap = buildTokenMap();
-if (tokenMap.size === 0) {
+const tokenMetadataMap = buildTokenMetadataMap();
+if (tokenMetadataMap.size === 0) {
   logger.warn("No API tokens configured — secrets routes will reject all requests");
 }
-secretsRoutes.use("/*", scopedBearerAuth(tokenMap, "write"));
+secretsRoutes.use("/*", scopedBearerAuthWithTenant(tokenMetadataMap, "write"));
 
 /**
  * PUT /instances/:id/config/secrets
@@ -40,6 +53,14 @@ secretsRoutes.put("/instances/:id/config/secrets", async (c) => {
   if (!isValidInstanceId(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
+
+  // Validate tenant ownership of the instance
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   const mode = c.req.query("mode") || "proxy";
 
   if (mode === "seed") {
@@ -120,6 +141,13 @@ secretsRoutes.post("/validate-key", async (c) => {
     }
     if (!isValidInstanceId(instanceId)) {
       return c.json({ error: "Invalid instance ID" }, 400);
+    }
+
+    // Validate tenant ownership of the instance
+    const tenantId = await getInstanceTenantId(instanceId);
+    const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+    if (ownershipError) {
+      return ownershipError;
     }
     if (!PLATFORM_SECRET) {
       return c.json({ error: "Platform secret not configured" }, 500);

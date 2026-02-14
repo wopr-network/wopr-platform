@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import Docker from "dockerode";
 import { Hono } from "hono";
-import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
@@ -84,16 +84,16 @@ const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/
 
 export const fleetRoutes = new Hono();
 
-// Build scoped token map from environment
-const tokenMap = buildTokenMap();
-if (tokenMap.size === 0) {
+// Build scoped token metadata map from environment
+const tokenMetadataMap = buildTokenMetadataMap();
+if (tokenMetadataMap.size === 0) {
   logger.warn("No API tokens configured — fleet routes will reject all requests");
 }
 
 // Read-scoped auth for GET endpoints
-const readAuth = scopedBearerAuth(tokenMap, "read");
+const readAuth = scopedBearerAuthWithTenant(tokenMetadataMap, "read");
 // Write-scoped auth for mutating endpoints
-const writeAuth = scopedBearerAuth(tokenMap, "write");
+const writeAuth = scopedBearerAuthWithTenant(tokenMetadataMap, "write");
 
 /** Validate :id param as UUID on all /bots/:id routes. */
 fleetRoutes.use("/bots/:id/*", async (c, next) => {
@@ -189,8 +189,18 @@ fleetRoutes.post("/bots", writeAuth, async (c) => {
 
 /** GET /fleet/bots/:id — Get bot details + health */
 fleetRoutes.get("/bots/:id", readAuth, async (c) => {
+  const botId = c.req.param("id");
   try {
-    const status = await fleet.status(c.req.param("id"));
+    // Get bot profile to check tenant ownership
+    const profile = await fleet.profiles.get(botId);
+
+    // Validate tenant ownership
+    const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+    if (ownershipError) {
+      return ownershipError;
+    }
+
+    const status = await fleet.status(botId);
     return c.json(status);
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -200,6 +210,15 @@ fleetRoutes.get("/bots/:id", readAuth, async (c) => {
 
 /** PATCH /fleet/bots/:id — Update bot config (triggers restart if running) */
 fleetRoutes.patch("/bots/:id", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+
+  // Check tenant ownership before allowing update
+  const existingProfile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, existingProfile, existingProfile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   let body: unknown;
   try {
     body = await c.req.json();
@@ -217,7 +236,7 @@ fleetRoutes.patch("/bots/:id", writeAuth, async (c) => {
   }
 
   try {
-    const profile = await fleet.update(c.req.param("id"), parsed.data);
+    const profile = await fleet.update(botId, parsed.data);
     return c.json(profile);
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -227,8 +246,17 @@ fleetRoutes.patch("/bots/:id", writeAuth, async (c) => {
 
 /** DELETE /fleet/bots/:id — Stop and remove bot */
 fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+
+  // Check tenant ownership before allowing deletion
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   try {
-    await fleet.remove(c.req.param("id"), c.req.query("removeVolumes") === "true");
+    await fleet.remove(botId, c.req.query("removeVolumes") === "true");
     return c.body(null, 204);
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -238,8 +266,15 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
 
 /** POST /fleet/bots/:id/start — Start a stopped bot */
 fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   try {
-    await fleet.start(c.req.param("id"));
+    await fleet.start(botId);
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -249,8 +284,15 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
 
 /** POST /fleet/bots/:id/stop — Stop a running bot */
 fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   try {
-    await fleet.stop(c.req.param("id"));
+    await fleet.stop(botId);
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -260,8 +302,15 @@ fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
 
 /** POST /fleet/bots/:id/restart — Restart a running bot */
 fleetRoutes.post("/bots/:id/restart", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   try {
-    await fleet.restart(c.req.param("id"));
+    await fleet.restart(botId);
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -271,11 +320,18 @@ fleetRoutes.post("/bots/:id/restart", writeAuth, async (c) => {
 
 /** GET /fleet/bots/:id/logs — Tail bot container logs */
 fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   const raw = c.req.query("tail");
   const parsed = raw != null ? Number.parseInt(raw, 10) : 100;
   const tail = Number.isNaN(parsed) || parsed < 1 ? 100 : Math.min(parsed, 10_000);
   try {
-    const logs = await fleet.logs(c.req.param("id"), tail);
+    const logs = await fleet.logs(botId, tail);
     return c.text(logs);
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -285,8 +341,15 @@ fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
 
 /** POST /fleet/bots/:id/update — Force update to latest image */
 fleetRoutes.post("/bots/:id/update", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   try {
-    const result = await updater.updateBot(c.req.param("id"));
+    const result = await updater.updateBot(botId);
     if (result.success) {
       return c.json(result);
     }
@@ -300,10 +363,18 @@ fleetRoutes.post("/bots/:id/update", writeAuth, async (c) => {
 /** GET /fleet/bots/:id/image-status — Current vs available digest + last check time */
 fleetRoutes.get("/bots/:id/image-status", readAuth, async (c) => {
   const botId = c.req.param("id");
-  try {
-    const profile = await fleet.profiles.get(botId);
-    if (!profile) return c.json({ error: `Bot not found: ${botId}` }, 404);
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
 
+  // If we reach here, profile cannot be null (validated above)
+  if (!profile) {
+    return c.json({ error: "Bot not found" }, 404);
+  }
+
+  try {
     const status = imagePoller.getImageStatus(botId, profile);
     return c.json(status);
   } catch (err) {

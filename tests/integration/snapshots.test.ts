@@ -5,7 +5,7 @@
  * SnapshotManager is mocked (no real filesystem).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTH_HEADER, JSON_HEADERS, snapshotManagerMock } from "./setup.js";
+import { AUTH_HEADER, JSON_HEADERS, TENANT_A_TOKEN, TENANT_B_TOKEN, snapshotManagerMock } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
 
@@ -222,4 +222,5 @@ describe("integration: snapshot routes", () => {
       expect(res.status).toBe(403);
     });
   });
+
 });

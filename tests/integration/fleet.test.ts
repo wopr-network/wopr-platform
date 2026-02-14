@@ -5,7 +5,7 @@
  * middleware chains (bearer auth) but mocked Docker/FleetManager.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AUTH_HEADER, JSON_HEADERS, fleetMock, pollerMock, updaterMock } from "./setup.js";
+import { AUTH_HEADER, JSON_HEADERS, TENANT_A_TOKEN, TENANT_B_TOKEN, fleetMock, pollerMock, updaterMock } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
 
@@ -18,6 +18,13 @@ const MISSING_BOT = "ffffffff-ffff-4fff-bfff-ffffffffffff";
 describe("integration: fleet routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock profiles.get to return a profile for BOT_1 and BOT_2, null for MISSING_BOT
+    fleetMock.profiles.get.mockImplementation((id: string) => {
+      if (id === BOT_1 || id === BOT_2) {
+        return Promise.resolve({ id, tenantId: "test-tenant", name: "test-bot" });
+      }
+      return Promise.resolve(null);
+    });
   });
 
   // -- Authentication (middleware chain) ------------------------------------
@@ -440,4 +447,5 @@ describe("integration: fleet routes", () => {
       expect(res.status).toBe(404);
     });
   });
+
 });
