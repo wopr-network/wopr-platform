@@ -1,11 +1,11 @@
 import Database from "better-sqlite3";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { createDb } from "../../db/index.js";
-import type { DrizzleDb } from "../../db/index.js";
 import { countAuditLog, queryAuditLog } from "../../audit/query.js";
 import { purgeExpiredEntriesForUser } from "../../audit/retention.js";
 import type { AuditEnv } from "../../audit/types.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { createDb } from "../../db/index.js";
 
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
 

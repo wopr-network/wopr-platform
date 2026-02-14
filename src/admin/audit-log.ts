@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { SQL } from "drizzle-orm";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { adminAuditLog } from "../db/schema/index.js";
 
@@ -113,18 +113,21 @@ export class AdminAuditLog {
       created_at: Date.now(),
     };
 
-    this.db.insert(adminAuditLog).values({
-      id: row.id,
-      adminUser: row.admin_user,
-      action: row.action,
-      category: row.category,
-      targetTenant: row.target_tenant,
-      targetUser: row.target_user,
-      details: row.details,
-      ipAddress: row.ip_address,
-      userAgent: row.user_agent,
-      createdAt: row.created_at,
-    }).run();
+    this.db
+      .insert(adminAuditLog)
+      .values({
+        id: row.id,
+        adminUser: row.admin_user,
+        action: row.action,
+        category: row.category,
+        targetTenant: row.target_tenant,
+        targetUser: row.target_user,
+        details: row.details,
+        ipAddress: row.ip_address,
+        userAgent: row.user_agent,
+        createdAt: row.created_at,
+      })
+      .run();
 
     return row;
   }
@@ -133,13 +136,9 @@ export class AdminAuditLog {
   query(filters: AuditFilters): { entries: AdminAuditLogRow[]; total: number } {
     const where = buildConditions(filters);
 
-    const allRows = this.db
-      .select()
-      .from(adminAuditLog)
-      .where(where)
-      .all();
+    const countResult = this.db.select({ count: count() }).from(adminAuditLog).where(where).get();
 
-    const total = allRows.length;
+    const total = countResult?.count ?? 0;
 
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);

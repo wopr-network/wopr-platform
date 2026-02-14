@@ -1,11 +1,10 @@
 import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import * as schema from "../db/schema/index.js";
+import { createDb, type DrizzleDb } from "../db/index.js";
 
-export function createTestDb() {
+export function createTestDb(): { db: DrizzleDb; sqlite: Database.Database } {
   const sqlite = new Database(":memory:");
-  const db = drizzle(sqlite, { schema });
+  const db = createDb(sqlite);
   migrate(db, { migrationsFolder: "./drizzle/migrations" });
   return { db, sqlite };
 }

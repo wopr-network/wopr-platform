@@ -1,4 +1,4 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminAuditApiRoutes } from "../api/routes/admin-audit.js";
@@ -132,22 +132,26 @@ describe("AdminAuditLog.query", () => {
 
   it("query with filters - by date range", () => {
     const now = Date.now();
-    db.insert(adminAuditLog).values({
-      id: "old",
-      adminUser: "admin-1",
-      action: "user.suspend",
-      category: "account",
-      details: "{}",
-      createdAt: now - 100000,
-    }).run();
-    db.insert(adminAuditLog).values({
-      id: "new",
-      adminUser: "admin-1",
-      action: "user.suspend",
-      category: "account",
-      details: "{}",
-      createdAt: now,
-    }).run();
+    db.insert(adminAuditLog)
+      .values({
+        id: "old",
+        adminUser: "admin-1",
+        action: "user.suspend",
+        category: "account",
+        details: "{}",
+        createdAt: now - 100000,
+      })
+      .run();
+    db.insert(adminAuditLog)
+      .values({
+        id: "new",
+        adminUser: "admin-1",
+        action: "user.suspend",
+        category: "account",
+        details: "{}",
+        createdAt: now,
+      })
+      .run();
 
     const result = auditLogInstance.query({ from: now - 5000 });
     expect(result.entries).toHaveLength(1);
@@ -170,22 +174,26 @@ describe("AdminAuditLog.query", () => {
 
   it("returns entries ordered by created_at descending", () => {
     const now = Date.now();
-    db.insert(adminAuditLog).values({
-      id: "first",
-      adminUser: "admin-1",
-      action: "user.suspend",
-      category: "account",
-      details: "{}",
-      createdAt: now - 1000,
-    }).run();
-    db.insert(adminAuditLog).values({
-      id: "second",
-      adminUser: "admin-1",
-      action: "user.suspend",
-      category: "account",
-      details: "{}",
-      createdAt: now,
-    }).run();
+    db.insert(adminAuditLog)
+      .values({
+        id: "first",
+        adminUser: "admin-1",
+        action: "user.suspend",
+        category: "account",
+        details: "{}",
+        createdAt: now - 1000,
+      })
+      .run();
+    db.insert(adminAuditLog)
+      .values({
+        id: "second",
+        adminUser: "admin-1",
+        action: "user.suspend",
+        category: "account",
+        details: "{}",
+        createdAt: now,
+      })
+      .run();
 
     const result = auditLogInstance.query({});
     expect(result.entries[0].id).toBe("second");

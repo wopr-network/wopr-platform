@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { AdminAuditLog } from "../../admin/audit-log.js";
-import type { DrizzleDb } from "../../db/index.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");

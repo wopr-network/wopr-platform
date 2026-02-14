@@ -1,5 +1,5 @@
 import type { SQL } from "drizzle-orm";
-import { and, desc, eq, gte, like, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, like, lte } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { auditLog } from "../db/schema/index.js";
 import type { AuditEntry } from "./schema.js";
@@ -89,11 +89,7 @@ export function queryAuditLog(db: DrizzleDb, filters: AuditQueryFilters): AuditE
 export function countAuditLog(db: DrizzleDb, filters: Omit<AuditQueryFilters, "limit" | "offset">): number {
   const where = buildConditions(filters);
 
-  const rows = db
-    .select()
-    .from(auditLog)
-    .where(where)
-    .all();
+  const result = db.select({ count: count() }).from(auditLog).where(where).get();
 
-  return rows.length;
+  return result?.count ?? 0;
 }

@@ -142,22 +142,26 @@ describe("queryAuditLog", () => {
 
   it("filters by time range", () => {
     const now = Date.now();
-    db.insert(auditLog).values({
-      id: "old",
-      timestamp: now - 10000,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
-    db.insert(auditLog).values({
-      id: "new",
-      timestamp: now,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.destroy",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: now - 10000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "new",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     const results = queryAuditLog(db, { since: now - 5000 });
     expect(results).toHaveLength(1);
@@ -166,22 +170,26 @@ describe("queryAuditLog", () => {
 
   it("filters by until time boundary", () => {
     const now = Date.now();
-    db.insert(auditLog).values({
-      id: "old",
-      timestamp: now - 10000,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
-    db.insert(auditLog).values({
-      id: "new",
-      timestamp: now,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.destroy",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: now - 10000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "new",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     const results = queryAuditLog(db, { until: now - 5000 });
     expect(results).toHaveLength(1);
@@ -234,22 +242,26 @@ describe("queryAuditLog", () => {
 
   it("orders by timestamp descending", () => {
     const now = Date.now();
-    db.insert(auditLog).values({
-      id: "first",
-      timestamp: now - 1000,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
-    db.insert(auditLog).values({
-      id: "second",
-      timestamp: now,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.destroy",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "first",
+        timestamp: now - 1000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "second",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     const results = queryAuditLog(db, {});
     expect(results[0].id).toBe("second");
@@ -303,22 +315,26 @@ describe("countAuditLog", () => {
 
   it("counts with time range filter", () => {
     const now = Date.now();
-    db.insert(auditLog).values({
-      id: "old",
-      timestamp: now - 10000,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
-    db.insert(auditLog).values({
-      id: "new",
-      timestamp: now,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.destroy",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: now - 10000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "new",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     expect(countAuditLog(db, { since: now - 5000 })).toBe(1);
     expect(countAuditLog(db, { until: now - 5000 })).toBe(1);
@@ -364,22 +380,26 @@ describe("retention", () => {
     const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
     const oneDayAgo = now - 1 * 24 * 60 * 60 * 1000;
 
-    db.insert(auditLog).values({
-      id: "old",
-      timestamp: thirtyOneDaysAgo,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
-    db.insert(auditLog).values({
-      id: "recent",
-      timestamp: oneDayAgo,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.destroy",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "recent",
+        timestamp: oneDayAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     const deleted = purgeExpiredEntries(db);
     expect(deleted).toBe(1);
@@ -401,22 +421,26 @@ describe("retention", () => {
     const now = Date.now();
     const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
 
-    db.insert(auditLog).values({
-      id: "u1-old",
-      timestamp: thirtyOneDaysAgo,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
-    db.insert(auditLog).values({
-      id: "u2-old",
-      timestamp: thirtyOneDaysAgo,
-      userId: "user-2",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "u1-old",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "u2-old",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-2",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
 
     const deleted = purgeExpiredEntriesForUser(db, "user-1");
     expect(deleted).toBe(1);
@@ -430,14 +454,16 @@ describe("retention", () => {
     const now = Date.now();
     const twentyDaysAgo = now - 20 * 24 * 60 * 60 * 1000;
 
-    db.insert(auditLog).values({
-      id: "within-retention",
-      timestamp: twentyDaysAgo,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "within-retention",
+        timestamp: twentyDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
 
     const deleted = purgeExpiredEntries(db);
     expect(deleted).toBe(0);
@@ -447,22 +473,26 @@ describe("retention", () => {
     const now = Date.now();
     const recentTime = now - 1000;
 
-    db.insert(auditLog).values({
-      id: "u1-recent",
-      timestamp: recentTime,
-      userId: "user-1",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
-    db.insert(auditLog).values({
-      id: "u2-recent",
-      timestamp: recentTime,
-      userId: "user-2",
-      authMethod: "session",
-      action: "instance.create",
-      resourceType: "instance",
-    }).run();
+    db.insert(auditLog)
+      .values({
+        id: "u1-recent",
+        timestamp: recentTime,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "u2-recent",
+        timestamp: recentTime,
+        userId: "user-2",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
 
     const deleted = purgeExpiredEntriesForUser(db, "user-1");
     expect(deleted).toBe(0);
@@ -703,14 +733,16 @@ describe("audit API routes", () => {
     it("defaults to retention cleanup on query", async () => {
       const now = Date.now();
       const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
-      db.insert(auditLog).values({
-        id: "old-no-tier",
-        timestamp: thirtyOneDaysAgo,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      }).run();
+      db.insert(auditLog)
+        .values({
+          id: "old-no-tier",
+          timestamp: thirtyOneDaysAgo,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
@@ -783,14 +815,16 @@ describe("audit API routes", () => {
 
     it("filters by time range query params", async () => {
       const now = Date.now();
-      db.insert(auditLog).values({
-        id: "old-time",
-        timestamp: now - 100000,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      }).run();
+      db.insert(auditLog)
+        .values({
+          id: "old-time",
+          timestamp: now - 100000,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
@@ -810,14 +844,16 @@ describe("audit API routes", () => {
     it("applies retention cleanup on query", async () => {
       const now = Date.now();
       const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
-      db.insert(auditLog).values({
-        id: "old-entry",
-        timestamp: thirtyOneDaysAgo,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      }).run();
+      db.insert(auditLog)
+        .values({
+          id: "old-entry",
+          timestamp: thirtyOneDaysAgo,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
@@ -887,14 +923,16 @@ describe("audit API routes", () => {
 
     it("filters by time range", async () => {
       const now = Date.now();
-      db.insert(auditLog).values({
-        id: "old",
-        timestamp: now - 100000,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      }).run();
+      db.insert(auditLog)
+        .values({
+          id: "old",
+          timestamp: now - 100000,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();

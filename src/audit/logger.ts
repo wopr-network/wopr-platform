@@ -26,18 +26,21 @@ export class AuditLogger {
       user_agent: input.userAgent ?? null,
     };
 
-    this.db.insert(auditLog).values({
-      id: entry.id,
-      timestamp: entry.timestamp,
-      userId: entry.user_id,
-      authMethod: entry.auth_method,
-      action: entry.action,
-      resourceType: entry.resource_type,
-      resourceId: entry.resource_id,
-      details: entry.details,
-      ipAddress: entry.ip_address,
-      userAgent: entry.user_agent,
-    }).run();
+    this.db
+      .insert(auditLog)
+      .values({
+        id: entry.id,
+        timestamp: entry.timestamp,
+        userId: entry.user_id,
+        authMethod: entry.auth_method,
+        action: entry.action,
+        resourceType: entry.resource_type,
+        resourceId: entry.resource_id,
+        details: entry.details,
+        ipAddress: entry.ip_address,
+        userAgent: entry.user_agent,
+      })
+      .run();
 
     return entry;
   }
