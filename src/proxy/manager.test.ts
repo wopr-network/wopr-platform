@@ -8,6 +8,12 @@ vi.mock("node:dns/promises", () => ({
   resolve6: vi.fn(),
 }));
 
+function makeDnsError(code: string): NodeJS.ErrnoException {
+  const err = new Error(code) as NodeJS.ErrnoException;
+  err.code = code;
+  return err;
+}
+
 function makeRoute(overrides: Partial<ProxyRoute> = {}): ProxyRoute {
   return {
     instanceId: "inst-1",
@@ -27,7 +33,7 @@ describe("ProxyManager", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("") }));
     // Default: DNS resolution returns the host as-is for IPs, public IPs for hostnames
     vi.mocked(dnsPromises.resolve4).mockResolvedValue(["203.0.113.50"]);
-    vi.mocked(dnsPromises.resolve6).mockRejectedValue(new Error("ENODATA"));
+    vi.mocked(dnsPromises.resolve6).mockRejectedValue(makeDnsError("ENODATA"));
   });
 
   afterEach(() => {
@@ -217,19 +223,19 @@ describe("ProxyManager", () => {
     });
 
     it("rejects hostname resolving to IPv6 loopback (::1)", async () => {
-      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENODATA"));
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(makeDnsError("ENODATA"));
       vi.mocked(dnsPromises.resolve6).mockResolvedValue(["::1"]);
       await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
     });
 
     it("rejects hostname resolving to IPv6 unique local (fd00::)", async () => {
-      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENODATA"));
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(makeDnsError("ENODATA"));
       vi.mocked(dnsPromises.resolve6).mockResolvedValue(["fd00::1"]);
       await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
     });
 
     it("rejects hostname resolving to IPv6 link-local (fe80::)", async () => {
-      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENODATA"));
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(makeDnsError("ENODATA"));
       vi.mocked(dnsPromises.resolve6).mockResolvedValue(["fe80::1"]);
       await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
     });
@@ -240,8 +246,8 @@ describe("ProxyManager", () => {
     });
 
     it("rejects hostname that cannot be resolved", async () => {
-      vi.mocked(dnsPromises.resolve4).mockRejectedValue(new Error("ENOTFOUND"));
-      vi.mocked(dnsPromises.resolve6).mockRejectedValue(new Error("ENOTFOUND"));
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(makeDnsError("ENOTFOUND"));
+      vi.mocked(dnsPromises.resolve6).mockRejectedValue(makeDnsError("ENOTFOUND"));
       await expect(manager.addRoute(makeRoute({ upstreamHost: "nonexistent.invalid" }))).rejects.toThrow(
         "could not be resolved",
       );
@@ -257,6 +263,80 @@ describe("ProxyManager", () => {
       vi.mocked(dnsPromises.resolve4).mockClear();
       await expect(manager.addRoute(makeRoute({ upstreamHost: "printer.local" }))).rejects.toThrow("private IP");
       expect(dnsPromises.resolve4).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("hostname case-insensitivity", () => {
+    it("rejects Localhost (mixed case)", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "Localhost" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects LOCALHOST (uppercase)", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "LOCALHOST" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects METADATA.google.INTERNAL (mixed case .internal)", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "METADATA.google.INTERNAL" }))).rejects.toThrow(
+        "private IP",
+      );
+    });
+
+    it("rejects Printer.LOCAL (mixed case .local)", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "Printer.LOCAL" }))).rejects.toThrow("private IP");
+    });
+  });
+
+  describe("DNS transient error handling", () => {
+    it("rejects on transient DNS error (ETIMEOUT) instead of allowing through", async () => {
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(makeDnsError("ETIMEOUT"));
+      vi.mocked(dnsPromises.resolve6).mockRejectedValue(makeDnsError("ETIMEOUT"));
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "example.com" }))).rejects.toThrow(
+        "DNS resolution failed",
+      );
+    });
+
+    it("rejects on ESERVFAIL instead of allowing through", async () => {
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(makeDnsError("ESERVFAIL"));
+      vi.mocked(dnsPromises.resolve6).mockRejectedValue(makeDnsError("ESERVFAIL"));
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "example.com" }))).rejects.toThrow(
+        "DNS resolution failed",
+      );
+    });
+
+    it("allows through if v4 succeeds but v6 has transient error", async () => {
+      vi.mocked(dnsPromises.resolve4).mockResolvedValue(["203.0.113.50"]);
+      vi.mocked(dnsPromises.resolve6).mockRejectedValue(makeDnsError("ETIMEOUT"));
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "example.com" }))).resolves.toBeUndefined();
+    });
+  });
+
+  describe("IPv6 non-canonical forms", () => {
+    it("rejects non-canonical loopback 0:0:0:0:0:0:0:1", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "0:0:0:0:0:0:0:1" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects IPv4-mapped loopback ::ffff:127.0.0.1", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "::ffff:127.0.0.1" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects IPv4-mapped private ::ffff:10.0.0.1", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "::ffff:10.0.0.1" }))).rejects.toThrow("private IP");
+    });
+
+    it("rejects IPv4-mapped metadata ::ffff:169.254.169.254", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "::ffff:169.254.169.254" }))).rejects.toThrow(
+        "private IP",
+      );
+    });
+
+    it("allows IPv4-mapped public ::ffff:203.0.113.50", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "::ffff:203.0.113.50" }))).resolves.toBeUndefined();
+    });
+
+    it("rejects DNS-resolved non-canonical IPv6 loopback", async () => {
+      vi.mocked(dnsPromises.resolve4).mockRejectedValue(makeDnsError("ENODATA"));
+      vi.mocked(dnsPromises.resolve6).mockResolvedValue(["0:0:0:0:0:0:0:1"]);
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
     });
   });
 
