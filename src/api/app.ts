@@ -1,8 +1,12 @@
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import { resolveSessionUser } from "../auth/index.js";
+import type { AuthUser } from "../auth/index.js";
+import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
 import { logger } from "../config/logger.js";
+import { appRouter } from "../trpc/index.js";
+import type { TRPCContext } from "../trpc/init.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { adminCreditRoutes } from "./routes/admin-credits.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
@@ -63,6 +67,62 @@ app.route("/auth", verifyEmailRoutes);
 // (MeterEmitter, BudgetChecker) that may not be available at import time.
 // Wire up via mountGateway() from src/gateway/index.ts when deps are ready.
 // See: src/gateway/routes.ts for endpoint definitions.
+
+// ---------------------------------------------------------------------------
+// tRPC — mounted at /trpc/* alongside existing routes
+// ---------------------------------------------------------------------------
+
+const trpcTokenMetadataMap = buildTokenMetadataMap();
+
+/**
+ * Create tRPC context from an incoming request.
+ * Resolves the user from bearer tokens or better-auth session cookies.
+ */
+async function createTRPCContext(req: Request): Promise<TRPCContext> {
+  let user: AuthUser | undefined;
+  let tenantId: string | undefined;
+
+  // 1. Try bearer token
+  const authHeader = req.headers.get("Authorization") ?? undefined;
+  const token = extractBearerToken(authHeader);
+
+  if (token) {
+    const metadata = trpcTokenMetadataMap.get(token);
+    if (metadata) {
+      user = { id: `token:${metadata.scope}`, roles: [metadata.scope] };
+      tenantId = metadata.tenantId;
+    }
+  }
+
+  // 2. Fall back to better-auth session cookie
+  if (!user) {
+    try {
+      const { getAuth } = await import("../auth/better-auth.js");
+      const auth = getAuth();
+      const session = await auth.api.getSession({ headers: req.headers });
+      if (session?.user) {
+        const sessionUser = session.user as { id: string; role?: string };
+        const roles: string[] = [];
+        if (sessionUser.role) roles.push(sessionUser.role);
+        user = { id: sessionUser.id, roles };
+      }
+    } catch {
+      // Session resolution failed — user stays undefined
+    }
+  }
+
+  return { user, tenantId };
+}
+
+app.all("/trpc/*", async (c) => {
+  const response = await fetchRequestHandler({
+    endpoint: "/trpc",
+    req: c.req.raw,
+    router: appRouter,
+    createContext: () => createTRPCContext(c.req.raw),
+  });
+  return response;
+});
 
 // Global error handler — catches all errors from routes and middleware.
 // This prevents unhandled errors from crashing the process.
