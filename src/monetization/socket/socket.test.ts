@@ -1,6 +1,13 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AdapterCapability, AdapterResult, ProviderAdapter, TranscriptionOutput } from "../adapters/types.js";
+import type {
+  AdapterCapability,
+  AdapterResult,
+  EmbeddingsOutput,
+  ProviderAdapter,
+  TTSOutput,
+  TranscriptionOutput,
+} from "../adapters/types.js";
 import { BudgetChecker } from "../budget/budget-checker.js";
 import type { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
@@ -282,6 +289,69 @@ describe("AdapterSocket", () => {
       });
 
       expect(meter.events[0].sessionId).toBeUndefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // execute — TTS and embeddings routing
+  // ---------------------------------------------------------------------------
+
+  describe("execute — TTS routing", () => {
+    it("routes tts capability to synthesizeSpeech method", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+      socket.register({
+        name: "tts-provider",
+        capabilities: ["tts"],
+        async synthesizeSpeech() {
+          return {
+            result: { audioUrl: "https://example.com/out.mp3", durationSeconds: 3, format: "mp3", characterCount: 11 },
+            cost: 0.005,
+          };
+        },
+      });
+
+      const result = await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "Hello world" },
+      });
+
+      expect(result.audioUrl).toBe("https://example.com/out.mp3");
+      expect(result.durationSeconds).toBe(3);
+      expect(result.format).toBe("mp3");
+      expect(result.characterCount).toBe(11);
+      expect(meter.events).toHaveLength(1);
+      expect(meter.events[0].capability).toBe("tts");
+    });
+  });
+
+  describe("execute — embeddings routing", () => {
+    it("routes embeddings capability to embed method", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+      socket.register({
+        name: "embed-provider",
+        capabilities: ["embeddings"],
+        async embed() {
+          return {
+            result: { embeddings: [[0.1, 0.2, 0.3]], model: "text-embedding-3-small", totalTokens: 4 },
+            cost: 0.0001,
+          };
+        },
+      });
+
+      const result = await socket.execute<EmbeddingsOutput>({
+        tenantId: "t-1",
+        capability: "embeddings",
+        input: { input: "Hello" },
+      });
+
+      expect(result.embeddings).toEqual([[0.1, 0.2, 0.3]]);
+      expect(result.model).toBe("text-embedding-3-small");
+      expect(result.totalTokens).toBe(4);
+      expect(meter.events).toHaveLength(1);
+      expect(meter.events[0].capability).toBe("embeddings");
     });
   });
 

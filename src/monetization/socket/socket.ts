@@ -44,7 +44,8 @@ const CAPABILITY_METHOD: Record<AdapterCapability, keyof ProviderAdapter> = {
   transcription: "transcribe",
   "image-generation": "generateImage",
   "text-generation": "generateText",
-  embeddings: "generateText", // embeddings reuse text-generation for now
+  tts: "synthesizeSpeech",
+  embeddings: "embed",
 };
 
 export class AdapterSocket {
