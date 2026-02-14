@@ -10,7 +10,9 @@
 
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import Database from "better-sqlite3";
-import { passwordResetTemplate, passwordResetText, sendEmail } from "../email/resend-adapter.js";
+import { getEmailClient } from "../email/client.js";
+import { passwordResetEmailTemplate, verifyEmailTemplate } from "../email/templates.js";
+import { generateVerificationToken, initVerificationSchema } from "../email/verification.js";
 
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "";
@@ -30,19 +32,45 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
       enabled: true,
       sendResetPassword: async ({ user, url }) => {
         try {
-          const html = passwordResetTemplate(url, user.email);
-          const text = passwordResetText(url, user.email);
-          await sendEmail({
+          const emailClient = getEmailClient();
+          const template = passwordResetEmailTemplate(url, user.email);
+          await emailClient.send({
             to: user.email,
-            subject: "Reset Your Password",
-            html,
-            text,
+            ...template,
+            userId: user.id,
+            templateName: "password-reset",
           });
         } catch (error) {
           // Log the error but do NOT expose it to the user (prevents user enumeration)
           console.error("Failed to send password reset email:", error);
           // Return silently - same response whether email sends or not
         }
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            // Send verification email after signup
+            try {
+              const authDb = database as Database.Database;
+              initVerificationSchema(authDb);
+              const { token } = generateVerificationToken(authDb, user.id);
+              const verifyUrl = `${BETTER_AUTH_URL}/auth/verify?token=${token}`;
+              const emailClient = getEmailClient();
+              const template = verifyEmailTemplate(verifyUrl, user.email);
+              await emailClient.send({
+                to: user.email,
+                ...template,
+                userId: user.id,
+                templateName: "verify-email",
+              });
+            } catch (error) {
+              // Log but don't block signup — user can request resend later
+              console.error("Failed to send verification email:", error);
+            }
+          },
+        },
       },
     },
     session: {

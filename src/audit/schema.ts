@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 export type AuthMethod = "session" | "api_key";
 
 /** Valid resource types for audit entries. */
-export type ResourceType = "instance" | "plugin" | "api_key" | "user" | "config" | "tier";
+export type ResourceType = "instance" | "plugin" | "api_key" | "user" | "config" | "tier" | "email";
 
 /** Valid audit actions. */
 export type AuditAction =
@@ -19,6 +19,8 @@ export type AuditAction =
   | "auth.login"
   | "auth.logout"
   | "auth.oauth_link"
+  | "auth.email_verified"
+  | "email.sent"
   | "tier.upgrade"
   | "tier.downgrade"
   | "config.update";

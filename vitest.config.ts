@@ -29,6 +29,7 @@ export default defineConfig({
         "src/observability/index.ts",
         "src/auth/index.ts",
         "src/instance/index.ts",
+        "src/email/index.ts",
       ],
     },
     reporters: ["default", "junit"],
