@@ -512,18 +512,6 @@ describe("initStripeSchema — data integrity", () => {
     ).toThrow();
   });
 
-  it("allows NULL for stripe_subscription_id", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO tenant_customers (tenant, stripe_customer_id, stripe_subscription_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("t1", "cus_1", null, "free", now, now);
-
-    const row = db.prepare("SELECT stripe_subscription_id FROM tenant_customers WHERE tenant = ?").get("t1") as {
-      stripe_subscription_id: string | null;
-    };
-    expect(row.stripe_subscription_id).toBeNull();
-  });
-
   it("defaults tier to 'free'", () => {
     const now = Date.now();
     db.prepare(

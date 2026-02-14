@@ -1,12 +1,20 @@
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
 import type { MeterEvent } from "../metering/types.js";
 import { UsageAggregationWorker } from "../metering/usage-aggregation-worker.js";
-import { createCheckoutSession } from "./checkout.js";
+import { createCreditCheckoutSession } from "./checkout.js";
 import { loadStripeConfig } from "./client.js";
+import {
+  CREDIT_PRICE_POINTS,
+  getConfiguredPriceIds,
+  getCreditAmountForPurchase,
+  loadCreditPriceMap,
+} from "./credit-prices.js";
 import { createPortalSession } from "./portal.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
@@ -17,6 +25,7 @@ function createTestDb() {
   const db = new BetterSqlite3(":memory:");
   initMeterSchema(db);
   initStripeSchema(db);
+  initCreditAdjustmentSchema(db);
   return db;
 }
 
@@ -97,7 +106,6 @@ describe("TenantCustomerStore", () => {
     expect(row).toBeDefined();
     expect(row?.stripe_customer_id).toBe("cus_abc123");
     expect(row?.tier).toBe("free");
-    expect(row?.stripe_subscription_id).toBeNull();
   });
 
   it("upsert updates existing mapping", () => {
@@ -105,13 +113,11 @@ describe("TenantCustomerStore", () => {
     store.upsert({
       tenant: "t-1",
       stripeCustomerId: "cus_xyz789",
-      stripeSubscriptionId: "sub_123",
       tier: "pro",
     });
 
     const row = store.getByTenant("t-1");
     expect(row?.stripe_customer_id).toBe("cus_xyz789");
-    expect(row?.stripe_subscription_id).toBe("sub_123");
     expect(row?.tier).toBe("pro");
   });
 
@@ -128,14 +134,6 @@ describe("TenantCustomerStore", () => {
 
   it("getByStripeCustomerId returns null for unknown customer", () => {
     expect(store.getByStripeCustomerId("cus_nonexistent")).toBeNull();
-  });
-
-  it("setSubscription updates subscription ID", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
-    store.setSubscription("t-1", "sub_new456");
-
-    const row = store.getByTenant("t-1");
-    expect(row?.stripe_subscription_id).toBe("sub_new456");
   });
 
   it("setTier updates the tier", () => {
@@ -160,14 +158,6 @@ describe("TenantCustomerStore", () => {
 
     const map = store.buildCustomerIdMap();
     expect(map).toEqual({ "t-1": "cus_aaa", "t-2": "cus_bbb" });
-  });
-
-  it("upsert preserves subscription when not provided", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc", stripeSubscriptionId: "sub_123" });
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
-
-    const row = store.getByTenant("t-1");
-    expect(row?.stripe_subscription_id).toBe("sub_123");
   });
 });
 
@@ -380,173 +370,9 @@ describe("StripeUsageReporter", () => {
   });
 });
 
-// -- Webhook ----------------------------------------------------------------
+// -- Credit checkout --------------------------------------------------------
 
-describe("handleWebhookEvent", () => {
-  let db: BetterSqlite3.Database;
-  let tenantStore: TenantCustomerStore;
-
-  beforeEach(() => {
-    db = createTestDb();
-    tenantStore = new TenantCustomerStore(db);
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
-  it("handles checkout.session.completed - creates tenant mapping", () => {
-    const event = {
-      type: "checkout.session.completed",
-      data: {
-        object: {
-          client_reference_id: "t-1",
-          customer: "cus_abc123",
-          subscription: "sub_xyz789",
-          metadata: {},
-        },
-      },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-
-    expect(result.handled).toBe(true);
-    expect(result.tenant).toBe("t-1");
-
-    const mapping = tenantStore.getByTenant("t-1");
-    expect(mapping?.stripe_customer_id).toBe("cus_abc123");
-    expect(mapping?.stripe_subscription_id).toBe("sub_xyz789");
-  });
-
-  it("handles checkout.session.completed - uses metadata fallback", () => {
-    const event = {
-      type: "checkout.session.completed",
-      data: {
-        object: {
-          client_reference_id: null,
-          customer: "cus_abc123",
-          subscription: "sub_xyz789",
-          metadata: { wopr_tenant: "t-2" },
-        },
-      },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-    expect(result.handled).toBe(true);
-    expect(result.tenant).toBe("t-2");
-  });
-
-  it("handles checkout.session.completed - returns unhandled when no tenant", () => {
-    const event = {
-      type: "checkout.session.completed",
-      data: {
-        object: {
-          client_reference_id: null,
-          customer: "cus_abc123",
-          subscription: "sub_xyz789",
-          metadata: {},
-        },
-      },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-    expect(result.handled).toBe(false);
-  });
-
-  it("handles customer.subscription.updated", () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123", stripeSubscriptionId: "sub_old" });
-
-    const event = {
-      type: "customer.subscription.updated",
-      data: {
-        object: {
-          id: "sub_new",
-          customer: "cus_abc123",
-        },
-      },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-    expect(result.handled).toBe(true);
-    expect(result.tenant).toBe("t-1");
-
-    const mapping = tenantStore.getByTenant("t-1");
-    expect(mapping?.stripe_subscription_id).toBe("sub_new");
-  });
-
-  it("handles customer.subscription.deleted - resets to free tier and clears subscription", () => {
-    tenantStore.upsert({
-      tenant: "t-1",
-      stripeCustomerId: "cus_abc123",
-      stripeSubscriptionId: "sub_old",
-      tier: "pro",
-    });
-
-    const event = {
-      type: "customer.subscription.deleted",
-      data: {
-        object: {
-          id: "sub_old",
-          customer: "cus_abc123",
-        },
-      },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-    expect(result.handled).toBe(true);
-
-    const mapping = tenantStore.getByTenant("t-1");
-    expect(mapping?.tier).toBe("free");
-    expect(mapping?.stripe_subscription_id).toBeNull();
-  });
-
-  it("returns unhandled for unknown event types", () => {
-    const event = {
-      type: "payment_intent.succeeded",
-      data: { object: {} },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-    expect(result.handled).toBe(false);
-    expect(result.event_type).toBe("payment_intent.succeeded");
-  });
-
-  it("returns unhandled for subscription events with unknown customer", () => {
-    const event = {
-      type: "customer.subscription.updated",
-      data: {
-        object: {
-          id: "sub_123",
-          customer: "cus_unknown",
-        },
-      },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-    expect(result.handled).toBe(false);
-  });
-
-  it("handles customer objects instead of string IDs", () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
-
-    const event = {
-      type: "customer.subscription.updated",
-      data: {
-        object: {
-          id: "sub_new",
-          customer: { id: "cus_abc123" },
-        },
-      },
-    } as unknown as Stripe.Event;
-
-    const result = handleWebhookEvent(tenantStore, event);
-    expect(result.handled).toBe(true);
-  });
-});
-
-// -- createCheckoutSession --------------------------------------------------
-
-describe("createCheckoutSession", () => {
+describe("createCreditCheckoutSession", () => {
   let db: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
 
@@ -565,26 +391,26 @@ describe("createCheckoutSession", () => {
     } as unknown as Stripe;
   }
 
-  it("creates a checkout session with correct params", async () => {
+  it("creates a one-time payment checkout session", async () => {
     const mockSession = { id: "cs_test_123", url: "https://checkout.stripe.com/cs_test_123" };
     const sessionsCreate = vi.fn().mockResolvedValue(mockSession);
     const stripe = createMockStripe(sessionsCreate);
 
-    const result = await createCheckoutSession(stripe, tenantStore, {
+    const result = await createCreditCheckoutSession(stripe, tenantStore, {
       tenant: "t-1",
-      priceId: "price_abc",
+      priceId: "price_credit_25",
       successUrl: "https://example.com/success",
       cancelUrl: "https://example.com/cancel",
     });
 
     expect(result).toBe(mockSession);
     expect(sessionsCreate).toHaveBeenCalledWith({
-      mode: "subscription",
-      line_items: [{ price: "price_abc" }],
+      mode: "payment",
+      line_items: [{ price: "price_credit_25", quantity: 1 }],
       success_url: "https://example.com/success",
       cancel_url: "https://example.com/cancel",
       client_reference_id: "t-1",
-      metadata: { wopr_tenant: "t-1" },
+      metadata: { wopr_tenant: "t-1", wopr_purchase_type: "credits" },
     });
   });
 
@@ -596,9 +422,9 @@ describe("createCheckoutSession", () => {
       .mockResolvedValue({ id: "cs_test_456", url: "https://checkout.stripe.com/cs_test_456" });
     const stripe = createMockStripe(sessionsCreate);
 
-    await createCheckoutSession(stripe, tenantStore, {
+    await createCreditCheckoutSession(stripe, tenantStore, {
       tenant: "t-1",
-      priceId: "price_abc",
+      priceId: "price_credit_5",
       successUrl: "https://example.com/success",
       cancelUrl: "https://example.com/cancel",
     });
@@ -612,9 +438,9 @@ describe("createCheckoutSession", () => {
       .mockResolvedValue({ id: "cs_test_789", url: "https://checkout.stripe.com/cs_test_789" });
     const stripe = createMockStripe(sessionsCreate);
 
-    await createCheckoutSession(stripe, tenantStore, {
+    await createCreditCheckoutSession(stripe, tenantStore, {
       tenant: "t-new",
-      priceId: "price_abc",
+      priceId: "price_credit_10",
       successUrl: "https://example.com/success",
       cancelUrl: "https://example.com/cancel",
     });
@@ -628,13 +454,45 @@ describe("createCheckoutSession", () => {
     const stripe = createMockStripe(sessionsCreate);
 
     await expect(
-      createCheckoutSession(stripe, tenantStore, {
+      createCreditCheckoutSession(stripe, tenantStore, {
         tenant: "t-1",
-        priceId: "price_abc",
+        priceId: "price_credit_5",
         successUrl: "https://example.com/success",
         cancelUrl: "https://example.com/cancel",
       }),
     ).rejects.toThrow("Stripe API rate limited");
+  });
+});
+
+// -- Credit price points ----------------------------------------------------
+
+describe("credit price points", () => {
+  it("has 5 preset price tiers", () => {
+    expect(CREDIT_PRICE_POINTS).toHaveLength(5);
+  });
+
+  it("getCreditAmountForPurchase returns correct bonus amounts", () => {
+    expect(getCreditAmountForPurchase(500)).toBe(500); // $5 -> $5.00
+    expect(getCreditAmountForPurchase(1000)).toBe(1000); // $10 -> $10.00
+    expect(getCreditAmountForPurchase(2500)).toBe(2550); // $25 -> $25.50
+    expect(getCreditAmountForPurchase(5000)).toBe(5250); // $50 -> $52.50
+    expect(getCreditAmountForPurchase(10000)).toBe(11000); // $100 -> $110.00
+  });
+
+  it("getCreditAmountForPurchase returns 1:1 for unknown amounts", () => {
+    expect(getCreditAmountForPurchase(1234)).toBe(1234);
+    expect(getCreditAmountForPurchase(7500)).toBe(7500);
+  });
+
+  it("loadCreditPriceMap returns empty map when no env vars are set", () => {
+    const map = loadCreditPriceMap();
+    // May or may not have entries depending on env
+    expect(map).toBeInstanceOf(Map);
+  });
+
+  it("getConfiguredPriceIds returns empty when no env vars are set", () => {
+    const ids = getConfiguredPriceIds();
+    expect(Array.isArray(ids)).toBe(true);
   });
 });
 
@@ -707,6 +565,137 @@ describe("createPortalSession", () => {
   });
 });
 
+// -- Webhook (in stripe.test.ts) --------------------------------------------
+
+describe("handleWebhookEvent (credit model)", () => {
+  let db: BetterSqlite3.Database;
+  let tenantStore: TenantCustomerStore;
+  let creditStore: CreditAdjustmentStore;
+
+  beforeEach(() => {
+    db = createTestDb();
+    tenantStore = new TenantCustomerStore(db);
+    creditStore = new CreditAdjustmentStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("handles checkout.session.completed - credits the ledger", () => {
+    const event = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_abc",
+          client_reference_id: "t-1",
+          customer: "cus_abc123",
+          amount_total: 1000,
+          metadata: {},
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+
+    expect(result.handled).toBe(true);
+    expect(result.tenant).toBe("t-1");
+    expect(result.creditedCents).toBe(1000);
+
+    // Verify credit was granted
+    const balance = creditStore.getBalance("t-1");
+    expect(balance).toBe(1000);
+
+    // Verify tenant mapping was created
+    const mapping = tenantStore.getByTenant("t-1");
+    expect(mapping?.stripe_customer_id).toBe("cus_abc123");
+  });
+
+  it("handles checkout.session.completed - uses metadata fallback", () => {
+    const event = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_xyz",
+          client_reference_id: null,
+          customer: "cus_abc123",
+          amount_total: 500,
+          metadata: { wopr_tenant: "t-2" },
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    expect(result.handled).toBe(true);
+    expect(result.tenant).toBe("t-2");
+    expect(result.creditedCents).toBe(500);
+  });
+
+  it("handles checkout.session.completed - returns unhandled when no tenant", () => {
+    const event = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_notenant",
+          client_reference_id: null,
+          customer: "cus_abc123",
+          amount_total: 500,
+          metadata: {},
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    expect(result.handled).toBe(false);
+  });
+
+  it("returns unhandled for subscription event types (no longer handled)", () => {
+    const event = {
+      type: "customer.subscription.updated",
+      data: {
+        object: {
+          id: "sub_123",
+          customer: "cus_unknown",
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    expect(result.handled).toBe(false);
+  });
+
+  it("returns unhandled for unknown event types", () => {
+    const event = {
+      type: "payment_intent.succeeded",
+      data: { object: {} },
+    } as unknown as Stripe.Event;
+
+    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    expect(result.handled).toBe(false);
+    expect(result.event_type).toBe("payment_intent.succeeded");
+  });
+
+  it("handles customer objects instead of string IDs", () => {
+    const event = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_obj",
+          client_reference_id: "t-1",
+          customer: { id: "cus_abc123" },
+          amount_total: 500,
+          metadata: {},
+        },
+      },
+    } as unknown as Stripe.Event;
+
+    const result = handleWebhookEvent({ tenantStore, creditStore }, event);
+    expect(result.handled).toBe(true);
+    const mapping = tenantStore.getByTenant("t-1");
+    expect(mapping?.stripe_customer_id).toBe("cus_abc123");
+  });
+});
+
 // -- loadStripeConfig -------------------------------------------------------
 
 describe("loadStripeConfig", () => {
@@ -730,23 +719,11 @@ describe("loadStripeConfig", () => {
   it("returns config when all required vars are set", () => {
     process.env.STRIPE_SECRET_KEY = "sk_test_123";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
-    process.env.STRIPE_DEFAULT_PRICE_ID = "price_123";
 
     const config = loadStripeConfig();
     expect(config).toEqual({
       secretKey: "sk_test_123",
       webhookSecret: "whsec_123",
-      defaultPriceId: "price_123",
     });
-  });
-
-  it("returns config without optional defaultPriceId", () => {
-    process.env.STRIPE_SECRET_KEY = "sk_test_123";
-    process.env.STRIPE_WEBHOOK_SECRET = "whsec_123";
-    delete process.env.STRIPE_DEFAULT_PRICE_ID;
-
-    const config = loadStripeConfig();
-    expect(config).not.toBeNull();
-    expect(config?.defaultPriceId).toBeUndefined();
   });
 });

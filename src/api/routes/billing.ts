@@ -2,10 +2,14 @@ import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
+import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import { createCheckoutSession } from "../../monetization/stripe/checkout.js";
+import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
+import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
+import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
@@ -15,7 +19,6 @@ export interface BillingRouteDeps {
   stripe: Stripe;
   db: Database.Database;
   webhookSecret: string;
-  defaultPriceId?: string;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -30,9 +33,9 @@ const tenantIdSchema = z
   .regex(/^[a-zA-Z0-9_-]+$/);
 const urlSchema = z.string().url().max(2048);
 
-const checkoutBodySchema = z.object({
+const creditCheckoutBodySchema = z.object({
   tenant: tenantIdSchema,
-  priceId: z.string().min(1).max(256).optional(),
+  priceId: z.string().min(1).max(256),
   successUrl: urlSchema,
   cancelUrl: urlSchema,
 });
@@ -61,15 +64,20 @@ const usageQuerySchema = z.object({
 
 let deps: BillingRouteDeps | null = null;
 let tenantStore: TenantCustomerStore | null = null;
+let creditStore: CreditAdjustmentStore | null = null;
 let meterAggregator: MeterAggregator | null = null;
 let usageReporter: StripeUsageReporter | null = null;
+let priceMap: CreditPriceMap | null = null;
 
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
   tenantStore = new TenantCustomerStore(d.db);
+  initCreditAdjustmentSchema(d.db);
+  creditStore = new CreditAdjustmentStore(d.db);
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
+  priceMap = loadCreditPriceMap();
 }
 
 function getDeps(): BillingRouteDeps {
@@ -84,6 +92,13 @@ function getTenantStore(): TenantCustomerStore {
     throw new Error("Billing routes not initialized — call setBillingDeps() first");
   }
   return tenantStore;
+}
+
+function getCreditStore(): CreditAdjustmentStore {
+  if (!creditStore) {
+    throw new Error("Billing routes not initialized — call setBillingDeps() first");
+  }
+  return creditStore;
 }
 
 function getMeterAggregator(): MeterAggregator {
@@ -108,13 +123,13 @@ if (metadataMap.size === 0) {
 }
 
 /**
- * POST /billing/checkout
+ * POST /billing/credits/checkout
  *
- * Create a Stripe Checkout session for a tenant.
- * Body: { tenant, priceId?, successUrl, cancelUrl }
+ * Create a Stripe Checkout session for a one-time credit purchase.
+ * Body: { tenant, priceId, successUrl, cancelUrl }
  */
-billingRoutes.post("/checkout", adminAuth, async (c) => {
-  const { stripe, defaultPriceId } = getDeps();
+billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
+  const { stripe } = getDeps();
   const store = getTenantStore();
 
   let body: Record<string, unknown>;
@@ -124,20 +139,15 @@ billingRoutes.post("/checkout", adminAuth, async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  const parsed = checkoutBodySchema.safeParse(body);
+  const parsed = creditCheckoutBodySchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }, 400);
   }
 
-  const { tenant, successUrl, cancelUrl } = parsed.data;
-  const priceId = parsed.data.priceId ?? defaultPriceId;
-
-  if (!priceId) {
-    return c.json({ error: "Missing required fields: tenant, priceId, successUrl, cancelUrl" }, 400);
-  }
+  const { tenant, priceId, successUrl, cancelUrl } = parsed.data;
 
   try {
-    const session = await createCheckoutSession(stripe, store, {
+    const session = await createCreditCheckoutSession(stripe, store, {
       tenant,
       priceId,
       successUrl,
@@ -211,7 +221,11 @@ billingRoutes.post("/webhook", async (c) => {
   }
 
   const store = getTenantStore();
-  const result = handleWebhookEvent(store, event);
+  const credits = getCreditStore();
+  const result = handleWebhookEvent(
+    { tenantStore: store, creditStore: credits, priceMap: priceMap ?? undefined },
+    event,
+  );
 
   return c.json(result, 200);
 });

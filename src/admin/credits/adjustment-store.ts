@@ -38,11 +38,26 @@ export class CreditAdjustmentStore {
   }
 
   /** Grant credits to a tenant. amount_cents must be positive. */
-  grant(tenant: string, amountCents: number, reason: string, adminUser: string): CreditAdjustment {
+  grant(
+    tenant: string,
+    amountCents: number,
+    reason: string,
+    adminUser: string,
+    referenceIds?: string[],
+  ): CreditAdjustment {
     if (amountCents <= 0) throw new Error("amount_cents must be positive for grants");
     if (!reason.trim()) throw new Error("reason is required");
 
-    return this.insert(tenant, "grant", amountCents, reason, adminUser, null);
+    const refIds = referenceIds && referenceIds.length > 0 ? JSON.stringify(referenceIds) : null;
+    return this.insert(tenant, "grant", amountCents, reason, adminUser, refIds);
+  }
+
+  /** Check if a transaction with a given reference ID already exists. */
+  hasReferenceId(referenceId: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 FROM credit_adjustments WHERE reference_ids LIKE ? LIMIT 1")
+      .get(`%${referenceId}%`) as { 1: number } | undefined;
+    return row != null;
   }
 
   /** Refund credits to a tenant. amount_cents must be positive. Balance must not go negative. */

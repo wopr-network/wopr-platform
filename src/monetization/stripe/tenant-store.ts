@@ -6,6 +6,9 @@ import type { TenantCustomerRow } from "./types.js";
  *
  * This is the bridge between WOPR tenant IDs and Stripe customer IDs.
  * All billing operations look up the Stripe customer via this store.
+ *
+ * Note: No subscription tracking — WOPR uses credits, not subscriptions.
+ * Credit balances are managed by CreditAdjustmentStore.
  */
 export class TenantCustomerStore {
   constructor(private readonly db: Database.Database) {}
@@ -13,42 +16,38 @@ export class TenantCustomerStore {
   /** Get a tenant's Stripe mapping. */
   getByTenant(tenant: string): TenantCustomerRow | null {
     return (
-      (this.db.prepare("SELECT * FROM tenant_customers WHERE tenant = ?").get(tenant) as
-        | TenantCustomerRow
-        | undefined) ?? null
+      (this.db
+        .prepare(
+          "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers WHERE tenant = ?",
+        )
+        .get(tenant) as TenantCustomerRow | undefined) ?? null
     );
   }
 
   /** Get a tenant mapping by Stripe customer ID. */
   getByStripeCustomerId(stripeCustomerId: string): TenantCustomerRow | null {
     return (
-      (this.db.prepare("SELECT * FROM tenant_customers WHERE stripe_customer_id = ?").get(stripeCustomerId) as
-        | TenantCustomerRow
-        | undefined) ?? null
+      (this.db
+        .prepare(
+          "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers WHERE stripe_customer_id = ?",
+        )
+        .get(stripeCustomerId) as TenantCustomerRow | undefined) ?? null
     );
   }
 
   /** Upsert a tenant-to-customer mapping. */
-  upsert(row: { tenant: string; stripeCustomerId: string; stripeSubscriptionId?: string | null; tier?: string }): void {
+  upsert(row: { tenant: string; stripeCustomerId: string; tier?: string }): void {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO tenant_customers (tenant, stripe_customer_id, stripe_subscription_id, tier, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(tenant) DO UPDATE SET
            stripe_customer_id = excluded.stripe_customer_id,
-           stripe_subscription_id = COALESCE(excluded.stripe_subscription_id, tenant_customers.stripe_subscription_id),
            tier = COALESCE(excluded.tier, tenant_customers.tier),
            updated_at = excluded.updated_at`,
       )
-      .run(row.tenant, row.stripeCustomerId, row.stripeSubscriptionId ?? null, row.tier ?? "free", now, now);
-  }
-
-  /** Update the subscription ID for a tenant. Pass null to clear. */
-  setSubscription(tenant: string, subscriptionId: string | null): void {
-    this.db
-      .prepare("UPDATE tenant_customers SET stripe_subscription_id = ?, updated_at = ? WHERE tenant = ?")
-      .run(subscriptionId, Date.now(), tenant);
+      .run(row.tenant, row.stripeCustomerId, row.tier ?? "free", now, now);
   }
 
   /** Update the tier for a tenant. */
@@ -75,7 +74,11 @@ export class TenantCustomerStore {
 
   /** List all tenants with Stripe mappings. */
   list(): TenantCustomerRow[] {
-    return this.db.prepare("SELECT * FROM tenant_customers ORDER BY created_at DESC").all() as TenantCustomerRow[];
+    return this.db
+      .prepare(
+        "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers ORDER BY created_at DESC",
+      )
+      .all() as TenantCustomerRow[];
   }
 
   /** Build a tenant -> stripe_customer_id map for use with UsageAggregationWorker. */

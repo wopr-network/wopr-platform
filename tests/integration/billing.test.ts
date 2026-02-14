@@ -1,5 +1,5 @@
 /**
- * Integration tests for /api/billing/* routes.
+ * Integration tests for /api/billing/* routes (credit purchase model, WOP-406).
  *
  * Tests billing endpoints through the full composed Hono app.
  * Uses in-memory SQLite for the tenant store and mocked Stripe.
@@ -62,7 +62,6 @@ describe("integration: billing routes", () => {
       stripe: createMockStripe(),
       db,
       webhookSecret: "whsec_test_secret",
-      defaultPriceId: "price_default",
     });
   });
 
@@ -73,12 +72,13 @@ describe("integration: billing routes", () => {
   // -- Authentication -------------------------------------------------------
 
   describe("auth middleware", () => {
-    it("rejects /api/billing/checkout without token", async () => {
-      const res = await app.request("/api/billing/checkout", {
+    it("rejects /api/billing/credits/checkout without token", async () => {
+      const res = await app.request("/api/billing/credits/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tenant: "t-1",
+          priceId: "price_abc",
           successUrl: "https://example.com/s",
           cancelUrl: "https://example.com/c",
         }),
@@ -109,11 +109,11 @@ describe("integration: billing routes", () => {
     });
   });
 
-  // -- POST /api/billing/checkout -------------------------------------------
+  // -- POST /api/billing/credits/checkout ------------------------------------
 
-  describe("POST /api/billing/checkout", () => {
+  describe("POST /api/billing/credits/checkout", () => {
     it("creates checkout session with valid input", async () => {
-      const res = await app.request("/api/billing/checkout", {
+      const res = await app.request("/api/billing/credits/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
@@ -131,10 +131,11 @@ describe("integration: billing routes", () => {
     });
 
     it("returns 400 for missing tenant", async () => {
-      const res = await app.request("/api/billing/checkout", {
+      const res = await app.request("/api/billing/credits/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
+          priceId: "price_abc",
           successUrl: "https://example.com/s",
           cancelUrl: "https://example.com/c",
         }),
@@ -143,7 +144,7 @@ describe("integration: billing routes", () => {
     });
 
     it("returns 400 for invalid tenant ID (injection attempt)", async () => {
-      const res = await app.request("/api/billing/checkout", {
+      const res = await app.request("/api/billing/credits/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
@@ -157,7 +158,7 @@ describe("integration: billing routes", () => {
     });
 
     it("returns 400 for invalid URLs", async () => {
-      const res = await app.request("/api/billing/checkout", {
+      const res = await app.request("/api/billing/credits/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
@@ -171,7 +172,7 @@ describe("integration: billing routes", () => {
     });
 
     it("returns 400 for malformed JSON", async () => {
-      const res = await app.request("/api/billing/checkout", {
+      const res = await app.request("/api/billing/credits/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
         body: "not json",
@@ -187,14 +188,14 @@ describe("integration: billing routes", () => {
         stripe: createMockStripe({ checkoutCreate }),
         db,
         webhookSecret: "whsec_test",
-        defaultPriceId: "price_default",
       });
 
-      const res = await app.request("/api/billing/checkout", {
+      const res = await app.request("/api/billing/credits/checkout", {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
           tenant: "t-1",
+          priceId: "price_abc",
           successUrl: "https://example.com/s",
           cancelUrl: "https://example.com/c",
         }),
@@ -284,14 +285,15 @@ describe("integration: billing routes", () => {
       expect(body.error).toBe("Invalid webhook signature");
     });
 
-    it("processes checkout.session.completed event", async () => {
+    it("processes checkout.session.completed event and credits ledger", async () => {
       const event: Stripe.Event = {
         type: "checkout.session.completed",
         data: {
           object: {
+            id: "cs_test_integ",
             client_reference_id: "t-new",
             customer: "cus_new",
-            subscription: "sub_new",
+            amount_total: 1000,
             metadata: {},
           },
         },
@@ -314,6 +316,7 @@ describe("integration: billing routes", () => {
       const body = await res.json();
       expect(body.handled).toBe(true);
       expect(body.tenant).toBe("t-new");
+      expect(body.creditedCents).toBe(1000);
     });
   });
 });

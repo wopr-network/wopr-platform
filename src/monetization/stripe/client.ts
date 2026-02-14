@@ -26,6 +26,5 @@ export function loadStripeConfig(): StripeBillingConfig | null {
   return {
     secretKey,
     webhookSecret,
-    defaultPriceId: process.env.STRIPE_DEFAULT_PRICE_ID,
   };
 }
