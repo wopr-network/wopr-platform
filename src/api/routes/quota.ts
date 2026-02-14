@@ -63,9 +63,10 @@ quotaRoutes.get("/", (c) => {
     instances: {
       current: activeInstances,
       max: DEFAULT_INSTANCE_LIMITS.maxInstances,
-      remaining: DEFAULT_INSTANCE_LIMITS.maxInstances === 0
-        ? -1
-        : Math.max(0, DEFAULT_INSTANCE_LIMITS.maxInstances - activeInstances),
+      remaining:
+        DEFAULT_INSTANCE_LIMITS.maxInstances === 0
+          ? -1
+          : Math.max(0, DEFAULT_INSTANCE_LIMITS.maxInstances - activeInstances),
     },
     resources: DEFAULT_RESOURCE_CONFIG,
   });

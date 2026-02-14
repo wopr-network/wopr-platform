@@ -1,5 +1,6 @@
 import { logger } from "../../config/logger.js";
-import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
+import type { CreditLedger } from "./credit-ledger.js";
+import { InsufficientBalanceError } from "./credit-ledger.js";
 
 /**
  * Bot runtime cost: $5/bot/month prorated daily.
