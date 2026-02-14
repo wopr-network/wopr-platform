@@ -4,6 +4,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { resolveSessionUser } from "../auth/index.js";
 import { logger } from "../config/logger.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
+import { adminCreditRoutes } from "./routes/admin-credits.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { fleetRoutes } from "./routes/fleet.js";
@@ -50,6 +51,7 @@ app.route("/api/instances/:id/snapshots", snapshotRoutes);
 app.route("/api/instances/:id/friends", friendsRoutes);
 app.route("/api/audit", auditRoutes);
 app.route("/api/admin/audit", adminAuditRoutes);
+app.route("/api/admin/credits", adminCreditRoutes);
 app.route("/api/tenant-keys", tenantKeyRoutes);
 
 // Global error handler — catches all errors from routes and middleware.
