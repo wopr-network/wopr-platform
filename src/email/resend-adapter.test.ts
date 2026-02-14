@@ -180,7 +180,7 @@ describe("passwordResetTemplate", () => {
     // Verify the email script tag doesn't appear unescaped in body text
     // (it may appear in href attribute, which is safe from XSS)
     const bodyMatch = html.match(/<p>.*<\/p>/gs);
-    const bodyText = bodyMatch ? bodyMatch.join('') : '';
+    const bodyText = bodyMatch ? bodyMatch.join("") : "";
     expect(bodyText).not.toContain("<script>alert('xss')</script>");
   });
 
