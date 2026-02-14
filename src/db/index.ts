@@ -5,4 +5,10 @@ import * as schema from "./schema/index.js";
 
 const sqlite = new Database(process.env.DATABASE_PATH || "./data/platform.db");
 export const db = drizzle(sqlite, { schema });
-migrate(db, { migrationsFolder: "./drizzle/migrations" });
+
+try {
+  migrate(db, { migrationsFolder: "./drizzle/migrations" });
+} catch (err) {
+  console.error("Database migration failed:", err);
+  process.exit(1);
+}

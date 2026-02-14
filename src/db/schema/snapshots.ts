@@ -1,5 +1,5 @@
 import { desc, sql } from "drizzle-orm";
-import { index, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const snapshots = sqliteTable(
   "snapshots",
@@ -17,5 +17,6 @@ export const snapshots = sqliteTable(
   (table) => [
     index("idx_snapshots_instance").on(table.instanceId, desc(table.createdAt)),
     index("idx_snapshots_user").on(table.userId),
+    check("trigger_check", sql`trigger IN ('manual', 'scheduled', 'pre_update')`),
   ],
 );
