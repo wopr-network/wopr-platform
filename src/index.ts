@@ -26,10 +26,8 @@ process.on("uncaughtException", (err, origin) => {
     origin,
   });
   // Uncaught exceptions leave the process in an undefined state.
-  // Log the error, then exit after a short delay to allow logs to flush.
-  setTimeout(() => {
-    process.exit(1);
-  }, 1000);
+  // Exit immediately after logging (Winston Console transport is synchronous).
+  process.exit(1);
 });
 
 logger.info(`wopr-platform starting on port ${port}`);
