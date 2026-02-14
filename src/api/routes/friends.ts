@@ -1,30 +1,50 @@
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { proxyToInstance } from "./friends-proxy.js";
 import { autoAcceptRuleSchema, sendFriendRequestSchema, updateCapabilitiesSchema } from "./friends-types.js";
 
 /** Allowlist: only alphanumeric, hyphens, and underscores. */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
-const friendsTokenMap = buildTokenMap();
+const friendsTokenMetadataMap = buildTokenMetadataMap();
+
+/** Helper to get instance tenantId from bot profile */
+async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
+  try {
+    const { ProfileStore } = await import("../../fleet/profile-store.js");
+    const store = new ProfileStore(FLEET_DATA_DIR);
+    const profile = await store.get(instanceId);
+    return profile?.tenantId;
+  } catch {
+    return undefined;
+  }
+}
 
 export const friendsRoutes = new Hono();
 
 // Friends management: read for viewing, write for mutations (enforced per-route)
-if (friendsTokenMap.size === 0) {
+if (friendsTokenMetadataMap.size === 0) {
   logger.warn("No API tokens configured -- friends routes will reject all requests");
 }
-friendsRoutes.use("/*", scopedBearerAuth(friendsTokenMap, "read"));
+friendsRoutes.use("/*", scopedBearerAuthWithTenant(friendsTokenMetadataMap, "read"));
 
-const friendsWriteAuth = scopedBearerAuth(friendsTokenMap, "write");
+const friendsWriteAuth = scopedBearerAuthWithTenant(friendsTokenMetadataMap, "write");
 
 /** GET / -- List all friends for a bot instance */
 friendsRoutes.get("/", async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
+  }
+
+  // Validate tenant ownership
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
   }
 
   const result = await proxyToInstance(instanceId, "GET", "/p2p/friends");
@@ -38,6 +58,12 @@ friendsRoutes.get("/discovered", async (c) => {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
 
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   const result = await proxyToInstance(instanceId, "GET", "/p2p/discovered");
   return c.json(result.data ?? { error: result.error }, result.status as ContentfulStatusCode);
 });
@@ -47,6 +73,12 @@ friendsRoutes.post("/requests", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
+  }
+
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
   }
 
   let body: unknown;
@@ -72,6 +104,12 @@ friendsRoutes.get("/requests", async (c) => {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
 
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   const result = await proxyToInstance(instanceId, "GET", "/p2p/friends/requests");
   return c.json(result.data ?? { error: result.error }, result.status as ContentfulStatusCode);
 });
@@ -81,6 +119,12 @@ friendsRoutes.post("/requests/:reqId/accept", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
+  }
+
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
   }
 
   const reqId = c.req.param("reqId");
@@ -99,6 +143,12 @@ friendsRoutes.post("/requests/:reqId/reject", friendsWriteAuth, async (c) => {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
 
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   const reqId = c.req.param("reqId");
   if (!SAFE_ID_RE.test(reqId)) {
     return c.json({ error: "Invalid request ID" }, 400);
@@ -113,6 +163,12 @@ friendsRoutes.patch("/:friendId/capabilities", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
+  }
+
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
   }
 
   const friendId = c.req.param("friendId");
@@ -143,6 +199,12 @@ friendsRoutes.get("/auto-accept", async (c) => {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
 
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
   const result = await proxyToInstance(instanceId, "GET", "/p2p/friends/auto-accept");
   return c.json(result.data ?? { error: result.error }, result.status as ContentfulStatusCode);
 });
@@ -152,6 +214,12 @@ friendsRoutes.put("/auto-accept", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
+  }
+
+  const tenantId = await getInstanceTenantId(instanceId);
+  const ownershipError = validateTenantOwnership(c, instanceId, tenantId);
+  if (ownershipError) {
+    return ownershipError;
   }
 
   let body: unknown;

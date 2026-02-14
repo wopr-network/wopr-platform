@@ -18,6 +18,13 @@ const MISSING_BOT = "ffffffff-ffff-4fff-bfff-ffffffffffff";
 describe("integration: fleet routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock profiles.get to return a profile for BOT_1 and BOT_2, null for MISSING_BOT
+    fleetMock.profiles.get.mockImplementation((id: string) => {
+      if (id === BOT_1 || id === BOT_2) {
+        return Promise.resolve({ id, tenantId: "test-tenant", name: "test-bot" });
+      }
+      return Promise.resolve(null);
+    });
   });
 
   // -- Authentication (middleware chain) ------------------------------------

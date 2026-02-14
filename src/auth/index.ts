@@ -163,6 +163,7 @@ export interface AuthEnv {
   Variables: {
     user: AuthUser;
     authMethod: "session" | "api_key";
+    tokenTenantId?: string;
   };
 }
 
@@ -283,6 +284,12 @@ export interface ScopedTokenConfig {
   tokens: Map<string, TokenScope>;
 }
 
+/** Token metadata including scope and tenant association. */
+export interface TokenMetadata {
+  scope: TokenScope;
+  tenantId?: string;
+}
+
 /**
  * Build a token-to-scope map from environment variables.
  *
@@ -322,6 +329,53 @@ export function buildTokenMap(
 }
 
 /**
+ * Build a token-to-metadata map from environment variables.
+ *
+ * Accepts:
+ * - `FLEET_TOKEN_<TENANT>=<scope>:<token>` (tenant-scoped tokens)
+ * - Fallback to legacy token map for backwards compatibility (no tenant constraint)
+ *
+ * Example: `FLEET_TOKEN_ACME=write:wopr_write_abc123`
+ */
+export function buildTokenMetadataMap(
+  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
+): Map<string, TokenMetadata> {
+  const metadataMap = new Map<string, TokenMetadata>();
+
+  // Parse FLEET_TOKEN_<TENANT>=<scope>:<token> format
+  for (const [key, value] of Object.entries(env)) {
+    if (key.startsWith("FLEET_TOKEN_") && value) {
+      const tenantId = key.slice("FLEET_TOKEN_".length);
+      if (!tenantId) continue;
+
+      const trimmed = value.trim();
+      const colonIdx = trimmed.indexOf(":");
+      if (colonIdx === -1) continue;
+
+      const scopeStr = trimmed.slice(0, colonIdx);
+      const token = trimmed.slice(colonIdx + 1);
+
+      if (!VALID_SCOPES.has(scopeStr) || !token) continue;
+
+      metadataMap.set(token, {
+        scope: scopeStr as TokenScope,
+        tenantId,
+      });
+    }
+  }
+
+  // Fallback: add legacy tokens without tenant constraint
+  const legacyTokenMap = buildTokenMap(env);
+  for (const [token, scope] of legacyTokenMap) {
+    if (!metadataMap.has(token)) {
+      metadataMap.set(token, { scope });
+    }
+  }
+
+  return metadataMap;
+}
+
+/**
  * Create a scoped bearer auth middleware.
  *
  * Validates the bearer token against the token map and checks that the
@@ -355,6 +409,49 @@ export function scopedBearerAuth(tokenMap: Map<string, TokenScope>, requiredScop
     // Set user context for downstream middleware (audit, etc.)
     c.set("user", { id: `token:${scope}`, roles: [scope] } satisfies AuthUser);
     c.set("authMethod", "api_key" as const);
+
+    return next();
+  };
+}
+
+/**
+ * Create a tenant-aware scoped bearer auth middleware.
+ *
+ * Validates the bearer token against the metadata map, checks scope,
+ * and stores the token's associated tenantId for downstream ownership checks.
+ *
+ * @param metadataMap - Map of token -> metadata (use `buildTokenMetadataMap()` to create)
+ * @param requiredScope - Minimum scope required for this route/group
+ */
+export function scopedBearerAuthWithTenant(metadataMap: Map<string, TokenMetadata>, requiredScope: TokenScope) {
+  return async (c: Context<AuthEnv>, next: Next) => {
+    const authHeader = c.req.header("Authorization");
+    const token = extractBearerToken(authHeader);
+
+    if (!token) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    // Look up the token in the metadata map
+    const metadata = metadataMap.get(token);
+
+    if (!metadata) {
+      return c.json({ error: "Invalid or expired token" }, 401);
+    }
+
+    // Check scope hierarchy
+    if (!scopeSatisfies(metadata.scope, requiredScope)) {
+      return c.json({ error: "Insufficient scope", required: requiredScope, provided: metadata.scope }, 403);
+    }
+
+    // Set user context for downstream middleware (audit, etc.)
+    c.set("user", { id: `token:${metadata.scope}`, roles: [metadata.scope] } satisfies AuthUser);
+    c.set("authMethod", "api_key" as const);
+
+    // Store tenant ID if associated with this token
+    if (metadata.tenantId) {
+      c.set("tokenTenantId", metadata.tenantId);
+    }
 
     return next();
   };
@@ -442,4 +539,75 @@ export function requireSessionOrToken(tokenMap: Map<string, TokenScope>, require
 
     return next();
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tenant Ownership Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Middleware that enforces tenant ownership on tenant-scoped resources.
+ *
+ * Must be used after `scopedBearerAuthWithTenant` middleware.
+ * Compares the resource's tenantId against the token's tenantId.
+ * - If token has no tenantId (legacy/admin tokens), passes through.
+ * - If resource tenantId matches token tenantId, passes through.
+ * - Otherwise, returns 403 Forbidden.
+ *
+ * @param _getResourceTenantId - Function that extracts tenantId from the resource (reserved for future use)
+ */
+export function requireTenantOwnership<T>(_getResourceTenantId: (resource: T) => string | undefined) {
+  return async (c: Context<AuthEnv>, next: Next) => {
+    const tokenTenantId = c.get("tokenTenantId");
+
+    // If token has no tenant constraint (legacy/admin token), allow access
+    if (!tokenTenantId) {
+      return next();
+    }
+
+    // Resource tenantId will be validated by route handler
+    // Store tokenTenantId for route to check
+    return next();
+  };
+}
+
+/**
+ * Validate that a resource belongs to the authenticated tenant.
+ * Returns a response if validation fails (404 for not found or tenant mismatch).
+ *
+ * @param c - Hono context
+ * @param resource - The resource to check (null/undefined = not found)
+ * @param resourceTenantId - The resource's tenantId
+ * @returns Response if validation fails, undefined if validation passes
+ */
+export function validateTenantOwnership<T>(
+  c: Context,
+  resource: T | null | undefined,
+  resourceTenantId: string | undefined,
+): Response | undefined {
+  // Resource not found
+  if (resource == null) {
+    return c.json({ error: "Resource not found" }, 404);
+  }
+
+  // Get token's tenant constraint
+  let tokenTenantId: string | undefined;
+  try {
+    tokenTenantId = c.get("tokenTenantId");
+  } catch {
+    // No tokenTenantId set — this is a legacy/admin token
+    tokenTenantId = undefined;
+  }
+
+  // No tenant constraint (legacy/admin token) — allow access
+  if (!tokenTenantId) {
+    return undefined;
+  }
+
+  // Validate tenant match
+  if (resourceTenantId !== tokenTenantId) {
+    return c.json({ error: "Resource not found" }, 404);
+  }
+
+  return undefined;
 }

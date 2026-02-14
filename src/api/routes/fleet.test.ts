@@ -177,6 +177,11 @@ describe("fleet routes", () => {
     vi.clearAllMocks();
     // Reset fleet profiles.list mock to default behavior
     fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
+    // Set up fleet.profiles.get to return the mock profile for TEST_BOT_ID, null for missing
+    fleetMock.profiles.get = vi.fn().mockImplementation((id: string) => {
+      if (id === TEST_BOT_ID) return Promise.resolve(mockProfile);
+      return Promise.resolve(null);
+    });
 
     // Set default quota/tier mocks (tests can override as needed)
     tenantStoreMock.getByTenant.mockReturnValue({ tier: "free" });

@@ -39,7 +39,10 @@ export const fleetMock = {
   listAll: vi.fn(),
   logs: vi.fn(),
   update: vi.fn(),
-  profiles: { get: vi.fn() },
+  profiles: {
+    get: vi.fn(),
+    list: vi.fn(),
+  },
 };
 
 export const updaterMock = {
