@@ -82,11 +82,13 @@ export class AdminUserStore {
       params.push(filters.role);
     }
 
-    if (filters.hasCredits) {
+    if (filters.hasCredits === true) {
       conditions.push("credit_balance_cents > 0");
+    } else if (filters.hasCredits === false) {
+      conditions.push("credit_balance_cents = 0");
     }
 
-    if (filters.lowBalance) {
+    if (filters.lowBalance === true) {
       conditions.push("credit_balance_cents < 500");
     }
 
