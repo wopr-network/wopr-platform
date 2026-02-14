@@ -2,29 +2,33 @@
  * Integration tests for /api/quota/* routes.
  *
  * Tests quota endpoints through the full composed Hono app with
- * real bearer auth middleware and in-memory SQLite tier store.
+ * real bearer auth middleware and in-memory SQLite credit ledger.
  */
-import Database from "better-sqlite3";
+import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
-const { setTierStore } = await import("../../src/api/routes/quota.js");
-const { TierStore } = await import("../../src/monetization/quotas/tier-definitions.js");
+const { setLedger } = await import("../../src/api/routes/quota.js");
+const { createDb } = await import("../../src/db/index.js");
+const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
+const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
 
 describe("integration: quota routes", () => {
-  let db: Database.Database;
+  let sqlite: BetterSqlite3.Database;
+  let ledger: InstanceType<typeof CreditLedger>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    db = new Database(":memory:");
-    const store = new TierStore(db);
-    store.seed();
-    setTierStore(store);
+    sqlite = new BetterSqlite3(":memory:");
+    initCreditSchema(sqlite);
+    const db = createDb(sqlite);
+    ledger = new CreditLedger(db);
+    setLedger(ledger);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   // -- Authentication -------------------------------------------------------
@@ -46,33 +50,34 @@ describe("integration: quota routes", () => {
   // -- GET /api/quota -------------------------------------------------------
 
   describe("GET /api/quota", () => {
-    it("returns quota usage for free tier", async () => {
-      const res = await app.request("/api/quota?tier=free&activeInstances=0", {
+    it("returns zero balance for new tenant", async () => {
+      const res = await app.request("/api/quota?tenant=t-1&activeInstances=0", {
         headers: AUTH_HEADER,
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.tier.name).toBe("free");
+      expect(body.balanceCents).toBe(0);
       expect(body.instances.current).toBe(0);
-      expect(body.instances.max).toBe(1);
     });
 
-    it("defaults to free tier when no tier specified", async () => {
-      const res = await app.request("/api/quota", { headers: AUTH_HEADER });
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.tier.name).toBe("free");
-    });
-
-    it("returns 404 for unknown tier", async () => {
-      const res = await app.request("/api/quota?tier=nonexistent", {
+    it("returns balance for tenant with credits", async () => {
+      ledger.credit("t-1", 5000, "purchase", "test");
+      const res = await app.request("/api/quota?tenant=t-1&activeInstances=2", {
         headers: AUTH_HEADER,
       });
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.balanceCents).toBe(5000);
+      expect(body.instances.current).toBe(2);
+    });
+
+    it("returns 400 when tenant is missing", async () => {
+      const res = await app.request("/api/quota", { headers: AUTH_HEADER });
+      expect(res.status).toBe(400);
     });
 
     it("returns 400 for invalid activeInstances", async () => {
-      const res = await app.request("/api/quota?activeInstances=abc", {
+      const res = await app.request("/api/quota?tenant=t-1&activeInstances=abc", {
         headers: AUTH_HEADER,
       });
       expect(res.status).toBe(400);
@@ -82,38 +87,27 @@ describe("integration: quota routes", () => {
   // -- POST /api/quota/check ------------------------------------------------
 
   describe("POST /api/quota/check", () => {
-    it("allows when under quota (200)", async () => {
+    it("returns 402 when tenant has no credits", async () => {
       const res = await app.request("/api/quota/check", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ tier: "free", activeInstances: 0 }),
+        body: JSON.stringify({ tenant: "t-1", activeInstances: 0 }),
       });
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.allowed).toBe(true);
-    });
-
-    it("rejects when at quota (403)", async () => {
-      const res = await app.request("/api/quota/check", {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ tier: "free", activeInstances: 1 }),
-      });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(402);
       const body = await res.json();
       expect(body.allowed).toBe(false);
     });
 
-    it("allows with soft cap enabled", async () => {
+    it("allows when tenant has positive balance (200)", async () => {
+      ledger.credit("t-1", 1000, "purchase", "test");
       const res = await app.request("/api/quota/check", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ tier: "free", activeInstances: 1, softCap: true }),
+        body: JSON.stringify({ tenant: "t-1", activeInstances: 0 }),
       });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.allowed).toBe(true);
-      expect(body.inGracePeriod).toBe(true);
     });
 
     it("returns 400 for malformed JSON", async () => {
@@ -126,51 +120,67 @@ describe("integration: quota routes", () => {
     });
   });
 
-  // -- GET /api/quota/tiers -------------------------------------------------
+  // -- GET /api/quota/balance/:tenant ----------------------------------------
 
-  describe("GET /api/quota/tiers", () => {
-    it("lists all tiers", async () => {
-      const res = await app.request("/api/quota/tiers", { headers: AUTH_HEADER });
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.tiers).toHaveLength(4);
-    });
-  });
-
-  // -- GET /api/quota/tiers/:id ---------------------------------------------
-
-  describe("GET /api/quota/tiers/:id", () => {
-    it("returns a specific tier", async () => {
-      const res = await app.request("/api/quota/tiers/pro", { headers: AUTH_HEADER });
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.name).toBe("pro");
-    });
-
-    it("returns 404 for unknown tier", async () => {
-      const res = await app.request("/api/quota/tiers/unknown", { headers: AUTH_HEADER });
-      expect(res.status).toBe(404);
-    });
-  });
-
-  // -- GET /api/quota/resource-limits/:tierId --------------------------------
-
-  describe("GET /api/quota/resource-limits/:tierId", () => {
-    it("returns Docker resource limits for a tier", async () => {
-      const res = await app.request("/api/quota/resource-limits/free", {
+  describe("GET /api/quota/balance/:tenant", () => {
+    it("returns zero for unknown tenant", async () => {
+      const res = await app.request("/api/quota/balance/t-new", {
         headers: AUTH_HEADER,
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.Memory).toBe(512 * 1024 * 1024);
-      expect(body.CpuQuota).toBe(50_000);
+      expect(body.tenantId).toBe("t-new");
+      expect(body.balanceCents).toBe(0);
     });
 
-    it("returns 404 for unknown tier", async () => {
-      const res = await app.request("/api/quota/resource-limits/nonexistent", {
+    it("returns balance for tenant with credits", async () => {
+      ledger.credit("t-1", 2500, "purchase", "test purchase");
+      const res = await app.request("/api/quota/balance/t-1", {
         headers: AUTH_HEADER,
       });
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.balanceCents).toBe(2500);
+    });
+  });
+
+  // -- GET /api/quota/history/:tenant ----------------------------------------
+
+  describe("GET /api/quota/history/:tenant", () => {
+    it("returns empty for unknown tenant", async () => {
+      const res = await app.request("/api/quota/history/t-new", {
+        headers: AUTH_HEADER,
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.transactions).toEqual([]);
+    });
+
+    it("returns transaction history", async () => {
+      ledger.credit("t-1", 1000, "purchase", "first");
+      ledger.credit("t-1", 500, "signup_grant", "welcome");
+
+      const res = await app.request("/api/quota/history/t-1", {
+        headers: AUTH_HEADER,
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.transactions).toHaveLength(2);
+    });
+  });
+
+  // -- GET /api/quota/resource-limits ----------------------------------------
+
+  describe("GET /api/quota/resource-limits", () => {
+    it("returns default Docker resource limits", async () => {
+      const res = await app.request("/api/quota/resource-limits", {
+        headers: AUTH_HEADER,
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.Memory).toBeDefined();
+      expect(body.CpuQuota).toBeDefined();
+      expect(body.PidsLimit).toBeDefined();
     });
   });
 });

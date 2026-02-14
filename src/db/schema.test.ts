@@ -1,7 +1,6 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initMeterSchema } from "../monetization/metering/schema.js";
-import { TierStore } from "../monetization/quotas/tier-definitions.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
 import { createTestDb } from "../test/db.js";
 
@@ -623,119 +622,7 @@ describe("initStripeSchema — data integrity", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// TierStore / plan_tiers — constraint & integrity tests
-// ---------------------------------------------------------------------------
-
-describe("TierStore — schema integrity", () => {
-  let db: BetterSqlite3.Database;
-
-  beforeEach(() => {
-    db = freshDb();
-    new TierStore(db); // constructor calls init()
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
-  it("creates the plan_tiers table", () => {
-    expect(tableNames(db)).toContain("plan_tiers");
-  });
-
-  it("is idempotent (constructing twice does not error)", () => {
-    new TierStore(db);
-    new TierStore(db);
-    expect(tableNames(db).filter((t) => t === "plan_tiers")).toHaveLength(1);
-  });
-
-  it("enforces PRIMARY KEY uniqueness on id", () => {
-    db.prepare(
-      "INSERT INTO plan_tiers (id, name, max_instances, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("dup-tier", "dup", 1, 512, 50000, 1024, 128, "[]");
-
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO plan_tiers (id, name, max_instances, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("dup-tier", "dup2", 2, 1024, 100000, 2048, 256, "[]"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on name", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO plan_tiers (id, name, max_instances, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("t-nonull", null, 1, 512, 50000, 1024, 128, "[]"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on max_instances", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO plan_tiers (id, name, max_instances, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("t-nonull", "test", null, 512, 50000, 1024, 128, "[]"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on memory_limit_mb", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO plan_tiers (id, name, max_instances, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("t-nonull", "test", 1, null, 50000, 1024, 128, "[]"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on cpu_quota", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO plan_tiers (id, name, max_instances, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("t-nonull", "test", 1, 512, null, 1024, 128, "[]"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on features", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO plan_tiers (id, name, max_instances, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("t-nonull", "test", 1, 512, 50000, 1024, 128, null),
-    ).toThrow();
-  });
-
-  it("allows NULL for max_plugins_per_instance", () => {
-    db.prepare(
-      "INSERT INTO plan_tiers (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("t-nullable", "test", 1, null, 512, 50000, 1024, 128, "[]");
-
-    const row = db.prepare("SELECT max_plugins_per_instance FROM plan_tiers WHERE id = ?").get("t-nullable") as {
-      max_plugins_per_instance: number | null;
-    };
-    expect(row.max_plugins_per_instance).toBeNull();
-  });
-
-  it("provides correct defaults for columns with DEFAULT", () => {
-    db.prepare("INSERT INTO plan_tiers (id, name) VALUES (?, ?)").run("t-defaults", "defaults-test");
-
-    const row = db.prepare("SELECT * FROM plan_tiers WHERE id = ?").get("t-defaults") as Record<string, unknown>;
-    expect(row.max_instances).toBe(1);
-    expect(row.memory_limit_mb).toBe(512);
-    expect(row.cpu_quota).toBe(50000);
-    expect(row.storage_limit_mb).toBe(1024);
-    expect(row.max_processes).toBe(256);
-    expect(row.features).toBe("[]");
-  });
-});
+// TierStore / plan_tiers tests removed — tier system replaced by credit ledger (WOP-384)
 
 // ---------------------------------------------------------------------------
 // Cross-schema: all inits are independent and compose cleanly
@@ -748,8 +635,6 @@ describe("cross-schema composition", () => {
     initAuditSchema(db);
     initMeterSchema(db);
     initStripeSchema(db);
-    // Snapshots are created via Drizzle migration (no raw init function)
-    new TierStore(db);
 
     const tables = tableNames(db);
     expect(tables).toContain("audit_log");
@@ -758,7 +643,6 @@ describe("cross-schema composition", () => {
     expect(tables).toContain("billing_period_summaries");
     expect(tables).toContain("tenant_customers");
     expect(tables).toContain("stripe_usage_reports");
-    expect(tables).toContain("plan_tiers");
 
     db.close();
   });
@@ -770,13 +654,11 @@ describe("cross-schema composition", () => {
     initAuditSchema(db);
     initMeterSchema(db);
     initStripeSchema(db);
-    new TierStore(db);
 
     // Second pass — should not error
     initAuditSchema(db);
     initMeterSchema(db);
     initStripeSchema(db);
-    new TierStore(db);
 
     db.close();
   });

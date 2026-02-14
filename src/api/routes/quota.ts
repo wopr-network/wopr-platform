@@ -2,24 +2,13 @@ import Database from "better-sqlite3";
 import { Hono } from "hono";
 import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { buildQuotaUsage, checkInstanceQuota } from "../../monetization/quotas/quota-check.js";
-import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
-import { TierStore } from "../../monetization/quotas/tier-definitions.js";
+import { createDb } from "../../db/index.js";
+import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
+import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
 
-const DB_PATH = process.env.QUOTA_DB_PATH || "/data/platform/quotas.db";
+const DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const quotaTokenMap = buildTokenMap();
-
-/**
- * Create the quota database and tier store.
- * Exported for testing — callers can pass an in-memory DB.
- */
-export function createTierStore(db?: Database.Database): TierStore {
-  const database = db ?? new Database(DB_PATH);
-  database.pragma("journal_mode = WAL");
-  const store = new TierStore(database);
-  store.seed();
-  return store;
-}
 
 export const quotaRoutes = new Hono();
 
@@ -29,33 +18,37 @@ if (quotaTokenMap.size === 0) {
 }
 quotaRoutes.use("/*", scopedBearerAuth(quotaTokenMap, "admin"));
 
-let tierStore: TierStore | null = null;
+let ledger: CreditLedger | null = null;
 
-function getTierStore(): TierStore {
-  if (!tierStore) {
-    tierStore = createTierStore();
+function getLedger(): CreditLedger {
+  if (!ledger) {
+    const db = new Database(DB_PATH);
+    db.pragma("journal_mode = WAL");
+    ledger = new CreditLedger(createDb(db));
   }
-  return tierStore;
+  return ledger;
 }
 
-/** Inject a TierStore for testing */
-export function setTierStore(store: TierStore): void {
-  tierStore = store;
+/** Inject a CreditLedger for testing */
+export function setLedger(l: CreditLedger): void {
+  ledger = l;
 }
 
 /**
  * GET /quota
  *
- * Returns the authenticated user's quota usage vs limits.
- * For now, the user's tier is passed via query param `tier` (default: free).
- * In production this will come from the auth session/organization.
+ * Returns the authenticated tenant's credit balance and resource limits.
  *
  * Query params:
- *   - tier: tier ID (default: "free")
+ *   - tenant: tenant ID (required)
  *   - activeInstances: current instance count (temporary — will come from fleet DB)
  */
 quotaRoutes.get("/", (c) => {
-  const tierId = c.req.query("tier") || "free";
+  const tenantId = c.req.query("tenant");
+  if (!tenantId) {
+    return c.json({ error: "tenant query param is required" }, 400);
+  }
+
   const activeRaw = c.req.query("activeInstances");
   const activeInstances = activeRaw != null ? Number.parseInt(activeRaw, 10) : 0;
 
@@ -63,21 +56,26 @@ quotaRoutes.get("/", (c) => {
     return c.json({ error: "Invalid activeInstances parameter" }, 400);
   }
 
-  const store = getTierStore();
-  const tier = store.get(tierId);
-  if (!tier) {
-    return c.json({ error: `Unknown tier: ${tierId}` }, 404);
-  }
+  const balance = getLedger().balance(tenantId);
 
-  const usage = buildQuotaUsage(tier, activeInstances);
-  return c.json(usage);
+  return c.json({
+    balanceCents: balance,
+    instances: {
+      current: activeInstances,
+      max: DEFAULT_INSTANCE_LIMITS.maxInstances,
+      remaining: DEFAULT_INSTANCE_LIMITS.maxInstances === 0
+        ? -1
+        : Math.max(0, DEFAULT_INSTANCE_LIMITS.maxInstances - activeInstances),
+    },
+    resources: DEFAULT_RESOURCE_CONFIG,
+  });
 });
 
 /**
  * POST /quota/check
  *
  * Check whether an instance creation would be allowed.
- * Body: { tier?: string, activeInstances: number, softCap?: boolean }
+ * Body: { tenant: string, activeInstances: number, softCap?: boolean }
  */
 quotaRoutes.post("/check", async (c) => {
   let body: Record<string, unknown>;
@@ -87,7 +85,11 @@ quotaRoutes.post("/check", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  const tierId = (body.tier as string) || "free";
+  const tenantId = body.tenant as string;
+  if (!tenantId) {
+    return c.json({ error: "tenant is required" }, 400);
+  }
+
   const activeInstances = Number(body.activeInstances ?? 0);
   const softCap = Boolean(body.softCap);
 
@@ -95,13 +97,21 @@ quotaRoutes.post("/check", async (c) => {
     return c.json({ error: "Invalid activeInstances" }, 400);
   }
 
-  const store = getTierStore();
-  const tier = store.get(tierId);
-  if (!tier) {
-    return c.json({ error: `Unknown tier: ${tierId}` }, 404);
+  // Check credit balance
+  const balance = getLedger().balance(tenantId);
+  if (balance <= 0) {
+    return c.json(
+      {
+        allowed: false,
+        reason: "Insufficient credit balance",
+        currentBalanceCents: balance,
+        purchaseUrl: "/settings/billing",
+      },
+      402,
+    );
   }
 
-  const result = checkInstanceQuota(tier, activeInstances, {
+  const result = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances, {
     softCapEnabled: softCap,
     gracePeriodMs: 7 * 24 * 60 * 60 * 1000,
   });
@@ -111,42 +121,40 @@ quotaRoutes.post("/check", async (c) => {
 });
 
 /**
- * GET /quota/tiers
+ * GET /quota/balance/:tenant
  *
- * List all available plan tiers.
+ * Get a tenant's credit balance.
  */
-quotaRoutes.get("/tiers", (c) => {
-  const store = getTierStore();
-  const tiers = store.list();
-  return c.json({ tiers });
+quotaRoutes.get("/balance/:tenant", (c) => {
+  const tenantId = c.req.param("tenant");
+  const balance = getLedger().balance(tenantId);
+  return c.json({ tenantId, balanceCents: balance });
 });
 
 /**
- * GET /quota/tiers/:id
+ * GET /quota/history/:tenant
  *
- * Get a specific tier's details.
+ * Get a tenant's credit transaction history.
  */
-quotaRoutes.get("/tiers/:id", (c) => {
-  const store = getTierStore();
-  const tier = store.get(c.req.param("id"));
-  if (!tier) {
-    return c.json({ error: `Unknown tier: ${c.req.param("id")}` }, 404);
-  }
-  return c.json(tier);
+quotaRoutes.get("/history/:tenant", (c) => {
+  const tenantId = c.req.param("tenant");
+  const limitRaw = c.req.query("limit");
+  const offsetRaw = c.req.query("offset");
+  const type = c.req.query("type");
+
+  const limit = limitRaw != null ? Number.parseInt(limitRaw, 10) : 50;
+  const offset = offsetRaw != null ? Number.parseInt(offsetRaw, 10) : 0;
+
+  const transactions = getLedger().history(tenantId, { limit, offset, type: type || undefined });
+  return c.json({ transactions });
 });
 
 /**
- * GET /quota/resource-limits/:tierId
+ * GET /quota/resource-limits
  *
- * Get Docker resource constraints for a specific tier.
+ * Get default Docker resource constraints for bot containers.
  */
-quotaRoutes.get("/resource-limits/:tierId", (c) => {
-  const store = getTierStore();
-  const tier = store.get(c.req.param("tierId"));
-  if (!tier) {
-    return c.json({ error: `Unknown tier: ${c.req.param("tierId")}` }, 404);
-  }
-
-  const limits = buildResourceLimits(tier);
+quotaRoutes.get("/resource-limits", (c) => {
+  const limits = buildResourceLimits();
   return c.json(limits);
 });

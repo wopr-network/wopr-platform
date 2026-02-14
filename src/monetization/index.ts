@@ -1,17 +1,18 @@
 /**
  * Monetization -- the platform's billing and metering layer.
  *
- * Core never knows about billing, tenancy, or tiers. All monetization
+ * Core never knows about billing, tenancy, or credits. All monetization
  * lives here in the platform backend.
  *
  * Modules:
- * - quotas/   -- instance quotas and resource limits per user/tier (WOP-282)
+ * - credits/   -- credit ledger, the single unit of value (WOP-384)
+ * - quotas/    -- instance quotas and resource limits per user (WOP-282)
  *
  * Implemented modules:
  * - adapters/  -- hosted adapters like woprReplicateAdapter (WOP-301)
  * - metering/  -- fire-and-forget usage events (WOP-299)
  * - socket/    -- adapter orchestrator with metering + tenant routing (WOP-376)
- * - stripe/    -- Stripe credit purchases (WOP-406, replaces WOP-300 subscriptions)
+ * - stripe/    -- Stripe credit purchases (WOP-406)
  */
 
 // Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387)
@@ -49,8 +50,35 @@ export {
 } from "./adapters/types.js";
 export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budget/index.js";
 export { BudgetChecker } from "./budget/index.js";
-// Feature gating middleware (WOP-283)
-export { createFeatureGate, type FeatureGateConfig, type GetUserTier, type HasBillingHold } from "./feature-gate.js";
+// Credit ledger (WOP-384)
+export type {
+  CreditTransaction,
+  CreditType,
+  DebitType,
+  HistoryOptions,
+  TransactionType,
+} from "./credits/index.js";
+export {
+  CreditLedger,
+  DAILY_BOT_COST_CENTS,
+  grantSignupCredits,
+  InsufficientBalanceError,
+  runRuntimeDeductions,
+  SIGNUP_GRANT_CENTS,
+} from "./credits/index.js";
+export type {
+  GetActiveBotCount,
+  OnSuspend,
+  RuntimeCronConfig,
+  RuntimeCronResult,
+} from "./credits/index.js";
+// Feature gating middleware (WOP-384 — replaced tier gates with balance gates)
+export {
+  createBalanceGate,
+  createFeatureGate,
+  type FeatureGateConfig,
+  type GetUserBalance,
+} from "./feature-gate.js";
 // Metering (WOP-299 + WOP-284)
 export type {
   BillingPeriod,
@@ -63,24 +91,17 @@ export type {
 } from "./metering/index.js";
 export { MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
 export {
-  buildQuotaUsage,
   checkInstanceQuota,
-  checkSpendLimit,
+  DEFAULT_INSTANCE_LIMITS,
+  type InstanceLimits,
   type QuotaCheckResult,
-  type QuotaUsage,
-  type SpendCheckResult,
 } from "./quotas/quota-check.js";
-export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
 export {
-  DEFAULT_TIERS,
-  type PlanTier,
-  type SpendOverride,
-  SpendOverrideStore,
-  TIER_HIERARCHY,
-  type TierName,
-  TierStore,
-  tierSatisfies,
-} from "./quotas/tier-definitions.js";
+  buildResourceLimits,
+  type ContainerResourceLimits,
+  DEFAULT_RESOURCE_CONFIG,
+  type ResourceConfig,
+} from "./quotas/resource-limits.js";
 // Socket layer — adapter orchestrator (WOP-376)
 export { AdapterSocket, type SocketConfig, type SocketRequest } from "./socket/socket.js";
 // Stripe credit purchases (WOP-406)

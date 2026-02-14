@@ -1,11 +1,10 @@
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
@@ -64,7 +63,7 @@ const usageQuerySchema = z.object({
 
 let deps: BillingRouteDeps | null = null;
 let tenantStore: TenantCustomerStore | null = null;
-let creditStore: CreditAdjustmentStore | null = null;
+let creditLedger: CreditLedger | null = null;
 let meterAggregator: MeterAggregator | null = null;
 let usageReporter: StripeUsageReporter | null = null;
 let priceMap: CreditPriceMap | null = null;
@@ -73,8 +72,7 @@ let priceMap: CreditPriceMap | null = null;
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
   tenantStore = new TenantCustomerStore(d.db);
-  initCreditAdjustmentSchema(d.db.$client);
-  creditStore = new CreditAdjustmentStore(d.db.$client);
+  creditLedger = new CreditLedger(d.db);
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
@@ -94,11 +92,11 @@ function getTenantStore(): TenantCustomerStore {
   return tenantStore;
 }
 
-function getCreditStore(): CreditAdjustmentStore {
-  if (!creditStore) {
+function getCreditLedger(): CreditLedger {
+  if (!creditLedger) {
     throw new Error("Billing routes not initialized — call setBillingDeps() first");
   }
-  return creditStore;
+  return creditLedger;
 }
 
 function getMeterAggregator(): MeterAggregator {
@@ -221,9 +219,9 @@ billingRoutes.post("/webhook", async (c) => {
   }
 
   const store = getTenantStore();
-  const credits = getCreditStore();
+  const ledger = getCreditLedger();
   const result = handleWebhookEvent(
-    { tenantStore: store, creditStore: credits, priceMap: priceMap ?? undefined },
+    { tenantStore: store, creditLedger: ledger, priceMap: priceMap ?? undefined },
     event,
   );
 

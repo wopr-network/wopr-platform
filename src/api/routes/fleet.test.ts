@@ -129,14 +129,9 @@ vi.mock("../../network/network-policy.js", () => {
   };
 });
 
-// Mock quota and billing stores
-const tenantStoreMock = {
-  getByTenant: vi.fn(),
-};
-
-const tierStoreMock = {
-  get: vi.fn(),
-  seed: vi.fn(),
+// Mock credit ledger for balance checks
+const creditLedgerMock = {
+  balance: vi.fn(),
 };
 
 vi.mock("better-sqlite3", () => {
@@ -147,21 +142,10 @@ vi.mock("better-sqlite3", () => {
   };
 });
 
-vi.mock("../../monetization/stripe/tenant-store.js", () => {
+vi.mock("../../monetization/credits/credit-ledger.js", () => {
   return {
-    TenantCustomerStore: class {
-      getByTenant = tenantStoreMock.getByTenant;
-    },
-  };
-});
-
-vi.mock("../../monetization/quotas/tier-definitions.js", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    TierStore: class {
-      get = tierStoreMock.get;
-      seed = tierStoreMock.seed;
+    CreditLedger: class {
+      balance = creditLedgerMock.balance;
     },
   };
 });
@@ -183,21 +167,8 @@ describe("fleet routes", () => {
       return Promise.resolve(null);
     });
 
-    // Set default quota/tier mocks (tests can override as needed)
-    tenantStoreMock.getByTenant.mockReturnValue({ tier: "free" });
-    tierStoreMock.get.mockReturnValue({
-      id: "free",
-      name: "free",
-      maxInstances: 1,
-      memoryLimitMb: 512,
-      cpuQuota: 50_000,
-      storageLimitMb: 1024,
-      maxProcesses: 128,
-      features: [],
-      maxSpendPerHour: 0.5,
-      maxSpendPerMonth: 5,
-      maxPluginsPerInstance: 5,
-    });
+    // Set default credit ledger mock (tests can override as needed)
+    creditLedgerMock.balance.mockReturnValue(1000); // 1000 cents = $10
   });
 
   describe("authentication", () => {
@@ -349,25 +320,8 @@ describe("fleet routes", () => {
       expect(res.status).toBe(500);
     });
 
-    it("enforces instance quota before creating bot", async () => {
-      // Setup: tenant has free tier with max 1 instance
-      tenantStoreMock.getByTenant.mockReturnValue({ tier: "free" });
-      tierStoreMock.get.mockReturnValue({
-        id: "free",
-        name: "free",
-        maxInstances: 1,
-        memoryLimitMb: 512,
-        cpuQuota: 50_000,
-        storageLimitMb: 1024,
-        maxProcesses: 128,
-        features: [],
-        maxSpendPerHour: 0.5,
-        maxSpendPerMonth: 5,
-        maxPluginsPerInstance: 5,
-      });
-
-      // Mock: tenant already has 1 instance
-      fleetMock.profiles.list = vi.fn().mockResolvedValue([mockProfile]);
+    it("returns 402 when tenant has zero credit balance", async () => {
+      creditLedgerMock.balance.mockReturnValue(0);
 
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -379,35 +333,16 @@ describe("fleet routes", () => {
         }),
       });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(402);
       const body = await res.json();
-      expect(body.error).toContain("quota exceeded");
-      expect(body.currentInstances).toBe(1);
-      expect(body.maxInstances).toBe(1);
-      expect(body.tier).toBe("free");
+      expect(body.error).toContain("Insufficient credit balance");
 
       // Verify create was NOT called
       expect(fleetMock.create).not.toHaveBeenCalled();
     });
 
-    it("allows bot creation when quota is not exceeded", async () => {
-      // Setup: tenant has free tier with max 1 instance
-      tenantStoreMock.getByTenant.mockReturnValue({ tier: "free" });
-      tierStoreMock.get.mockReturnValue({
-        id: "free",
-        name: "free",
-        maxInstances: 1,
-        memoryLimitMb: 512,
-        cpuQuota: 50_000,
-        storageLimitMb: 1024,
-        maxProcesses: 128,
-        features: [],
-        maxSpendPerHour: 0.5,
-        maxSpendPerMonth: 5,
-        maxPluginsPerInstance: 5,
-      });
-
-      // Mock: tenant has 0 instances
+    it("allows bot creation when tenant has positive credit balance", async () => {
+      creditLedgerMock.balance.mockReturnValue(1000);
       fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
       fleetMock.create.mockResolvedValue(mockProfile);
 
@@ -425,23 +360,8 @@ describe("fleet routes", () => {
       expect(fleetMock.create).toHaveBeenCalled();
     });
 
-    it("defaults to free tier when tenant not found", async () => {
-      // Setup: tenant not in billing DB
-      tenantStoreMock.getByTenant.mockReturnValue(null);
-      tierStoreMock.get.mockReturnValue({
-        id: "free",
-        name: "free",
-        maxInstances: 1,
-        memoryLimitMb: 512,
-        cpuQuota: 50_000,
-        storageLimitMb: 1024,
-        maxProcesses: 128,
-        features: [],
-        maxSpendPerHour: 0.5,
-        maxSpendPerMonth: 5,
-        maxPluginsPerInstance: 5,
-      });
-
+    it("allows bot creation for new tenant with positive balance", async () => {
+      creditLedgerMock.balance.mockReturnValue(500);
       fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
       fleetMock.create.mockResolvedValue(mockProfile);
 
@@ -456,8 +376,6 @@ describe("fleet routes", () => {
       });
 
       expect(res.status).toBe(201);
-      expect(tenantStoreMock.getByTenant).toHaveBeenCalledWith("new-tenant");
-      expect(tierStoreMock.get).toHaveBeenCalledWith("free");
     });
   });
 

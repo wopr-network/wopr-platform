@@ -13,15 +13,13 @@ import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
-import { checkInstanceQuota } from "../../monetization/quotas/quota-check.js";
+import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
-import { DEFAULT_TIERS, TierStore } from "../../monetization/quotas/tier-definitions.js";
-import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { NetworkPolicy } from "../../network/network-policy.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
-const QUOTA_DB_PATH = process.env.QUOTA_DB_PATH || "/data/platform/quotas.db";
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 
 let _authDb: Database.Database | null = null;
@@ -42,11 +40,9 @@ const fleet = new FleetManager(docker, store, config.discovery, networkPolicy);
 const imagePoller = new ImagePoller(docker, store);
 const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
 
-// Initialize billing and quota stores for tenant tier lookups
+// Initialize billing DB + credit ledger for balance checks
 let billingDb: Database.Database | null = null;
-let quotaDb: Database.Database | null = null;
-let tenantStore: TenantCustomerStore | null = null;
-let tierStore: TierStore | null = null;
+let creditLedger: CreditLedger | null = null;
 
 function getBillingDb(): Database.Database {
   if (!billingDb) {
@@ -56,27 +52,11 @@ function getBillingDb(): Database.Database {
   return billingDb;
 }
 
-function getQuotaDb(): Database.Database {
-  if (!quotaDb) {
-    quotaDb = new Database(QUOTA_DB_PATH);
-    quotaDb.pragma("journal_mode = WAL");
+function getCreditLedger(): CreditLedger {
+  if (!creditLedger) {
+    creditLedger = new CreditLedger(createDb(getBillingDb()));
   }
-  return quotaDb;
-}
-
-function getTenantStore(): TenantCustomerStore {
-  if (!tenantStore) {
-    tenantStore = new TenantCustomerStore(createDb(getBillingDb()));
-  }
-  return tenantStore;
-}
-
-function getTierStore(): TierStore {
-  if (!tierStore) {
-    tierStore = new TierStore(getQuotaDb());
-    tierStore.seed();
-  }
-  return tierStore;
+  return creditLedger;
 }
 
 // Wire up the poller to trigger updates via the updater
@@ -144,53 +124,46 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
   }
 
-  // Check instance quota before creating container (skip if billing DB unavailable)
+  // Check credit balance before creating container (skip if billing DB unavailable)
   try {
     const tenantId = parsed.data.tenantId;
 
-    // Get tenant's tier (defaults to "free" if not found)
-    const tenantMapping = getTenantStore().getByTenant(tenantId);
-    const tierId = tenantMapping?.tier ?? "free";
+    // Check credit balance — must have credits to create bots
+    const balance = getCreditLedger().balance(tenantId);
+    if (balance <= 0) {
+      return c.json(
+        {
+          error: "Insufficient credit balance to create a bot",
+          currentBalanceCents: balance,
+          purchaseUrl: "/settings/billing",
+        },
+        402,
+      );
+    }
 
-    // Get tier definition
-    const tier = getTierStore().get(tierId);
-    if (tier) {
-      // Count active instances for this tenant
-      const allProfiles = await fleet.profiles.list();
-      const activeInstances = allProfiles.filter((p) => p.tenantId === tenantId).length;
+    // Count active instances for this tenant
+    const allProfiles = await fleet.profiles.list();
+    const activeInstances = allProfiles.filter((p) => p.tenantId === tenantId).length;
 
-      // Check quota
-      const quotaResult = checkInstanceQuota(tier, activeInstances);
-      if (!quotaResult.allowed) {
-        return c.json(
-          {
-            error: quotaResult.reason || "Instance quota exceeded for your plan tier",
-            currentInstances: quotaResult.currentInstances,
-            maxInstances: quotaResult.maxInstances,
-            tier: tier.name,
-          },
-          403,
-        );
-      }
+    // Check instance quota (unlimited by default for credit users)
+    const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
+    if (!quotaResult.allowed) {
+      return c.json(
+        {
+          error: quotaResult.reason || "Instance quota exceeded",
+          currentInstances: quotaResult.currentInstances,
+          maxInstances: quotaResult.maxInstances,
+        },
+        403,
+      );
     }
   } catch (quotaErr) {
     // Billing DB not available (e.g., in tests) — skip quota enforcement
     logger.warn("Quota check skipped: billing DB unavailable", { err: quotaErr });
   }
 
-  // Build resource limits from tenant's tier (skip if billing DB unavailable)
-  let resourceLimits: ReturnType<typeof buildResourceLimits> | undefined;
-  try {
-    const tenantId = parsed.data.tenantId;
-    const tenantMapping = getTenantStore().getByTenant(tenantId);
-    const tierId = tenantMapping?.tier ?? "free";
-    const tier = getTierStore().get(tierId);
-    const effectiveTier = tier ?? DEFAULT_TIERS.find((t) => t.id === "free")!;
-    resourceLimits = buildResourceLimits(effectiveTier);
-  } catch (limitsErr) {
-    // Billing DB not available (e.g., in tests) — create without resource limits
-    logger.warn("Resource limits skipped: billing DB unavailable", { err: limitsErr });
-  }
+  // Build default resource limits for bot container
+  const resourceLimits = buildResourceLimits();
 
   try {
     const profile = await fleet.create(parsed.data, resourceLimits);
