@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
+import { createDb, type DrizzleDb } from "../../db/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { TierStore } from "../../monetization/quotas/tier-definitions.js";
@@ -453,7 +454,8 @@ describe("E2E: Bot management flow", () => {
 
 describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
+  let db: DrizzleDb;
   let tenantStore: TenantCustomerStore;
   let creditStore: CreditAdjustmentStore;
   let tierStore: TierStore;
@@ -481,15 +483,16 @@ describe("E2E: Billing flow (credit model)", () => {
     botCounter = 0;
 
     // Set up in-memory DB with schemas
-    db = new BetterSqlite3(":memory:");
-    initMeterSchema(db);
-    initStripeSchema(db);
-    initCreditAdjustmentSchema(db);
+    sqlite = new BetterSqlite3(":memory:");
+    initMeterSchema(sqlite);
+    initStripeSchema(sqlite);
+    initCreditAdjustmentSchema(sqlite);
+    db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
-    creditStore = new CreditAdjustmentStore(db);
+    creditStore = new CreditAdjustmentStore(sqlite);
 
     // Set up tier store
-    tierStore = new TierStore(db);
+    tierStore = new TierStore(sqlite);
     tierStore.seed();
     setTierStore(tierStore);
 
@@ -504,7 +507,7 @@ describe("E2E: Billing flow (credit model)", () => {
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("Credit checkout -> webhook credits ledger -> verify balance -> portal access", async () => {

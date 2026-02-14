@@ -12,28 +12,30 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CreditAdjustmentStore } from "../../src/admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../src/admin/credits/schema.js";
+import { createDb } from "../../src/db/index.js";
 import { initStripeSchema } from "../../src/monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../src/monetization/stripe/tenant-store.js";
 import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
 
 describe("integration: auth → billing → credit flow", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
   let creditStore: CreditAdjustmentStore;
   let deps: WebhookDeps;
 
   beforeEach(() => {
-    db = new BetterSqlite3(":memory:");
-    initStripeSchema(db);
-    initCreditAdjustmentSchema(db);
+    sqlite = new BetterSqlite3(":memory:");
+    initStripeSchema(sqlite);
+    initCreditAdjustmentSchema(sqlite);
+    const db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
-    creditStore = new CreditAdjustmentStore(db);
+    creditStore = new CreditAdjustmentStore(sqlite);
     deps = { tenantStore, creditStore };
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   // ---------------------------------------------------------------------------

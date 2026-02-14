@@ -1,10 +1,8 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type Stripe from "stripe";
 import { logger } from "../../config/logger.js";
-import { createDb } from "../../db/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { billingPeriodSummaries } from "../../db/schema/meter-events.js";
 import { stripeUsageReports } from "../../db/schema/stripe.js";
 import type { MeterEventNameMap } from "../metering/usage-aggregation-worker.js";
@@ -43,18 +41,16 @@ export interface UsageReporterOpts {
  * - Records successful reports in stripe_usage_reports
  */
 export class StripeUsageReporter {
-  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
   private readonly meterEventNames: MeterEventNameMap;
   private readonly intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    sqlite: Database.Database,
+    private readonly db: DrizzleDb,
     private readonly stripe: Stripe,
     private readonly tenantStore: TenantCustomerStore,
     opts: UsageReporterOpts = {},
   ) {
-    this.db = createDb(sqlite) as BetterSQLite3Database<Record<string, unknown>>;
     this.meterEventNames = { ...DEFAULT_EVENT_NAMES, ...opts.meterEventNames };
     this.intervalMs = opts.intervalMs ?? 300_000; // 5 minutes
   }

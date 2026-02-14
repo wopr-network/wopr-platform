@@ -1,7 +1,5 @@
-import type Database from "better-sqlite3";
 import { desc, eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { createDb } from "../../db/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { tenantCustomers } from "../../db/schema/stripe.js";
 import type { TenantCustomerRow } from "./types.js";
 
@@ -15,11 +13,7 @@ import type { TenantCustomerRow } from "./types.js";
  * Credit balances are managed by CreditAdjustmentStore.
  */
 export class TenantCustomerStore {
-  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
-
-  constructor(sqlite: Database.Database) {
-    this.db = createDb(sqlite) as BetterSQLite3Database<Record<string, unknown>>;
-  }
+  constructor(private readonly db: DrizzleDb) {}
 
   /** Get a tenant's Stripe mapping. */
   getByTenant(tenant: string): TenantCustomerRow | null {
