@@ -14,6 +14,7 @@ import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { snapshotRoutes } from "./routes/snapshots.js";
 import { tenantKeyRoutes } from "./routes/tenant-keys.js";
+import { verifyEmailRoutes } from "./routes/verify-email.js";
 
 export const app = new Hono();
 
@@ -53,6 +54,7 @@ app.route("/api/audit", auditRoutes);
 app.route("/api/admin/audit", adminAuditRoutes);
 app.route("/api/admin/credits", adminCreditRoutes);
 app.route("/api/tenant-keys", tenantKeyRoutes);
+app.route("/auth", verifyEmailRoutes);
 
 // Global error handler — catches all errors from routes and middleware.
 // This prevents unhandled errors from crashing the process.

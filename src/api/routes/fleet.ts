@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
+import { requireEmailVerified } from "../../email/require-verified.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
@@ -20,6 +21,18 @@ import { NetworkPolicy } from "../../network/network-policy.js";
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const QUOTA_DB_PATH = process.env.QUOTA_DB_PATH || "/data/platform/quotas.db";
+const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
+
+let _authDb: Database.Database | null = null;
+function getAuthDb(): Database.Database {
+  if (!_authDb) {
+    _authDb = new Database(AUTH_DB_PATH);
+    _authDb.pragma("journal_mode = WAL");
+  }
+  return _authDb;
+}
+
+const emailVerified = requireEmailVerified(getAuthDb);
 
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
@@ -118,7 +131,7 @@ fleetRoutes.get("/bots", readAuth, async (c) => {
 });
 
 /** POST /fleet/bots — Create a new bot from profile config */
-fleetRoutes.post("/bots", writeAuth, async (c) => {
+fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
