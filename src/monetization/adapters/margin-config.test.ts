@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_MARGIN_CONFIG,
-  getMargin,
-  type MarginConfig,
-  withMarginConfig,
-} from "./margin-config.js";
+import { DEFAULT_MARGIN_CONFIG, getMargin, type MarginConfig, withMarginConfig } from "./margin-config.js";
 
 describe("getMargin", () => {
   const config: MarginConfig = {

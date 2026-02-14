@@ -14,6 +14,10 @@
  * - stripe/    -- Stripe usage-based billing (WOP-300)
  */
 
+// Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387)
+export { createDeepgramAdapter, type DeepgramAdapterConfig } from "./adapters/deepgram.js";
+export { createElevenLabsAdapter, type ElevenLabsAdapterConfig } from "./adapters/elevenlabs.js";
+export { createGeminiAdapter, type GeminiAdapterConfig } from "./adapters/gemini.js";
 // Margin config (WOP-364)
 export {
   DEFAULT_MARGIN_CONFIG,
@@ -22,10 +26,6 @@ export {
   type MarginRule,
   withMarginConfig,
 } from "./adapters/margin-config.js";
-// Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387)
-export { createDeepgramAdapter, type DeepgramAdapterConfig } from "./adapters/deepgram.js";
-export { createElevenLabsAdapter, type ElevenLabsAdapterConfig } from "./adapters/elevenlabs.js";
-export { createGeminiAdapter, type GeminiAdapterConfig } from "./adapters/gemini.js";
 export { createOpenRouterAdapter, type OpenRouterAdapterConfig } from "./adapters/openrouter.js";
 export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/replicate.js";
 export {

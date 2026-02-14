@@ -14,7 +14,12 @@ export interface MarginRule {
   provider: string;
   /** Model pattern -- glob or exact match (e.g., "anthropic/claude-opus-*", "*") */
   modelPattern: string;
-  /** Margin multiplier for this provider+model combo */
+  /**
+   * Margin multiplier for this provider+model combo.
+   * This is a multiplier, NOT a percentage: 1.3 = 30% margin, 1.5 = 50% margin.
+   * Values in the range [3, 100] would be interpreted as multipliers (e.g., 3 = 200% markup),
+   * which is almost certainly a mistake. Typical values: 1.1 to 2.0.
+   */
   margin: number;
 }
 
@@ -61,12 +66,7 @@ export function getMargin(config: MarginConfig, provider: string, model: string)
  * Looks up the correct margin for the given provider+model, then delegates
  * to the existing `withMargin()` function for the actual calculation.
  */
-export function withMarginConfig(
-  cost: number,
-  config: MarginConfig,
-  provider: string,
-  model: string,
-): number {
+export function withMarginConfig(cost: number, config: MarginConfig, provider: string, model: string): number {
   const margin = getMargin(config, provider, model);
   return withMargin(cost, margin);
 }
