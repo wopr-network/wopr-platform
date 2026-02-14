@@ -15,6 +15,23 @@ export interface EmailOptions {
 }
 
 /**
+ * Escape HTML special characters to prevent XSS.
+ *
+ * @param str - String to escape
+ * @returns Escaped string safe for HTML interpolation
+ */
+export function escapeHtml(str: string): string {
+  const map: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
+  return str.replace(/[&<>"']/g, (char) => map[char] || char);
+}
+
+/**
  * Send an email using Resend.
  *
  * @param options - Email configuration (to, subject, html, text)
@@ -61,6 +78,8 @@ export async function sendEmail(
  * @returns HTML email content
  */
 export function passwordResetTemplate(resetUrl: string, email: string): string {
+  const escapedEmail = escapeHtml(email);
+  const escapedResetUrl = escapeHtml(resetUrl);
   return `
 <!DOCTYPE html>
 <html>
@@ -82,7 +101,7 @@ export function passwordResetTemplate(resetUrl: string, email: string): string {
           <tr>
             <td style="padding: 0 40px 20px 40px; color: #4a5568; font-size: 16px; line-height: 24px;">
               <p>Hi there,</p>
-              <p>You requested a password reset for your WOPR account (<strong>${email}</strong>).</p>
+              <p>You requested a password reset for your WOPR account (<strong>${escapedEmail}</strong>).</p>
               <p>Click the button below to create a new password. This link will expire in 1 hour.</p>
             </td>
           </tr>
@@ -94,7 +113,7 @@ export function passwordResetTemplate(resetUrl: string, email: string): string {
           <tr>
             <td style="padding: 0 40px 20px 40px; color: #718096; font-size: 14px; line-height: 20px;">
               <p>Or copy and paste this URL into your browser:</p>
-              <p style="word-break: break-all; color: #2563eb;">${resetUrl}</p>
+              <p style="word-break: break-all; color: #2563eb;">${escapedResetUrl}</p>
             </td>
           </tr>
           <tr>

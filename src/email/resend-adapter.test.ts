@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type EmailOptions, passwordResetTemplate, passwordResetText, sendEmail } from "./resend-adapter.js";
+import {
+  type EmailOptions,
+  escapeHtml,
+  passwordResetTemplate,
+  passwordResetText,
+  sendEmail,
+} from "./resend-adapter.js";
 
 // Create a mock send function that can be controlled in tests
 const mockSend = vi.fn();
@@ -13,6 +19,22 @@ vi.mock("resend", () => {
       };
     },
   };
+});
+
+describe("escapeHtml", () => {
+  it("should escape all dangerous HTML characters", () => {
+    expect(escapeHtml("<script>alert('XSS')</script>")).toBe("&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;");
+    expect(escapeHtml('Test "quotes" & <tags>')).toBe("Test &quot;quotes&quot; &amp; &lt;tags&gt;");
+    expect(escapeHtml("user@example.com")).toBe("user@example.com");
+  });
+
+  it("should handle empty strings", () => {
+    expect(escapeHtml("")).toBe("");
+  });
+
+  it("should handle strings with no special characters", () => {
+    expect(escapeHtml("normal text 123")).toBe("normal text 123");
+  });
 });
 
 describe("sendEmail", () => {
@@ -143,13 +165,23 @@ describe("passwordResetTemplate", () => {
     expect(html).toContain("<!DOCTYPE html>");
   });
 
-  it("should escape HTML characters in email", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
-    const email = "user+test@example.com";
+  it("should escape HTML characters in email and URL to prevent XSS", () => {
+    const resetUrl = "https://wopr.network/reset?token=<script>alert(1)</script>";
+    const email = "<script>alert('xss')</script>@example.com";
 
     const html = passwordResetTemplate(resetUrl, email);
 
-    expect(html).toContain(email);
+    // Verify email is escaped in the text where it's displayed
+    expect(html).toContain("&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;@example.com");
+
+    // Verify resetUrl is escaped in the displayed text (not href)
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+
+    // Verify the email script tag doesn't appear unescaped in body text
+    // (it may appear in href attribute, which is safe from XSS)
+    const bodyMatch = html.match(/<p>.*<\/p>/gs);
+    const bodyText = bodyMatch ? bodyMatch.join('') : '';
+    expect(bodyText).not.toContain("<script>alert('xss')</script>");
   });
 
   it("should include current year in footer", () => {

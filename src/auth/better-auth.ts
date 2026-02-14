@@ -29,14 +29,20 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
     emailAndPassword: {
       enabled: true,
       sendResetPassword: async ({ user, url }) => {
-        const html = passwordResetTemplate(url, user.email);
-        const text = passwordResetText(url, user.email);
-        await sendEmail({
-          to: user.email,
-          subject: "Reset Your Password",
-          html,
-          text,
-        });
+        try {
+          const html = passwordResetTemplate(url, user.email);
+          const text = passwordResetText(url, user.email);
+          await sendEmail({
+            to: user.email,
+            subject: "Reset Your Password",
+            html,
+            text,
+          });
+        } catch (error) {
+          // Log the error but do NOT expose it to the user (prevents user enumeration)
+          console.error("Failed to send password reset email:", error);
+          // Return silently - same response whether email sends or not
+        }
       },
     },
     session: {
