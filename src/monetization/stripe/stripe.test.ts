@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
+import { createDb } from "../../db/index.js";
 import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
 import type { MeterEvent } from "../metering/types.js";
@@ -22,11 +23,12 @@ import { StripeUsageReporter } from "./usage-reporter.js";
 import { handleWebhookEvent } from "./webhook.js";
 
 function createTestDb() {
-  const db = new BetterSqlite3(":memory:");
-  initMeterSchema(db);
-  initStripeSchema(db);
-  initCreditAdjustmentSchema(db);
-  return db;
+  const sqlite = new BetterSqlite3(":memory:");
+  initMeterSchema(sqlite);
+  initStripeSchema(sqlite);
+  initCreditAdjustmentSchema(sqlite);
+  const db = createDb(sqlite);
+  return { sqlite, db };
 }
 
 function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
@@ -45,58 +47,59 @@ function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
 
 describe("initStripeSchema", () => {
   it("creates tenant_customers table", () => {
-    const db = createTestDb();
-    const tables = db
+    const { sqlite } = createTestDb();
+    const tables = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tenant_customers'")
       .all() as { name: string }[];
     expect(tables).toHaveLength(1);
-    db.close();
+    sqlite.close();
   });
 
   it("creates stripe_usage_reports table", () => {
-    const db = createTestDb();
-    const tables = db
+    const { sqlite } = createTestDb();
+    const tables = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='stripe_usage_reports'")
       .all() as { name: string }[];
     expect(tables).toHaveLength(1);
-    db.close();
+    sqlite.close();
   });
 
   it("creates indexes", () => {
-    const db = createTestDb();
-    const indexes = db
+    const { sqlite } = createTestDb();
+    const indexes = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_tenant_%'")
       .all() as { name: string }[];
     expect(indexes.length).toBeGreaterThanOrEqual(1);
 
-    const stripeIndexes = db
+    const stripeIndexes = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_stripe_%'")
       .all() as { name: string }[];
     expect(stripeIndexes.length).toBeGreaterThanOrEqual(2);
-    db.close();
+    sqlite.close();
   });
 
   it("is idempotent", () => {
-    const db = createTestDb();
-    initStripeSchema(db);
-    initStripeSchema(db);
-    db.close();
+    const { sqlite } = createTestDb();
+    initStripeSchema(sqlite);
+    initStripeSchema(sqlite);
+    sqlite.close();
   });
 });
 
 // -- TenantCustomerStore ----------------------------------------------------
 
 describe("TenantCustomerStore", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
   let store: TenantCustomerStore;
 
   beforeEach(() => {
-    db = createTestDb();
-    store = new TenantCustomerStore(db);
+    const testDb = createTestDb();
+    sqlite = testDb.sqlite;
+    store = new TenantCustomerStore(sqlite);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("upsert creates a new mapping", () => {
@@ -164,7 +167,7 @@ describe("TenantCustomerStore", () => {
 // -- StripeUsageReporter ----------------------------------------------------
 
 describe("StripeUsageReporter", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
   let tenantStore: TenantCustomerStore;
@@ -182,19 +185,20 @@ describe("StripeUsageReporter", () => {
   }
 
   beforeEach(() => {
-    db = createTestDb();
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
-    worker = new UsageAggregationWorker(db, {
+    const testDb = createTestDb();
+    sqlite = testDb.sqlite;
+    emitter = new MeterEmitter(testDb.db, { flushIntervalMs: 60_000 });
+    worker = new UsageAggregationWorker(testDb.db, {
       periodMs: BILLING_PERIOD,
       lateArrivalGraceMs: BILLING_PERIOD,
     });
-    tenantStore = new TenantCustomerStore(db);
+    tenantStore = new TenantCustomerStore(sqlite);
   });
 
   afterEach(() => {
     worker.stop();
     emitter.close();
-    db.close();
+    sqlite.close();
   });
 
   it("reports unreported billing periods to Stripe", async () => {
@@ -211,7 +215,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     const count = await reporter.report();
 
@@ -240,7 +244,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     await reporter.report();
     const secondCount = await reporter.report();
@@ -260,7 +264,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -270,7 +274,7 @@ describe("StripeUsageReporter", () => {
   it("returns 0 when no unreported periods exist", async () => {
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -289,7 +293,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(2);
@@ -309,7 +313,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockRejectedValue(new Error("Stripe API error"));
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -328,7 +332,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     await reporter.report();
 
@@ -351,7 +355,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(1); // Marked as reported
@@ -361,7 +365,7 @@ describe("StripeUsageReporter", () => {
   it("start/stop manages the periodic timer", () => {
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore, { intervalMs: 60_000 });
+    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore, { intervalMs: 60_000 });
 
     reporter.start();
     reporter.start(); // Idempotent
@@ -373,16 +377,17 @@ describe("StripeUsageReporter", () => {
 // -- Credit checkout --------------------------------------------------------
 
 describe("createCreditCheckoutSession", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
 
   beforeEach(() => {
-    db = createTestDb();
-    tenantStore = new TenantCustomerStore(db);
+    const testDb = createTestDb();
+    sqlite = testDb.sqlite;
+    tenantStore = new TenantCustomerStore(sqlite);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   function createMockStripe(sessionsCreate: ReturnType<typeof vi.fn>) {
@@ -499,16 +504,17 @@ describe("credit price points", () => {
 // -- createPortalSession ----------------------------------------------------
 
 describe("createPortalSession", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
 
   beforeEach(() => {
-    db = createTestDb();
-    tenantStore = new TenantCustomerStore(db);
+    const testDb = createTestDb();
+    sqlite = testDb.sqlite;
+    tenantStore = new TenantCustomerStore(sqlite);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   function createMockStripe(portalCreate: ReturnType<typeof vi.fn>) {
@@ -568,18 +574,19 @@ describe("createPortalSession", () => {
 // -- Webhook (in stripe.test.ts) --------------------------------------------
 
 describe("handleWebhookEvent (credit model)", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
   let creditStore: CreditAdjustmentStore;
 
   beforeEach(() => {
-    db = createTestDb();
-    tenantStore = new TenantCustomerStore(db);
-    creditStore = new CreditAdjustmentStore(db);
+    const testDb = createTestDb();
+    sqlite = testDb.sqlite;
+    tenantStore = new TenantCustomerStore(sqlite);
+    creditStore = new CreditAdjustmentStore(sqlite);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("handles checkout.session.completed - credits the ledger", () => {

@@ -1,16 +1,12 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import BetterSqlite3 from "better-sqlite3";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { meterEvents } from "../../db/schema/meter-events.js";
+import { createTestDb } from "../../test/db.js";
 import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
-import { initMeterSchema } from "./schema.js";
 import type { MeterEvent } from "./types.js";
-
-function createTestDb() {
-  const db = new BetterSqlite3(":memory:");
-  initMeterSchema(db);
-  return db;
-}
 
 function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
   return {
@@ -26,52 +22,55 @@ function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
 
 // -- Schema -----------------------------------------------------------------
 
-describe("initMeterSchema", () => {
+describe("Drizzle schema", () => {
   it("creates meter_events table", () => {
-    const db = createTestDb();
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='meter_events'").all() as {
-      name: string;
-    }[];
+    const { sqlite } = createTestDb();
+    const tables = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='meter_events'")
+      .all() as { name: string }[];
     expect(tables).toHaveLength(1);
-    db.close();
+    sqlite.close();
   });
 
   it("creates usage_summaries table", () => {
-    const db = createTestDb();
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usage_summaries'").all() as {
-      name: string;
-    }[];
+    const { sqlite } = createTestDb();
+    const tables = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usage_summaries'")
+      .all() as { name: string }[];
     expect(tables).toHaveLength(1);
-    db.close();
+    sqlite.close();
   });
 
   it("creates indexes", () => {
-    const db = createTestDb();
-    const indexes = db
+    const { sqlite } = createTestDb();
+    const indexes = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_meter_%'")
       .all() as { name: string }[];
     expect(indexes.length).toBeGreaterThanOrEqual(5);
-    db.close();
+    sqlite.close();
   });
 
   it("is idempotent", () => {
-    const db = createTestDb();
-    initMeterSchema(db);
-    initMeterSchema(db);
-    db.close();
+    const { sqlite: sqlite1 } = createTestDb();
+    sqlite1.close();
+    const { sqlite: sqlite2 } = createTestDb();
+    sqlite2.close();
   });
 });
 
 // -- Emitter ----------------------------------------------------------------
 
 describe("MeterEmitter", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   const TEST_WAL_PATH = `/tmp/wopr-test-wal-${Date.now()}.jsonl`;
   const TEST_DLQ_PATH = `/tmp/wopr-test-dlq-${Date.now()}.jsonl`;
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     // Disable auto-flush timer in tests; we flush manually.
     emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
@@ -83,7 +82,7 @@ describe("MeterEmitter", () => {
 
   afterEach(() => {
     emitter.close();
-    db.close();
+    sqlite.close();
 
     // Clean up test files.
     try {
@@ -102,8 +101,8 @@ describe("MeterEmitter", () => {
     emitter.emit(makeEvent());
     expect(emitter.pending).toBe(1);
 
-    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events").get() as { cnt: number };
-    expect(rows.cnt).toBe(0);
+    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    expect(rows?.cnt).toBe(0);
   });
 
   it("flush writes buffered events to the database", () => {
@@ -114,8 +113,8 @@ describe("MeterEmitter", () => {
     expect(flushed).toBe(2);
     expect(emitter.pending).toBe(0);
 
-    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events").get() as { cnt: number };
-    expect(rows.cnt).toBe(2);
+    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    expect(rows?.cnt).toBe(2);
   });
 
   it("persists all MeterEvent fields", () => {
@@ -171,8 +170,8 @@ describe("MeterEmitter", () => {
     // Third event triggers auto-flush.
     smallBatch.emit(makeEvent());
 
-    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events").get() as { cnt: number };
-    expect(rows.cnt).toBe(3);
+    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    expect(rows?.cnt).toBe(3);
     expect(smallBatch.pending).toBe(0);
     smallBatch.close();
   });
@@ -182,8 +181,8 @@ describe("MeterEmitter", () => {
     emitter.emit(makeEvent());
     emitter.close();
 
-    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events").get() as { cnt: number };
-    expect(rows.cnt).toBe(2);
+    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    expect(rows?.cnt).toBe(2);
   });
 
   it("ignores events after close", () => {
@@ -197,7 +196,7 @@ describe("MeterEmitter", () => {
     emitter.emit(makeEvent());
     expect(emitter.pending).toBe(2);
 
-    db.close();
+    sqlite.close();
     // Should not throw even though db is closed.
     const flushed = emitter.flush();
     expect(flushed).toBe(0);
@@ -205,7 +204,9 @@ describe("MeterEmitter", () => {
     expect(emitter.pending).toBe(2);
 
     // Re-open db for afterEach cleanup.
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
   });
 
   it("queryEvents returns events for a specific tenant", () => {
@@ -229,17 +230,20 @@ describe("MeterEmitter", () => {
 // -- Concurrent sessions (STT + LLM + TTS) ---------------------------------
 
 describe("MeterEmitter - concurrent multi-provider sessions", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
   });
 
   afterEach(() => {
     emitter.close();
-    db.close();
+    sqlite.close();
   });
 
   it("groups multiple providers under one sessionId", () => {
@@ -250,13 +254,13 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
     emitter.emit(makeEvent({ capability: "tts", provider: "elevenlabs", sessionId }));
     emitter.flush();
 
-    const rows = db
-      .prepare("SELECT * FROM meter_events WHERE session_id = ? ORDER BY capability")
-      .all(sessionId) as Array<{ capability: string; provider: string; session_id: string }>;
+    const rows = db.select().from(meterEvents).where(eq(meterEvents.sessionId, sessionId)).all();
 
     expect(rows).toHaveLength(3);
-    expect(rows.map((r) => r.capability)).toEqual(["chat", "stt", "tts"]);
-    expect(rows.map((r) => r.provider)).toEqual(["openai", "deepgram", "elevenlabs"]);
+    const caps = rows.map((r) => r.capability).sort();
+    expect(caps).toEqual(["chat", "stt", "tts"]);
+    const providers = rows.map((r) => r.provider).sort();
+    expect(providers).toEqual(["deepgram", "elevenlabs", "openai"]);
   });
 
   it("handles events from different sessions simultaneously", () => {
@@ -265,29 +269,36 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
     emitter.emit(makeEvent({ sessionId: "sess-a", capability: "tts" }));
     emitter.flush();
 
-    const sessA = db.prepare("SELECT COUNT(*) as cnt FROM meter_events WHERE session_id = ?").get("sess-a") as {
-      cnt: number;
-    };
-    const sessB = db.prepare("SELECT COUNT(*) as cnt FROM meter_events WHERE session_id = ?").get("sess-b") as {
-      cnt: number;
-    };
+    const sessA = db
+      .select({ cnt: sql<number>`COUNT(*)` })
+      .from(meterEvents)
+      .where(eq(meterEvents.sessionId, "sess-a"))
+      .get();
+    const sessB = db
+      .select({ cnt: sql<number>`COUNT(*)` })
+      .from(meterEvents)
+      .where(eq(meterEvents.sessionId, "sess-b"))
+      .get();
 
-    expect(sessA.cnt).toBe(2);
-    expect(sessB.cnt).toBe(1);
+    expect(sessA?.cnt).toBe(2);
+    expect(sessB?.cnt).toBe(1);
   });
 });
 
 // -- Aggregator -------------------------------------------------------------
 
 describe("MeterAggregator", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
 
   const WINDOW = 60_000; // 1 minute
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
@@ -295,7 +306,7 @@ describe("MeterAggregator", () => {
   afterEach(() => {
     aggregator.stop();
     emitter.close();
-    db.close();
+    sqlite.close();
   });
 
   it("aggregates events from completed windows", () => {
@@ -452,14 +463,17 @@ describe("MeterAggregator", () => {
 // -- Aggregator edge cases --------------------------------------------------
 
 describe("MeterAggregator - edge cases", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
 
   const WINDOW = 60_000;
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
@@ -467,7 +481,7 @@ describe("MeterAggregator - edge cases", () => {
   afterEach(() => {
     aggregator.stop();
     emitter.close();
-    db.close();
+    sqlite.close();
   });
 
   it("inserts sentinel for empty windows between events", () => {
@@ -485,11 +499,16 @@ describe("MeterAggregator - edge cases", () => {
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(1);
 
-    // Sentinel rows fill the empty windows; verify they exist via raw query.
-    const sentinels = db.prepare("SELECT COUNT(*) as cnt FROM usage_summaries WHERE tenant = '__sentinel__'").get() as {
-      cnt: number;
-    };
-    expect(sentinels.cnt).toBe(2);
+    // Sentinel rows fill the empty windows; verify they exist via Drizzle.
+    const sentinels = db
+      .select({ cnt: sql<number>`COUNT(*)` })
+      .from(
+        // Use usageSummaries table reference
+        sql`usage_summaries`,
+      )
+      .where(sql`tenant = '__sentinel__'`)
+      .get();
+    expect(sentinels?.cnt).toBe(2);
   });
 
   it("handles single-event windows correctly", () => {
@@ -605,18 +624,21 @@ describe("MeterAggregator - edge cases", () => {
 // -- Aggregation accuracy verification --------------------------------------
 
 describe("MeterAggregator - billing accuracy", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
 
   afterEach(() => {
     aggregator?.stop();
     emitter?.close();
-    db?.close();
+    sqlite?.close();
   });
 
   it("aggregated totals exactly match sum of individual events", () => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
@@ -646,7 +668,9 @@ describe("MeterAggregator - billing accuracy", () => {
   });
 
   it("per-capability breakdown sums match tenant total", () => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
@@ -679,17 +703,20 @@ describe("MeterAggregator - billing accuracy", () => {
 // -- Emitter edge cases -----------------------------------------------------
 
 describe("MeterEmitter - edge cases", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, batchSize: 100 });
   });
 
   afterEach(() => {
     emitter.close();
-    db.close();
+    sqlite.close();
   });
 
   it("handles large batch of events", () => {
@@ -698,10 +725,12 @@ describe("MeterEmitter - edge cases", () => {
     }
     emitter.flush();
 
-    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events WHERE tenant = ?").get("bulk-tenant") as {
-      cnt: number;
-    };
-    expect(rows.cnt).toBe(200);
+    const rows = db
+      .select({ cnt: sql<number>`COUNT(*)` })
+      .from(meterEvents)
+      .where(eq(meterEvents.tenant, "bulk-tenant"))
+      .get();
+    expect(rows?.cnt).toBe(200);
   });
 
   it("handles zero-cost events", () => {
@@ -737,10 +766,8 @@ describe("MeterEmitter - edge cases", () => {
     emitter.emit(makeEvent({ tenant: "t-1" }));
     emitter.flush();
 
-    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events WHERE tenant = ?").get("t-1") as {
-      cnt: number;
-    };
-    expect(rows.cnt).toBe(3);
+    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).where(eq(meterEvents.tenant, "t-1")).get();
+    expect(rows?.cnt).toBe(3);
   });
 });
 
@@ -749,32 +776,33 @@ describe("MeterEmitter - edge cases", () => {
 describe("append-only guarantee", () => {
   it("meter_events table has no UPDATE or DELETE operations in emitter", () => {
     // This is a design contract test. The emitter only INSERTs.
-    const db = createTestDb();
+    const { db, sqlite } = createTestDb();
     const emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
 
     emitter.emit(makeEvent({ tenant: "t-1" }));
     emitter.flush();
 
     // Verify the event exists.
-    const before = db.prepare("SELECT COUNT(*) as cnt FROM meter_events").get() as { cnt: number };
-    expect(before.cnt).toBe(1);
+    const before = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    expect(before?.cnt).toBe(1);
 
     // Emit more -- never replaces.
     emitter.emit(makeEvent({ tenant: "t-1" }));
     emitter.flush();
 
-    const after = db.prepare("SELECT COUNT(*) as cnt FROM meter_events").get() as { cnt: number };
-    expect(after.cnt).toBe(2);
+    const after = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    expect(after?.cnt).toBe(2);
 
     emitter.close();
-    db.close();
+    sqlite.close();
   });
 });
 
 // -- Fail-closed policy with WAL and DLQ -----------------------------------
 
 describe("MeterEmitter - fail-closed policy", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   const TEST_WAL_PATH = "/tmp/wopr-test-wal.jsonl";
   const TEST_DLQ_PATH = "/tmp/wopr-test-dlq.jsonl";
@@ -792,7 +820,9 @@ describe("MeterEmitter - fail-closed policy", () => {
       // Ignore if file doesn't exist.
     }
 
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
@@ -803,7 +833,7 @@ describe("MeterEmitter - fail-closed policy", () => {
 
   afterEach(() => {
     emitter.close();
-    db.close();
+    sqlite.close();
 
     // Clean up test files after each test.
     try {
@@ -847,7 +877,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     emitter.emit(makeEvent({ tenant: "t-1" }));
 
     // Close the database to force flush failures.
-    db.close();
+    sqlite.close();
 
     // Trigger max retries.
     emitter.flush(); // retry 1
@@ -867,7 +897,9 @@ describe("MeterEmitter - fail-closed policy", () => {
     expect(dlqEntry.dlq_error).toBeDefined();
 
     // Re-open for cleanup.
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
   });
 
   it("replays WAL events on startup", () => {
@@ -879,7 +911,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     const walContent = `${walEvents.map((e) => JSON.stringify(e)).join("\n")}\n`;
     writeFileSync(TEST_WAL_PATH, walContent, "utf8");
 
-    // Create a new emitter — it should replay the WAL.
+    // Create a new emitter -- it should replay the WAL.
     const newEmitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
@@ -887,9 +919,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     });
 
     // Events should be in the database.
-    const rows = db.prepare("SELECT * FROM meter_events WHERE tenant IN (?, ?)").all("t-1", "t-2") as Array<{
-      tenant: string;
-    }>;
+    const rows = db.select().from(meterEvents).all();
     expect(rows).toHaveLength(2);
 
     newEmitter.close();
@@ -898,34 +928,36 @@ describe("MeterEmitter - fail-closed policy", () => {
   it("WAL replay is idempotent (skips already-flushed events)", () => {
     // Insert an event directly into the database.
     const existingEvent = { ...makeEvent({ tenant: "t-existing" }), id: "existing-id" };
-    db.prepare(
-      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp, session_id, duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run(
-      existingEvent.id,
-      existingEvent.tenant,
-      existingEvent.cost,
-      existingEvent.charge,
-      existingEvent.capability,
-      existingEvent.provider,
-      existingEvent.timestamp,
-      null,
-      null,
-    );
+    db.insert(meterEvents)
+      .values({
+        id: existingEvent.id,
+        tenant: existingEvent.tenant,
+        cost: existingEvent.cost,
+        charge: existingEvent.charge,
+        capability: existingEvent.capability,
+        provider: existingEvent.provider,
+        timestamp: existingEvent.timestamp,
+        sessionId: null,
+        duration: null,
+      })
+      .run();
 
     // Write the same event to WAL (simulating crash after flush).
     writeFileSync(TEST_WAL_PATH, `${JSON.stringify(existingEvent)}\n`, "utf8");
 
-    // Create a new emitter — it should NOT duplicate the event.
+    // Create a new emitter -- it should NOT duplicate the event.
     const newEmitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
       dlqPath: TEST_DLQ_PATH,
     });
 
-    const rows = db.prepare("SELECT COUNT(*) as cnt FROM meter_events WHERE id = ?").get("existing-id") as {
-      cnt: number;
-    };
-    expect(rows.cnt).toBe(1);
+    const rows = db
+      .select({ cnt: sql<number>`COUNT(*)` })
+      .from(meterEvents)
+      .where(eq(meterEvents.id, "existing-id"))
+      .get();
+    expect(rows?.cnt).toBe(1);
 
     newEmitter.close();
   });

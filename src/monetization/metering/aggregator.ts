@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import { and, count, desc, eq, gte, lt, lte, max, min, sql, sum } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import type { UsageSummary } from "./types.js";
 
 /**
@@ -14,7 +16,7 @@ export class MeterAggregator {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: DrizzleDb,
     opts: { windowMs?: number } = {},
   ) {
     this.windowMs = opts.windowMs ?? 60_000; // 1 minute default
@@ -26,11 +28,12 @@ export class MeterAggregator {
    */
   aggregate(now: number = Date.now()): number {
     // Find the latest window_end already aggregated.
-    const lastRow = this.db.prepare("SELECT MAX(window_end) as last_end FROM usage_summaries").get() as {
-      last_end: number | null;
-    };
+    const lastRow = this.db
+      .select({ lastEnd: max(usageSummaries.windowEnd) })
+      .from(usageSummaries)
+      .get();
 
-    let lastEnd = lastRow.last_end ?? 0;
+    let lastEnd = lastRow?.lastEnd ?? 0;
 
     // Calculate the current window boundary. We only aggregate *completed* windows.
     const currentWindowStart = Math.floor(now / this.windowMs) * this.windowMs;
@@ -40,12 +43,6 @@ export class MeterAggregator {
       return 0;
     }
 
-    const insertStmt = this.db.prepare(`
-      INSERT INTO usage_summaries
-        (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, window_start, window_end)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
     let totalInserted = 0;
 
     // Process one window at a time to respect fixed time window boundaries.
@@ -54,13 +51,29 @@ export class MeterAggregator {
     if (lastEnd === 0) {
       // Find earliest event to anchor the first window.
       const earliest = this.db
-        .prepare("SELECT MIN(timestamp) as ts FROM meter_events WHERE timestamp < ?")
-        .get(currentWindowStart) as { ts: number | null };
-      if (earliest.ts != null) {
+        .select({ ts: min(meterEvents.timestamp) })
+        .from(meterEvents)
+        .where(lt(meterEvents.timestamp, currentWindowStart))
+        .get();
+      if (earliest?.ts != null) {
         lastEnd = Math.floor(earliest.ts / this.windowMs) * this.windowMs;
       } else {
-        // No events at all — insert a single sentinel to mark we've processed up to now.
-        insertStmt.run(crypto.randomUUID(), "__sentinel__", "__none__", "__none__", 0, 0, 0, 0, 0, currentWindowStart);
+        // No events at all -- insert a single sentinel to mark we've processed up to now.
+        this.db
+          .insert(usageSummaries)
+          .values({
+            id: crypto.randomUUID(),
+            tenant: "__sentinel__",
+            capability: "__none__",
+            provider: "__none__",
+            eventCount: 0,
+            totalCost: 0,
+            totalCharge: 0,
+            totalDuration: 0,
+            windowStart: 0,
+            windowEnd: currentWindowStart,
+          })
+          .run();
         return 0;
       }
     }
@@ -71,63 +84,56 @@ export class MeterAggregator {
 
       // Group events by tenant + capability + provider within this single window.
       const rows = this.db
-        .prepare(
-          `SELECT
-            tenant,
-            capability,
-            provider,
-            COUNT(*) as event_count,
-            SUM(cost) as total_cost,
-            SUM(charge) as total_charge,
-            COALESCE(SUM(duration), 0) as total_duration
-          FROM meter_events
-          WHERE timestamp >= ? AND timestamp < ?
-          GROUP BY tenant, capability, provider`,
-        )
-        .all(windowStart, windowEnd) as Array<{
-        tenant: string;
-        capability: string;
-        provider: string;
-        event_count: number;
-        total_cost: number;
-        total_charge: number;
-        total_duration: number;
-      }>;
+        .select({
+          tenant: meterEvents.tenant,
+          capability: meterEvents.capability,
+          provider: meterEvents.provider,
+          eventCount: count(),
+          totalCost: sum(meterEvents.cost),
+          totalCharge: sum(meterEvents.charge),
+          totalDuration: sql<number>`COALESCE(SUM(${meterEvents.duration}), 0)`,
+        })
+        .from(meterEvents)
+        .where(and(gte(meterEvents.timestamp, windowStart), lt(meterEvents.timestamp, windowEnd)))
+        .groupBy(meterEvents.tenant, meterEvents.capability, meterEvents.provider)
+        .all();
 
       if (rows.length === 0) {
         // Advance past this empty window by inserting a sentinel with zero counts.
-        insertStmt.run(crypto.randomUUID(), "__sentinel__", "__none__", "__none__", 0, 0, 0, 0, windowStart, windowEnd);
+        this.db
+          .insert(usageSummaries)
+          .values({
+            id: crypto.randomUUID(),
+            tenant: "__sentinel__",
+            capability: "__none__",
+            provider: "__none__",
+            eventCount: 0,
+            totalCost: 0,
+            totalCharge: 0,
+            totalDuration: 0,
+            windowStart,
+            windowEnd,
+          })
+          .run();
       } else {
-        const insertAll = this.db.transaction(
-          (
-            summaries: Array<{
-              tenant: string;
-              capability: string;
-              provider: string;
-              event_count: number;
-              total_cost: number;
-              total_charge: number;
-              total_duration: number;
-            }>,
-          ) => {
-            for (const s of summaries) {
-              insertStmt.run(
-                crypto.randomUUID(),
-                s.tenant,
-                s.capability,
-                s.provider,
-                s.event_count,
-                s.total_cost,
-                s.total_charge,
-                s.total_duration,
+        this.db.transaction((tx) => {
+          for (const s of rows) {
+            tx.insert(usageSummaries)
+              .values({
+                id: crypto.randomUUID(),
+                tenant: s.tenant,
+                capability: s.capability,
+                provider: s.provider,
+                eventCount: s.eventCount,
+                totalCost: Number(s.totalCost),
+                totalCharge: Number(s.totalCharge),
+                totalDuration: s.totalDuration,
                 windowStart,
                 windowEnd,
-              );
-            }
-          },
-        );
-
-        insertAll(rows);
+              })
+              .run();
+          }
+        });
         totalInserted += rows.length;
       }
 
@@ -140,7 +146,7 @@ export class MeterAggregator {
   /** Start periodic aggregation. */
   start(intervalMs?: number): void {
     if (this.timer) {
-      return; // Already running — avoid leaking a second interval timer.
+      return; // Already running -- avoid leaking a second interval timer.
     }
     const interval = intervalMs ?? this.windowMs;
     this.timer = setInterval(() => this.aggregate(), interval);
@@ -159,42 +165,54 @@ export class MeterAggregator {
 
   /** Query usage summaries for a tenant within a time range. */
   querySummaries(tenant: string, opts: { since?: number; until?: number; limit?: number } = {}): UsageSummary[] {
-    const conditions: string[] = ["tenant = ?"];
-    const params: unknown[] = [tenant];
+    const conditions = [eq(usageSummaries.tenant, tenant)];
 
     if (opts.since != null) {
-      conditions.push("window_start >= ?");
-      params.push(opts.since);
+      conditions.push(gte(usageSummaries.windowStart, opts.since));
     }
     if (opts.until != null) {
-      conditions.push("window_end <= ?");
-      params.push(opts.until);
+      conditions.push(lte(usageSummaries.windowEnd, opts.until));
     }
 
     const limit = Math.min(Math.max(1, opts.limit ?? 100), 1000);
-    const where = conditions.join(" AND ");
 
-    return this.db
-      .prepare(
-        `SELECT tenant, capability, provider, event_count, total_cost, total_charge, total_duration, window_start, window_end
-         FROM usage_summaries WHERE ${where} ORDER BY window_start DESC LIMIT ?`,
-      )
-      .all(...params, limit) as UsageSummary[];
+    const rows = this.db
+      .select({
+        tenant: usageSummaries.tenant,
+        capability: usageSummaries.capability,
+        provider: usageSummaries.provider,
+        event_count: usageSummaries.eventCount,
+        total_cost: usageSummaries.totalCost,
+        total_charge: usageSummaries.totalCharge,
+        total_duration: usageSummaries.totalDuration,
+        window_start: usageSummaries.windowStart,
+        window_end: usageSummaries.windowEnd,
+      })
+      .from(usageSummaries)
+      .where(and(...conditions))
+      .orderBy(desc(usageSummaries.windowStart))
+      .limit(limit)
+      .all();
+
+    return rows;
   }
 
   /** Get a tenant's total usage across all capabilities since a given time. */
   getTenantTotal(tenant: string, since: number): { totalCost: number; totalCharge: number; eventCount: number } {
     const row = this.db
-      .prepare(
-        `SELECT
-          COALESCE(SUM(total_cost), 0) as totalCost,
-          COALESCE(SUM(total_charge), 0) as totalCharge,
-          COALESCE(SUM(event_count), 0) as eventCount
-        FROM usage_summaries
-        WHERE tenant = ? AND window_start >= ?`,
-      )
-      .get(tenant, since) as { totalCost: number; totalCharge: number; eventCount: number };
+      .select({
+        totalCost: sql<number>`COALESCE(SUM(${usageSummaries.totalCost}), 0)`,
+        totalCharge: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+        eventCount: sql<number>`COALESCE(SUM(${usageSummaries.eventCount}), 0)`,
+      })
+      .from(usageSummaries)
+      .where(and(eq(usageSummaries.tenant, tenant), gte(usageSummaries.windowStart, since)))
+      .get();
 
-    return row;
+    return {
+      totalCost: row?.totalCost ?? 0,
+      totalCharge: row?.totalCharge ?? 0,
+      eventCount: row?.eventCount ?? 0,
+    };
   }
 }

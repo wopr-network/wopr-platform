@@ -1,19 +1,13 @@
 import { unlinkSync } from "node:fs";
-import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { MeterEmitter } from "./emitter.js";
-import { initMeterSchema } from "./schema.js";
 import type { MeterEvent } from "./types.js";
 import { UsageAggregationWorker } from "./usage-aggregation-worker.js";
 
 const TEST_WAL_PATH = `/tmp/wopr-worker-wal-${Date.now()}.jsonl`;
 const TEST_DLQ_PATH = `/tmp/wopr-worker-dlq-${Date.now()}.jsonl`;
-
-function createTestDb() {
-  const db = new BetterSqlite3(":memory:");
-  initMeterSchema(db);
-  return db;
-}
 
 function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
   return {
@@ -40,35 +34,36 @@ function pipeline(emitter: MeterEmitter, worker: UsageAggregationWorker, events:
 
 describe("billing_period_summaries schema", () => {
   it("creates the billing_period_summaries table", () => {
-    const db = createTestDb();
-    const tables = db
+    const { sqlite } = createTestDb();
+    const tables = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='billing_period_summaries'")
       .all() as { name: string }[];
     expect(tables).toHaveLength(1);
-    db.close();
+    sqlite.close();
   });
 
   it("creates indexes for billing_period_summaries", () => {
-    const db = createTestDb();
-    const indexes = db
+    const { sqlite } = createTestDb();
+    const indexes = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_billing_period_%'")
       .all() as { name: string }[];
     expect(indexes.length).toBeGreaterThanOrEqual(3);
-    db.close();
+    sqlite.close();
   });
 
   it("schema creation is idempotent", () => {
-    const db = createTestDb();
-    initMeterSchema(db);
-    initMeterSchema(db);
-    db.close();
+    const { sqlite: s1 } = createTestDb();
+    s1.close();
+    const { sqlite: s2 } = createTestDb();
+    s2.close();
   });
 });
 
 // -- UsageAggregationWorker -------------------------------------------------
 
 describe("UsageAggregationWorker", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
 
@@ -76,7 +71,9 @@ describe("UsageAggregationWorker", () => {
   const BILLING_PERIOD = 300_000; // 5 minutes
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
@@ -91,7 +88,7 @@ describe("UsageAggregationWorker", () => {
   afterEach(() => {
     worker.stop();
     emitter.close();
-    db.close();
+    sqlite.close();
 
     // Clean up test files.
     try {
@@ -248,14 +245,17 @@ describe("UsageAggregationWorker", () => {
 // -- getTenantPeriodTotal ---------------------------------------------------
 
 describe("UsageAggregationWorker.getTenantPeriodTotal", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
 
   const BILLING_PERIOD = 300_000;
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, walPath: TEST_WAL_PATH, dlqPath: TEST_DLQ_PATH });
     worker = new UsageAggregationWorker(db, { periodMs: BILLING_PERIOD, lateArrivalGraceMs: BILLING_PERIOD });
   });
@@ -263,7 +263,7 @@ describe("UsageAggregationWorker.getTenantPeriodTotal", () => {
   afterEach(() => {
     worker.stop();
     emitter.close();
-    db.close();
+    sqlite.close();
 
     // Clean up test files.
     try {
@@ -315,14 +315,17 @@ describe("UsageAggregationWorker.getTenantPeriodTotal", () => {
 // -- Stripe Meter Records ---------------------------------------------------
 
 describe("UsageAggregationWorker.toStripeMeterRecords", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
 
   const BILLING_PERIOD = 300_000;
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, walPath: TEST_WAL_PATH, dlqPath: TEST_DLQ_PATH });
     worker = new UsageAggregationWorker(db, { periodMs: BILLING_PERIOD, lateArrivalGraceMs: BILLING_PERIOD });
   });
@@ -330,7 +333,7 @@ describe("UsageAggregationWorker.toStripeMeterRecords", () => {
   afterEach(() => {
     worker.stop();
     emitter.close();
-    db.close();
+    sqlite.close();
 
     // Clean up test files.
     try {
@@ -414,14 +417,17 @@ describe("UsageAggregationWorker.toStripeMeterRecords", () => {
 // -- querySummaries filters -------------------------------------------------
 
 describe("UsageAggregationWorker.querySummaries", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: import("better-sqlite3").Database;
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
 
   const BILLING_PERIOD = 300_000;
 
   beforeEach(() => {
-    db = createTestDb();
+    const testDb = createTestDb();
+    db = testDb.db;
+    sqlite = testDb.sqlite;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, walPath: TEST_WAL_PATH, dlqPath: TEST_DLQ_PATH });
     worker = new UsageAggregationWorker(db, { periodMs: BILLING_PERIOD, lateArrivalGraceMs: BILLING_PERIOD });
   });
@@ -429,7 +435,7 @@ describe("UsageAggregationWorker.querySummaries", () => {
   afterEach(() => {
     worker.stop();
     emitter.close();
-    db.close();
+    sqlite.close();
 
     // Clean up test files.
     try {
@@ -471,20 +477,20 @@ describe("UsageAggregationWorker.querySummaries", () => {
 
 describe("UsageAggregationWorker start/stop", () => {
   it("start is idempotent", () => {
-    const db = createTestDb();
+    const { db, sqlite } = createTestDb();
     const worker = new UsageAggregationWorker(db, { periodMs: 300_000, intervalMs: 60_000 });
 
     worker.start();
     worker.start(); // Should not throw or create duplicate timers.
     worker.stop();
-    db.close();
+    sqlite.close();
   });
 
   it("stop without start is safe", () => {
-    const db = createTestDb();
+    const { db, sqlite } = createTestDb();
     const worker = new UsageAggregationWorker(db, { periodMs: 300_000 });
 
     worker.stop(); // No-op, should not throw.
-    db.close();
+    sqlite.close();
   });
 });
