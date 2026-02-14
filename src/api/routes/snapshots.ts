@@ -22,6 +22,7 @@ let _manager: SnapshotManager | null = null;
 function getManager(): SnapshotManager {
   if (!_manager) {
     const sqlite = new Database(SNAPSHOT_DB_PATH);
+    sqlite.pragma("journal_mode = WAL");
     const db = drizzle(sqlite, { schema: dbSchema });
     _manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db });
   }
