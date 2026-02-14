@@ -1,0 +1,25 @@
+ignoredBuiltDependencies:
+  - cpu-features
+  - esbuild
+  - protobufjs
+  - ssh2
+
+onlyBuiltDependencies:
+  - ' '
+  - ''''
+  - ','
+  - '-'
+  - '3'
+  - '['
+  - ']'
+  - b
+  - better-sqlite3
+  - d
+  - e
+  - i
+  - l
+  - q
+  - r
+  - s
+  - t
+  - u

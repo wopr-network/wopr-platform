@@ -3,10 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import type Database from "better-sqlite3";
+import { asc, count, desc, eq } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import { initSnapshotSchema } from "./schema.js";
-import type { Snapshot, SnapshotRow, SnapshotTrigger } from "./types.js";
+import { snapshots } from "../db/schema/snapshots.js";
+import type { Snapshot, SnapshotTrigger } from "./types.js";
 import { rowToSnapshot } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -17,18 +18,17 @@ const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 export interface SnapshotManagerOptions {
   /** Directory where snapshot tar files are stored */
   snapshotDir: string;
-  /** SQLite database for metadata */
-  db: Database.Database;
+  /** Drizzle database instance */
+  db: BetterSQLite3Database<Record<string, unknown>>;
 }
 
 export class SnapshotManager {
   private readonly snapshotDir: string;
-  private readonly db: Database.Database;
+  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
 
   constructor(opts: SnapshotManagerOptions) {
     this.snapshotDir = opts.snapshotDir;
     this.db = opts.db;
-    initSnapshotSchema(this.db);
   }
 
   /**
@@ -84,21 +84,19 @@ export class SnapshotManager {
     // Store metadata in SQLite -- clean up tar if insert fails
     try {
       this.db
-        .prepare(
-          `INSERT INTO snapshots (id, instance_id, user_id, created_at, size_mb, trigger, plugins, config_hash, storage_path)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
+        .insert(snapshots)
+        .values({
           id,
-          params.instanceId,
-          params.userId,
+          instanceId: params.instanceId,
+          userId: params.userId,
           createdAt,
           sizeMb,
-          params.trigger,
-          JSON.stringify(plugins),
+          trigger: params.trigger,
+          plugins: JSON.stringify(plugins),
           configHash,
-          tarPath,
-        );
+          storagePath: tarPath,
+        })
+        .run();
     } catch (err) {
       await rm(tarPath, { force: true });
       throw err;
@@ -165,16 +163,19 @@ export class SnapshotManager {
 
   /** Get a single snapshot by ID */
   get(id: string): Snapshot | null {
-    const row = this.db.prepare("SELECT * FROM snapshots WHERE id = ?").get(id) as SnapshotRow | undefined;
-    return row ? rowToSnapshot(row) : null;
+    const row = this.db.select().from(snapshots).where(eq(snapshots.id, id)).get();
+    return row ? rowToSnapshot(mapDrizzleRow(row)) : null;
   }
 
   /** List all snapshots for an instance, newest first */
   list(instanceId: string): Snapshot[] {
     const rows = this.db
-      .prepare("SELECT * FROM snapshots WHERE instance_id = ? ORDER BY created_at DESC")
-      .all(instanceId) as SnapshotRow[];
-    return rows.map(rowToSnapshot);
+      .select()
+      .from(snapshots)
+      .where(eq(snapshots.instanceId, instanceId))
+      .orderBy(desc(snapshots.createdAt))
+      .all();
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
 
   /** Delete a snapshot: remove tar file and metadata */
@@ -186,7 +187,7 @@ export class SnapshotManager {
     await rm(snapshot.storagePath, { force: true });
 
     // Remove metadata
-    this.db.prepare("DELETE FROM snapshots WHERE id = ?").run(id);
+    this.db.delete(snapshots).where(eq(snapshots.id, id)).run();
 
     logger.info(`Deleted snapshot ${id}`);
     return true;
@@ -194,19 +195,36 @@ export class SnapshotManager {
 
   /** Count snapshots for an instance */
   count(instanceId: string): number {
-    const row = this.db.prepare("SELECT COUNT(*) as cnt FROM snapshots WHERE instance_id = ?").get(instanceId) as {
-      cnt: number;
-    };
-    return row.cnt;
+    const row = this.db.select({ cnt: count() }).from(snapshots).where(eq(snapshots.instanceId, instanceId)).get();
+    return row?.cnt ?? 0;
   }
 
   /** Get oldest snapshots for an instance (for retention cleanup) */
   getOldest(instanceId: string, limit: number): Snapshot[] {
     const rows = this.db
-      .prepare("SELECT * FROM snapshots WHERE instance_id = ? ORDER BY created_at ASC LIMIT ?")
-      .all(instanceId, limit) as SnapshotRow[];
-    return rows.map(rowToSnapshot);
+      .select()
+      .from(snapshots)
+      .where(eq(snapshots.instanceId, instanceId))
+      .orderBy(asc(snapshots.createdAt))
+      .limit(limit)
+      .all();
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
+}
+
+/** Map Drizzle camelCase row to the SnapshotRow interface (snake_case). */
+function mapDrizzleRow(row: typeof snapshots.$inferSelect) {
+  return {
+    id: row.id,
+    instance_id: row.instanceId,
+    user_id: row.userId,
+    created_at: row.createdAt,
+    size_mb: row.sizeMb,
+    trigger: row.trigger,
+    plugins: row.plugins,
+    config_hash: row.configHash,
+    storage_path: row.storagePath,
+  };
 }
 
 /** Extract the last path segment (works with or without trailing slash) */

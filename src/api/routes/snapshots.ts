@@ -1,10 +1,12 @@
 import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { enforceRetention } from "../../backup/retention.js";
 import { SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
+import * as dbSchema from "../../db/schema/index.js";
 
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
@@ -19,7 +21,8 @@ const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 let _manager: SnapshotManager | null = null;
 function getManager(): SnapshotManager {
   if (!_manager) {
-    const db = new Database(SNAPSHOT_DB_PATH);
+    const sqlite = new Database(SNAPSHOT_DB_PATH);
+    const db = drizzle(sqlite, { schema: dbSchema });
     _manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db });
   }
   return _manager;

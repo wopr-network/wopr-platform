@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import type Database from "better-sqlite3";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type Stripe from "stripe";
 import { logger } from "../../config/logger.js";
+import { createDb } from "../../db/index.js";
+import { billingPeriodSummaries } from "../../db/schema/meter-events.js";
+import { stripeUsageReports } from "../../db/schema/stripe.js";
 import type { MeterEventNameMap } from "../metering/usage-aggregation-worker.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
 import type { StripeUsageReportRow } from "./types.js";
@@ -38,16 +43,18 @@ export interface UsageReporterOpts {
  * - Records successful reports in stripe_usage_reports
  */
 export class StripeUsageReporter {
+  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
   private readonly meterEventNames: MeterEventNameMap;
   private readonly intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    private readonly db: Database.Database,
+    sqlite: Database.Database,
     private readonly stripe: Stripe,
     private readonly tenantStore: TenantCustomerStore,
     opts: UsageReporterOpts = {},
   ) {
+    this.db = createDb(sqlite) as BetterSQLite3Database<Record<string, unknown>>;
     this.meterEventNames = { ...DEFAULT_EVENT_NAMES, ...opts.meterEventNames };
     this.intervalMs = opts.intervalMs ?? 300_000; // 5 minutes
   }
@@ -58,30 +65,30 @@ export class StripeUsageReporter {
    */
   async report(): Promise<number> {
     // Find billing period summaries that haven't been reported yet.
+    // Use a LEFT JOIN: select bps rows where there is no matching sur row.
     const unreported = this.db
-      .prepare(
-        `SELECT bps.tenant, bps.capability, bps.provider, bps.event_count,
-                bps.total_charge, bps.period_start, bps.period_end
-         FROM billing_period_summaries bps
-         LEFT JOIN stripe_usage_reports sur
-           ON bps.tenant = sur.tenant
-           AND bps.capability = sur.capability
-           AND bps.provider = sur.provider
-           AND bps.period_start = sur.period_start
-         WHERE sur.id IS NULL
-           AND bps.event_count > 0
-           AND bps.tenant != '__sentinel__'
-         ORDER BY bps.period_start ASC`,
+      .select({
+        tenant: billingPeriodSummaries.tenant,
+        capability: billingPeriodSummaries.capability,
+        provider: billingPeriodSummaries.provider,
+        eventCount: billingPeriodSummaries.eventCount,
+        totalCharge: billingPeriodSummaries.totalCharge,
+        periodStart: billingPeriodSummaries.periodStart,
+        periodEnd: billingPeriodSummaries.periodEnd,
+      })
+      .from(billingPeriodSummaries)
+      .leftJoin(
+        stripeUsageReports,
+        and(
+          eq(billingPeriodSummaries.tenant, stripeUsageReports.tenant),
+          eq(billingPeriodSummaries.capability, stripeUsageReports.capability),
+          eq(billingPeriodSummaries.provider, stripeUsageReports.provider),
+          eq(billingPeriodSummaries.periodStart, stripeUsageReports.periodStart),
+        ),
       )
-      .all() as Array<{
-      tenant: string;
-      capability: string;
-      provider: string;
-      event_count: number;
-      total_charge: number;
-      period_start: number;
-      period_end: number;
-    }>;
+      .where(and(isNull(stripeUsageReports.id), gt(billingPeriodSummaries.eventCount, 0)))
+      .all()
+      .filter((r) => r.tenant !== "__sentinel__");
 
     if (unreported.length === 0) {
       return 0;
@@ -92,16 +99,16 @@ export class StripeUsageReporter {
     for (const row of unreported) {
       const mapping = this.tenantStore.getByTenant(row.tenant);
       if (!mapping) {
-        // Tenant has no Stripe customer — skip silently.
+        // Tenant has no Stripe customer -- skip silently.
         // They may be on a free tier or not yet signed up.
         continue;
       }
 
       const eventName = this.meterEventNames[row.capability] ?? `wopr_${row.capability}_usage`;
-      const valueCents = Math.round(row.total_charge * 100);
+      const valueCents = Math.round(row.totalCharge * 100);
 
       if (valueCents <= 0) {
-        // Zero-value period — mark as reported but don't send to Stripe.
+        // Zero-value period -- mark as reported but don't send to Stripe.
         this.recordReport(row, eventName, 0);
         reported++;
         continue;
@@ -110,7 +117,7 @@ export class StripeUsageReporter {
       try {
         await this.stripe.billing.meterEvents.create({
           event_name: eventName,
-          timestamp: Math.floor(row.period_start / 1000), // Stripe expects seconds
+          timestamp: Math.floor(row.periodStart / 1000), // Stripe expects seconds
           payload: {
             stripe_customer_id: mapping.stripe_customer_id,
             value: String(valueCents),
@@ -136,35 +143,49 @@ export class StripeUsageReporter {
 
   /** Record a successful usage report to prevent re-reporting. */
   private recordReport(
-    row: { tenant: string; capability: string; provider: string; period_start: number; period_end: number },
+    row: { tenant: string; capability: string; provider: string; periodStart: number; periodEnd: number },
     eventName: string,
     valueCents: number,
   ): void {
     this.db
-      .prepare(
-        `INSERT OR IGNORE INTO stripe_usage_reports
-           (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        crypto.randomUUID(),
-        row.tenant,
-        row.capability,
-        row.provider,
-        row.period_start,
-        row.period_end,
+      .insert(stripeUsageReports)
+      .values({
+        id: crypto.randomUUID(),
+        tenant: row.tenant,
+        capability: row.capability,
+        provider: row.provider,
+        periodStart: row.periodStart,
+        periodEnd: row.periodEnd,
         eventName,
         valueCents,
-        Date.now(),
-      );
+        reportedAt: Date.now(),
+      })
+      .onConflictDoNothing()
+      .run();
   }
 
   /** Query reports for a tenant (for diagnostics). */
   queryReports(tenant: string, opts: { limit?: number } = {}): StripeUsageReportRow[] {
     const limit = Math.min(Math.max(1, opts.limit ?? 100), 1000);
-    return this.db
-      .prepare(`SELECT * FROM stripe_usage_reports WHERE tenant = ? ORDER BY period_start DESC LIMIT ?`)
-      .all(tenant, limit) as StripeUsageReportRow[];
+    const rows = this.db
+      .select()
+      .from(stripeUsageReports)
+      .where(eq(stripeUsageReports.tenant, tenant))
+      .orderBy(desc(stripeUsageReports.periodStart))
+      .limit(limit)
+      .all();
+
+    return rows.map((r) => ({
+      id: r.id,
+      tenant: r.tenant,
+      capability: r.capability,
+      provider: r.provider,
+      period_start: r.periodStart,
+      period_end: r.periodEnd,
+      event_name: r.eventName,
+      value_cents: r.valueCents,
+      reported_at: r.reportedAt,
+    }));
   }
 
   /** Start periodic reporting. */
