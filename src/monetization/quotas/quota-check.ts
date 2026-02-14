@@ -1,4 +1,4 @@
-import type { PlanTier } from "./tier-definitions.js";
+import type { PlanTier, SpendOverride } from "./tier-definitions.js";
 
 /** Result of a quota check */
 export interface QuotaCheckResult {
@@ -95,6 +95,81 @@ export function checkInstanceQuota(
   };
 }
 
+/** Result of a spend limit check */
+export interface SpendCheckResult {
+  allowed: boolean;
+  /** If not allowed, the reason */
+  reason?: string;
+  /** HTTP status to return (402 = Payment Required) */
+  httpStatus?: number;
+  /** Current hourly spend in USD */
+  currentHourlySpend: number;
+  /** Current monthly spend in USD */
+  currentMonthlySpend: number;
+  /** Hourly limit in USD (null = unlimited) */
+  maxSpendPerHour: number | null;
+  /** Monthly limit in USD (null = unlimited) */
+  maxSpendPerMonth: number | null;
+  /** Which limit was exceeded: "hourly" | "monthly" | null */
+  exceededLimit: "hourly" | "monthly" | null;
+}
+
+/**
+ * Check whether a tenant has exceeded their spending limits.
+ *
+ * @param tier - The tenant's plan tier (provides default limits)
+ * @param currentHourlySpend - Current spend this hour (from MeterAggregator.getTenantTotal())
+ * @param currentMonthlySpend - Current spend this month (from MeterAggregator.getTenantTotal())
+ * @param override - Optional per-tenant spend overrides (takes precedence over tier defaults)
+ */
+export function checkSpendLimit(
+  tier: PlanTier,
+  currentHourlySpend: number,
+  currentMonthlySpend: number,
+  override?: SpendOverride | null,
+): SpendCheckResult {
+  // Per-tenant overrides take precedence over tier defaults
+  const maxPerHour = override?.maxSpendPerHour ?? tier.maxSpendPerHour ?? null;
+  const maxPerMonth = override?.maxSpendPerMonth ?? tier.maxSpendPerMonth ?? null;
+
+  // Check hourly limit first (more urgent)
+  if (maxPerHour !== null && currentHourlySpend >= maxPerHour) {
+    return {
+      allowed: false,
+      reason: `Hourly spending limit exceeded: $${currentHourlySpend.toFixed(2)}/$${maxPerHour.toFixed(2)} (${tier.name} tier). Upgrade your plan for higher limits.`,
+      httpStatus: 402,
+      currentHourlySpend,
+      currentMonthlySpend,
+      maxSpendPerHour: maxPerHour,
+      maxSpendPerMonth: maxPerMonth,
+      exceededLimit: "hourly",
+    };
+  }
+
+  // Check monthly limit
+  if (maxPerMonth !== null && currentMonthlySpend >= maxPerMonth) {
+    return {
+      allowed: false,
+      reason: `Monthly spending limit exceeded: $${currentMonthlySpend.toFixed(2)}/$${maxPerMonth.toFixed(2)} (${tier.name} tier). Upgrade your plan for higher limits.`,
+      httpStatus: 402,
+      currentHourlySpend,
+      currentMonthlySpend,
+      maxSpendPerHour: maxPerHour,
+      maxSpendPerMonth: maxPerMonth,
+      exceededLimit: "monthly",
+    };
+  }
+
+  return {
+    allowed: true,
+    currentHourlySpend,
+    currentMonthlySpend,
+    maxSpendPerHour: maxPerHour,
+    maxSpendPerMonth: maxPerMonth,
+    exceededLimit: null,
+  };
+}
+
 /** Summary of a user's current quota usage */
 export interface QuotaUsage {
   tier: PlanTier;
@@ -109,6 +184,10 @@ export interface QuotaUsage {
     storageLimitMb: number;
     maxProcesses: number;
     maxPluginsPerInstance: number | null; // null = unlimited
+  };
+  spending: {
+    maxSpendPerHour: number | null; // null = unlimited
+    maxSpendPerMonth: number | null; // null = unlimited
   };
 }
 
@@ -128,6 +207,10 @@ export function buildQuotaUsage(tier: PlanTier, activeInstanceCount: number): Qu
       storageLimitMb: tier.storageLimitMb,
       maxProcesses: tier.maxProcesses,
       maxPluginsPerInstance: tier.maxPluginsPerInstance,
+    },
+    spending: {
+      maxSpendPerHour: tier.maxSpendPerHour ?? null,
+      maxSpendPerMonth: tier.maxSpendPerMonth ?? null,
     },
   };
 }

@@ -12,6 +12,8 @@ export const planTierSchema = z.object({
   storageLimitMb: z.number().int().min(64),
   maxProcesses: z.number().int().min(10).default(256),
   features: z.array(z.string()).default([]),
+  maxSpendPerHour: z.number().min(0).nullable().default(null), // null = unlimited, USD
+  maxSpendPerMonth: z.number().min(0).nullable().default(null), // null = unlimited, USD
 });
 
 export type PlanTier = z.infer<typeof planTierSchema>;
@@ -40,6 +42,8 @@ export const DEFAULT_TIERS: PlanTier[] = [
     storageLimitMb: 1024,
     maxProcesses: 128,
     features: [],
+    maxSpendPerHour: 0.5, // $0.50/hour hard cap
+    maxSpendPerMonth: 5, // $5/month hard cap
   },
   {
     id: "pro",
@@ -51,6 +55,8 @@ export const DEFAULT_TIERS: PlanTier[] = [
     storageLimitMb: 10_240,
     maxProcesses: 512,
     features: ["premium_plugins", "priority-support", "custom-domains"],
+    maxSpendPerHour: 10, // $10/hour
+    maxSpendPerMonth: 200, // $200/month
   },
   {
     id: "team",
@@ -62,6 +68,8 @@ export const DEFAULT_TIERS: PlanTier[] = [
     storageLimitMb: 51_200,
     maxProcesses: 1024,
     features: ["premium_plugins", "priority-support", "custom-domains", "team-management", "audit-logs"],
+    maxSpendPerHour: 50, // $50/hour
+    maxSpendPerMonth: 1000, // $1000/month
   },
   {
     id: "enterprise",
@@ -81,6 +89,8 @@ export const DEFAULT_TIERS: PlanTier[] = [
       "sso",
       "dedicated-support",
     ],
+    maxSpendPerHour: null, // unlimited (custom agreements)
+    maxSpendPerMonth: null, // unlimited (custom agreements)
   },
 ];
 
@@ -94,7 +104,19 @@ const CREATE_TABLE_SQL = `
     cpu_quota INTEGER NOT NULL DEFAULT 50000,
     storage_limit_mb INTEGER NOT NULL DEFAULT 1024,
     max_processes INTEGER NOT NULL DEFAULT 256,
-    features TEXT NOT NULL DEFAULT '[]'
+    features TEXT NOT NULL DEFAULT '[]',
+    max_spend_per_hour REAL DEFAULT NULL,
+    max_spend_per_month REAL DEFAULT NULL
+  )
+`;
+
+const CREATE_SPEND_OVERRIDES_SQL = `
+  CREATE TABLE IF NOT EXISTS tenant_spend_overrides (
+    tenant TEXT PRIMARY KEY,
+    max_spend_per_hour REAL DEFAULT NULL,
+    max_spend_per_month REAL DEFAULT NULL,
+    notes TEXT DEFAULT NULL,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )
 `;
 
@@ -109,15 +131,29 @@ export class TierStore {
 
   private init(): void {
     this.db.exec(CREATE_TABLE_SQL);
+    this.db.exec(CREATE_SPEND_OVERRIDES_SQL);
+    this.migrate();
+  }
+
+  /** Add spend-limit columns to pre-existing plan_tiers tables. */
+  private migrate(): void {
+    const cols = this.db.prepare("PRAGMA table_info(plan_tiers)").all() as { name: string }[];
+    const names = new Set(cols.map((c) => c.name));
+    if (!names.has("max_spend_per_hour")) {
+      this.db.exec("ALTER TABLE plan_tiers ADD COLUMN max_spend_per_hour REAL DEFAULT NULL");
+    }
+    if (!names.has("max_spend_per_month")) {
+      this.db.exec("ALTER TABLE plan_tiers ADD COLUMN max_spend_per_month REAL DEFAULT NULL");
+    }
   }
 
   /** Seed default tiers (skips existing rows) */
   seed(tiers: PlanTier[] = DEFAULT_TIERS): void {
     const insert = this.db.prepare(`
       INSERT OR IGNORE INTO plan_tiers
-        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features)
+        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features, max_spend_per_hour, max_spend_per_month)
       VALUES
-        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features)
+        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features, @maxSpendPerHour, @maxSpendPerMonth)
     `);
 
     const seedAll = this.db.transaction((rows: PlanTier[]) => {
@@ -132,6 +168,8 @@ export class TierStore {
           storageLimitMb: tier.storageLimitMb,
           maxProcesses: tier.maxProcesses,
           features: JSON.stringify(tier.features),
+          maxSpendPerHour: tier.maxSpendPerHour,
+          maxSpendPerMonth: tier.maxSpendPerMonth,
         });
       }
     });
@@ -161,9 +199,9 @@ export class TierStore {
       .prepare(
         `
       INSERT INTO plan_tiers
-        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features)
+        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features, max_spend_per_hour, max_spend_per_month)
       VALUES
-        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features)
+        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features, @maxSpendPerHour, @maxSpendPerMonth)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         max_instances = excluded.max_instances,
@@ -172,7 +210,9 @@ export class TierStore {
         cpu_quota = excluded.cpu_quota,
         storage_limit_mb = excluded.storage_limit_mb,
         max_processes = excluded.max_processes,
-        features = excluded.features
+        features = excluded.features,
+        max_spend_per_hour = excluded.max_spend_per_hour,
+        max_spend_per_month = excluded.max_spend_per_month
     `,
       )
       .run({
@@ -185,6 +225,8 @@ export class TierStore {
         storageLimitMb: tier.storageLimitMb,
         maxProcesses: tier.maxProcesses,
         features: JSON.stringify(tier.features),
+        maxSpendPerHour: tier.maxSpendPerHour,
+        maxSpendPerMonth: tier.maxSpendPerMonth,
       });
   }
 
@@ -205,6 +247,87 @@ export class TierStore {
       storageLimitMb: row.storage_limit_mb,
       maxProcesses: row.max_processes,
       features: JSON.parse(row.features as string),
+      maxSpendPerHour: row.max_spend_per_hour ?? null,
+      maxSpendPerMonth: row.max_spend_per_month ?? null,
     });
+  }
+}
+
+/** Per-tenant spend limit overrides stored in SQLite */
+export interface SpendOverride {
+  tenant: string;
+  maxSpendPerHour: number | null;
+  maxSpendPerMonth: number | null;
+  notes: string | null;
+  updatedAt: number;
+}
+
+/** Manages per-tenant spend limit overrides */
+export class SpendOverrideStore {
+  private readonly db: Database.Database;
+
+  constructor(db: Database.Database) {
+    this.db = db;
+    this.db.exec(CREATE_SPEND_OVERRIDES_SQL);
+  }
+
+  /** Get override for a tenant, or null if none */
+  get(tenant: string): SpendOverride | null {
+    const row = this.db.prepare("SELECT * FROM tenant_spend_overrides WHERE tenant = ?").get(tenant) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return null;
+    return {
+      tenant: row.tenant as string,
+      maxSpendPerHour: (row.max_spend_per_hour as number | null) ?? null,
+      maxSpendPerMonth: (row.max_spend_per_month as number | null) ?? null,
+      notes: (row.notes as string | null) ?? null,
+      updatedAt: row.updated_at as number,
+    };
+  }
+
+  /** Set (upsert) a spend override for a tenant */
+  set(
+    tenant: string,
+    override: { maxSpendPerHour?: number | null; maxSpendPerMonth?: number | null; notes?: string | null },
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO tenant_spend_overrides (tenant, max_spend_per_hour, max_spend_per_month, notes, updated_at)
+         VALUES (@tenant, @maxSpendPerHour, @maxSpendPerMonth, @notes, @updatedAt)
+         ON CONFLICT(tenant) DO UPDATE SET
+           max_spend_per_hour = COALESCE(@maxSpendPerHour, tenant_spend_overrides.max_spend_per_hour),
+           max_spend_per_month = COALESCE(@maxSpendPerMonth, tenant_spend_overrides.max_spend_per_month),
+           notes = COALESCE(@notes, tenant_spend_overrides.notes),
+           updated_at = @updatedAt`,
+      )
+      .run({
+        tenant,
+        maxSpendPerHour: override.maxSpendPerHour ?? null,
+        maxSpendPerMonth: override.maxSpendPerMonth ?? null,
+        notes: override.notes ?? null,
+        updatedAt: Date.now(),
+      });
+  }
+
+  /** Remove a tenant's override */
+  delete(tenant: string): boolean {
+    const result = this.db.prepare("DELETE FROM tenant_spend_overrides WHERE tenant = ?").run(tenant);
+    return result.changes > 0;
+  }
+
+  /** List all overrides */
+  list(): SpendOverride[] {
+    const rows = this.db.prepare("SELECT * FROM tenant_spend_overrides ORDER BY tenant").all() as Record<
+      string,
+      unknown
+    >[];
+    return rows.map((row) => ({
+      tenant: row.tenant as string,
+      maxSpendPerHour: (row.max_spend_per_hour as number | null) ?? null,
+      maxSpendPerMonth: (row.max_spend_per_month as number | null) ?? null,
+      notes: (row.notes as string | null) ?? null,
+      updatedAt: row.updated_at as number,
+    }));
   }
 }
