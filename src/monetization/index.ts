@@ -53,6 +53,8 @@ export {
   TierStore,
   tierSatisfies,
 } from "./quotas/tier-definitions.js";
+// Socket layer — adapter orchestrator (WOP-376)
+export { AdapterSocket, type SocketConfig, type SocketRequest } from "./socket/socket.js";
 export type {
   CheckoutSessionOpts,
   PortalSessionOpts,
@@ -62,8 +64,6 @@ export type {
   UsageReporterOpts,
   WebhookResult,
 } from "./stripe/index.js";
-// Socket layer — adapter orchestrator (WOP-376)
-export { AdapterSocket, type SocketConfig, type SocketRequest } from "./socket/socket.js";
 // Stripe billing (WOP-300)
 export {
   createCheckoutSession,
