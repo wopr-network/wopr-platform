@@ -14,6 +14,14 @@
  * - stripe/    -- Stripe usage-based billing (WOP-300)
  */
 
+// Margin config (WOP-364)
+export {
+  DEFAULT_MARGIN_CONFIG,
+  getMargin,
+  type MarginConfig,
+  type MarginRule,
+  withMarginConfig,
+} from "./adapters/margin-config.js";
 // Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387)
 export { createDeepgramAdapter, type DeepgramAdapterConfig } from "./adapters/deepgram.js";
 export { createElevenLabsAdapter, type ElevenLabsAdapterConfig } from "./adapters/elevenlabs.js";
