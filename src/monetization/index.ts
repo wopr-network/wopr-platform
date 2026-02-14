@@ -52,6 +52,7 @@ export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budg
 export { BudgetChecker } from "./budget/index.js";
 // Credit ledger (WOP-384)
 export type {
+  BillingState,
   CreditTransaction,
   CreditType,
   DebitType,
@@ -63,12 +64,14 @@ export type {
   TransactionType,
 } from "./credits/index.js";
 export {
+  BotBilling,
   CreditLedger,
   DAILY_BOT_COST_CENTS,
   grantSignupCredits,
   InsufficientBalanceError,
   runRuntimeDeductions,
   SIGNUP_GRANT_CENTS,
+  SUSPENSION_GRACE_DAYS,
 } from "./credits/index.js";
 // Feature gating middleware (WOP-384 — replaced tier gates with balance gates)
 export {
