@@ -7,10 +7,10 @@ import type {
   ImageGenerationInput,
   ImageGenerationOutput,
   ProviderAdapter,
-  TTSInput,
-  TTSOutput,
   TextGenerationInput,
   TextGenerationOutput,
+  TTSInput,
+  TTSOutput,
 } from "./types.js";
 import { withMargin } from "./types.js";
 
@@ -259,7 +259,10 @@ describe("EmbeddingsInput/Output types", () => {
 
   it("creates a valid embeddings output", () => {
     const output: EmbeddingsOutput = {
-      embeddings: [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+      embeddings: [
+        [0.1, 0.2, 0.3],
+        [0.4, 0.5, 0.6],
+      ],
       model: "text-embedding-3-small",
       totalTokens: 8,
     };

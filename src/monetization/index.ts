@@ -25,12 +25,12 @@ export {
   type ImageGenerationOutput,
   type MeterEvent,
   type ProviderAdapter,
-  type TTSInput,
-  type TTSOutput,
   type TextGenerationInput,
   type TextGenerationOutput,
   type TranscriptionInput,
   type TranscriptionOutput,
+  type TTSInput,
+  type TTSOutput,
   withMargin,
 } from "./adapters/types.js";
 export type { BudgetCheckerConfig, BudgetCheckResult } from "./budget/index.js";

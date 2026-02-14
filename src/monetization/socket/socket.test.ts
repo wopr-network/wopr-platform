@@ -5,8 +5,8 @@ import type {
   AdapterResult,
   EmbeddingsOutput,
   ProviderAdapter,
-  TTSOutput,
   TranscriptionOutput,
+  TTSOutput,
 } from "../adapters/types.js";
 import { BudgetChecker } from "../budget/budget-checker.js";
 import type { MeterEmitter } from "../metering/emitter.js";
