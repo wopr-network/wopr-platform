@@ -5,14 +5,14 @@ import { withMargin } from "./types.js";
 
 /** Helper to create a mock Response for audio data */
 function mockAudioResponse(status = 200): Response {
-  const blob = new Blob(["fake-audio-data"], { type: "audio/mpeg" });
+  const audioBytes = new TextEncoder().encode("fake-audio-data");
   return {
     ok: status >= 200 && status < 300,
     status,
-    blob: () => Promise.resolve(blob),
+    arrayBuffer: () => Promise.resolve(audioBytes.buffer),
     text: () => Promise.resolve("fake-audio-data"),
     headers: {
-      get: () => null,
+      get: (name: string) => (name === "content-type" ? "audio/mpeg" : null),
     },
   } as unknown as Response;
 }
@@ -22,7 +22,7 @@ function mockErrorResponse(status: number, body: string): Response {
   return {
     ok: false,
     status,
-    blob: () => Promise.resolve(new Blob([])),
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
     text: () => Promise.resolve(body),
     headers: {
       get: () => null,

@@ -876,7 +876,7 @@ describe("MeterEmitter - fail-closed policy", () => {
       { ...makeEvent({ tenant: "t-1" }), id: "wal-event-1" },
       { ...makeEvent({ tenant: "t-2" }), id: "wal-event-2" },
     ];
-    const walContent = walEvents.map((e) => JSON.stringify(e)).join("\n") + "\n";
+    const walContent = `${walEvents.map((e) => JSON.stringify(e)).join("\n")}\n`;
     writeFileSync(TEST_WAL_PATH, walContent, "utf8");
 
     // Create a new emitter — it should replay the WAL.
@@ -913,7 +913,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     );
 
     // Write the same event to WAL (simulating crash after flush).
-    writeFileSync(TEST_WAL_PATH, JSON.stringify(existingEvent) + "\n", "utf8");
+    writeFileSync(TEST_WAL_PATH, `${JSON.stringify(existingEvent)}\n`, "utf8");
 
     // Create a new emitter — it should NOT duplicate the event.
     const newEmitter = new MeterEmitter(db, {

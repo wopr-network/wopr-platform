@@ -34,7 +34,7 @@ export class MeterDLQ {
       dlq_retries: retries,
     };
 
-    const line = JSON.stringify(dlqEntry) + "\n";
+    const line = `${JSON.stringify(dlqEntry)}\n`;
     appendFileSync(this.dlqPath, line, { encoding: "utf8", flag: "a" });
   }
 

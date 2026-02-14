@@ -34,7 +34,7 @@ export class MeterWAL {
       id: event.id ?? crypto.randomUUID(),
     };
 
-    const line = JSON.stringify(eventWithId) + "\n";
+    const line = `${JSON.stringify(eventWithId)}\n`;
     appendFileSync(this.walPath, line, { encoding: "utf8", flag: "a" });
 
     return eventWithId;
@@ -82,7 +82,7 @@ export class MeterWAL {
       this.clear();
     } else {
       // Rewrite the WAL with remaining events.
-      const content = filtered.map((e) => JSON.stringify(e)).join("\n") + "\n";
+      const content = `${filtered.map((e) => JSON.stringify(e)).join("\n")}\n`;
       writeFileSync(this.walPath, content, { encoding: "utf8" });
     }
   }
