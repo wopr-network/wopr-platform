@@ -72,10 +72,10 @@ export {
 } from "./credits/index.js";
 // Feature gating middleware (WOP-384 — replaced tier gates with balance gates)
 export {
+  type CreditGateConfig,
   createBalanceGate,
   createCreditGate,
   createFeatureGate,
-  type CreditGateConfig,
   type FeatureGateConfig,
   type GetUserBalance,
   type ResolveTenantId,
