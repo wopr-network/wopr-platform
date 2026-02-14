@@ -43,11 +43,20 @@ export type {
   UsageSummary,
 } from "./metering/index.js";
 export { initMeterSchema, MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
-export { buildQuotaUsage, checkInstanceQuota, type QuotaCheckResult, type QuotaUsage } from "./quotas/quota-check.js";
+export {
+  buildQuotaUsage,
+  checkInstanceQuota,
+  checkSpendLimit,
+  type QuotaCheckResult,
+  type QuotaUsage,
+  type SpendCheckResult,
+} from "./quotas/quota-check.js";
 export { buildResourceLimits, type ContainerResourceLimits } from "./quotas/resource-limits.js";
 export {
   DEFAULT_TIERS,
   type PlanTier,
+  type SpendOverride,
+  SpendOverrideStore,
   TIER_HIERARCHY,
   type TierName,
   TierStore,

@@ -12,6 +12,8 @@ const freeTier: PlanTier = {
   storageLimitMb: 1024,
   maxProcesses: 128,
   features: [],
+  maxSpendPerHour: 0.5,
+  maxSpendPerMonth: 5,
 };
 
 const proTier: PlanTier = {
@@ -24,6 +26,8 @@ const proTier: PlanTier = {
   storageLimitMb: 10_240,
   maxProcesses: 512,
   features: [],
+  maxSpendPerHour: 10,
+  maxSpendPerMonth: 200,
 };
 
 describe("buildResourceLimits", () => {

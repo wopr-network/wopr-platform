@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_TIERS, type PlanTier, TierStore } from "./tier-definitions.js";
+import { DEFAULT_TIERS, type PlanTier, SpendOverrideStore, TierStore } from "./tier-definitions.js";
 
 describe("TierStore", () => {
   let db: Database.Database;
@@ -95,6 +95,8 @@ describe("TierStore", () => {
         storageLimitMb: 5120,
         maxProcesses: 512,
         features: ["custom-feature"],
+        maxSpendPerHour: 5,
+        maxSpendPerMonth: 100,
       };
       store.upsert(custom);
       const result = store.get("custom");
@@ -143,5 +145,124 @@ describe("TierStore", () => {
       expect(ent?.maxInstances).toBe(0);
       expect(ent?.maxPluginsPerInstance).toBeNull();
     });
+
+    it("free tier has spend limits", () => {
+      const free = DEFAULT_TIERS.find((t) => t.id === "free");
+      expect(free?.maxSpendPerHour).toBe(0.5);
+      expect(free?.maxSpendPerMonth).toBe(5);
+    });
+
+    it("enterprise tier has unlimited spend", () => {
+      const ent = DEFAULT_TIERS.find((t) => t.id === "enterprise");
+      expect(ent?.maxSpendPerHour).toBeNull();
+      expect(ent?.maxSpendPerMonth).toBeNull();
+    });
+  });
+
+  describe("spend limits in store", () => {
+    beforeEach(() => {
+      store.seed();
+    });
+
+    it("stores and retrieves spend limits for free tier", () => {
+      const free = store.get("free");
+      expect(free?.maxSpendPerHour).toBe(0.5);
+      expect(free?.maxSpendPerMonth).toBe(5);
+    });
+
+    it("stores and retrieves null spend limits for enterprise", () => {
+      const ent = store.get("enterprise");
+      expect(ent?.maxSpendPerHour).toBeNull();
+      expect(ent?.maxSpendPerMonth).toBeNull();
+    });
+
+    it("updates spend limits via upsert", () => {
+      const free = store.get("free")!;
+      store.upsert({ ...free, maxSpendPerHour: 1.0, maxSpendPerMonth: 10 });
+      const updated = store.get("free");
+      expect(updated?.maxSpendPerHour).toBe(1.0);
+      expect(updated?.maxSpendPerMonth).toBe(10);
+    });
+  });
+
+  describe("creates tenant_spend_overrides table", () => {
+    it("tenant_spend_overrides table exists after TierStore construction", () => {
+      const tables = db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tenant_spend_overrides'")
+        .all() as { name: string }[];
+      expect(tables).toHaveLength(1);
+    });
+  });
+});
+
+describe("SpendOverrideStore", () => {
+  let db: Database.Database;
+  let store: SpendOverrideStore;
+
+  beforeEach(() => {
+    db = new Database(":memory:");
+    store = new SpendOverrideStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("creates the tenant_spend_overrides table", () => {
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tenant_spend_overrides'")
+      .all() as { name: string }[];
+    expect(tables).toHaveLength(1);
+  });
+
+  it("returns null for unknown tenant", () => {
+    expect(store.get("unknown-tenant")).toBeNull();
+  });
+
+  it("sets and gets a spend override", () => {
+    store.set("tenant-1", { maxSpendPerHour: 2.0, maxSpendPerMonth: 50 });
+    const override = store.get("tenant-1");
+    expect(override).not.toBeNull();
+    expect(override?.tenant).toBe("tenant-1");
+    expect(override?.maxSpendPerHour).toBe(2.0);
+    expect(override?.maxSpendPerMonth).toBe(50);
+    expect(override?.updatedAt).toBeGreaterThan(0);
+  });
+
+  it("upserts an existing override", () => {
+    store.set("tenant-1", { maxSpendPerHour: 2.0, maxSpendPerMonth: 50 });
+    store.set("tenant-1", { maxSpendPerHour: 5.0 });
+    const override = store.get("tenant-1");
+    expect(override?.maxSpendPerHour).toBe(5.0);
+    expect(override?.maxSpendPerMonth).toBe(50); // unchanged
+  });
+
+  it("stores notes", () => {
+    store.set("tenant-1", { maxSpendPerHour: 1.0, notes: "VIP customer" });
+    const override = store.get("tenant-1");
+    expect(override?.notes).toBe("VIP customer");
+  });
+
+  it("deletes an override", () => {
+    store.set("tenant-1", { maxSpendPerHour: 2.0, maxSpendPerMonth: 50 });
+    expect(store.delete("tenant-1")).toBe(true);
+    expect(store.get("tenant-1")).toBeNull();
+  });
+
+  it("returns false when deleting non-existent override", () => {
+    expect(store.delete("unknown")).toBe(false);
+  });
+
+  it("lists all overrides", () => {
+    store.set("tenant-a", { maxSpendPerHour: 1.0 });
+    store.set("tenant-b", { maxSpendPerMonth: 100 });
+    const overrides = store.list();
+    expect(overrides).toHaveLength(2);
+    expect(overrides[0].tenant).toBe("tenant-a");
+    expect(overrides[1].tenant).toBe("tenant-b");
+  });
+
+  it("returns empty list when no overrides exist", () => {
+    expect(store.list()).toEqual([]);
   });
 });

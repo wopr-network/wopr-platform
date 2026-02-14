@@ -21,6 +21,8 @@ const freeTier: PlanTier = {
   storageLimitMb: 1024,
   maxProcesses: 128,
   features: [],
+  maxSpendPerHour: 0.5,
+  maxSpendPerMonth: 5,
 };
 
 const proTier: PlanTier = {
@@ -33,6 +35,8 @@ const proTier: PlanTier = {
   storageLimitMb: 10_240,
   maxProcesses: 512,
   features: ["premium_plugins", "priority-support", "custom-domains"],
+  maxSpendPerHour: 10,
+  maxSpendPerMonth: 200,
 };
 
 const teamTier: PlanTier = {
@@ -45,6 +49,8 @@ const teamTier: PlanTier = {
   storageLimitMb: 51_200,
   maxProcesses: 1024,
   features: ["premium_plugins", "priority-support", "custom-domains", "team-management", "audit-logs"],
+  maxSpendPerHour: 50,
+  maxSpendPerMonth: 1000,
 };
 
 const enterpriseTier: PlanTier = {
@@ -65,6 +71,8 @@ const enterpriseTier: PlanTier = {
     "sso",
     "dedicated-support",
   ],
+  maxSpendPerHour: null,
+  maxSpendPerMonth: null,
 };
 
 const tiers: Record<string, PlanTier> = {
