@@ -18,6 +18,14 @@
 export { createDeepgramAdapter, type DeepgramAdapterConfig } from "./adapters/deepgram.js";
 export { createElevenLabsAdapter, type ElevenLabsAdapterConfig } from "./adapters/elevenlabs.js";
 export { createGeminiAdapter, type GeminiAdapterConfig } from "./adapters/gemini.js";
+// Margin config (WOP-364)
+export {
+  DEFAULT_MARGIN_CONFIG,
+  getMargin,
+  type MarginConfig,
+  type MarginRule,
+  withMarginConfig,
+} from "./adapters/margin-config.js";
 export { createOpenRouterAdapter, type OpenRouterAdapterConfig } from "./adapters/openrouter.js";
 export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/replicate.js";
 export {
