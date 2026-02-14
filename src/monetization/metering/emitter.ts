@@ -102,12 +102,16 @@ export class MeterEmitter {
     const toReplay = walEvents.filter((e) => !existingIds.has(e.id));
     if (toReplay.length > 0) {
       this.buffer.push(...toReplay);
-      this.flush();
+      const flushed = this.flush();
+      if (flushed === 0) {
+        // Flush failed — events remain in WAL and buffer for retry.
+        return;
+      }
     }
 
-    // Clean up WAL after successful replay.
-    if (this.buffer.length === 0) {
-      this.wal.clear();
+    // Remove already-persisted events from WAL (idempotent cleanup).
+    if (existingIds.size > 0) {
+      this.wal.remove(existingIds);
     }
   }
 

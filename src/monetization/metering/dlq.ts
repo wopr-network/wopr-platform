@@ -58,10 +58,22 @@ export class MeterDLQ {
       return [];
     }
 
-    return content
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
+    const entries: Array<
+      MeterEvent & {
+        id: string;
+        dlq_timestamp: number;
+        dlq_error: string;
+        dlq_retries: number;
+      }
+    > = [];
+    for (const line of content.trim().split("\n")) {
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        // Skip malformed lines (e.g., from incomplete writes during error conditions).
+      }
+    }
+    return entries;
   }
 
   /**
