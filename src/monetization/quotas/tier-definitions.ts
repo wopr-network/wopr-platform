@@ -14,6 +14,10 @@ export const planTierSchema = z.object({
   features: z.array(z.string()).default([]),
   maxSpendPerHour: z.number().min(0).nullable().default(null), // null = unlimited, USD
   maxSpendPerMonth: z.number().min(0).nullable().default(null), // null = unlimited, USD
+  platformFeeUsd: z.number().min(0).default(0), // Monthly subscription fee in USD
+  includedTokens: z.number().int().min(0).default(0), // Tokens included per month before overage
+  overageMarkupPercent: z.number().min(0).max(100).default(20), // Overage markup percentage (e.g., 20 = 20%)
+  byokAllowed: z.boolean().default(false), // Whether BYOK (Bring Your Own Key) is allowed
 });
 
 export type PlanTier = z.infer<typeof planTierSchema>;
@@ -44,6 +48,10 @@ export const DEFAULT_TIERS: PlanTier[] = [
     features: [],
     maxSpendPerHour: 0.5, // $0.50/hour hard cap
     maxSpendPerMonth: 5, // $5/month hard cap
+    platformFeeUsd: 0, // $0/month
+    includedTokens: 50_000, // 50K tokens/month
+    overageMarkupPercent: 20, // 20% markup on overage
+    byokAllowed: false,
   },
   {
     id: "pro",
@@ -57,6 +65,10 @@ export const DEFAULT_TIERS: PlanTier[] = [
     features: ["premium_plugins", "priority-support", "custom-domains"],
     maxSpendPerHour: 10, // $10/hour
     maxSpendPerMonth: 200, // $200/month
+    platformFeeUsd: 19, // $19/month
+    includedTokens: 2_000_000, // 2M tokens/month
+    overageMarkupPercent: 10, // 10% markup on overage
+    byokAllowed: true,
   },
   {
     id: "team",
@@ -70,6 +82,10 @@ export const DEFAULT_TIERS: PlanTier[] = [
     features: ["premium_plugins", "priority-support", "custom-domains", "team-management", "audit-logs"],
     maxSpendPerHour: 50, // $50/hour
     maxSpendPerMonth: 1000, // $1000/month
+    platformFeeUsd: 49, // $49/month
+    includedTokens: 5_000_000, // 5M tokens/month
+    overageMarkupPercent: 8, // 8% markup on overage
+    byokAllowed: true,
   },
   {
     id: "enterprise",
@@ -91,6 +107,10 @@ export const DEFAULT_TIERS: PlanTier[] = [
     ],
     maxSpendPerHour: null, // unlimited (custom agreements)
     maxSpendPerMonth: null, // unlimited (custom agreements)
+    platformFeeUsd: 0, // Custom pricing
+    includedTokens: 0, // Custom pricing
+    overageMarkupPercent: 5, // 5-8% range, using 5% as default
+    byokAllowed: true,
   },
 ];
 
@@ -106,7 +126,11 @@ const CREATE_TABLE_SQL = `
     max_processes INTEGER NOT NULL DEFAULT 256,
     features TEXT NOT NULL DEFAULT '[]',
     max_spend_per_hour REAL DEFAULT NULL,
-    max_spend_per_month REAL DEFAULT NULL
+    max_spend_per_month REAL DEFAULT NULL,
+    platform_fee_usd REAL NOT NULL DEFAULT 0,
+    included_tokens INTEGER NOT NULL DEFAULT 0,
+    overage_markup_percent REAL NOT NULL DEFAULT 20,
+    byok_allowed INTEGER NOT NULL DEFAULT 0
   )
 `;
 
@@ -145,15 +169,27 @@ export class TierStore {
     if (!names.has("max_spend_per_month")) {
       this.db.exec("ALTER TABLE plan_tiers ADD COLUMN max_spend_per_month REAL DEFAULT NULL");
     }
+    if (!names.has("platform_fee_usd")) {
+      this.db.exec("ALTER TABLE plan_tiers ADD COLUMN platform_fee_usd REAL NOT NULL DEFAULT 0");
+    }
+    if (!names.has("included_tokens")) {
+      this.db.exec("ALTER TABLE plan_tiers ADD COLUMN included_tokens INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!names.has("overage_markup_percent")) {
+      this.db.exec("ALTER TABLE plan_tiers ADD COLUMN overage_markup_percent REAL NOT NULL DEFAULT 20");
+    }
+    if (!names.has("byok_allowed")) {
+      this.db.exec("ALTER TABLE plan_tiers ADD COLUMN byok_allowed INTEGER NOT NULL DEFAULT 0");
+    }
   }
 
   /** Seed default tiers (skips existing rows) */
   seed(tiers: PlanTier[] = DEFAULT_TIERS): void {
     const insert = this.db.prepare(`
       INSERT OR IGNORE INTO plan_tiers
-        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features, max_spend_per_hour, max_spend_per_month)
+        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features, max_spend_per_hour, max_spend_per_month, platform_fee_usd, included_tokens, overage_markup_percent, byok_allowed)
       VALUES
-        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features, @maxSpendPerHour, @maxSpendPerMonth)
+        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features, @maxSpendPerHour, @maxSpendPerMonth, @platformFeeUsd, @includedTokens, @overageMarkupPercent, @byokAllowed)
     `);
 
     const seedAll = this.db.transaction((rows: PlanTier[]) => {
@@ -170,6 +206,10 @@ export class TierStore {
           features: JSON.stringify(tier.features),
           maxSpendPerHour: tier.maxSpendPerHour,
           maxSpendPerMonth: tier.maxSpendPerMonth,
+          platformFeeUsd: tier.platformFeeUsd,
+          includedTokens: tier.includedTokens,
+          overageMarkupPercent: tier.overageMarkupPercent,
+          byokAllowed: tier.byokAllowed ? 1 : 0,
         });
       }
     });
@@ -199,9 +239,9 @@ export class TierStore {
       .prepare(
         `
       INSERT INTO plan_tiers
-        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features, max_spend_per_hour, max_spend_per_month)
+        (id, name, max_instances, max_plugins_per_instance, memory_limit_mb, cpu_quota, storage_limit_mb, max_processes, features, max_spend_per_hour, max_spend_per_month, platform_fee_usd, included_tokens, overage_markup_percent, byok_allowed)
       VALUES
-        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features, @maxSpendPerHour, @maxSpendPerMonth)
+        (@id, @name, @maxInstances, @maxPluginsPerInstance, @memoryLimitMb, @cpuQuota, @storageLimitMb, @maxProcesses, @features, @maxSpendPerHour, @maxSpendPerMonth, @platformFeeUsd, @includedTokens, @overageMarkupPercent, @byokAllowed)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         max_instances = excluded.max_instances,
@@ -212,7 +252,11 @@ export class TierStore {
         max_processes = excluded.max_processes,
         features = excluded.features,
         max_spend_per_hour = excluded.max_spend_per_hour,
-        max_spend_per_month = excluded.max_spend_per_month
+        max_spend_per_month = excluded.max_spend_per_month,
+        platform_fee_usd = excluded.platform_fee_usd,
+        included_tokens = excluded.included_tokens,
+        overage_markup_percent = excluded.overage_markup_percent,
+        byok_allowed = excluded.byok_allowed
     `,
       )
       .run({
@@ -227,6 +271,10 @@ export class TierStore {
         features: JSON.stringify(tier.features),
         maxSpendPerHour: tier.maxSpendPerHour,
         maxSpendPerMonth: tier.maxSpendPerMonth,
+        platformFeeUsd: tier.platformFeeUsd,
+        includedTokens: tier.includedTokens,
+        overageMarkupPercent: tier.overageMarkupPercent,
+        byokAllowed: tier.byokAllowed ? 1 : 0,
       });
   }
 
@@ -249,6 +297,10 @@ export class TierStore {
       features: JSON.parse(row.features as string),
       maxSpendPerHour: row.max_spend_per_hour ?? null,
       maxSpendPerMonth: row.max_spend_per_month ?? null,
+      platformFeeUsd: row.platform_fee_usd ?? 0,
+      includedTokens: row.included_tokens ?? 0,
+      overageMarkupPercent: row.overage_markup_percent ?? 20,
+      byokAllowed: row.byok_allowed === 1,
     });
   }
 }

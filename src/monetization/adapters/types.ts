@@ -129,9 +129,24 @@ export interface MeterEvent {
  * This is the core of the socket billing pattern (WOP-298): the adapter returns
  * wholesale cost, withMargin() computes the user-facing charge.
  *
+ * Supports tier-specific markup percentages (WOP-357):
+ * - Free tier: 20% markup
+ * - Pro tier: 10% markup
+ * - Enterprise tier: 5-8% markup
+ *
  * @param cost - Wholesale cost in USD
- * @param marginMultiplier - e.g. 1.3 for 30% margin (default)
+ * @param marginMultiplier - Can be:
+ *                          - A multiplier >= 1.0 (e.g., 1.3 for 30% margin, 2.0 for 2x - default 1.3)
+ *                          - A percentage 3-100 (e.g., 20 for 20% markup, 10 for 10% - WOP-357)
  */
-export function withMargin(cost: number, marginMultiplier = 1.3): number {
-  return Math.round(cost * marginMultiplier * 1_000_000) / 1_000_000; // 6 decimal precision
+export function withMargin(cost: number, marginMultiplier: number = 1.3): number {
+  let multiplier = marginMultiplier;
+
+  // If value is >= 3, treat as percentage (e.g., 20 for 20%, 10 for 10%)
+  // If value is >= 1 but < 3, treat as multiplier (e.g., 1.3 = 30%, 2.0 = 2x)
+  if (marginMultiplier >= 3 && marginMultiplier <= 100) {
+    multiplier = 1 + marginMultiplier / 100;
+  }
+
+  return Math.round(cost * multiplier * 1_000_000) / 1_000_000; // 6 decimal precision
 }

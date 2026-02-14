@@ -97,6 +97,10 @@ describe("TierStore", () => {
         features: ["custom-feature"],
         maxSpendPerHour: 5,
         maxSpendPerMonth: 100,
+        platformFeeUsd: 25,
+        includedTokens: 1_000_000,
+        overageMarkupPercent: 15,
+        byokAllowed: false,
       };
       store.upsert(custom);
       const result = store.get("custom");
@@ -157,6 +161,38 @@ describe("TierStore", () => {
       expect(ent?.maxSpendPerHour).toBeNull();
       expect(ent?.maxSpendPerMonth).toBeNull();
     });
+
+    it("free tier has correct pricing config", () => {
+      const free = DEFAULT_TIERS.find((t) => t.id === "free");
+      expect(free?.platformFeeUsd).toBe(0);
+      expect(free?.includedTokens).toBe(50_000);
+      expect(free?.overageMarkupPercent).toBe(20);
+      expect(free?.byokAllowed).toBe(false);
+    });
+
+    it("pro tier has correct pricing config", () => {
+      const pro = DEFAULT_TIERS.find((t) => t.id === "pro");
+      expect(pro?.platformFeeUsd).toBe(19);
+      expect(pro?.includedTokens).toBe(2_000_000);
+      expect(pro?.overageMarkupPercent).toBe(10);
+      expect(pro?.byokAllowed).toBe(true);
+    });
+
+    it("team tier has correct pricing config", () => {
+      const team = DEFAULT_TIERS.find((t) => t.id === "team");
+      expect(team?.platformFeeUsd).toBe(49);
+      expect(team?.includedTokens).toBe(5_000_000);
+      expect(team?.overageMarkupPercent).toBe(8);
+      expect(team?.byokAllowed).toBe(true);
+    });
+
+    it("enterprise tier has correct pricing config", () => {
+      const ent = DEFAULT_TIERS.find((t) => t.id === "enterprise");
+      expect(ent?.platformFeeUsd).toBe(0); // Custom pricing
+      expect(ent?.includedTokens).toBe(0); // Custom pricing
+      expect(ent?.overageMarkupPercent).toBe(5);
+      expect(ent?.byokAllowed).toBe(true);
+    });
   });
 
   describe("spend limits in store", () => {
@@ -182,6 +218,75 @@ describe("TierStore", () => {
       const updated = store.get("free");
       expect(updated?.maxSpendPerHour).toBe(1.0);
       expect(updated?.maxSpendPerMonth).toBe(10);
+    });
+  });
+
+  describe("pricing fields in store", () => {
+    beforeEach(() => {
+      store.seed();
+    });
+
+    it("stores and retrieves pricing fields for free tier", () => {
+      const free = store.get("free");
+      expect(free?.platformFeeUsd).toBe(0);
+      expect(free?.includedTokens).toBe(50_000);
+      expect(free?.overageMarkupPercent).toBe(20);
+      expect(free?.byokAllowed).toBe(false);
+    });
+
+    it("stores and retrieves pricing fields for pro tier", () => {
+      const pro = store.get("pro");
+      expect(pro?.platformFeeUsd).toBe(19);
+      expect(pro?.includedTokens).toBe(2_000_000);
+      expect(pro?.overageMarkupPercent).toBe(10);
+      expect(pro?.byokAllowed).toBe(true);
+    });
+
+    it("stores and retrieves pricing fields for enterprise tier", () => {
+      const ent = store.get("enterprise");
+      expect(ent?.platformFeeUsd).toBe(0);
+      expect(ent?.includedTokens).toBe(0);
+      expect(ent?.overageMarkupPercent).toBe(5);
+      expect(ent?.byokAllowed).toBe(true);
+    });
+
+    it("updates pricing fields via upsert", () => {
+      const pro = store.get("pro")!;
+      store.upsert({
+        ...pro,
+        platformFeeUsd: 29,
+        includedTokens: 3_000_000,
+        overageMarkupPercent: 12,
+        byokAllowed: false,
+      });
+      const updated = store.get("pro");
+      expect(updated?.platformFeeUsd).toBe(29);
+      expect(updated?.includedTokens).toBe(3_000_000);
+      expect(updated?.overageMarkupPercent).toBe(12);
+      expect(updated?.byokAllowed).toBe(false);
+    });
+
+    it("inserts a new tier with pricing fields", () => {
+      const custom: PlanTier = {
+        id: "custom-tier",
+        name: "custom-tier",
+        maxInstances: 10,
+        maxPluginsPerInstance: 20,
+        memoryLimitMb: 1024,
+        cpuQuota: 100_000,
+        storageLimitMb: 5120,
+        maxProcesses: 512,
+        features: ["custom-feature"],
+        maxSpendPerHour: 5,
+        maxSpendPerMonth: 100,
+        platformFeeUsd: 39,
+        includedTokens: 4_000_000,
+        overageMarkupPercent: 15,
+        byokAllowed: true,
+      };
+      store.upsert(custom);
+      const result = store.get("custom-tier");
+      expect(result).toEqual(custom);
     });
   });
 

@@ -579,4 +579,37 @@ describe("withMargin", () => {
     const result = withMargin(0.1234567, 1.3);
     expect(result).toBe(0.160494);
   });
+
+  describe("tier-specific markup (WOP-357)", () => {
+    it("applies 20% markup for free tier", () => {
+      // 1.0 * 1.20 = 1.20
+      expect(withMargin(1.0, 20)).toBeCloseTo(1.2, 6);
+    });
+
+    it("applies 10% markup for pro tier", () => {
+      // 1.0 * 1.10 = 1.10
+      expect(withMargin(1.0, 10)).toBeCloseTo(1.1, 6);
+    });
+
+    it("applies 8% markup for team tier", () => {
+      // 1.0 * 1.08 = 1.08
+      expect(withMargin(1.0, 8)).toBeCloseTo(1.08, 6);
+    });
+
+    it("applies 5% markup for enterprise tier", () => {
+      // 1.0 * 1.05 = 1.05
+      expect(withMargin(1.0, 5)).toBeCloseTo(1.05, 6);
+    });
+
+    it("handles percentage markup with real costs", () => {
+      // $0.05 cost with 10% markup = $0.055
+      expect(withMargin(0.05, 10)).toBeCloseTo(0.055, 6);
+    });
+
+    it("handles percentage markup with precision", () => {
+      // 0.000945 * 1.20 = 0.001134
+      const result = withMargin(0.000945, 20);
+      expect(result).toBeCloseTo(0.001134, 6);
+    });
+  });
 });
