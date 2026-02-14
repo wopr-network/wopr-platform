@@ -370,9 +370,7 @@ describe("createOpenRouterAdapter", () => {
 
     it("applies margin correctly", async () => {
       const body = embeddingsResponse();
-      const fetchFn = vi
-        .fn<FetchFn>()
-        .mockResolvedValueOnce(mockResponse(body, 200, { "x-openrouter-cost": "0.01" }));
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(body, 200, { "x-openrouter-cost": "0.01" }));
 
       const adapter = createOpenRouterAdapter(makeConfig({ marginMultiplier: 1.5 }), fetchFn);
       const result = await adapter.embed({ input: "test" });
@@ -402,10 +400,7 @@ describe("createOpenRouterAdapter", () => {
 
     it("handles batch input (string[])", async () => {
       const body = embeddingsResponse({
-        data: [
-          { embedding: [0.1, 0.2, 0.3] },
-          { embedding: [0.4, 0.5, 0.6] },
-        ],
+        data: [{ embedding: [0.1, 0.2, 0.3] }, { embedding: [0.4, 0.5, 0.6] }],
         usage: { total_tokens: 10 },
       });
       const fetchFn = vi
@@ -457,10 +452,7 @@ describe("createOpenRouterAdapter", () => {
       const body = embeddingsResponse({ usage: { total_tokens: 100 } });
       const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(body, 200));
 
-      const adapter = createOpenRouterAdapter(
-        makeConfig({ fallbackInputTokenCost: 0.000001 }),
-        fetchFn,
-      );
+      const adapter = createOpenRouterAdapter(makeConfig({ fallbackInputTokenCost: 0.000001 }), fetchFn);
       const result = await adapter.embed({ input: "test" });
 
       // 100 tokens * $0.000001 = $0.0001
