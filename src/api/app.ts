@@ -56,6 +56,14 @@ app.route("/api/admin/credits", adminCreditRoutes);
 app.route("/api/tenant-keys", tenantKeyRoutes);
 app.route("/auth", verifyEmailRoutes);
 
+// Gateway routes — /v1/* endpoints for bot-facing API.
+// These use service key auth (not session cookies), so they are mounted
+// separately and do NOT go through resolveSessionUser.
+// Lazily initialized: createGatewayRoutes requires runtime dependencies
+// (MeterEmitter, BudgetChecker) that may not be available at import time.
+// Wire up via mountGateway() from src/gateway/index.ts when deps are ready.
+// See: src/gateway/routes.ts for endpoint definitions.
+
 // Global error handler — catches all errors from routes and middleware.
 // This prevents unhandled errors from crashing the process.
 export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
