@@ -1,12 +1,12 @@
-name: Deploy to Staging
+name: Deploy to Production
 
 on:
   push:
-    branches: [staging]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-staging
+  group: deploy-production
   cancel-in-progress: false
 
 env:
@@ -77,24 +77,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
-    environment: staging
+    environment: production
     steps:
       - name: Record previous image digest
         id: previous
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.STAGING_HOST }}
+          host: ${{ secrets.PROD_HOST }}
           username: deploy
-          key: ${{ secrets.STAGING_SSH_KEY }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             docker inspect --format='{{index .RepoDigests 0}}' $(docker compose -f ${{ env.COMPOSE_DIR }}/docker-compose.yml images ${{ env.SERVICE }} -q 2>/dev/null) 2>/dev/null || echo "none"
 
       - name: Pull and restart service
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.STAGING_HOST }}
+          host: ${{ secrets.PROD_HOST }}
           username: deploy
-          key: ${{ secrets.STAGING_SSH_KEY }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             cd ${{ env.COMPOSE_DIR }}
             docker compose pull ${{ env.SERVICE }}
@@ -106,28 +106,28 @@ jobs:
         uses: appleboy/ssh-action@v1
         continue-on-error: true
         with:
-          host: ${{ secrets.STAGING_HOST }}
+          host: ${{ secrets.PROD_HOST }}
           username: deploy
-          key: ${{ secrets.STAGING_SSH_KEY }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
-            for i in $(seq 1 12); do
+            for i in $(seq 1 15); do
               if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
-                echo "Staging health check passed"
+                echo "Production health check passed"
                 exit 0
               fi
-              echo "Waiting for health check... ($i/12)"
+              echo "Waiting for health check... ($i/15)"
               sleep 5
             done
-            echo "Health check timed out after 60s"
+            echo "Health check timed out after 75s"
             exit 1
 
       - name: Rollback on failure
         if: steps.health.outcome == 'failure'
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.STAGING_HOST }}
+          host: ${{ secrets.PROD_HOST }}
           username: deploy
-          key: ${{ secrets.STAGING_SSH_KEY }}
+          key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             echo "Health check failed — rolling back ${{ env.SERVICE }}"
             cd ${{ env.COMPOSE_DIR }}
