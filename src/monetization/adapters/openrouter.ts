@@ -9,7 +9,14 @@
  * falling back to token-based calculation when the header is absent.
  */
 
-import type { AdapterResult, ProviderAdapter, TextGenerationInput, TextGenerationOutput } from "./types.js";
+import type {
+  AdapterResult,
+  EmbeddingsInput,
+  EmbeddingsOutput,
+  ProviderAdapter,
+  TextGenerationInput,
+  TextGenerationOutput,
+} from "./types.js";
 import { withMargin } from "./types.js";
 
 /** Configuration for the OpenRouter adapter */
@@ -38,6 +45,17 @@ export interface OpenRouterAdapterConfig {
  * mocking globals.
  */
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+
+/** OpenAI-compatible embeddings response (subset we care about) */
+interface EmbeddingsResponse {
+  model: string;
+  data: Array<{
+    embedding: number[];
+  }>;
+  usage: {
+    total_tokens: number;
+  };
+}
 
 /** OpenAI-compatible chat completion response (subset we care about) */
 interface ChatCompletionResponse {
@@ -69,7 +87,7 @@ const DEFAULT_FALLBACK_OUTPUT_TOKEN_COST = 0.000002; // $2.00 per 1M output toke
 export function createOpenRouterAdapter(
   config: OpenRouterAdapterConfig,
   fetchFn: FetchFn = fetch,
-): ProviderAdapter & Required<Pick<ProviderAdapter, "generateText">> {
+): ProviderAdapter & Required<Pick<ProviderAdapter, "generateText" | "embed">> {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const defaultModel = config.defaultModel ?? DEFAULT_MODEL;
   const marginMultiplier = config.marginMultiplier ?? DEFAULT_MARGIN;
@@ -92,7 +110,7 @@ export function createOpenRouterAdapter(
 
   return {
     name: "openrouter",
-    capabilities: ["text-generation"] as const,
+    capabilities: ["text-generation", "embeddings"] as const,
 
     async generateText(input: TextGenerationInput): Promise<AdapterResult<TextGenerationOutput>> {
       const model = input.model ?? defaultModel;
@@ -153,6 +171,63 @@ export function createOpenRouterAdapter(
           text,
           model: responseModel,
           usage: { inputTokens, outputTokens },
+        },
+        cost,
+        charge,
+      };
+    },
+
+    async embed(input: EmbeddingsInput): Promise<AdapterResult<EmbeddingsOutput>> {
+      const model = input.model ?? "openai/text-embedding-3-small";
+
+      const body: Record<string, unknown> = {
+        input: input.input,
+        model,
+      };
+      if (input.dimensions !== undefined) {
+        body.dimensions = input.dimensions;
+      }
+
+      const res = await fetchFn(`${baseUrl}/v1/embeddings`, {
+        method: "POST",
+        headers: buildHeaders(),
+        body: JSON.stringify(body),
+      });
+
+      // Propagate 429 rate limit errors with retry-after
+      if (res.status === 429) {
+        const retryAfter = res.headers.get("retry-after");
+        const error = Object.assign(new Error("OpenRouter rate limit exceeded"), {
+          httpStatus: 429,
+          retryAfter: retryAfter ?? undefined,
+        });
+        throw error;
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`OpenRouter API error (${res.status}): ${text}`);
+      }
+
+      const data = (await res.json()) as EmbeddingsResponse;
+
+      // Prefer cost from x-openrouter-cost header (exact provider cost in USD)
+      const costHeader = res.headers.get("x-openrouter-cost");
+      let cost: number;
+      if (costHeader !== null) {
+        cost = parseFloat(costHeader);
+      } else {
+        // Fall back to token-based calculation
+        cost = data.usage.total_tokens * fallbackInputTokenCost;
+      }
+
+      const charge = withMargin(cost, marginMultiplier);
+
+      return {
+        result: {
+          embeddings: data.data.map((d) => d.embedding),
+          model: data.model,
+          totalTokens: data.usage.total_tokens,
         },
         cost,
         charge,
