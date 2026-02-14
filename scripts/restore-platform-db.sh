@@ -123,17 +123,19 @@ docker stop "$CONTAINER_NAME"
 log "Restoring database..."
 docker cp "${LOCAL_BACKUP_DIR}/${BACKUP_FILE}" "${CONTAINER_NAME}:${DB_CONTAINER_PATH}"
 
-# Remove WAL and SHM files (stale after restore)
-DB_DIR=$(dirname "$DB_CONTAINER_PATH")
-DB_BASENAME=$(basename "$DB_CONTAINER_PATH")
-docker start "$CONTAINER_NAME" --attach=false 2>/dev/null || true
-# Brief wait for container to start before cleanup
-sleep 1
-docker exec "$CONTAINER_NAME" rm -f "${DB_CONTAINER_PATH}-wal" "${DB_CONTAINER_PATH}-shm" 2>/dev/null || true
+# Remove WAL and SHM files (stale after restore).
+# Use a throwaway container against the same volume so the app cannot
+# recreate these files before we finish cleaning up.
+VOLUME_NAME=$(docker inspect --format='{{ range .Mounts }}{{ if eq .Destination "/data" }}{{ .Name }}{{ end }}{{ end }}' "$CONTAINER_NAME")
+if [ -n "$VOLUME_NAME" ]; then
+  docker run --rm -v "${VOLUME_NAME}:/data" alpine \
+    rm -f "${DB_CONTAINER_PATH}-wal" "${DB_CONTAINER_PATH}-shm"
+else
+  log "WARN: Could not determine volume name; skipping WAL/SHM cleanup"
+fi
 
-# Restart the container
+# Start the container
 log "Starting container ${CONTAINER_NAME}..."
-docker stop "$CONTAINER_NAME" 2>/dev/null || true
 docker start "$CONTAINER_NAME"
 
 # Clean up local download

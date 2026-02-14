@@ -75,6 +75,7 @@ for db_path in "${DATABASES[@]}"; do
   # Copy out of container
   if ! docker cp "${CONTAINER_NAME}:${container_tmp}" "${LOCAL_BACKUP_DIR}/${backup_file}"; then
     log "WARN: docker cp failed for ${backup_file}"
+    docker exec "$CONTAINER_NAME" rm -f "${container_tmp}" 2>/dev/null || true
     FAILED=$((FAILED + 1))
     continue
   fi
@@ -82,6 +83,8 @@ for db_path in "${DATABASES[@]}"; do
   # Upload to DO Spaces
   if ! s3cmd put "${LOCAL_BACKUP_DIR}/${backup_file}" "${S3_BUCKET}/platform/${DATE}/${backup_file}"; then
     log "WARN: s3cmd upload failed for ${backup_file}"
+    rm -f "${LOCAL_BACKUP_DIR}/${backup_file}"
+    docker exec "$CONTAINER_NAME" rm -f "${container_tmp}" 2>/dev/null || true
     FAILED=$((FAILED + 1))
     continue
   fi
