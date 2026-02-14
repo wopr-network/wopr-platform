@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
+import { buildTokenMap, scopedBearerAuth, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCheckoutSession } from "../../monetization/stripe/checkout.js";
@@ -42,10 +42,16 @@ const portalBodySchema = z.object({
   returnUrl: urlSchema,
 });
 
+const identifierSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-z0-9_-]+$/i);
+
 const usageQuerySchema = z.object({
   tenant: tenantIdSchema,
-  capability: z.string().min(1).max(128).optional(),
-  provider: z.string().min(1).max(128).optional(),
+  capability: identifierSchema.optional(),
+  provider: identifierSchema.optional(),
   startDate: z.coerce.number().int().positive().optional(),
   endDate: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
@@ -217,6 +223,10 @@ billingRoutes.post("/webhook", async (c) => {
  * Query params: tenant (required), capability, provider, startDate, endDate, limit
  */
 billingRoutes.get("/usage", adminAuth, async (c) => {
+  if (!validateTenantOwnership(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   const aggregator = getMeterAggregator();
 
   const params = {
@@ -254,8 +264,8 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
 
     return c.json({ tenant, usage: filtered });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to query usage";
-    return c.json({ error: message }, 500);
+    logger.error("Failed to query usage", { error: err });
+    return c.json({ error: "Internal server error" }, 500);
   }
 });
 
@@ -266,6 +276,10 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
  * Query params: tenant (required), startDate (optional)
  */
 billingRoutes.get("/usage/summary", adminAuth, async (c) => {
+  if (!validateTenantOwnership(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   const aggregator = getMeterAggregator();
 
   const params = {
@@ -294,8 +308,8 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
       event_count: total.eventCount,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to query usage summary";
-    return c.json({ error: message }, 500);
+    logger.error("Failed to query usage summary", { error: err });
+    return c.json({ error: "Internal server error" }, 500);
   }
 });
 
@@ -306,6 +320,10 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
  * Query params: tenant (required), limit (optional, default 100, max 1000)
  */
 billingRoutes.get("/usage/history", adminAuth, async (c) => {
+  if (!validateTenantOwnership(c)) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   const reporter = getUsageReporter();
 
   const params = {
@@ -325,7 +343,7 @@ billingRoutes.get("/usage/history", adminAuth, async (c) => {
     const reports = reporter.queryReports(tenant, { limit });
     return c.json({ tenant, reports });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to query billing history";
-    return c.json({ error: message }, 500);
+    logger.error("Failed to query billing history", { error: err });
+    return c.json({ error: "Internal server error" }, 500);
   }
 });
