@@ -8,8 +8,8 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/in
 import { logger } from "../../config/logger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
-import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
+import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";

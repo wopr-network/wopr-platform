@@ -11,8 +11,8 @@ import { createCreditCheckoutSession } from "./checkout.js";
 import { loadStripeConfig } from "./client.js";
 import {
   CREDIT_PRICE_POINTS,
-  getCreditAmountForPurchase,
   getConfiguredPriceIds,
+  getCreditAmountForPurchase,
   loadCreditPriceMap,
 } from "./credit-prices.js";
 import { createPortalSession } from "./portal.js";

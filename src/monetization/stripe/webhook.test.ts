@@ -184,15 +184,19 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.creditedCents).toBe(0);
     });
 
-    it("handles duplicate checkout events idempotently (credits each time)", () => {
+    it("handles duplicate checkout events idempotently (skips second)", () => {
       const event = createCheckoutEvent({ amount_total: 500 });
 
-      handleWebhookEvent(deps, event);
-      handleWebhookEvent(deps, event);
+      const first = handleWebhookEvent(deps, event);
+      expect(first.creditedCents).toBe(500);
 
-      // Each event grants credits (Stripe deduplication happens upstream)
+      const second = handleWebhookEvent(deps, event);
+      expect(second.handled).toBe(true);
+      expect(second.creditedCents).toBe(0);
+
+      // Only credited once despite duplicate webhook delivery
       const balance = creditStore.getBalance("tenant-123");
-      expect(balance).toBe(1000);
+      expect(balance).toBe(500);
     });
 
     it("grants 1:1 credits when no priceMap is provided", () => {
@@ -202,7 +206,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.creditedCents).toBe(1234);
     });
 
-    it("records the Stripe session ID in the grant reason", () => {
+    it("records the Stripe session ID in the grant reason and reference_ids", () => {
       const event = createCheckoutEvent({ id: "cs_test_abc" });
       handleWebhookEvent(deps, event);
 
@@ -211,6 +215,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(txns.entries[0].reason).toContain("cs_test_abc");
       expect(txns.entries[0].type).toBe("grant");
       expect(txns.entries[0].admin_user).toBe("stripe-webhook");
+      expect(txns.entries[0].reference_ids).toBe('["cs_test_abc"]');
     });
   });
 

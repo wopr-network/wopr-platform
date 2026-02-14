@@ -1,7 +1,6 @@
 import type Stripe from "stripe";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { CreditPriceMap } from "./credit-prices.js";
-import { getCreditAmountForPurchase } from "./credit-prices.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
 
 /**
@@ -58,26 +57,37 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         return { handled: true, event_type: event.type, tenant, creditedCents: 0 };
       }
 
+      // Idempotency: skip if this session was already processed.
+      const stripeSessionId = session.id ?? "unknown";
+      if (deps.creditStore.hasReferenceId(stripeSessionId)) {
+        return { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+      }
+
       let creditCents: number;
 
       // Try to look up from price map first (has exact bonus tiers).
-      // The line_items are not expanded in webhook events, so we use amount_total.
       if (deps.priceMap && deps.priceMap.size > 0) {
-        // Check if we can match by amount to a known tier.
-        const tier = getCreditAmountForPurchase(amountPaid);
-        creditCents = tier;
+        // Match the paid amount against known tiers in the price map.
+        let matched: number | null = null;
+        for (const point of deps.priceMap.values()) {
+          if (point.amountCents === amountPaid) {
+            matched = point.creditCents;
+            break;
+          }
+        }
+        creditCents = matched ?? amountPaid;
       } else {
         // Fallback: 1:1 credit for the amount paid.
         creditCents = amountPaid;
       }
 
-      // Credit the ledger.
-      const stripeSessionId = session.id ?? "unknown";
+      // Credit the ledger with session ID as reference for idempotency.
       deps.creditStore.grant(
         tenant,
         creditCents,
         `Stripe credit purchase (session: ${stripeSessionId})`,
         "stripe-webhook",
+        [stripeSessionId],
       );
 
       return { handled: true, event_type: event.type, tenant, creditedCents: creditCents };

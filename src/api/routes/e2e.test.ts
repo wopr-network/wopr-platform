@@ -566,10 +566,7 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const webhookResult = handleWebhookEvent(
-      { tenantStore, creditStore },
-      checkoutEvent,
-    );
+    const webhookResult = handleWebhookEvent({ tenantStore, creditStore }, checkoutEvent);
     expect(webhookResult.handled).toBe(true);
     expect(webhookResult.tenant).toBe(tenantId);
     expect(webhookResult.creditedCents).toBe(2500);
@@ -625,10 +622,7 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const secondResult = handleWebhookEvent(
-      { tenantStore, creditStore },
-      secondCheckoutEvent,
-    );
+    const secondResult = handleWebhookEvent({ tenantStore, creditStore }, secondCheckoutEvent);
     expect(secondResult.handled).toBe(true);
     expect(secondResult.creditedCents).toBe(5000); // 1:1 without priceMap
 

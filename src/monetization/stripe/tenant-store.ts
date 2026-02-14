@@ -17,7 +17,9 @@ export class TenantCustomerStore {
   getByTenant(tenant: string): TenantCustomerRow | null {
     return (
       (this.db
-        .prepare("SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers WHERE tenant = ?")
+        .prepare(
+          "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers WHERE tenant = ?",
+        )
         .get(tenant) as TenantCustomerRow | undefined) ?? null
     );
   }
@@ -73,7 +75,9 @@ export class TenantCustomerStore {
   /** List all tenants with Stripe mappings. */
   list(): TenantCustomerRow[] {
     return this.db
-      .prepare("SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers ORDER BY created_at DESC")
+      .prepare(
+        "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers ORDER BY created_at DESC",
+      )
       .all() as TenantCustomerRow[];
   }
 
