@@ -352,6 +352,94 @@ export function scopedBearerAuth(tokenMap: Map<string, TokenScope>, requiredScop
       return c.json({ error: "Insufficient scope", required: requiredScope, provided: scope }, 403);
     }
 
+    // Set user context for downstream middleware (audit, etc.)
+    c.set("user", { id: `token:${scope}`, roles: [scope] } satisfies AuthUser);
+    c.set("authMethod", "api_key" as const);
+
+    return next();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Session Resolution (better-auth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Middleware that resolves the current user from a better-auth session cookie.
+ *
+ * On success, sets:
+ * - `c.set("user", { id, roles })`
+ * - `c.set("authMethod", "session")`
+ *
+ * If no session cookie is present (or session is invalid), the request
+ * continues without a user — downstream middleware like `scopedBearerAuth`
+ * or `requireAuth` will handle enforcement.
+ *
+ * Uses lazy `getAuth()` to avoid initializing the DB at import time.
+ */
+export function resolveSessionUser() {
+  return async (c: Context, next: Next) => {
+    // Skip if user is already set (e.g., by scopedBearerAuth)
+    try {
+      if (c.get("user")) return next();
+    } catch {
+      // c.get throws if variable not set — that's fine, continue
+    }
+
+    try {
+      const { getAuth } = await import("./better-auth.js");
+      const auth = getAuth();
+      const session = await auth.api.getSession({ headers: c.req.raw.headers });
+      if (session?.user) {
+        const user = session.user as { id: string; role?: string };
+        const roles: string[] = [];
+        if (user.role) roles.push(user.role);
+        c.set("user", { id: user.id, roles } satisfies AuthUser);
+        c.set("authMethod", "session" as const);
+      }
+    } catch {
+      // Session resolution failed — continue without user
+    }
+
+    return next();
+  };
+}
+
+/**
+ * Middleware that requires either a valid session or a scoped API token.
+ *
+ * Tries session first, then falls back to scoped bearer auth.
+ * Returns 401 if neither is present.
+ */
+export function requireSessionOrToken(tokenMap: Map<string, TokenScope>, requiredScope: TokenScope) {
+  return async (c: Context, next: Next) => {
+    // Check if user was already resolved by resolveSessionUser
+    try {
+      if (c.get("user")) return next();
+    } catch {
+      // Not set — continue to check bearer token
+    }
+
+    // Fall back to scoped bearer auth
+    const authHeader = c.req.header("Authorization");
+    const token = extractBearerToken(authHeader);
+
+    if (!token) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    const scope = tokenMap.get(token);
+    if (scope === undefined) {
+      return c.json({ error: "Invalid or expired token" }, 401);
+    }
+
+    if (!scopeSatisfies(scope, requiredScope)) {
+      return c.json({ error: "Insufficient scope", required: requiredScope, provided: scope }, 403);
+    }
+
+    c.set("user", { id: `token:${scope}`, roles: [scope] } satisfies AuthUser);
+    c.set("authMethod", "api_key" as const);
+
     return next();
   };
 }
