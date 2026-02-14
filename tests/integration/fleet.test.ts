@@ -108,6 +108,7 @@ describe("integration: fleet routes", () => {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
+          tenantId: "user-123",
           name: "test-bot",
           image: "ghcr.io/wopr-network/wopr:stable",
           env: { TOKEN: "abc" },
@@ -123,7 +124,7 @@ describe("integration: fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ name: "!!bad!!", image: "ghcr.io/wopr-network/wopr:stable" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "!!bad!!", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
       expect(res.status).toBe(400);
     });
@@ -133,6 +134,7 @@ describe("integration: fleet routes", () => {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
+          tenantId: "user-123",
           name: "bot",
           image: "ghcr.io/wopr-network/wopr:stable",
           volumeName: "/var/run/docker.sock",
@@ -146,6 +148,7 @@ describe("integration: fleet routes", () => {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
+          tenantId: "user-123",
           name: "bot",
           image: "ghcr.io/wopr-network/wopr:stable",
           volumeName: "vol/../escape",
@@ -166,6 +169,7 @@ describe("integration: fleet routes", () => {
         method: "POST",
         headers: JSON_HEADERS,
         body: JSON.stringify({
+          tenantId: "user-123",
           name: "bot",
           image: "ghcr.io/wopr-network/wopr:stable",
           volumeName: "my-data-vol",
@@ -178,7 +182,7 @@ describe("integration: fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ name: "good-name" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "good-name" }),
       });
       expect(res.status).toBe(400);
     });
@@ -200,7 +204,7 @@ describe("integration: fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ name: "bot", image: "ghcr.io/wopr-network/wopr:stable" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "bot", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
       expect(res.status).toBe(500);
     });

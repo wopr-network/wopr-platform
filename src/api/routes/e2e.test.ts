@@ -35,6 +35,7 @@ function nextBotUuid(): string {
 
 const mockProfile: BotProfile = {
   id: "00000000-0000-4000-8000-000000000001",
+  tenantId: "user-123",
   name: "my-discord-bot",
   description: "E2E test bot",
   image: "ghcr.io/wopr-network/wopr:stable",
@@ -211,6 +212,15 @@ vi.mock("../../fleet/updater.js", () => {
   };
 });
 
+vi.mock("../../network/network-policy.js", () => {
+  return {
+    NetworkPolicy: class {
+      prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
+      cleanupAfterRemoval = vi.fn().mockResolvedValue(undefined);
+    },
+  };
+});
+
 // Import AFTER mocks
 const { fleetRoutes } = await import("./fleet.js");
 const { billingRoutes, setBillingDeps } = await import("./billing.js");
@@ -255,6 +265,7 @@ describe("E2E: Bot deployment flow", () => {
       method: "POST",
       headers: jsonAuth,
       body: JSON.stringify({
+        tenantId: "user-123",
         name: "my-discord-bot",
         image: "ghcr.io/wopr-network/wopr:stable",
         env: { DISCORD_TOKEN: "secret-token" },
@@ -325,6 +336,7 @@ describe("E2E: Bot management flow", () => {
       method: "POST",
       headers: jsonAuth,
       body: JSON.stringify({
+        tenantId: "user-123",
         name: "managed-bot",
         image: "ghcr.io/wopr-network/wopr:stable",
       }),

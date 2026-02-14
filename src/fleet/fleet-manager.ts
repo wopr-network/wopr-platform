@@ -4,6 +4,7 @@ import { logger } from "../config/logger.js";
 import { buildDiscoveryEnv } from "../discovery/discovery-config.js";
 import type { PlatformDiscoveryConfig } from "../discovery/types.js";
 import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
+import type { NetworkPolicy } from "../network/network-policy.js";
 import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile, BotStatus, ContainerStats } from "./types.js";
 
@@ -14,11 +15,18 @@ export class FleetManager {
   private readonly docker: Docker;
   private readonly store: ProfileStore;
   private readonly platformDiscovery: PlatformDiscoveryConfig | undefined;
+  private readonly networkPolicy: NetworkPolicy | undefined;
 
-  constructor(docker: Docker, store: ProfileStore, platformDiscovery?: PlatformDiscoveryConfig) {
+  constructor(
+    docker: Docker,
+    store: ProfileStore,
+    platformDiscovery?: PlatformDiscoveryConfig,
+    networkPolicy?: NetworkPolicy,
+  ) {
     this.docker = docker;
     this.store = store;
     this.platformDiscovery = platformDiscovery;
+    this.networkPolicy = networkPolicy;
   }
 
   /**
@@ -96,6 +104,12 @@ export class FleetManager {
       }
       await container.remove({ v: removeVolumes });
     }
+
+    // Clean up tenant network if no more containers remain
+    if (this.networkPolicy) {
+      await this.networkPolicy.cleanupAfterRemoval(profile.tenantId);
+    }
+
     await this.store.delete(id);
     logger.info(`Removed bot ${id}`);
   }
@@ -236,6 +250,12 @@ export class FleetManager {
       },
       Binds: binds.length > 0 ? binds : undefined,
     };
+
+    // Set tenant network isolation if NetworkPolicy is configured
+    if (this.networkPolicy) {
+      const networkMode = await this.networkPolicy.prepareForContainer(profile.tenantId);
+      hostConfig.NetworkMode = networkMode;
+    }
 
     // Apply resource limits from tier if provided
     if (resourceLimits) {

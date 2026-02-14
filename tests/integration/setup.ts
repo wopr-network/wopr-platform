@@ -96,6 +96,13 @@ vi.mock("../../src/fleet/updater.js", () => ({
   },
 }));
 
+vi.mock("../../src/network/network-policy.js", () => ({
+  NetworkPolicy: class {
+    prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
+    cleanupAfterRemoval = vi.fn().mockResolvedValue(undefined);
+  },
+}));
+
 // Friends proxy mock
 export const mockProxyToInstance = vi.fn();
 

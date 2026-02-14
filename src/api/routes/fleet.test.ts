@@ -19,6 +19,7 @@ const MISSING_BOT_ID = "ffffffff-ffff-4fff-bfff-ffffffffffff";
 
 const mockProfile: BotProfile = {
   id: TEST_BOT_ID,
+  tenantId: "user-123",
   name: "test-bot",
   description: "A test bot",
   image: "ghcr.io/wopr-network/wopr:stable",
@@ -118,6 +119,15 @@ vi.mock("../../fleet/updater.js", () => {
   };
 });
 
+vi.mock("../../network/network-policy.js", () => {
+  return {
+    NetworkPolicy: class {
+      prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
+      cleanupAfterRemoval = vi.fn().mockResolvedValue(undefined);
+    },
+  };
+});
+
 // Import AFTER mocks are set up
 const { fleetRoutes, seedBots } = await import("./fleet.js");
 
@@ -171,6 +181,7 @@ describe("fleet routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({
+          tenantId: "user-123",
           name: "test-bot",
           image: "ghcr.io/wopr-network/wopr:stable",
           env: { TOKEN: "abc" },
@@ -186,7 +197,7 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ name: "!!invalid!!", image: "ghcr.io/wopr-network/wopr:stable" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "!!invalid!!", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
 
       expect(res.status).toBe(400);
@@ -196,7 +207,7 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ name: "valid-bot" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "valid-bot" }),
       });
 
       expect(res.status).toBe(400);
@@ -206,7 +217,7 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ name: "good-bot", image: "evil-registry.com/cryptominer:latest" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "good-bot", image: "evil-registry.com/cryptominer:latest" }),
       });
 
       expect(res.status).toBe(400);
@@ -219,7 +230,7 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ name: "good-bot", image: "nginx:latest" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "good-bot", image: "nginx:latest" }),
       });
 
       expect(res.status).toBe(400);
@@ -243,7 +254,7 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ name: "bot", image: "ghcr.io/wopr-network/wopr:stable" }),
+        body: JSON.stringify({ tenantId: "user-123", name: "bot", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
 
       expect(res.status).toBe(500);

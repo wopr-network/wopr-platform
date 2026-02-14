@@ -60,6 +60,7 @@ export type UpdatePolicy = z.infer<typeof updatePolicySchema>;
 /** Schema for a bot profile template (persisted as YAML) */
 export const botProfileSchema = z.object({
   id: z.string().uuid(),
+  tenantId: z.string().min(1, "Tenant ID is required"),
   name: z.string().regex(nameRegex, "Name must be 1-63 alphanumeric chars, hyphens, or underscores"),
   description: z.string().default(""),
   image: imageSchema,
@@ -76,6 +77,7 @@ export type BotProfile = z.infer<typeof botProfileSchema>;
 
 /** Schema for creating a bot via the API */
 export const createBotSchema = z.object({
+  tenantId: z.string().min(1, "Tenant ID is required"),
   name: z
     .string()
     .transform((s) => s.trim())
