@@ -21,8 +21,12 @@ export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/
 export {
   type AdapterCapability,
   type AdapterResult,
+  type ImageGenerationInput,
+  type ImageGenerationOutput,
   type MeterEvent,
   type ProviderAdapter,
+  type TextGenerationInput,
+  type TextGenerationOutput,
   type TranscriptionInput,
   type TranscriptionOutput,
   withMargin,

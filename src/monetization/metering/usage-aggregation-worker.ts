@@ -20,6 +20,8 @@ const DEFAULT_EVENT_NAMES: MeterEventNameMap = {
   stt: "wopr_stt_usage",
   tts: "wopr_tts_usage",
   search: "wopr_search_usage",
+  "image-generation": "wopr_image_generation_usage",
+  "text-generation": "wopr_text_generation_usage",
 };
 
 export interface UsageAggregationWorkerOpts {
