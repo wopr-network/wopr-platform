@@ -8,6 +8,10 @@
 
 import { Hono } from "hono";
 import { rateLimit } from "../api/middleware/rate-limit.js";
+import { withMargin } from "../monetization/adapters/types.js";
+import { createAnthropicRoutes } from "./protocol/anthropic.js";
+import type { ProtocolDeps } from "./protocol/deps.js";
+import { createOpenAIRoutes } from "./protocol/openai.js";
 import {
   audioSpeech,
   audioTranscriptions,
@@ -39,7 +43,21 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   const gateway = new Hono<GatewayAuthEnv>();
   const deps = buildProxyDeps(config);
 
-  // All gateway routes require service key authentication
+  // Protocol-specific routes — these handle their own auth (x-api-key / Bearer)
+  const protocolDeps: ProtocolDeps = {
+    meter: config.meter,
+    budgetChecker: config.budgetChecker,
+    providers: config.providers,
+    defaultMargin: config.defaultMargin ?? 1.3,
+    fetchFn: config.fetchFn ?? fetch,
+    resolveServiceKey: config.resolveServiceKey,
+    withMarginFn: withMargin,
+  };
+
+  gateway.route("/anthropic", createAnthropicRoutes(protocolDeps));
+  gateway.route("/openai", createOpenAIRoutes(protocolDeps));
+
+  // All remaining gateway routes require service key authentication via Bearer
   gateway.use("/*", serviceKeyAuth(config.resolveServiceKey));
 
   // LLM endpoints (OpenRouter)
