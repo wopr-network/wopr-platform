@@ -186,7 +186,7 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ name: "!!invalid!!", image: "test" }),
+        body: JSON.stringify({ name: "!!invalid!!", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
 
       expect(res.status).toBe(400);
@@ -197,6 +197,29 @@ describe("fleet routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ name: "valid-bot" }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects image from non-allowlisted registry", async () => {
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ name: "good-bot", image: "evil-registry.com/cryptominer:latest" }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Validation failed");
+      expect(JSON.stringify(body.details)).toContain("not from an allowlisted registry");
+    });
+
+    it("rejects bare image name without registry prefix", async () => {
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ name: "good-bot", image: "nginx:latest" }),
       });
 
       expect(res.status).toBe(400);
@@ -220,7 +243,7 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ name: "bot", image: "img" }),
+        body: JSON.stringify({ name: "bot", image: "ghcr.io/wopr-network/wopr:stable" }),
       });
 
       expect(res.status).toBe(500);
@@ -516,7 +539,7 @@ describe("seedBots", () => {
     channel: { plugin: "test-channel", config: {} },
     provider: { plugin: "test-provider", config: {} },
     release: "stable",
-    image: "ghcr.io/test:stable",
+    image: "ghcr.io/wopr-network/test:stable",
     restartPolicy: "unless-stopped",
     healthCheck: { endpoint: "/health", intervalSeconds: 30, timeoutSeconds: 5, retries: 3 },
     volumes: [],

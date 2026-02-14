@@ -13,6 +13,39 @@ export const dockerVolumeNameSchema = z
   .regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/, "Must be a valid named Docker volume")
   .refine((v) => !v.startsWith("/") && !v.includes(".."), "Host paths and path traversal are not allowed");
 
+/**
+ * Default allowlisted Docker image registry prefixes.
+ * Configurable via FLEET_IMAGE_ALLOWLIST env var (comma-separated).
+ */
+const DEFAULT_IMAGE_ALLOWLIST = ["ghcr.io/wopr-network/"];
+
+function getImageAllowlist(): string[] {
+  const envVal = process.env.FLEET_IMAGE_ALLOWLIST;
+  if (envVal) {
+    const parsed = envVal
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => (p.endsWith("/") || p.endsWith(":") ? p : `${p}/`));
+    if (parsed.length > 0) return parsed;
+  }
+  return DEFAULT_IMAGE_ALLOWLIST;
+}
+
+/** Zod refinement that restricts Docker images to allowlisted registry prefixes. */
+export const imageSchema = z
+  .string()
+  .min(1, "Image is required")
+  .superRefine((image, ctx) => {
+    const allowlist = getImageAllowlist();
+    if (!allowlist.some((prefix) => image.startsWith(prefix))) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Image "${image}" is not from an allowlisted registry. Allowed prefixes: ${allowlist.join(", ")}`,
+      });
+    }
+  });
+
 /** Release channels for container images */
 export const releaseChannelSchema = z.enum(["canary", "staging", "stable", "pinned"]);
 export type ReleaseChannel = z.infer<typeof releaseChannelSchema>;
@@ -29,7 +62,7 @@ export const botProfileSchema = z.object({
   id: z.string().uuid(),
   name: z.string().regex(nameRegex, "Name must be 1-63 alphanumeric chars, hyphens, or underscores"),
   description: z.string().default(""),
-  image: z.string().min(1),
+  image: imageSchema,
   env: z.record(z.string(), z.string()).default({}),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).default("unless-stopped"),
   volumeName: dockerVolumeNameSchema.optional(),
@@ -48,7 +81,7 @@ export const createBotSchema = z.object({
     .transform((s) => s.trim())
     .pipe(z.string().regex(nameRegex, "Name must be 1-63 alphanumeric chars, hyphens, or underscores")),
   description: z.string().default(""),
-  image: z.string().min(1, "Image is required"),
+  image: imageSchema,
   env: z.record(z.string(), z.string()).default({}),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).default("unless-stopped"),
   volumeName: dockerVolumeNameSchema.optional(),
@@ -66,7 +99,7 @@ export const updateBotSchema = z.object({
     .pipe(z.string().regex(nameRegex, "Name must be 1-63 alphanumeric chars, hyphens, or underscores"))
     .optional(),
   description: z.string().optional(),
-  image: z.string().min(1).optional(),
+  image: imageSchema.optional(),
   env: z.record(z.string(), z.string()).optional(),
   restartPolicy: z.enum(["no", "always", "on-failure", "unless-stopped"]).optional(),
   volumeName: dockerVolumeNameSchema.optional(),

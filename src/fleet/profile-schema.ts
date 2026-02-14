@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { discoveryConfigSchema } from "../discovery/types.js";
+import { imageSchema } from "./types.js";
 
 /** Release channels for bot deployments */
 export const releaseChannelSchema = z.enum(["stable", "canary", "staging"]);
@@ -39,7 +40,7 @@ export const profileTemplateSchema = z.object({
     config: z.record(z.string(), z.string()).default(() => ({})),
   }),
   release: releaseChannelSchema,
-  image: z.string().min(1),
+  image: imageSchema,
   restartPolicy: restartPolicySchema.default("unless-stopped"),
   healthCheck: healthCheckSchema.default(() => ({
     endpoint: "/health",
