@@ -12,7 +12,8 @@ import { ProfileStore } from "../../fleet/profile-store.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
 import { checkInstanceQuota } from "../../monetization/quotas/quota-check.js";
-import { TierStore } from "../../monetization/quotas/tier-definitions.js";
+import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
+import { DEFAULT_TIERS, TierStore } from "../../monetization/quotas/tier-definitions.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { NetworkPolicy } from "../../network/network-policy.js";
 
@@ -163,8 +164,22 @@ fleetRoutes.post("/bots", writeAuth, async (c) => {
     logger.warn("Quota check skipped: billing DB unavailable", { err: quotaErr });
   }
 
+  // Build resource limits from tenant's tier (skip if billing DB unavailable)
+  let resourceLimits: ReturnType<typeof buildResourceLimits> | undefined;
   try {
-    const profile = await fleet.create(parsed.data);
+    const tenantId = parsed.data.tenantId;
+    const tenantMapping = getTenantStore().getByTenant(tenantId);
+    const tierId = tenantMapping?.tier ?? "free";
+    const tier = getTierStore().get(tierId);
+    const effectiveTier = tier ?? DEFAULT_TIERS.find((t) => t.id === "free")!;
+    resourceLimits = buildResourceLimits(effectiveTier);
+  } catch (limitsErr) {
+    // Billing DB not available (e.g., in tests) — create without resource limits
+    logger.warn("Resource limits skipped: billing DB unavailable", { err: limitsErr });
+  }
+
+  try {
+    const profile = await fleet.create(parsed.data, resourceLimits);
     return c.json(profile, 201);
   } catch (err) {
     logger.error("Failed to create bot", { err });
