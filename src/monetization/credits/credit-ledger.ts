@@ -96,8 +96,9 @@ export class CreditLedger {
       }
 
       // Insert transaction record
+      const id = crypto.randomUUID();
       const txn: typeof creditTransactions.$inferInsert = {
-        id: crypto.randomUUID(),
+        id,
         tenantId,
         amountCents,
         balanceAfterCents: newBalance,
@@ -109,7 +110,7 @@ export class CreditLedger {
       tx.insert(creditTransactions).values(txn).run();
 
       return {
-        id: txn.id!,
+        id,
         tenantId: txn.tenantId,
         amountCents: txn.amountCents,
         balanceAfterCents: txn.balanceAfterCents,
@@ -162,8 +163,9 @@ export class CreditLedger {
         .where(eq(creditBalances.tenantId, tenantId))
         .run();
 
+      const id = crypto.randomUUID();
       const txn: typeof creditTransactions.$inferInsert = {
-        id: crypto.randomUUID(),
+        id,
         tenantId,
         amountCents: -amountCents, // negative for debits
         balanceAfterCents: newBalance,
@@ -175,7 +177,7 @@ export class CreditLedger {
       tx.insert(creditTransactions).values(txn).run();
 
       return {
-        id: txn.id!,
+        id,
         tenantId: txn.tenantId,
         amountCents: txn.amountCents,
         balanceAfterCents: txn.balanceAfterCents,

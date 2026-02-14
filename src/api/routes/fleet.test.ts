@@ -335,9 +335,34 @@ describe("fleet routes", () => {
 
       expect(res.status).toBe(402);
       const body = await res.json();
-      expect(body.error).toContain("Insufficient credit balance");
+      expect(body.error).toBe("insufficient_credits");
+      expect(body.balance).toBe(0);
+      expect(body.required).toBe(17);
+      expect(body.buyUrl).toBe("/dashboard/credits");
 
       // Verify create was NOT called
+      expect(fleetMock.create).not.toHaveBeenCalled();
+    });
+
+    it("returns 402 when tenant balance is below minimum (17 cents)", async () => {
+      creditLedgerMock.balance.mockReturnValue(10);
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "user-123",
+          name: "second-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(402);
+      const body = await res.json();
+      expect(body.error).toBe("insufficient_credits");
+      expect(body.balance).toBe(10);
+      expect(body.required).toBe(17);
+
       expect(fleetMock.create).not.toHaveBeenCalled();
     });
 
@@ -478,6 +503,43 @@ describe("fleet routes", () => {
 
       const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(404);
+    });
+
+    it("returns 402 when tenant has zero credit balance", async () => {
+      creditLedgerMock.balance.mockReturnValue(0);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
+      expect(res.status).toBe(402);
+      const body = await res.json();
+      expect(body.error).toBe("insufficient_credits");
+      expect(body.balance).toBe(0);
+      expect(body.required).toBe(17);
+      expect(body.buyUrl).toBe("/dashboard/credits");
+
+      expect(fleetMock.start).not.toHaveBeenCalled();
+    });
+
+    it("returns 402 when tenant balance is below minimum (17 cents)", async () => {
+      creditLedgerMock.balance.mockReturnValue(16);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
+      expect(res.status).toBe(402);
+      const body = await res.json();
+      expect(body.error).toBe("insufficient_credits");
+      expect(body.balance).toBe(16);
+
+      expect(fleetMock.start).not.toHaveBeenCalled();
+    });
+
+    it("allows start when tenant has sufficient credit balance", async () => {
+      creditLedgerMock.balance.mockReturnValue(17);
+      fleetMock.start.mockResolvedValue(undefined);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(fleetMock.start).toHaveBeenCalledWith(TEST_BOT_ID);
     });
   });
 
