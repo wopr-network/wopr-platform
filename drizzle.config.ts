@@ -9,6 +9,7 @@ export default defineConfig({
     "./src/db/schema/stripe.ts",
     "./src/db/schema/audit.ts",
     "./src/db/schema/admin-audit.ts",
+    "./src/db/schema/provider-credentials.ts",
     "./src/db/schema/snapshots.ts",
   ],
   out: "./drizzle/migrations",
