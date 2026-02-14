@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { resolveSessionUser } from "../auth/index.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { fleetRoutes } from "./routes/fleet.js";
@@ -23,6 +24,19 @@ app.use(
 );
 app.use("/*", secureHeaders());
 app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
+
+// better-auth handler — serves /api/auth/* (signup, login, session, etc.)
+// Lazily initialized to avoid opening DB at import time.
+app.on(["POST", "GET"], "/api/auth/*", async (c) => {
+  const { getAuth } = await import("../auth/better-auth.js");
+  return getAuth().handler(c.req.raw);
+});
+
+// Resolve session user from better-auth cookie on all API and fleet routes.
+// This sets c.set("user") if a valid session cookie is present.
+// Routes that also accept API tokens (scopedBearerAuth) will override if needed.
+app.use("/api/*", resolveSessionUser());
+app.use("/fleet/*", resolveSessionUser());
 
 app.route("/health", healthRoutes);
 app.route("/fleet", fleetRoutes);
