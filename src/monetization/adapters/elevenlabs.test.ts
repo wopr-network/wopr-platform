@@ -103,14 +103,10 @@ describe("createElevenLabsAdapter", () => {
     });
 
     it("throws on 500 server error", async () => {
-      const fetchFn = vi
-        .fn<FetchFn>()
-        .mockResolvedValueOnce(mockErrorResponse(500, "Internal server error"));
+      const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockErrorResponse(500, "Internal server error"));
 
       const adapter = createElevenLabsAdapter(makeConfig(), fetchFn);
-      await expect(adapter.synthesizeSpeech({ text: "test" })).rejects.toThrow(
-        "ElevenLabs API error (500)",
-      );
+      await expect(adapter.synthesizeSpeech({ text: "test" })).rejects.toThrow("ElevenLabs API error (500)");
     });
 
     it("sends correct request format", async () => {

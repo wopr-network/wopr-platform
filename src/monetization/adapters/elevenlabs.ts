@@ -88,9 +88,12 @@ export function createElevenLabsAdapter(
         throw new Error(`ElevenLabs API error (${res.status}): ${text}`);
       }
 
-      // ElevenLabs returns raw audio bytes. The content-type header tells us the format.
-      const audioBlob = await res.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
+      // ElevenLabs returns raw audio bytes. Convert to base64 data URL
+      // (URL.createObjectURL is browser-only and unavailable in Node.js).
+      const audioBuffer = await res.arrayBuffer();
+      const base64 = Buffer.from(audioBuffer).toString("base64");
+      const mimeType = res.headers.get("content-type") ?? "audio/mpeg";
+      const audioUrl = `data:${mimeType};base64,${base64}`;
 
       // Estimate duration from character count (rough: ~15 chars/sec for speech)
       const characterCount = input.text.length;
