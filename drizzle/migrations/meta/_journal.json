@@ -15,6 +15,13 @@
       "when": 1771064495297,
       "tag": "0001_easy_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771088048273,
+      "tag": "0002_noisy_nekra",
+      "breakpoints": true
     }
   ]
 }

@@ -67,6 +67,31 @@ function footer(text: string): string {
 </tr>`;
 }
 
+function unsubscribeFooter(unsubscribeUrl?: string): string {
+  if (!unsubscribeUrl) return "";
+  return `<tr>
+  <td style="padding: 0 40px 20px 40px; text-align: center; color: #a0aec0; font-size: 12px;">
+    <a href="${escapeHtml(unsubscribeUrl)}" style="color: #a0aec0; text-decoration: underline;">Unsubscribe from billing notifications</a>
+  </td>
+</tr>`;
+}
+
+function unsubscribeText(unsubscribeUrl?: string): string {
+  if (!unsubscribeUrl) return "";
+  return `\n\nTo unsubscribe from billing notifications: ${unsubscribeUrl}`;
+}
+
+/** Build the unsubscribe URL from a creditsUrl by deriving the origin. */
+function buildUnsubscribeUrl(creditsUrl: string): string {
+  try {
+    const base = new URL(creditsUrl);
+    return `${base.origin}/settings/notifications`;
+  } catch {
+    // If creditsUrl is not a valid absolute URL, fall back to simple concatenation.
+    return `${creditsUrl.replace(/\/+$/, "").split("/").slice(0, 3).join("/")}/settings/notifications`;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Template types
 // ---------------------------------------------------------------------------
@@ -78,7 +103,8 @@ export type TemplateName =
   | "credit-purchase"
   | "low-balance"
   | "bot-suspended"
-  | "bot-destruction";
+  | "bot-destruction"
+  | "data-deleted";
 
 export interface TemplateResult {
   subject: string;
@@ -198,27 +224,41 @@ If you didn't request this password reset, you can safely ignore this email.
 // 4. Credit Purchase
 // ---------------------------------------------------------------------------
 
-export function creditPurchaseTemplate(email: string, amountDollars: string): TemplateResult {
+export function creditPurchaseTemplate(
+  email: string,
+  amountDollars: string,
+  newBalanceDollars?: string,
+  creditsUrl?: string,
+): TemplateResult {
   const escapedEmail = escapeHtml(email);
   const escapedAmount = escapeHtml(amountDollars);
+  const balanceLine = newBalanceDollars
+    ? `<p>Your new balance is <strong>${escapeHtml(newBalanceDollars)}</strong>.</p>`
+    : "<p>Your updated balance is now available in your dashboard.</p>";
+  const balanceTextLine = newBalanceDollars
+    ? `Your new balance is ${newBalanceDollars}.`
+    : "Your updated balance is now available in your dashboard.";
 
-  const html = wrapHtml(
-    "Credits Added",
-    [
-      heading("Credits Added to Your Account"),
-      paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
-    <p><strong>${escapedAmount}</strong> in credits has been added to your WOPR account. Your updated balance is now available in your dashboard.</p>`),
-      footer("Thank you for supporting WOPR!"),
-    ].join("\n"),
-  );
+  const parts = [
+    heading("Credits Added to Your Account"),
+    paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
+    <p><strong>${escapedAmount}</strong> in credits has been added to your WOPR account.</p>
+    ${balanceLine}`),
+  ];
+  if (creditsUrl) parts.push(button(creditsUrl, "View Credits"));
+  parts.push(footer("Thank you for supporting WOPR!"));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
+
+  const html = wrapHtml("Credits Added", parts.join("\n"));
 
   const text = `Credits Added to Your Account
 
 Hi ${email},
 
-${amountDollars} in credits has been added to your WOPR account. Your updated balance is now available in your dashboard.
-
-Thank you for supporting WOPR!
+${amountDollars} in credits has been added to your WOPR account.
+${balanceTextLine}
+${creditsUrl ? `\nView your credits: ${creditsUrl}` : ""}
+Thank you for supporting WOPR!${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
@@ -229,28 +269,44 @@ Thank you for supporting WOPR!
 // 5. Low Balance
 // ---------------------------------------------------------------------------
 
-export function lowBalanceTemplate(email: string, balanceDollars: string): TemplateResult {
+export function lowBalanceTemplate(
+  email: string,
+  balanceDollars: string,
+  estimatedDaysRemaining?: number,
+  creditsUrl?: string,
+): TemplateResult {
   const escapedEmail = escapeHtml(email);
   const escapedBalance = escapeHtml(balanceDollars);
+  const daysLine =
+    estimatedDaysRemaining != null
+      ? `<p>At your current usage, your credits will run out in approximately <strong>${estimatedDaysRemaining} day${estimatedDaysRemaining === 1 ? "" : "s"}</strong>.</p>`
+      : "";
+  const daysTextLine =
+    estimatedDaysRemaining != null
+      ? `At your current usage, your credits will run out in approximately ${estimatedDaysRemaining} day${estimatedDaysRemaining === 1 ? "" : "s"}.`
+      : "";
 
-  const html = wrapHtml(
-    "Low Balance",
-    [
-      heading("Your WOPR Credits Are Running Low"),
-      paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
+  const parts = [
+    heading("Your WOPR Credits Are Running Low"),
+    paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
     <p>Your WOPR credit balance is now <strong>${escapedBalance}</strong>. When your balance reaches $0, your bots will be paused.</p>
+    ${daysLine}
     <p>Top up your credits to keep your bots running.</p>`),
-      footer("This is an automated notification based on your account balance."),
-    ].join("\n"),
-  );
+  ];
+  if (creditsUrl) parts.push(button(creditsUrl, "Buy Credits"));
+  parts.push(footer("This is an automated notification based on your account balance."));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
+
+  const html = wrapHtml("Low Balance", parts.join("\n"));
 
   const text = `Your WOPR Credits Are Running Low
 
 Hi ${email},
 
 Your WOPR credit balance is now ${balanceDollars}. When your balance reaches $0, your bots will be paused.
-
+${daysTextLine ? `${daysTextLine}\n` : ""}
 Top up your credits to keep your bots running.
+${creditsUrl ? `\nBuy credits: ${creditsUrl}` : ""}${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
@@ -261,22 +317,28 @@ Top up your credits to keep your bots running.
 // 6. Bot Suspended
 // ---------------------------------------------------------------------------
 
-export function botSuspendedTemplate(email: string, botName: string, reason: string): TemplateResult {
+export function botSuspendedTemplate(
+  email: string,
+  botName: string,
+  reason: string,
+  creditsUrl?: string,
+): TemplateResult {
   const escapedEmail = escapeHtml(email);
   const escapedBotName = escapeHtml(botName);
   const escapedReason = escapeHtml(reason);
 
-  const html = wrapHtml(
-    "Bot Suspended",
-    [
-      heading("Your Bot Has Been Suspended"),
-      paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
+  const parts = [
+    heading("Your Bot Has Been Suspended"),
+    paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
     <p>Your bot <strong>${escapedBotName}</strong> has been suspended.</p>
     <p><strong>Reason:</strong> ${escapedReason}</p>
-    <p>Please review the issue and take corrective action. You can contact support if you believe this was in error.</p>`),
-      footer("If you need help, reply to this email or contact support@wopr.bot."),
-    ].join("\n"),
-  );
+    <p>Buy credits to reactivate instantly. Your data is preserved for 30 days.</p>`),
+  ];
+  if (creditsUrl) parts.push(button(creditsUrl, "Buy Credits to Reactivate"));
+  parts.push(footer("If you need help, reply to this email or contact support@wopr.bot."));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
+
+  const html = wrapHtml("Bot Suspended", parts.join("\n"));
 
   const text = `Your Bot Has Been Suspended
 
@@ -286,7 +348,9 @@ Your bot "${botName}" has been suspended.
 
 Reason: ${reason}
 
-Please review the issue and take corrective action. You can contact support if you believe this was in error.
+Buy credits to reactivate instantly. Your data is preserved for 30 days.
+${creditsUrl ? `\nBuy credits: ${creditsUrl}` : ""}
+If you need help, reply to this email or contact support@wopr.bot.${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
@@ -297,33 +361,80 @@ Please review the issue and take corrective action. You can contact support if y
 // 7. Bot Destruction Warning
 // ---------------------------------------------------------------------------
 
-export function botDestructionTemplate(email: string, botName: string, daysRemaining: number): TemplateResult {
+export function botDestructionTemplate(
+  email: string,
+  botName: string,
+  daysRemaining: number,
+  creditsUrl?: string,
+): TemplateResult {
   const escapedEmail = escapeHtml(email);
   const escapedBotName = escapeHtml(botName);
   const days = String(daysRemaining);
+  const deadline = new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
-  const html = wrapHtml(
-    "Bot Data Deletion",
-    [
-      heading("Bot Data Will Be Deleted"),
-      paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
-    <p>Your bot <strong>${escapedBotName}</strong> has been suspended and its data will be permanently deleted in <strong>${escapeHtml(days)} days</strong>.</p>
-    <p>To prevent data loss, please resolve the suspension before the deadline.</p>`),
-      footer("This action is irreversible. All bot configuration, history, and connected services will be removed."),
-    ].join("\n"),
+  const parts = [
+    heading("URGENT: Bot Data Will Be Deleted"),
+    paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
+    <p>Your bot <strong>${escapedBotName}</strong> has been suspended and its data will be permanently deleted in <strong>${escapeHtml(days)} days</strong> (by ${escapeHtml(deadline)}).</p>
+    <p>Buy credits before the deadline to save your data.</p>`),
+  ];
+  if (creditsUrl) parts.push(button(creditsUrl, "Buy Credits Now", "#dc2626"));
+  parts.push(
+    footer("This action is irreversible. All bot configuration, history, and connected services will be removed."),
   );
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
 
-  const text = `Bot Data Will Be Deleted
+  const html = wrapHtml("Bot Data Deletion", parts.join("\n"));
+
+  const text = `URGENT: Bot Data Will Be Deleted
 
 Hi ${email},
 
-Your bot "${botName}" has been suspended and its data will be permanently deleted in ${daysRemaining} days.
+Your bot "${botName}" has been suspended and its data will be permanently deleted in ${daysRemaining} days (by ${deadline}).
 
-To prevent data loss, please resolve the suspension before the deadline.
-
-This action is irreversible. All bot configuration, history, and connected services will be removed.
+Buy credits before the deadline to save your data.
+${creditsUrl ? `\nBuy credits now: ${creditsUrl}` : ""}
+This action is irreversible. All bot configuration, history, and connected services will be removed.${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
-  return { subject: `Your bot data will be deleted in ${daysRemaining} days`, html, text };
+  return { subject: `URGENT: Your bot data will be deleted in ${daysRemaining} days`, html, text };
+}
+
+// ---------------------------------------------------------------------------
+// 8. Data Deleted Confirmation
+// ---------------------------------------------------------------------------
+
+export function dataDeletedTemplate(email: string, creditsUrl?: string): TemplateResult {
+  const escapedEmail = escapeHtml(email);
+
+  const parts = [
+    heading("Your Bot Data Has Been Deleted"),
+    paragraph(`<p>Hi <strong>${escapedEmail}</strong>,</p>
+    <p>Your suspended bot data has been permanently deleted after 30 days of inactivity.</p>
+    <p>You can create a new bot anytime by adding credits to your account.</p>`),
+  ];
+  if (creditsUrl) parts.push(button(creditsUrl, "Add Credits"));
+  parts.push(footer("If you have questions, contact support@wopr.bot."));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
+
+  const html = wrapHtml("Data Deleted", parts.join("\n"));
+
+  const text = `Your Bot Data Has Been Deleted
+
+Hi ${email},
+
+Your suspended bot data has been permanently deleted after 30 days of inactivity.
+
+You can create a new bot anytime by adding credits to your account.
+${creditsUrl ? `\nAdd credits: ${creditsUrl}` : ""}
+If you have questions, contact support@wopr.bot.${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
+
+(c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
+
+  return { subject: "Your bot data has been deleted", html, text };
 }
