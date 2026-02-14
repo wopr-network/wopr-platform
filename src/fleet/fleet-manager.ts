@@ -235,6 +235,14 @@ export class FleetManager {
         Name: restartPolicyMap[profile.restartPolicy] || "",
       },
       Binds: binds.length > 0 ? binds : undefined,
+      SecurityOpt: ["no-new-privileges"],
+      CapDrop: ["ALL"],
+      CapAdd: ["NET_BIND_SERVICE"],
+      ReadonlyRootfs: true,
+      Tmpfs: {
+        "/tmp": "rw,noexec,nosuid,size=64m",
+        "/var/tmp": "rw,noexec,nosuid,size=64m",
+      },
     };
 
     // Apply resource limits from tier if provided
