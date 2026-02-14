@@ -1,4 +1,8 @@
 import type Database from "better-sqlite3";
+import { desc, eq } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { createDb } from "../../db/index.js";
+import { tenantCustomers } from "../../db/schema/stripe.js";
 import type { TenantCustomerRow } from "./types.js";
 
 /**
@@ -11,87 +15,111 @@ import type { TenantCustomerRow } from "./types.js";
  * Credit balances are managed by CreditAdjustmentStore.
  */
 export class TenantCustomerStore {
-  constructor(private readonly db: Database.Database) {}
+  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
+
+  constructor(sqlite: Database.Database) {
+    this.db = createDb(sqlite) as BetterSQLite3Database<Record<string, unknown>>;
+  }
 
   /** Get a tenant's Stripe mapping. */
   getByTenant(tenant: string): TenantCustomerRow | null {
-    return (
-      (this.db
-        .prepare(
-          "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers WHERE tenant = ?",
-        )
-        .get(tenant) as TenantCustomerRow | undefined) ?? null
-    );
+    const row = this.db.select().from(tenantCustomers).where(eq(tenantCustomers.tenant, tenant)).get();
+    return row ? mapRow(row) : null;
   }
 
   /** Get a tenant mapping by Stripe customer ID. */
   getByStripeCustomerId(stripeCustomerId: string): TenantCustomerRow | null {
-    return (
-      (this.db
-        .prepare(
-          "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers WHERE stripe_customer_id = ?",
-        )
-        .get(stripeCustomerId) as TenantCustomerRow | undefined) ?? null
-    );
+    const row = this.db
+      .select()
+      .from(tenantCustomers)
+      .where(eq(tenantCustomers.stripeCustomerId, stripeCustomerId))
+      .get();
+    return row ? mapRow(row) : null;
   }
 
   /** Upsert a tenant-to-customer mapping. */
   upsert(row: { tenant: string; stripeCustomerId: string; tier?: string }): void {
     const now = Date.now();
     this.db
-      .prepare(
-        `INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(tenant) DO UPDATE SET
-           stripe_customer_id = excluded.stripe_customer_id,
-           tier = COALESCE(excluded.tier, tenant_customers.tier),
-           updated_at = excluded.updated_at`,
-      )
-      .run(row.tenant, row.stripeCustomerId, row.tier ?? "free", now, now);
+      .insert(tenantCustomers)
+      .values({
+        tenant: row.tenant,
+        stripeCustomerId: row.stripeCustomerId,
+        tier: row.tier ?? "free",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: tenantCustomers.tenant,
+        set: {
+          stripeCustomerId: row.stripeCustomerId,
+          tier: row.tier !== undefined ? row.tier : undefined,
+          updatedAt: now,
+        },
+      })
+      .run();
   }
 
   /** Update the tier for a tenant. */
   setTier(tenant: string, tier: string): void {
     this.db
-      .prepare("UPDATE tenant_customers SET tier = ?, updated_at = ? WHERE tenant = ?")
-      .run(tier, Date.now(), tenant);
+      .update(tenantCustomers)
+      .set({ tier, updatedAt: Date.now() })
+      .where(eq(tenantCustomers.tenant, tenant))
+      .run();
   }
 
   /** Set or clear the billing hold flag for a tenant. */
   setBillingHold(tenant: string, hold: boolean): void {
     this.db
-      .prepare("UPDATE tenant_customers SET billing_hold = ?, updated_at = ? WHERE tenant = ?")
-      .run(hold ? 1 : 0, Date.now(), tenant);
+      .update(tenantCustomers)
+      .set({ billingHold: hold ? 1 : 0, updatedAt: Date.now() })
+      .where(eq(tenantCustomers.tenant, tenant))
+      .run();
   }
 
   /** Check whether a tenant has an active billing hold. */
   hasBillingHold(tenant: string): boolean {
-    const row = this.db.prepare("SELECT billing_hold FROM tenant_customers WHERE tenant = ?").get(tenant) as
-      | { billing_hold: number }
-      | undefined;
-    return row?.billing_hold === 1;
+    const row = this.db
+      .select({ billingHold: tenantCustomers.billingHold })
+      .from(tenantCustomers)
+      .where(eq(tenantCustomers.tenant, tenant))
+      .get();
+    return row?.billingHold === 1;
   }
 
   /** List all tenants with Stripe mappings. */
   list(): TenantCustomerRow[] {
-    return this.db
-      .prepare(
-        "SELECT tenant, stripe_customer_id, tier, billing_hold, created_at, updated_at FROM tenant_customers ORDER BY created_at DESC",
-      )
-      .all() as TenantCustomerRow[];
+    const rows = this.db.select().from(tenantCustomers).orderBy(desc(tenantCustomers.createdAt)).all();
+    return rows.map(mapRow);
   }
 
   /** Build a tenant -> stripe_customer_id map for use with UsageAggregationWorker. */
   buildCustomerIdMap(): Record<string, string> {
-    const rows = this.db.prepare("SELECT tenant, stripe_customer_id FROM tenant_customers").all() as Array<{
-      tenant: string;
-      stripe_customer_id: string;
-    }>;
+    const rows = this.db
+      .select({
+        tenant: tenantCustomers.tenant,
+        stripeCustomerId: tenantCustomers.stripeCustomerId,
+      })
+      .from(tenantCustomers)
+      .all();
 
     const map: Record<string, string> = {};
     for (const row of rows) {
-      map[row.tenant] = row.stripe_customer_id;
+      map[row.tenant] = row.stripeCustomerId;
     }
     return map;
   }
+}
+
+/** Map a Drizzle row to the TenantCustomerRow interface (snake_case field names). */
+function mapRow(row: typeof tenantCustomers.$inferSelect): TenantCustomerRow {
+  return {
+    tenant: row.tenant,
+    stripe_customer_id: row.stripeCustomerId,
+    tier: row.tier,
+    billing_hold: row.billingHold,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
 }

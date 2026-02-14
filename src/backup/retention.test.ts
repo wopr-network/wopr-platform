@@ -1,7 +1,9 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as schema from "../db/schema/index.js";
 import { enforceRetention } from "./retention.js";
 import { SnapshotManager } from "./snapshot-manager.js";
 
@@ -10,8 +12,30 @@ const SNAPSHOT_DIR = join(TEST_DIR, "snapshots");
 const INSTANCES_DIR = join(TEST_DIR, "instances");
 const DB_PATH = join(TEST_DIR, "test.db");
 
+/** Create a file-based Drizzle DB with the snapshots table. */
+function createFileDb(path: string) {
+  const sqlite = new Database(path);
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id TEXT PRIMARY KEY,
+      instance_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      size_mb REAL NOT NULL DEFAULT 0,
+      trigger TEXT NOT NULL CHECK (trigger IN ('manual', 'scheduled', 'pre_update')),
+      plugins TEXT NOT NULL DEFAULT '[]',
+      config_hash TEXT NOT NULL DEFAULT '',
+      storage_path TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapshots_instance ON snapshots (instance_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_user ON snapshots (user_id);
+  `);
+  const db = drizzle(sqlite, { schema });
+  return { db, sqlite };
+}
+
 describe("enforceRetention", () => {
-  let db: Database.Database;
+  let sqlite: Database.Database;
   let manager: SnapshotManager;
   let woprHomePath: string;
 
@@ -19,8 +43,9 @@ describe("enforceRetention", () => {
     await rm(TEST_DIR, { recursive: true, force: true });
     await mkdir(TEST_DIR, { recursive: true });
 
-    db = new Database(DB_PATH);
-    manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db });
+    const testDb = createFileDb(DB_PATH);
+    sqlite = testDb.sqlite;
+    manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db: testDb.db });
 
     woprHomePath = join(INSTANCES_DIR, "inst-1");
     await mkdir(woprHomePath, { recursive: true });
@@ -28,7 +53,7 @@ describe("enforceRetention", () => {
   });
 
   afterEach(async () => {
-    db.close();
+    sqlite.close();
     await rm(TEST_DIR, { recursive: true, force: true });
   });
 

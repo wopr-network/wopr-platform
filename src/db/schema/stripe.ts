@@ -5,7 +5,6 @@ export const tenantCustomers = sqliteTable(
   {
     tenant: text("tenant").primaryKey(),
     stripeCustomerId: text("stripe_customer_id").notNull().unique(),
-    stripeSubscriptionId: text("stripe_subscription_id"),
     tier: text("tier").notNull().default("free"),
     billingHold: integer("billing_hold").notNull().default(0),
     createdAt: integer("created_at").notNull(),

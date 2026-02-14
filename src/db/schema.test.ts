@@ -1,9 +1,9 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initSnapshotSchema } from "../backup/schema.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
 import { TierStore } from "../monetization/quotas/tier-definitions.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
+import { createTestDb } from "../test/db.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,12 +53,12 @@ function indexNames(db: BetterSqlite3.Database, prefix: string): string[] {
 // initSnapshotSchema
 // ---------------------------------------------------------------------------
 
-describe("initSnapshotSchema", () => {
+describe("snapshots schema (via Drizzle migration)", () => {
   let db: BetterSqlite3.Database;
 
   beforeEach(() => {
-    db = freshDb();
-    initSnapshotSchema(db);
+    const testDb = createTestDb();
+    db = testDb.sqlite;
   });
 
   afterEach(() => {
@@ -75,9 +75,8 @@ describe("initSnapshotSchema", () => {
     expect(idxs).toContain("idx_snapshots_user");
   });
 
-  it("is idempotent", () => {
-    initSnapshotSchema(db);
-    initSnapshotSchema(db);
+  it("is idempotent (migration can run on same db)", () => {
+    // Drizzle migrations are inherently idempotent (tracked in __drizzle_migrations)
     expect(tableNames(db).filter((t) => t === "snapshots")).toHaveLength(1);
   });
 
@@ -743,13 +742,13 @@ describe("TierStore — schema integrity", () => {
 // ---------------------------------------------------------------------------
 
 describe("cross-schema composition", () => {
-  it("all four schema inits can run on the same database", () => {
+  it("all schema inits can run on the same database", () => {
     const db = freshDb();
 
     initAuditSchema(db);
     initMeterSchema(db);
     initStripeSchema(db);
-    initSnapshotSchema(db);
+    // Snapshots are created via Drizzle migration (no raw init function)
     new TierStore(db);
 
     const tables = tableNames(db);
@@ -759,7 +758,6 @@ describe("cross-schema composition", () => {
     expect(tables).toContain("billing_period_summaries");
     expect(tables).toContain("tenant_customers");
     expect(tables).toContain("stripe_usage_reports");
-    expect(tables).toContain("snapshots");
     expect(tables).toContain("plan_tiers");
 
     db.close();
@@ -772,16 +770,25 @@ describe("cross-schema composition", () => {
     initAuditSchema(db);
     initMeterSchema(db);
     initStripeSchema(db);
-    initSnapshotSchema(db);
     new TierStore(db);
 
     // Second pass — should not error
     initAuditSchema(db);
     initMeterSchema(db);
     initStripeSchema(db);
-    initSnapshotSchema(db);
     new TierStore(db);
 
     db.close();
+  });
+
+  it("migration-created db has all tables including snapshots", () => {
+    const { sqlite } = createTestDb();
+    const tables = tableNames(sqlite);
+    expect(tables).toContain("audit_log");
+    expect(tables).toContain("meter_events");
+    expect(tables).toContain("snapshots");
+    expect(tables).toContain("tenant_customers");
+    expect(tables).toContain("stripe_usage_reports");
+    sqlite.close();
   });
 });
