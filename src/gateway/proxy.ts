@@ -638,15 +638,15 @@ export function smsOutbound(deps: ProxyDeps) {
       const body = await c.req.json<{
         to: string;
         body: string;
-        from?: string;
+        from: string;
         media_url?: string[];
       }>();
 
-      if (!body.to || !body.body) {
+      if (!body.to || !body.body || !body.from) {
         return c.json(
           {
             error: {
-              message: "Missing required fields: to, body",
+              message: "Missing required fields: to, body, from",
               type: "invalid_request_error",
               code: "missing_field",
             },
@@ -665,7 +665,7 @@ export function smsOutbound(deps: ProxyDeps) {
       const params = new URLSearchParams();
       params.set("To", body.to);
       params.set("Body", body.body);
-      if (body.from) params.set("From", body.from);
+      params.set("From", body.from);
 
       // Attach media URLs for MMS
       if (body.media_url) {
@@ -821,6 +821,9 @@ export function smsDeliveryStatus(_deps: ProxyDeps) {
 const PHONE_NUMBER_MONTHLY_COST = 1.15;
 const PHONE_NUMBER_MARGIN = 2.6;
 
+/** Prefix used in Twilio FriendlyName to track tenant ownership. */
+const TENANT_NUMBER_PREFIX = "wopr:tenant:";
+
 export function phoneNumberProvision(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
@@ -892,9 +895,10 @@ export function phoneNumberProvision(deps: ProxyDeps) {
 
       const selectedNumber = searchBody.available_phone_numbers[0];
 
-      // Step 2: Purchase the number
+      // Step 2: Purchase the number (tag with tenant ownership via FriendlyName)
       const purchaseParams = new URLSearchParams();
       purchaseParams.set("PhoneNumber", selectedNumber.phone_number);
+      purchaseParams.set("FriendlyName", `${TENANT_NUMBER_PREFIX}${tenant.id}`);
 
       const purchaseRes = await deps.fetchFn(
         `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers.json`,
@@ -922,8 +926,11 @@ export function phoneNumberProvision(deps: ProxyDeps) {
         capabilities: { sms: boolean; voice: boolean; mms: boolean };
       };
 
-      // Meter the monthly phone number cost
-      emitMeterEvent(deps, tenant.id, "phone-number", "twilio", PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN);
+      // Meter the initial phone number cost.
+      // TODO(WOP-444): Phone numbers are a recurring monthly cost ($1.15/mo).
+      // This only bills the first month. A recurring billing scheduler should
+      // enumerate active numbers per tenant and emit monthly meter events.
+      emitMeterEvent(deps, tenant.id, "phone-number-provision", "twilio", PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN);
 
       logger.info("Gateway proxy: phone/numbers provisioned", {
         tenant: tenant.id,
@@ -965,8 +972,13 @@ export function phoneNumberList(deps: ProxyDeps) {
       const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
       const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
 
+      // Filter by tenant ownership using FriendlyName prefix
+      const friendlyNameFilter = `${TENANT_NUMBER_PREFIX}${tenant.id}`;
+      const listParams = new URLSearchParams();
+      listParams.set("FriendlyName", friendlyNameFilter);
+
       const res = await deps.fetchFn(
-        `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers.json`,
+        `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers.json?${listParams.toString()}`,
         {
           method: "GET",
           headers: { Authorization: authHeader },
@@ -1032,6 +1044,38 @@ export function phoneNumberRelease(deps: ProxyDeps) {
 
       const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
       const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
+
+      // Verify tenant ownership before deleting
+      const verifyRes = await deps.fetchFn(
+        `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers/${numberId}.json`,
+        {
+          method: "GET",
+          headers: { Authorization: authHeader },
+        },
+      );
+
+      if (!verifyRes.ok) {
+        const errText = await verifyRes.text();
+        throw Object.assign(new Error(`Twilio API error (${verifyRes.status}): ${errText}`), {
+          httpStatus: verifyRes.status,
+        });
+      }
+
+      const numberInfo = (await verifyRes.json()) as { friendly_name?: string };
+      const expectedName = `${TENANT_NUMBER_PREFIX}${tenant.id}`;
+
+      if (numberInfo.friendly_name !== expectedName) {
+        return c.json(
+          {
+            error: {
+              message: "Phone number not found",
+              type: "not_found_error",
+              code: "number_not_found",
+            },
+          },
+          404,
+        );
+      }
 
       const res = await deps.fetchFn(
         `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/IncomingPhoneNumbers/${numberId}.json`,

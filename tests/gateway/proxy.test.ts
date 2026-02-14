@@ -429,7 +429,7 @@ describe("Gateway proxy endpoints", () => {
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ to: "+15551234567", body: "Hello!" }),
+        body: JSON.stringify({ to: "+15551234567", body: "Hello!", from: "+15559999999" }),
       });
 
       expect(res.status).toBe(200);
@@ -458,6 +458,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({
           to: "+15551234567",
           body: "Check this out",
+          from: "+15559999999",
           media_url: ["https://example.com/image.jpg"],
         }),
       });
@@ -496,7 +497,7 @@ describe("Gateway proxy endpoints", () => {
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ to: "invalid", body: "test" }),
+        body: JSON.stringify({ to: "invalid", body: "test", from: "+15559999999" }),
       });
 
       expect(res.status).toBe(400);
@@ -508,7 +509,7 @@ describe("Gateway proxy endpoints", () => {
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ to: "+15551234567", body: "test" }),
+        body: JSON.stringify({ to: "+15551234567", body: "test", from: "+15559999999" }),
       });
 
       expect(res.status).toBe(429);
@@ -648,7 +649,7 @@ describe("Gateway proxy endpoints", () => {
 
       // Should meter the phone number cost
       expect(meterEvents.length).toBe(1);
-      expect(meterEvents[0].capability).toBe("phone-number");
+      expect(meterEvents[0].capability).toBe("phone-number-provision");
     });
 
     it("returns 404 when no numbers are available", async () => {
@@ -696,7 +697,16 @@ describe("Gateway proxy endpoints", () => {
 
   describe("DELETE /v1/phone/numbers/:id (release)", () => {
     it("releases a phone number", async () => {
+      let callCount = 0;
       const stubFetch: FetchFn = async () => {
+        callCount++;
+        // First call: GET to verify ownership (returns number info with tenant FriendlyName)
+        if (callCount === 1) {
+          return new Response(JSON.stringify({
+            friendly_name: "wopr:tenant:tenant-1",
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+        // Second call: DELETE
         return new Response(null, { status: 204 });
       };
 
