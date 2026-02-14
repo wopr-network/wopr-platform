@@ -1,22 +1,20 @@
-import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import { AdminAuditLog } from "../../admin/audit-log.js";
-import { initAdminAuditSchema } from "../../admin/audit-schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 
 export interface AdminAuditRouteDeps {
-  db: Database.Database;
+  db: DrizzleDb;
 }
 
 let _auditLog: AdminAuditLog | null = null;
 
 /** Set dependencies for admin audit routes. */
 export function setAdminAuditDeps(deps: AdminAuditRouteDeps): void {
-  initAdminAuditSchema(deps.db);
   _auditLog = new AdminAuditLog(deps.db);
 }
 
@@ -37,7 +35,7 @@ function parseIntParam(value: string | undefined): number | undefined {
  * Create admin audit API routes with an explicit database.
  * Used in tests to inject an in-memory database.
  */
-export function createAdminAuditApiRoutes(db: Database.Database): Hono<AuthEnv> {
+export function createAdminAuditApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const auditLog = new AdminAuditLog(db);
   const routes = new Hono<AuthEnv>();
 

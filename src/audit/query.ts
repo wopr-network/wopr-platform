@@ -1,4 +1,7 @@
-import type Database from "better-sqlite3";
+import type { SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, like, lte } from "drizzle-orm";
+import type { DrizzleDb } from "../db/index.js";
+import { auditLog } from "../db/schema/index.js";
 import type { AuditEntry } from "./schema.js";
 
 /** Filters for querying audit log entries. */
@@ -16,102 +19,77 @@ export interface AuditQueryFilters {
 const MAX_LIMIT = 250;
 const DEFAULT_LIMIT = 50;
 
-/** Query audit log entries with optional filters. */
-export function queryAuditLog(db: Database.Database, filters: AuditQueryFilters): AuditEntry[] {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+/** Build Drizzle WHERE conditions from filters. */
+function buildConditions(filters: Omit<AuditQueryFilters, "limit" | "offset">): SQL | undefined {
+  const conditions: SQL[] = [];
 
   if (filters.userId) {
-    conditions.push("user_id = ?");
-    params.push(filters.userId);
+    conditions.push(eq(auditLog.userId, filters.userId));
   }
 
   if (filters.action) {
     if (filters.action.endsWith(".*")) {
-      // Wildcard match: "instance.*" matches "instance.create", "instance.destroy", etc.
       const prefix = filters.action.slice(0, -1); // "instance."
-      conditions.push("action LIKE ?");
-      params.push(`${prefix}%`);
+      conditions.push(like(auditLog.action, `${prefix}%`));
     } else {
-      conditions.push("action = ?");
-      params.push(filters.action);
+      conditions.push(eq(auditLog.action, filters.action));
     }
   }
 
   if (filters.resourceType) {
-    conditions.push("resource_type = ?");
-    params.push(filters.resourceType);
+    conditions.push(eq(auditLog.resourceType, filters.resourceType));
   }
 
   if (filters.resourceId) {
-    conditions.push("resource_id = ?");
-    params.push(filters.resourceId);
+    conditions.push(eq(auditLog.resourceId, filters.resourceId));
   }
 
   if (filters.since != null) {
-    conditions.push("timestamp >= ?");
-    params.push(filters.since);
+    conditions.push(gte(auditLog.timestamp, filters.since));
   }
 
   if (filters.until != null) {
-    conditions.push("timestamp <= ?");
-    params.push(filters.until);
+    conditions.push(lte(auditLog.timestamp, filters.until));
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+/** Query audit log entries with optional filters. */
+export function queryAuditLog(db: DrizzleDb, filters: AuditQueryFilters): AuditEntry[] {
   const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
   const offset = Math.max(0, filters.offset ?? 0);
+  const where = buildConditions(filters);
 
-  const sql = `SELECT * FROM audit_log ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
+  const rows = db
+    .select()
+    .from(auditLog)
+    .where(where)
+    .orderBy(desc(auditLog.timestamp))
+    .limit(limit)
+    .offset(offset)
+    .all();
 
-  return db.prepare(sql).all(...params) as AuditEntry[];
+  // Drizzle returns camelCase; map back to snake_case for AuditEntry compatibility
+  return rows.map((r) => ({
+    id: r.id,
+    timestamp: r.timestamp,
+    user_id: r.userId,
+    auth_method: r.authMethod,
+    action: r.action,
+    resource_type: r.resourceType,
+    resource_id: r.resourceId,
+    details: r.details,
+    ip_address: r.ipAddress,
+    user_agent: r.userAgent,
+  })) as AuditEntry[];
 }
 
 /** Count audit log entries matching optional filters. */
-export function countAuditLog(db: Database.Database, filters: Omit<AuditQueryFilters, "limit" | "offset">): number {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+export function countAuditLog(db: DrizzleDb, filters: Omit<AuditQueryFilters, "limit" | "offset">): number {
+  const where = buildConditions(filters);
 
-  if (filters.userId) {
-    conditions.push("user_id = ?");
-    params.push(filters.userId);
-  }
+  const result = db.select({ count: count() }).from(auditLog).where(where).get();
 
-  if (filters.action) {
-    if (filters.action.endsWith(".*")) {
-      const prefix = filters.action.slice(0, -1);
-      conditions.push("action LIKE ?");
-      params.push(`${prefix}%`);
-    } else {
-      conditions.push("action = ?");
-      params.push(filters.action);
-    }
-  }
-
-  if (filters.resourceType) {
-    conditions.push("resource_type = ?");
-    params.push(filters.resourceType);
-  }
-
-  if (filters.resourceId) {
-    conditions.push("resource_id = ?");
-    params.push(filters.resourceId);
-  }
-
-  if (filters.since != null) {
-    conditions.push("timestamp >= ?");
-    params.push(filters.since);
-  }
-
-  if (filters.until != null) {
-    conditions.push("timestamp <= ?");
-    params.push(filters.until);
-  }
-
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const sql = `SELECT COUNT(*) as count FROM audit_log ${where}`;
-
-  const row = db.prepare(sql).get(...params) as { count: number };
-  return row.count;
+  return result?.count ?? 0;
 }

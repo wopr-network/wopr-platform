@@ -1,6 +1,5 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initAuditSchema } from "../audit/schema.js";
 import { initSnapshotSchema } from "../backup/schema.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
 import { TierStore } from "../monetization/quotas/tier-definitions.js";
@@ -12,6 +11,28 @@ import { initStripeSchema } from "../monetization/stripe/schema.js";
 
 function freshDb(): BetterSqlite3.Database {
   return new BetterSqlite3(":memory:");
+}
+
+/** Recreate audit_log table with raw SQL for schema constraint testing. */
+function initAuditSchema(db: BetterSqlite3.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      timestamp INTEGER NOT NULL,
+      user_id TEXT NOT NULL,
+      auth_method TEXT NOT NULL,
+      action TEXT NOT NULL,
+      resource_type TEXT NOT NULL,
+      resource_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      user_agent TEXT
+    )
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log (timestamp)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_log (user_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log (action)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log (resource_type, resource_id)");
 }
 
 function tableNames(db: BetterSqlite3.Database): string[] {

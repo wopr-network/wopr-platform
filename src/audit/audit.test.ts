@@ -2,19 +2,15 @@ import BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminAuditRoutes, createAuditRoutes } from "../api/routes/audit.js";
+import type { DrizzleDb } from "../db/index.js";
+import { auditLog } from "../db/schema/index.js";
+import { createTestDb } from "../test/db.js";
 import { AuditLogger } from "./logger.js";
-import { auditLog, extractResourceType } from "./middleware.js";
+import { auditLog as auditLogMiddleware, extractResourceType } from "./middleware.js";
 import { countAuditLog, queryAuditLog } from "./query.js";
 import { getRetentionDays, purgeExpiredEntries, purgeExpiredEntriesForUser } from "./retention.js";
 import type { AuditEntryInput } from "./schema.js";
-import { initAuditSchema } from "./schema.js";
 import type { AuditEnv } from "./types.js";
-
-function createTestDb() {
-  const db = new BetterSqlite3(":memory:");
-  initAuditSchema(db);
-  return db;
-}
 
 function makeInput(overrides: Partial<AuditEntryInput> = {}): AuditEntryInput {
   return {
@@ -29,43 +25,20 @@ function makeInput(overrides: Partial<AuditEntryInput> = {}): AuditEntryInput {
   };
 }
 
-describe("initAuditSchema", () => {
-  it("creates audit_log table", () => {
-    const db = createTestDb();
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='audit_log'").all() as {
-      name: string;
-    }[];
-    expect(tables).toHaveLength(1);
-    db.close();
-  });
-
-  it("creates indexes", () => {
-    const db = createTestDb();
-    const indexes = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_audit_%'")
-      .all() as { name: string }[];
-    expect(indexes.length).toBeGreaterThanOrEqual(4);
-    db.close();
-  });
-
-  it("is idempotent", () => {
-    const db = createTestDb();
-    initAuditSchema(db);
-    db.close();
-  });
-});
-
 describe("AuditLogger", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let logger: AuditLogger;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     logger = new AuditLogger(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("inserts audit entries", () => {
@@ -101,16 +74,19 @@ describe("AuditLogger", () => {
 });
 
 describe("queryAuditLog", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let logger: AuditLogger;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     logger = new AuditLogger(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns all entries without filters", () => {
@@ -166,12 +142,26 @@ describe("queryAuditLog", () => {
 
   it("filters by time range", () => {
     const now = Date.now();
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("old", now - 10000, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("new", now, "user-1", "session", "instance.destroy", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: now - 10000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "new",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     const results = queryAuditLog(db, { since: now - 5000 });
     expect(results).toHaveLength(1);
@@ -180,12 +170,26 @@ describe("queryAuditLog", () => {
 
   it("filters by until time boundary", () => {
     const now = Date.now();
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("old", now - 10000, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("new", now, "user-1", "session", "instance.destroy", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: now - 10000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "new",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     const results = queryAuditLog(db, { until: now - 5000 });
     expect(results).toHaveLength(1);
@@ -238,12 +242,26 @@ describe("queryAuditLog", () => {
 
   it("orders by timestamp descending", () => {
     const now = Date.now();
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("first", now - 1000, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("second", now, "user-1", "session", "instance.destroy", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "first",
+        timestamp: now - 1000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "second",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     const results = queryAuditLog(db, {});
     expect(results[0].id).toBe("second");
@@ -261,16 +279,19 @@ describe("queryAuditLog", () => {
 });
 
 describe("countAuditLog", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let logger: AuditLogger;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     logger = new AuditLogger(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("counts all entries", () => {
@@ -294,12 +315,26 @@ describe("countAuditLog", () => {
 
   it("counts with time range filter", () => {
     const now = Date.now();
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("old", now - 10000, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("new", now, "user-1", "session", "instance.destroy", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: now - 10000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "new",
+        timestamp: now,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
     expect(countAuditLog(db, { since: now - 5000 })).toBe(1);
     expect(countAuditLog(db, { until: now - 5000 })).toBe(1);
@@ -323,39 +358,53 @@ describe("countAuditLog", () => {
 });
 
 describe("retention", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
-  it("returns correct retention days per tier", () => {
-    expect(getRetentionDays("free")).toBe(7);
-    expect(getRetentionDays("pro")).toBe(30);
-    expect(getRetentionDays("team")).toBe(90);
-    expect(getRetentionDays("enterprise")).toBe(365);
+  it("returns correct retention days (flat 30)", () => {
+    expect(getRetentionDays()).toBe(30);
   });
 
   it("purges entries older than retention period", () => {
     const now = Date.now();
-    const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
+    const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
     const oneDayAgo = now - 1 * 24 * 60 * 60 * 1000;
 
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("old", eightDaysAgo, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("recent", oneDayAgo, "user-1", "session", "instance.destroy", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "old",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "recent",
+        timestamp: oneDayAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.destroy",
+        resourceType: "instance",
+      })
+      .run();
 
-    const deleted = purgeExpiredEntries(db, "free");
+    const deleted = purgeExpiredEntries(db);
     expect(deleted).toBe(1);
 
-    const remaining = db.prepare("SELECT id FROM audit_log").all() as { id: string }[];
+    const remaining = db.select().from(auditLog).all();
     expect(remaining).toHaveLength(1);
     expect(remaining[0].id).toBe("recent");
   });
@@ -364,70 +413,59 @@ describe("retention", () => {
     const logger = new AuditLogger(db);
     logger.log(makeInput());
 
-    const deleted = purgeExpiredEntries(db, "free");
+    const deleted = purgeExpiredEntries(db);
     expect(deleted).toBe(0);
   });
 
   it("purges per user for user-scoped retention", () => {
     const now = Date.now();
-    const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
+    const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
 
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("u1-old", eightDaysAgo, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("u2-old", eightDaysAgo, "user-2", "session", "instance.create", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "u1-old",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "u2-old",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-2",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
 
-    const deleted = purgeExpiredEntriesForUser(db, "user-1", "free");
+    const deleted = purgeExpiredEntriesForUser(db, "user-1");
     expect(deleted).toBe(1);
 
-    const remaining = db.prepare("SELECT id FROM audit_log").all() as { id: string }[];
+    const remaining = db.select().from(auditLog).all();
     expect(remaining).toHaveLength(1);
     expect(remaining[0].id).toBe("u2-old");
   });
 
-  it("pro tier retains entries for 30 days", () => {
+  it("does not purge entries within retention period", () => {
     const now = Date.now();
     const twentyDaysAgo = now - 20 * 24 * 60 * 60 * 1000;
 
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("within-pro", twentyDaysAgo, "user-1", "session", "instance.create", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "within-retention",
+        timestamp: twentyDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
 
-    const deleted = purgeExpiredEntries(db, "pro");
-    expect(deleted).toBe(0);
-  });
-
-  it("team tier retains entries for 90 days", () => {
-    const now = Date.now();
-    const fiftyDaysAgo = now - 50 * 24 * 60 * 60 * 1000;
-    const ninetyFiveDaysAgo = now - 95 * 24 * 60 * 60 * 1000;
-
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("within-team", fiftyDaysAgo, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("expired-team", ninetyFiveDaysAgo, "user-1", "session", "instance.destroy", "instance");
-
-    const deleted = purgeExpiredEntries(db, "team");
-    expect(deleted).toBe(1);
-
-    const remaining = db.prepare("SELECT id FROM audit_log").all() as { id: string }[];
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0].id).toBe("within-team");
-  });
-
-  it("enterprise tier retains entries for 365 days", () => {
-    const now = Date.now();
-    const oneHundredDaysAgo = now - 100 * 24 * 60 * 60 * 1000;
-
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("within-enterprise", oneHundredDaysAgo, "user-1", "session", "instance.create", "instance");
-
-    const deleted = purgeExpiredEntries(db, "enterprise");
+    const deleted = purgeExpiredEntries(db);
     expect(deleted).toBe(0);
   });
 
@@ -435,17 +473,31 @@ describe("retention", () => {
     const now = Date.now();
     const recentTime = now - 1000;
 
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("u1-recent", recentTime, "user-1", "session", "instance.create", "instance");
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("u2-recent", recentTime, "user-2", "session", "instance.create", "instance");
+    db.insert(auditLog)
+      .values({
+        id: "u1-recent",
+        timestamp: recentTime,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
+    db.insert(auditLog)
+      .values({
+        id: "u2-recent",
+        timestamp: recentTime,
+        userId: "user-2",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      })
+      .run();
 
-    const deleted = purgeExpiredEntriesForUser(db, "user-1", "free");
+    const deleted = purgeExpiredEntriesForUser(db, "user-1");
     expect(deleted).toBe(0);
 
-    const remaining = db.prepare("SELECT id FROM audit_log").all() as { id: string }[];
+    const remaining = db.select().from(auditLog).all();
     expect(remaining).toHaveLength(2);
   });
 });
@@ -481,16 +533,19 @@ describe("extractResourceType", () => {
 });
 
 describe("auditLog middleware", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let logger: AuditLogger;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     logger = new AuditLogger(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("logs entry on successful response", async () => {
@@ -500,7 +555,7 @@ describe("auditLog middleware", () => {
       c.set("authMethod", "session");
       await next();
     });
-    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.use("/instance/:id", auditLogMiddleware(logger, "instance.create"));
     app.post("/instance/:id", (c) => c.json({ ok: true }));
 
     await app.request("/instance/inst-1", {
@@ -524,7 +579,7 @@ describe("auditLog middleware", () => {
       c.set("authMethod", "session");
       await next();
     });
-    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.use("/instance/:id", auditLogMiddleware(logger, "instance.create"));
     app.post("/instance/:id", (c) => c.json({ error: "bad" }, 400));
 
     await app.request("/instance/inst-1", { method: "POST" });
@@ -535,7 +590,7 @@ describe("auditLog middleware", () => {
 
   it("is a no-op without user context", async () => {
     const app = new Hono();
-    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.use("/instance/:id", auditLogMiddleware(logger, "instance.create"));
     app.post("/instance/:id", (c) => c.json({ ok: true }));
 
     await app.request("/instance/inst-1", { method: "POST" });
@@ -551,7 +606,7 @@ describe("auditLog middleware", () => {
       c.set("authMethod", "api_key");
       await next();
     });
-    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.use("/instance/:id", auditLogMiddleware(logger, "instance.create"));
     app.post("/instance/:id", (c) => c.json({ ok: true }));
 
     await app.request("/instance/inst-1", { method: "POST" });
@@ -568,7 +623,7 @@ describe("auditLog middleware", () => {
       c.set("authMethod", "session");
       await next();
     });
-    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.use("/instance/:id", auditLogMiddleware(logger, "instance.create"));
     app.post("/instance/:id", (c) => c.json({ ok: true }));
 
     await app.request("/instance/inst-1", {
@@ -588,7 +643,7 @@ describe("auditLog middleware", () => {
       c.set("authMethod", "session");
       await next();
     });
-    app.use("/instance/:id", auditLog(logger, "instance.create"));
+    app.use("/instance/:id", auditLogMiddleware(logger, "instance.create"));
     app.post("/instance/:id", (c) => c.json({ ok: true }));
 
     await app.request("/instance/inst-1", { method: "POST" });
@@ -600,10 +655,10 @@ describe("auditLog middleware", () => {
   });
 
   it("does not break the request on logging error", async () => {
-    const badDb = new BetterSqlite3(":memory:");
-    initAuditSchema(badDb);
-    const badLogger = new AuditLogger(badDb);
-    badDb.close();
+    const badSqlite = new BetterSqlite3(":memory:");
+    const badTestDb = createTestDb();
+    const badLogger = new AuditLogger(badTestDb.db);
+    badTestDb.sqlite.close();
 
     const app = new Hono<AuditEnv>();
     app.use("*", async (c, next) => {
@@ -611,25 +666,29 @@ describe("auditLog middleware", () => {
       c.set("authMethod", "session");
       await next();
     });
-    app.use("/instance/:id", auditLog(badLogger, "instance.create"));
+    app.use("/instance/:id", auditLogMiddleware(badLogger, "instance.create"));
     app.post("/instance/:id", (c) => c.json({ ok: true }));
 
     const res = await app.request("/instance/inst-1", { method: "POST" });
     expect(res.status).toBe(200);
+    badSqlite.close();
   });
 });
 
 describe("audit API routes", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let logger: AuditLogger;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     logger = new AuditLogger(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   describe("GET /audit (user route)", () => {
@@ -671,12 +730,19 @@ describe("audit API routes", () => {
       expect(body.entries[0].action).toBe("instance.create");
     });
 
-    it("defaults to free tier retention when tier is not set", async () => {
+    it("defaults to retention cleanup on query", async () => {
       const now = Date.now();
-      const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
-      db.prepare(
-        "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-      ).run("old-no-tier", eightDaysAgo, "user-1", "session", "instance.create", "instance");
+      const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
+      db.insert(auditLog)
+        .values({
+          id: "old-no-tier",
+          timestamp: thirtyOneDaysAgo,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
@@ -749,9 +815,16 @@ describe("audit API routes", () => {
 
     it("filters by time range query params", async () => {
       const now = Date.now();
-      db.prepare(
-        "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-      ).run("old-time", now - 100000, "user-1", "session", "instance.create", "instance");
+      db.insert(auditLog)
+        .values({
+          id: "old-time",
+          timestamp: now - 100000,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
@@ -770,10 +843,17 @@ describe("audit API routes", () => {
 
     it("applies retention cleanup on query", async () => {
       const now = Date.now();
-      const eightDaysAgo = now - 8 * 24 * 60 * 60 * 1000;
-      db.prepare(
-        "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-      ).run("old-entry", eightDaysAgo, "user-1", "session", "instance.create", "instance");
+      const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
+      db.insert(auditLog)
+        .values({
+          id: "old-entry",
+          timestamp: thirtyOneDaysAgo,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
@@ -843,9 +923,16 @@ describe("audit API routes", () => {
 
     it("filters by time range", async () => {
       const now = Date.now();
-      db.prepare(
-        "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-      ).run("old", now - 100000, "user-1", "session", "instance.create", "instance");
+      db.insert(auditLog)
+        .values({
+          id: "old",
+          timestamp: now - 100000,
+          userId: "user-1",
+          authMethod: "session",
+          action: "instance.create",
+          resourceType: "instance",
+        })
+        .run();
       logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();

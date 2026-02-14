@@ -2,8 +2,6 @@ export { AuditLogger } from "./logger.js";
 export { auditLog, extractResourceType } from "./middleware.js";
 export type { AuditQueryFilters } from "./query.js";
 export { countAuditLog, queryAuditLog } from "./query.js";
-export type { Tier } from "./retention.js";
 export { getRetentionDays, purgeExpiredEntries, purgeExpiredEntriesForUser } from "./retention.js";
 export type { AuditAction, AuditEntry, AuditEntryInput, AuthMethod, ResourceType } from "./schema.js";
-export { initAuditSchema } from "./schema.js";
 export type { AuditEnv, AuditUser } from "./types.js";

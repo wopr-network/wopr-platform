@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import type { SQL } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte } from "drizzle-orm";
+import type { DrizzleDb } from "../db/index.js";
+import { adminAuditLog } from "../db/schema/index.js";
 
 export type AuditCategory = "account" | "credits" | "roles" | "config" | "support" | "bulk";
 
@@ -41,16 +44,58 @@ export interface AuditFilters {
 const MAX_LIMIT = 250;
 const DEFAULT_LIMIT = 50;
 
-export class AdminAuditLog {
-  private insertStmt: Database.Statement;
-  private db: Database.Database;
+/** Build Drizzle WHERE conditions from filters. */
+function buildConditions(filters: Omit<AuditFilters, "limit" | "offset">): SQL | undefined {
+  const conditions: SQL[] = [];
 
-  constructor(db: Database.Database) {
+  if (filters.admin) {
+    conditions.push(eq(adminAuditLog.adminUser, filters.admin));
+  }
+
+  if (filters.action) {
+    conditions.push(eq(adminAuditLog.action, filters.action));
+  }
+
+  if (filters.category) {
+    conditions.push(eq(adminAuditLog.category, filters.category));
+  }
+
+  if (filters.tenant) {
+    conditions.push(eq(adminAuditLog.targetTenant, filters.tenant));
+  }
+
+  if (filters.from != null) {
+    conditions.push(gte(adminAuditLog.createdAt, filters.from));
+  }
+
+  if (filters.to != null) {
+    conditions.push(lte(adminAuditLog.createdAt, filters.to));
+  }
+
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+/** Map a Drizzle row to a snake_case AdminAuditLogRow. */
+function toRow(r: typeof adminAuditLog.$inferSelect): AdminAuditLogRow {
+  return {
+    id: r.id,
+    admin_user: r.adminUser,
+    action: r.action,
+    category: r.category,
+    target_tenant: r.targetTenant,
+    target_user: r.targetUser,
+    details: r.details,
+    ip_address: r.ipAddress,
+    user_agent: r.userAgent,
+    created_at: r.createdAt,
+  };
+}
+
+export class AdminAuditLog {
+  private db: DrizzleDb;
+
+  constructor(db: DrizzleDb) {
     this.db = db;
-    this.insertStmt = db.prepare(`
-      INSERT INTO admin_audit_log (id, admin_user, action, category, target_tenant, target_user, details, ip_address, user_agent, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
   }
 
   /** Append an audit entry. Immutable -- no updates or deletes. */
@@ -68,112 +113,60 @@ export class AdminAuditLog {
       created_at: Date.now(),
     };
 
-    this.insertStmt.run(
-      row.id,
-      row.admin_user,
-      row.action,
-      row.category,
-      row.target_tenant,
-      row.target_user,
-      row.details,
-      row.ip_address,
-      row.user_agent,
-      row.created_at,
-    );
+    this.db
+      .insert(adminAuditLog)
+      .values({
+        id: row.id,
+        adminUser: row.admin_user,
+        action: row.action,
+        category: row.category,
+        targetTenant: row.target_tenant,
+        targetUser: row.target_user,
+        details: row.details,
+        ipAddress: row.ip_address,
+        userAgent: row.user_agent,
+        createdAt: row.created_at,
+      })
+      .run();
 
     return row;
   }
 
   /** Query audit log with filters. */
   query(filters: AuditFilters): { entries: AdminAuditLogRow[]; total: number } {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
+    const where = buildConditions(filters);
 
-    if (filters.admin) {
-      conditions.push("admin_user = ?");
-      params.push(filters.admin);
-    }
+    const countResult = this.db.select({ count: count() }).from(adminAuditLog).where(where).get();
 
-    if (filters.action) {
-      conditions.push("action = ?");
-      params.push(filters.action);
-    }
-
-    if (filters.category) {
-      conditions.push("category = ?");
-      params.push(filters.category);
-    }
-
-    if (filters.tenant) {
-      conditions.push("target_tenant = ?");
-      params.push(filters.tenant);
-    }
-
-    if (filters.from != null) {
-      conditions.push("created_at >= ?");
-      params.push(filters.from);
-    }
-
-    if (filters.to != null) {
-      conditions.push("created_at <= ?");
-      params.push(filters.to);
-    }
-
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-
-    const countSql = `SELECT COUNT(*) as count FROM admin_audit_log ${where}`;
-    const countRow = this.db.prepare(countSql).get(...params) as { count: number };
-    const total = countRow.count;
+    const total = countResult?.count ?? 0;
 
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);
 
-    const sql = `SELECT * FROM admin_audit_log ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-    const entries = this.db.prepare(sql).all(...params, limit, offset) as AdminAuditLogRow[];
+    const rows = this.db
+      .select()
+      .from(adminAuditLog)
+      .where(where)
+      .orderBy(desc(adminAuditLog.createdAt))
+      .limit(limit)
+      .offset(offset)
+      .all();
 
-    return { entries, total };
+    return { entries: rows.map(toRow), total };
   }
 
   /** Export as CSV string for compliance. */
   exportCsv(filters: AuditFilters): string {
-    // For CSV export, remove pagination limits
     const exportFilters = { ...filters, limit: undefined, offset: undefined };
-    const conditions: string[] = [];
-    const params: unknown[] = [];
+    const where = buildConditions(exportFilters);
 
-    if (exportFilters.admin) {
-      conditions.push("admin_user = ?");
-      params.push(exportFilters.admin);
-    }
-
-    if (exportFilters.action) {
-      conditions.push("action = ?");
-      params.push(exportFilters.action);
-    }
-
-    if (exportFilters.category) {
-      conditions.push("category = ?");
-      params.push(exportFilters.category);
-    }
-
-    if (exportFilters.tenant) {
-      conditions.push("target_tenant = ?");
-      params.push(exportFilters.tenant);
-    }
-
-    if (exportFilters.from != null) {
-      conditions.push("created_at >= ?");
-      params.push(exportFilters.from);
-    }
-
-    if (exportFilters.to != null) {
-      conditions.push("created_at <= ?");
-      params.push(exportFilters.to);
-    }
-
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const sql = `SELECT * FROM admin_audit_log ${where} ORDER BY created_at DESC`;
-    const rows = this.db.prepare(sql).all(...params) as AdminAuditLogRow[];
+    const rows = this.db
+      .select()
+      .from(adminAuditLog)
+      .where(where)
+      .orderBy(desc(adminAuditLog.createdAt))
+      .all()
+      .map(toRow);
 
     const header = "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at";
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);

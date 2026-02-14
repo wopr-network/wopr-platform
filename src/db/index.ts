@@ -1,14 +1,13 @@
+// biome-ignore lint/style/useImportType: Database namespace needed for Database.Database type reference
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as schema from "./schema/index.js";
 
-const sqlite = new Database(process.env.DATABASE_PATH || "./data/platform.db");
-export const db = drizzle(sqlite, { schema });
+export type DrizzleDb = ReturnType<typeof createDb>;
 
-try {
-  migrate(db, { migrationsFolder: "./drizzle/migrations" });
-} catch (err) {
-  console.error("Database migration failed:", err);
-  process.exit(1);
+/** Create a Drizzle database instance wrapping the given better-sqlite3 database. */
+export function createDb(sqlite: Database.Database) {
+  return drizzle(sqlite, { schema });
 }
+
+export { schema };

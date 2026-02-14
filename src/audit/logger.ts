@@ -1,16 +1,14 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import type { DrizzleDb } from "../db/index.js";
+import { auditLog } from "../db/schema/index.js";
 import type { AuditEntry, AuditEntryInput } from "./schema.js";
 
 /** Append-only audit log writer. */
 export class AuditLogger {
-  private insertStmt: Database.Statement;
+  private db: DrizzleDb;
 
-  constructor(db: Database.Database) {
-    this.insertStmt = db.prepare(`
-      INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type, resource_id, details, ip_address, user_agent)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  constructor(db: DrizzleDb) {
+    this.db = db;
   }
 
   /** Append a new audit entry. Returns the created entry. */
@@ -28,18 +26,21 @@ export class AuditLogger {
       user_agent: input.userAgent ?? null,
     };
 
-    this.insertStmt.run(
-      entry.id,
-      entry.timestamp,
-      entry.user_id,
-      entry.auth_method,
-      entry.action,
-      entry.resource_type,
-      entry.resource_id,
-      entry.details,
-      entry.ip_address,
-      entry.user_agent,
-    );
+    this.db
+      .insert(auditLog)
+      .values({
+        id: entry.id,
+        timestamp: entry.timestamp,
+        userId: entry.user_id,
+        authMethod: entry.auth_method,
+        action: entry.action,
+        resourceType: entry.resource_type,
+        resourceId: entry.resource_id,
+        details: entry.details,
+        ipAddress: entry.ip_address,
+        userAgent: entry.user_agent,
+      })
+      .run();
 
     return entry;
   }
