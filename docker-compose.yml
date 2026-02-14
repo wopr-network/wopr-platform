@@ -51,6 +51,8 @@ services:
       - AUTH_DB_PATH=/data/auth.db
       - UI_ORIGIN=https://${DOMAIN}
       - WOPR_BOT_IMAGE=${WOPR_BOT_IMAGE:-ghcr.io/wopr-network/wopr:latest}
+      - BACKUP_DB_PATH=/data/platform/backup-status.db
+      - S3_BUCKET=${S3_BUCKET:-wopr-backups}
       - NODE_ENV=production
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
