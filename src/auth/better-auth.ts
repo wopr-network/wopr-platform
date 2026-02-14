@@ -10,6 +10,7 @@
 
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import Database from "better-sqlite3";
+import { passwordResetTemplate, passwordResetText, sendEmail } from "../email/resend-adapter.js";
 
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "";
@@ -25,7 +26,25 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
     secret: BETTER_AUTH_SECRET,
     baseURL: BETTER_AUTH_URL,
     basePath: "/api/auth",
-    emailAndPassword: { enabled: true },
+    emailAndPassword: {
+      enabled: true,
+      sendResetPassword: async ({ user, url }) => {
+        try {
+          const html = passwordResetTemplate(url, user.email);
+          const text = passwordResetText(url, user.email);
+          await sendEmail({
+            to: user.email,
+            subject: "Reset Your Password",
+            html,
+            text,
+          });
+        } catch (error) {
+          // Log the error but do NOT expose it to the user (prevents user enumeration)
+          console.error("Failed to send password reset email:", error);
+          // Return silently - same response whether email sends or not
+        }
+      },
+    },
     session: {
       cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
