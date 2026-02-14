@@ -14,7 +14,8 @@
  * - stripe/    -- Stripe usage-based billing (WOP-300)
  */
 
-// Adapters (WOP-301, WOP-377)
+// Adapters (WOP-301, WOP-353, WOP-377)
+export { createGeminiAdapter, type GeminiAdapterConfig } from "./adapters/gemini.js";
 export { createOpenRouterAdapter, type OpenRouterAdapterConfig } from "./adapters/openrouter.js";
 export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/replicate.js";
 export {
