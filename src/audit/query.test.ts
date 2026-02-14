@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
 import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { AuditLogger } from "./logger.js";
 import { countAuditLog, queryAuditLog } from "./query.js";
 
@@ -13,10 +13,28 @@ describe("queryAuditLog", () => {
     logger = new AuditLogger(db);
 
     // Seed test data
-    logger.log({ userId: "u1", authMethod: "session", action: "instance.create", resourceType: "instance", resourceId: "bot-1" });
-    logger.log({ userId: "u1", authMethod: "session", action: "instance.stop", resourceType: "instance", resourceId: "bot-1" });
+    logger.log({
+      userId: "u1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+      resourceId: "bot-1",
+    });
+    logger.log({
+      userId: "u1",
+      authMethod: "session",
+      action: "instance.stop",
+      resourceType: "instance",
+      resourceId: "bot-1",
+    });
     logger.log({ userId: "u2", authMethod: "api_key", action: "auth.login", resourceType: "user" });
-    logger.log({ userId: "u1", authMethod: "session", action: "plugin.install", resourceType: "plugin", resourceId: "p-1" });
+    logger.log({
+      userId: "u1",
+      authMethod: "session",
+      action: "plugin.install",
+      resourceType: "plugin",
+      resourceId: "p-1",
+    });
   });
 
   it("returns all entries when no filters", () => {

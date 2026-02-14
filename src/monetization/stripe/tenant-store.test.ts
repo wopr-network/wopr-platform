@@ -1,9 +1,9 @@
 import BetterSqlite3 from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
 import { createDb } from "../../db/index.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
-import type { DrizzleDb } from "../../db/index.js";
 
 describe("TenantCustomerStore", () => {
   let sqlite: BetterSqlite3.Database;

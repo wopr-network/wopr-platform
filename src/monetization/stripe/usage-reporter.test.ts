@@ -1,8 +1,8 @@
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb } from "../../db/index.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { createDb } from "../../db/index.js";
 import { initMeterSchema } from "../metering/schema.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
@@ -48,10 +48,22 @@ describe("StripeUsageReporter", () => {
     periodEnd: number;
   }) {
     summaryCounter++;
-    sqlite.prepare(`
+    sqlite
+      .prepare(`
       INSERT INTO billing_period_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, period_start, period_end, updated_at)
       VALUES (?, ?, ?, ?, ?, 0, ?, 0, ?, ?, ?)
-    `).run(`bps-${summaryCounter}`, opts.tenant, opts.capability, opts.provider, opts.eventCount, opts.totalCharge, opts.periodStart, opts.periodEnd, Date.now());
+    `)
+      .run(
+        `bps-${summaryCounter}`,
+        opts.tenant,
+        opts.capability,
+        opts.provider,
+        opts.eventCount,
+        opts.totalCharge,
+        opts.periodStart,
+        opts.periodEnd,
+        Date.now(),
+      );
   }
 
   describe("report", () => {
@@ -85,7 +97,7 @@ describe("StripeUsageReporter", () => {
         capability: "chat",
         provider: "openrouter",
         eventCount: 10,
-        totalCharge: 2.50,
+        totalCharge: 2.5,
         periodStart: 1000000,
         periodEnd: 2000000,
       });

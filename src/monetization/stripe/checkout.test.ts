@@ -55,9 +55,7 @@ describe("createCreditCheckoutSession", () => {
       cancelUrl: "https://example.com/c",
     });
 
-    expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(
-      expect.objectContaining({ customer: "cus_existing" }),
-    );
+    expect(stripe.checkout.sessions.create).toHaveBeenCalledWith(expect.objectContaining({ customer: "cus_existing" }));
   });
 
   it("does not set customer when no existing mapping", async () => {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
 import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { AuditLogger } from "./logger.js";
 import { queryAuditLog } from "./query.js";
 

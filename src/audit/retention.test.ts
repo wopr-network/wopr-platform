@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../test/db.js";
 import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { AuditLogger } from "./logger.js";
-import { getRetentionDays, purgeExpiredEntries, purgeExpiredEntriesForUser } from "./retention.js";
 import { queryAuditLog } from "./query.js";
+import { getRetentionDays, purgeExpiredEntries, purgeExpiredEntriesForUser } from "./retention.js";
 
 describe("audit retention", () => {
   let db: DrizzleDb;

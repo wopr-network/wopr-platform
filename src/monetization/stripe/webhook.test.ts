@@ -82,9 +82,7 @@ describe("handleWebhookEvent", () => {
 
       const result = handleWebhookEvent(deps, event);
       expect(result.tenant).toBe("tenant-meta");
-      expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({ tenant: "tenant-meta" }),
-      );
+      expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ tenant: "tenant-meta" }));
     });
 
     it("returns handled: false when tenant is missing", () => {
@@ -107,17 +105,13 @@ describe("handleWebhookEvent", () => {
 
     it("handles string customer (already a string ID)", () => {
       handleWebhookEvent(deps, makeCheckoutEvent({ customer: "cus_direct" }));
-      expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({ stripeCustomerId: "cus_direct" }),
-      );
+      expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ stripeCustomerId: "cus_direct" }));
     });
 
     it("handles customer object (extracts .id)", () => {
       const event = makeCheckoutEvent({ customer: { id: "cus_obj" } });
       handleWebhookEvent(deps, event);
-      expect(mockUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({ stripeCustomerId: "cus_obj" }),
-      );
+      expect(mockUpsert).toHaveBeenCalledWith(expect.objectContaining({ stripeCustomerId: "cus_obj" }));
     });
 
     it("returns creditedCents: 0 when amount_total is null", () => {
@@ -157,18 +151,14 @@ describe("handleWebhookEvent", () => {
     });
 
     it("uses price map bonus when amount matches a tier", () => {
-      const priceMap = new Map([
-        ["price_25", { label: "$25", amountCents: 2500, creditCents: 2550, bonusPercent: 2 }],
-      ]);
+      const priceMap = new Map([["price_25", { label: "$25", amountCents: 2500, creditCents: 2550, bonusPercent: 2 }]]);
 
       const result = handleWebhookEvent({ ...deps, priceMap }, makeCheckoutEvent({ amount_total: 2500 }));
       expect(result.creditedCents).toBe(2550);
     });
 
     it("falls back to 1:1 when price map has no matching tier", () => {
-      const priceMap = new Map([
-        ["price_50", { label: "$50", amountCents: 5000, creditCents: 5250, bonusPercent: 5 }],
-      ]);
+      const priceMap = new Map([["price_50", { label: "$50", amountCents: 5000, creditCents: 5250, bonusPercent: 5 }]]);
 
       const result = handleWebhookEvent({ ...deps, priceMap }, makeCheckoutEvent({ amount_total: 7500 }));
       expect(result.creditedCents).toBe(7500);

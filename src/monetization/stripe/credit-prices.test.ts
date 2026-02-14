@@ -52,12 +52,8 @@ describe("loadCreditPriceMap", () => {
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_25_test");
 
     const map = loadCreditPriceMap();
-    expect(map.get("price_5_test")).toEqual(
-      expect.objectContaining({ amountCents: 500, creditCents: 500 }),
-    );
-    expect(map.get("price_25_test")).toEqual(
-      expect.objectContaining({ amountCents: 2500, creditCents: 2550 }),
-    );
+    expect(map.get("price_5_test")).toEqual(expect.objectContaining({ amountCents: 500, creditCents: 500 }));
+    expect(map.get("price_25_test")).toEqual(expect.objectContaining({ amountCents: 2500, creditCents: 2550 }));
 
     vi.unstubAllEnvs();
   });
@@ -78,13 +74,11 @@ describe("loadCreditPriceMap", () => {
 
 describe("lookupCreditPrice", () => {
   it("returns price point for known price ID", () => {
-    const priceMap = new Map([
-      ["price_abc", CREDIT_PRICE_POINTS[2]],
-    ]);
+    const priceMap = new Map([["price_abc", CREDIT_PRICE_POINTS[2]]]);
 
     const point = lookupCreditPrice(priceMap, "price_abc");
     expect(point).not.toBeNull();
-    expect(point!.amountCents).toBe(2500);
+    expect(point?.amountCents).toBe(2500);
   });
 
   it("returns null for unknown price ID", () => {

@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sessionAuth, dualAuth, type SessionAuthEnv } from "./middleware.js";
+import { describe, expect, it, vi } from "vitest";
 import type { Auth } from "./better-auth.js";
 import type { AuthUser } from "./index.js";
+import { dualAuth, type SessionAuthEnv, sessionAuth } from "./middleware.js";
 
 function mockAuth(sessionResult: { user: { id: string; role?: string } } | null = null): Auth {
   return {
@@ -228,6 +228,6 @@ describe("dualAuth middleware", () => {
     expect(body.roles).toEqual(["user"]);
 
     // Original should not be mutated
-    expect(apiTokens.get("api-key-reader")!.roles).toEqual(["user"]);
+    expect(apiTokens.get("api-key-reader")?.roles).toEqual(["user"]);
   });
 });

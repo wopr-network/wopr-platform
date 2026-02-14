@@ -50,9 +50,7 @@ describe("createPortalSession", () => {
 
   it("propagates Stripe API errors", async () => {
     const stripe = mockStripe();
-    (stripe.billingPortal.sessions.create as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error("Portal API error"),
-    );
+    (stripe.billingPortal.sessions.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Portal API error"));
     const store = mockTenantStore({ stripe_customer_id: "cus_abc" });
 
     await expect(

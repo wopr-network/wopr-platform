@@ -1,7 +1,8 @@
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { auditLog as auditMiddleware, extractResourceType } from "./middleware.js";
+import { describe, expect, it, vi } from "vitest";
 import type { AuditLogger } from "./logger.js";
+import { auditLog as auditMiddleware, extractResourceType } from "./middleware.js";
+import type { AuditEnv } from "./types.js";
 
 describe("extractResourceType", () => {
   it("extracts instance from path", () => {
@@ -42,7 +43,7 @@ describe("auditLog middleware", () => {
     const mockLog = vi.fn();
     const mockLogger = { log: mockLog } as unknown as AuditLogger;
 
-    const app = new Hono();
+    const app = new Hono<AuditEnv>();
     app.use("/*", async (c, next) => {
       c.set("user", { id: "user-1" });
       c.set("authMethod", "session");
@@ -76,7 +77,7 @@ describe("auditLog middleware", () => {
     const mockLog = vi.fn();
     const mockLogger = { log: mockLog } as unknown as AuditLogger;
 
-    const app = new Hono();
+    const app = new Hono<AuditEnv>();
     app.use("/*", async (c, next) => {
       c.set("user", { id: "user-1" });
       c.set("authMethod", "session");
@@ -95,7 +96,7 @@ describe("auditLog middleware", () => {
     const mockLog = vi.fn();
     const mockLogger = { log: mockLog } as unknown as AuditLogger;
 
-    const app = new Hono();
+    const app = new Hono<AuditEnv>();
     app.get("/api/public", auditMiddleware(mockLogger, "auth.login"), (c) => {
       return c.json({ ok: true });
     });
@@ -111,7 +112,7 @@ describe("auditLog middleware", () => {
     });
     const mockLogger = { log: mockLog } as unknown as AuditLogger;
 
-    const app = new Hono();
+    const app = new Hono<AuditEnv>();
     app.use("/*", async (c, next) => {
       c.set("user", { id: "user-1" });
       c.set("authMethod", "session");
@@ -129,7 +130,7 @@ describe("auditLog middleware", () => {
     const mockLog = vi.fn();
     const mockLogger = { log: mockLog } as unknown as AuditLogger;
 
-    const app = new Hono();
+    const app = new Hono<AuditEnv>();
     app.use("/*", async (c, next) => {
       c.set("user", { id: "user-1" });
       // Deliberately NOT setting authMethod
