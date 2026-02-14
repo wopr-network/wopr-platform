@@ -66,11 +66,14 @@ export {
 export { AdapterSocket, type SocketConfig, type SocketRequest } from "./socket/socket.js";
 export type {
   CheckoutSessionOpts,
+  MeterValidatorOpts,
   PortalSessionOpts,
   StripeBillingConfig,
   StripeUsageReportRow,
   TenantCustomerRow,
   UsageReporterOpts,
+  ValidationMode,
+  ValidationResult,
   WebhookResult,
 } from "./stripe/index.js";
 // Stripe billing (WOP-300)
@@ -83,4 +86,5 @@ export {
   loadStripeConfig,
   StripeUsageReporter,
   TenantCustomerStore,
+  validateStripeMeters,
 } from "./stripe/index.js";

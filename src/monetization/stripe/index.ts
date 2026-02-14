@@ -1,5 +1,7 @@
 export { createCheckoutSession } from "./checkout.js";
 export { createStripeClient, loadStripeConfig } from "./client.js";
+export type { MeterValidatorOpts, ValidationMode, ValidationResult } from "./meter-validator.js";
+export { validateStripeMeters } from "./meter-validator.js";
 export { createPortalSession } from "./portal.js";
 export { initStripeSchema } from "./schema.js";
 export { TenantCustomerStore } from "./tenant-store.js";
