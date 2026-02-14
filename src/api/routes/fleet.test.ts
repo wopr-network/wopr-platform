@@ -155,8 +155,10 @@ vi.mock("../../monetization/stripe/tenant-store.js", () => {
   };
 });
 
-vi.mock("../../monetization/quotas/tier-definitions.js", () => {
+vi.mock("../../monetization/quotas/tier-definitions.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
+    ...actual,
     TierStore: class {
       get = tierStoreMock.get;
       seed = tierStoreMock.seed;
@@ -245,6 +247,34 @@ describe("fleet routes", () => {
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.name).toBe("test-bot");
+    });
+
+    it("passes resource limits to fleet.create() based on tenant tier", async () => {
+      fleetMock.create.mockResolvedValue(mockProfile);
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "user-123",
+          name: "test-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(fleetMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "user-123",
+          name: "test-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+        expect.objectContaining({
+          Memory: expect.any(Number),
+          CpuQuota: expect.any(Number),
+          PidsLimit: expect.any(Number),
+        }),
+      );
     });
 
     it("rejects invalid name", async () => {
