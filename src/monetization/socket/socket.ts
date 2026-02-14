@@ -8,7 +8,7 @@
 
 import type { AdapterCapability, AdapterResult, ProviderAdapter } from "../adapters/types.js";
 import { withMargin } from "../adapters/types.js";
-import type { BudgetChecker } from "../budget/budget-checker.js";
+import type { BudgetChecker, SpendLimits } from "../budget/budget-checker.js";
 import type { MeterEmitter } from "../metering/emitter.js";
 
 export interface SocketConfig {
@@ -35,7 +35,9 @@ export interface SocketRequest {
   sessionId?: string;
   /** Whether the tenant is using their own API key (BYOK) */
   byok?: boolean;
-  /** Optional: tenant's tier (for budget checking) */
+  /** Optional: tenant's spend limits (for budget checking) */
+  spendLimits?: SpendLimits;
+  /** @deprecated Use spendLimits instead. Kept for backwards compat during migration. */
   tier?: string;
 }
 
@@ -68,8 +70,9 @@ export class AdapterSocket {
   /** Execute a capability request against the best adapter. */
   async execute<T>(request: SocketRequest): Promise<T> {
     // Pre-call budget check — fail-closed if enabled and budget exceeded
-    if (this.budgetChecker && request.tier && !request.byok) {
-      const budgetResult = this.budgetChecker.check(request.tenantId, request.tier);
+    const limits = request.spendLimits;
+    if (this.budgetChecker && limits && !request.byok) {
+      const budgetResult = this.budgetChecker.check(request.tenantId, limits);
       if (!budgetResult.allowed) {
         const error = Object.assign(new Error(budgetResult.reason ?? "Budget exceeded"), {
           httpStatus: budgetResult.httpStatus ?? 429,

@@ -6,6 +6,7 @@ import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
+import { createDb } from "../../db/index.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
@@ -72,10 +73,11 @@ let priceMap: CreditPriceMap | null = null;
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
+  const drizzleDb = createDb(d.db);
   tenantStore = new TenantCustomerStore(d.db);
   initCreditAdjustmentSchema(d.db);
   creditStore = new CreditAdjustmentStore(d.db);
-  meterAggregator = new MeterAggregator(d.db);
+  meterAggregator = new MeterAggregator(drizzleDb);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
 }

@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
+import { createDb } from "../../db/index.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
@@ -16,7 +17,7 @@ const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
 // Import AFTER env stub
 const { billingRoutes, setBillingDeps } = await import("./billing.js");
 
-function createTestDb() {
+function createBillingTestDb() {
   const db = new BetterSqlite3(":memory:");
   initMeterSchema(db);
   initStripeSchema(db);
@@ -63,7 +64,7 @@ describe("billing routes", () => {
   let tenantStore: TenantCustomerStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    db = createBillingTestDb();
     stripe = createMockStripe();
     tenantStore = new TenantCustomerStore(db);
     setBillingDeps({
@@ -455,6 +456,125 @@ describe("billing routes", () => {
   // -- GET /billing/usage ---------------------------------------------------
 
   describe("GET /billing/usage", () => {
+    it("returns usage summaries for a tenant", async () => {
+      const now = Date.now();
+      const windowStart = Math.floor(now / 60_000) * 60_000;
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-1", "t-1", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-2", "t-1", "embeddings", "openai", 0.001, 0.0015, windowStart + 2000, null, null);
+
+      const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
+      const aggregator = new MeterAggregator(createDb(db));
+      aggregator.aggregate(windowStart + 60_000);
+
+      const res = await billingRoutes.request(`/usage?tenant=t-1`, {
+        method: "GET",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.tenant).toBe("t-1");
+      expect(body.usage).toHaveLength(2);
+      expect(body.usage[0].capability).toMatch(/chat|embeddings/);
+      expect(body.usage[0].provider).toBe("openai");
+    });
+
+    it("filters by capability", async () => {
+      const now = Date.now();
+      const windowStart = Math.floor(now / 60_000) * 60_000;
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-3", "t-2", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-4", "t-2", "voice", "elevenlabs", 0.02, 0.03, windowStart + 2000, null, null);
+
+      const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
+      const aggregator = new MeterAggregator(createDb(db));
+      aggregator.aggregate(windowStart + 60_000);
+
+      const res = await billingRoutes.request(`/usage?tenant=t-2&capability=chat`, {
+        method: "GET",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.usage).toHaveLength(1);
+      expect(body.usage[0].capability).toBe("chat");
+    });
+
+    it("filters by provider", async () => {
+      const now = Date.now();
+      const windowStart = Math.floor(now / 60_000) * 60_000;
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-5", "t-3", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-6", "t-3", "chat", "anthropic", 0.02, 0.03, windowStart + 2000, null, null);
+
+      const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
+      const aggregator = new MeterAggregator(createDb(db));
+      aggregator.aggregate(windowStart + 60_000);
+
+      const res = await billingRoutes.request(`/usage?tenant=t-3&provider=anthropic`, {
+        method: "GET",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.usage).toHaveLength(1);
+      expect(body.usage[0].provider).toBe("anthropic");
+    });
+
+    it("filters by date range", async () => {
+      const now = Date.now();
+      const window1 = Math.floor(now / 60_000) * 60_000;
+      const window2 = window1 + 60_000;
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-7", "t-4", "chat", "openai", 0.01, 0.015, window1 + 1000, null, null);
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-8", "t-4", "chat", "openai", 0.02, 0.03, window2 + 1000, null, null);
+
+      const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
+      const aggregator = new MeterAggregator(createDb(db));
+      aggregator.aggregate(window2 + 60_000);
+
+      const res = await billingRoutes.request(`/usage?tenant=t-4&startDate=${window1}&endDate=${window1 + 60_000}`, {
+        method: "GET",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.usage).toHaveLength(1);
+      expect(body.usage[0].window_start).toBe(window1);
+    });
+
     it("returns 401 without auth", async () => {
       const res = await billingRoutes.request(`/usage?tenant=t-1`, {
         method: "GET",
@@ -490,6 +610,38 @@ describe("billing routes", () => {
   // -- GET /billing/usage/summary -------------------------------------------
 
   describe("GET /billing/usage/summary", () => {
+    it("returns total spend for a tenant", async () => {
+      const now = Date.now();
+      const windowStart = Math.floor(now / 60_000) * 60_000;
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-s1", "t-sum-1", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+
+      db.prepare(
+        `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run("evt-s2", "t-sum-1", "embeddings", "openai", 0.005, 0.0075, windowStart + 2000, null, null);
+
+      const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
+      const aggregator = new MeterAggregator(createDb(db));
+      aggregator.aggregate(windowStart + 60_000);
+
+      const res = await billingRoutes.request(`/usage/summary?tenant=t-sum-1&startDate=${windowStart}`, {
+        method: "GET",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.tenant).toBe("t-sum-1");
+      expect(body.period_start).toBe(windowStart);
+      expect(body.total_cost).toBe(0.015);
+      expect(body.total_charge).toBe(0.0225);
+      expect(body.event_count).toBe(2);
+    });
+
     it("defaults to current billing period", async () => {
       const res = await billingRoutes.request(`/usage/summary?tenant=t-sum-2`, {
         method: "GET",

@@ -1,8 +1,20 @@
-import type Database from "better-sqlite3";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { LRUCache } from "lru-cache";
 import { logger } from "../../config/logger.js";
-import type { PlanTier } from "../quotas/tier-definitions.js";
-import { SpendOverrideStore, TierStore } from "../quotas/tier-definitions.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
+
+/**
+ * Spend limits passed by callers (replaces dead TierStore/SpendOverrideStore).
+ */
+export interface SpendLimits {
+  /** Hourly spending limit in USD (null = unlimited) */
+  maxSpendPerHour: number | null;
+  /** Monthly spending limit in USD (null = unlimited) */
+  maxSpendPerMonth: number | null;
+  /** Human-readable label for error messages */
+  label?: string;
+}
 
 /**
  * Result of a pre-call budget check.
@@ -45,27 +57,23 @@ interface CachedBudgetData {
  *
  * Before every upstream API call, this middleware queries the tenant's
  * accumulated spend from meter_events + usage_summaries and compares it
- * against tier limits. If the budget is exceeded, the call is rejected
- * with HTTP 429.
+ * against caller-provided spend limits. If the budget is exceeded, the
+ * call is rejected with HTTP 429.
  *
  * Design:
  * - Uses an in-memory LRU cache with ~30s TTL to avoid DB queries on every request
  * - Fail-closed: if DB is unavailable or cache miss fails, reject the call
- * - Supports per-tenant spend overrides (takes precedence over tier defaults)
+ * - Callers pass SpendLimits directly (no more TierStore dependency)
  */
 export class BudgetChecker {
   private readonly cache: LRUCache<string, CachedBudgetData>;
   private readonly cacheTtlMs: number;
-  private readonly tierStore: TierStore;
-  private readonly overrideStore: SpendOverrideStore;
 
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: DrizzleDb,
     config: BudgetCheckerConfig = {},
   ) {
     this.cacheTtlMs = config.cacheTtlMs ?? 30_000; // 30 seconds default
-    this.tierStore = new TierStore(db);
-    this.overrideStore = new SpendOverrideStore(db);
 
     this.cache = new LRUCache<string, CachedBudgetData>({
       max: config.cacheMaxSize ?? 1000,
@@ -77,36 +85,23 @@ export class BudgetChecker {
    * Check if a tenant can make an API call given their current spend.
    *
    * @param tenant - Tenant identifier
-   * @param tier - The tenant's plan tier (or tier ID string)
+   * @param limits - Spend limits for this tenant
    * @returns BudgetCheckResult indicating whether the call is allowed
    */
-  check(tenant: string, tier: PlanTier | string): BudgetCheckResult {
-    // Resolve tier if passed as string
-    const resolvedTier = typeof tier === "string" ? this.tierStore.get(tier) : tier;
-    if (!resolvedTier) {
-      // Fail-closed: if we can't find the tier, reject the call
-      return {
-        allowed: false,
-        reason: "Unable to verify tier configuration. Please contact support.",
-        httpStatus: 500,
-        currentHourlySpend: 0,
-        currentMonthlySpend: 0,
-        maxSpendPerHour: null,
-        maxSpendPerMonth: null,
-      };
-    }
+  check(tenant: string, limits: SpendLimits): BudgetCheckResult {
+    const label = limits.label ?? "current";
 
     // Try to get cached data
-    const cacheKey = `${tenant}`;
+    const cacheKey = tenant;
     let cached = this.cache.get(cacheKey);
 
     if (!cached) {
-      // Cache miss — query DB
+      // Cache miss -- query DB
       try {
-        cached = this.queryBudgetData(tenant, resolvedTier);
+        cached = this.queryBudgetData(tenant, limits);
         this.cache.set(cacheKey, cached);
       } catch (err) {
-        logger.error("Budget check query failed", { tenant, tier: resolvedTier.name, error: err });
+        logger.error("Budget check query failed", { tenant, error: err });
         // Fail-closed: if DB query fails, reject the call
         return {
           allowed: false,
@@ -124,7 +119,7 @@ export class BudgetChecker {
     if (cached.maxPerHour !== null && cached.hourlySpend >= cached.maxPerHour) {
       return {
         allowed: false,
-        reason: `Hourly spending limit exceeded: $${cached.hourlySpend.toFixed(2)}/$${cached.maxPerHour.toFixed(2)} (${resolvedTier.name} tier). Upgrade your plan for higher limits.`,
+        reason: `Hourly spending limit exceeded: $${cached.hourlySpend.toFixed(2)}/$${cached.maxPerHour.toFixed(2)} (${label} tier). Upgrade your plan for higher limits.`,
         httpStatus: 429,
         currentHourlySpend: cached.hourlySpend,
         currentMonthlySpend: cached.monthlySpend,
@@ -137,7 +132,7 @@ export class BudgetChecker {
     if (cached.maxPerMonth !== null && cached.monthlySpend >= cached.maxPerMonth) {
       return {
         allowed: false,
-        reason: `Monthly spending limit exceeded: $${cached.monthlySpend.toFixed(2)}/$${cached.maxPerMonth.toFixed(2)} (${resolvedTier.name} tier). Upgrade your plan for higher limits.`,
+        reason: `Monthly spending limit exceeded: $${cached.monthlySpend.toFixed(2)}/$${cached.maxPerMonth.toFixed(2)} (${label} tier). Upgrade your plan for higher limits.`,
         httpStatus: 429,
         currentHourlySpend: cached.hourlySpend,
         currentMonthlySpend: cached.monthlySpend,
@@ -159,59 +154,66 @@ export class BudgetChecker {
    * Query current budget data from the DB.
    * Combines data from meter_events buffer + usage_summaries.
    */
-  private queryBudgetData(tenant: string, tier: PlanTier): CachedBudgetData {
+  private queryBudgetData(tenant: string, limits: SpendLimits): CachedBudgetData {
     const now = Date.now();
     const oneHourAgo = now - 60 * 60 * 1000;
     const monthStart = this.getMonthStart(now);
 
     // Query hourly spend from both meter_events (unbuffered) and usage_summaries (aggregated)
     const hourlyEvents = this.db
-      .prepare(
-        `SELECT COALESCE(SUM(charge), 0) as total
-         FROM meter_events
-         WHERE tenant = ? AND timestamp >= ?`,
-      )
-      .get(tenant, oneHourAgo) as { total: number };
+      .select({
+        total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
+      })
+      .from(meterEvents)
+      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, oneHourAgo)))
+      .get();
 
     const hourlySummaries = this.db
-      .prepare(
-        `SELECT COALESCE(SUM(total_charge), 0) as total
-         FROM usage_summaries
-         WHERE tenant = ? AND window_end >= ? AND window_start <= ?`,
+      .select({
+        total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+      })
+      .from(usageSummaries)
+      .where(
+        and(
+          eq(usageSummaries.tenant, tenant),
+          gte(usageSummaries.windowEnd, oneHourAgo),
+          lte(usageSummaries.windowStart, now),
+        ),
       )
-      .get(tenant, oneHourAgo, now) as { total: number };
+      .get();
 
-    const hourlySpend = hourlyEvents.total + hourlySummaries.total;
+    const hourlySpend = (hourlyEvents?.total ?? 0) + (hourlySummaries?.total ?? 0);
 
     // Query monthly spend
     const monthlyEvents = this.db
-      .prepare(
-        `SELECT COALESCE(SUM(charge), 0) as total
-         FROM meter_events
-         WHERE tenant = ? AND timestamp >= ?`,
-      )
-      .get(tenant, monthStart) as { total: number };
+      .select({
+        total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
+      })
+      .from(meterEvents)
+      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)))
+      .get();
 
     const monthlySummaries = this.db
-      .prepare(
-        `SELECT COALESCE(SUM(total_charge), 0) as total
-         FROM usage_summaries
-         WHERE tenant = ? AND window_end >= ? AND window_start <= ?`,
+      .select({
+        total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+      })
+      .from(usageSummaries)
+      .where(
+        and(
+          eq(usageSummaries.tenant, tenant),
+          gte(usageSummaries.windowEnd, monthStart),
+          lte(usageSummaries.windowStart, now),
+        ),
       )
-      .get(tenant, monthStart, now) as { total: number };
+      .get();
 
-    const monthlySpend = monthlyEvents.total + monthlySummaries.total;
-
-    // Get per-tenant overrides (takes precedence over tier defaults)
-    const override = this.overrideStore.get(tenant);
-    const maxPerHour = override?.maxSpendPerHour ?? tier.maxSpendPerHour ?? null;
-    const maxPerMonth = override?.maxSpendPerMonth ?? tier.maxSpendPerMonth ?? null;
+    const monthlySpend = (monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0);
 
     return {
       hourlySpend,
       monthlySpend,
-      maxPerHour,
-      maxPerMonth,
+      maxPerHour: limits.maxSpendPerHour,
+      maxPerMonth: limits.maxSpendPerMonth,
     };
   }
 
@@ -227,7 +229,7 @@ export class BudgetChecker {
    * Invalidate cache for a specific tenant (useful after spend updates).
    */
   invalidate(tenant: string): void {
-    this.cache.delete(`${tenant}`);
+    this.cache.delete(tenant);
   }
 
   /**

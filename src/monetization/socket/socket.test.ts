@@ -1,5 +1,7 @@
-import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { meterEvents } from "../../db/schema/meter-events.js";
+import { createTestDb } from "../../test/db.js";
 import type {
   AdapterCapability,
   AdapterResult,
@@ -8,16 +10,21 @@ import type {
   TranscriptionOutput,
   TTSOutput,
 } from "../adapters/types.js";
-import { BudgetChecker } from "../budget/budget-checker.js";
+import { BudgetChecker, type SpendLimits } from "../budget/budget-checker.js";
 import type { MeterEmitter } from "../metering/emitter.js";
-import { initMeterSchema } from "../metering/schema.js";
 import type { MeterEvent } from "../metering/types.js";
-import { DEFAULT_TIERS, TierStore } from "../quotas/tier-definitions.js";
 import { AdapterSocket, type SocketConfig } from "./socket.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Free tier limits (matching old DEFAULT_TIERS["free"]) */
+const FREE_LIMITS: SpendLimits = {
+  maxSpendPerHour: 0.5,
+  maxSpendPerMonth: 5,
+  label: "free",
+};
 
 function stubMeter(): MeterEmitter & { events: MeterEvent[] } {
   const events: MeterEvent[] = [];
@@ -91,10 +98,10 @@ describe("AdapterSocket", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // execute — adapter selection
+  // execute -- adapter selection
   // ---------------------------------------------------------------------------
 
-  describe("execute — adapter selection", () => {
+  describe("execute -- adapter selection", () => {
     it("selects the first adapter supporting the capability", async () => {
       const meter = stubMeter();
       const socket = createSocket(meter);
@@ -171,10 +178,10 @@ describe("AdapterSocket", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // execute — metering
+  // execute -- metering
   // ---------------------------------------------------------------------------
 
-  describe("execute — metering", () => {
+  describe("execute -- metering", () => {
     it("emits a meter event after successful call", async () => {
       const meter = stubMeter();
       const socket = createSocket(meter);
@@ -293,10 +300,10 @@ describe("AdapterSocket", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // execute — TTS and embeddings routing
+  // execute -- TTS and embeddings routing
   // ---------------------------------------------------------------------------
 
-  describe("execute — TTS routing", () => {
+  describe("execute -- TTS routing", () => {
     it("routes tts capability to synthesizeSpeech method", async () => {
       const meter = stubMeter();
       const socket = createSocket(meter);
@@ -326,7 +333,7 @@ describe("AdapterSocket", () => {
     });
   });
 
-  describe("execute — embeddings routing", () => {
+  describe("execute -- embeddings routing", () => {
     it("routes embeddings capability to embed method", async () => {
       const meter = stubMeter();
       const socket = createSocket(meter);
@@ -356,10 +363,10 @@ describe("AdapterSocket", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // execute — error handling
+  // execute -- error handling
   // ---------------------------------------------------------------------------
 
-  describe("execute — error handling", () => {
+  describe("execute -- error handling", () => {
     it("does not emit meter event when adapter throws", async () => {
       const meter = stubMeter();
       const socket = createSocket(meter);
@@ -384,10 +391,10 @@ describe("AdapterSocket", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // execute — BYOK bypass
+  // execute -- BYOK bypass
   // ---------------------------------------------------------------------------
 
-  describe("execute — BYOK bypass", () => {
+  describe("execute -- BYOK bypass", () => {
     it("emits cost: 0, charge: 0 when byok is true", async () => {
       const meter = stubMeter();
       const socket = createSocket(meter);
@@ -437,23 +444,23 @@ describe("AdapterSocket", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // execute — budget check
+  // execute -- budget check
   // ---------------------------------------------------------------------------
 
-  describe("execute — budget check", () => {
-    let db: Database.Database;
+  describe("execute -- budget check", () => {
+    let db: DrizzleDb;
+    let sqlite: import("better-sqlite3").Database;
     let budgetChecker: BudgetChecker;
 
     beforeEach(() => {
-      db = new Database(":memory:");
-      initMeterSchema(db);
-      const tierStore = new TierStore(db);
-      tierStore.seed(DEFAULT_TIERS);
+      const testDb = createTestDb();
+      db = testDb.db;
+      sqlite = testDb.sqlite;
       budgetChecker = new BudgetChecker(db, { cacheTtlMs: 1000 });
     });
 
     afterEach(() => {
-      db.close();
+      sqlite.close();
     });
 
     it("allows requests when budget is under limit", async () => {
@@ -465,7 +472,7 @@ describe("AdapterSocket", () => {
         tenantId: "t-1",
         capability: "transcription",
         input: { audioUrl: "https://example.com/audio.mp3" },
-        tier: "free",
+        spendLimits: FREE_LIMITS,
       });
 
       expect(result.text).toBe("hello");
@@ -475,9 +482,17 @@ describe("AdapterSocket", () => {
     it("blocks requests when hourly budget is exceeded", async () => {
       // Add events to exceed hourly limit ($0.50)
       const now = Date.now();
-      db.prepare(
-        "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run("evt-1", "t-1", 0.3, 0.6, "chat", "replicate", now);
+      db.insert(meterEvents)
+        .values({
+          id: "evt-1",
+          tenant: "t-1",
+          cost: 0.3,
+          charge: 0.6,
+          capability: "chat",
+          provider: "replicate",
+          timestamp: now,
+        })
+        .run();
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -488,7 +503,7 @@ describe("AdapterSocket", () => {
           tenantId: "t-1",
           capability: "transcription",
           input: { audioUrl: "https://example.com/audio.mp3" },
-          tier: "free",
+          spendLimits: FREE_LIMITS,
         }),
       ).rejects.toThrow("Hourly spending limit exceeded");
 
@@ -499,9 +514,17 @@ describe("AdapterSocket", () => {
       // Add old events to exceed monthly limit but not hourly ($5.00)
       const now = Date.now();
       const twoHoursAgo = now - 2 * 60 * 60 * 1000;
-      db.prepare(
-        "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run("evt-1", "t-monthly", 2.5, 5.0, "chat", "replicate", twoHoursAgo);
+      db.insert(meterEvents)
+        .values({
+          id: "evt-1",
+          tenant: "t-monthly",
+          cost: 2.5,
+          charge: 5.0,
+          capability: "chat",
+          provider: "replicate",
+          timestamp: twoHoursAgo,
+        })
+        .run();
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -512,19 +535,27 @@ describe("AdapterSocket", () => {
           tenantId: "t-monthly",
           capability: "transcription",
           input: { audioUrl: "https://example.com/audio.mp3" },
-          tier: "free",
+          spendLimits: FREE_LIMITS,
         }),
       ).rejects.toThrow("Monthly spending limit exceeded");
 
       expect(meter.events).toHaveLength(0);
     });
 
-    it("skips budget check when tier is not provided", async () => {
-      // Even though budget is exceeded, no tier means no check
+    it("skips budget check when spendLimits is not provided", async () => {
+      // Even though budget is exceeded, no limits means no check
       const now = Date.now();
-      db.prepare(
-        "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run("evt-1", "t-1", 3.0, 6.0, "chat", "replicate", now);
+      db.insert(meterEvents)
+        .values({
+          id: "evt-1",
+          tenant: "t-1",
+          cost: 3.0,
+          charge: 6.0,
+          capability: "chat",
+          provider: "replicate",
+          timestamp: now,
+        })
+        .run();
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -534,7 +565,7 @@ describe("AdapterSocket", () => {
         tenantId: "t-1",
         capability: "transcription",
         input: { audioUrl: "https://example.com/audio.mp3" },
-        // No tier provided
+        // No spendLimits provided
       });
 
       expect(result.text).toBe("hello");
@@ -544,9 +575,17 @@ describe("AdapterSocket", () => {
     it("skips budget check when byok is true", async () => {
       // BYOK users bypass budget checks
       const now = Date.now();
-      db.prepare(
-        "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run("evt-1", "t-1", 3.0, 6.0, "chat", "replicate", now);
+      db.insert(meterEvents)
+        .values({
+          id: "evt-1",
+          tenant: "t-1",
+          cost: 3.0,
+          charge: 6.0,
+          capability: "chat",
+          provider: "replicate",
+          timestamp: now,
+        })
+        .run();
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -556,7 +595,7 @@ describe("AdapterSocket", () => {
         tenantId: "t-1",
         capability: "transcription",
         input: { audioUrl: "https://example.com/audio.mp3" },
-        tier: "free",
+        spendLimits: FREE_LIMITS,
         byok: true,
       });
 
@@ -573,7 +612,7 @@ describe("AdapterSocket", () => {
         tenantId: "t-1",
         capability: "transcription",
         input: { audioUrl: "https://example.com/audio.mp3" },
-        tier: "free",
+        spendLimits: FREE_LIMITS,
       });
 
       expect(result.text).toBe("hello");
@@ -581,9 +620,17 @@ describe("AdapterSocket", () => {
 
     it("includes httpStatus in error when budget exceeded", async () => {
       const now = Date.now();
-      db.prepare(
-        "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run("evt-1", "t-1", 0.3, 0.6, "chat", "replicate", now);
+      db.insert(meterEvents)
+        .values({
+          id: "evt-1",
+          tenant: "t-1",
+          cost: 0.3,
+          charge: 0.6,
+          capability: "chat",
+          provider: "replicate",
+          timestamp: now,
+        })
+        .run();
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -594,7 +641,7 @@ describe("AdapterSocket", () => {
           tenantId: "t-1",
           capability: "transcription",
           input: { audioUrl: "https://example.com/audio.mp3" },
-          tier: "free",
+          spendLimits: FREE_LIMITS,
         });
         expect.fail("Should have thrown");
       } catch (err) {

@@ -1,2 +1,2 @@
-export type { BudgetCheckerConfig, BudgetCheckResult } from "./budget-checker.js";
+export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budget-checker.js";
 export { BudgetChecker } from "./budget-checker.js";

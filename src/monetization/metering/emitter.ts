@@ -1,4 +1,6 @@
-import type Database from "better-sqlite3";
+import { desc, eq } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { meterEvents } from "../../db/schema/meter-events.js";
 import { MeterDLQ } from "./dlq.js";
 import type { MeterEvent, MeterEventRow } from "./types.js";
 import { MeterWAL } from "./wal.js";
@@ -21,8 +23,6 @@ const DEFAULT_MAX_RETRIES = Number.parseInt(process.env.METER_MAX_RETRIES ?? "3"
  */
 export class MeterEmitter {
   private buffer: Array<MeterEvent & { id: string }> = [];
-  private readonly insertStmt: Database.Statement;
-  private readonly flushTransaction: Database.Transaction<(events: Array<MeterEvent & { id: string }>) => void>;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private readonly flushIntervalMs: number;
   private readonly batchSize: number;
@@ -33,7 +33,7 @@ export class MeterEmitter {
   private readonly retryCount = new Map<string, number>();
 
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: DrizzleDb,
     opts: {
       flushIntervalMs?: number;
       batchSize?: number;
@@ -48,27 +48,6 @@ export class MeterEmitter {
 
     this.wal = new MeterWAL(opts.walPath ?? DEFAULT_WAL_PATH);
     this.dlq = new MeterDLQ(opts.dlqPath ?? DEFAULT_DLQ_PATH);
-
-    this.insertStmt = db.prepare(`
-      INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp, session_id, duration)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    this.flushTransaction = db.transaction((events: Array<MeterEvent & { id: string }>) => {
-      for (const e of events) {
-        this.insertStmt.run(
-          e.id,
-          e.tenant,
-          e.cost,
-          e.charge,
-          e.capability,
-          e.provider,
-          e.timestamp,
-          e.sessionId ?? null,
-          e.duration ?? null,
-        );
-      }
-    });
 
     // Replay any unflushed WAL events from a previous session.
     this.replayWAL();
@@ -90,9 +69,8 @@ export class MeterEmitter {
 
     // Check which events are already in the database.
     const existingIds = new Set<string>();
-    const checkStmt = this.db.prepare("SELECT id FROM meter_events WHERE id = ?");
     for (const e of walEvents) {
-      const row = checkStmt.get(e.id) as { id: string } | undefined;
+      const row = this.db.select({ id: meterEvents.id }).from(meterEvents).where(eq(meterEvents.id, e.id)).get();
       if (row) {
         existingIds.add(e.id);
       }
@@ -104,7 +82,7 @@ export class MeterEmitter {
       this.buffer.push(...toReplay);
       const flushed = this.flush();
       if (flushed === 0) {
-        // Flush failed — events remain in WAL and buffer for retry.
+        // Flush failed -- events remain in WAL and buffer for retry.
         return;
       }
     }
@@ -134,7 +112,23 @@ export class MeterEmitter {
     const batch = this.buffer.splice(0);
 
     try {
-      this.flushTransaction(batch);
+      this.db.transaction((tx) => {
+        for (const e of batch) {
+          tx.insert(meterEvents)
+            .values({
+              id: e.id,
+              tenant: e.tenant,
+              cost: e.cost,
+              charge: e.charge,
+              capability: e.capability,
+              provider: e.provider,
+              timestamp: e.timestamp,
+              sessionId: e.sessionId ?? null,
+              duration: e.duration ?? null,
+            })
+            .run();
+        }
+      });
 
       // Success: remove from WAL and reset retry counters.
       const flushedIds = new Set(batch.map((e) => e.id));
@@ -154,7 +148,7 @@ export class MeterEmitter {
         this.retryCount.set(event.id, retries);
 
         if (retries >= this.maxRetries) {
-          // Max retries exceeded — move to DLQ.
+          // Max retries exceeded -- move to DLQ.
           toDLQ.push(event);
           this.dlq.append(event, String(error), retries);
           this.retryCount.delete(event.id);
@@ -194,8 +188,25 @@ export class MeterEmitter {
 
   /** Query persisted events (for testing / diagnostics). */
   queryEvents(tenant: string, limit = 50): MeterEventRow[] {
-    return this.db
-      .prepare("SELECT * FROM meter_events WHERE tenant = ? ORDER BY timestamp DESC LIMIT ?")
-      .all(tenant, limit) as MeterEventRow[];
+    const rows = this.db
+      .select()
+      .from(meterEvents)
+      .where(eq(meterEvents.tenant, tenant))
+      .orderBy(desc(meterEvents.timestamp))
+      .limit(limit)
+      .all();
+
+    // Map Drizzle camelCase columns back to snake_case MeterEventRow interface
+    return rows.map((r) => ({
+      id: r.id,
+      tenant: r.tenant,
+      cost: r.cost,
+      charge: r.charge,
+      capability: r.capability,
+      provider: r.provider,
+      timestamp: r.timestamp,
+      session_id: r.sessionId,
+      duration: r.duration,
+    }));
   }
 }

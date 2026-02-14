@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import { and, count, desc, eq, gte, lt, lte, max, min, sql, sum } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { billingPeriodSummaries, meterEvents } from "../../db/schema/meter-events.js";
 import type { BillingPeriod, BillingPeriodSummary, StripeMeterRecord } from "./types.js";
 
 /** Default billing period: 1 hour. */
@@ -59,80 +61,14 @@ export class UsageAggregationWorker {
   private readonly lateArrivalGraceMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  private readonly upsertStmt: Database.Statement;
-  private readonly upsertTransaction: Database.Transaction<
-    (
-      rows: Array<{
-        id: string;
-        tenant: string;
-        capability: string;
-        provider: string;
-        event_count: number;
-        total_cost: number;
-        total_charge: number;
-        total_duration: number;
-        period_start: number;
-        period_end: number;
-        updated_at: number;
-      }>,
-    ) => void
-  >;
-
   constructor(
-    private readonly db: Database.Database,
+    private readonly db: DrizzleDb,
     opts: UsageAggregationWorkerOpts = {},
   ) {
     this.periodMs = opts.periodMs ?? DEFAULT_PERIOD_MS;
     this.intervalMs = opts.intervalMs ?? this.periodMs;
     this.meterEventNames = { ...DEFAULT_EVENT_NAMES, ...opts.meterEventNames };
     this.lateArrivalGraceMs = opts.lateArrivalGraceMs ?? 300_000; // 5 min
-
-    this.upsertStmt = db.prepare(`
-      INSERT INTO billing_period_summaries
-        (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, period_start, period_end, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(tenant, capability, provider, period_start) DO UPDATE SET
-        event_count = excluded.event_count,
-        total_cost = excluded.total_cost,
-        total_charge = excluded.total_charge,
-        total_duration = excluded.total_duration,
-        period_end = excluded.period_end,
-        updated_at = excluded.updated_at
-    `);
-
-    this.upsertTransaction = db.transaction(
-      (
-        rows: Array<{
-          id: string;
-          tenant: string;
-          capability: string;
-          provider: string;
-          event_count: number;
-          total_cost: number;
-          total_charge: number;
-          total_duration: number;
-          period_start: number;
-          period_end: number;
-          updated_at: number;
-        }>,
-      ) => {
-        for (const r of rows) {
-          this.upsertStmt.run(
-            r.id,
-            r.tenant,
-            r.capability,
-            r.provider,
-            r.event_count,
-            r.total_cost,
-            r.total_charge,
-            r.total_duration,
-            r.period_start,
-            r.period_end,
-            r.updated_at,
-          );
-        }
-      },
-    );
   }
 
   /** Compute the billing period boundaries for a given timestamp. */
@@ -155,26 +91,28 @@ export class UsageAggregationWorker {
     const graceStart = this.getBillingPeriod(currentPeriod.start - this.lateArrivalGraceMs).start;
 
     // For periods older than the grace window, check what we've already covered.
-    const existingMax = this.db.prepare("SELECT MAX(period_end) as max_end FROM billing_period_summaries").get() as {
-      max_end: number | null;
-    };
+    const existingMax = this.db
+      .select({ maxEnd: max(billingPeriodSummaries.periodEnd) })
+      .from(billingPeriodSummaries)
+      .get();
 
     // Determine the lower bound for aggregation.
     let lowerBound: number;
-    if (existingMax.max_end != null) {
+    if (existingMax?.maxEnd != null) {
       // Re-aggregate from grace window (handles late arrivals) OR from last covered point
       // -- whichever is earlier.
-      lowerBound = Math.min(graceStart, existingMax.max_end);
+      lowerBound = Math.min(graceStart, existingMax.maxEnd);
     } else {
       // First run: find earliest meter event.
-      const earliest = this.db.prepare("SELECT MIN(timestamp) as min_ts FROM meter_events").get() as {
-        min_ts: number | null;
-      };
+      const earliest = this.db
+        .select({ minTs: min(meterEvents.timestamp) })
+        .from(meterEvents)
+        .get();
 
-      if (earliest.min_ts == null) {
+      if (earliest?.minTs == null) {
         return 0; // No data at all.
       }
-      lowerBound = this.getBillingPeriod(earliest.min_ts).start;
+      lowerBound = this.getBillingPeriod(earliest.minTs).start;
     }
 
     // Only aggregate completed billing periods (before currentPeriod.start).
@@ -186,50 +124,63 @@ export class UsageAggregationWorker {
 
     // Aggregate directly from meter_events, grouped by tenant + capability + provider
     // + billing period boundary.
+    const periodMs = this.periodMs;
     const groupedRows = this.db
-      .prepare(
-        `SELECT
-          tenant,
-          capability,
-          provider,
-          COUNT(*) as event_count,
-          SUM(cost) as total_cost,
-          SUM(charge) as total_charge,
-          COALESCE(SUM(duration), 0) as total_duration,
-          (CAST(timestamp / ? AS INTEGER) * ?) as period_start
-        FROM meter_events
-        WHERE timestamp >= ?
-          AND timestamp < ?
-        GROUP BY tenant, capability, provider,
-          CAST(timestamp / ? AS INTEGER)`,
+      .select({
+        tenant: meterEvents.tenant,
+        capability: meterEvents.capability,
+        provider: meterEvents.provider,
+        eventCount: count(),
+        totalCost: sum(meterEvents.cost),
+        totalCharge: sum(meterEvents.charge),
+        totalDuration: sql<number>`COALESCE(SUM(${meterEvents.duration}), 0)`,
+        periodStart: sql<number>`(CAST(${meterEvents.timestamp} / ${periodMs} AS INTEGER) * ${periodMs})`,
+      })
+      .from(meterEvents)
+      .where(and(gte(meterEvents.timestamp, lowerBound), lt(meterEvents.timestamp, upperBound)))
+      .groupBy(
+        meterEvents.tenant,
+        meterEvents.capability,
+        meterEvents.provider,
+        sql`CAST(${meterEvents.timestamp} / ${periodMs} AS INTEGER)`,
       )
-      .all(this.periodMs, this.periodMs, lowerBound, upperBound, this.periodMs) as Array<{
-      tenant: string;
-      capability: string;
-      provider: string;
-      event_count: number;
-      total_cost: number;
-      total_charge: number;
-      total_duration: number;
-      period_start: number;
-    }>;
+      .all();
 
     if (groupedRows.length === 0) {
       // Persist a sentinel row so that MAX(period_end) advances past this empty
       // range. Without this, every subsequent run rescans the entire gap.
-      this.upsertStmt.run(
-        crypto.randomUUID(),
-        "__sentinel__",
-        "__none__",
-        "__none__",
-        0,
-        0,
-        0,
-        0,
-        upperBound - this.periodMs,
-        upperBound,
-        now,
-      );
+      this.db
+        .insert(billingPeriodSummaries)
+        .values({
+          id: crypto.randomUUID(),
+          tenant: "__sentinel__",
+          capability: "__none__",
+          provider: "__none__",
+          eventCount: 0,
+          totalCost: 0,
+          totalCharge: 0,
+          totalDuration: 0,
+          periodStart: upperBound - this.periodMs,
+          periodEnd: upperBound,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            billingPeriodSummaries.tenant,
+            billingPeriodSummaries.capability,
+            billingPeriodSummaries.provider,
+            billingPeriodSummaries.periodStart,
+          ],
+          set: {
+            eventCount: 0,
+            totalCost: 0,
+            totalCharge: 0,
+            totalDuration: 0,
+            periodEnd: upperBound,
+            updatedAt: now,
+          },
+        })
+        .run();
       return 0;
     }
 
@@ -238,16 +189,39 @@ export class UsageAggregationWorker {
       tenant: r.tenant,
       capability: r.capability,
       provider: r.provider,
-      event_count: r.event_count,
-      total_cost: r.total_cost,
-      total_charge: r.total_charge,
-      total_duration: r.total_duration,
-      period_start: r.period_start,
-      period_end: r.period_start + this.periodMs,
-      updated_at: now,
+      eventCount: r.eventCount,
+      totalCost: Number(r.totalCost),
+      totalCharge: Number(r.totalCharge),
+      totalDuration: r.totalDuration,
+      periodStart: r.periodStart,
+      periodEnd: r.periodStart + this.periodMs,
+      updatedAt: now,
     }));
 
-    this.upsertTransaction(upsertRows);
+    this.db.transaction((tx) => {
+      for (const r of upsertRows) {
+        tx.insert(billingPeriodSummaries)
+          .values(r)
+          .onConflictDoUpdate({
+            target: [
+              billingPeriodSummaries.tenant,
+              billingPeriodSummaries.capability,
+              billingPeriodSummaries.provider,
+              billingPeriodSummaries.periodStart,
+            ],
+            set: {
+              eventCount: r.eventCount,
+              totalCost: r.totalCost,
+              totalCharge: r.totalCharge,
+              totalDuration: r.totalDuration,
+              periodEnd: r.periodEnd,
+              updatedAt: r.updatedAt,
+            },
+          })
+          .run();
+      }
+    });
+
     return upsertRows.length;
   }
 
@@ -278,27 +252,39 @@ export class UsageAggregationWorker {
     tenant: string,
     opts: { since?: number; until?: number; limit?: number } = {},
   ): BillingPeriodSummary[] {
-    const conditions: string[] = ["tenant = ?"];
-    const params: unknown[] = [tenant];
+    const conditions = [eq(billingPeriodSummaries.tenant, tenant)];
 
     if (opts.since != null) {
-      conditions.push("period_start >= ?");
-      params.push(opts.since);
+      conditions.push(gte(billingPeriodSummaries.periodStart, opts.since));
     }
     if (opts.until != null) {
-      conditions.push("period_end <= ?");
-      params.push(opts.until);
+      conditions.push(lte(billingPeriodSummaries.periodEnd, opts.until));
     }
 
     const limit = Math.min(Math.max(1, opts.limit ?? 100), 1000);
-    const where = conditions.join(" AND ");
 
-    return this.db
-      .prepare(
-        `SELECT id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, period_start, period_end, updated_at
-         FROM billing_period_summaries WHERE ${where} ORDER BY period_start DESC LIMIT ?`,
-      )
-      .all(...params, limit) as BillingPeriodSummary[];
+    const rows = this.db
+      .select()
+      .from(billingPeriodSummaries)
+      .where(and(...conditions))
+      .orderBy(desc(billingPeriodSummaries.periodStart))
+      .limit(limit)
+      .all();
+
+    // Map to BillingPeriodSummary interface (snake_case)
+    return rows.map((r) => ({
+      id: r.id,
+      tenant: r.tenant,
+      capability: r.capability,
+      provider: r.provider,
+      event_count: r.eventCount,
+      total_cost: r.totalCost,
+      total_charge: r.totalCharge,
+      total_duration: r.totalDuration,
+      period_start: r.periodStart,
+      period_end: r.periodEnd,
+      updated_at: r.updatedAt,
+    }));
   }
 
   /**
@@ -337,17 +323,21 @@ export class UsageAggregationWorker {
     since: number,
   ): { totalCost: number; totalCharge: number; eventCount: number; totalDuration: number } {
     const row = this.db
-      .prepare(
-        `SELECT
-          COALESCE(SUM(total_cost), 0) as totalCost,
-          COALESCE(SUM(total_charge), 0) as totalCharge,
-          COALESCE(SUM(event_count), 0) as eventCount,
-          COALESCE(SUM(total_duration), 0) as totalDuration
-        FROM billing_period_summaries
-        WHERE tenant = ? AND period_start >= ?`,
-      )
-      .get(tenant, since) as { totalCost: number; totalCharge: number; eventCount: number; totalDuration: number };
+      .select({
+        totalCost: sql<number>`COALESCE(SUM(${billingPeriodSummaries.totalCost}), 0)`,
+        totalCharge: sql<number>`COALESCE(SUM(${billingPeriodSummaries.totalCharge}), 0)`,
+        eventCount: sql<number>`COALESCE(SUM(${billingPeriodSummaries.eventCount}), 0)`,
+        totalDuration: sql<number>`COALESCE(SUM(${billingPeriodSummaries.totalDuration}), 0)`,
+      })
+      .from(billingPeriodSummaries)
+      .where(and(eq(billingPeriodSummaries.tenant, tenant), gte(billingPeriodSummaries.periodStart, since)))
+      .get();
 
-    return row;
+    return {
+      totalCost: row?.totalCost ?? 0,
+      totalCharge: row?.totalCharge ?? 0,
+      eventCount: row?.eventCount ?? 0,
+      totalDuration: row?.totalDuration ?? 0,
+    };
   }
 }

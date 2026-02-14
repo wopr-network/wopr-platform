@@ -47,7 +47,7 @@ export {
   type TTSOutput,
   withMargin,
 } from "./adapters/types.js";
-export type { BudgetCheckerConfig, BudgetCheckResult } from "./budget/index.js";
+export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budget/index.js";
 export { BudgetChecker } from "./budget/index.js";
 // Feature gating middleware (WOP-283)
 export { createFeatureGate, type FeatureGateConfig, type GetUserTier, type HasBillingHold } from "./feature-gate.js";
@@ -61,7 +61,7 @@ export type {
   UsageAggregationWorkerOpts,
   UsageSummary,
 } from "./metering/index.js";
-export { initMeterSchema, MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
+export { MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
 export {
   buildQuotaUsage,
   checkInstanceQuota,
