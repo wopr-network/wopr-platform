@@ -23,6 +23,8 @@ services:
         condition: service_healthy
       platform-ui:
         condition: service_healthy
+    environment:
+      - DOMAIN=${DOMAIN}
     restart: unless-stopped
 
   platform-api:
@@ -31,8 +33,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - platform_data:/data
     environment:
-      - DATABASE_PATH=/data/platform.db
-      - METERING_DB_PATH=/data/metering.db
+      - BILLING_DB_PATH=/data/platform/billing.db
+      - QUOTA_DB_PATH=/data/platform/quotas.db
+      - AUDIT_DB_PATH=/data/platform/audit.db
+      - CREDITS_DB_PATH=/data/platform/credits.db
+      - SNAPSHOT_DB_PATH=/data/snapshots.db
+      - TENANT_KEYS_DB_PATH=/data/platform/tenant-keys.db
+      - METER_WAL_PATH=/data/meter-wal.jsonl
+      - METER_DLQ_PATH=/data/meter-dlq.jsonl
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - STRIPE_DEFAULT_PRICE_ID=${STRIPE_DEFAULT_PRICE_ID}
@@ -45,7 +53,7 @@ services:
       - WOPR_BOT_IMAGE=${WOPR_BOT_IMAGE:-ghcr.io/wopr-network/wopr:latest}
       - NODE_ENV=production
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3100/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -57,7 +65,7 @@ services:
       - NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
       - BETTER_AUTH_URL=https://api.${DOMAIN}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))\""]
       interval: 30s
       timeout: 5s
       retries: 3
