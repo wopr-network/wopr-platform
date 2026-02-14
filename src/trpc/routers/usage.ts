@@ -21,9 +21,7 @@ export const usageRouter = router({
       }),
     )
     .query(async ({ input }) => {
-      const { DEFAULT_INSTANCE_LIMITS, checkInstanceQuota } = await import(
-        "../../monetization/quotas/quota-check.js"
-      );
+      const { DEFAULT_INSTANCE_LIMITS, checkInstanceQuota } = await import("../../monetization/quotas/quota-check.js");
 
       const result = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, input.activeInstances);
       return {
@@ -42,9 +40,7 @@ export const usageRouter = router({
       }),
     )
     .query(async ({ input }) => {
-      const { DEFAULT_INSTANCE_LIMITS, checkInstanceQuota } = await import(
-        "../../monetization/quotas/quota-check.js"
-      );
+      const { DEFAULT_INSTANCE_LIMITS, checkInstanceQuota } = await import("../../monetization/quotas/quota-check.js");
 
       return checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, input.activeInstances, {
         softCapEnabled: input.softCap,
@@ -54,9 +50,7 @@ export const usageRouter = router({
 
   /** Get Docker resource constraints for bot containers. */
   resourceLimits: protectedProcedure.query(async () => {
-    const { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } = await import(
-      "../../monetization/quotas/resource-limits.js"
-    );
+    const { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } = await import("../../monetization/quotas/resource-limits.js");
 
     return buildResourceLimits(DEFAULT_RESOURCE_CONFIG);
   }),
