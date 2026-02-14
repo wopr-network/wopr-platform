@@ -23,6 +23,18 @@ describe("getISOWeekKey", () => {
     const w2 = getISOWeekKey(new Date("2026-02-14T00:00:00Z"));
     expect(w1).not.toBe(w2);
   });
+
+  it("handles year boundary correctly (Dec 31 can be ISO week 1 of next year)", () => {
+    // 2025-12-29 is a Monday, ISO week 1 of 2026
+    const key = getISOWeekKey(new Date("2025-12-29T00:00:00Z"));
+    expect(key).toBe("2026-W01");
+  });
+
+  it("handles year boundary correctly (Jan 1 can be ISO week 53 of prior year)", () => {
+    // 2027-01-01 is a Friday. The Thursday of that week is 2026-12-31, so ISO year 2026, week 53.
+    const key = getISOWeekKey(new Date("2027-01-01T00:00:00Z"));
+    expect(key).toBe("2026-W53");
+  });
 });
 
 describe("selectRetained", () => {

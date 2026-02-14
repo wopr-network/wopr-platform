@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BackupStatusStore } from "../../backup/backup-status-store.js";
 import * as schema from "../../db/schema/index.js";
-import { createAdminBackupRoutes } from "./admin-backups.js";
+import { createAdminBackupRoutes, isRemotePathOwnedBy } from "./admin-backups.js";
 
 const TEST_DIR = join(import.meta.dirname, "../../../.test-admin-backups");
 const DB_PATH = join(TEST_DIR, "backup-status.db");
@@ -127,6 +127,17 @@ describe("admin-backups routes", () => {
       expect(res.status).toBe(403);
     });
 
+    it("returns 403 for path traversal attempt using includes() bypass", async () => {
+      store.recordSuccess("tenant_abc", "node-1", 100, "path");
+
+      const res = await app.request("/tenant_abc/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remotePath: "nightly/node-1/../../other_tenant/tenant_abc_fake/backup.tar.gz" }),
+      });
+      expect(res.status).toBe(403);
+    });
+
     it("initiates restore for valid request", async () => {
       store.recordSuccess("tenant_abc", "node-1", 100, "path");
 
@@ -143,6 +154,42 @@ describe("admin-backups routes", () => {
       expect(body.ok).toBe(true);
       expect(body.containerId).toBe("tenant_abc");
       expect(body.targetNodeId).toBe("node-2");
+    });
+  });
+
+  describe("GET /alerts/stale", () => {
+    it("returns stale backup alerts", async () => {
+      store.recordFailure("tenant_stale", "node-1", "disk full");
+
+      const res = await app.request("/alerts/stale");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.count).toBeGreaterThanOrEqual(1);
+      expect(body.alerts[0].containerId).toBe("tenant_stale");
+    });
+
+    it("is not shadowed by /:containerId route", async () => {
+      // "alerts" should not be treated as a containerId
+      const res = await app.request("/alerts/stale");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toHaveProperty("alerts");
+      expect(body).toHaveProperty("count");
+    });
+  });
+
+  describe("isRemotePathOwnedBy", () => {
+    it("accepts valid paths containing the container as a segment", () => {
+      expect(isRemotePathOwnedBy("nightly/node-1/tenant_abc/backup.tar.gz", "tenant_abc")).toBe(true);
+    });
+
+    it("rejects paths where container appears only as substring of a segment", () => {
+      expect(isRemotePathOwnedBy("nightly/node-1/tenant_abc_fake/backup.tar.gz", "tenant_abc")).toBe(false);
+    });
+
+    it("rejects path traversal attempts", () => {
+      expect(isRemotePathOwnedBy("nightly/../../tenant_abc/../other/backup.tar.gz", "tenant_abc")).toBe(true);
+      expect(isRemotePathOwnedBy("nightly/../../other_tenant/backup.tar.gz", "tenant_abc")).toBe(false);
     });
   });
 });

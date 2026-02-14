@@ -53,6 +53,9 @@ services:
       - WOPR_BOT_IMAGE=${WOPR_BOT_IMAGE:-ghcr.io/wopr-network/wopr:latest}
       - BACKUP_DB_PATH=/data/platform/backup-status.db
       - S3_BUCKET=${S3_BUCKET:-wopr-backups}
+      - DO_SPACES_REGION=${DO_SPACES_REGION}
+      - DO_SPACES_ACCESS_KEY=${DO_SPACES_ACCESS_KEY}
+      - DO_SPACES_SECRET_KEY=${DO_SPACES_SECRET_KEY}
       - NODE_ENV=production
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]

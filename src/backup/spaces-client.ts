@@ -37,8 +37,10 @@ export class SpacesClient {
     try {
       const { stdout } = await execFileAsync("s3cmd", ["ls", s3Path]);
       return parseS3CmdLsOutput(stdout);
-    } catch {
-      // Empty prefix or access error
+    } catch (err) {
+      // s3cmd exits non-zero for empty prefixes (no objects found).
+      // Log the error for visibility but return empty rather than crashing callers.
+      logger.warn(`Spaces list failed for ${s3Path}`, { err: err instanceof Error ? err.message : String(err) });
       return [];
     }
   }

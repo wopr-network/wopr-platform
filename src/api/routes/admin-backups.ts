@@ -52,11 +52,21 @@ function getSpaces(): SpacesClient {
 }
 
 /**
- * Create admin backup routes with an explicit store (for testing).
+ * Validate that a remotePath belongs to the given container.
+ * Normalizes the path and checks that one of the path segments is exactly the containerId.
+ * This prevents path traversal attacks (e.g. "../../other_tenant/tenant_abc/").
  */
-export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: SpacesClient): Hono<AuthEnv> {
+function isRemotePathOwnedBy(remotePath: string, containerId: string): boolean {
+  const normalized = remotePath.replace(/\\/g, "/");
+  const segments = normalized.split("/").filter(Boolean);
+  return segments.includes(containerId);
+}
+
+function buildRoutes(
+  storeFactory: () => BackupStatusStore,
+  spacesFactory: () => SpacesClient,
+): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
-  const spacesClient = spaces ?? getSpaces();
 
   /**
    * GET /api/admin/backups
@@ -64,6 +74,7 @@ export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: Space
    * Query params: ?stale=true to filter only stale backups.
    */
   routes.get("/", (c) => {
+    const store = storeFactory();
     const staleOnly = c.req.query("stale") === "true";
     const entries = staleOnly ? store.listStale() : store.listAll();
     return c.json({
@@ -74,10 +85,31 @@ export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: Space
   });
 
   /**
+   * GET /api/admin/backups/alerts/stale
+   * List containers with stale backups (>24h since last successful backup).
+   * MUST be registered before /:containerId to avoid being shadowed.
+   */
+  routes.get("/alerts/stale", (c) => {
+    const store = storeFactory();
+    const stale = store.listStale();
+    return c.json({
+      alerts: stale.map((e) => ({
+        containerId: e.containerId,
+        nodeId: e.nodeId,
+        lastBackupAt: e.lastBackupAt,
+        lastBackupSuccess: e.lastBackupSuccess,
+        lastBackupError: e.lastBackupError,
+      })),
+      count: stale.length,
+    });
+  });
+
+  /**
    * GET /api/admin/backups/:containerId
    * Get backup status for a specific tenant container.
    */
   routes.get("/:containerId", (c) => {
+    const store = storeFactory();
     const containerId = c.req.param("containerId");
     const entry = store.get(containerId);
     if (!entry) {
@@ -91,6 +123,7 @@ export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: Space
    * List available backup snapshots in DO Spaces for a container.
    */
   routes.get("/:containerId/snapshots", async (c) => {
+    const store = storeFactory();
     const containerId = c.req.param("containerId");
     const entry = store.get(containerId);
     if (!entry) {
@@ -98,8 +131,9 @@ export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: Space
     }
 
     try {
+      const spaces = spacesFactory();
       const prefix = `nightly/${entry.nodeId}/${containerId}/`;
-      const objects = await spacesClient.list(prefix);
+      const objects = await spaces.list(prefix);
       return c.json({
         containerId,
         snapshots: objects.map((o) => ({
@@ -133,8 +167,8 @@ export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: Space
       return c.json({ error: "remotePath is required" }, 400);
     }
 
-    // Validate the remote path refers to this container's backups
-    if (!body.remotePath.includes(`/${containerId}/`)) {
+    // Validate the remote path refers to this container's backups using segment matching
+    if (!isRemotePathOwnedBy(body.remotePath, containerId)) {
       return c.json({ error: "remotePath does not belong to this container" }, 403);
     }
 
@@ -147,120 +181,21 @@ export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: Space
     });
   });
 
-  /**
-   * GET /api/admin/backups/alerts/stale
-   * List containers with stale backups (>24h since last successful backup).
-   */
-  routes.get("/alerts/stale", (c) => {
-    const stale = store.listStale();
-    return c.json({
-      alerts: stale.map((e) => ({
-        containerId: e.containerId,
-        nodeId: e.nodeId,
-        lastBackupAt: e.lastBackupAt,
-        lastBackupSuccess: e.lastBackupSuccess,
-        lastBackupError: e.lastBackupError,
-      })),
-      count: stale.length,
-    });
-  });
-
   return routes;
+}
+
+/**
+ * Create admin backup routes with an explicit store (for testing).
+ */
+export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: SpacesClient): Hono<AuthEnv> {
+  const spacesClient = spaces ?? getSpaces();
+  return buildRoutes(() => store, () => spacesClient);
 }
 
 /** Pre-built admin backup routes with auth and lazy initialization. */
 export const adminBackupRoutes = new Hono<AuthEnv>();
-
 adminBackupRoutes.use("*", adminAuth);
-
-adminBackupRoutes.get("/", (c) => {
-  const store = getStore();
-  const staleOnly = c.req.query("stale") === "true";
-  const entries = staleOnly ? store.listStale() : store.listAll();
-  return c.json({
-    backups: entries,
-    total: entries.length,
-    staleCount: entries.filter((e) => e.isStale).length,
-  });
-});
-
-adminBackupRoutes.get("/alerts/stale", (c) => {
-  const store = getStore();
-  const stale = store.listStale();
-  return c.json({
-    alerts: stale.map((e) => ({
-      containerId: e.containerId,
-      nodeId: e.nodeId,
-      lastBackupAt: e.lastBackupAt,
-      lastBackupSuccess: e.lastBackupSuccess,
-      lastBackupError: e.lastBackupError,
-    })),
-    count: stale.length,
-  });
-});
-
-adminBackupRoutes.get("/:containerId", (c) => {
-  const containerId = c.req.param("containerId");
-  const store = getStore();
-  const entry = store.get(containerId);
-  if (!entry) {
-    return c.json({ error: "No backup status found for this container" }, 404);
-  }
-  return c.json(entry);
-});
-
-adminBackupRoutes.get("/:containerId/snapshots", async (c) => {
-  const containerId = c.req.param("containerId");
-  const store = getStore();
-  const entry = store.get(containerId);
-  if (!entry) {
-    return c.json({ error: "No backup status found for this container" }, 404);
-  }
-
-  try {
-    const spaces = getSpaces();
-    const prefix = `nightly/${entry.nodeId}/${containerId}/`;
-    const objects = await spaces.list(prefix);
-    return c.json({
-      containerId,
-      snapshots: objects.map((o) => ({
-        path: o.path,
-        date: o.date,
-        sizeMb: Math.round((o.size / (1024 * 1024)) * 100) / 100,
-      })),
-    });
-  } catch (err) {
-    logger.error(`Failed to list snapshots for ${containerId}`, { err });
-    return c.json({ error: "Failed to list backup snapshots" }, 500);
-  }
-});
-
-adminBackupRoutes.post("/:containerId/restore", async (c) => {
-  const containerId = c.req.param("containerId");
-
-  let body: { remotePath?: string; targetNodeId?: string };
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-
-  if (!body.remotePath) {
-    return c.json({ error: "remotePath is required" }, 400);
-  }
-
-  if (!body.remotePath.includes(`/${containerId}/`)) {
-    return c.json({ error: "remotePath does not belong to this container" }, 403);
-  }
-
-  return c.json({
-    ok: true,
-    message: `Restore initiated for ${containerId} from ${body.remotePath}`,
-    containerId,
-    remotePath: body.remotePath,
-    targetNodeId: body.targetNodeId ?? "auto",
-  });
-});
+adminBackupRoutes.route("/", buildRoutes(getStore, getSpaces));
 
 /** Export for testing */
-export { getStore };
+export { getStore, isRemotePathOwnedBy };

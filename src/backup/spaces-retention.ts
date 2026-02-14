@@ -112,10 +112,18 @@ export function selectRetained(sorted: SpacesObject[], config: RetentionConfig, 
   return [...retained.values()];
 }
 
-/** Return "YYYY-WNN" ISO week key for a date. */
+/** Return "YYYY-WNN" ISO week key for a date. Uses the ISO 8601 week date definition. */
 export function getISOWeekKey(d: Date): string {
-  const jan4 = new Date(d.getFullYear(), 0, 4);
-  const dayOfYear = Math.floor((d.getTime() - jan4.getTime()) / 86_400_000) + 4;
-  const weekNum = Math.ceil(dayOfYear / 7);
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+  // Work entirely in UTC to avoid timezone issues
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  // ISO week starts on Monday. Set to nearest Thursday (current date + 4 - dayOfWeek),
+  // with Sunday (0) mapped to 7.
+  const dayOfWeek = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayOfWeek);
+  // ISO year is the year of the Thursday
+  const isoYear = date.getUTCFullYear();
+  // Week 1 contains Jan 4, so find Jan 1 of the ISO year and compute offset
+  const jan1 = new Date(Date.UTC(isoYear, 0, 1));
+  const weekNum = Math.ceil(((date.getTime() - jan1.getTime()) / 86_400_000 + 1) / 7);
+  return `${isoYear}-W${String(weekNum).padStart(2, "0")}`;
 }
