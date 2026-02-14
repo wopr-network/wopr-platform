@@ -14,6 +14,10 @@ const freeTier: PlanTier = {
   features: [],
   maxSpendPerHour: 0.5,
   maxSpendPerMonth: 5,
+  platformFeeUsd: 0,
+  includedTokens: 50_000,
+  overageMarkupPercent: 20,
+  byokAllowed: false,
 };
 
 const proTier: PlanTier = {
@@ -28,6 +32,10 @@ const proTier: PlanTier = {
   features: ["priority-support"],
   maxSpendPerHour: 10,
   maxSpendPerMonth: 200,
+  platformFeeUsd: 19,
+  includedTokens: 2_000_000,
+  overageMarkupPercent: 10,
+  byokAllowed: true,
 };
 
 const enterpriseTier: PlanTier = {
@@ -42,6 +50,10 @@ const enterpriseTier: PlanTier = {
   features: [],
   maxSpendPerHour: null,
   maxSpendPerMonth: null,
+  platformFeeUsd: 0,
+  includedTokens: 0,
+  overageMarkupPercent: 5,
+  byokAllowed: true,
 };
 
 describe("checkInstanceQuota", () => {

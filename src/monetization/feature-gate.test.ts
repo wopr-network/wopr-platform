@@ -23,6 +23,10 @@ const freeTier: PlanTier = {
   features: [],
   maxSpendPerHour: 0.5,
   maxSpendPerMonth: 5,
+  platformFeeUsd: 0,
+  includedTokens: 50_000,
+  overageMarkupPercent: 20,
+  byokAllowed: false,
 };
 
 const proTier: PlanTier = {
@@ -37,6 +41,10 @@ const proTier: PlanTier = {
   features: ["premium_plugins", "priority-support", "custom-domains"],
   maxSpendPerHour: 10,
   maxSpendPerMonth: 200,
+  platformFeeUsd: 19,
+  includedTokens: 2_000_000,
+  overageMarkupPercent: 10,
+  byokAllowed: true,
 };
 
 const teamTier: PlanTier = {
@@ -51,6 +59,10 @@ const teamTier: PlanTier = {
   features: ["premium_plugins", "priority-support", "custom-domains", "team-management", "audit-logs"],
   maxSpendPerHour: 50,
   maxSpendPerMonth: 1000,
+  platformFeeUsd: 49,
+  includedTokens: 5_000_000,
+  overageMarkupPercent: 8,
+  byokAllowed: true,
 };
 
 const enterpriseTier: PlanTier = {
@@ -73,6 +85,10 @@ const enterpriseTier: PlanTier = {
   ],
   maxSpendPerHour: null,
   maxSpendPerMonth: null,
+  platformFeeUsd: 0,
+  includedTokens: 0,
+  overageMarkupPercent: 5,
+  byokAllowed: true,
 };
 
 const tiers: Record<string, PlanTier> = {
