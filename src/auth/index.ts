@@ -293,7 +293,9 @@ export interface ScopedTokenConfig {
  * - `FLEET_API_TOKEN_ADMIN` (admin-scoped token)
  * - Any `wopr_<scope>_<random>` formatted token has its scope inferred.
  */
-export function buildTokenMap(env: Record<string, string | undefined> = process.env as Record<string, string | undefined>): Map<string, TokenScope> {
+export function buildTokenMap(
+  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
+): Map<string, TokenScope> {
   const tokens = new Map<string, TokenScope>();
 
   // Scoped env vars
@@ -304,12 +306,12 @@ export function buildTokenMap(env: Record<string, string | undefined> = process.
   ];
 
   for (const [envVar, scope] of scopedVars) {
-    const val = env[envVar];
+    const val = env[envVar]?.trim();
     if (val) tokens.set(val, scope);
   }
 
   // Legacy single token -- admin scope for backwards compatibility
-  const legacyToken = env.FLEET_API_TOKEN;
+  const legacyToken = env.FLEET_API_TOKEN?.trim();
   if (legacyToken && !tokens.has(legacyToken)) {
     // If the token is in wopr_ format, parse its actual scope
     const parsed = parseTokenScope(legacyToken);
@@ -338,7 +340,7 @@ export function scopedBearerAuth(tokenMap: Map<string, TokenScope>, requiredScop
     }
 
     // Look up the token in the map
-    let scope = tokenMap.get(token);
+    const scope = tokenMap.get(token);
 
     // If not in map, try to parse scope from token format for dynamic tokens
     if (scope === undefined) {
@@ -347,10 +349,7 @@ export function scopedBearerAuth(tokenMap: Map<string, TokenScope>, requiredScop
 
     // Check scope hierarchy
     if (!scopeSatisfies(scope, requiredScope)) {
-      return c.json(
-        { error: "Insufficient scope", required: requiredScope, provided: scope },
-        403,
-      );
+      return c.json({ error: "Insufficient scope", required: requiredScope, provided: scope }, 403);
     }
 
     return next();

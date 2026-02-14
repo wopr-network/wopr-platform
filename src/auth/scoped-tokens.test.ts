@@ -1,12 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import {
-  buildTokenMap,
-  parseTokenScope,
-  scopeSatisfies,
-  scopedBearerAuth,
-  type TokenScope,
-} from "./index.js";
+import { buildTokenMap, parseTokenScope, scopedBearerAuth, scopeSatisfies, type TokenScope } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // parseTokenScope
@@ -134,6 +128,24 @@ describe("buildTokenMap", () => {
 
   it("returns empty map when no env vars set", () => {
     const map = buildTokenMap({});
+    expect(map.size).toBe(0);
+  });
+
+  it("ignores empty string env vars", () => {
+    const map = buildTokenMap({
+      FLEET_API_TOKEN: "",
+      FLEET_API_TOKEN_READ: "",
+      FLEET_API_TOKEN_WRITE: "",
+      FLEET_API_TOKEN_ADMIN: "",
+    });
+    expect(map.size).toBe(0);
+  });
+
+  it("ignores whitespace-only env vars", () => {
+    const map = buildTokenMap({
+      FLEET_API_TOKEN: "   ",
+      FLEET_API_TOKEN_READ: " ",
+    });
     expect(map.size).toBe(0);
   });
 
