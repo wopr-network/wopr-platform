@@ -1,8 +1,36 @@
+import { resolve4, resolve6 } from "node:dns/promises";
 import { isIP } from "node:net";
 import { logger } from "../config/logger.js";
 import type { CaddyConfigOptions } from "./caddy-config.js";
 import { generateCaddyConfig } from "./caddy-config.js";
 import type { ProxyManagerInterface, ProxyRoute } from "./types.js";
+
+/**
+ * Normalize an IPv6 address to its full canonical form for reliable comparison.
+ * Expands :: shorthand and pads each group to 4 hex digits.
+ */
+function normalizeIPv6(ip: string): string {
+  // Handle IPv4-mapped IPv6 (::ffff:a.b.c.d)
+  const v4MappedMatch = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (v4MappedMatch) {
+    return `v4mapped:${v4MappedMatch[1]}`;
+  }
+
+  // Split on :: to expand the zero-fill shorthand
+  const halves = ip.split("::");
+  let groups: string[];
+  if (halves.length === 2) {
+    const left = halves[0] ? halves[0].split(":") : [];
+    const right = halves[1] ? halves[1].split(":") : [];
+    const missing = 8 - left.length - right.length;
+    const fill = Array(missing).fill("0000");
+    groups = [...left, ...fill, ...right];
+  } else {
+    groups = ip.split(":");
+  }
+
+  return groups.map((g) => g.padStart(4, "0").toLowerCase()).join(":");
+}
 
 const DEFAULT_CADDY_ADMIN_URL = "http://localhost:2019";
 
@@ -28,23 +56,31 @@ function isPrivateIPv4(ip: string): boolean {
 
 /**
  * Returns true if the given IPv6 address string belongs to a private/reserved range.
+ * Normalizes to canonical form first to catch non-standard representations.
  */
 function isPrivateIPv6(ip: string): boolean {
-  const normalized = ip.toLowerCase();
+  const canonical = normalizeIPv6(ip);
+
+  // Handle IPv4-mapped IPv6 addresses (::ffff:a.b.c.d) — delegate to IPv4 check
+  if (canonical.startsWith("v4mapped:")) {
+    return isPrivateIPv4(canonical.slice("v4mapped:".length));
+  }
+
   return (
-    normalized === "::1" || // loopback
-    normalized.startsWith("fe80") || // link-local
-    normalized.startsWith("fc") || // unique local
-    normalized.startsWith("fd") || // unique local
-    normalized === "::" // unspecified
+    canonical === "0000:0000:0000:0000:0000:0000:0000:0001" || // ::1 loopback
+    canonical.startsWith("fe80") || // link-local
+    canonical.startsWith("fc") || // unique local
+    canonical.startsWith("fd") || // unique local
+    canonical === "0000:0000:0000:0000:0000:0000:0000:0000" // :: unspecified
   );
 }
 
 /**
  * Validate that an upstream host is not a private/internal IP address.
+ * Resolves hostnames via DNS and checks all resolved IPs against private ranges.
  * Throws if the host resolves to or is a private IP.
  */
-function validateUpstreamHost(host: string): void {
+async function validateUpstreamHost(host: string): Promise<void> {
   const ipVersion = isIP(host);
   if (ipVersion === 4) {
     if (isPrivateIPv4(host)) {
@@ -58,9 +94,54 @@ function validateUpstreamHost(host: string): void {
     }
     return;
   }
-  // It's a hostname — we cannot resolve DNS synchronously, but reject obviously dangerous names
-  if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) {
+
+  // It's a hostname — normalize to lowercase since DNS is case-insensitive
+  const normalizedHost = host.toLowerCase();
+
+  // Reject obviously dangerous names first
+  if (normalizedHost === "localhost" || normalizedHost.endsWith(".local") || normalizedHost.endsWith(".internal")) {
     throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+  }
+
+  // Resolve DNS and validate all resulting IPs
+  const ips: string[] = [];
+  let v4NotFound = false;
+  try {
+    const ipv4 = await resolve4(normalizedHost);
+    ips.push(...ipv4);
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA") {
+      v4NotFound = true; // No A records — host may be IPv6-only
+    } else {
+      throw new Error(`DNS resolution failed for "${host}": ${code ?? "unknown error"}`);
+    }
+  }
+  try {
+    const ipv6 = await resolve6(normalizedHost);
+    ips.push(...ipv6);
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOTFOUND" || code === "ENODATA") {
+      // No AAAA records — host may be IPv4-only
+    } else if (v4NotFound) {
+      // Both lookups failed with non-ENOTFOUND — reject
+      throw new Error(`DNS resolution failed for "${host}": ${code ?? "unknown error"}`);
+    }
+    // If v4 succeeded but v6 fails transiently, we still have IPs to check
+  }
+
+  if (ips.length === 0) {
+    throw new Error(`Upstream host "${host}" could not be resolved`);
+  }
+
+  for (const ip of ips) {
+    if (isIP(ip) === 4 && isPrivateIPv4(ip)) {
+      throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+    }
+    if (isIP(ip) === 6 && isPrivateIPv6(ip)) {
+      throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+    }
   }
 }
 
@@ -84,11 +165,11 @@ export class ProxyManager implements ProxyManagerInterface {
     this.configOptions = configOptions;
   }
 
-  addRoute(route: ProxyRoute): void {
+  async addRoute(route: ProxyRoute): Promise<void> {
     if (!SUBDOMAIN_RE.test(route.subdomain)) {
       throw new Error(`Invalid subdomain "${route.subdomain}": must match /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/`);
     }
-    validateUpstreamHost(route.upstreamHost);
+    await validateUpstreamHost(route.upstreamHost);
     this.routes.set(route.instanceId, route);
     logger.info(`Added proxy route for instance ${route.instanceId} -> ${route.upstreamHost}:${route.upstreamPort}`);
   }
