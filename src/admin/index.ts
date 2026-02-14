@@ -5,3 +5,6 @@ export { requirePlatformAdmin, requireTenantAdmin } from "./roles/require-role.j
 export type { Role, UserRoleRow } from "./roles/role-store.js";
 export { isValidRole, RoleStore } from "./roles/role-store.js";
 export { initRolesSchema } from "./roles/schema.js";
+export { initAdminUsersSchema } from "./users/schema.js";
+export type { AdminUserFilters, AdminUserListResponse, AdminUserSummary } from "./users/user-store.js";
+export { AdminUserStore } from "./users/user-store.js";
