@@ -7,10 +7,12 @@
  * - `requireAuth` middleware for Hono routes
  * - `requireRole` middleware for role-based access control
  * - `scopedBearerAuth` middleware for operation-scoped API tokens
+ * - `resolveSessionUser` middleware for forwarding better-auth sessions to core daemon
  */
 
 import { randomUUID } from "node:crypto";
 import type { Context, Next } from "hono";
+import { getCookie } from "hono/cookie";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -326,6 +328,8 @@ export function buildTokenMap(
  *
  * Validates the bearer token against the token map and checks that the
  * token's scope satisfies the required minimum scope for the route.
+ * Also sets `c.set("user", ...)` with a service identity so downstream
+ * routes (e.g. audit) always have user context.
  *
  * @param tokenMap - Map of token -> scope (use `buildTokenMap()` to create)
  * @param requiredScope - Minimum scope required for this route/group
@@ -352,6 +356,168 @@ export function scopedBearerAuth(tokenMap: Map<string, TokenScope>, requiredScop
       return c.json({ error: "Insufficient scope", required: requiredScope, provided: scope }, 403);
     }
 
+    // Set user context so downstream routes (audit, etc.) have identity
+    c.set("user", { id: `api-token:${scope}`, roles: [scope] } satisfies AuthUser);
+    c.set("authMethod", "api_key");
+
+    return next();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Session Forwarding (better-auth via core daemon)
+// ---------------------------------------------------------------------------
+
+/** Response shape from better-auth's /api/auth/get-session endpoint. */
+export interface BetterAuthSession {
+  user: {
+    id: string;
+    name?: string;
+    email?: string;
+    role?: string;
+    [key: string]: unknown;
+  };
+  session: {
+    id: string;
+    userId: string;
+    expiresAt: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface SessionForwardingConfig {
+  /** Base URL of the core daemon running better-auth (e.g. "http://localhost:3000"). */
+  coreDaemonUrl: string;
+  /** Timeout in ms for the session validation request (default: 5000). */
+  timeoutMs?: number;
+  /** Cookie name used by better-auth (default: "better-auth.session_token"). */
+  sessionCookieName?: string;
+}
+
+/**
+ * Validate a better-auth session token against the core daemon.
+ *
+ * Calls the core daemon's `/api/auth/get-session` endpoint with the
+ * session token to resolve the user identity.
+ *
+ * @returns The resolved user or `null` if the session is invalid/expired.
+ */
+export async function validateSessionWithDaemon(
+  token: string,
+  config: SessionForwardingConfig,
+): Promise<BetterAuthSession | null> {
+  const { coreDaemonUrl, timeoutMs = 5000 } = config;
+  const url = `${coreDaemonUrl}/api/auth/get-session`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Cookie: `better-auth.session_token=${token}`,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as BetterAuthSession;
+    if (!data?.user?.id || !data?.session?.id) return null;
+
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create a middleware that resolves user identity from a better-auth
+ * session cookie by forwarding it to the core daemon.
+ *
+ * Only activates when a better-auth session cookie is present.
+ * Bearer tokens in the Authorization header are left for downstream
+ * middleware (e.g. `scopedBearerAuth`) to handle — this avoids
+ * unnecessary daemon calls for API-token-authenticated requests.
+ *
+ * On success, sets:
+ * - `c.set("user", { id, roles })`
+ * - `c.set("authMethod", "session")`
+ *
+ * On failure (no cookie, invalid session, daemon unreachable), falls
+ * through silently to the next middleware.
+ */
+export function resolveSessionUser(config: SessionForwardingConfig) {
+  const cookieName = config.sessionCookieName ?? "better-auth.session_token";
+
+  return async (c: Context, next: Next) => {
+    // Only attempt session resolution when a session cookie is present.
+    // Bearer tokens are handled by scopedBearerAuth / requireAuth downstream.
+    const cookieToken = getCookie(c, cookieName);
+
+    if (cookieToken) {
+      const session = await validateSessionWithDaemon(cookieToken, config);
+      if (session) {
+        const roles: string[] = [];
+        if (session.user.role) roles.push(session.user.role);
+
+        c.set("user", { id: session.user.id, roles } satisfies AuthUser);
+        c.set("authMethod", "session");
+      }
+    }
+
+    return next();
+  };
+}
+
+/**
+ * Create a dual-auth middleware that requires either a valid user session
+ * (resolved by `resolveSessionUser`) or a valid scoped API token.
+ *
+ * Must be used after `resolveSessionUser` in the middleware chain.
+ * Rejects the request if neither auth method succeeds.
+ *
+ * @param tokenMap - Scoped token map for API key fallback
+ * @param requiredScope - Minimum scope required for API token auth
+ */
+export function requireSessionOrToken(
+  tokenMap: Map<string, TokenScope>,
+  requiredScope: TokenScope,
+) {
+  return async (c: Context, next: Next) => {
+    // If resolveSessionUser already set user context, allow through
+    let existingUser: AuthUser | undefined;
+    try {
+      existingUser = c.get("user");
+    } catch {
+      // not set
+    }
+    if (existingUser) {
+      return next();
+    }
+
+    // Fall back to scoped bearer token auth
+    const authHeader = c.req.header("Authorization");
+    const token = extractBearerToken(authHeader);
+
+    if (!token) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+
+    const scope = tokenMap.get(token);
+    if (scope === undefined) {
+      return c.json({ error: "Invalid or expired token" }, 401);
+    }
+
+    if (!scopeSatisfies(scope, requiredScope)) {
+      return c.json({ error: "Insufficient scope", required: requiredScope, provided: scope }, 403);
+    }
+
+    c.set("user", { id: `api-token:${scope}`, roles: [scope] } satisfies AuthUser);
+    c.set("authMethod", "api_key");
     return next();
   };
 }

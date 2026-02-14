@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { resolveSessionUser } from "../auth/index.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { fleetRoutes } from "./routes/fleet.js";
@@ -23,6 +24,12 @@ app.use(
 );
 app.use("/*", secureHeaders());
 app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
+
+// Resolve better-auth session from core daemon cookie (non-blocking: sets
+// c.set("user") when a valid session exists, otherwise falls through).
+const coreDaemonUrl = process.env.CORE_DAEMON_URL || "http://localhost:3000";
+app.use("/api/*", resolveSessionUser({ coreDaemonUrl }));
+app.use("/fleet/*", resolveSessionUser({ coreDaemonUrl }));
 
 app.route("/health", healthRoutes);
 app.route("/fleet", fleetRoutes);
