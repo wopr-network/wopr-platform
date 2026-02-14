@@ -34,9 +34,7 @@ export class InsufficientBalanceError extends Error {
   requestedAmount: number;
 
   constructor(currentBalance: number, requestedAmount: number) {
-    super(
-      `Insufficient balance: current ${currentBalance} cents, requested debit ${requestedAmount} cents`,
-    );
+    super(`Insufficient balance: current ${currentBalance} cents, requested debit ${requestedAmount} cents`);
     this.name = "InsufficientBalanceError";
     this.currentBalance = currentBalance;
     this.requestedAmount = requestedAmount;
@@ -154,23 +152,15 @@ export class CreditLedger {
 
       const newBalance = currentBalance - amountCents;
 
-      if (existing) {
-        tx.update(creditBalances)
-          .set({
-            balanceCents: newBalance,
-            lastUpdated: sql`(datetime('now'))`,
-          })
-          .where(eq(creditBalances.tenantId, tenantId))
-          .run();
-      } else {
-        tx.insert(creditBalances)
-          .values({
-            tenantId,
-            balanceCents: newBalance,
-            lastUpdated: sql`(datetime('now'))`,
-          })
-          .run();
-      }
+      // `existing` is guaranteed non-null here: if it were null, currentBalance
+      // would be 0 and the InsufficientBalanceError above would have thrown.
+      tx.update(creditBalances)
+        .set({
+          balanceCents: newBalance,
+          lastUpdated: sql`(datetime('now'))`,
+        })
+        .where(eq(creditBalances.tenantId, tenantId))
+        .run();
 
       const txn: typeof creditTransactions.$inferInsert = {
         id: crypto.randomUUID(),

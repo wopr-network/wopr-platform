@@ -55,7 +55,11 @@ export type {
   CreditTransaction,
   CreditType,
   DebitType,
+  GetActiveBotCount,
   HistoryOptions,
+  OnSuspend,
+  RuntimeCronConfig,
+  RuntimeCronResult,
   TransactionType,
 } from "./credits/index.js";
 export {
@@ -65,12 +69,6 @@ export {
   InsufficientBalanceError,
   runRuntimeDeductions,
   SIGNUP_GRANT_CENTS,
-} from "./credits/index.js";
-export type {
-  GetActiveBotCount,
-  OnSuspend,
-  RuntimeCronConfig,
-  RuntimeCronResult,
 } from "./credits/index.js";
 // Feature gating middleware (WOP-384 — replaced tier gates with balance gates)
 export {

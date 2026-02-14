@@ -10,7 +10,7 @@ export function initCreditSchema(db: Database.Database): void {
       balance_after_cents INTEGER NOT NULL,
       type TEXT NOT NULL,
       description TEXT,
-      reference_id TEXT,
+      reference_id TEXT UNIQUE,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -19,9 +19,7 @@ export function initCreditSchema(db: Database.Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS idx_credit_tx_type ON credit_transactions(type)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_credit_tx_ref ON credit_transactions(reference_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_credit_tx_created ON credit_transactions(created_at)");
-  db.exec(
-    "CREATE INDEX IF NOT EXISTS idx_credit_tx_tenant_created ON credit_transactions(tenant_id, created_at)",
-  );
+  db.exec("CREATE INDEX IF NOT EXISTS idx_credit_tx_tenant_created ON credit_transactions(tenant_id, created_at)");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS credit_balances (

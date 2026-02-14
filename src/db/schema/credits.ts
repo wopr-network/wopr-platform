@@ -14,10 +14,8 @@ export const creditTransactions = sqliteTable(
     balanceAfterCents: integer("balance_after_cents").notNull(),
     type: text("type").notNull(), // signup_grant | purchase | bounty | referral | promo | bot_runtime | adapter_usage | addon | refund | correction
     description: text("description"),
-    referenceId: text("reference_id"),
-    createdAt: text("created_at")
-      .notNull()
-      .default(sql`(datetime('now'))`),
+    referenceId: text("reference_id").unique(),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
     index("idx_credit_tx_tenant").on(table.tenantId),
@@ -35,7 +33,5 @@ export const creditTransactions = sqliteTable(
 export const creditBalances = sqliteTable("credit_balances", {
   tenantId: text("tenant_id").primaryKey(),
   balanceCents: integer("balance_cents").notNull().default(0),
-  lastUpdated: text("last_updated")
-    .notNull()
-    .default(sql`(datetime('now'))`),
+  lastUpdated: text("last_updated").notNull().default(sql`(datetime('now'))`),
 });
