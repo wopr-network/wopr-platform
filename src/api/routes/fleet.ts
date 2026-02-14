@@ -1,6 +1,6 @@
 import Docker from "dockerode";
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
+import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
@@ -12,7 +12,6 @@ import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
-const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
 
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
@@ -39,11 +38,16 @@ const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/
 
 export const fleetRoutes = new Hono();
 
-// CRITICAL: Require bearer token authentication on all fleet routes
-if (!FLEET_API_TOKEN) {
-  logger.warn("FLEET_API_TOKEN is not set — fleet routes will reject all requests");
+// Build scoped token map from environment
+const tokenMap = buildTokenMap();
+if (tokenMap.size === 0) {
+  logger.warn("No API tokens configured — fleet routes will reject all requests");
 }
-fleetRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
+
+// Read-scoped auth for GET endpoints
+const readAuth = scopedBearerAuth(tokenMap, "read");
+// Write-scoped auth for mutating endpoints
+const writeAuth = scopedBearerAuth(tokenMap, "write");
 
 /** Validate :id param as UUID on all /bots/:id routes. */
 fleetRoutes.use("/bots/:id/*", async (c, next) => {
@@ -62,13 +66,13 @@ fleetRoutes.use("/bots/:id", async (c, next) => {
 });
 
 /** GET /fleet/bots — List all bots with live status */
-fleetRoutes.get("/bots", async (c) => {
+fleetRoutes.get("/bots", readAuth, async (c) => {
   const bots = await fleet.listAll();
   return c.json({ bots });
 });
 
 /** POST /fleet/bots — Create a new bot from profile config */
-fleetRoutes.post("/bots", async (c) => {
+fleetRoutes.post("/bots", writeAuth, async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
@@ -90,7 +94,7 @@ fleetRoutes.post("/bots", async (c) => {
 });
 
 /** GET /fleet/bots/:id — Get bot details + health */
-fleetRoutes.get("/bots/:id", async (c) => {
+fleetRoutes.get("/bots/:id", readAuth, async (c) => {
   try {
     const status = await fleet.status(c.req.param("id"));
     return c.json(status);
@@ -101,7 +105,7 @@ fleetRoutes.get("/bots/:id", async (c) => {
 });
 
 /** PATCH /fleet/bots/:id — Update bot config (triggers restart if running) */
-fleetRoutes.patch("/bots/:id", async (c) => {
+fleetRoutes.patch("/bots/:id", writeAuth, async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
@@ -128,7 +132,7 @@ fleetRoutes.patch("/bots/:id", async (c) => {
 });
 
 /** DELETE /fleet/bots/:id — Stop and remove bot */
-fleetRoutes.delete("/bots/:id", async (c) => {
+fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
   try {
     await fleet.remove(c.req.param("id"), c.req.query("removeVolumes") === "true");
     return c.body(null, 204);
@@ -139,7 +143,7 @@ fleetRoutes.delete("/bots/:id", async (c) => {
 });
 
 /** POST /fleet/bots/:id/start — Start a stopped bot */
-fleetRoutes.post("/bots/:id/start", async (c) => {
+fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
   try {
     await fleet.start(c.req.param("id"));
     return c.json({ ok: true });
@@ -150,7 +154,7 @@ fleetRoutes.post("/bots/:id/start", async (c) => {
 });
 
 /** POST /fleet/bots/:id/stop — Stop a running bot */
-fleetRoutes.post("/bots/:id/stop", async (c) => {
+fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
   try {
     await fleet.stop(c.req.param("id"));
     return c.json({ ok: true });
@@ -161,7 +165,7 @@ fleetRoutes.post("/bots/:id/stop", async (c) => {
 });
 
 /** POST /fleet/bots/:id/restart — Restart a running bot */
-fleetRoutes.post("/bots/:id/restart", async (c) => {
+fleetRoutes.post("/bots/:id/restart", writeAuth, async (c) => {
   try {
     await fleet.restart(c.req.param("id"));
     return c.json({ ok: true });
@@ -172,7 +176,7 @@ fleetRoutes.post("/bots/:id/restart", async (c) => {
 });
 
 /** GET /fleet/bots/:id/logs — Tail bot container logs */
-fleetRoutes.get("/bots/:id/logs", async (c) => {
+fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
   const raw = c.req.query("tail");
   const parsed = raw != null ? Number.parseInt(raw, 10) : 100;
   const tail = Number.isNaN(parsed) || parsed < 1 ? 100 : Math.min(parsed, 10_000);
@@ -186,7 +190,7 @@ fleetRoutes.get("/bots/:id/logs", async (c) => {
 });
 
 /** POST /fleet/bots/:id/update — Force update to latest image */
-fleetRoutes.post("/bots/:id/update", async (c) => {
+fleetRoutes.post("/bots/:id/update", writeAuth, async (c) => {
   try {
     const result = await updater.updateBot(c.req.param("id"));
     if (result.success) {
@@ -200,7 +204,7 @@ fleetRoutes.post("/bots/:id/update", async (c) => {
 });
 
 /** GET /fleet/bots/:id/image-status — Current vs available digest + last check time */
-fleetRoutes.get("/bots/:id/image-status", async (c) => {
+fleetRoutes.get("/bots/:id/image-status", readAuth, async (c) => {
   const botId = c.req.param("id");
   try {
     const profile = await fleet.profiles.get(botId);
@@ -243,7 +247,7 @@ export function seedBots(templates: ProfileTemplate[], existingNames: Set<string
   return { created, skipped };
 }
 
-fleetRoutes.post("/seed", (c) => {
+fleetRoutes.post("/seed", writeAuth, (c) => {
   const templatesDir = defaultTemplatesDir();
 
   let templates: ProfileTemplate[];

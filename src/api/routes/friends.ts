@@ -1,22 +1,24 @@
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
+import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { proxyToInstance } from "./friends-proxy.js";
 import { autoAcceptRuleSchema, sendFriendRequestSchema, updateCapabilitiesSchema } from "./friends-types.js";
 
-const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
-
 /** Allowlist: only alphanumeric, hyphens, and underscores. */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
+const friendsTokenMap = buildTokenMap();
+
 export const friendsRoutes = new Hono();
 
-// Require bearer token for all friends endpoints
-if (!FLEET_API_TOKEN) {
-  logger.warn("FLEET_API_TOKEN is not set -- friends routes will reject all requests");
+// Friends management: read for viewing, write for mutations (enforced per-route)
+if (friendsTokenMap.size === 0) {
+  logger.warn("No API tokens configured -- friends routes will reject all requests");
 }
-friendsRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
+friendsRoutes.use("/*", scopedBearerAuth(friendsTokenMap, "read"));
+
+const friendsWriteAuth = scopedBearerAuth(friendsTokenMap, "write");
 
 /** GET / -- List all friends for a bot instance */
 friendsRoutes.get("/", async (c) => {
@@ -41,7 +43,7 @@ friendsRoutes.get("/discovered", async (c) => {
 });
 
 /** POST /requests -- Send a friend request */
-friendsRoutes.post("/requests", async (c) => {
+friendsRoutes.post("/requests", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
@@ -75,7 +77,7 @@ friendsRoutes.get("/requests", async (c) => {
 });
 
 /** POST /requests/:reqId/accept -- Accept a friend request */
-friendsRoutes.post("/requests/:reqId/accept", async (c) => {
+friendsRoutes.post("/requests/:reqId/accept", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
@@ -91,7 +93,7 @@ friendsRoutes.post("/requests/:reqId/accept", async (c) => {
 });
 
 /** POST /requests/:reqId/reject -- Reject a friend request */
-friendsRoutes.post("/requests/:reqId/reject", async (c) => {
+friendsRoutes.post("/requests/:reqId/reject", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
@@ -107,7 +109,7 @@ friendsRoutes.post("/requests/:reqId/reject", async (c) => {
 });
 
 /** PATCH /:friendId/capabilities -- Set friend capabilities */
-friendsRoutes.patch("/:friendId/capabilities", async (c) => {
+friendsRoutes.patch("/:friendId/capabilities", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
@@ -146,7 +148,7 @@ friendsRoutes.get("/auto-accept", async (c) => {
 });
 
 /** PUT /auto-accept -- Update auto-accept rules */
-friendsRoutes.put("/auto-accept", async (c) => {
+friendsRoutes.put("/auto-accept", friendsWriteAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);

@@ -1,8 +1,8 @@
 import type Database from "better-sqlite3";
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
 import type Stripe from "stripe";
 import { z } from "zod";
+import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { createCheckoutSession } from "../../monetization/stripe/checkout.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
@@ -16,7 +16,8 @@ export interface BillingRouteDeps {
   defaultPriceId?: string;
 }
 
-const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
+const tokenMap = buildTokenMap();
+const adminAuth = scopedBearerAuth(tokenMap, "admin");
 
 // -- Zod schemas for input validation ----------------------------------------
 
@@ -66,9 +67,9 @@ function getTenantStore(): TenantCustomerStore {
 
 export const billingRoutes = new Hono();
 
-// Auth — same token as fleet for checkout/portal (webhook uses Stripe signature)
-if (!FLEET_API_TOKEN) {
-  logger.warn("FLEET_API_TOKEN is not set — billing routes will reject all requests");
+// Auth — admin scope required for billing operations (webhook uses Stripe signature)
+if (tokenMap.size === 0) {
+  logger.warn("No API tokens configured — billing routes will reject all requests");
 }
 
 /**
@@ -77,7 +78,7 @@ if (!FLEET_API_TOKEN) {
  * Create a Stripe Checkout session for a tenant.
  * Body: { tenant, priceId?, successUrl, cancelUrl }
  */
-billingRoutes.post("/checkout", bearerAuth({ token: FLEET_API_TOKEN || "" }), async (c) => {
+billingRoutes.post("/checkout", adminAuth, async (c) => {
   const { stripe, defaultPriceId } = getDeps();
   const store = getTenantStore();
 
@@ -121,7 +122,7 @@ billingRoutes.post("/checkout", bearerAuth({ token: FLEET_API_TOKEN || "" }), as
  * Create a Stripe Customer Portal session.
  * Body: { tenant, returnUrl }
  */
-billingRoutes.post("/portal", bearerAuth({ token: FLEET_API_TOKEN || "" }), async (c) => {
+billingRoutes.post("/portal", adminAuth, async (c) => {
   const { stripe } = getDeps();
   const store = getTenantStore();
 

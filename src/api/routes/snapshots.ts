@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { Hono } from "hono";
-import { bearerAuth } from "hono/bearer-auth";
+import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { enforceRetention } from "../../backup/retention.js";
 import { SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
@@ -9,7 +9,7 @@ import { logger } from "../../config/logger.js";
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
-const FLEET_API_TOKEN = process.env.FLEET_API_TOKEN;
+const tokenMap = buildTokenMap();
 
 /** Validates that an instance/snapshot ID contains only safe characters (no path traversal). */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
@@ -26,10 +26,11 @@ function getManager(): SnapshotManager {
 
 export const snapshotRoutes = new Hono<{ Bindings: Record<string, never> }>();
 
-if (!FLEET_API_TOKEN) {
-  logger.warn("FLEET_API_TOKEN is not set -- snapshot routes will reject all requests");
+if (tokenMap.size === 0) {
+  logger.warn("No API tokens configured -- snapshot routes will reject all requests");
 }
-snapshotRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
+// Listing snapshots = read; creating/restoring/deleting = write (enforced per-route)
+snapshotRoutes.use("/*", scopedBearerAuth(tokenMap, "read"));
 
 /**
  * POST /api/instances/:id/snapshots -- Create a snapshot
@@ -38,7 +39,9 @@ snapshotRoutes.use("/*", bearerAuth({ token: FLEET_API_TOKEN || "" }));
  * fleet control plane, which is responsible for its own instance-ownership
  * checks before calling this API.  Per-instance ownership is NOT enforced here.
  */
-snapshotRoutes.post("/", async (c) => {
+const writeAuth = scopedBearerAuth(tokenMap, "write");
+
+snapshotRoutes.post("/", writeAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
@@ -101,7 +104,7 @@ snapshotRoutes.get("/", (c) => {
 });
 
 /** POST /api/instances/:id/snapshots/:sid/restore -- Restore from snapshot */
-snapshotRoutes.post("/:sid/restore", async (c) => {
+snapshotRoutes.post("/:sid/restore", writeAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   const snapshotId = c.req.param("sid");
   if (!SAFE_ID_RE.test(instanceId) || !SAFE_ID_RE.test(snapshotId)) {
@@ -132,7 +135,7 @@ snapshotRoutes.post("/:sid/restore", async (c) => {
 });
 
 /** DELETE /api/instances/:id/snapshots/:sid -- Delete a snapshot */
-snapshotRoutes.delete("/:sid", async (c) => {
+snapshotRoutes.delete("/:sid", writeAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
   const snapshotId = c.req.param("sid");
   if (!SAFE_ID_RE.test(instanceId) || !SAFE_ID_RE.test(snapshotId)) {
