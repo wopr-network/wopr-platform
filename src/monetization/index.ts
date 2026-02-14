@@ -73,9 +73,12 @@ export {
 // Feature gating middleware (WOP-384 — replaced tier gates with balance gates)
 export {
   createBalanceGate,
+  createCreditGate,
   createFeatureGate,
+  type CreditGateConfig,
   type FeatureGateConfig,
   type GetUserBalance,
+  type ResolveTenantId,
 } from "./feature-gate.js";
 // Metering (WOP-299 + WOP-284)
 export type {

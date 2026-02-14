@@ -128,14 +128,15 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
   try {
     const tenantId = parsed.data.tenantId;
 
-    // Check credit balance — must have credits to create bots
+    // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
     const balance = getCreditLedger().balance(tenantId);
-    if (balance <= 0) {
+    if (balance < 17) {
       return c.json(
         {
-          error: "Insufficient credit balance to create a bot",
-          currentBalanceCents: balance,
-          purchaseUrl: "/settings/billing",
+          error: "insufficient_credits",
+          balance,
+          required: 17,
+          buyUrl: "/dashboard/credits",
         },
         402,
       );
@@ -258,6 +259,24 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
     return ownershipError;
+  }
+
+  // Payment gate (WOP-380): require minimum 17 cents to start a bot
+  try {
+    const balance = getCreditLedger().balance(profile!.tenantId);
+    if (balance < 17) {
+      return c.json(
+        {
+          error: "insufficient_credits",
+          balance,
+          required: 17,
+          buyUrl: "/dashboard/credits",
+        },
+        402,
+      );
+    }
+  } catch (err) {
+    logger.warn("Credit check skipped on bot start: billing DB unavailable", { err });
   }
 
   try {

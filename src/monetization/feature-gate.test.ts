@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
-import { createFeatureGate, type GetUserBalance } from "./feature-gate.js";
+import { describe, expect, it, vi } from "vitest";
+import type { CreditLedger } from "./credits/credit-ledger.js";
+import { createCreditGate, createFeatureGate, type GetUserBalance } from "./feature-gate.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper type for flexible Hono vars
 type AnyEnv = { Variables: Record<string, any> };
@@ -143,5 +144,111 @@ describe("requireBalance middleware", () => {
     });
 
     expect(res.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// requireCredits middleware (WOP-380)
+// ---------------------------------------------------------------------------
+
+function createCreditApp(balanceCents: number, minCents?: number) {
+  const mockLedger = { balance: vi.fn().mockReturnValue(balanceCents) } as unknown as CreditLedger;
+  const { requireCredits } = createCreditGate({
+    ledger: mockLedger,
+    resolveTenantId: (c) => c.req.header("x-tenant-id"),
+  });
+
+  const app = new Hono<AnyEnv>();
+  app.post("/action", requireCredits(minCents), (c) => {
+    const creditBalance = c.get("creditBalance");
+    return c.json({ ok: true, creditBalance });
+  });
+
+  return app;
+}
+
+describe("requireCredits middleware (WOP-380)", () => {
+  it("allows request when balance meets default minimum (17 cents)", async () => {
+    const app = createCreditApp(17);
+    const res = await app.request("/action", {
+      method: "POST",
+      headers: { "x-tenant-id": "tenant-1" },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.creditBalance).toBe(17);
+  });
+
+  it("rejects when balance is below default minimum (17 cents)", async () => {
+    const app = createCreditApp(16);
+    const res = await app.request("/action", {
+      method: "POST",
+      headers: { "x-tenant-id": "tenant-1" },
+    });
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body.error).toBe("insufficient_credits");
+    expect(body.balance).toBe(16);
+    expect(body.required).toBe(17);
+    expect(body.buyUrl).toBe("/dashboard/credits");
+  });
+
+  it("rejects when balance is zero", async () => {
+    const app = createCreditApp(0);
+    const res = await app.request("/action", {
+      method: "POST",
+      headers: { "x-tenant-id": "tenant-1" },
+    });
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body.error).toBe("insufficient_credits");
+    expect(body.balance).toBe(0);
+  });
+
+  it("respects custom minCents parameter", async () => {
+    const app = createCreditApp(50, 100);
+    const res = await app.request("/action", {
+      method: "POST",
+      headers: { "x-tenant-id": "tenant-1" },
+    });
+
+    expect(res.status).toBe(402);
+    const body = await res.json();
+    expect(body.required).toBe(100);
+  });
+
+  it("allows request when balance exceeds custom minCents", async () => {
+    const app = createCreditApp(200, 100);
+    const res = await app.request("/action", {
+      method: "POST",
+      headers: { "x-tenant-id": "tenant-1" },
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 401 when tenant cannot be resolved", async () => {
+    const app = createCreditApp(1000);
+    const res = await app.request("/action", { method: "POST" });
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("Authentication required");
+  });
+
+  it("sets creditBalance on context for downstream handlers", async () => {
+    const app = createCreditApp(4200);
+    const res = await app.request("/action", {
+      method: "POST",
+      headers: { "x-tenant-id": "tenant-1" },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.creditBalance).toBe(4200);
   });
 });

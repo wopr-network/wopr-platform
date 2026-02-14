@@ -79,3 +79,65 @@ export function createBalanceGate(ledger: CreditLedger, userKey?: string, userId
     userIdField,
   });
 }
+
+// ---------------------------------------------------------------------------
+// requireCredits — WOP-380 payment gate middleware
+// ---------------------------------------------------------------------------
+
+/**
+ * Callback that resolves a tenant ID from the Hono context.
+ * Return `undefined` to signal that tenant could not be determined.
+ */
+export type ResolveTenantId = (c: Context) => string | undefined | Promise<string | undefined>;
+
+export interface CreditGateConfig {
+  /** CreditLedger instance used to check balance. */
+  ledger: CreditLedger;
+  /** Resolve the tenant ID from the request context. */
+  resolveTenantId: ResolveTenantId;
+}
+
+/**
+ * Create a `requireCredits` middleware factory.
+ *
+ * Returns 402 `{ error: 'insufficient_credits', balance, required, buyUrl }`
+ * when the tenant's credit balance is below `minCents`.
+ *
+ * Usage:
+ * ```ts
+ * const { requireCredits } = createCreditGate({
+ *   ledger: creditLedger,
+ *   resolveTenantId: (c) => c.get('tenantId'),
+ * });
+ * app.post('/fleet/bots', writeAuth, requireCredits(), handler);
+ * ```
+ */
+export function createCreditGate(cfg: CreditGateConfig) {
+  const requireCredits = (minCents = 17) => {
+    return async (c: Context, next: Next) => {
+      const tenantId = await cfg.resolveTenantId(c);
+      if (!tenantId) {
+        return c.json({ error: "Authentication required" }, 401);
+      }
+
+      const balance = cfg.ledger.balance(tenantId);
+
+      if (balance < minCents) {
+        return c.json(
+          {
+            error: "insufficient_credits",
+            balance,
+            required: minCents,
+            buyUrl: "/dashboard/credits",
+          },
+          402,
+        );
+      }
+
+      c.set("creditBalance", balance);
+      return next();
+    };
+  };
+
+  return { requireCredits };
+}
