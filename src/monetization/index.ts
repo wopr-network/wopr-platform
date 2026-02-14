@@ -48,7 +48,7 @@ export {
 export type { BudgetCheckerConfig, BudgetCheckResult } from "./budget/index.js";
 export { BudgetChecker } from "./budget/index.js";
 // Feature gating middleware (WOP-283)
-export { createFeatureGate, type FeatureGateConfig, type GetUserTier } from "./feature-gate.js";
+export { createFeatureGate, type FeatureGateConfig, type GetUserTier, type HasBillingHold } from "./feature-gate.js";
 // Metering (WOP-299 + WOP-284)
 export type {
   BillingPeriod,
@@ -91,6 +91,7 @@ export type {
   UsageReporterOpts,
   ValidationMode,
   ValidationResult,
+  WebhookHooks,
   WebhookResult,
 } from "./stripe/index.js";
 // Stripe billing (WOP-300)

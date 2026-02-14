@@ -8,9 +8,18 @@ import { type TierName, tierSatisfies } from "./quotas/tier-definitions.js";
  */
 export type GetUserTier = (userId: string) => PlanTier | Promise<PlanTier>;
 
+/**
+ * Callback to check whether a tenant has an active billing hold.
+ * When a billing hold is active, all tier-gated requests are rejected
+ * until the tier transition completes.
+ */
+export type HasBillingHold = (tenantId: string) => boolean | Promise<boolean>;
+
 export interface FeatureGateConfig {
   /** Resolve the authenticated user's plan tier */
   getUserTier: GetUserTier;
+  /** Check whether the tenant has an active billing hold (optional) */
+  hasBillingHold?: HasBillingHold;
   /** Key on the Hono context where the authenticated user object lives (default: "user") */
   userKey?: string;
   /** Property on the user object that holds the user ID (default: "id") */
@@ -45,6 +54,17 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
       const userId = user[userIdField] as string | undefined;
       if (!userId) {
         return c.json({ error: "Authentication required" }, 401);
+      }
+
+      // Check billing hold before resolving tier
+      if (cfg.hasBillingHold && (await cfg.hasBillingHold(userId))) {
+        return c.json(
+          {
+            error: "Billing transition in progress",
+            upgradeUrl: "/settings/billing",
+          },
+          403,
+        );
       }
 
       const tier = await cfg.getUserTier(userId);

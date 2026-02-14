@@ -1,13 +1,15 @@
 /**
  * Unit tests for Stripe webhook handler.
  *
- * Covers all event types, edge cases, duplicate events, and error handling.
+ * Covers all event types, edge cases, duplicate events, error handling,
+ * and tier-change cache invalidation / audit / event hooks (WOP-367).
  */
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
+import type { WebhookHooks } from "./webhook.js";
 import { handleWebhookEvent } from "./webhook.js";
 
 describe("handleWebhookEvent", () => {
@@ -155,6 +157,25 @@ describe("handleWebhookEvent", () => {
       expect(mapping?.stripe_customer_id).toBe("cus_new");
       expect(mapping?.stripe_subscription_id).toBe("sub_new");
     });
+
+    it("clears billing hold on re-checkout after cancellation", () => {
+      tenantStore.upsert({
+        tenant: "tenant-resubscribe",
+        stripeCustomerId: "cus_resub",
+        stripeSubscriptionId: "sub_old",
+      });
+      tenantStore.setBillingHold("tenant-resubscribe", true);
+      expect(tenantStore.hasBillingHold("tenant-resubscribe")).toBe(true);
+
+      const event = createCheckoutEvent({
+        client_reference_id: "tenant-resubscribe",
+        customer: "cus_resub",
+        subscription: "sub_new",
+      });
+      handleWebhookEvent(tenantStore, event);
+
+      expect(tenantStore.hasBillingHold("tenant-resubscribe")).toBe(false);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -279,6 +300,7 @@ describe("handleWebhookEvent", () => {
         handled: true,
         event_type: "customer.subscription.deleted",
         tenant: "tenant-cancel",
+        previousTier: "pro",
       });
 
       const mapping = tenantStore.getByTenant("tenant-cancel");
@@ -300,6 +322,7 @@ describe("handleWebhookEvent", () => {
       const result = handleWebhookEvent(tenantStore, event);
 
       expect(result.handled).toBe(true);
+      expect(result.previousTier).toBe("enterprise");
       const mapping = tenantStore.getByTenant("tenant-obj-cancel");
       expect(mapping?.tier).toBe("free");
       expect(mapping?.stripe_subscription_id).toBeNull();
@@ -327,13 +350,234 @@ describe("handleWebhookEvent", () => {
 
       const result1 = handleWebhookEvent(tenantStore, event);
       expect(result1.handled).toBe(true);
+      expect(result1.previousTier).toBe("pro");
 
       const result2 = handleWebhookEvent(tenantStore, event);
       expect(result2.handled).toBe(true);
+      expect(result2.previousTier).toBe("free"); // Already downgraded
 
       const mapping = tenantStore.getByTenant("tenant-dup-del");
       expect(mapping?.tier).toBe("free");
       expect(mapping?.stripe_subscription_id).toBeNull();
+    });
+
+    it("returns previousTier in the result", () => {
+      tenantStore.upsert({
+        tenant: "tenant-prev",
+        stripeCustomerId: "cus_prev",
+        stripeSubscriptionId: "sub_prev",
+      });
+      tenantStore.setTier("tenant-prev", "team");
+
+      const event = createSubscriptionDeletedEvent({ customer: "cus_prev" });
+      const result = handleWebhookEvent(tenantStore, event);
+
+      expect(result.previousTier).toBe("team");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Webhook hooks (WOP-367: cache invalidation, audit, event emission)
+  // ---------------------------------------------------------------------------
+
+  describe("webhook hooks (WOP-367)", () => {
+    function createSubscriptionDeletedEvent(overrides?: Partial<Stripe.Subscription>): Stripe.Event {
+      return {
+        type: "customer.subscription.deleted",
+        data: {
+          object: {
+            id: "sub_hook",
+            customer: "cus_hook",
+            ...overrides,
+          } as Stripe.Subscription,
+        },
+      } as Stripe.Event;
+    }
+
+    it("invokes onCacheInvalidate on subscription deletion", () => {
+      tenantStore.upsert({
+        tenant: "tenant-cache",
+        stripeCustomerId: "cus_hook",
+        stripeSubscriptionId: "sub_hook",
+      });
+      tenantStore.setTier("tenant-cache", "pro");
+
+      const hooks: WebhookHooks = {
+        onCacheInvalidate: vi.fn(),
+      };
+
+      handleWebhookEvent(tenantStore, createSubscriptionDeletedEvent(), hooks);
+
+      expect(hooks.onCacheInvalidate).toHaveBeenCalledWith("tenant-cache");
+      expect(hooks.onCacheInvalidate).toHaveBeenCalledTimes(1);
+    });
+
+    it("invokes onAuditLog with correct tier details on deletion", () => {
+      tenantStore.upsert({
+        tenant: "tenant-audit",
+        stripeCustomerId: "cus_hook",
+        stripeSubscriptionId: "sub_hook",
+      });
+      tenantStore.setTier("tenant-audit", "enterprise");
+
+      const hooks: WebhookHooks = {
+        onAuditLog: vi.fn(),
+      };
+
+      handleWebhookEvent(tenantStore, createSubscriptionDeletedEvent(), hooks);
+
+      expect(hooks.onAuditLog).toHaveBeenCalledWith({
+        tenant: "tenant-audit",
+        action: "tier.downgrade",
+        previousTier: "enterprise",
+        newTier: "free",
+      });
+    });
+
+    it("invokes onTierChange on subscription deletion", () => {
+      tenantStore.upsert({
+        tenant: "tenant-event",
+        stripeCustomerId: "cus_hook",
+        stripeSubscriptionId: "sub_hook",
+      });
+      tenantStore.setTier("tenant-event", "pro");
+
+      const hooks: WebhookHooks = {
+        onTierChange: vi.fn(),
+      };
+
+      handleWebhookEvent(tenantStore, createSubscriptionDeletedEvent(), hooks);
+
+      expect(hooks.onTierChange).toHaveBeenCalledWith({
+        tenant: "tenant-event",
+        previousTier: "pro",
+        newTier: "free",
+      });
+    });
+
+    it("invokes all hooks together on subscription deletion", () => {
+      tenantStore.upsert({
+        tenant: "tenant-all",
+        stripeCustomerId: "cus_hook",
+        stripeSubscriptionId: "sub_hook",
+      });
+      tenantStore.setTier("tenant-all", "team");
+
+      const hooks: WebhookHooks = {
+        onCacheInvalidate: vi.fn(),
+        onAuditLog: vi.fn(),
+        onTierChange: vi.fn(),
+      };
+
+      const result = handleWebhookEvent(tenantStore, createSubscriptionDeletedEvent(), hooks);
+
+      expect(result.handled).toBe(true);
+      expect(result.previousTier).toBe("team");
+      expect(hooks.onCacheInvalidate).toHaveBeenCalledTimes(1);
+      expect(hooks.onAuditLog).toHaveBeenCalledTimes(1);
+      expect(hooks.onTierChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not invoke hooks for unknown customer deletion", () => {
+      const hooks: WebhookHooks = {
+        onCacheInvalidate: vi.fn(),
+        onAuditLog: vi.fn(),
+        onTierChange: vi.fn(),
+      };
+
+      const event = createSubscriptionDeletedEvent({ customer: "cus_unknown" });
+      handleWebhookEvent(tenantStore, event, hooks);
+
+      expect(hooks.onCacheInvalidate).not.toHaveBeenCalled();
+      expect(hooks.onAuditLog).not.toHaveBeenCalled();
+      expect(hooks.onTierChange).not.toHaveBeenCalled();
+    });
+
+    it("does not invoke hooks for non-deletion events", () => {
+      tenantStore.upsert({
+        tenant: "tenant-nohook",
+        stripeCustomerId: "cus_nohook",
+        stripeSubscriptionId: "sub_nohook",
+      });
+
+      const hooks: WebhookHooks = {
+        onCacheInvalidate: vi.fn(),
+        onAuditLog: vi.fn(),
+        onTierChange: vi.fn(),
+      };
+
+      const updateEvent = {
+        type: "customer.subscription.updated",
+        data: {
+          object: {
+            id: "sub_updated",
+            customer: "cus_nohook",
+          } as Stripe.Subscription,
+        },
+      } as Stripe.Event;
+
+      handleWebhookEvent(tenantStore, updateEvent, hooks);
+
+      expect(hooks.onCacheInvalidate).not.toHaveBeenCalled();
+      expect(hooks.onAuditLog).not.toHaveBeenCalled();
+      expect(hooks.onTierChange).not.toHaveBeenCalled();
+    });
+
+    it("works without hooks (backward compatibility)", () => {
+      tenantStore.upsert({
+        tenant: "tenant-nohooks",
+        stripeCustomerId: "cus_hook",
+        stripeSubscriptionId: "sub_hook",
+      });
+      tenantStore.setTier("tenant-nohooks", "pro");
+
+      // No hooks passed -- should not throw
+      const result = handleWebhookEvent(tenantStore, createSubscriptionDeletedEvent());
+
+      expect(result.handled).toBe(true);
+      expect(result.previousTier).toBe("pro");
+      const mapping = tenantStore.getByTenant("tenant-nohooks");
+      expect(mapping?.tier).toBe("free");
+    });
+
+    it("clears billing hold after subscription deletion completes", () => {
+      tenantStore.upsert({
+        tenant: "tenant-hold",
+        stripeCustomerId: "cus_hook",
+        stripeSubscriptionId: "sub_hook",
+      });
+      tenantStore.setTier("tenant-hold", "pro");
+
+      handleWebhookEvent(tenantStore, createSubscriptionDeletedEvent());
+
+      // After webhook completes, billing hold should be cleared
+      expect(tenantStore.hasBillingHold("tenant-hold")).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Billing hold (WOP-367)
+  // ---------------------------------------------------------------------------
+
+  describe("billing hold", () => {
+    it("setBillingHold sets and clears the hold flag", () => {
+      tenantStore.upsert({
+        tenant: "tenant-hold-test",
+        stripeCustomerId: "cus_hold",
+        stripeSubscriptionId: "sub_hold",
+      });
+
+      expect(tenantStore.hasBillingHold("tenant-hold-test")).toBe(false);
+
+      tenantStore.setBillingHold("tenant-hold-test", true);
+      expect(tenantStore.hasBillingHold("tenant-hold-test")).toBe(true);
+
+      tenantStore.setBillingHold("tenant-hold-test", false);
+      expect(tenantStore.hasBillingHold("tenant-hold-test")).toBe(false);
+    });
+
+    it("hasBillingHold returns false for unknown tenant", () => {
+      expect(tenantStore.hasBillingHold("nonexistent-tenant")).toBe(false);
     });
   });
 

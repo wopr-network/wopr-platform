@@ -4,6 +4,7 @@ export interface TenantCustomerRow {
   stripe_customer_id: string;
   stripe_subscription_id: string | null;
   tier: string;
+  billing_hold: number;
   created_at: number;
   updated_at: number;
 }
