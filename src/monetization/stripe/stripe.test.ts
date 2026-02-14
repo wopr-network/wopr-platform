@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
-import { createDb } from "../../db/index.js";
+import { createDb, type DrizzleDb } from "../../db/index.js";
 import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
 import type { MeterEvent } from "../metering/types.js";
@@ -90,12 +90,14 @@ describe("initStripeSchema", () => {
 
 describe("TenantCustomerStore", () => {
   let sqlite: BetterSqlite3.Database;
+  let db: DrizzleDb;
   let store: TenantCustomerStore;
 
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    store = new TenantCustomerStore(sqlite);
+    db = testDb.db;
+    store = new TenantCustomerStore(db);
   });
 
   afterEach(() => {
@@ -168,6 +170,7 @@ describe("TenantCustomerStore", () => {
 
 describe("StripeUsageReporter", () => {
   let sqlite: BetterSqlite3.Database;
+  let db: DrizzleDb;
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
   let tenantStore: TenantCustomerStore;
@@ -192,7 +195,8 @@ describe("StripeUsageReporter", () => {
       periodMs: BILLING_PERIOD,
       lateArrivalGraceMs: BILLING_PERIOD,
     });
-    tenantStore = new TenantCustomerStore(sqlite);
+    db = testDb.db;
+    tenantStore = new TenantCustomerStore(db);
   });
 
   afterEach(() => {
@@ -215,7 +219,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     const count = await reporter.report();
 
@@ -244,7 +248,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     await reporter.report();
     const secondCount = await reporter.report();
@@ -264,7 +268,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -274,7 +278,7 @@ describe("StripeUsageReporter", () => {
   it("returns 0 when no unreported periods exist", async () => {
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -293,7 +297,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(2);
@@ -313,7 +317,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockRejectedValue(new Error("Stripe API error"));
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -332,7 +336,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     await reporter.report();
 
@@ -355,7 +359,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
 
     const count = await reporter.report();
     expect(count).toBe(1); // Marked as reported
@@ -365,7 +369,7 @@ describe("StripeUsageReporter", () => {
   it("start/stop manages the periodic timer", () => {
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(sqlite, stripe, tenantStore, { intervalMs: 60_000 });
+    const reporter = new StripeUsageReporter(db, stripe, tenantStore, { intervalMs: 60_000 });
 
     reporter.start();
     reporter.start(); // Idempotent
@@ -383,7 +387,7 @@ describe("createCreditCheckoutSession", () => {
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    tenantStore = new TenantCustomerStore(sqlite);
+    tenantStore = new TenantCustomerStore(testDb.db);
   });
 
   afterEach(() => {
@@ -510,7 +514,7 @@ describe("createPortalSession", () => {
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    tenantStore = new TenantCustomerStore(sqlite);
+    tenantStore = new TenantCustomerStore(testDb.db);
   });
 
   afterEach(() => {
@@ -581,7 +585,7 @@ describe("handleWebhookEvent (credit model)", () => {
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    tenantStore = new TenantCustomerStore(sqlite);
+    tenantStore = new TenantCustomerStore(testDb.db);
     creditStore = new CreditAdjustmentStore(sqlite);
   });
 

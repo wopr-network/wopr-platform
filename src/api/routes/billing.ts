@@ -1,4 +1,3 @@
-import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
@@ -6,7 +5,7 @@ import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { createDb } from "../../db/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
@@ -18,7 +17,7 @@ import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
 
 export interface BillingRouteDeps {
   stripe: Stripe;
-  db: Database.Database;
+  db: DrizzleDb;
   webhookSecret: string;
 }
 
@@ -73,11 +72,10 @@ let priceMap: CreditPriceMap | null = null;
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
-  const drizzleDb = createDb(d.db);
   tenantStore = new TenantCustomerStore(d.db);
-  initCreditAdjustmentSchema(d.db);
-  creditStore = new CreditAdjustmentStore(d.db);
-  meterAggregator = new MeterAggregator(drizzleDb);
+  initCreditAdjustmentSchema(d.db.$client);
+  creditStore = new CreditAdjustmentStore(d.db.$client);
+  meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
 }

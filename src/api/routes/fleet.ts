@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
+import { createDb } from "../../db/index.js";
 import { requireEmailVerified } from "../../email/require-verified.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
@@ -65,7 +66,7 @@ function getQuotaDb(): Database.Database {
 
 function getTenantStore(): TenantCustomerStore {
   if (!tenantStore) {
-    tenantStore = new TenantCustomerStore(getBillingDb());
+    tenantStore = new TenantCustomerStore(createDb(getBillingDb()));
   }
   return tenantStore;
 }

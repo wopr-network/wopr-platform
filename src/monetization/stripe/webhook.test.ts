@@ -9,6 +9,7 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
+import { createDb } from "../../db/index.js";
 import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
@@ -16,22 +17,23 @@ import type { WebhookDeps } from "./webhook.js";
 import { handleWebhookEvent } from "./webhook.js";
 
 describe("handleWebhookEvent (credit model)", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
   let creditStore: CreditAdjustmentStore;
   let deps: WebhookDeps;
 
   beforeEach(() => {
-    db = new BetterSqlite3(":memory:");
-    initStripeSchema(db);
-    initCreditAdjustmentSchema(db);
+    sqlite = new BetterSqlite3(":memory:");
+    initStripeSchema(sqlite);
+    initCreditAdjustmentSchema(sqlite);
+    const db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
-    creditStore = new CreditAdjustmentStore(db);
+    creditStore = new CreditAdjustmentStore(sqlite);
     deps = { tenantStore, creditStore };
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   // ---------------------------------------------------------------------------
