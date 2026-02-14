@@ -176,17 +176,19 @@ export class AdminAuditLog {
     const rows = this.db.prepare(sql).all(...params) as AdminAuditLogRow[];
 
     const header = "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at";
+    const csvEscape = (v: string): string =>
+      /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
     const lines = rows.map((r) => {
       const fields = [
-        r.id,
-        r.admin_user,
-        r.action,
-        r.category,
-        r.target_tenant ?? "",
-        r.target_user ?? "",
-        `"${r.details.replace(/"/g, '""')}"`,
-        r.ip_address ?? "",
-        r.user_agent ?? "",
+        csvEscape(r.id),
+        csvEscape(r.admin_user),
+        csvEscape(r.action),
+        csvEscape(r.category),
+        csvEscape(r.target_tenant ?? ""),
+        csvEscape(r.target_user ?? ""),
+        csvEscape(r.details),
+        csvEscape(r.ip_address ?? ""),
+        csvEscape(r.user_agent ?? ""),
         String(r.created_at),
       ];
       return fields.join(",");
