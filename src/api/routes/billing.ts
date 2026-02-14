@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { buildTokenMap, scopedBearerAuth, validateTenantOwnership } from "../../auth/index.js";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCheckoutSession } from "../../monetization/stripe/checkout.js";
@@ -18,8 +18,8 @@ export interface BillingRouteDeps {
   defaultPriceId?: string;
 }
 
-const tokenMap = buildTokenMap();
-const adminAuth = scopedBearerAuth(tokenMap, "admin");
+const metadataMap = buildTokenMetadataMap();
+const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 
 // -- Zod schemas for input validation ----------------------------------------
 
@@ -103,7 +103,7 @@ function getUsageReporter(): StripeUsageReporter {
 export const billingRoutes = new Hono();
 
 // Auth — admin scope required for billing operations (webhook uses Stripe signature)
-if (tokenMap.size === 0) {
+if (metadataMap.size === 0) {
   logger.warn("No API tokens configured — billing routes will reject all requests");
 }
 
@@ -223,11 +223,13 @@ billingRoutes.post("/webhook", async (c) => {
  * Query params: tenant (required), capability, provider, startDate, endDate, limit
  */
 billingRoutes.get("/usage", adminAuth, async (c) => {
-  if (!validateTenantOwnership(c)) {
+  const aggregator = getMeterAggregator();
+
+  const requestedTenant = c.req.query("tenant");
+  const tokenTenantId = c.get("tokenTenantId");
+  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
     return c.json({ error: "Forbidden" }, 403);
   }
-
-  const aggregator = getMeterAggregator();
 
   const params = {
     tenant: c.req.query("tenant"),
@@ -276,11 +278,13 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
  * Query params: tenant (required), startDate (optional)
  */
 billingRoutes.get("/usage/summary", adminAuth, async (c) => {
-  if (!validateTenantOwnership(c)) {
+  const aggregator = getMeterAggregator();
+
+  const requestedTenant = c.req.query("tenant");
+  const tokenTenantId = c.get("tokenTenantId");
+  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
     return c.json({ error: "Forbidden" }, 403);
   }
-
-  const aggregator = getMeterAggregator();
 
   const params = {
     tenant: c.req.query("tenant"),
@@ -320,11 +324,13 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
  * Query params: tenant (required), limit (optional, default 100, max 1000)
  */
 billingRoutes.get("/usage/history", adminAuth, async (c) => {
-  if (!validateTenantOwnership(c)) {
+  const reporter = getUsageReporter();
+
+  const requestedTenant = c.req.query("tenant");
+  const tokenTenantId = c.get("tokenTenantId");
+  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
     return c.json({ error: "Forbidden" }, 403);
   }
-
-  const reporter = getUsageReporter();
 
   const params = {
     tenant: c.req.query("tenant"),
