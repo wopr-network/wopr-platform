@@ -52,7 +52,7 @@ app.route("/api/admin/audit", adminAuditRoutes);
 
 // Global error handler — catches all errors from routes and middleware.
 // This prevents unhandled errors from crashing the process.
-app.onError((err, c) => {
+export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
   logger.error("Unhandled error in request", {
     error: err.message,
     stack: err.stack,
@@ -68,4 +68,6 @@ app.onError((err, c) => {
     },
     500,
   );
-});
+};
+
+app.onError(errorHandler);

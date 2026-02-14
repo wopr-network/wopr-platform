@@ -47,19 +47,14 @@ describe("Process-level error handlers", () => {
       throw new Error("process.exit called");
     });
 
-    // Create a test handler that mimics src/index.ts behavior
-    const testHandler = (reason: any, promise: Promise<any>) => {
-      logger.error("Unhandled promise rejection", {
-        reason: reason instanceof Error ? reason.message : String(reason),
-        stack: reason instanceof Error ? reason.stack : undefined,
-        promise: String(promise),
-      });
-    };
+    // Import the REAL handler from index.ts
+    const { unhandledRejectionHandler } = await import("../../src/index.js");
 
     const testError = new Error("Test unhandled rejection");
     const testPromise = Promise.reject(testError);
-    
-    testHandler(testError, testPromise);
+
+    // Invoke the real handler
+    unhandledRejectionHandler(testError, testPromise);
 
     expect(loggerSpy).toHaveBeenCalledWith(
       "Unhandled promise rejection",
@@ -73,17 +68,17 @@ describe("Process-level error handlers", () => {
 
     loggerSpy.mockRestore();
     exitSpy.mockRestore();
-    
+
     // Prevent unhandled rejection from failing the test
     testPromise.catch(() => {});
   });
 
-  it("uncaughtException handler logs and schedules exit", async () => {
-    vi.useFakeTimers();
-    
+  it("uncaughtException handler logs and exits immediately", async () => {
+    // Import logger module and spy on it FIRST
     const { logger } = await import("../../src/config/logger.js");
     const loggerSpy = vi.spyOn(logger, "error");
-    
+
+    // Mock process.exit
     let exitCalled = false;
     let exitCode = 0;
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((code?: number) => {
@@ -92,20 +87,13 @@ describe("Process-level error handlers", () => {
       return undefined as never;
     });
 
-    // Create a test handler that mimics src/index.ts behavior
-    const testHandler = (err: Error, origin: string) => {
-      logger.error("Uncaught exception", {
-        error: err.message,
-        stack: err.stack,
-        origin,
-      });
-      setTimeout(() => {
-        process.exit(1);
-      }, 1000);
-    };
+    // Import the REAL handler from index.ts
+    const { uncaughtExceptionHandler } = await import("../../src/index.js");
 
     const testError = new Error("Test uncaught exception");
-    testHandler(testError, "uncaughtException");
+
+    // Invoke the real handler
+    uncaughtExceptionHandler(testError, "uncaughtException");
 
     // Verify error was logged
     expect(loggerSpy).toHaveBeenCalledWith(
@@ -116,18 +104,11 @@ describe("Process-level error handlers", () => {
       }),
     );
 
-    // Verify exit was NOT called immediately
-    expect(exitCalled).toBe(false);
-
-    // Fast-forward timers
-    vi.advanceTimersByTime(1000);
-
-    // Verify exit was called after delay with exit code 1
+    // Verify exit was called immediately with exit code 1
     expect(exitCalled).toBe(true);
     expect(exitCode).toBe(1);
 
     loggerSpy.mockRestore();
     exitSpy.mockRestore();
-    vi.useRealTimers();
   });
 });

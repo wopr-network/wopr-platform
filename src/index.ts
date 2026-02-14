@@ -9,17 +9,17 @@ const port = config.port;
 // These handlers ensure the process logs critical errors and handles them gracefully.
 
 // Handle unhandled promise rejections (async errors that weren't caught)
-process.on("unhandledRejection", (reason, promise) => {
+export const unhandledRejectionHandler = (reason: unknown, promise: Promise<unknown>) => {
   logger.error("Unhandled promise rejection", {
     reason: reason instanceof Error ? reason.message : String(reason),
     stack: reason instanceof Error ? reason.stack : undefined,
     promise: String(promise),
   });
   // Don't exit — log and continue serving other tenants
-});
+};
 
 // Handle uncaught exceptions (synchronous errors that weren't caught)
-process.on("uncaughtException", (err, origin) => {
+export const uncaughtExceptionHandler = (err: Error, origin: string) => {
   logger.error("Uncaught exception", {
     error: err.message,
     stack: err.stack,
@@ -28,7 +28,10 @@ process.on("uncaughtException", (err, origin) => {
   // Uncaught exceptions leave the process in an undefined state.
   // Exit immediately after logging (Winston Console transport is synchronous).
   process.exit(1);
-});
+};
+
+process.on("unhandledRejection", unhandledRejectionHandler);
+process.on("uncaughtException", uncaughtExceptionHandler);
 
 logger.info(`wopr-platform starting on port ${port}`);
 
