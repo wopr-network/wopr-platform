@@ -5,7 +5,6 @@
  * Instance limits come from quota-check.ts; resource limits from resource-limits.ts.
  */
 
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../init.js";
 
