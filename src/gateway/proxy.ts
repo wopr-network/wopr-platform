@@ -127,7 +127,9 @@ export function chatCompletions(deps: ProxyDeps) {
         cost,
       });
 
-      emitMeterEvent(deps, tenant.id, "chat-completions", "openrouter", cost);
+      if (res.ok) {
+        emitMeterEvent(deps, tenant.id, "chat-completions", "openrouter", cost);
+      }
 
       return new Response(responseBody, {
         status: res.status,
@@ -177,7 +179,10 @@ export function textCompletions(deps: ProxyDeps) {
       const cost = costHeader ? parseFloat(costHeader) : estimateTokenCost(responseBody);
 
       logger.info("Gateway proxy: completions", { tenant: tenant.id, status: res.status, cost });
-      emitMeterEvent(deps, tenant.id, "text-completions", "openrouter", cost);
+
+      if (res.ok) {
+        emitMeterEvent(deps, tenant.id, "text-completions", "openrouter", cost);
+      }
 
       return new Response(responseBody, {
         status: res.status,
@@ -227,7 +232,10 @@ export function embeddings(deps: ProxyDeps) {
       const cost = costHeader ? parseFloat(costHeader) : 0.0001; // flat fallback for embeddings
 
       logger.info("Gateway proxy: embeddings", { tenant: tenant.id, status: res.status, cost });
-      emitMeterEvent(deps, tenant.id, "embeddings", "openrouter", cost);
+
+      if (res.ok) {
+        emitMeterEvent(deps, tenant.id, "embeddings", "openrouter", cost);
+      }
 
       return new Response(responseBody, {
         status: res.status,
@@ -335,7 +343,10 @@ export function audioSpeech(deps: ProxyDeps) {
       const format = body.response_format ?? "mp3";
       const baseUrl = providerCfg.baseUrl ?? "https://api.elevenlabs.io";
 
-      const res = await deps.fetchFn(`${baseUrl}/v1/text-to-speech/${voice}?output_format=${format}_44100_128`, {
+      // ElevenLabs output_format: mp3 needs sample rate/bitrate suffix, others use format directly
+      const outputFormat = format === "mp3" ? "mp3_44100_128" : format;
+
+      const res = await deps.fetchFn(`${baseUrl}/v1/text-to-speech/${voice}?output_format=${outputFormat}`, {
         method: "POST",
         headers: {
           "xi-api-key": providerCfg.apiKey,
@@ -542,13 +553,9 @@ export function phoneOutbound(deps: ProxyDeps) {
     try {
       const body = await c.req.json<{ to: string; from: string; webhook_url?: string }>();
 
-      // Forward to Twilio/Telnyx to initiate call
-      // The actual per-minute metering happens via webhook callbacks during the call
-      logger.info("Gateway proxy: phone/outbound", { tenant: tenant.id, to: body.to });
-
-      // Emit initial connection event (per-minute metering handled by phone/inbound webhook)
-      const initialCost = 0.01; // connection fee
-      emitMeterEvent(deps, tenant.id, "phone-outbound", providerName, initialCost);
+      // TODO: Make HTTP call to Twilio/Telnyx API to actually initiate the call.
+      // Metering should only happen after a successful upstream response.
+      logger.info("Gateway proxy: phone/outbound (stub)", { tenant: tenant.id, to: body.to });
 
       return c.json({
         status: "initiated",
@@ -569,6 +576,7 @@ export function phoneOutbound(deps: ProxyDeps) {
 export function phoneInbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
+    const providerName = deps.providers.twilio ? "twilio" : "telnyx";
 
     try {
       const body = await c.req.json<{
@@ -589,12 +597,12 @@ export function phoneInbound(deps: ProxyDeps) {
         status: body.status,
       });
 
-      emitMeterEvent(deps, tenant.id, "phone-inbound", "twilio", cost);
+      emitMeterEvent(deps, tenant.id, "phone-inbound", providerName, cost);
 
       return c.json({ status: "metered", duration_minutes: durationMinutes });
     } catch (error) {
       logger.error("Gateway proxy error: phone/inbound", { tenant: tenant.id, error });
-      const mapped = mapProviderError(error, "twilio");
+      const mapped = mapProviderError(error, providerName);
       return c.json(mapped.body, mapped.status as 502);
     }
   };
@@ -630,15 +638,14 @@ export function smsOutbound(deps: ProxyDeps) {
       // Determine if MMS (has media attachments)
       const isMMS = body.media_url && body.media_url.length > 0;
       const capability = isMMS ? "mms-outbound" : "sms-outbound";
-      const costPerMessage = isMMS ? 0.02 : 0.0075; // wholesale rates
 
-      logger.info("Gateway proxy: messages/sms", {
+      // TODO: Make HTTP call to Twilio/Telnyx API to actually send the message.
+      // Metering should only happen after a successful upstream response.
+      logger.info("Gateway proxy: messages/sms (stub)", {
         tenant: tenant.id,
         capability,
         to: body.to,
       });
-
-      emitMeterEvent(deps, tenant.id, capability, providerName, costPerMessage);
 
       return c.json({
         status: "sent",
@@ -660,6 +667,7 @@ export function smsOutbound(deps: ProxyDeps) {
 export function smsInbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
+    const providerName = deps.providers.twilio ? "twilio" : "telnyx";
 
     try {
       const body = await c.req.json<{
@@ -679,12 +687,12 @@ export function smsInbound(deps: ProxyDeps) {
         from: body.from,
       });
 
-      emitMeterEvent(deps, tenant.id, capability, "twilio", costPerMessage);
+      emitMeterEvent(deps, tenant.id, capability, providerName, costPerMessage);
 
       return c.json({ status: "received", capability });
     } catch (error) {
       logger.error("Gateway proxy error: messages/sms/inbound", { tenant: tenant.id, error });
-      const mapped = mapProviderError(error, "twilio");
+      const mapped = mapProviderError(error, providerName);
       return c.json(mapped.body, mapped.status as 502);
     }
   };

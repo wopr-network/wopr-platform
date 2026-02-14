@@ -10,6 +10,14 @@ describe("mapProviderError", () => {
     expect(result.body.error.code).toBe("rate_limit_exceeded");
   });
 
+  it("maps spending limit errors with httpStatus 429 to billing_error", () => {
+    const err = Object.assign(new Error("spending limit exceeded"), { httpStatus: 429 });
+    const result = mapProviderError(err, "openrouter");
+    expect(result.status).toBe(429);
+    expect(result.body.error.type).toBe("billing_error");
+    expect(result.body.error.code).toBe("insufficient_credits");
+  });
+
   it("maps 503 errors to service_unavailable", () => {
     const err = Object.assign(new Error("service down"), { httpStatus: 503 });
     const result = mapProviderError(err, "deepgram");

@@ -12,6 +12,21 @@ export function mapProviderError(error: unknown, provider: string): { status: nu
   const err = error instanceof Error ? error : new Error(String(error));
   const errWithStatus = err as Error & { httpStatus?: number; retryAfter?: string };
 
+  // Budget exceeded (from our budget checker) — check message first so spending-limit
+  // errors with httpStatus 429 are classified as billing_error, not rate_limit_error.
+  if (err.message.includes("spending limit")) {
+    return {
+      status: 429,
+      body: {
+        error: {
+          message: err.message,
+          type: "billing_error",
+          code: "insufficient_credits",
+        },
+      },
+    };
+  }
+
   // Rate limit from upstream
   if (errWithStatus.httpStatus === 429) {
     return {
@@ -21,20 +36,6 @@ export function mapProviderError(error: unknown, provider: string): { status: nu
           message: "Rate limit exceeded. Please retry after a brief delay.",
           type: "rate_limit_error",
           code: "rate_limit_exceeded",
-        },
-      },
-    };
-  }
-
-  // Budget exceeded (from our budget checker)
-  if (errWithStatus.httpStatus === 429 || err.message.includes("spending limit")) {
-    return {
-      status: 429,
-      body: {
-        error: {
-          message: err.message,
-          type: "billing_error",
-          code: "insufficient_credits",
         },
       },
     };

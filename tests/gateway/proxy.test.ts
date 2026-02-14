@@ -372,7 +372,7 @@ describe("Gateway proxy endpoints", () => {
   // -----------------------------------------------------------------------
 
   describe("POST /v1/phone/outbound", () => {
-    it("initiates outbound call and meters connection", async () => {
+    it("initiates outbound call without metering (stub)", async () => {
       const app = makeGatewayApp();
       const res = await app.request("/v1/phone/outbound", {
         method: "POST",
@@ -384,8 +384,8 @@ describe("Gateway proxy endpoints", () => {
       const body = (await res.json()) as { status: string };
       expect(body.status).toBe("initiated");
 
-      expect(meterEvents.length).toBe(1);
-      expect(meterEvents[0].capability).toBe("phone-outbound");
+      // No meter event -- handler is stubbed, no upstream call is made
+      expect(meterEvents.length).toBe(0);
     });
   });
 
@@ -418,7 +418,7 @@ describe("Gateway proxy endpoints", () => {
   // -----------------------------------------------------------------------
 
   describe("POST /v1/messages/sms", () => {
-    it("sends SMS and meters per message", async () => {
+    it("sends SMS without metering (stub)", async () => {
       const app = makeGatewayApp();
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
@@ -431,8 +431,8 @@ describe("Gateway proxy endpoints", () => {
       expect(body.status).toBe("sent");
       expect(body.capability).toBe("sms-outbound");
 
-      expect(meterEvents.length).toBe(1);
-      expect(meterEvents[0].capability).toBe("sms-outbound");
+      // No meter event -- handler is stubbed, no upstream call is made
+      expect(meterEvents.length).toBe(0);
     });
 
     it("detects MMS when media_url is present", async () => {
@@ -452,7 +452,8 @@ describe("Gateway proxy endpoints", () => {
       const body = (await res.json()) as { capability: string };
       expect(body.capability).toBe("mms-outbound");
 
-      expect(meterEvents[0].capability).toBe("mms-outbound");
+      // No meter event -- handler is stubbed, no upstream call is made
+      expect(meterEvents.length).toBe(0);
     });
   });
 
@@ -500,6 +501,24 @@ describe("Gateway proxy endpoints", () => {
       expect(body.error.code).toBe("upstream_error");
 
       // No meter event should be emitted on failure
+      expect(meterEvents.length).toBe(0);
+    });
+
+    it("does not meter LLM requests when upstream returns non-ok status", async () => {
+      const failFetch = createStubFetch({
+        status: 500,
+        body: JSON.stringify({ error: "internal server error" }),
+      });
+
+      const app = makeGatewayApp({ fetchFn: failFetch });
+      const res = await app.request("/v1/chat/completions", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o", messages: [] }),
+      });
+
+      expect(res.status).toBe(500);
+      // No meter event -- upstream failed
       expect(meterEvents.length).toBe(0);
     });
   });
