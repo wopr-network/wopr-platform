@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { fleetRoutes } from "./routes/fleet.js";
 import { friendsRoutes } from "./routes/friends.js";
@@ -21,6 +22,7 @@ app.use(
   }),
 );
 app.use("/*", secureHeaders());
+app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
 
 app.route("/health", healthRoutes);
 app.route("/fleet", fleetRoutes);
