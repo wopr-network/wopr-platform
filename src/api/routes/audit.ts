@@ -1,35 +1,35 @@
 import Database from "better-sqlite3";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { createDb } from "../../db/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { countAuditLog, queryAuditLog } from "../../audit/query.js";
 import { purgeExpiredEntriesForUser } from "../../audit/retention.js";
-import { initAuditSchema } from "../../audit/schema.js";
 import type { AuditEnv } from "../../audit/types.js";
 
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
 
 /** Lazy-initialized audit database (avoids opening DB at module load time). */
-let _auditDb: Database.Database | null = null;
-function getAuditDb(): Database.Database {
+let _auditDb: DrizzleDb | null = null;
+function getAuditDb(): DrizzleDb {
   if (!_auditDb) {
-    _auditDb = new Database(AUDIT_DB_PATH);
-    _auditDb.pragma("journal_mode = WAL");
-    initAuditSchema(_auditDb);
+    const sqlite = new Database(AUDIT_DB_PATH);
+    sqlite.pragma("journal_mode = WAL");
+    _auditDb = createDb(sqlite);
   }
   return _auditDb;
 }
 
 /** Inject an audit database for testing. */
-export function setAuditDb(db: Database.Database): void {
+export function setAuditDb(db: DrizzleDb): void {
   _auditDb = db;
 }
 
-function handleUserAudit(c: Context<AuditEnv>, db: Database.Database) {
+function handleUserAudit(c: Context<AuditEnv>, db: DrizzleDb) {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  const tier = user.tier ?? "free";
-  purgeExpiredEntriesForUser(db, user.id, tier);
+  purgeExpiredEntriesForUser(db, user.id);
 
   const sinceRaw = c.req.query("since") ? Number(c.req.query("since")) : undefined;
   const untilRaw = c.req.query("until") ? Number(c.req.query("until")) : undefined;
@@ -56,7 +56,7 @@ function handleUserAudit(c: Context<AuditEnv>, db: Database.Database) {
   }
 }
 
-function handleAdminAudit(c: Context<AuditEnv>, db: Database.Database) {
+function handleAdminAudit(c: Context<AuditEnv>, db: DrizzleDb) {
   const user = c.get("user");
   if (!user?.isAdmin) return c.json({ error: "Forbidden" }, 403);
 
@@ -88,9 +88,9 @@ function handleAdminAudit(c: Context<AuditEnv>, db: Database.Database) {
 /**
  * Create audit log API routes with an explicit database.
  *
- * Expects `c.get("user")` to provide `{ id: string, tier?: Tier }`.
+ * Expects `c.get("user")` to provide `{ id: string }`.
  */
-export function createAuditRoutes(db: Database.Database): Hono<AuditEnv> {
+export function createAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
   const routes = new Hono<AuditEnv>();
   routes.get("/", (c) => handleUserAudit(c, db));
   return routes;
@@ -101,7 +101,7 @@ export function createAuditRoutes(db: Database.Database): Hono<AuditEnv> {
  *
  * Expects `c.get("user")` to provide `{ id: string, isAdmin: boolean }`.
  */
-export function createAdminAuditRoutes(db: Database.Database): Hono<AuditEnv> {
+export function createAdminAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
   const routes = new Hono<AuditEnv>();
   routes.get("/", (c) => handleAdminAudit(c, db));
   return routes;

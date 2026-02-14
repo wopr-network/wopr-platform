@@ -1,6 +1,5 @@
 export type { AdminAuditLogRow, AuditCategory, AuditEntry, AuditFilters } from "./audit-log.js";
 export { AdminAuditLog } from "./audit-log.js";
-export { initAdminAuditSchema } from "./audit-schema.js";
 export type { AdjustmentFilters, AdjustmentType, CreditAdjustment } from "./credits/adjustment-store.js";
 export { BalanceError, CreditAdjustmentStore } from "./credits/adjustment-store.js";
 export { initCreditAdjustmentSchema } from "./credits/schema.js";

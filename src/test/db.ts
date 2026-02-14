@@ -7,5 +7,5 @@ export function createTestDb() {
   const sqlite = new Database(":memory:");
   const db = drizzle(sqlite, { schema });
   migrate(db, { migrationsFolder: "./drizzle/migrations" });
-  return db;
+  return { db, sqlite };
 }

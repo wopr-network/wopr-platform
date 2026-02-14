@@ -1,9 +1,7 @@
-import type { Tier } from "./retention.js";
-
 /** User context set by auth middleware, available via `c.get("user")`. */
 export interface AuditUser {
   id: string;
-  tier?: Tier;
+  tier?: string;
   isAdmin?: boolean;
 }
 

@@ -1,5 +1,3 @@
-import type Database from "better-sqlite3";
-
 /** Valid auth methods for audit entries. */
 export type AuthMethod = "session" | "api_key";
 
@@ -49,26 +47,4 @@ export interface AuditEntryInput {
   details?: Record<string, unknown> | null;
   ipAddress?: string | null;
   userAgent?: string | null;
-}
-
-/** Initialize the audit_log table. */
-export function initAuditSchema(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS audit_log (
-      id TEXT PRIMARY KEY,
-      timestamp INTEGER NOT NULL,
-      user_id TEXT NOT NULL,
-      auth_method TEXT NOT NULL,
-      action TEXT NOT NULL,
-      resource_type TEXT NOT NULL,
-      resource_id TEXT,
-      details TEXT,
-      ip_address TEXT,
-      user_agent TEXT
-    )
-  `);
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log (timestamp)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_log (user_id)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log (action)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log (resource_type, resource_id)");
 }
