@@ -26,6 +26,7 @@ export {
   type MarginRule,
   withMarginConfig,
 } from "./adapters/margin-config.js";
+export { createNanoBananaAdapter, type NanoBananaAdapterConfig } from "./adapters/nano-banana.js";
 export { createOpenRouterAdapter, type OpenRouterAdapterConfig } from "./adapters/openrouter.js";
 export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/replicate.js";
 export {
