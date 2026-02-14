@@ -1,0 +1,14 @@
+# Reverse proxy for the WOPR platform.
+#
+# Caddy automatically provisions TLS via Let's Encrypt.
+# The {$DOMAIN} placeholder is replaced by the DOMAIN env var.
+
+# Platform UI — root domain
+{$DOMAIN} {
+	reverse_proxy platform-ui:3000
+}
+
+# Platform API — api subdomain
+api.{$DOMAIN} {
+	reverse_proxy platform-api:3100
+}
