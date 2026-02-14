@@ -8,6 +8,16 @@
 
 export { mapProviderError } from "./error-mapping.js";
 export {
+  anthropicToOpenAI,
+  createAnthropicRoutes,
+  createOpenAIRoutes,
+  estimateAnthropicCost,
+  estimateOpenAICost,
+  mapToAnthropicError,
+  openAIResponseToAnthropic,
+  type ProtocolDeps,
+} from "./protocol/index.js";
+export {
   buildProxyDeps,
   type ProxyDeps,
   phoneNumberList,
