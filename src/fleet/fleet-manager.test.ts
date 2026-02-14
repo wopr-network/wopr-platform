@@ -1,5 +1,6 @@
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { NetworkPolicy } from "../network/network-policy.js";
 import { BotNotFoundError, FleetManager } from "./fleet-manager.js";
 import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile } from "./types.js";
@@ -59,7 +60,18 @@ function mockStore(): ProfileStore {
   } as unknown as ProfileStore;
 }
 
+function mockNetworkPolicy(networkName = "wopr-tenant-user-123") {
+  return {
+    prepareForContainer: vi.fn().mockResolvedValue(networkName),
+    cleanupAfterRemoval: vi.fn().mockResolvedValue(undefined),
+    isIsolated: vi.fn().mockResolvedValue(true),
+    ensurePlatformNetwork: vi.fn().mockResolvedValue("mgmt-1"),
+    networks: {},
+  } as unknown as NetworkPolicy;
+}
+
 const PROFILE_PARAMS = {
+  tenantId: "user-123",
   name: "test-bot",
   description: "A test bot",
   image: "ghcr.io/wopr-network/wopr:stable",
@@ -295,6 +307,70 @@ describe("FleetManager", () => {
 
     it("throws BotNotFoundError for missing profile", async () => {
       await expect(fleet.update("missing", { name: "new" })).rejects.toThrow(BotNotFoundError);
+    });
+  });
+
+  describe("network isolation", () => {
+    let netPolicy: ReturnType<typeof mockNetworkPolicy>;
+    let isolatedFleet: FleetManager;
+
+    beforeEach(() => {
+      netPolicy = mockNetworkPolicy();
+      isolatedFleet = new FleetManager(docker as unknown as Docker, store, undefined, netPolicy);
+    });
+
+    it("sets NetworkMode from NetworkPolicy on container creation", async () => {
+      await isolatedFleet.create(PROFILE_PARAMS);
+
+      expect(netPolicy.prepareForContainer).toHaveBeenCalledWith("user-123");
+      expect(docker.createContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          HostConfig: expect.objectContaining({
+            NetworkMode: "wopr-tenant-user-123",
+          }),
+        }),
+      );
+    });
+
+    it("does not set NetworkMode when no NetworkPolicy is provided", async () => {
+      // fleet (from outer beforeEach) has no networkPolicy
+      await fleet.create(PROFILE_PARAMS);
+
+      expect(docker.createContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          HostConfig: expect.not.objectContaining({
+            NetworkMode: expect.anything(),
+          }),
+        }),
+      );
+    });
+
+    it("calls cleanupAfterRemoval on bot removal", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await isolatedFleet.remove("bot-id");
+
+      expect(netPolicy.cleanupAfterRemoval).toHaveBeenCalledWith("user-123");
+    });
+
+    it("calls cleanupAfterRemoval even when no container exists", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      docker.listContainers.mockResolvedValue([]);
+
+      await isolatedFleet.remove("bot-id");
+
+      expect(netPolicy.cleanupAfterRemoval).toHaveBeenCalledWith("user-123");
+    });
+
+    it("does not call cleanupAfterRemoval when no NetworkPolicy is provided", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.remove("bot-id");
+
+      // netPolicy is not wired into the default fleet instance
+      expect(netPolicy.cleanupAfterRemoval).not.toHaveBeenCalled();
     });
   });
 });

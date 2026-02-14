@@ -11,6 +11,7 @@ import { ContainerUpdater } from "./updater.js";
 function makeProfile(overrides: Partial<BotProfile> = {}): BotProfile {
   return {
     id: "bot-1",
+    tenantId: "user-123",
     name: "test-bot",
     description: "A test bot",
     image: "ghcr.io/wopr-network/wopr:stable",

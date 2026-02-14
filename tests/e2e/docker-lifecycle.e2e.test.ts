@@ -80,6 +80,7 @@ async function removeAllWoprTestContainers(docker: Docker): Promise<void> {
 
 function profileParams(name: string): Omit<BotProfile, "id"> {
   return {
+    tenantId: "e2e-test-tenant",
     name: `${TEST_PREFIX}-${name}`,
     description: "E2E test bot",
     image: TEST_IMAGE,
