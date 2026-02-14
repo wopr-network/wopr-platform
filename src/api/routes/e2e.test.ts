@@ -2,6 +2,8 @@ import BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { TierStore } from "../../monetization/quotas/tier-definitions.js";
@@ -449,10 +451,11 @@ describe("E2E: Bot management flow", () => {
 // E2E: Billing Flow
 // ---------------------------------------------------------------------------
 
-describe("E2E: Billing flow", () => {
+describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
   let db: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
+  let creditStore: CreditAdjustmentStore;
   let tierStore: TierStore;
 
   const mockStripe = {
@@ -481,7 +484,9 @@ describe("E2E: Billing flow", () => {
     db = new BetterSqlite3(":memory:");
     initMeterSchema(db);
     initStripeSchema(db);
+    initCreditAdjustmentSchema(db);
     tenantStore = new TenantCustomerStore(db);
+    creditStore = new CreditAdjustmentStore(db);
 
     // Set up tier store
     tierStore = new TierStore(db);
@@ -493,7 +498,6 @@ describe("E2E: Billing flow", () => {
       stripe: mockStripe,
       db,
       webhookSecret: "whsec_test",
-      defaultPriceId: "price_default",
     });
 
     app = buildApp();
@@ -503,7 +507,7 @@ describe("E2E: Billing flow", () => {
     db.close();
   });
 
-  it("Checkout -> webhook confirms subscription -> verify quota upgraded -> portal -> cancel -> verify downgrade", async () => {
+  it("Credit checkout -> webhook credits ledger -> verify balance -> portal access", async () => {
     const tenantId = "tenant-e2e-1";
 
     // Step 1: Check initial quota (free tier — 1 instance max)
@@ -526,18 +530,18 @@ describe("E2E: Billing flow", () => {
     const quotaCheck = await quotaCheckRes.json();
     expect(quotaCheck.allowed).toBe(false);
 
-    // Step 3: Create a checkout session to upgrade to pro
+    // Step 3: Create a credit checkout session ($25 purchase)
     (mockStripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: "cs_test_123",
       url: "https://checkout.stripe.com/cs_test_123",
     });
 
-    const checkoutRes = await app.request("/api/billing/checkout", {
+    const checkoutRes = await app.request("/api/billing/credits/checkout", {
       method: "POST",
       headers: jsonAuth,
       body: JSON.stringify({
         tenant: tenantId,
-        priceId: "price_pro_monthly",
+        priceId: "price_credit_25",
         successUrl: "https://app.wopr.network/billing/success",
         cancelUrl: "https://app.wopr.network/billing/cancel",
       }),
@@ -548,55 +552,38 @@ describe("E2E: Billing flow", () => {
     expect(checkout.sessionId).toBe("cs_test_123");
 
     // Step 4: Simulate Stripe webhook — checkout.session.completed
-    // (This creates the tenant-customer mapping in the DB)
+    // (This creates the tenant-customer mapping and credits the ledger)
     const checkoutEvent = {
       type: "checkout.session.completed" as const,
       data: {
         object: {
+          id: "cs_test_123",
           client_reference_id: tenantId,
           customer: "cus_e2e_123",
-          subscription: "sub_e2e_456",
+          amount_total: 2500,
           metadata: { wopr_tenant: tenantId },
         },
       },
     } as unknown as Stripe.Event;
 
-    const webhookResult = handleWebhookEvent(tenantStore, checkoutEvent);
+    const webhookResult = handleWebhookEvent(
+      { tenantStore, creditStore },
+      checkoutEvent,
+    );
     expect(webhookResult.handled).toBe(true);
     expect(webhookResult.tenant).toBe(tenantId);
+    expect(webhookResult.creditedCents).toBe(2500);
 
     // Step 5: Verify the tenant is now mapped to a Stripe customer
     const mapping = tenantStore.getByTenant(tenantId);
     expect(mapping).not.toBeNull();
     expect(mapping?.stripe_customer_id).toBe("cus_e2e_123");
-    expect(mapping?.stripe_subscription_id).toBe("sub_e2e_456");
 
-    // Step 6: Upgrade the tenant's tier in the store
-    tenantStore.setTier(tenantId, "pro");
-    const updatedMapping = tenantStore.getByTenant(tenantId);
-    expect(updatedMapping?.tier).toBe("pro");
+    // Step 6: Verify credits were granted
+    const balance = creditStore.getBalance(tenantId);
+    expect(balance).toBe(2500);
 
-    // Step 7: Check pro tier quota — should allow 5 instances
-    const proQuotaRes = await app.request(`/api/quota?tier=pro&activeInstances=1`, {
-      headers: authHeader,
-    });
-    expect(proQuotaRes.status).toBe(200);
-    const proQuota = await proQuotaRes.json();
-    expect(proQuota.tier.id).toBe("pro");
-    expect(proQuota.instances.max).toBe(5);
-    expect(proQuota.instances.remaining).toBe(4);
-
-    // Step 8: Verify pro tier allows creating more instances
-    const proCheckRes = await app.request("/api/quota/check", {
-      method: "POST",
-      headers: jsonAuth,
-      body: JSON.stringify({ tier: "pro", activeInstances: 1 }),
-    });
-    expect(proCheckRes.status).toBe(200);
-    const proCheck = await proCheckRes.json();
-    expect(proCheck.allowed).toBe(true);
-
-    // Step 9: List available tiers
+    // Step 7: List available tiers
     const tiersRes = await app.request("/api/quota/tiers", { headers: authHeader });
     expect(tiersRes.status).toBe(200);
     const tiersBody = await tiersRes.json();
@@ -607,16 +594,7 @@ describe("E2E: Billing flow", () => {
     expect(tierIds).toContain("team");
     expect(tierIds).toContain("enterprise");
 
-    // Step 10: Get resource limits for pro tier
-    const limitsRes = await app.request("/api/quota/resource-limits/pro", {
-      headers: authHeader,
-    });
-    expect(limitsRes.status).toBe(200);
-    const limits = await limitsRes.json();
-    expect(limits.Memory).toBe(2048 * 1024 * 1024); // 2GB
-    expect(limits.CpuQuota).toBe(200_000);
-
-    // Step 11: Access billing portal
+    // Step 8: Access billing portal
     (mockStripe.billingPortal.sessions.create as ReturnType<typeof vi.fn>).mockResolvedValue({
       url: "https://billing.stripe.com/session/portal_123",
     });
@@ -633,42 +611,29 @@ describe("E2E: Billing flow", () => {
     const portal = await portalRes.json();
     expect(portal.url).toContain("billing.stripe.com");
 
-    // Step 12: Simulate subscription cancellation via webhook
-    const cancelEvent = {
-      type: "customer.subscription.deleted" as const,
+    // Step 9: Make another credit purchase ($50 with 5% bonus)
+    const secondCheckoutEvent = {
+      type: "checkout.session.completed" as const,
       data: {
         object: {
-          id: "sub_e2e_456",
+          id: "cs_test_456",
+          client_reference_id: tenantId,
           customer: "cus_e2e_123",
+          amount_total: 5000,
+          metadata: { wopr_tenant: tenantId },
         },
       },
     } as unknown as Stripe.Event;
 
-    const cancelResult = handleWebhookEvent(tenantStore, cancelEvent);
-    expect(cancelResult.handled).toBe(true);
-    expect(cancelResult.tenant).toBe(tenantId);
+    const secondResult = handleWebhookEvent(
+      { tenantStore, creditStore },
+      secondCheckoutEvent,
+    );
+    expect(secondResult.handled).toBe(true);
+    expect(secondResult.creditedCents).toBe(5000); // 1:1 without priceMap
 
-    // Step 13: Verify tenant is downgraded to free tier
-    const downgradedMapping = tenantStore.getByTenant(tenantId);
-    expect(downgradedMapping?.tier).toBe("free");
-    expect(downgradedMapping?.stripe_subscription_id).toBeNull();
-
-    // Step 14: Verify free tier quota is enforced again
-    const downgradeQuotaRes = await app.request(`/api/quota?tier=free&activeInstances=1`, {
-      headers: authHeader,
-    });
-    expect(downgradeQuotaRes.status).toBe(200);
-    const downgradeQuota = await downgradeQuotaRes.json();
-    expect(downgradeQuota.instances.remaining).toBe(0);
-
-    // Step 15: Verify that creating more instances is blocked at free tier
-    const blockedCheckRes = await app.request("/api/quota/check", {
-      method: "POST",
-      headers: jsonAuth,
-      body: JSON.stringify({ tier: "free", activeInstances: 1 }),
-    });
-    expect(blockedCheckRes.status).toBe(403);
-    const blockedCheck = await blockedCheckRes.json();
-    expect(blockedCheck.allowed).toBe(false);
+    // Step 10: Verify accumulated balance
+    const finalBalance = creditStore.getBalance(tenantId);
+    expect(finalBalance).toBe(7500); // 2500 + 5000
   });
 });

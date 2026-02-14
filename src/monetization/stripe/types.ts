@@ -2,7 +2,6 @@
 export interface TenantCustomerRow {
   tenant: string;
   stripe_customer_id: string;
-  stripe_subscription_id: string | null;
   tier: string;
   billing_hold: number;
   created_at: number;
@@ -25,11 +24,11 @@ export interface StripeUsageReportRow {
   reported_at: number;
 }
 
-/** Options for creating a Stripe Checkout session. */
-export interface CheckoutSessionOpts {
+/** Options for creating a Stripe credit purchase Checkout session. */
+export interface CreditCheckoutOpts {
   /** Internal tenant ID. */
   tenant: string;
-  /** Stripe Price ID for the usage-based subscription. */
+  /** Stripe Price ID for the credit purchase. */
   priceId: string;
   /** URL to redirect to after successful checkout. */
   successUrl: string;
@@ -51,6 +50,4 @@ export interface StripeBillingConfig {
   secretKey: string;
   /** Stripe webhook signing secret. */
   webhookSecret: string;
-  /** Default Stripe Price ID for usage-based subscriptions. */
-  defaultPriceId?: string;
 }

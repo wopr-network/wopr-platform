@@ -1,27 +1,35 @@
 /**
- * Integration tests for auth-to-billing flow.
+ * Integration tests for auth-to-billing flow (credit purchase model, WOP-406).
  *
  * Tests the complete journey:
  * 1. User registers (auth)
- * 2. User subscribes (billing)
- * 3. Subscription lifecycle (webhooks)
- * 4. Tier transitions
+ * 2. User purchases credits (billing)
+ * 3. Credits land in the ledger (webhook)
+ * 4. Multiple tenants remain isolated
  */
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CreditAdjustmentStore } from "../../src/admin/credits/adjustment-store.js";
+import { initCreditAdjustmentSchema } from "../../src/admin/credits/schema.js";
 import { initStripeSchema } from "../../src/monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../src/monetization/stripe/tenant-store.js";
+import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
 
-describe("integration: auth → billing → metering flow", () => {
+describe("integration: auth → billing → credit flow", () => {
   let db: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
+  let creditStore: CreditAdjustmentStore;
+  let deps: WebhookDeps;
 
   beforeEach(() => {
     db = new BetterSqlite3(":memory:");
     initStripeSchema(db);
+    initCreditAdjustmentSchema(db);
     tenantStore = new TenantCustomerStore(db);
+    creditStore = new CreditAdjustmentStore(db);
+    deps = { tenantStore, creditStore };
   });
 
   afterEach(() => {
@@ -29,282 +37,110 @@ describe("integration: auth → billing → metering flow", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Complete flow: Register → Subscribe → Use
+  // Complete flow: Register → Purchase credits → Verify balance
   // ---------------------------------------------------------------------------
 
   describe("complete user journey", () => {
-    it("free tier user → upgrade to pro → downgrade to free", () => {
+    it("free tier user → purchases credits → balance updated", () => {
       const tenantId = "tenant-journey-1";
 
       // Step 1: User registers (starts on free tier)
       tenantStore.upsert({
         tenant: tenantId,
         stripeCustomerId: "cus_new_user",
-        stripeSubscriptionId: null,
       });
       tenantStore.setTier(tenantId, "free");
 
       let mapping = tenantStore.getByTenant(tenantId);
       expect(mapping?.tier).toBe("free");
+      expect(creditStore.getBalance(tenantId)).toBe(0);
 
-      // Step 2: User subscribes to pro via Stripe checkout
+      // Step 2: User completes a $10 credit purchase via Stripe checkout
       const checkoutEvent: Stripe.Event = {
         type: "checkout.session.completed",
         data: {
           object: {
+            id: "cs_test_purchase1",
             client_reference_id: tenantId,
             customer: "cus_new_user",
-            subscription: "sub_pro_123",
+            amount_total: 1000,
             metadata: {},
           } as Stripe.Checkout.Session,
         },
       } as Stripe.Event;
 
-      const checkoutResult = handleWebhookEvent(tenantStore, checkoutEvent);
-      expect(checkoutResult.handled).toBe(true);
+      const result = handleWebhookEvent(deps, checkoutEvent);
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(1000);
+
+      // Step 3: Balance reflects the purchase
+      expect(creditStore.getBalance(tenantId)).toBe(1000);
 
       mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_subscription_id).toBe("sub_pro_123");
-
-      // Step 3: Upgrade tier to pro (simulating tier detection)
-      tenantStore.setTier(tenantId, "pro");
-
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("pro");
-
-      // Step 4: User cancels subscription
-      const cancelEvent: Stripe.Event = {
-        type: "customer.subscription.deleted",
-        data: {
-          object: {
-            id: "sub_pro_123",
-            customer: "cus_new_user",
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-
-      const cancelResult = handleWebhookEvent(tenantStore, cancelEvent);
-      expect(cancelResult.handled).toBe(true);
-
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("free");
-      expect(mapping?.stripe_subscription_id).toBeNull();
+      expect(mapping?.stripe_customer_id).toBe("cus_new_user");
     });
 
-    it("handles tier transition: free → pro → enterprise → free", () => {
-      const tenantId = "tenant-tier-transitions";
-
-      tenantStore.upsert({
-        tenant: tenantId,
-        stripeCustomerId: "cus_transitions",
-        stripeSubscriptionId: null,
-      });
-
-      // Start: Free tier
-      tenantStore.setTier(tenantId, "free");
-      let mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("free");
-
-      // Upgrade to Pro
-      const proCheckout: Stripe.Event = {
-        type: "checkout.session.completed",
-        data: {
-          object: {
-            client_reference_id: tenantId,
-            customer: "cus_transitions",
-            subscription: "sub_pro",
-            metadata: {},
-          } as Stripe.Checkout.Session,
-        },
-      } as Stripe.Event;
-      handleWebhookEvent(tenantStore, proCheckout);
-      tenantStore.setTier(tenantId, "pro");
-
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("pro");
-
-      // Upgrade to Enterprise
-      const enterpriseUpdate: Stripe.Event = {
-        type: "customer.subscription.updated",
-        data: {
-          object: {
-            id: "sub_enterprise",
-            customer: "cus_transitions",
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-      handleWebhookEvent(tenantStore, enterpriseUpdate);
-      tenantStore.setTier(tenantId, "enterprise");
-
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("enterprise");
-
-      // Downgrade back to Free
-      const deleteEvent: Stripe.Event = {
-        type: "customer.subscription.deleted",
-        data: {
-          object: {
-            id: "sub_enterprise",
-            customer: "cus_transitions",
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-      handleWebhookEvent(tenantStore, deleteEvent);
-
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("free");
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Subscription lifecycle edge cases
-  // ---------------------------------------------------------------------------
-
-  describe("subscription lifecycle edge cases", () => {
-    it("handles checkout → immediate cancellation", () => {
-      const tenantId = "tenant-immediate-cancel";
-
-      const checkoutEvent: Stripe.Event = {
-        type: "checkout.session.completed",
-        data: {
-          object: {
-            client_reference_id: tenantId,
-            customer: "cus_immediate",
-            subscription: "sub_immediate",
-            metadata: {},
-          } as Stripe.Checkout.Session,
-        },
-      } as Stripe.Event;
-
-      handleWebhookEvent(tenantStore, checkoutEvent);
-      tenantStore.setTier(tenantId, "pro");
-
-      let mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_subscription_id).toBe("sub_immediate");
-
-      const cancelEvent: Stripe.Event = {
-        type: "customer.subscription.deleted",
-        data: {
-          object: {
-            id: "sub_immediate",
-            customer: "cus_immediate",
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-
-      handleWebhookEvent(tenantStore, cancelEvent);
-
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("free");
-      expect(mapping?.stripe_subscription_id).toBeNull();
-    });
-
-    it("handles multiple subscription updates in sequence", () => {
-      const tenantId = "tenant-multi-updates";
+    it("handles multiple credit purchases accumulating balance", () => {
+      const tenantId = "tenant-multi-purchase";
 
       tenantStore.upsert({
         tenant: tenantId,
         stripeCustomerId: "cus_multi",
-        stripeSubscriptionId: "sub_v1",
       });
 
-      const update1: Stripe.Event = {
-        type: "customer.subscription.updated",
-        data: {
-          object: {
-            id: "sub_v2",
-            customer: "cus_multi",
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-      handleWebhookEvent(tenantStore, update1);
-
-      let mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_subscription_id).toBe("sub_v2");
-
-      const update2: Stripe.Event = {
-        type: "customer.subscription.updated",
-        data: {
-          object: {
-            id: "sub_v3",
-            customer: "cus_multi",
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-      handleWebhookEvent(tenantStore, update2);
-
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_subscription_id).toBe("sub_v3");
-    });
-
-    it("preserves customer ID across subscription changes", () => {
-      const tenantId = "tenant-preserve-customer";
-      const customerId = "cus_stable";
-
-      tenantStore.upsert({
-        tenant: tenantId,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: "sub_old",
-      });
-
-      const updateEvent: Stripe.Event = {
-        type: "customer.subscription.updated",
-        data: {
-          object: {
-            id: "sub_new",
-            customer: customerId,
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-
-      handleWebhookEvent(tenantStore, updateEvent);
-
-      const mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_customer_id).toBe(customerId);
-      expect(mapping?.stripe_subscription_id).toBe("sub_new");
-    });
-
-    it("handles re-subscription after cancellation", () => {
-      const tenantId = "tenant-resubscribe";
-
-      tenantStore.upsert({
-        tenant: tenantId,
-        stripeCustomerId: "cus_resub",
-        stripeSubscriptionId: "sub_first",
-      });
-      tenantStore.setTier(tenantId, "pro");
-
-      const cancelEvent: Stripe.Event = {
-        type: "customer.subscription.deleted",
-        data: {
-          object: {
-            id: "sub_first",
-            customer: "cus_resub",
-          } as Stripe.Subscription,
-        },
-      } as Stripe.Event;
-      handleWebhookEvent(tenantStore, cancelEvent);
-
-      let mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.tier).toBe("free");
-
-      const recheckoutEvent: Stripe.Event = {
+      // First purchase: $5
+      const purchase1: Stripe.Event = {
         type: "checkout.session.completed",
         data: {
           object: {
+            id: "cs_test_p1",
             client_reference_id: tenantId,
-            customer: "cus_resub",
-            subscription: "sub_second",
+            customer: "cus_multi",
+            amount_total: 500,
             metadata: {},
           } as Stripe.Checkout.Session,
         },
       } as Stripe.Event;
-      handleWebhookEvent(tenantStore, recheckoutEvent);
-      tenantStore.setTier(tenantId, "pro");
+      handleWebhookEvent(deps, purchase1);
+      expect(creditStore.getBalance(tenantId)).toBe(500);
 
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_subscription_id).toBe("sub_second");
-      expect(mapping?.tier).toBe("pro");
+      // Second purchase: $10
+      const purchase2: Stripe.Event = {
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_p2",
+            client_reference_id: tenantId,
+            customer: "cus_multi",
+            amount_total: 1000,
+            metadata: {},
+          } as Stripe.Checkout.Session,
+        },
+      } as Stripe.Event;
+      handleWebhookEvent(deps, purchase2);
+      expect(creditStore.getBalance(tenantId)).toBe(1500);
+    });
+
+    it("handles checkout for tenant identified via metadata", () => {
+      const tenantId = "tenant-from-metadata";
+
+      const checkoutEvent: Stripe.Event = {
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_meta",
+            client_reference_id: null,
+            customer: "cus_meta",
+            amount_total: 500,
+            metadata: { wopr_tenant: tenantId },
+          } as Stripe.Checkout.Session,
+        },
+      } as Stripe.Event;
+
+      const result = handleWebhookEvent(deps, checkoutEvent);
+      expect(result.handled).toBe(true);
+      expect(result.tenant).toBe(tenantId);
+      expect(creditStore.getBalance(tenantId)).toBe(500);
     });
   });
 
@@ -313,39 +149,42 @@ describe("integration: auth → billing → metering flow", () => {
   // ---------------------------------------------------------------------------
 
   describe("multi-tenant isolation", () => {
-    it("handles subscription events for different tenants independently", () => {
-      const tenant1 = "tenant-sub-1";
-      const tenant2 = "tenant-sub-2";
+    it("credit purchases for different tenants are independent", () => {
+      const tenant1 = "tenant-credit-1";
+      const tenant2 = "tenant-credit-2";
 
-      tenantStore.upsert({
-        tenant: tenant1,
-        stripeCustomerId: "cus_sub_1",
-        stripeSubscriptionId: "sub_1",
-      });
-      tenantStore.upsert({
-        tenant: tenant2,
-        stripeCustomerId: "cus_sub_2",
-        stripeSubscriptionId: "sub_2",
-      });
-
-      const delete1: Stripe.Event = {
-        type: "customer.subscription.deleted",
+      // Tenant 1 purchases $10
+      const purchase1: Stripe.Event = {
+        type: "checkout.session.completed",
         data: {
           object: {
-            id: "sub_1",
-            customer: "cus_sub_1",
-          } as Stripe.Subscription,
+            id: "cs_t1",
+            client_reference_id: tenant1,
+            customer: "cus_1",
+            amount_total: 1000,
+            metadata: {},
+          } as Stripe.Checkout.Session,
         },
       } as Stripe.Event;
+      handleWebhookEvent(deps, purchase1);
 
-      handleWebhookEvent(tenantStore, delete1);
+      // Tenant 2 purchases $5
+      const purchase2: Stripe.Event = {
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_t2",
+            client_reference_id: tenant2,
+            customer: "cus_2",
+            amount_total: 500,
+            metadata: {},
+          } as Stripe.Checkout.Session,
+        },
+      } as Stripe.Event;
+      handleWebhookEvent(deps, purchase2);
 
-      const mapping1 = tenantStore.getByTenant(tenant1);
-      expect(mapping1?.tier).toBe("free");
-      expect(mapping1?.stripe_subscription_id).toBeNull();
-
-      const mapping2 = tenantStore.getByTenant(tenant2);
-      expect(mapping2?.stripe_subscription_id).toBe("sub_2");
+      expect(creditStore.getBalance(tenant1)).toBe(1000);
+      expect(creditStore.getBalance(tenant2)).toBe(500);
     });
   });
 
@@ -365,7 +204,7 @@ describe("integration: auth → billing → metering flow", () => {
         },
       } as Stripe.Event;
 
-      const result = handleWebhookEvent(tenantStore, updateEvent);
+      const result = handleWebhookEvent(deps, updateEvent);
       expect(result.handled).toBe(false);
     });
   });

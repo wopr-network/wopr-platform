@@ -1,25 +1,29 @@
 import type Stripe from "stripe";
 import type { TenantCustomerStore } from "./tenant-store.js";
-import type { CheckoutSessionOpts } from "./types.js";
+import type { CreditCheckoutOpts } from "./types.js";
 
 /**
- * Create a Stripe Checkout session for a tenant to sign up for a usage-based plan.
+ * Create a Stripe Checkout session for a one-time credit purchase.
+ *
+ * Uses mode: "payment" (not "subscription") — credits are purchased
+ * as one-time payments and credited to the tenant's ledger via webhook.
  *
  * If the tenant already has a Stripe customer, it reuses that customer.
  * Otherwise, Stripe creates a new customer during checkout.
  */
-export async function createCheckoutSession(
+export async function createCreditCheckoutSession(
   stripe: Stripe,
   tenantStore: TenantCustomerStore,
-  opts: CheckoutSessionOpts,
+  opts: CreditCheckoutOpts,
 ): Promise<Stripe.Checkout.Session> {
   const existing = tenantStore.getByTenant(opts.tenant);
 
   const params: Stripe.Checkout.SessionCreateParams = {
-    mode: "subscription",
+    mode: "payment",
     line_items: [
       {
         price: opts.priceId,
+        quantity: 1,
       },
     ],
     success_url: opts.successUrl,
@@ -27,6 +31,7 @@ export async function createCheckoutSession(
     client_reference_id: opts.tenant,
     metadata: {
       wopr_tenant: opts.tenant,
+      wopr_purchase_type: "credits",
     },
   };
 

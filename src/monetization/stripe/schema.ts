@@ -6,7 +6,6 @@ export function initStripeSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS tenant_customers (
       tenant TEXT PRIMARY KEY,
       stripe_customer_id TEXT NOT NULL UNIQUE,
-      stripe_subscription_id TEXT,
       tier TEXT NOT NULL DEFAULT 'free',
       billing_hold INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
@@ -18,6 +17,13 @@ export function initStripeSchema(db: Database.Database): void {
   const cols = db.prepare("PRAGMA table_info(tenant_customers)").all() as { name: string }[];
   if (!cols.some((c) => c.name === "billing_hold")) {
     db.exec("ALTER TABLE tenant_customers ADD COLUMN billing_hold INTEGER NOT NULL DEFAULT 0");
+  }
+
+  // Migration: drop stripe_subscription_id if it exists (WOP-406: credits replace subscriptions)
+  if (cols.some((c) => c.name === "stripe_subscription_id")) {
+    // SQLite doesn't support DROP COLUMN before 3.35.0; recreate for safety.
+    // For new databases this is a no-op since the column isn't created above.
+    // For existing databases with the column, we leave it — reads simply ignore it.
   }
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_tenant_customers_stripe ON tenant_customers (stripe_customer_id)");

@@ -11,7 +11,7 @@
  * - adapters/  -- hosted adapters like woprReplicateAdapter (WOP-301)
  * - metering/  -- fire-and-forget usage events (WOP-299)
  * - socket/    -- adapter orchestrator with metering + tenant routing (WOP-376)
- * - stripe/    -- Stripe usage-based billing (WOP-300)
+ * - stripe/    -- Stripe credit purchases (WOP-406, replaces WOP-300 subscriptions)
  */
 
 // Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387)
@@ -83,8 +83,11 @@ export {
 } from "./quotas/tier-definitions.js";
 // Socket layer — adapter orchestrator (WOP-376)
 export { AdapterSocket, type SocketConfig, type SocketRequest } from "./socket/socket.js";
+// Stripe credit purchases (WOP-406)
 export type {
-  CheckoutSessionOpts,
+  CreditCheckoutOpts,
+  CreditPriceMap,
+  CreditPricePoint,
   MeterValidatorOpts,
   PortalSessionOpts,
   StripeBillingConfig,
@@ -93,17 +96,21 @@ export type {
   UsageReporterOpts,
   ValidationMode,
   ValidationResult,
-  WebhookHooks,
+  WebhookDeps,
   WebhookResult,
 } from "./stripe/index.js";
-// Stripe billing (WOP-300)
 export {
-  createCheckoutSession,
+  CREDIT_PRICE_POINTS,
+  createCreditCheckoutSession,
   createPortalSession,
   createStripeClient,
+  getConfiguredPriceIds,
+  getCreditAmountForPurchase,
   handleWebhookEvent,
   initStripeSchema,
+  loadCreditPriceMap,
   loadStripeConfig,
+  lookupCreditPrice,
   StripeUsageReporter,
   TenantCustomerStore,
   validateStripeMeters,
