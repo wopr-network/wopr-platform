@@ -160,7 +160,7 @@ describe("ProviderAdapter with new capabilities", () => {
       },
     };
 
-    const result = (await adapter.generateImage!({
+    const result = (await adapter.generateImage?.({
       prompt: "test",
     })) as AdapterResult<ImageGenerationOutput>;
     expect(result.cost).toBe(0.05);
@@ -185,7 +185,7 @@ describe("ProviderAdapter with new capabilities", () => {
       },
     };
 
-    const result = (await adapter.generateText!({
+    const result = (await adapter.generateText?.({
       prompt: "test",
     })) as AdapterResult<TextGenerationOutput>;
     expect(result.cost).toBe(0.003);
