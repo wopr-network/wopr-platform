@@ -11,7 +11,6 @@ import { appRouter } from "./index.js";
 import type { TRPCContext } from "./init.js";
 import { setAdminRouterDeps } from "./routers/admin.js";
 import { setBillingRouterDeps } from "./routers/billing.js";
-import { setUsageRouterDeps } from "./routers/usage.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -254,49 +253,23 @@ describe("tRPC appRouter", () => {
   // -------------------------------------------------------------------------
 
   describe("usage", () => {
-    beforeEach(async () => {
-      const Database = (await import("better-sqlite3")).default;
-      const quotaDb = new Database(":memory:");
-      const { TierStore } = await import("../monetization/quotas/tier-definitions.js");
-      const tierStore = new TierStore(quotaDb);
-      tierStore.seed();
-
-      setUsageRouterDeps({ getTierStore: () => tierStore });
-    });
-
-    it("tiers returns available tiers", async () => {
+    it("quota returns usage info", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.usage.tiers();
-      expect(result.tiers.length).toBeGreaterThan(0);
-      expect(result.tiers.some((t) => t.id === "free")).toBe(true);
-    });
-
-    it("tier returns specific tier", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.usage.tier({ id: "free" });
-      expect(result.id).toBe("free");
-    });
-
-    it("tier returns NOT_FOUND for unknown tier", async () => {
-      const caller = createCaller(authedContext());
-      await expect(caller.usage.tier({ id: "nonexistent" })).rejects.toThrow("Unknown tier");
-    });
-
-    it("quota returns usage info for free tier", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.usage.quota({ tier: "free", activeInstances: 0 });
-      expect(result).toHaveProperty("tier");
+      const result = await caller.usage.quota({ activeInstances: 0 });
+      expect(result).toHaveProperty("allowed");
+      expect(result).toHaveProperty("currentInstances");
+      expect(result).toHaveProperty("maxInstances");
     });
 
     it("quotaCheck allows creation under limit", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.usage.quotaCheck({ tier: "free", activeInstances: 0, softCap: false });
+      const result = await caller.usage.quotaCheck({ activeInstances: 0, softCap: false });
       expect(result.allowed).toBe(true);
     });
 
-    it("resourceLimits returns limits for tier", async () => {
+    it("resourceLimits returns container limits", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.usage.resourceLimits({ tierId: "free" });
+      const result = await caller.usage.resourceLimits();
       expect(result).toHaveProperty("Memory");
     });
   });
