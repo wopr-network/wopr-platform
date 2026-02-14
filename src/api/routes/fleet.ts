@@ -13,6 +13,7 @@ import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
+import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
@@ -57,6 +58,14 @@ function getCreditLedger(): CreditLedger {
     creditLedger = new CreditLedger(createDb(getBillingDb()));
   }
   return creditLedger;
+}
+
+let botBilling: BotBilling | null = null;
+function getBotBilling(): BotBilling {
+  if (!botBilling) {
+    botBilling = new BotBilling(createDb(getBillingDb()));
+  }
+  return botBilling;
 }
 
 // Wire up the poller to trigger updates via the updater
@@ -167,6 +176,14 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
 
   try {
     const profile = await fleet.create(parsed.data, resourceLimits);
+
+    // Register bot in billing system for lifecycle tracking
+    try {
+      getBotBilling().registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
+    } catch (regErr) {
+      logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
+    }
+
     return c.json(profile, 201);
   } catch (err) {
     logger.error("Failed to create bot", { err });

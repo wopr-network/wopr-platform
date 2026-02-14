@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditLedger } from "../credits/credit-ledger.js";
 import type { CreditPriceMap } from "./credit-prices.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
@@ -12,6 +13,8 @@ export interface WebhookResult {
   tenant?: string;
   /** Credits granted in cents (for checkout.session.completed). */
   creditedCents?: number;
+  /** Bot IDs reactivated after credit purchase (WOP-447). */
+  reactivatedBots?: string[];
 }
 
 /**
@@ -22,6 +25,8 @@ export interface WebhookDeps {
   creditLedger: CreditLedger;
   /** Map of Stripe Price ID -> CreditPricePoint for bonus calculation. */
   priceMap?: CreditPriceMap;
+  /** Bot billing manager for reactivation after credit purchase (WOP-447). */
+  botBilling?: BotBilling;
 }
 
 /**
@@ -90,7 +95,14 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         stripeSessionId,
       );
 
-      return { handled: true, event_type: event.type, tenant, creditedCents: creditCents };
+      // Reactivate suspended bots now that balance is positive (WOP-447).
+      let reactivatedBots: string[] | undefined;
+      if (deps.botBilling) {
+        reactivatedBots = deps.botBilling.checkReactivation(tenant, deps.creditLedger);
+        if (reactivatedBots.length === 0) reactivatedBots = undefined;
+      }
+
+      return { handled: true, event_type: event.type, tenant, creditedCents: creditCents, reactivatedBots };
     }
 
     default:

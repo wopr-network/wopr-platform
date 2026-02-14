@@ -1,3 +1,5 @@
+export type { BillingState } from "./bot-billing.js";
+export { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
 export type {
   CreditTransaction,
   CreditType,
