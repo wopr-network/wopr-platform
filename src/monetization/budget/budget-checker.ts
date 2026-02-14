@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { LRUCache } from "lru-cache";
+import { logger } from "../../config/logger.js";
 import type { PlanTier } from "../quotas/tier-definitions.js";
 import { SpendOverrideStore, TierStore } from "../quotas/tier-definitions.js";
 
@@ -104,7 +105,8 @@ export class BudgetChecker {
       try {
         cached = this.queryBudgetData(tenant, resolvedTier);
         this.cache.set(cacheKey, cached);
-      } catch (_err) {
+      } catch (err) {
+        logger.error("Budget check query failed", { tenant, tier: resolvedTier.name, error: err });
         // Fail-closed: if DB query fails, reject the call
         return {
           allowed: false,
@@ -175,9 +177,9 @@ export class BudgetChecker {
       .prepare(
         `SELECT COALESCE(SUM(total_charge), 0) as total
          FROM usage_summaries
-         WHERE tenant = ? AND window_start >= ?`,
+         WHERE tenant = ? AND window_end >= ? AND window_start <= ?`,
       )
-      .get(tenant, oneHourAgo) as { total: number };
+      .get(tenant, oneHourAgo, now) as { total: number };
 
     const hourlySpend = hourlyEvents.total + hourlySummaries.total;
 
@@ -194,9 +196,9 @@ export class BudgetChecker {
       .prepare(
         `SELECT COALESCE(SUM(total_charge), 0) as total
          FROM usage_summaries
-         WHERE tenant = ? AND window_start >= ?`,
+         WHERE tenant = ? AND window_end >= ? AND window_start <= ?`,
       )
-      .get(tenant, monthStart) as { total: number };
+      .get(tenant, monthStart, now) as { total: number };
 
     const monthlySpend = monthlyEvents.total + monthlySummaries.total;
 
