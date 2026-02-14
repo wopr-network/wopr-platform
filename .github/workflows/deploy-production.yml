@@ -79,15 +79,24 @@ jobs:
     needs: build-and-push
     environment: production
     steps:
-      - name: Record previous image digest
+      - name: Record previous image SHA tag
         id: previous
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.PROD_HOST }}
           username: deploy
           key: ${{ secrets.PROD_SSH_KEY }}
+          envs: COMPOSE_DIR,SERVICE
           script: |
-            docker inspect --format='{{index .RepoDigests 0}}' $(docker compose -f ${{ env.COMPOSE_DIR }}/docker-compose.yml images ${{ env.SERVICE }} -q 2>/dev/null) 2>/dev/null || echo "none"
+            # Save the current SHA tag to a file so rollback can reference it
+            CURRENT=$(docker inspect --format='{{.Config.Image}}' $(docker compose -f ${COMPOSE_DIR}/docker-compose.yml ps -q ${SERVICE} 2>/dev/null) 2>/dev/null | grep -oP ':\K[a-f0-9]{7}$' || true)
+            if [ -n "$CURRENT" ]; then
+              echo "$CURRENT" > ${COMPOSE_DIR}/.previous-sha-tag
+              echo "Recorded previous SHA tag: $CURRENT"
+            else
+              rm -f ${COMPOSE_DIR}/.previous-sha-tag
+              echo "No previous SHA tag found (first deploy)"
+            fi
 
       - name: Pull and restart service
         uses: appleboy/ssh-action@v1
@@ -95,11 +104,11 @@ jobs:
           host: ${{ secrets.PROD_HOST }}
           username: deploy
           key: ${{ secrets.PROD_SSH_KEY }}
+          envs: COMPOSE_DIR,SERVICE,IMAGE
           script: |
-            cd ${{ env.COMPOSE_DIR }}
-            docker compose pull ${{ env.SERVICE }}
-            docker compose up -d ${{ env.SERVICE }}
-            docker image prune -f
+            cd ${COMPOSE_DIR}
+            docker compose pull ${SERVICE}
+            docker compose up -d ${SERVICE}
 
       - name: Health check
         id: health
@@ -128,13 +137,31 @@ jobs:
           host: ${{ secrets.PROD_HOST }}
           username: deploy
           key: ${{ secrets.PROD_SSH_KEY }}
+          envs: COMPOSE_DIR,SERVICE,IMAGE
           script: |
-            echo "Health check failed — rolling back ${{ env.SERVICE }}"
-            cd ${{ env.COMPOSE_DIR }}
-            docker compose logs --tail=30 ${{ env.SERVICE }}
-            # Restart with the previous image still in the local cache
-            docker compose up -d --force-recreate ${{ env.SERVICE }}
-            echo "Rollback complete"
+            echo "Health check failed — rolling back ${SERVICE}"
+            cd ${COMPOSE_DIR}
+            docker compose logs --tail=30 ${SERVICE}
+            PREV_TAG=$(cat ${COMPOSE_DIR}/.previous-sha-tag 2>/dev/null || true)
+            if [ -n "$PREV_TAG" ]; then
+              echo "Rolling back to ${IMAGE}:${PREV_TAG}"
+              docker pull ${IMAGE}:${PREV_TAG}
+              docker tag ${IMAGE}:${PREV_TAG} ${IMAGE}:latest
+              docker compose up -d --force-recreate ${SERVICE}
+              echo "Rollback to ${PREV_TAG} complete"
+            else
+              echo "::warning::No previous image tag available for rollback"
+              docker compose stop ${SERVICE}
+            fi
+
+      - name: Prune old images
+        if: steps.health.outcome != 'failure'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: deploy
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: docker image prune -f
 
       - name: Fail workflow if health check failed
         if: steps.health.outcome == 'failure'
