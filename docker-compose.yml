@@ -1,0 +1,73 @@
+## Production / staging deployment for the full WOPR platform.
+##
+## Same file for both environments — only the `.env` file differs.
+##
+## Run:
+##   docker compose up -d
+##
+## Load env from file:
+##   docker compose --env-file .env up -d
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      platform-api:
+        condition: service_healthy
+      platform-ui:
+        condition: service_healthy
+    restart: unless-stopped
+
+  platform-api:
+    image: ghcr.io/wopr-network/wopr-platform:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - platform_data:/data
+    environment:
+      - DATABASE_PATH=/data/platform.db
+      - METERING_DB_PATH=/data/metering.db
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_DEFAULT_PRICE_ID=${STRIPE_DEFAULT_PRICE_ID}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@wopr.network}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=https://api.${DOMAIN}
+      - AUTH_DB_PATH=/data/auth.db
+      - UI_ORIGIN=https://${DOMAIN}
+      - WOPR_BOT_IMAGE=${WOPR_BOT_IMAGE:-ghcr.io/wopr-network/wopr:latest}
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  platform-ui:
+    image: ghcr.io/wopr-network/wopr-platform-ui:latest
+    environment:
+      - NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
+      - BETTER_AUTH_URL=https://api.${DOMAIN}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
+  platform_data:
+
+networks:
+  default:
+    name: wopr-platform
