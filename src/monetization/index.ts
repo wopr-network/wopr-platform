@@ -18,6 +18,7 @@
 export { createDeepgramAdapter, type DeepgramAdapterConfig } from "./adapters/deepgram.js";
 export { createElevenLabsAdapter, type ElevenLabsAdapterConfig } from "./adapters/elevenlabs.js";
 export { createGeminiAdapter, type GeminiAdapterConfig } from "./adapters/gemini.js";
+export { createKimiAdapter, type KimiAdapterConfig } from "./adapters/kimi.js";
 // Margin config (WOP-364)
 export {
   DEFAULT_MARGIN_CONFIG,
