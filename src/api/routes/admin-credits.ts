@@ -1,5 +1,5 @@
-import Database from "better-sqlite3";
 import type DatabaseType from "better-sqlite3";
+import Database from "better-sqlite3";
 import { Hono } from "hono";
 import type { AdjustmentType } from "../../admin/credits/adjustment-store.js";
 import { BalanceError, CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
