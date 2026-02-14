@@ -1,5 +1,5 @@
 /**
- * tRPC admin router — audit log, tier management, overrides.
+ * tRPC admin router — audit log, tier management, overrides, tenant status.
  *
  * Provides typed procedures for admin-level operations.
  */
@@ -8,7 +8,9 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { TenantStatusStore } from "../../admin/tenant-status/tenant-status-store.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
+import type { BotBilling } from "../../monetization/credits/bot-billing.js";
 import { protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +21,8 @@ export interface AdminRouterDeps {
   getAuditLog: () => AdminAuditLog;
   getCreditStore: () => CreditAdjustmentStore;
   getUserStore: () => AdminUserStore;
+  getTenantStatusStore: () => TenantStatusStore;
+  getBotBilling?: () => BotBilling;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -46,6 +50,16 @@ const VALID_STATUSES = ["active", "suspended", "grace_period", "dormant"] as con
 const VALID_ROLES = ["platform_admin", "tenant_admin", "user"] as const;
 const VALID_SORT_BY = ["last_seen", "created_at", "balance", "agent_count"] as const;
 const VALID_SORT_ORDER = ["asc", "desc"] as const;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function requirePlatformAdmin(roles: string[]): void {
+  if (!roles.includes("platform_admin")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Platform admin role required" });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Router
@@ -191,4 +205,203 @@ export const adminRouter = router({
     }
     return user;
   }),
+
+  // -------------------------------------------------------------------------
+  // Tenant Status Management (WOP-412)
+  // -------------------------------------------------------------------------
+
+  /** Get tenant account status. */
+  tenantStatus: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getTenantStatusStore } = deps();
+    const row = getTenantStatusStore().get(input.tenantId);
+    return row ?? { tenantId: input.tenantId, status: "active" };
+  }),
+
+  /** Suspend a tenant account. Requires platform_admin role. */
+  suspendTenant: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        reason: z.string().min(1).max(1000),
+        notifyByEmail: z.boolean().optional().default(false),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getTenantStatusStore, getAuditLog, getBotBilling } = deps();
+      const store = getTenantStatusStore();
+      const adminUserId = ctx.user?.id ?? "unknown";
+
+      // Check current status
+      const current = store.getStatus(input.tenantId);
+      if (current === "banned") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot suspend a banned account",
+        });
+      }
+      if (current === "suspended") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Account is already suspended",
+        });
+      }
+
+      // Suspend the tenant
+      store.suspend(input.tenantId, input.reason, adminUserId);
+
+      // Suspend all bots for this tenant
+      let suspendedBots: string[] = [];
+      if (getBotBilling) {
+        suspendedBots = getBotBilling().suspendAllForTenant(input.tenantId);
+      }
+
+      // Audit log
+      getAuditLog().log({
+        adminUser: adminUserId,
+        action: "tenant.suspend",
+        category: "account",
+        targetTenant: input.tenantId,
+        details: {
+          reason: input.reason,
+          previousStatus: current,
+          notifyByEmail: input.notifyByEmail,
+          suspendedBots,
+        },
+      });
+
+      return {
+        tenantId: input.tenantId,
+        status: "suspended" as const,
+        reason: input.reason,
+        suspendedBots,
+      };
+    }),
+
+  /** Reactivate a suspended tenant account. Requires platform_admin role. */
+  reactivateTenant: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        notifyByEmail: z.boolean().optional().default(false),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getTenantStatusStore, getAuditLog } = deps();
+      const store = getTenantStatusStore();
+      const adminUserId = ctx.user?.id ?? "unknown";
+
+      // Check current status
+      const current = store.getStatus(input.tenantId);
+      if (current === "banned") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot reactivate a banned account",
+        });
+      }
+      if (current === "active") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Account is already active",
+        });
+      }
+
+      // Reactivate the tenant
+      store.reactivate(input.tenantId, adminUserId);
+
+      // Audit log
+      getAuditLog().log({
+        adminUser: adminUserId,
+        action: "tenant.reactivate",
+        category: "account",
+        targetTenant: input.tenantId,
+        details: {
+          previousStatus: current,
+          notifyByEmail: input.notifyByEmail,
+        },
+      });
+
+      return {
+        tenantId: input.tenantId,
+        status: "active" as const,
+      };
+    }),
+
+  /** Ban a tenant account permanently. Requires platform_admin role and typed confirmation. */
+  banTenant: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        reason: z.string().min(1).max(1000),
+        tosReference: z.string().min(1).max(500),
+        /** Must type the exact confirmation string to proceed. */
+        confirmName: z.string().min(1),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getTenantStatusStore, getAuditLog, getCreditStore, getBotBilling } = deps();
+      const store = getTenantStatusStore();
+      const adminUserId = ctx.user?.id ?? "unknown";
+
+      // Verify typed confirmation
+      const expectedConfirmation = `BAN ${input.tenantId}`;
+      if (input.confirmName !== expectedConfirmation) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Type "${expectedConfirmation}" to confirm the ban`,
+        });
+      }
+
+      // Check current status
+      const current = store.getStatus(input.tenantId);
+      if (current === "banned") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Account is already banned",
+        });
+      }
+
+      // Suspend all bots
+      let suspendedBots: string[] = [];
+      if (getBotBilling) {
+        suspendedBots = getBotBilling().suspendAllForTenant(input.tenantId);
+      }
+
+      // Auto-refund remaining credits
+      let refundedCents = 0;
+      const balance = getCreditStore().getBalance(input.tenantId);
+      if (balance > 0) {
+        getCreditStore().refund(input.tenantId, balance, `Auto-refund on account ban: ${input.reason}`, adminUserId);
+        refundedCents = balance;
+      }
+
+      // Ban the tenant
+      store.ban(input.tenantId, input.reason, adminUserId);
+
+      // Audit log
+      getAuditLog().log({
+        adminUser: adminUserId,
+        action: "tenant.ban",
+        category: "account",
+        targetTenant: input.tenantId,
+        details: {
+          reason: input.reason,
+          tosReference: input.tosReference,
+          previousStatus: current,
+          suspendedBots,
+          refundedCents,
+        },
+      });
+
+      return {
+        tenantId: input.tenantId,
+        status: "banned" as const,
+        reason: input.reason,
+        refundedCents,
+        suspendedBots,
+      };
+    }),
 });
