@@ -62,10 +62,7 @@ function isRemotePathOwnedBy(remotePath: string, containerId: string): boolean {
   return segments.includes(containerId);
 }
 
-function buildRoutes(
-  storeFactory: () => BackupStatusStore,
-  spacesFactory: () => SpacesClient,
-): Hono<AuthEnv> {
+function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () => SpacesClient): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
 
   /**
@@ -189,7 +186,10 @@ function buildRoutes(
  */
 export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: SpacesClient): Hono<AuthEnv> {
   const spacesClient = spaces ?? getSpaces();
-  return buildRoutes(() => store, () => spacesClient);
+  return buildRoutes(
+    () => store,
+    () => spacesClient,
+  );
 }
 
 /** Pre-built admin backup routes with auth and lazy initialization. */
