@@ -63,6 +63,7 @@ const fleetMock = {
   update: vi.fn(),
   profiles: {
     get: vi.fn(),
+    list: vi.fn(),
   },
 };
 
@@ -128,6 +129,41 @@ vi.mock("../../network/network-policy.js", () => {
   };
 });
 
+// Mock quota and billing stores
+const tenantStoreMock = {
+  getByTenant: vi.fn(),
+};
+
+const tierStoreMock = {
+  get: vi.fn(),
+  seed: vi.fn(),
+};
+
+vi.mock("better-sqlite3", () => {
+  return {
+    default: class MockDatabase {
+      pragma = vi.fn();
+    },
+  };
+});
+
+vi.mock("../../monetization/stripe/tenant-store.js", () => {
+  return {
+    TenantCustomerStore: class {
+      getByTenant = tenantStoreMock.getByTenant;
+    },
+  };
+});
+
+vi.mock("../../monetization/quotas/tier-definitions.js", () => {
+  return {
+    TierStore: class {
+      get = tierStoreMock.get;
+      seed = tierStoreMock.seed;
+    },
+  };
+});
+
 // Import AFTER mocks are set up
 const { fleetRoutes, seedBots } = await import("./fleet.js");
 
@@ -137,6 +173,24 @@ app.route("/fleet", fleetRoutes);
 describe("fleet routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Reset fleet profiles.list mock to default behavior
+    fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
+
+    // Set default quota/tier mocks (tests can override as needed)
+    tenantStoreMock.getByTenant.mockReturnValue({ tier: "free" });
+    tierStoreMock.get.mockReturnValue({
+      id: "free",
+      name: "free",
+      maxInstances: 1,
+      memoryLimitMb: 512,
+      cpuQuota: 50_000,
+      storageLimitMb: 1024,
+      maxProcesses: 128,
+      features: [],
+      maxSpendPerHour: 0.5,
+      maxSpendPerMonth: 5,
+      maxPluginsPerInstance: 5,
+    });
   });
 
   describe("authentication", () => {
@@ -258,6 +312,117 @@ describe("fleet routes", () => {
       });
 
       expect(res.status).toBe(500);
+    });
+
+    it("enforces instance quota before creating bot", async () => {
+      // Setup: tenant has free tier with max 1 instance
+      tenantStoreMock.getByTenant.mockReturnValue({ tier: "free" });
+      tierStoreMock.get.mockReturnValue({
+        id: "free",
+        name: "free",
+        maxInstances: 1,
+        memoryLimitMb: 512,
+        cpuQuota: 50_000,
+        storageLimitMb: 1024,
+        maxProcesses: 128,
+        features: [],
+        maxSpendPerHour: 0.5,
+        maxSpendPerMonth: 5,
+        maxPluginsPerInstance: 5,
+      });
+
+      // Mock: tenant already has 1 instance
+      fleetMock.profiles.list = vi.fn().mockResolvedValue([mockProfile]);
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "user-123",
+          name: "second-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toContain("quota exceeded");
+      expect(body.currentInstances).toBe(1);
+      expect(body.maxInstances).toBe(1);
+      expect(body.tier).toBe("free");
+
+      // Verify create was NOT called
+      expect(fleetMock.create).not.toHaveBeenCalled();
+    });
+
+    it("allows bot creation when quota is not exceeded", async () => {
+      // Setup: tenant has free tier with max 1 instance
+      tenantStoreMock.getByTenant.mockReturnValue({ tier: "free" });
+      tierStoreMock.get.mockReturnValue({
+        id: "free",
+        name: "free",
+        maxInstances: 1,
+        memoryLimitMb: 512,
+        cpuQuota: 50_000,
+        storageLimitMb: 1024,
+        maxProcesses: 128,
+        features: [],
+        maxSpendPerHour: 0.5,
+        maxSpendPerMonth: 5,
+        maxPluginsPerInstance: 5,
+      });
+
+      // Mock: tenant has 0 instances
+      fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
+      fleetMock.create.mockResolvedValue(mockProfile);
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "user-123",
+          name: "first-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(fleetMock.create).toHaveBeenCalled();
+    });
+
+    it("defaults to free tier when tenant not found", async () => {
+      // Setup: tenant not in billing DB
+      tenantStoreMock.getByTenant.mockReturnValue(null);
+      tierStoreMock.get.mockReturnValue({
+        id: "free",
+        name: "free",
+        maxInstances: 1,
+        memoryLimitMb: 512,
+        cpuQuota: 50_000,
+        storageLimitMb: 1024,
+        maxProcesses: 128,
+        features: [],
+        maxSpendPerHour: 0.5,
+        maxSpendPerMonth: 5,
+        maxPluginsPerInstance: 5,
+      });
+
+      fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
+      fleetMock.create.mockResolvedValue(mockProfile);
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "new-tenant",
+          name: "first-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(tenantStoreMock.getByTenant).toHaveBeenCalledWith("new-tenant");
+      expect(tierStoreMock.get).toHaveBeenCalledWith("free");
     });
   });
 

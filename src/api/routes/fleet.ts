@@ -1,3 +1,4 @@
+import Database from "better-sqlite3";
 import Docker from "dockerode";
 import { Hono } from "hono";
 import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
@@ -10,9 +11,14 @@ import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
+import { checkInstanceQuota } from "../../monetization/quotas/quota-check.js";
+import { TierStore } from "../../monetization/quotas/tier-definitions.js";
+import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { NetworkPolicy } from "../../network/network-policy.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
+const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
+const QUOTA_DB_PATH = process.env.QUOTA_DB_PATH || "/data/platform/quotas.db";
 
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
@@ -20,6 +26,43 @@ const networkPolicy = new NetworkPolicy(docker);
 const fleet = new FleetManager(docker, store, config.discovery, networkPolicy);
 const imagePoller = new ImagePoller(docker, store);
 const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
+
+// Initialize billing and quota stores for tenant tier lookups
+let billingDb: Database.Database | null = null;
+let quotaDb: Database.Database | null = null;
+let tenantStore: TenantCustomerStore | null = null;
+let tierStore: TierStore | null = null;
+
+function getBillingDb(): Database.Database {
+  if (!billingDb) {
+    billingDb = new Database(BILLING_DB_PATH);
+    billingDb.pragma("journal_mode = WAL");
+  }
+  return billingDb;
+}
+
+function getQuotaDb(): Database.Database {
+  if (!quotaDb) {
+    quotaDb = new Database(QUOTA_DB_PATH);
+    quotaDb.pragma("journal_mode = WAL");
+  }
+  return quotaDb;
+}
+
+function getTenantStore(): TenantCustomerStore {
+  if (!tenantStore) {
+    tenantStore = new TenantCustomerStore(getBillingDb());
+  }
+  return tenantStore;
+}
+
+function getTierStore(): TierStore {
+  if (!tierStore) {
+    tierStore = new TierStore(getQuotaDb());
+    tierStore.seed();
+  }
+  return tierStore;
+}
 
 // Wire up the poller to trigger updates via the updater
 imagePoller.onUpdateAvailable = async (botId: string) => {
@@ -84,6 +127,38 @@ fleetRoutes.post("/bots", writeAuth, async (c) => {
   const parsed = createBotSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+  }
+
+  // Check instance quota before creating container
+  const tenantId = parsed.data.tenantId;
+
+  // Get tenant's tier (defaults to "free" if not found)
+  const tenantMapping = getTenantStore().getByTenant(tenantId);
+  const tierId = tenantMapping?.tier ?? "free";
+
+  // Get tier definition
+  const tier = getTierStore().get(tierId);
+  if (!tier) {
+    logger.error(`Unknown tier: ${tierId} for tenant ${tenantId}`);
+    return c.json({ error: "Internal error: invalid tier configuration" }, 500);
+  }
+
+  // Count active instances for this tenant
+  const allProfiles = await fleet.profiles.list();
+  const activeInstances = allProfiles.filter((p) => p.tenantId === tenantId).length;
+
+  // Check quota
+  const quotaResult = checkInstanceQuota(tier, activeInstances);
+  if (!quotaResult.allowed) {
+    return c.json(
+      {
+        error: quotaResult.reason || "Instance quota exceeded for your plan tier",
+        currentInstances: quotaResult.currentInstances,
+        maxInstances: quotaResult.maxInstances,
+        tier: tier.name,
+      },
+      403,
+    );
   }
 
   try {
