@@ -37,6 +37,53 @@ export interface TranscriptionOutput {
   durationSeconds: number;
 }
 
+/** Input for an image generation request */
+export interface ImageGenerationInput {
+  /** The prompt describing the desired image */
+  prompt: string;
+  /** Optional negative prompt */
+  negativePrompt?: string;
+  /** Image width in pixels */
+  width?: number;
+  /** Image height in pixels */
+  height?: number;
+  /** Number of images to generate (default: 1) */
+  count?: number;
+}
+
+/** Output from an image generation request */
+export interface ImageGenerationOutput {
+  /** URLs or base64 data of generated images */
+  images: string[];
+  /** Model used for generation */
+  model: string;
+}
+
+/** Input for a text generation request */
+export interface TextGenerationInput {
+  /** The prompt or messages */
+  prompt: string;
+  /** Model to use */
+  model?: string;
+  /** Max tokens to generate */
+  maxTokens?: number;
+  /** Temperature (0-1) */
+  temperature?: number;
+}
+
+/** Output from a text generation request */
+export interface TextGenerationOutput {
+  /** Generated text */
+  text: string;
+  /** Model used */
+  model: string;
+  /** Token counts for cost calculation */
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+}
+
 /**
  * Provider adapter interface.
  *
@@ -51,6 +98,10 @@ export interface ProviderAdapter {
   readonly capabilities: ReadonlyArray<AdapterCapability>;
   /** Transcribe audio — returns result + wholesale cost */
   transcribe?(input: TranscriptionInput): Promise<AdapterResult<TranscriptionOutput>>;
+  /** Generate images from a text prompt — returns result + wholesale cost */
+  generateImage?(input: ImageGenerationInput): Promise<AdapterResult<ImageGenerationOutput>>;
+  /** Generate text from a prompt — returns result + wholesale cost */
+  generateText?(input: TextGenerationInput): Promise<AdapterResult<TextGenerationOutput>>;
 }
 
 /**
