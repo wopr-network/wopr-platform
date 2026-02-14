@@ -115,6 +115,9 @@ describe("tRPC appRouter", () => {
         },
         getCreditStore: () => creditStore,
         getUserStore: () => userStore,
+        getTenantStatusStore: () => {
+          throw new Error("Tenant status store not available in tests") as never;
+        },
       });
     });
 
