@@ -316,12 +316,7 @@ describe("FleetManager", () => {
 
     beforeEach(() => {
       netPolicy = mockNetworkPolicy();
-      isolatedFleet = new FleetManager(
-        docker as unknown as Docker,
-        store,
-        undefined,
-        netPolicy,
-      );
+      isolatedFleet = new FleetManager(docker as unknown as Docker, store, undefined, netPolicy);
     });
 
     it("sets NetworkMode from NetworkPolicy on container creation", async () => {
