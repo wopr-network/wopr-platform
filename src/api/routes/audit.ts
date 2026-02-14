@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
-import { Hono } from "hono";
 import type { Context } from "hono";
+import { Hono } from "hono";
 import { countAuditLog, queryAuditLog } from "../../audit/query.js";
 import { purgeExpiredEntriesForUser } from "../../audit/retention.js";
 import { initAuditSchema } from "../../audit/schema.js";
