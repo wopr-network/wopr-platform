@@ -70,8 +70,6 @@ export function createNanoBananaAdapter(
     capabilities: ["image-generation"] as const,
 
     async generateImage(input: ImageGenerationInput): Promise<AdapterResult<ImageGenerationOutput>> {
-      const count = input.count ?? 1;
-
       const body: Record<string, unknown> = {
         contents: [{ parts: [{ text: input.prompt }] }],
         generationConfig: {
@@ -118,7 +116,7 @@ export function createNanoBananaAdapter(
         throw new Error("Nano Banana returned no images — possible safety filter or empty response");
       }
 
-      const cost = costPerImage * count;
+      const cost = costPerImage * images.length;
       const charge = withMargin(cost, marginMultiplier);
 
       return {

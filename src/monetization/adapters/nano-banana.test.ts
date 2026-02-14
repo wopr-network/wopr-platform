@@ -87,14 +87,21 @@ describe("createNanoBananaAdapter", () => {
       expect(result.charge).toBeCloseTo(withMargin(0.02, 1.3), 6);
     });
 
-    it("calculates cost based on count", async () => {
-      const response = imageResponse();
+    it("calculates cost based on actual images delivered", async () => {
+      const response = {
+        candidates: [
+          { content: { parts: [{ inlineData: { mimeType: "image/png", data: "img1" } }] } },
+          { content: { parts: [{ inlineData: { mimeType: "image/png", data: "img2" } }] } },
+          { content: { parts: [{ inlineData: { mimeType: "image/png", data: "img3" } }] } },
+        ],
+      };
       const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockResponse(response));
 
       const adapter = createNanoBananaAdapter(makeConfig({ costPerImage: 0.02 }), fetchFn);
       const result = await adapter.generateImage({ prompt: "bananas", count: 3 });
 
-      // Cost: 3 images * $0.02 = $0.06
+      // Cost: 3 delivered images * $0.02 = $0.06
+      expect(result.result.images).toHaveLength(3);
       expect(result.cost).toBe(0.06);
       expect(result.charge).toBeCloseTo(withMargin(0.06, 1.3), 6);
     });
