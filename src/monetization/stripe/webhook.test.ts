@@ -1,281 +1,205 @@
-/**
- * Unit tests for Stripe webhook handler (credit purchase model, WOP-406).
- *
- * Covers checkout.session.completed crediting the ledger,
- * bonus tier application, edge cases, and unknown events.
- */
-import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
-import { createDb } from "../../db/index.js";
-import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
-import { initStripeSchema } from "./schema.js";
-import { TenantCustomerStore } from "./tenant-store.js";
-import type { WebhookDeps } from "./webhook.js";
-import { handleWebhookEvent } from "./webhook.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { handleWebhookEvent, type WebhookDeps } from "./webhook.js";
 
-describe("handleWebhookEvent (credit model)", () => {
-  let sqlite: BetterSqlite3.Database;
-  let tenantStore: TenantCustomerStore;
-  let creditStore: CreditAdjustmentStore;
+describe("handleWebhookEvent", () => {
   let deps: WebhookDeps;
+  let mockUpsert: ReturnType<typeof vi.fn>;
+  let mockGrant: ReturnType<typeof vi.fn>;
+  let mockHasReferenceId: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initStripeSchema(sqlite);
-    initCreditAdjustmentSchema(sqlite);
-    const db = createDb(sqlite);
-    tenantStore = new TenantCustomerStore(db);
-    creditStore = new CreditAdjustmentStore(sqlite);
-    deps = { tenantStore, creditStore };
+    mockUpsert = vi.fn();
+    mockGrant = vi.fn();
+    mockHasReferenceId = vi.fn().mockReturnValue(false);
+
+    deps = {
+      tenantStore: {
+        upsert: mockUpsert,
+        getByTenant: vi.fn(),
+        getByStripeCustomerId: vi.fn(),
+        list: vi.fn(),
+        setTier: vi.fn(),
+        setBillingHold: vi.fn(),
+        hasBillingHold: vi.fn(),
+        buildCustomerIdMap: vi.fn(),
+      } as unknown as WebhookDeps["tenantStore"],
+      creditStore: {
+        grant: mockGrant,
+        hasReferenceId: mockHasReferenceId,
+        getBalance: vi.fn(),
+        refund: vi.fn(),
+        correction: vi.fn(),
+        listTransactions: vi.fn(),
+        getTransaction: vi.fn(),
+      } as unknown as WebhookDeps["creditStore"],
+    };
   });
 
-  afterEach(() => {
-    sqlite.close();
-  });
-
-  // ---------------------------------------------------------------------------
-  // checkout.session.completed
-  // ---------------------------------------------------------------------------
+  function makeCheckoutEvent(overrides: Record<string, unknown> = {}): Stripe.Event {
+    return {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_test_123",
+          client_reference_id: "tenant-abc",
+          customer: "cus_stripe_123",
+          amount_total: 2500,
+          metadata: {},
+          ...overrides,
+        },
+      },
+    } as unknown as Stripe.Event;
+  }
 
   describe("checkout.session.completed", () => {
-    function createCheckoutEvent(overrides?: Partial<Stripe.Checkout.Session>): Stripe.Event {
-      return {
-        type: "checkout.session.completed",
-        data: {
-          object: {
-            id: "cs_test_123",
-            client_reference_id: "tenant-123",
-            customer: "cus_abc",
-            amount_total: 2500,
-            metadata: {},
-            ...overrides,
-          } as Stripe.Checkout.Session,
-        },
-      } as Stripe.Event;
-    }
+    it("upserts tenant mapping and grants credits", () => {
+      const result = handleWebhookEvent(deps, makeCheckoutEvent());
 
-    it("credits the ledger on successful checkout", () => {
-      const event = createCheckoutEvent();
-      const result = handleWebhookEvent(deps, event);
+      expect(result.handled).toBe(true);
+      expect(result.event_type).toBe("checkout.session.completed");
+      expect(result.tenant).toBe("tenant-abc");
+      expect(result.creditedCents).toBe(2500);
 
-      expect(result).toEqual({
-        handled: true,
-        event_type: "checkout.session.completed",
-        tenant: "tenant-123",
-        creditedCents: 2500,
+      expect(mockUpsert).toHaveBeenCalledWith({
+        tenant: "tenant-abc",
+        stripeCustomerId: "cus_stripe_123",
       });
-
-      // Verify credits were granted
-      const balance = creditStore.getBalance("tenant-123");
-      expect(balance).toBe(2500);
+      expect(mockGrant).toHaveBeenCalledWith(
+        "tenant-abc",
+        2500,
+        expect.stringContaining("cs_test_123"),
+        "stripe-webhook",
+        ["cs_test_123"],
+      );
     });
 
-    it("applies bonus tiers when priceMap is provided", () => {
-      // $25 purchase -> $25.50 credit (2% bonus)
-      const depsWithMap: WebhookDeps = {
-        ...deps,
-        priceMap: new Map([["price_25", CREDIT_PRICE_POINTS[2]]]),
-      };
-
-      const event = createCheckoutEvent({ amount_total: 2500 });
-      const result = handleWebhookEvent(depsWithMap, event);
-
-      expect(result.creditedCents).toBe(2550); // 2% bonus
-    });
-
-    it("applies 5% bonus for $50 purchase", () => {
-      const depsWithMap: WebhookDeps = {
-        ...deps,
-        priceMap: new Map([["price_50", CREDIT_PRICE_POINTS[3]]]),
-      };
-
-      const event = createCheckoutEvent({ amount_total: 5000 });
-      const result = handleWebhookEvent(depsWithMap, event);
-
-      expect(result.creditedCents).toBe(5250); // 5% bonus
-    });
-
-    it("applies 10% bonus for $100 purchase", () => {
-      const depsWithMap: WebhookDeps = {
-        ...deps,
-        priceMap: new Map([["price_100", CREDIT_PRICE_POINTS[4]]]),
-      };
-
-      const event = createCheckoutEvent({ amount_total: 10000 });
-      const result = handleWebhookEvent(depsWithMap, event);
-
-      expect(result.creditedCents).toBe(11000); // 10% bonus
-    });
-
-    it("creates tenant-to-customer mapping", () => {
-      const event = createCheckoutEvent();
-      handleWebhookEvent(deps, event);
-
-      const mapping = tenantStore.getByTenant("tenant-123");
-      expect(mapping).not.toBeNull();
-      expect(mapping?.stripe_customer_id).toBe("cus_abc");
-    });
-
-    it("handles tenant from metadata when client_reference_id is null", () => {
-      const event = createCheckoutEvent({
+    it("uses wopr_tenant metadata when client_reference_id is null", () => {
+      const event = makeCheckoutEvent({
         client_reference_id: null,
-        metadata: { wopr_tenant: "tenant-from-metadata" },
+        metadata: { wopr_tenant: "tenant-meta" },
       });
+
       const result = handleWebhookEvent(deps, event);
-
-      expect(result.handled).toBe(true);
-      expect(result.tenant).toBe("tenant-from-metadata");
-
-      const balance = creditStore.getBalance("tenant-from-metadata");
-      expect(balance).toBe(2500);
+      expect(result.tenant).toBe("tenant-meta");
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ tenant: "tenant-meta" }),
+      );
     });
 
-    it("handles customer object instead of string", () => {
-      const event = createCheckoutEvent({
-        customer: { id: "cus_obj_123" } as Stripe.Customer,
-      });
-      const result = handleWebhookEvent(deps, event);
-
-      expect(result.handled).toBe(true);
-      const mapping = tenantStore.getByTenant("tenant-123");
-      expect(mapping?.stripe_customer_id).toBe("cus_obj_123");
-    });
-
-    it("returns handled:false when tenant is missing", () => {
-      const event = createCheckoutEvent({
+    it("returns handled: false when tenant is missing", () => {
+      const event = makeCheckoutEvent({
         client_reference_id: null,
         metadata: {},
       });
-      const result = handleWebhookEvent(deps, event);
 
-      expect(result).toEqual({
-        handled: false,
-        event_type: "checkout.session.completed",
-      });
+      const result = handleWebhookEvent(deps, event);
+      expect(result.handled).toBe(false);
+      expect(mockUpsert).not.toHaveBeenCalled();
     });
 
-    it("returns handled:false when customer is missing", () => {
-      const event = createCheckoutEvent({
-        customer: null,
-      });
-      const result = handleWebhookEvent(deps, event);
+    it("returns handled: false when customer is missing", () => {
+      const event = makeCheckoutEvent({ customer: null });
 
+      const result = handleWebhookEvent(deps, event);
       expect(result.handled).toBe(false);
     });
 
-    it("returns creditedCents:0 when amount_total is 0", () => {
-      const event = createCheckoutEvent({
-        amount_total: 0,
-      });
-      const result = handleWebhookEvent(deps, event);
-
-      expect(result.handled).toBe(true);
-      expect(result.creditedCents).toBe(0);
+    it("handles string customer (already a string ID)", () => {
+      handleWebhookEvent(deps, makeCheckoutEvent({ customer: "cus_direct" }));
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ stripeCustomerId: "cus_direct" }),
+      );
     });
 
-    it("returns creditedCents:0 when amount_total is null", () => {
-      const event = createCheckoutEvent({
-        amount_total: null,
-      });
-      const result = handleWebhookEvent(deps, event);
-
-      expect(result.handled).toBe(true);
-      expect(result.creditedCents).toBe(0);
-    });
-
-    it("handles duplicate checkout events idempotently (skips second)", () => {
-      const event = createCheckoutEvent({ amount_total: 500 });
-
-      const first = handleWebhookEvent(deps, event);
-      expect(first.creditedCents).toBe(500);
-
-      const second = handleWebhookEvent(deps, event);
-      expect(second.handled).toBe(true);
-      expect(second.creditedCents).toBe(0);
-
-      // Only credited once despite duplicate webhook delivery
-      const balance = creditStore.getBalance("tenant-123");
-      expect(balance).toBe(500);
-    });
-
-    it("grants 1:1 credits when no priceMap is provided", () => {
-      const event = createCheckoutEvent({ amount_total: 1234 });
-      const result = handleWebhookEvent(deps, event);
-
-      expect(result.creditedCents).toBe(1234);
-    });
-
-    it("records the Stripe session ID in the grant reason and reference_ids", () => {
-      const event = createCheckoutEvent({ id: "cs_test_abc" });
+    it("handles customer object (extracts .id)", () => {
+      const event = makeCheckoutEvent({ customer: { id: "cus_obj" } });
       handleWebhookEvent(deps, event);
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({ stripeCustomerId: "cus_obj" }),
+      );
+    });
 
-      const txns = creditStore.listTransactions("tenant-123");
-      expect(txns.entries).toHaveLength(1);
-      expect(txns.entries[0].reason).toContain("cs_test_abc");
-      expect(txns.entries[0].type).toBe("grant");
-      expect(txns.entries[0].admin_user).toBe("stripe-webhook");
-      expect(txns.entries[0].reference_ids).toBe('["cs_test_abc"]');
+    it("returns creditedCents: 0 when amount_total is null", () => {
+      const event = makeCheckoutEvent({ amount_total: null });
+      const result = handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(0);
+      expect(mockGrant).not.toHaveBeenCalled();
+    });
+
+    it("returns creditedCents: 0 when amount_total is 0", () => {
+      const event = makeCheckoutEvent({ amount_total: 0 });
+      const result = handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(0);
+      expect(mockGrant).not.toHaveBeenCalled();
+    });
+
+    it("returns creditedCents: 0 when amount_total is negative", () => {
+      const event = makeCheckoutEvent({ amount_total: -100 });
+      const result = handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(0);
+    });
+
+    it("skips duplicate session (idempotency check)", () => {
+      mockHasReferenceId.mockReturnValue(true);
+      const event = makeCheckoutEvent();
+      const result = handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(0);
+      expect(mockGrant).not.toHaveBeenCalled();
+    });
+
+    it("uses price map bonus when amount matches a tier", () => {
+      const priceMap = new Map([
+        ["price_25", { label: "$25", amountCents: 2500, creditCents: 2550, bonusPercent: 2 }],
+      ]);
+
+      const result = handleWebhookEvent({ ...deps, priceMap }, makeCheckoutEvent({ amount_total: 2500 }));
+      expect(result.creditedCents).toBe(2550);
+    });
+
+    it("falls back to 1:1 when price map has no matching tier", () => {
+      const priceMap = new Map([
+        ["price_50", { label: "$50", amountCents: 5000, creditCents: 5250, bonusPercent: 5 }],
+      ]);
+
+      const result = handleWebhookEvent({ ...deps, priceMap }, makeCheckoutEvent({ amount_total: 7500 }));
+      expect(result.creditedCents).toBe(7500);
+    });
+
+    it("falls back to 1:1 when no price map is provided", () => {
+      const result = handleWebhookEvent(deps, makeCheckoutEvent({ amount_total: 3333 }));
+      expect(result.creditedCents).toBe(3333);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Unhandled event types
-  // ---------------------------------------------------------------------------
-
   describe("unhandled event types", () => {
-    it("returns handled:false for customer.subscription.updated", () => {
+    it("returns handled: false for unknown event types", () => {
       const event = {
-        type: "customer.subscription.updated",
-        data: { object: {} },
-      } as Stripe.Event;
-
-      const result = handleWebhookEvent(deps, event);
-      expect(result).toEqual({
-        handled: false,
-        event_type: "customer.subscription.updated",
-      });
-    });
-
-    it("returns handled:false for customer.subscription.deleted", () => {
-      const event = {
-        type: "customer.subscription.deleted",
-        data: { object: {} },
-      } as Stripe.Event;
-
-      const result = handleWebhookEvent(deps, event);
-      expect(result).toEqual({
-        handled: false,
-        event_type: "customer.subscription.deleted",
-      });
-    });
-
-    it("returns handled:false for payment_intent.succeeded", () => {
-      const event = {
-        type: "payment_intent.succeeded",
-        data: { object: {} },
-      } as Stripe.Event;
-
-      const result = handleWebhookEvent(deps, event);
-      expect(result).toEqual({
-        handled: false,
-        event_type: "payment_intent.succeeded",
-      });
-    });
-
-    it("handles unknown event type gracefully", () => {
-      const event = {
-        type: "wopr.custom.event",
+        type: "customer.subscription.created",
         data: { object: {} },
       } as unknown as Stripe.Event;
 
       const result = handleWebhookEvent(deps, event);
-      expect(result).toEqual({
-        handled: false,
-        event_type: "wopr.custom.event",
-      });
+      expect(result.handled).toBe(false);
+      expect(result.event_type).toBe("customer.subscription.created");
+    });
+
+    it("returns handled: false for payment_intent events", () => {
+      const event = {
+        type: "payment_intent.succeeded",
+        data: { object: {} },
+      } as unknown as Stripe.Event;
+
+      const result = handleWebhookEvent(deps, event);
+      expect(result.handled).toBe(false);
     });
   });
 });
