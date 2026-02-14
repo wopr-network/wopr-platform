@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import type { AuthEnv } from "../../auth/index.js";
+import type { AuthEnv, AuthUser } from "../../auth/index.js";
 import type { RoleStore } from "./role-store.js";
 
 /**
@@ -10,7 +10,7 @@ import type { RoleStore } from "./role-store.js";
  */
 export function requirePlatformAdmin(roleStore: RoleStore) {
   return async (c: Context<AuthEnv>, next: Next) => {
-    let user;
+    let user: AuthUser | undefined;
     try {
       user = c.get("user");
     } catch {
@@ -40,7 +40,7 @@ export function requirePlatformAdmin(roleStore: RoleStore) {
  */
 export function requireTenantAdmin(roleStore: RoleStore, tenantIdKey = "tenantId") {
   return async (c: Context<AuthEnv>, next: Next) => {
-    let user;
+    let user: AuthUser | undefined;
     try {
       user = c.get("user");
     } catch {

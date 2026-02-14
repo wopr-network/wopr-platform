@@ -61,9 +61,7 @@ export class RoleStore {
 
   /** Remove a user's role in a tenant. */
   removeRole(userId: string, tenantId: string): boolean {
-    const result = this.db
-      .prepare("DELETE FROM user_roles WHERE user_id = ? AND tenant_id = ?")
-      .run(userId, tenantId);
+    const result = this.db.prepare("DELETE FROM user_roles WHERE user_id = ? AND tenant_id = ?").run(userId, tenantId);
     return result.changes > 0;
   }
 

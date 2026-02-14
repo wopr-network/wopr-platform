@@ -1,11 +1,11 @@
 import BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AuthEnv, AuthUser } from "../../auth/index.js";
-import { RoleStore } from "./role-store.js";
-import { requirePlatformAdmin, requireTenantAdmin } from "./require-role.js";
-import { initRolesSchema } from "./schema.js";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "../../api/routes/admin-roles.js";
+import type { AuthEnv, AuthUser } from "../../auth/index.js";
+import { requirePlatformAdmin, requireTenantAdmin } from "./require-role.js";
+import { RoleStore } from "./role-store.js";
+import { initRolesSchema } from "./schema.js";
 
 function createTestDb() {
   const db = new BetterSqlite3(":memory:");

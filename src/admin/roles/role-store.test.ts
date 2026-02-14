@@ -1,6 +1,6 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { RoleStore, isValidRole } from "./role-store.js";
+import { isValidRole, RoleStore } from "./role-store.js";
 import { initRolesSchema } from "./schema.js";
 
 function createTestDb() {
@@ -12,9 +12,9 @@ function createTestDb() {
 describe("initRolesSchema", () => {
   it("creates user_roles table", () => {
     const db = createTestDb();
-    const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_roles'")
-      .all() as { name: string }[];
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_roles'").all() as {
+      name: string;
+    }[];
     expect(tables).toHaveLength(1);
     db.close();
   });

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { Hono } from "hono";
-import { RoleStore, isValidRole } from "../../admin/roles/role-store.js";
 import { requirePlatformAdmin, requireTenantAdmin } from "../../admin/roles/require-role.js";
+import { isValidRole, RoleStore } from "../../admin/roles/role-store.js";
 import { initRolesSchema } from "../../admin/roles/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 
@@ -39,15 +39,13 @@ export function createAdminRolesRoutes(db: Database.Database): Hono<AuthEnv> {
       return c.json({ error: "Invalid role. Must be: platform_admin, tenant_admin, or user" }, 400);
     }
 
+    const currentUser = c.get("user");
+
     // Only platform admins can grant platform_admin role
-    if (body.role === "platform_admin") {
-      const currentUser = c.get("user");
-      if (!roleStore.isPlatformAdmin(currentUser.id)) {
-        return c.json({ error: "Only platform admins can grant platform_admin role" }, 403);
-      }
+    if (body.role === "platform_admin" && !roleStore.isPlatformAdmin(currentUser.id)) {
+      return c.json({ error: "Only platform admins can grant platform_admin role" }, 403);
     }
 
-    const currentUser = c.get("user");
     roleStore.setRole(userId, tenantId, body.role, currentUser.id);
 
     return c.json({ ok: true });
