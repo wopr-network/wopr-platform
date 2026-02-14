@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   type AnthropicRequest,
-  type OpenAIResponse,
   anthropicToOpenAI,
   estimateAnthropicCost,
   estimateOpenAICost,
   mapToAnthropicError,
+  type OpenAIResponse,
   openAIResponseToAnthropic,
 } from "./translate.js";
 
