@@ -3,6 +3,7 @@ import {
   botDestructionTemplate,
   botSuspendedTemplate,
   creditPurchaseTemplate,
+  dataDeletedTemplate,
   lowBalanceTemplate,
   passwordResetEmailTemplate,
   verifyEmailTemplate,
@@ -93,8 +94,10 @@ describe("botSuspendedTemplate", () => {
     expect(result.subject).toBe("Your bot has been suspended");
     expect(result.html).toContain("MyBot");
     expect(result.html).toContain("Terms of service violation");
+    expect(result.html).toContain("30 days");
     expect(result.text).toContain("MyBot");
     expect(result.text).toContain("Terms of service violation");
+    expect(result.text).toContain("30 days");
   });
 
   it("should escape HTML in bot name and reason", () => {
@@ -103,18 +106,57 @@ describe("botSuspendedTemplate", () => {
     expect(result.html).toContain("&lt;script&gt;bot&lt;/script&gt;");
     expect(result.html).toContain("&lt;b&gt;reason&lt;/b&gt;");
   });
+
+  it("should include CTA button when creditsUrl is provided", () => {
+    const result = botSuspendedTemplate(
+      "user@test.com",
+      "MyBot",
+      "Insufficient credits",
+      "https://app.wopr.bot/credits",
+    );
+
+    expect(result.html).toContain("Buy Credits to Reactivate");
+    expect(result.html).toContain("https://app.wopr.bot/credits");
+  });
 });
 
 describe("botDestructionTemplate", () => {
   it("should generate bot destruction warning with days", () => {
     const result = botDestructionTemplate("user@test.com", "MyBot", 7);
 
-    expect(result.subject).toBe("Your bot data will be deleted in 7 days");
+    expect(result.subject).toBe("URGENT: Your bot data will be deleted in 7 days");
     expect(result.html).toContain("MyBot");
     expect(result.html).toContain("7 days");
     expect(result.html).toContain("permanently deleted");
     expect(result.text).toContain("7 days");
     expect(result.text).toContain("irreversible");
+  });
+
+  it("should include CTA button when creditsUrl is provided", () => {
+    const result = botDestructionTemplate("user@test.com", "MyBot", 5, "https://app.wopr.bot/credits");
+
+    expect(result.html).toContain("Buy Credits Now");
+    expect(result.html).toContain("https://app.wopr.bot/credits");
+    expect(result.text).toContain("https://app.wopr.bot/credits");
+  });
+});
+
+describe("dataDeletedTemplate", () => {
+  it("should generate data deleted confirmation", () => {
+    const result = dataDeletedTemplate("user@test.com");
+
+    expect(result.subject).toBe("Your bot data has been deleted");
+    expect(result.html).toContain("permanently deleted");
+    expect(result.html).toContain("new bot");
+    expect(result.text).toContain("permanently deleted");
+    expect(result.text).toContain("new bot");
+  });
+
+  it("should include CTA button when creditsUrl is provided", () => {
+    const result = dataDeletedTemplate("user@test.com", "https://app.wopr.bot/credits");
+
+    expect(result.html).toContain("Add Credits");
+    expect(result.html).toContain("https://app.wopr.bot/credits");
   });
 });
 
@@ -128,6 +170,7 @@ describe("all templates", () => {
       lowBalanceTemplate("a@b.com", "$0.50"),
       botSuspendedTemplate("a@b.com", "Bot", "Reason"),
       botDestructionTemplate("a@b.com", "Bot", 3),
+      dataDeletedTemplate("a@b.com"),
     ];
 
     for (const t of templates) {
@@ -149,10 +192,26 @@ describe("all templates", () => {
       lowBalanceTemplate("a@b.com", "$0.50"),
       botSuspendedTemplate("a@b.com", "Bot", "Reason"),
       botDestructionTemplate("a@b.com", "Bot", 3),
+      dataDeletedTemplate("a@b.com"),
     ];
 
     for (const t of templates) {
       expect(t.text).not.toMatch(/<[a-z]/i);
+    }
+  });
+
+  it("should include unsubscribe link in billing emails when creditsUrl provided", () => {
+    const billingTemplates = [
+      creditPurchaseTemplate("a@b.com", "$5", "$10", "https://app.wopr.bot/credits"),
+      lowBalanceTemplate("a@b.com", "$0.50", 3, "https://app.wopr.bot/credits"),
+      botSuspendedTemplate("a@b.com", "Bot", "Reason", "https://app.wopr.bot/credits"),
+      botDestructionTemplate("a@b.com", "Bot", 3, "https://app.wopr.bot/credits"),
+      dataDeletedTemplate("a@b.com", "https://app.wopr.bot/credits"),
+    ];
+
+    for (const t of billingTemplates) {
+      expect(t.html).toContain("Unsubscribe");
+      expect(t.text).toContain("unsubscribe");
     }
   });
 });

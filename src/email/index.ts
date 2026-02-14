@@ -3,11 +3,14 @@
  *
  * Provides:
  * - EmailClient for sending template-based emails
- * - 7 email templates (verify, welcome, password-reset, credit-purchase, low-balance, bot-suspended, bot-destruction)
+ * - 8 email templates (verify, welcome, password-reset, credit-purchase, low-balance, bot-suspended, bot-destruction, data-deleted)
+ * - BillingEmailService for deduplication + billing notifications (WOP-450)
  * - Email verification flow (token generation, validation)
  * - requireEmailVerified middleware for gating actions
  */
 
+export type { BillingEmailServiceConfig, BillingEmailType } from "./billing-emails.js";
+export { BillingEmailService } from "./billing-emails.js";
 export type { EmailClientConfig, EmailSendResult, SendTemplateEmailOpts } from "./client.js";
 export { EmailClient, getEmailClient, resetEmailClient, setEmailClient } from "./client.js";
 export { requireEmailVerified } from "./require-verified.js";
@@ -18,6 +21,7 @@ export {
   botDestructionTemplate,
   botSuspendedTemplate,
   creditPurchaseTemplate,
+  dataDeletedTemplate,
   lowBalanceTemplate,
   passwordResetEmailTemplate,
   verifyEmailTemplate,
