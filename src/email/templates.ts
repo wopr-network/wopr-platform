@@ -81,6 +81,17 @@ function unsubscribeText(unsubscribeUrl?: string): string {
   return `\n\nTo unsubscribe from billing notifications: ${unsubscribeUrl}`;
 }
 
+/** Build the unsubscribe URL from a creditsUrl by deriving the origin. */
+function buildUnsubscribeUrl(creditsUrl: string): string {
+  try {
+    const base = new URL(creditsUrl);
+    return `${base.origin}/settings/notifications`;
+  } catch {
+    // If creditsUrl is not a valid absolute URL, fall back to simple concatenation.
+    return `${creditsUrl.replace(/\/+$/, "").split("/").slice(0, 3).join("/")}/settings/notifications`;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Template types
 // ---------------------------------------------------------------------------
@@ -236,7 +247,7 @@ export function creditPurchaseTemplate(
   ];
   if (creditsUrl) parts.push(button(creditsUrl, "View Credits"));
   parts.push(footer("Thank you for supporting WOPR!"));
-  parts.push(unsubscribeFooter(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
 
   const html = wrapHtml("Credits Added", parts.join("\n"));
 
@@ -247,7 +258,7 @@ Hi ${email},
 ${amountDollars} in credits has been added to your WOPR account.
 ${balanceTextLine}
 ${creditsUrl ? `\nView your credits: ${creditsUrl}` : ""}
-Thank you for supporting WOPR!${unsubscribeText(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined)}
+Thank you for supporting WOPR!${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
@@ -284,7 +295,7 @@ export function lowBalanceTemplate(
   ];
   if (creditsUrl) parts.push(button(creditsUrl, "Buy Credits"));
   parts.push(footer("This is an automated notification based on your account balance."));
-  parts.push(unsubscribeFooter(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
 
   const html = wrapHtml("Low Balance", parts.join("\n"));
 
@@ -295,7 +306,7 @@ Hi ${email},
 Your WOPR credit balance is now ${balanceDollars}. When your balance reaches $0, your bots will be paused.
 ${daysTextLine ? `${daysTextLine}\n` : ""}
 Top up your credits to keep your bots running.
-${creditsUrl ? `\nBuy credits: ${creditsUrl}` : ""}${unsubscribeText(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined)}
+${creditsUrl ? `\nBuy credits: ${creditsUrl}` : ""}${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
@@ -325,7 +336,7 @@ export function botSuspendedTemplate(
   ];
   if (creditsUrl) parts.push(button(creditsUrl, "Buy Credits to Reactivate"));
   parts.push(footer("If you need help, reply to this email or contact support@wopr.bot."));
-  parts.push(unsubscribeFooter(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
 
   const html = wrapHtml("Bot Suspended", parts.join("\n"));
 
@@ -339,7 +350,7 @@ Reason: ${reason}
 
 Buy credits to reactivate instantly. Your data is preserved for 30 days.
 ${creditsUrl ? `\nBuy credits: ${creditsUrl}` : ""}
-If you need help, reply to this email or contact support@wopr.bot.${unsubscribeText(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined)}
+If you need help, reply to this email or contact support@wopr.bot.${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
@@ -375,7 +386,7 @@ export function botDestructionTemplate(
   parts.push(
     footer("This action is irreversible. All bot configuration, history, and connected services will be removed."),
   );
-  parts.push(unsubscribeFooter(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
 
   const html = wrapHtml("Bot Data Deletion", parts.join("\n"));
 
@@ -387,7 +398,7 @@ Your bot "${botName}" has been suspended and its data will be permanently delete
 
 Buy credits before the deadline to save your data.
 ${creditsUrl ? `\nBuy credits now: ${creditsUrl}` : ""}
-This action is irreversible. All bot configuration, history, and connected services will be removed.${unsubscribeText(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined)}
+This action is irreversible. All bot configuration, history, and connected services will be removed.${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
@@ -409,7 +420,7 @@ export function dataDeletedTemplate(email: string, creditsUrl?: string): Templat
   ];
   if (creditsUrl) parts.push(button(creditsUrl, "Add Credits"));
   parts.push(footer("If you have questions, contact support@wopr.bot."));
-  parts.push(unsubscribeFooter(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined));
+  parts.push(unsubscribeFooter(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined));
 
   const html = wrapHtml("Data Deleted", parts.join("\n"));
 
@@ -421,7 +432,7 @@ Your suspended bot data has been permanently deleted after 30 days of inactivity
 
 You can create a new bot anytime by adding credits to your account.
 ${creditsUrl ? `\nAdd credits: ${creditsUrl}` : ""}
-If you have questions, contact support@wopr.bot.${unsubscribeText(creditsUrl ? `${creditsUrl}/../settings/notifications` : undefined)}
+If you have questions, contact support@wopr.bot.${unsubscribeText(creditsUrl ? buildUnsubscribeUrl(creditsUrl) : undefined)}
 
 (c) ${new Date().getFullYear()} WOPR Network. All rights reserved.`;
 
