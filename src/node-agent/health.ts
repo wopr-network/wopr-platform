@@ -19,6 +19,7 @@ export class HealthMonitor {
   private readonly onEvent: (event: HealthEvent) => void;
   private abortController: AbortController | null = null;
   private diskCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private stopped = false;
 
   constructor(dockerManager: DockerManager, nodeId: string, onEvent: (event: HealthEvent) => void) {
     this.dockerManager = dockerManager;
@@ -28,6 +29,7 @@ export class HealthMonitor {
 
   /** Start watching Docker events and disk usage. */
   async start(): Promise<void> {
+    this.stopped = false;
     this.abortController = new AbortController();
     this.watchDockerEvents();
     this.startDiskCheck();
@@ -36,6 +38,7 @@ export class HealthMonitor {
 
   /** Stop all monitoring. */
   stop(): void {
+    this.stopped = true;
     this.abortController?.abort();
     this.abortController = null;
     if (this.diskCheckInterval) {
@@ -61,19 +64,19 @@ export class HealthMonitor {
       });
 
       stream.on("error", (err: Error) => {
-        if (this.abortController?.signal.aborted) return;
+        if (this.stopped) return;
         logger.error("Docker event stream error, restarting in 5s", { err: err.message });
         setTimeout(() => this.watchDockerEvents(), 5000);
       });
 
       stream.on("end", () => {
-        if (this.abortController?.signal.aborted) return;
+        if (this.stopped) return;
         logger.warn("Docker event stream ended, restarting in 5s");
         setTimeout(() => this.watchDockerEvents(), 5000);
       });
     } catch (err) {
       logger.error("Failed to open Docker event stream, retrying in 5s", { err });
-      if (!this.abortController?.signal.aborted) {
+      if (!this.stopped) {
         setTimeout(() => this.watchDockerEvents(), 5000);
       }
     }

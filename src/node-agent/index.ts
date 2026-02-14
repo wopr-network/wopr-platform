@@ -225,50 +225,58 @@ export class NodeAgent {
     }
   }
 
+  /** Parse a value that may be a JSON string or already an object. */
+  private static parseJsonOrObject(value: unknown): Record<string, string> | undefined {
+    if (value == null) return undefined;
+    if (typeof value === "string") return JSON.parse(value) as Record<string, string>;
+    if (typeof value === "object") return value as Record<string, string>;
+    return undefined;
+  }
+
   /** Route a command to the appropriate handler. */
   private async dispatch(command: Command): Promise<unknown> {
-    const p = command.payload as Record<string, string>;
+    const p = command.payload as Record<string, unknown>;
 
     switch (command.type) {
       case "bot.start":
         return this.dockerManager.startBot({
-          name: p.name,
-          image: p.image,
-          env: p.env ? JSON.parse(p.env) : undefined,
-          restart: p.restart,
+          name: String(p.name),
+          image: String(p.image),
+          env: NodeAgent.parseJsonOrObject(p.env),
+          restart: p.restart != null ? String(p.restart) : undefined,
         });
 
       case "bot.stop":
-        return this.dockerManager.stopBot(p.name);
+        return this.dockerManager.stopBot(String(p.name));
 
       case "bot.restart":
-        return this.dockerManager.restartBot(p.name);
+        return this.dockerManager.restartBot(String(p.name));
 
       case "bot.export":
-        return this.dockerManager.exportBot(p.name, this.config.backupDir);
+        return this.dockerManager.exportBot(String(p.name), this.config.backupDir);
 
       case "bot.import":
         return this.dockerManager.importBot(
-          p.name,
+          String(p.name),
           this.config.backupDir,
-          p.image,
-          p.env ? JSON.parse(p.env) : undefined,
+          String(p.image),
+          NodeAgent.parseJsonOrObject(p.env),
         );
 
       case "bot.remove":
-        return this.dockerManager.removeBot(p.name);
+        return this.dockerManager.removeBot(String(p.name));
 
       case "bot.logs":
-        return this.dockerManager.getLogs(p.name, p.tail ? Number.parseInt(p.tail, 10) : 100);
+        return this.dockerManager.getLogs(String(p.name), p.tail ? Number.parseInt(String(p.tail), 10) : 100);
 
       case "bot.inspect":
-        return this.dockerManager.inspectBot(p.name);
+        return this.dockerManager.inspectBot(String(p.name));
 
       case "backup.upload":
-        return this.backupManager.upload(p.filename);
+        return this.backupManager.upload(String(p.filename));
 
       case "backup.download":
-        return this.backupManager.download(p.filename);
+        return this.backupManager.download(String(p.filename));
 
       case "backup.run-nightly":
         return this.backupManager.runNightly();

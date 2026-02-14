@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { basename, resolve } from "node:path";
 import { promisify } from "node:util";
 import { logger } from "../config/logger.js";
 import type { DockerManager } from "./docker.js";
@@ -23,10 +23,20 @@ export class BackupManager {
     this.s3Bucket = s3Bucket;
   }
 
+  /** Sanitize filename to prevent path traversal. */
+  private safePath(filename: string): { localPath: string; safeName: string } {
+    const safeName = basename(filename);
+    const localPath = resolve(this.backupDir, safeName);
+    if (!localPath.startsWith(resolve(this.backupDir))) {
+      throw new Error(`Invalid filename: ${filename}`);
+    }
+    return { localPath, safeName };
+  }
+
   /** Upload a local backup file to S3. */
   async upload(filename: string): Promise<void> {
-    const localPath = join(this.backupDir, filename);
-    const s3Path = `s3://${this.s3Bucket}/${filename}`;
+    const { localPath, safeName } = this.safePath(filename);
+    const s3Path = `s3://${this.s3Bucket}/${safeName}`;
 
     logger.info(`Uploading backup: ${localPath} -> ${s3Path}`);
     await execFileAsync("s3cmd", ["put", localPath, s3Path]);
@@ -35,8 +45,8 @@ export class BackupManager {
 
   /** Download a backup file from S3. */
   async download(filename: string): Promise<void> {
-    const localPath = join(this.backupDir, filename);
-    const s3Path = `s3://${this.s3Bucket}/${filename}`;
+    const { localPath, safeName } = this.safePath(filename);
+    const s3Path = `s3://${this.s3Bucket}/${safeName}`;
 
     logger.info(`Downloading backup: ${s3Path} -> ${localPath}`);
     await execFileAsync("s3cmd", ["get", s3Path, localPath]);
