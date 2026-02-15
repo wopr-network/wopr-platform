@@ -163,7 +163,7 @@ describe("createChatterboxTTSAdapter", () => {
       const chatterbox = createChatterboxTTSAdapter(makeConfig({ costPerChar: 0.000002 }), fetchFn);
       const result = await chatterbox.synthesizeSpeech({ text: "x".repeat(1000) }); // 1000 chars
 
-      // Chatterbox cost: $0.002 per 1M chars = $0.000002 per char
+      // Chatterbox cost: $2.00 per 1M chars = $0.000002 per char
       // ElevenLabs cost: $15 per 1M chars = $0.000015 per char
       // Chatterbox should be ~7x cheaper
       expect(result.cost).toBeCloseTo(0.002, 6); // 1000 * 0.000002

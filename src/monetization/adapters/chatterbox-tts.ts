@@ -45,7 +45,8 @@ export function createChatterboxTTSAdapter(
   config: ChatterboxTTSAdapterConfig,
   fetchFn: FetchFn = fetch,
 ): ProviderAdapter & Required<Pick<ProviderAdapter, "synthesizeSpeech">> {
-  const costPerChar = config.costPerChar ?? DEFAULT_COST_PER_CHAR;
+  // Support both costPerChar and costPerUnit (SelfHostedAdapterConfig requires costPerUnit)
+  const costPerChar = config.costPerChar ?? config.costPerUnit ?? DEFAULT_COST_PER_CHAR;
   const marginMultiplier = config.marginMultiplier ?? DEFAULT_MARGIN;
   const defaultVoice = config.defaultVoice ?? DEFAULT_VOICE;
   const defaultFormat = config.defaultFormat ?? DEFAULT_FORMAT;
@@ -64,7 +65,7 @@ export function createChatterboxTTSAdapter(
         text: input.text,
         voice,
         format,
-        ...(input.speed ? { speed: input.speed } : {}),
+        ...(input.speed !== undefined ? { speed: input.speed } : {}),
       };
 
       const res = await fetchFn(`${config.baseUrl}/v1/tts`, {
@@ -88,7 +89,7 @@ export function createChatterboxTTSAdapter(
         format: string;
       };
 
-      const characterCount = input.text.length;
+      const characterCount = Array.from(input.text).length;
 
       // Cost is amortized GPU time per character
       const cost = characterCount * costPerChar;

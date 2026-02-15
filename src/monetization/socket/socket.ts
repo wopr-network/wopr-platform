@@ -145,7 +145,7 @@ export class AdapterSocket {
     if (request.pricingTier) {
       const preferSelfHosted = request.pricingTier === "standard";
 
-      // Find first adapter matching tier preference
+      // Find first adapter matching tier preference, fall back to any with capability
       for (const adapter of this.adapters.values()) {
         if (!adapter.capabilities.includes(request.capability)) continue;
 

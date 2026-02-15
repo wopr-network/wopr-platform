@@ -96,6 +96,9 @@ export function getRatesForCapability(capability: AdapterCapability): RateEntry[
  * @returns Savings in USD, or 0 if either tier is unavailable
  */
 export function calculateSavings(capability: AdapterCapability, units: number): number {
+  // Validate input - negative or non-finite units should return 0
+  if (units <= 0 || !Number.isFinite(units)) return 0;
+
   const standard = lookupRate(capability, "standard");
   const premium = lookupRate(capability, "premium");
 
