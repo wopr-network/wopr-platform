@@ -67,12 +67,12 @@ export interface WebhookDeps {
  */
 export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): WebhookResult {
   // Replay guard: reject duplicate event IDs within the TTL window.
-  if (deps.replayGuard) {
-    if (deps.replayGuard.isDuplicate(event.id)) {
-      return { handled: true, event_type: event.type, duplicate: true };
-    }
-    deps.replayGuard.markSeen(event.id);
+  if (deps.replayGuard?.isDuplicate(event.id)) {
+    return { handled: true, event_type: event.type, duplicate: true };
   }
+
+  // Process the event based on type.
+  let result: WebhookResult;
 
   switch (event.type) {
     case "checkout.session.completed": {
@@ -80,7 +80,8 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       const tenant = session.client_reference_id ?? session.metadata?.wopr_tenant;
 
       if (!tenant || !session.customer) {
-        return { handled: false, event_type: event.type };
+        result = { handled: false, event_type: event.type };
+        break;
       }
 
       const customerId = typeof session.customer === "string" ? session.customer : session.customer.id;
@@ -94,13 +95,15 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       // Determine credit amount from price metadata or payment amount.
       const amountPaid = session.amount_total; // in cents
       if (amountPaid == null || amountPaid <= 0) {
-        return { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+        result = { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+        break;
       }
 
       // Idempotency: skip if this session was already processed.
       const stripeSessionId = session.id ?? "unknown";
       if (deps.creditLedger.hasReferenceId(stripeSessionId)) {
-        return { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+        result = { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+        break;
       }
 
       let creditCents: number;
@@ -137,10 +140,19 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         if (reactivatedBots.length === 0) reactivatedBots = undefined;
       }
 
-      return { handled: true, event_type: event.type, tenant, creditedCents: creditCents, reactivatedBots };
+      result = { handled: true, event_type: event.type, tenant, creditedCents: creditCents, reactivatedBots };
+      break;
     }
 
     default:
-      return { handled: false, event_type: event.type };
+      result = { handled: false, event_type: event.type };
+      break;
   }
+
+  // Mark event as seen AFTER processing (success or failure) to prevent infinite retries.
+  // This ensures that if processing throws an exception, the event can be retried,
+  // but if processing completes (even with handled:false), duplicates are blocked.
+  deps.replayGuard?.markSeen(event.id);
+
+  return result;
 }

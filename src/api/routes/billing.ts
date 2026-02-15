@@ -12,7 +12,7 @@ import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
-import { WebhookReplayGuard, handleWebhookEvent } from "../../monetization/stripe/webhook.js";
+import { handleWebhookEvent, WebhookReplayGuard } from "../../monetization/stripe/webhook.js";
 
 export interface BillingRouteDeps {
   stripe: Stripe;
@@ -70,7 +70,7 @@ let priceMap: CreditPriceMap | null = null;
 
 /** Reject webhook events with timestamps older than 5 minutes (in seconds). */
 const WEBHOOK_TIMESTAMP_TOLERANCE = 300;
-const replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
+let replayGuard: WebhookReplayGuard | undefined;
 
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
@@ -80,6 +80,7 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
+  replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
 }
 
 function getDeps(): BillingRouteDeps {

@@ -13,7 +13,7 @@ import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 import type { WebhookDeps } from "./webhook.js";
-import { WebhookReplayGuard, handleWebhookEvent } from "./webhook.js";
+import { handleWebhookEvent, WebhookReplayGuard } from "./webhook.js";
 
 /** Initialize credit tables in the test DB. */
 function initCreditSchema(sqlite: BetterSqlite3.Database): void {
@@ -253,10 +253,7 @@ describe("handleWebhookEvent (credit model)", () => {
       replayGuard = new WebhookReplayGuard();
     });
 
-    function createCheckoutEventWithId(
-      eventId: string,
-      overrides?: Partial<Stripe.Checkout.Session>,
-    ): Stripe.Event {
+    function createCheckoutEventWithId(eventId: string, overrides?: Partial<Stripe.Checkout.Session>): Stripe.Event {
       return {
         id: eventId,
         type: "checkout.session.completed",
@@ -288,7 +285,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(second.creditedCents).toBeUndefined();
 
       // Only credited once
-      const balance = creditStore.getBalance("tenant-replay");
+      const balance = creditLedger.balance("tenant-replay");
       expect(balance).toBe(1000);
     });
 
@@ -318,7 +315,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(r1.duplicate).toBeUndefined();
       expect(r2.duplicate).toBeUndefined();
 
-      const balance = creditStore.getBalance("tenant-replay");
+      const balance = creditLedger.balance("tenant-replay");
       expect(balance).toBe(2000);
     });
 
