@@ -94,6 +94,7 @@ export class NodeConnectionManager {
           capacityMb: registration.capacity_mb,
           agentVersion: registration.agent_version,
           status: "active",
+          lastHeartbeatAt: now,
           updatedAt: now,
         })
         .where(eq(nodes.id, registration.node_id))
@@ -140,7 +141,10 @@ export class NodeConnectionManager {
 
     ws.on("close", () => {
       logger.info(`WebSocket closed for node ${nodeId}`);
-      this.connections.delete(nodeId);
+      // Only remove if this is still the current connection (avoids race with reconnects)
+      if (this.connections.get(nodeId) === ws) {
+        this.connections.delete(nodeId);
+      }
     });
 
     ws.on("error", (err) => {

@@ -1,66 +1,12 @@
 import { serve } from "@hono/node-server";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { WebSocketServer } from "ws";
 import { app } from "./api/app.js";
-import { handleNodeWebSocket, validateNodeAuth } from "./api/routes/internal-nodes.js";
+import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
-import * as dbSchema from "./db/schema/index.js";
-import { AdminNotifier } from "./fleet/admin-notifier.js";
-import { HeartbeatWatchdog } from "./fleet/heartbeat-watchdog.js";
-import { NodeConnectionManager } from "./fleet/node-connection-manager.js";
-import { RecoveryManager } from "./fleet/recovery-manager.js";
+import { getHeartbeatWatchdog, getNodeConnections } from "./fleet/services.js";
 
 const port = config.port;
-
-// Lazy database initialization to avoid issues when module is imported in tests
-const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
-let _sqlite: Database.Database | null = null;
-let _db: ReturnType<typeof drizzle> | null = null;
-let _nodeConnections: NodeConnectionManager | null = null;
-let _adminNotifier: AdminNotifier | null = null;
-let _recoveryManager: RecoveryManager | null = null;
-let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
-
-function getDb() {
-  if (!_db) {
-    _sqlite = new Database(PLATFORM_DB_PATH);
-    _sqlite.pragma("journal_mode = WAL");
-    _db = drizzle(_sqlite, { schema: dbSchema });
-  }
-  return _db;
-}
-
-function getNodeConnections() {
-  if (!_nodeConnections) {
-    _nodeConnections = new NodeConnectionManager(getDb());
-  }
-  return _nodeConnections;
-}
-
-function getAdminNotifier() {
-  if (!_adminNotifier) {
-    _adminNotifier = new AdminNotifier();
-  }
-  return _adminNotifier;
-}
-
-function getRecoveryManager() {
-  if (!_recoveryManager) {
-    _recoveryManager = new RecoveryManager(getDb(), getNodeConnections(), getAdminNotifier());
-  }
-  return _recoveryManager;
-}
-
-function getHeartbeatWatchdog() {
-  if (!_heartbeatWatchdog) {
-    _heartbeatWatchdog = new HeartbeatWatchdog(getDb(), getRecoveryManager(), (nodeId: string, newStatus: string) => {
-      logger.info(`Node ${nodeId} status changed to ${newStatus}`);
-    });
-  }
-  return _heartbeatWatchdog;
-}
 
 // Global process-level error handlers to prevent crashes from unhandled errors.
 // These handlers ensure the process logs critical errors and handles them gracefully.
@@ -129,7 +75,7 @@ if (process.env.NODE_ENV !== "test") {
         }
 
         wss.handleUpgrade(req, socket, head, (ws) => {
-          handleNodeWebSocket(nodeId, ws);
+          getNodeConnections().handleWebSocket(nodeId, ws);
         });
       } else {
         socket.destroy();

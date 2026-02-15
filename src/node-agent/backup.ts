@@ -107,22 +107,17 @@ export class HotBackupScheduler {
    * Check if container writable layer has changed since last backup.
    * Uses Docker SizeRw field (writable layer delta in bytes).
    */
-  async shouldBackup(containerId: string): Promise<boolean> {
+  async shouldBackup(containerId: string): Promise<{ changed: boolean; sizeRw: number }> {
     try {
       const info = await this.dockerManager.docker.getContainer(containerId).inspect();
       // SizeRw is not in the official types but exists at runtime
       const sizeRw = (info as unknown as { SizeRw?: number }).SizeRw ?? 0;
       const lastSize = this.lastKnownSize.get(containerId) ?? -1;
 
-      if (sizeRw === lastSize) {
-        return false; // No changes
-      }
-
-      this.lastKnownSize.set(containerId, sizeRw);
-      return true;
+      return { changed: sizeRw !== lastSize, sizeRw };
     } catch (err) {
       logger.warn(`Failed to inspect container ${containerId}`, { err });
-      return true; // Default to backing up if we can't determine
+      return { changed: true, sizeRw: 0 }; // Default to backing up if we can't determine
     }
   }
 
@@ -144,7 +139,8 @@ export class HotBackupScheduler {
 
       try {
         // Check if container has changed
-        if (!(await this.shouldBackup(id))) {
+        const { changed, sizeRw } = await this.shouldBackup(id);
+        if (!changed) {
           logger.debug(`Hot backup: ${name} unchanged, skipping`);
           skipped.push(name);
           continue;
@@ -158,6 +154,9 @@ export class HotBackupScheduler {
         const s3Path = `s3://${this.s3Bucket}/latest/${name}/latest.tar.gz`;
 
         await execFileAsync("s3cmd", ["put", "--force", localPath, s3Path]);
+
+        // Only update lastKnownSize AFTER successful backup
+        this.lastKnownSize.set(id, sizeRw);
 
         backed_up.push(name);
         logger.info(`Hot backup: ${name} complete → ${s3Path}`);

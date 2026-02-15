@@ -91,8 +91,9 @@ export class HeartbeatWatchdog {
       .all();
 
     for (const node of activeNodes) {
-      const lastHeartbeat = node.lastHeartbeatAt ?? 0;
-      const elapsed = now - lastHeartbeat;
+      // Skip nodes that have never sent a heartbeat (just registered)
+      if (node.lastHeartbeatAt === null) continue;
+      const elapsed = now - node.lastHeartbeatAt;
 
       // Node has been offline for 5 minutes → trigger recovery
       if (elapsed >= this.OFFLINE_THRESHOLD_S && node.status !== "offline") {

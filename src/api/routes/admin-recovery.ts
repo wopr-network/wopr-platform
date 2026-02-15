@@ -1,49 +1,11 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import * as dbSchema from "../../db/schema/index.js";
-import { AdminNotifier } from "../../fleet/admin-notifier.js";
-import { NodeConnectionManager } from "../../fleet/node-connection-manager.js";
-import { RecoveryManager } from "../../fleet/recovery-manager.js";
-
-const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
+import { getNodeConnections, getRecoveryManager } from "../../fleet/services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
-
-/** Lazy-initialized fleet management components */
-let _db: ReturnType<typeof drizzle<typeof dbSchema>> | null = null;
-let _nodeConnections: NodeConnectionManager | null = null;
-let _recoveryManager: RecoveryManager | null = null;
-
-function getDB() {
-  if (!_db) {
-    const sqlite = new Database(PLATFORM_DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
-    _db = drizzle(sqlite, { schema: dbSchema });
-  }
-  return _db;
-}
-
-function getNodeConnections() {
-  if (!_nodeConnections) {
-    _nodeConnections = new NodeConnectionManager(getDB());
-  }
-  return _nodeConnections;
-}
-
-function getRecoveryManager() {
-  if (!_recoveryManager) {
-    const notifier = new AdminNotifier({
-      webhookUrl: process.env.ADMIN_WEBHOOK_URL,
-    });
-    _recoveryManager = new RecoveryManager(getDB(), getNodeConnections(), notifier);
-  }
-  return _recoveryManager;
-}
 
 /**
  * Admin API routes for node recovery history and manual recovery triggers.
@@ -55,7 +17,8 @@ export const adminRecoveryRoutes = new Hono<AuthEnv>();
  * List recovery events (paginated)
  */
 adminRecoveryRoutes.get("/", adminAuth, (c) => {
-  const limit = Number.parseInt(c.req.query("limit") ?? "50", 10);
+  const rawLimit = Number.parseInt(c.req.query("limit") ?? "50", 10);
+  const limit = Number.isNaN(rawLimit) || rawLimit < 1 ? 50 : Math.min(rawLimit, 500);
   const recoveryManager = getRecoveryManager();
 
   const events = recoveryManager.listEvents(limit);

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
 import type * as schema from "../db/schema/index.js";
@@ -93,6 +93,7 @@ export class RecoveryManager {
           WHEN 'starter' THEN 3
           ELSE 4
         END`,
+        botInstances.id,
       )
       .all();
 
@@ -321,15 +322,34 @@ export class RecoveryManager {
     };
 
     for (const item of waitingItems) {
+      // Look up the actual bot instance to get the correct ID
+      const botInstance = this.db
+        .select()
+        .from(botInstances)
+        .where(and(eq(botInstances.tenantId, item.tenant), eq(botInstances.nodeId, item.sourceNode)))
+        .get();
+
+      if (!botInstance) {
+        report.failed.push({ tenant: item.tenant, reason: "bot_instance_not_found" });
+        continue;
+      }
+
       const tenant: TenantAssignment = {
-        id: item.id,
+        id: botInstance.id,
         tenantId: item.tenant,
-        name: item.tenant,
+        name: botInstance.name,
         containerName: `tenant_${item.tenant}`,
         estimatedMb: 100,
       };
 
       await this.recoverTenant(recoveryEventId, event.nodeId, tenant, report);
+
+      // Mark waiting item as processed
+      this.db
+        .update(recoveryItems)
+        .set({ status: "retried", completedAt: Math.floor(Date.now() / 1000) })
+        .where(eq(recoveryItems.id, item.id))
+        .run();
     }
 
     // Update event with new counts
