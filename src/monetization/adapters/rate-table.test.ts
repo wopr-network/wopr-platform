@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateSavings, getRatesForCapability, lookupRate, RATE_TABLE } from "./rate-table.js";
+import type { AdapterCapability } from "./types.js";
 
 describe("RATE_TABLE", () => {
   it("contains both standard and premium tiers for TTS", () => {
@@ -29,8 +30,7 @@ describe("RATE_TABLE", () => {
 
     for (const entry of standardEntries) {
       // Self-hosted providers include "self-hosted-" prefix or are known self-hosted names
-      const isSelfHosted =
-        entry.provider.startsWith("self-hosted-") || entry.provider === "chatterbox-tts";
+      const isSelfHosted = entry.provider.startsWith("self-hosted-") || entry.provider === "chatterbox-tts";
       expect(isSelfHosted).toBe(true);
     }
   });
@@ -40,9 +40,7 @@ describe("RATE_TABLE", () => {
 
     for (const entry of premiumEntries) {
       // Third-party providers are well-known brand names
-      const isThirdParty = ["elevenlabs", "deepgram", "openrouter", "replicate", "gemini"].includes(
-        entry.provider,
-      );
+      const isThirdParty = ["elevenlabs", "deepgram", "openrouter", "replicate", "gemini"].includes(entry.provider);
       expect(isThirdParty).toBe(true);
     }
   });
@@ -79,12 +77,12 @@ describe("lookupRate", () => {
   });
 
   it("returns undefined for non-existent capability", () => {
-    const rate = lookupRate("image-generation" as any, "standard");
+    const rate = lookupRate("image-generation" as unknown as AdapterCapability, "standard");
     expect(rate).toBeUndefined();
   });
 
   it("returns undefined for non-existent tier", () => {
-    const rate = lookupRate("tts", "enterprise" as any);
+    const rate = lookupRate("tts", "enterprise" as unknown as "standard" | "premium");
     expect(rate).toBeUndefined();
   });
 });
@@ -98,7 +96,7 @@ describe("getRatesForCapability", () => {
   });
 
   it("returns empty array for non-existent capability", () => {
-    const rates = getRatesForCapability("image-generation" as any);
+    const rates = getRatesForCapability("image-generation" as unknown as AdapterCapability);
     expect(rates).toHaveLength(0);
   });
 
@@ -128,13 +126,13 @@ describe("calculateSavings", () => {
   });
 
   it("returns zero when capability has no standard tier", () => {
-    const savings = calculateSavings("image-generation" as any, 1000);
+    const savings = calculateSavings("image-generation" as unknown as AdapterCapability, 1000);
     expect(savings).toBe(0);
   });
 
   it("returns zero when capability has no premium tier", () => {
     // This would happen if a capability only has self-hosted, no third-party
-    const savings = calculateSavings("embeddings" as any, 1000);
+    const savings = calculateSavings("embeddings" as unknown as AdapterCapability, 1000);
     expect(savings).toBe(0);
   });
 

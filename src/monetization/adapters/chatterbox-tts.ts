@@ -13,10 +13,9 @@
  *   Charge = amortized_cost * margin (e.g., 1.2 = 20% margin vs 50% for third-party)
  */
 
+import type { FetchFn, SelfHostedAdapterConfig } from "./self-hosted-base.js";
 import type { AdapterResult, ProviderAdapter, TTSInput, TTSOutput } from "./types.js";
 import { withMargin } from "./types.js";
-import type { SelfHostedAdapterConfig } from "./self-hosted-base.js";
-import type { FetchFn } from "./self-hosted-base.js";
 
 // Re-export FetchFn for tests
 export type { FetchFn };
