@@ -22,6 +22,7 @@ function initTestSchema(sqlite: BetterSqlite3.Database): void {
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,
       name TEXT NOT NULL,
+      node_id TEXT,
       billing_state TEXT NOT NULL DEFAULT 'active',
       suspended_at TEXT,
       destroy_after TEXT,
@@ -32,6 +33,7 @@ function initTestSchema(sqlite: BetterSqlite3.Database): void {
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_bot_instances_tenant ON bot_instances(tenant_id)");
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_bot_instances_billing_state ON bot_instances(billing_state)");
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_bot_instances_destroy_after ON bot_instances(destroy_after)");
+  sqlite.exec("CREATE INDEX IF NOT EXISTS idx_bot_instances_node ON bot_instances(node_id)");
 
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS credit_transactions (

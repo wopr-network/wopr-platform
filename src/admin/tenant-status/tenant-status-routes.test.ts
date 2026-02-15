@@ -70,6 +70,7 @@ function initSchemas(sqlite: BetterSqlite3.Database): void {
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,
       name TEXT NOT NULL,
+      node_id TEXT,
       billing_state TEXT NOT NULL DEFAULT 'active',
       suspended_at TEXT,
       destroy_after TEXT,
