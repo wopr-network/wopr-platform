@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
-const { setBillingDeps } = await import("../../src/api/routes/billing.js");
+const { setBillingDeps, resetSignatureFailurePenalties } = await import("../../src/api/routes/billing.js");
 const { createDb } = await import("../../src/db/index.js");
 const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
 const { initMeterSchema } = await import("../../src/monetization/metering/schema.js");
@@ -57,6 +57,7 @@ describe("integration: billing routes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetSignatureFailurePenalties();
     sqlite = new BetterSqlite3(":memory:");
     initMeterSchema(sqlite);
     initStripeSchema(sqlite);

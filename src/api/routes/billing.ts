@@ -266,6 +266,8 @@ billingRoutes.post("/webhook", async (c) => {
   let event: Stripe.Event;
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret, WEBHOOK_TIMESTAMP_TOLERANCE);
+    // Clear any stale penalties on successful verification (WOP-477)
+    sigFailurePenalties.delete(ip);
   } catch (err) {
     // Track signature failure for exponential backoff (WOP-477)
     const existing = sigFailurePenalties.get(ip) ?? { failures: 0, blockedUntil: 0 };
