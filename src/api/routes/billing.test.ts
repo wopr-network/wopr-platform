@@ -16,7 +16,7 @@ vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
 const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
 
 // Import AFTER env stub
-const { billingRoutes, setBillingDeps } = await import("./billing.js");
+const { billingRoutes, setBillingDeps, resetSignatureFailurePenalties } = await import("./billing.js");
 
 function createBillingTestDb() {
   const sqlite = new BetterSqlite3(":memory:");
@@ -78,6 +78,7 @@ describe("billing routes", () => {
       db,
       webhookSecret: "whsec_test_secret",
     });
+    resetSignatureFailurePenalties();
   });
 
   afterEach(() => {
@@ -521,6 +522,54 @@ describe("billing routes", () => {
       const body = await res.json();
       expect(body.handled).toBe(false);
       expect(body.event_type).toBe("payment_intent.succeeded");
+    });
+
+    it("returns 429 when IP has too many signature failures (exponential backoff)", async () => {
+      const constructEvent = vi.fn().mockImplementation(() => {
+        throw new Error("Webhook signature verification failed");
+      });
+      const mockStripe = createMockStripe({ constructEvent });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      // First failure: 400 (not yet blocked)
+      const res1 = await billingRoutes.request("/webhook", {
+        method: "POST",
+        body: "raw-body",
+        headers: { "stripe-signature": "t=123,v1=bad", "x-forwarded-for": "1.2.3.4" },
+      });
+      expect(res1.status).toBe(400);
+
+      // Second request from same IP: should be blocked (429)
+      const res2 = await billingRoutes.request("/webhook", {
+        method: "POST",
+        body: "raw-body",
+        headers: { "stripe-signature": "t=123,v1=bad", "x-forwarded-for": "1.2.3.4" },
+      });
+      expect(res2.status).toBe(429);
+      expect(res2.headers.get("Retry-After")).toBeTruthy();
+    });
+
+    it("does not penalize different IPs for another IP's failures", async () => {
+      const constructEvent = vi.fn().mockImplementation(() => {
+        throw new Error("sig fail");
+      });
+      const mockStripe = createMockStripe({ constructEvent });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      // Fail from IP-A
+      await billingRoutes.request("/webhook", {
+        method: "POST",
+        body: "raw-body",
+        headers: { "stripe-signature": "t=123,v1=bad", "x-forwarded-for": "10.0.0.1" },
+      });
+
+      // IP-B should not be affected (gets 400 from sig failure, not 429 from penalty)
+      const res = await billingRoutes.request("/webhook", {
+        method: "POST",
+        body: "raw-body",
+        headers: { "stripe-signature": "t=123,v1=bad", "x-forwarded-for": "10.0.0.2" },
+      });
+      expect(res.status).toBe(400);
     });
   });
 

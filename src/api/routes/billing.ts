@@ -1,3 +1,4 @@
+import type { Context } from "hono";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
@@ -22,6 +23,38 @@ export interface BillingRouteDeps {
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
+
+// -- Signature failure penalty tracking (WOP-477) ----------------------------
+
+interface PenaltyEntry {
+  failures: number;
+  blockedUntil: number;
+}
+const sigFailurePenalties = new Map<string, PenaltyEntry>();
+
+/**
+ * Extract IP from request (same logic as rate-limit.ts defaultKeyGenerator).
+ */
+function getClientIp(c: Context): string {
+  const xff = c.req.header("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const incoming = (c.env as Record<string, unknown>)?.incoming as { socket?: { remoteAddress?: string } } | undefined;
+  return incoming?.socket?.remoteAddress ?? "unknown";
+}
+
+const MAX_BACKOFF_MS = 15 * 60 * 1000; // 15 minutes
+const PENALTY_DECAY_MS = 60 * 60 * 1000; // Clear penalties after 1 hour of no failures
+
+/**
+ * Reset signature failure penalties (for testing).
+ * @internal
+ */
+export function resetSignatureFailurePenalties(): void {
+  sigFailurePenalties.clear();
+}
 
 // -- Zod schemas for input validation ----------------------------------------
 
@@ -205,6 +238,23 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
  */
 billingRoutes.post("/webhook", async (c) => {
   const { stripe, webhookSecret } = getDeps();
+  const ip = getClientIp(c);
+  const now = Date.now();
+
+  // Prune stale penalty entries (lazy, same pattern as rate-limit.ts)
+  if (sigFailurePenalties.size > 1000) {
+    for (const [k, v] of sigFailurePenalties) {
+      if (now - v.blockedUntil > PENALTY_DECAY_MS) sigFailurePenalties.delete(k);
+    }
+  }
+
+  // Check if this IP is currently in penalty backoff
+  const penalty = sigFailurePenalties.get(ip);
+  if (penalty && now < penalty.blockedUntil) {
+    const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
+    c.header("Retry-After", String(retryAfterSec));
+    return c.json({ error: "Too many failed webhook signature attempts" }, 429);
+  }
 
   const body = await c.req.text();
   const signature = c.req.header("stripe-signature");
@@ -217,8 +267,17 @@ billingRoutes.post("/webhook", async (c) => {
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret, WEBHOOK_TIMESTAMP_TOLERANCE);
   } catch (err) {
+    // Track signature failure for exponential backoff (WOP-477)
+    const existing = sigFailurePenalties.get(ip) ?? { failures: 0, blockedUntil: 0 };
+    existing.failures++;
+    const backoffMs = Math.min(1000 * 2 ** existing.failures, MAX_BACKOFF_MS);
+    existing.blockedUntil = now + backoffMs;
+    sigFailurePenalties.set(ip, existing);
+
     logger.error("Webhook signature verification failed", {
       error: err instanceof Error ? err.message : String(err),
+      ip,
+      consecutiveFailures: existing.failures,
     });
     return c.json({ error: "Invalid webhook signature" }, 400);
   }

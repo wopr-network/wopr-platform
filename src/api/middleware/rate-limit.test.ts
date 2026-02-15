@@ -271,6 +271,16 @@ describe("platform rate limit rules", () => {
     expect((await app.request(postReq("/api/billing/portal"))).status).toBe(429);
   });
 
+  it("webhook endpoint is limited to 30 req/min", async () => {
+    const app = buildPlatformApp();
+    // Register the webhook route
+    app.post("/api/billing/webhook", (c) => c.json({ ok: true }));
+    for (let i = 0; i < 30; i++) {
+      expect((await app.request(postReq("/api/billing/webhook"))).status).toBe(200);
+    }
+    expect((await app.request(postReq("/api/billing/webhook"))).status).toBe(429);
+  });
+
   it("fleet create (POST /fleet/bots) is limited to 30 req/min", async () => {
     const app = buildPlatformApp();
     for (let i = 0; i < 30; i++) {

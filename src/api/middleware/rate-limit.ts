@@ -209,6 +209,9 @@ export function rateLimitByRoute(rules: RateLimitRule[], defaultConfig: RateLimi
 // Pre-built route rules matching the WOP-323 specification
 // ---------------------------------------------------------------------------
 
+/** Webhook: 30 req/min (WOP-477) */
+const WEBHOOK_LIMIT: RateLimitConfig = { max: 30 };
+
 /** Billing checkout/portal: 10 req/min */
 const BILLING_LIMIT: RateLimitConfig = { max: 10 };
 
@@ -231,6 +234,9 @@ const DEFAULT_LIMIT: RateLimitConfig = { max: 60 };
 export const platformRateLimitRules: RateLimitRule[] = [
   // Secrets validation — most restrictive, check first
   { method: "POST", pathPrefix: "/api/validate-key", config: SECRETS_VALIDATION_LIMIT },
+
+  // Webhook: 30 req/min (WOP-477)
+  { method: "POST", pathPrefix: "/api/billing/webhook", config: WEBHOOK_LIMIT },
 
   // Billing checkout & portal
   { method: "POST", pathPrefix: "/api/billing/checkout", config: BILLING_LIMIT },
