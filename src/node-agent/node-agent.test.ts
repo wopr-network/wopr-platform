@@ -363,7 +363,7 @@ describe("ALLOWED_COMMANDS", () => {
     }
   });
 
-  it("has exactly 11 commands", () => {
-    expect(ALLOWED_COMMANDS).toHaveLength(11);
+  it("has exactly 12 commands", () => {
+    expect(ALLOWED_COMMANDS).toHaveLength(12);
   });
 });
