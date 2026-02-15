@@ -1,12 +1,13 @@
 ## GPU Inference Stack for WOPR Platform
 ##
 ## Run:
-##   docker compose -f docker-compose.gpu.yml up -d
+##   docker compose -f docker-compose.gpu.yml --env-file .env.gpu up -d
 ##
 ## Prerequisites:
 ##   - NVIDIA Container Toolkit installed (https://github.com/NVIDIA/nvidia-container-toolkit)
 ##   - GPU drivers configured and working
-##   - Model weights downloaded to ${MODELS_PATH} (default: ./models)
+##   - Copy .env.gpu.example to .env.gpu and customize
+##   - Download model weights to ${MODELS_PATH} (see .env.gpu.example for required files)
 ##
 ## This spins up 4 GPU-accelerated inference services:
 ##   - llama-cpp: Text generation (OpenAI-compatible /v1/chat/completions)
@@ -29,6 +30,7 @@ services:
     image: ghcr.io/ggerganov/llama.cpp:server-cuda
     container_name: wopr-llama-cpp
     restart: unless-stopped
+    env_file: .env.gpu
     ports:
       - "8080:8080"
     volumes:
@@ -62,6 +64,7 @@ services:
     image: ghcr.io/ggerganov/llama.cpp:server-cuda
     container_name: wopr-qwen-embeddings
     restart: unless-stopped
+    env_file: .env.gpu
     ports:
       - "8083:8080"
     volumes:
@@ -94,6 +97,7 @@ services:
     image: travisvn/chatterbox-tts-api:latest
     container_name: wopr-chatterbox
     restart: unless-stopped
+    env_file: .env.gpu
     ports:
       - "8081:5123"
     environment:
@@ -114,6 +118,7 @@ services:
     image: fedirz/faster-whisper-server:latest-cuda
     container_name: wopr-whisper
     restart: unless-stopped
+    env_file: .env.gpu
     ports:
       - "8082:8000"
     environment:
