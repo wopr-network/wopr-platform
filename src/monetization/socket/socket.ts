@@ -37,6 +37,8 @@ export interface SocketRequest {
   byok?: boolean;
   /** Optional: tenant's spend limits (for budget checking) */
   spendLimits?: SpendLimits;
+  /** Pricing tier: "standard" (self-hosted, cheap) or "premium" (third-party brand-name) */
+  pricingTier?: "standard" | "premium";
   /** @deprecated Use spendLimits instead. Kept for backwards compat during migration. */
   tier?: string;
 }
@@ -127,7 +129,7 @@ export class AdapterSocket {
 
   /** Resolve which adapter to use for a request. */
   private resolveAdapter(request: SocketRequest): ProviderAdapter {
-    // If a specific adapter is requested, use it
+    // If a specific adapter is requested, use it (highest priority)
     if (request.adapter) {
       const adapter = this.adapters.get(request.adapter);
       if (!adapter) {
@@ -137,6 +139,28 @@ export class AdapterSocket {
         throw new Error(`Adapter "${request.adapter}" does not support capability "${request.capability}"`);
       }
       return adapter;
+    }
+
+    // If a pricing tier is specified, prefer adapters matching that tier
+    if (request.pricingTier) {
+      const preferSelfHosted = request.pricingTier === "standard";
+
+      // Find first adapter matching tier preference
+      for (const adapter of this.adapters.values()) {
+        if (!adapter.capabilities.includes(request.capability)) continue;
+
+        const isSelfHosted = adapter.selfHosted === true;
+        if (preferSelfHosted === isSelfHosted) {
+          return adapter;
+        }
+      }
+
+      // Fall back to any adapter with the capability if preferred tier unavailable
+      for (const adapter of this.adapters.values()) {
+        if (adapter.capabilities.includes(request.capability)) {
+          return adapter;
+        }
+      }
     }
 
     // Otherwise, find the first adapter that supports the capability

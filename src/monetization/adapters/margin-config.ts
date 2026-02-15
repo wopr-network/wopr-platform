@@ -75,6 +75,12 @@ export function withMarginConfig(cost: number, config: MarginConfig, provider: s
 export const DEFAULT_MARGIN_CONFIG: MarginConfig = {
   defaultMargin: 1.3,
   rules: [
+    // Self-hosted adapters — low margin because we own the hardware
+    // These come first so they match before third-party rules
+    { provider: "chatterbox-tts", modelPattern: "*", margin: 1.2 },
+    { provider: "self-hosted-llm", modelPattern: "*", margin: 1.15 },
+    { provider: "self-hosted-whisper", modelPattern: "*", margin: 1.2 },
+    { provider: "self-hosted-embeddings", modelPattern: "*", margin: 1.15 },
     // Expensive models -- lower margin (still profitable at volume)
     { provider: "openrouter", modelPattern: "anthropic/claude-opus-*", margin: 1.15 },
     { provider: "openrouter", modelPattern: "anthropic/claude-sonnet-*", margin: 1.2 },

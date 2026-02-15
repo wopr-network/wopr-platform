@@ -140,6 +140,8 @@ export interface ProviderAdapter {
   readonly name: string;
   /** Which capabilities this adapter supports */
   readonly capabilities: ReadonlyArray<AdapterCapability>;
+  /** Whether this adapter targets self-hosted infrastructure (default: false) */
+  readonly selfHosted?: boolean;
   /** Transcribe audio — returns result + wholesale cost */
   transcribe?(input: TranscriptionInput): Promise<AdapterResult<TranscriptionOutput>>;
   /** Generate images from a text prompt — returns result + wholesale cost */

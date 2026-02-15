@@ -178,6 +178,276 @@ describe("AdapterSocket", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // execute -- tier-aware routing (WOP-497)
+  // ---------------------------------------------------------------------------
+
+  describe("execute -- tier-aware routing", () => {
+    it("prefers self-hosted adapter when pricingTier is standard", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+
+      // Register premium (third-party) adapter first
+      socket.register(
+        stubAdapter({
+          name: "elevenlabs",
+          capabilities: ["tts"],
+          selfHosted: false,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
+              cost: 0.015,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      // Register self-hosted adapter second
+      socket.register(
+        stubAdapter({
+          name: "chatterbox-tts",
+          capabilities: ["tts"],
+          selfHosted: true,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
+              cost: 0.002,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      const result = await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "hello" },
+        pricingTier: "standard",
+      });
+
+      expect(result.audioUrl).toBe("self-hosted-audio");
+      expect(meter.events[0].provider).toBe("chatterbox-tts");
+      expect(meter.events[0].cost).toBe(0.002);
+    });
+
+    it("prefers third-party adapter when pricingTier is premium", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+
+      // Register self-hosted adapter first
+      socket.register(
+        stubAdapter({
+          name: "chatterbox-tts",
+          capabilities: ["tts"],
+          selfHosted: true,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
+              cost: 0.002,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      // Register premium (third-party) adapter second
+      socket.register(
+        stubAdapter({
+          name: "elevenlabs",
+          capabilities: ["tts"],
+          selfHosted: false,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
+              cost: 0.015,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      const result = await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "hello" },
+        pricingTier: "premium",
+      });
+
+      expect(result.audioUrl).toBe("premium-audio");
+      expect(meter.events[0].provider).toBe("elevenlabs");
+      expect(meter.events[0].cost).toBe(0.015);
+    });
+
+    it("falls back to any adapter when preferred tier unavailable", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+
+      // Only register a premium adapter
+      socket.register(
+        stubAdapter({
+          name: "elevenlabs",
+          capabilities: ["tts"],
+          selfHosted: false,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
+              cost: 0.015,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      // Request standard tier, but only premium is available
+      const result = await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "hello" },
+        pricingTier: "standard",
+      });
+
+      expect(result.audioUrl).toBe("premium-audio");
+      expect(meter.events[0].provider).toBe("elevenlabs");
+    });
+
+    it("uses first adapter with capability when no pricingTier specified", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+
+      socket.register(
+        stubAdapter({
+          name: "adapter-a",
+          capabilities: ["tts"],
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "first-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
+              cost: 0.01,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      socket.register(
+        stubAdapter({
+          name: "adapter-b",
+          capabilities: ["tts"],
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "second-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
+              cost: 0.02,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      const result = await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "hello" },
+        // No pricingTier specified
+      });
+
+      expect(result.audioUrl).toBe("first-audio");
+      expect(meter.events[0].provider).toBe("adapter-a");
+    });
+
+    it("adapter parameter takes priority over pricingTier", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+
+      socket.register(
+        stubAdapter({
+          name: "chatterbox-tts",
+          capabilities: ["tts"],
+          selfHosted: true,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
+              cost: 0.002,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      socket.register(
+        stubAdapter({
+          name: "elevenlabs",
+          capabilities: ["tts"],
+          selfHosted: false,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
+              cost: 0.015,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      // Request standard tier but explicitly specify elevenlabs
+      const result = await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "hello" },
+        pricingTier: "standard",
+        adapter: "elevenlabs", // This should win
+      });
+
+      expect(result.audioUrl).toBe("premium-audio");
+      expect(meter.events[0].provider).toBe("elevenlabs");
+    });
+
+    it("distinguishes self-hosted from third-party in meter events", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+
+      socket.register(
+        stubAdapter({
+          name: "chatterbox-tts",
+          capabilities: ["tts"],
+          selfHosted: true,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
+              cost: 0.002,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      socket.register(
+        stubAdapter({
+          name: "elevenlabs",
+          capabilities: ["tts"],
+          selfHosted: false,
+          async synthesizeSpeech() {
+            return {
+              result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
+              cost: 0.015,
+            } satisfies AdapterResult<TTSOutput>;
+          },
+        }),
+      );
+
+      // Call self-hosted
+      await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "hello" },
+        pricingTier: "standard",
+      });
+
+      // Call third-party
+      await socket.execute<TTSOutput>({
+        tenantId: "t-1",
+        capability: "tts",
+        input: { text: "hello" },
+        pricingTier: "premium",
+      });
+
+      expect(meter.events).toHaveLength(2);
+      expect(meter.events[0].provider).toBe("chatterbox-tts");
+      expect(meter.events[0].cost).toBe(0.002);
+      expect(meter.events[1].provider).toBe("elevenlabs");
+      expect(meter.events[1].cost).toBe(0.015);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // execute -- metering
   // ---------------------------------------------------------------------------
 
