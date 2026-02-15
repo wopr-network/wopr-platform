@@ -8,12 +8,6 @@ import { NodeConnectionManager, type NodeRegistration } from "../../fleet/node-c
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
 
-// Require NODE_SECRET to be set for security
-if (!process.env.NODE_SECRET) {
-  throw new Error("NODE_SECRET environment variable is required for node authentication");
-}
-const NODE_SECRET = process.env.NODE_SECRET;
-
 /** Lazy-initialized database and node connection manager */
 let _db: ReturnType<typeof drizzle<typeof dbSchema>> | null = null;
 let _nodeConnections: NodeConnectionManager | null = null;
@@ -36,11 +30,14 @@ function getNodeConnections() {
 
 /**
  * Validate node authentication
+ * Returns true if valid, false if invalid credentials, null if NODE_SECRET not configured
  */
-function validateNodeAuth(authHeader: string | undefined): boolean {
+function validateNodeAuth(authHeader: string | undefined): boolean | null {
+  const nodeSecret = process.env.NODE_SECRET;
+  if (!nodeSecret) return null; // Not configured
   if (!authHeader) return false;
   const token = authHeader.replace(/^Bearer\s+/i, "");
-  return token === NODE_SECRET;
+  return token === nodeSecret;
 }
 
 /**
@@ -54,7 +51,12 @@ export const internalNodeRoutes = new Hono();
  */
 internalNodeRoutes.post("/register", async (c) => {
   const authHeader = c.req.header("Authorization");
-  if (!validateNodeAuth(authHeader)) {
+  const authResult = validateNodeAuth(authHeader);
+
+  if (authResult === null) {
+    return c.json({ success: false, error: "Node management not configured" }, 503);
+  }
+  if (authResult === false) {
     return c.json({ success: false, error: "Unauthorized" }, 401);
   }
 
@@ -91,8 +93,14 @@ internalNodeRoutes.post("/register", async (c) => {
  *   if (match) {
  *     const nodeId = match[1];
  *     const authHeader = req.headers.authorization;
+ *     const authResult = validateNodeAuth(authHeader);
  *
- *     if (!validateNodeAuth(authHeader)) {
+ *     if (authResult === null) {
+ *       socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+ *       socket.destroy();
+ *       return;
+ *     }
+ *     if (authResult === false) {
  *       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
  *       socket.destroy();
  *       return;
