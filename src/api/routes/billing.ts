@@ -12,7 +12,7 @@ import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
-import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
+import { handleWebhookEvent, WebhookReplayGuard } from "../../monetization/stripe/webhook.js";
 
 export interface BillingRouteDeps {
   stripe: Stripe;
@@ -68,6 +68,10 @@ let meterAggregator: MeterAggregator | null = null;
 let usageReporter: StripeUsageReporter | null = null;
 let priceMap: CreditPriceMap | null = null;
 
+/** Reject webhook events with timestamps older than 5 minutes (in seconds). */
+const WEBHOOK_TIMESTAMP_TOLERANCE = 300;
+let replayGuard: WebhookReplayGuard | undefined;
+
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
@@ -76,6 +80,7 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
+  replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
 }
 
 function getDeps(): BillingRouteDeps {
@@ -210,7 +215,7 @@ billingRoutes.post("/webhook", async (c) => {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret, WEBHOOK_TIMESTAMP_TOLERANCE);
   } catch (err) {
     logger.error("Webhook signature verification failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -221,9 +226,17 @@ billingRoutes.post("/webhook", async (c) => {
   const store = getTenantStore();
   const ledger = getCreditLedger();
   const result = handleWebhookEvent(
-    { tenantStore: store, creditLedger: ledger, priceMap: priceMap ?? undefined },
+    { tenantStore: store, creditLedger: ledger, priceMap: priceMap ?? undefined, replayGuard },
     event,
   );
+
+  if (result.duplicate) {
+    logger.warn("Webhook replay attempt detected", {
+      eventId: event.id,
+      eventType: event.type,
+      ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "unknown",
+    });
+  }
 
   return c.json(result, 200);
 });

@@ -376,6 +376,7 @@ describe("billing routes", () => {
 
     it("processes checkout.session.completed and credits the ledger", async () => {
       const checkoutEvent: Stripe.Event = {
+        id: "evt_checkout_1",
         type: "checkout.session.completed",
         data: {
           object: {
@@ -416,6 +417,7 @@ describe("billing routes", () => {
 
     it("returns handled=false for subscription events (no longer handled)", async () => {
       const subEvent: Stripe.Event = {
+        id: "evt_sub_update_1",
         type: "customer.subscription.updated",
         data: { object: { id: "sub_123", customer: "cus_123" } },
       } as unknown as Stripe.Event;
@@ -436,8 +438,71 @@ describe("billing routes", () => {
       expect(body.event_type).toBe("customer.subscription.updated");
     });
 
+    it("rejects replayed webhook events with duplicate flag", async () => {
+      const checkoutEvent: Stripe.Event = {
+        id: "evt_replay_test",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_replay_route",
+            client_reference_id: "t-replay",
+            customer: "cus_replay",
+            amount_total: 500,
+            metadata: {},
+          },
+        },
+      } as unknown as Stripe.Event;
+
+      const constructEvent = vi.fn().mockReturnValue(checkoutEvent);
+      const mockStripe = createMockStripe({ constructEvent });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      // First request — should process normally
+      const res1 = await billingRoutes.request("/webhook", {
+        method: "POST",
+        body: "raw-body",
+        headers: { "stripe-signature": "t=123,v1=valid" },
+      });
+      expect(res1.status).toBe(200);
+      const body1 = await res1.json();
+      expect(body1.handled).toBe(true);
+      expect(body1.creditedCents).toBe(500);
+      expect(body1.duplicate).toBeUndefined();
+
+      // Replay — same event ID, should be flagged as duplicate
+      const res2 = await billingRoutes.request("/webhook", {
+        method: "POST",
+        body: "raw-body",
+        headers: { "stripe-signature": "t=123,v1=valid" },
+      });
+      expect(res2.status).toBe(200); // Idempotent 200, not 4xx
+      const body2 = await res2.json();
+      expect(body2.handled).toBe(true);
+      expect(body2.duplicate).toBe(true);
+    });
+
+    it("passes timestamp tolerance to constructEvent", async () => {
+      const constructEvent = vi.fn().mockReturnValue({
+        id: "evt_tolerance_test",
+        type: "payment_intent.succeeded",
+        data: { object: {} },
+      });
+      const mockStripe = createMockStripe({ constructEvent });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      await billingRoutes.request("/webhook", {
+        method: "POST",
+        body: "raw-body",
+        headers: { "stripe-signature": "t=123,v1=valid" },
+      });
+
+      // Verify constructEvent was called with 4 args (body, sig, secret, tolerance)
+      expect(constructEvent).toHaveBeenCalledWith("raw-body", "t=123,v1=valid", "whsec_test", 300);
+    });
+
     it("returns handled=false for unrecognized event types", async () => {
       const unknownEvent: Stripe.Event = {
+        id: "evt_unknown_type_1",
         type: "payment_intent.succeeded",
         data: { object: {} },
       } as unknown as Stripe.Event;
