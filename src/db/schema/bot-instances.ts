@@ -16,6 +16,8 @@ export const botInstances = sqliteTable(
     tenantId: text("tenant_id").notNull(),
     /** Bot display name */
     name: text("name").notNull(),
+    /** Node where this bot is deployed (for recovery tracking) */
+    nodeId: text("node_id"),
     /**
      * Billing lifecycle state:
      * - 'active': running, consuming credits daily
@@ -36,5 +38,6 @@ export const botInstances = sqliteTable(
     index("idx_bot_instances_tenant").on(table.tenantId),
     index("idx_bot_instances_billing_state").on(table.billingState),
     index("idx_bot_instances_destroy_after").on(table.destroyAfter),
+    index("idx_bot_instances_node").on(table.nodeId),
   ],
 );

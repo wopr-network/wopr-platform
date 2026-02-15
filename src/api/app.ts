@@ -10,11 +10,13 @@ import type { TRPCContext } from "../trpc/init.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { adminBackupRoutes } from "./routes/admin-backups.js";
 import { adminCreditRoutes } from "./routes/admin-credits.js";
+import { adminNodeRoutes, adminRecoveryRoutes } from "./routes/admin-recovery.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
 import { fleetRoutes } from "./routes/fleet.js";
 import { friendsRoutes } from "./routes/friends.js";
 import { healthRoutes } from "./routes/health.js";
+import { internalNodeRoutes } from "./routes/internal-nodes.js";
 import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { snapshotRoutes } from "./routes/snapshots.js";
@@ -59,8 +61,11 @@ app.route("/api/audit", auditRoutes);
 app.route("/api/admin/audit", adminAuditRoutes);
 app.route("/api/admin/backups", adminBackupRoutes);
 app.route("/api/admin/credits", adminCreditRoutes);
+app.route("/api/admin/recovery", adminRecoveryRoutes);
+app.route("/api/admin/nodes", adminNodeRoutes);
 app.route("/api/tenant-keys", tenantKeyRoutes);
 app.route("/auth", verifyEmailRoutes);
+app.route("/internal/nodes", internalNodeRoutes);
 
 // Gateway routes — /v1/* endpoints for bot-facing API.
 // These use service key auth (not session cookies), so they are mounted

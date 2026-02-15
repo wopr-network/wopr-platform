@@ -1,7 +1,7 @@
 import { hostname, networkInterfaces, totalmem } from "node:os";
 import { WebSocket } from "ws";
 import { logger } from "../config/logger.js";
-import { BackupManager } from "./backup.js";
+import { BackupManager, HotBackupScheduler } from "./backup.js";
 import { DockerManager } from "./docker.js";
 import { HealthMonitor } from "./health.js";
 import { collectHeartbeat } from "./heartbeat.js";
@@ -36,6 +36,7 @@ export class NodeAgent {
   private readonly config: NodeAgentConfig;
   private readonly dockerManager: DockerManager;
   private readonly backupManager: BackupManager;
+  private readonly hotBackupScheduler: HotBackupScheduler;
   private readonly healthMonitor: HealthMonitor;
 
   private ws: WebSocket | null = null;
@@ -47,6 +48,7 @@ export class NodeAgent {
     this.config = config;
     this.dockerManager = dockerManager ?? new DockerManager();
     this.backupManager = new BackupManager(this.dockerManager, config.backupDir, config.s3Bucket);
+    this.hotBackupScheduler = new HotBackupScheduler(this.dockerManager, config.backupDir, config.s3Bucket);
     this.healthMonitor = new HealthMonitor(this.dockerManager, config.nodeId, (event) => this.sendHealthEvent(event));
   }
 
@@ -58,12 +60,14 @@ export class NodeAgent {
     await this.register();
     this.connect();
     await this.healthMonitor.start();
+    this.hotBackupScheduler.start();
   }
 
   /** Gracefully shut down the agent. */
   stop(): void {
     this.stopped = true;
     this.healthMonitor.stop();
+    this.hotBackupScheduler.stop();
 
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
@@ -280,6 +284,9 @@ export class NodeAgent {
 
       case "backup.run-nightly":
         return this.backupManager.runNightly();
+
+      case "backup.run-hot":
+        return this.hotBackupScheduler.runHotBackup();
 
       default:
         throw new Error(`Unhandled command: ${command.type}`);
