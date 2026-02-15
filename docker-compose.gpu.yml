@@ -41,7 +41,7 @@ services:
       - --port
       - "8080"
       - --model
-      - /models/${LLAMA_MODEL_FILE}
+      - /models/${LLAMA_MODEL_FILE:-Meta-Llama-3.1-8B-Instruct-Q8_0.gguf}
       - --ctx-size
       - "${LLAMA_CTX_SIZE:-4096}"
       - --n-gpu-layers
@@ -75,7 +75,7 @@ services:
       - --port
       - "8080"
       - --model
-      - /models/${EMBEDDINGS_MODEL_FILE}
+      - /models/${EMBEDDINGS_MODEL_FILE:-qwen2-0_5b-instruct-q8_0.gguf}
       - --ctx-size
       - "${EMBEDDINGS_CTX_SIZE:-8192}"
       - --n-gpu-layers
@@ -94,7 +94,7 @@ services:
 
   chatterbox:
     <<: *gpu-common
-    image: travisvn/chatterbox-tts-api:latest
+    image: travisvn/chatterbox-tts-api:v1.0.1
     container_name: wopr-chatterbox
     restart: unless-stopped
     env_file: .env.gpu
@@ -115,7 +115,7 @@ services:
 
   whisper:
     <<: *gpu-common
-    image: fedirz/faster-whisper-server:latest-cuda
+    image: fedirz/faster-whisper-server:0.6.0-rc.3-cuda
     container_name: wopr-whisper
     restart: unless-stopped
     env_file: .env.gpu
