@@ -1,5 +1,5 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import yaml from "js-yaml";
 import { type BotProfile, botProfileSchema } from "./types.js";
 
@@ -23,7 +23,7 @@ export class ProfileStore {
     // Path resolution - safety net against traversal
     const resolved = resolve(this.dataDir, `${id}.yaml`);
     const baseDir = resolve(this.dataDir);
-    if (!resolved.startsWith(baseDir + "/") && resolved !== baseDir) {
+    if (!resolved.startsWith(`${baseDir}${sep}`) && resolved !== baseDir) {
       throw new Error(`Path traversal detected: ${id}`);
     }
 
@@ -42,15 +42,9 @@ export class ProfileStore {
       const content = await readFile(filePath, "utf-8");
       const raw = yaml.load(content, { schema: yaml.JSON_SCHEMA });
       return botProfileSchema.parse(raw);
-    } catch (err) {
+    } catch {
       // Only catch file system errors (file not found, permission denied, etc.)
-      // Let validation errors propagate
-      if (err instanceof Error && err.message.includes("Invalid profile ID")) {
-        throw err;
-      }
-      if (err instanceof Error && err.message.includes("Path traversal")) {
-        throw err;
-      }
+      // safePath() validation errors propagate before try block
       return null;
     }
   }
@@ -76,15 +70,9 @@ export class ProfileStore {
     try {
       await rm(filePath);
       return true;
-    } catch (err) {
+    } catch {
       // Only catch file system errors
-      // Let validation errors propagate
-      if (err instanceof Error && err.message.includes("Invalid profile ID")) {
-        throw err;
-      }
-      if (err instanceof Error && err.message.includes("Path traversal")) {
-        throw err;
-      }
+      // safePath() validation errors propagate before try block
       return false;
     }
   }
