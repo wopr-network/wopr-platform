@@ -77,6 +77,7 @@ export const ALLOWED_COMMANDS = [
   "backup.upload",
   "backup.download",
   "backup.run-nightly",
+  "backup.run-hot",
 ] as const;
 
 export type CommandType = (typeof ALLOWED_COMMANDS)[number];

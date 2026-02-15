@@ -1,7 +1,10 @@
 import { serve } from "@hono/node-server";
+import { WebSocketServer } from "ws";
 import { app } from "./api/app.js";
+import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
+import { getHeartbeatWatchdog, getNodeConnections } from "./fleet/services.js";
 
 const port = config.port;
 
@@ -33,8 +36,53 @@ export const uncaughtExceptionHandler = (err: Error, origin: string) => {
 process.on("unhandledRejection", unhandledRejectionHandler);
 process.on("uncaughtException", uncaughtExceptionHandler);
 
-logger.info(`wopr-platform starting on port ${port}`);
+// Only start the server if not imported by tests
+if (process.env.NODE_ENV !== "test") {
+  logger.info(`wopr-platform starting on port ${port}`);
 
-serve({ fetch: app.fetch, port }, () => {
-  logger.info(`wopr-platform listening on http://0.0.0.0:${port}`);
-});
+  // Start heartbeat watchdog
+  getHeartbeatWatchdog().start();
+
+  const server = serve({ fetch: app.fetch, port }, () => {
+    logger.info(`wopr-platform listening on http://0.0.0.0:${port}`);
+  });
+
+  // Set up WebSocket server for node agent connections
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (req, socket, head) => {
+    try {
+      const url = new URL(req.url || "", `http://${req.headers.host}`);
+      const pathname = url.pathname;
+      const match = pathname.match(/^\/internal\/nodes\/([^/]+)\/ws$/);
+
+      if (match) {
+        const nodeId = match[1];
+        const authHeader = req.headers.authorization;
+
+        const authResult = validateNodeAuth(authHeader);
+        if (authResult === null) {
+          // NODE_SECRET not configured — node management disabled
+          socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+        if (!authResult) {
+          // Invalid secret
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          getNodeConnections().handleWebSocket(nodeId, ws);
+        });
+      } else {
+        socket.destroy();
+      }
+    } catch (err) {
+      logger.error("WebSocket upgrade error", { err });
+      socket.destroy();
+    }
+  });
+}
