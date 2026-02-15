@@ -23,13 +23,9 @@ export const nodes = sqliteTable(
     /** Unix epoch seconds of last heartbeat */
     lastHeartbeatAt: integer("last_heartbeat_at"),
     /** Unix epoch seconds when node was registered */
-    registeredAt: integer("registered_at")
-      .notNull()
-      .default(sql`(unixepoch())`),
+    registeredAt: integer("registered_at").notNull().default(sql`(unixepoch())`),
     /** Unix epoch seconds when node was last updated */
-    updatedAt: integer("updated_at")
-      .notNull()
-      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
   },
   (table) => [index("idx_nodes_status").on(table.status)],
 );

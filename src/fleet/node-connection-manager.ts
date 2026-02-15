@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { WebSocket } from "ws";
 import { logger } from "../config/logger.js";
-import * as schema from "../db/schema/index.js";
+import type * as schema from "../db/schema/index.js";
 import { botInstances, nodes } from "../db/schema/index.js";
 
 /** Node registration request body */
@@ -218,11 +218,7 @@ export class NodeConnectionManager {
   /**
    * Send a command to a node agent and return the result
    */
-  async sendCommand(
-    nodeId: string,
-    command: Omit<Command, "id">,
-    timeoutMs = 60_000,
-  ): Promise<CommandResult> {
+  async sendCommand(nodeId: string, command: Omit<Command, "id">, timeoutMs = 60_000): Promise<CommandResult> {
     const ws = this.connections.get(nodeId);
     if (!ws || ws.readyState !== 1 /* OPEN */) {
       throw new Error(`Node ${nodeId} is not connected`);

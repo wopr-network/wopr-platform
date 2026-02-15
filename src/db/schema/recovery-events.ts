@@ -30,10 +30,7 @@ export const recoveryEvents = sqliteTable(
     /** Full recovery report as JSON */
     reportJson: text("report_json"),
   },
-  (table) => [
-    index("idx_recovery_events_node").on(table.nodeId),
-    index("idx_recovery_events_status").on(table.status),
-  ],
+  (table) => [index("idx_recovery_events_node").on(table.nodeId), index("idx_recovery_events_status").on(table.status)],
 );
 
 /**

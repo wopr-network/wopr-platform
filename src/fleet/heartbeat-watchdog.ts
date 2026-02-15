@@ -1,7 +1,7 @@
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { eq, inArray } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import * as schema from "../db/schema/index.js";
+import type * as schema from "../db/schema/index.js";
 import { nodes } from "../db/schema/index.js";
 import type { RecoveryManager } from "./recovery-manager.js";
 

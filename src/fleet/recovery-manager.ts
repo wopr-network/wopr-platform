@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { eq } from "drizzle-orm";
 import { logger } from "../config/logger.js";
-import * as schema from "../db/schema/index.js";
-import { nodes, recoveryEvents, recoveryItems } from "../db/schema/index.js";
-import type { RecoveryReport } from "./admin-notifier.js";
-import { AdminNotifier } from "./admin-notifier.js";
+import type * as schema from "../db/schema/index.js";
+import { botInstances, nodes, recoveryEvents, recoveryItems, tenantCustomers } from "../db/schema/index.js";
+import type { AdminNotifier, RecoveryReport } from "./admin-notifier.js";
 import type { NodeConnectionManager, TenantAssignment } from "./node-connection-manager.js";
 
 /**
@@ -73,6 +72,40 @@ export class RecoveryManager {
   }
 
   /**
+   * Get tenants assigned to a node with tier priority sorting
+   * Priority: enterprise > pro > starter > free
+   */
+  private getTenantsWithTierPriority(nodeId: string): TenantAssignment[] {
+    const instances = this.db
+      .select({
+        id: botInstances.id,
+        tenantId: botInstances.tenantId,
+        name: botInstances.name,
+        tier: tenantCustomers.tier,
+      })
+      .from(botInstances)
+      .leftJoin(tenantCustomers, eq(botInstances.tenantId, tenantCustomers.tenant))
+      .where(eq(botInstances.nodeId, nodeId))
+      .orderBy(
+        sql`CASE ${tenantCustomers.tier}
+          WHEN 'enterprise' THEN 1
+          WHEN 'pro' THEN 2
+          WHEN 'starter' THEN 3
+          ELSE 4
+        END`,
+      )
+      .all();
+
+    return instances.map((inst) => ({
+      id: inst.id,
+      tenantId: inst.tenantId,
+      name: inst.name,
+      containerName: `tenant_${inst.tenantId}`,
+      estimatedMb: 100, // Default estimate; can be refined from heartbeat data
+    }));
+  }
+
+  /**
    * Trigger recovery of all tenants on a dead node
    */
   async triggerRecovery(deadNodeId: string, trigger: "heartbeat_timeout" | "manual"): Promise<RecoveryReport> {
@@ -84,12 +117,8 @@ export class RecoveryManager {
     // 1. Mark node as "recovering"
     this.db.update(nodes).set({ status: "recovering" }).where(eq(nodes.id, deadNodeId)).run();
 
-    // 2. Get all tenants assigned to this node
-    const tenants = this.nodeConnections.getNodeTenants(deadNodeId);
-
-    // TODO: Sort by tier priority (enterprise > pro > starter > free)
-    // For now, just sort by creation order
-    tenants.sort((a, b) => a.name.localeCompare(b.name));
+    // 2. Get all tenants assigned to this node with tier priority
+    const tenants = this.getTenantsWithTierPriority(deadNodeId);
 
     // 3. Create recovery_events record
     this.db
@@ -176,7 +205,7 @@ export class RecoveryManager {
     if (!target) {
       logger.warn(`No capacity available for tenant ${tenant.name}`, { eventId, itemId });
       report.waiting.push({ tenant: tenant.id, reason: "no_capacity" });
-      this.recordItem(eventId, itemId, tenant, null, "waiting", "no_capacity", now);
+      this.recordItem(eventId, itemId, tenant, deadNodeId, null, "waiting", "no_capacity", now);
       return;
     }
 
@@ -193,12 +222,17 @@ export class RecoveryManager {
       // c. Import and start on target node
       logger.debug(`Importing ${tenant.name} on node ${target.id}`);
 
+      // TODO: Retrieve image/env from bot profile metadata instead of hardcoding
+      // Should query fleet profile store or bot_instances metadata when available
+      const image = "ghcr.io/wopr-network/wopr:latest";
+      const env = {};
+
       await this.nodeConnections.sendCommand(target.id, {
         type: "bot.import",
         payload: {
           name: tenant.containerName,
-          image: "ghcr.io/wopr-network/wopr:latest", // Default image; can be refined
-          env: {}, // Default env; can be refined from tenant metadata
+          image,
+          env,
         },
       });
 
@@ -218,12 +252,12 @@ export class RecoveryManager {
 
       logger.info(`Recovered tenant ${tenant.name} to node ${target.id}`, { eventId, itemId });
       report.recovered.push({ tenant: tenant.id, target: target.id });
-      this.recordItem(eventId, itemId, tenant, target.id, "recovered", null, now);
+      this.recordItem(eventId, itemId, tenant, deadNodeId, target.id, "recovered", null, now);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.error(`Failed to recover tenant ${tenant.name}`, { eventId, itemId, err: reason });
       report.failed.push({ tenant: tenant.id, reason });
-      this.recordItem(eventId, itemId, tenant, target?.id, "failed", reason, now);
+      this.recordItem(eventId, itemId, tenant, deadNodeId, target?.id, "failed", reason, now);
     }
   }
 
@@ -234,6 +268,7 @@ export class RecoveryManager {
     eventId: string,
     itemId: string,
     tenant: TenantAssignment,
+    sourceNodeId: string,
     targetNodeId: string | null,
     status: string,
     reason: string | null,
@@ -247,7 +282,7 @@ export class RecoveryManager {
         id: itemId,
         recoveryEventId: eventId,
         tenant: tenant.tenantId,
-        sourceNode: tenant.id, // This should be the source node, but TenantAssignment doesn't have it
+        sourceNode: sourceNodeId,
         targetNode: targetNodeId,
         backupKey,
         status,
