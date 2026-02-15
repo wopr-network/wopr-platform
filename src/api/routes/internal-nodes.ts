@@ -7,7 +7,12 @@ import * as dbSchema from "../../db/schema/index.js";
 import { NodeConnectionManager, type NodeRegistration } from "../../fleet/node-connection-manager.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
-const NODE_SECRET = process.env.NODE_SECRET || "";
+
+// Require NODE_SECRET to be set for security
+if (!process.env.NODE_SECRET) {
+  throw new Error("NODE_SECRET environment variable is required for node authentication");
+}
+const NODE_SECRET = process.env.NODE_SECRET;
 
 /** Lazy-initialized database and node connection manager */
 let _db: ReturnType<typeof drizzle<typeof dbSchema>> | null = null;
