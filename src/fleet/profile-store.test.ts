@@ -1,6 +1,6 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { ProfileStore } from "./profile-store.js";
 import type { BotProfile } from "./types.js";
 
@@ -79,58 +79,42 @@ describe("ProfileStore Path Traversal Protection", () => {
   describe("Path Traversal Attacks", () => {
     test("should reject Unix path traversal (../../etc/passwd)", async () => {
       const maliciousId = "../../etc/passwd";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject Windows path traversal (..\\..\\windows\\system32)", async () => {
       const maliciousId = "..\\..\\windows\\system32";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject mixed path separators (../..\\etc/passwd)", async () => {
       const maliciousId = "../..\\etc/passwd";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject absolute paths (/etc/passwd)", async () => {
       const maliciousId = "/etc/passwd";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject Windows absolute paths (C:\\windows\\system32)", async () => {
       const maliciousId = "C:\\windows\\system32";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject URL-encoded traversal (%2e%2e%2f)", async () => {
       const maliciousId = "%2e%2e%2f%2e%2e%2fetc%2fpasswd";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject null byte injection (../../etc/passwd\\0)", async () => {
       const maliciousId = "../../etc/passwd\0.yaml";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject path traversal in delete()", async () => {
       const maliciousId = "../../etc/passwd";
-      await expect(store.delete(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.delete(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject path traversal in save()", async () => {
@@ -145,30 +129,22 @@ describe("ProfileStore Path Traversal Protection", () => {
         releaseChannel: "stable",
         updatePolicy: "manual",
       };
-      await expect(store.save(profile)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.save(profile)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
   });
 
   describe("Invalid ID Formats", () => {
     test("should reject empty string", async () => {
-      await expect(store.get("")).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get("")).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject non-UUID string", async () => {
-      await expect(store.get("not-a-uuid")).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get("not-a-uuid")).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject UUID with wrong segment lengths", async () => {
       const invalidId = "a1b2c3d4-e5f6-7890-abcd-ef12345678901"; // one extra char
-      await expect(store.get(invalidId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(invalidId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject UUID with invalid characters", async () => {
@@ -183,16 +159,12 @@ describe("ProfileStore Path Traversal Protection", () => {
 
     test("should reject SQL injection attempt", async () => {
       const maliciousId = "'; DROP TABLE profiles; --";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject command injection attempt", async () => {
       const maliciousId = "; rm -rf /";
-      await expect(store.get(maliciousId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(maliciousId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
   });
 
