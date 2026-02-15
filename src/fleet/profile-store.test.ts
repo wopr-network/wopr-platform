@@ -173,16 +173,12 @@ describe("ProfileStore Path Traversal Protection", () => {
 
     test("should reject UUID with invalid characters", async () => {
       const invalidId = "a1b2c3d4-e5f6-7890-abcd-ef12345678gg"; // 'gg' not hex
-      await expect(store.get(invalidId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(invalidId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject UUID missing dashes", async () => {
       const invalidId = "a1b2c3d4e5f67890abcdef1234567890";
-      await expect(store.get(invalidId)).rejects.toThrow(
-        "Invalid profile ID: must be a UUID"
-      );
+      await expect(store.get(invalidId)).rejects.toThrow("Invalid profile ID: must be a UUID");
     });
 
     test("should reject SQL injection attempt", async () => {
