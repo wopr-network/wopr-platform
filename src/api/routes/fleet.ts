@@ -280,7 +280,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
 
   // Payment gate (WOP-380): require minimum 17 cents to start a bot
   try {
-    const balance = getCreditLedger().balance(profile!.tenantId);
+    const balance = getCreditLedger().balance(profile?.tenantId);
     if (balance < 17) {
       return c.json(
         {

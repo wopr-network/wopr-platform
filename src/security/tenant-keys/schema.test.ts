@@ -221,7 +221,7 @@ describe("TenantKeyStore", () => {
 
       const record = store.get("t1", "anthropic");
       expect(record?.label).toBe("New");
-      expect(JSON.parse(record!.encrypted_key).ciphertext).toBe("newdata");
+      expect(JSON.parse(record?.encrypted_key ?? "{}").ciphertext).toBe("newdata");
     });
 
     it("sets created_at and updated_at timestamps", () => {
@@ -241,7 +241,7 @@ describe("TenantKeyStore", () => {
       store.upsert("t1", "anthropic", fakeEncrypted);
       const record = store.get("t1", "anthropic");
       expect(record?.encrypted_key).toBeTruthy();
-      const parsed = JSON.parse(record!.encrypted_key);
+      const parsed = JSON.parse(record?.encrypted_key ?? "{}");
       expect(parsed.iv).toBe(fakeEncrypted.iv);
       expect(parsed.authTag).toBe(fakeEncrypted.authTag);
       expect(parsed.ciphertext).toBe(fakeEncrypted.ciphertext);

@@ -23,9 +23,9 @@ describe("TenantCustomerStore", () => {
       const row = store.getByTenant("t-1");
 
       expect(row).not.toBeNull();
-      expect(row!.tenant).toBe("t-1");
-      expect(row!.stripe_customer_id).toBe("cus_abc");
-      expect(row!.tier).toBe("free");
+      expect(row?.tenant).toBe("t-1");
+      expect(row?.stripe_customer_id).toBe("cus_abc");
+      expect(row?.tier).toBe("free");
     });
 
     it("updates existing mapping on conflict", () => {
@@ -33,7 +33,7 @@ describe("TenantCustomerStore", () => {
       store.upsert({ tenant: "t-1", stripeCustomerId: "cus_new" });
 
       const row = store.getByTenant("t-1");
-      expect(row!.stripe_customer_id).toBe("cus_new");
+      expect(row?.stripe_customer_id).toBe("cus_new");
     });
 
     it("returns null for non-existent tenant", () => {
@@ -47,7 +47,7 @@ describe("TenantCustomerStore", () => {
       const row = store.getByStripeCustomerId("cus_lookup");
 
       expect(row).not.toBeNull();
-      expect(row!.tenant).toBe("t-1");
+      expect(row?.tenant).toBe("t-1");
     });
 
     it("returns null for unknown Stripe customer", () => {
@@ -61,7 +61,7 @@ describe("TenantCustomerStore", () => {
       store.setTier("t-1", "enterprise");
 
       const row = store.getByTenant("t-1");
-      expect(row!.tier).toBe("enterprise");
+      expect(row?.tier).toBe("enterprise");
     });
   });
 
