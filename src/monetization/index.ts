@@ -15,7 +15,8 @@
  * - stripe/    -- Stripe credit purchases (WOP-406)
  */
 
-// Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387)
+// Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387, WOP-497)
+export { type ChatterboxTTSAdapterConfig, createChatterboxTTSAdapter } from "./adapters/chatterbox-tts.js";
 export { createDeepgramAdapter, type DeepgramAdapterConfig } from "./adapters/deepgram.js";
 export { createElevenLabsAdapter, type ElevenLabsAdapterConfig } from "./adapters/elevenlabs.js";
 export { createGeminiAdapter, type GeminiAdapterConfig } from "./adapters/gemini.js";
@@ -30,7 +31,17 @@ export {
 } from "./adapters/margin-config.js";
 export { createNanoBananaAdapter, type NanoBananaAdapterConfig } from "./adapters/nano-banana.js";
 export { createOpenRouterAdapter, type OpenRouterAdapterConfig } from "./adapters/openrouter.js";
+// Two-tier rate table (WOP-497)
+export {
+  calculateSavings,
+  getRatesForCapability,
+  lookupRate,
+  RATE_TABLE,
+  type RateEntry,
+} from "./adapters/rate-table.js";
 export { createReplicateAdapter, type ReplicateAdapterConfig } from "./adapters/replicate.js";
+// Self-hosted adapter utilities (WOP-497)
+export { checkHealth, type FetchFn, type SelfHostedAdapterConfig } from "./adapters/self-hosted-base.js";
 export {
   type AdapterCapability,
   type AdapterResult,
