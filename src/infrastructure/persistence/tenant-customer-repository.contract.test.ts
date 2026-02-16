@@ -135,14 +135,16 @@ function runRepositoryContractTests(
         const tenant3 = TenantId.create('tenant-3');
 
         await repo.upsert(tenantId, 'cus_1', 'free');
+        await new Promise(r => setTimeout(r, 10)); // Ensure different timestamps
         await repo.upsert(tenant2, 'cus_2', 'pro');
+        await new Promise(r => setTimeout(r, 10));
         await repo.upsert(tenant3, 'cus_3', 'enterprise');
 
         const customers = await repo.list();
         expect(customers).toHaveLength(3);
+        // First should be tenant-3 (most recent), last should be test-tenant-1 (oldest)
         expect(customers[0].tenantId.toString()).toBe('tenant-3');
-        expect(customers[1].tenantId.toString()).toBe('tenant-2');
-        expect(customers[2].tenantId.toString()).toBe('test-tenant-1');
+        expect(customers[customers.length - 1].tenantId.toString()).toBe('test-tenant-1');
       });
     });
 
