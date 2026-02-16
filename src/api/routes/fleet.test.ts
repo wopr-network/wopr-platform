@@ -152,6 +152,24 @@ vi.mock("../../infrastructure/persistence/drizzle-credit-repository.js", () => {
   };
 });
 
+vi.mock("../../infrastructure/persistence/drizzle-bot-billing-repository.js", () => {
+  return {
+    DrizzleBotBillingRepository: class {
+      getActiveBotCount = vi.fn().mockResolvedValue(0);
+      getBotBilling = vi.fn().mockResolvedValue(null);
+      listForTenant = vi.fn().mockResolvedValue([]);
+      registerBot = vi.fn().mockResolvedValue(undefined);
+      suspendBot = vi.fn().mockResolvedValue(undefined);
+      reactivateBot = vi.fn().mockResolvedValue(undefined);
+      destroyBot = vi.fn().mockResolvedValue(undefined);
+      suspendAllForTenant = vi.fn().mockResolvedValue([]);
+      getSuspendedBots = vi.fn().mockResolvedValue([]);
+      destroyExpiredBots = vi.fn().mockResolvedValue([]);
+      assignToNode = vi.fn().mockResolvedValue(undefined);
+    },
+  };
+});
+
 // Import AFTER mocks are set up
 const { fleetRoutes, seedBots } = await import("./fleet.js");
 

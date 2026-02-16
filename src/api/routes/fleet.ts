@@ -15,7 +15,9 @@ import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { DrizzleBotBillingRepository } from "../../infrastructure/persistence/drizzle-bot-billing-repository.js";
 import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import type { BotBillingRepository } from "../../domain/repositories/bot-billing-repository.js";
 import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
@@ -69,9 +71,14 @@ export function setCreditRepo(repo: CreditRepository): void {
 let botBilling: BotBilling | null = null;
 function getBotBilling(): BotBilling {
   if (!botBilling) {
-    botBilling = new BotBilling(createDb(getBillingDb()));
+    const db = createDb(getBillingDb());
+    botBilling = new BotBilling(new DrizzleBotBillingRepository(db));
   }
   return botBilling;
+}
+
+export function setBotBillingRepo(repository: BotBillingRepository): void {
+  botBilling = new BotBilling(repository);
 }
 
 // Wire up the poller to trigger updates via the updater

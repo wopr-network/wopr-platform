@@ -17,6 +17,7 @@ import { initAdminUsersSchema } from "../../admin/users/schema.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
+import { InMemoryBotBillingRepository } from "../../infrastructure/persistence/in-memory-bot-billing-repository.js";
 import { appRouter } from "../../trpc/index.js";
 import type { TRPCContext } from "../../trpc/init.js";
 import { setAdminRouterDeps } from "../../trpc/routers/admin.js";
@@ -109,6 +110,7 @@ describe("admin tenant status tRPC routes", () => {
   let auditLog: AdminAuditLog;
   let creditStore: CreditAdjustmentStore;
   let botBilling: BotBilling;
+  let botBillingRepo: InMemoryBotBillingRepository;
 
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
@@ -118,7 +120,8 @@ describe("admin tenant status tRPC routes", () => {
     statusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(db);
     creditStore = new CreditAdjustmentStore(sqlite);
-    botBilling = new BotBilling(db);
+    botBillingRepo = new InMemoryBotBillingRepository();
+    botBilling = new BotBilling(botBillingRepo);
 
     setAdminRouterDeps({
       getAuditLog: () => auditLog,
@@ -205,8 +208,8 @@ describe("admin tenant status tRPC routes", () => {
 
     it("suspends all bots for the tenant", async () => {
       statusStore.ensureExists("tenant-1");
-      botBilling.registerBot("bot-1", "tenant-1", "bot-a");
-      botBilling.registerBot("bot-2", "tenant-1", "bot-b");
+      await botBilling.registerBot("bot-1", "tenant-1", "bot-a");
+      await botBilling.registerBot("bot-2", "tenant-1", "bot-b");
 
       const caller = createCaller(adminContext());
       const result = await caller.admin.suspendTenant({
@@ -215,7 +218,7 @@ describe("admin tenant status tRPC routes", () => {
       });
 
       expect(result.suspendedBots.sort()).toEqual(["bot-1", "bot-2"]);
-      expect(botBilling.getActiveBotCount("tenant-1")).toBe(0);
+      expect(await botBilling.getActiveBotCount("tenant-1")).toBe(0);
     });
 
     it("logs to audit log", async () => {

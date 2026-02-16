@@ -227,7 +227,7 @@ export const adminRouter = router({
         notifyByEmail: z.boolean().optional().default(false),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog, getBotBilling } = deps();
       const store = getTenantStatusStore();
@@ -254,7 +254,7 @@ export const adminRouter = router({
       // Suspend all bots for this tenant
       let suspendedBots: string[] = [];
       if (getBotBilling) {
-        suspendedBots = getBotBilling().suspendAllForTenant(input.tenantId);
+        suspendedBots = await getBotBilling().suspendAllForTenant(input.tenantId);
       }
 
       // Audit log
@@ -340,7 +340,7 @@ export const adminRouter = router({
         confirmName: z.string().min(1),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog, getCreditStore, getBotBilling } = deps();
       const store = getTenantStatusStore();
@@ -367,7 +367,7 @@ export const adminRouter = router({
       // Suspend all bots
       let suspendedBots: string[] = [];
       if (getBotBilling) {
-        suspendedBots = getBotBilling().suspendAllForTenant(input.tenantId);
+        suspendedBots = await getBotBilling().suspendAllForTenant(input.tenantId);
       }
 
       // Auto-refund remaining credits

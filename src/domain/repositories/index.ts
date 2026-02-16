@@ -5,3 +5,4 @@ export {
   type TransactionPage,
   InsufficientBalanceError,
 } from './credit-repository.js';
+export { BotBillingRepository } from './bot-billing-repository.js';
