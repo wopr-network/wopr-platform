@@ -1,7 +1,9 @@
 export * from "./admin-audit.js";
+export * from "./admin-users.js";
 export * from "./audit.js";
 export * from "./backup-status.js";
 export * from "./bot-instances.js";
+export * from "./credit-adjustments.js";
 export * from "./credits.js";
 export * from "./email-notifications.js";
 export * from "./meter-events.js";
@@ -10,4 +12,6 @@ export * from "./provider-credentials.js";
 export * from "./recovery-events.js";
 export * from "./snapshots.js";
 export * from "./stripe.js";
+export * from "./tenant-api-keys.js";
 export * from "./tenant-status.js";
+export * from "./user-roles.js";

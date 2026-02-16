@@ -1,8 +1,8 @@
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProfileRepository } from "../domain/repositories/profile-repository.js";
 import { FleetManager } from "./fleet-manager.js";
 import { getContainerDigest, ImagePoller, parseImageRef } from "./image-poller.js";
-import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile } from "./types.js";
 import { ContainerUpdater } from "./updater.js";
 
@@ -23,18 +23,16 @@ function makeProfile(overrides: Partial<BotProfile> = {}): BotProfile {
   };
 }
 
-function mockStore(profiles: BotProfile[] = []): ProfileStore {
+function mockStore(profiles: BotProfile[] = []): ProfileRepository {
   const map = new Map(profiles.map((p) => [p.id, p]));
   return {
-    init: vi.fn().mockResolvedValue(undefined),
     save: vi.fn().mockImplementation(async (p: BotProfile) => {
       map.set(p.id, p);
     }),
     get: vi.fn().mockImplementation(async (id: string) => map.get(id) ?? null),
     list: vi.fn().mockImplementation(async () => [...map.values()]),
     delete: vi.fn().mockImplementation(async (id: string) => map.delete(id)),
-    dataDir: "/tmp/test-fleet",
-  } as unknown as ProfileStore;
+  } as unknown as ProfileRepository;
 }
 
 function mockContainer(overrides: Record<string, unknown> = {}) {
@@ -136,7 +134,7 @@ describe("parseImageRef", () => {
 
 describe("ImagePoller", () => {
   let docker: ReturnType<typeof mockDocker>;
-  let store: ProfileStore;
+  let store: ProfileRepository;
   let container: ReturnType<typeof mockContainer>;
   let poller: ImagePoller;
 
@@ -368,7 +366,7 @@ describe("getContainerDigest", () => {
 
 describe("ContainerUpdater", () => {
   let docker: ReturnType<typeof mockDocker>;
-  let store: ProfileStore;
+  let store: ProfileRepository;
   let container: ReturnType<typeof mockContainer>;
   let fleet: FleetManager;
   let poller: ImagePoller;

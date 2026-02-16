@@ -3,8 +3,10 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
-import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { initTenantApiKeysSchema } from "../../db/schema/tenant-api-keys-init.js";
 import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { DrizzleTenantCustomerRepository } from "../../infrastructure/persistence/drizzle-tenant-customer-repository.js";
 import { initCreditSchema } from "../credits/schema.js";
 import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
@@ -20,7 +22,6 @@ import {
 } from "./credit-prices.js";
 import { createPortalSession } from "./portal.js";
 import { initStripeSchema } from "./schema.js";
-import { TenantCustomerStore } from "./tenant-store.js";
 import { StripeUsageReporter } from "./usage-reporter.js";
 import { handleWebhookEvent } from "./webhook.js";
 
@@ -29,6 +30,7 @@ function createTestDb() {
   initMeterSchema(sqlite);
   initStripeSchema(sqlite);
   initCreditAdjustmentSchema(sqlite);
+  initTenantApiKeysSchema(sqlite);
   const db = createDb(sqlite);
   return { sqlite, db };
 }
@@ -88,82 +90,78 @@ describe("initStripeSchema", () => {
   });
 });
 
-// -- TenantCustomerStore ----------------------------------------------------
+// -- DrizzleTenantCustomerRepository ----------------------------------------------------
 
-describe("TenantCustomerStore", () => {
+describe("DrizzleTenantCustomerRepository", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
-  let store: TenantCustomerStore;
+  let repo: DrizzleTenantCustomerRepository;
 
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
     db = testDb.db;
-    store = new TenantCustomerStore(db);
+    repo = new DrizzleTenantCustomerRepository(db);
   });
 
   afterEach(() => {
     sqlite.close();
   });
 
-  it("upsert creates a new mapping", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+  it("upsert creates a new mapping", async () => {
+    await repo.upsert(TenantId.create("t-1"), "cus_abc123");
 
-    const row = store.getByTenant("t-1");
+    const row = await repo.getByTenant(TenantId.create("t-1"));
     expect(row).toBeDefined();
-    expect(row?.stripe_customer_id).toBe("cus_abc123");
+    expect(row?.stripeCustomerId).toBe("cus_abc123");
     expect(row?.tier).toBe("free");
   });
 
-  it("upsert updates existing mapping", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
-    store.upsert({
-      tenant: "t-1",
-      stripeCustomerId: "cus_xyz789",
-      tier: "pro",
-    });
+  it("upsert updates existing mapping", async () => {
+    await repo.upsert(TenantId.create("t-1"), "cus_abc123");
+    await repo.upsert(TenantId.create("t-1"), "cus_xyz789", "pro");
 
-    const row = store.getByTenant("t-1");
-    expect(row?.stripe_customer_id).toBe("cus_xyz789");
+    const row = await repo.getByTenant(TenantId.create("t-1"));
+    expect(row?.stripeCustomerId).toBe("cus_xyz789");
     expect(row?.tier).toBe("pro");
   });
 
-  it("getByStripeCustomerId finds by customer ID", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+  it("getByStripeCustomerId finds by customer ID", async () => {
+    await repo.upsert(TenantId.create("t-1"), "cus_abc123");
 
-    const row = store.getByStripeCustomerId("cus_abc123");
-    expect(row?.tenant).toBe("t-1");
+    const row = await repo.getByStripeCustomerId("cus_abc123");
+    expect(row?.tenantId.toString()).toBe("t-1");
   });
 
-  it("getByTenant returns null for unknown tenant", () => {
-    expect(store.getByTenant("nonexistent")).toBeNull();
+  it("getByTenant returns null for unknown tenant", async () => {
+    expect(await repo.getByTenant(TenantId.create("nonexistent"))).toBeNull();
   });
 
-  it("getByStripeCustomerId returns null for unknown customer", () => {
-    expect(store.getByStripeCustomerId("cus_nonexistent")).toBeNull();
+  it("getByStripeCustomerId returns null for unknown customer", async () => {
+    expect(await repo.getByStripeCustomerId("cus_nonexistent")).toBeNull();
   });
 
-  it("setTier updates the tier", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123", tier: "pro" });
-    store.setTier("t-1", "free");
+  it("setTier updates the tier", async () => {
+    await repo.upsert(TenantId.create("t-1"), "cus_abc123", "pro");
+    await repo.setTier(TenantId.create("t-1"), "free");
 
-    const row = store.getByTenant("t-1");
+    const row = await repo.getByTenant(TenantId.create("t-1"));
     expect(row?.tier).toBe("free");
   });
 
-  it("list returns all mappings", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_1" });
-    store.upsert({ tenant: "t-2", stripeCustomerId: "cus_2" });
+  it("list returns all mappings", async () => {
+    await repo.upsert(TenantId.create("t-1"), "cus_1");
+    await repo.upsert(TenantId.create("t-2"), "cus_2");
 
-    const rows = store.list();
+    const rows = await repo.list();
     expect(rows).toHaveLength(2);
   });
 
-  it("buildCustomerIdMap returns tenant -> customer ID map", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_aaa" });
-    store.upsert({ tenant: "t-2", stripeCustomerId: "cus_bbb" });
+  it("buildCustomerIdMap returns tenant -> customer ID map", async () => {
+    await repo.upsert(TenantId.create("t-1"), "cus_aaa");
+    await repo.upsert(TenantId.create("t-2"), "cus_bbb");
 
-    const map = store.buildCustomerIdMap();
+    const map = await repo.buildCustomerIdMap();
     expect(map).toEqual({ "t-1": "cus_aaa", "t-2": "cus_bbb" });
   });
 });
@@ -175,7 +173,7 @@ describe("StripeUsageReporter", () => {
   let db: DrizzleDb;
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: DrizzleTenantCustomerRepository;
 
   const BILLING_PERIOD = 300_000; // 5 minutes
 
@@ -198,7 +196,7 @@ describe("StripeUsageReporter", () => {
       lateArrivalGraceMs: BILLING_PERIOD,
     });
     db = testDb.db;
-    tenantStore = new TenantCustomerStore(db);
+    tenantRepo = new DrizzleTenantCustomerRepository(db);
   });
 
   afterEach(() => {
@@ -212,7 +210,7 @@ describe("StripeUsageReporter", () => {
     const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
 
     // Set up tenant mapping.
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_stripe_t1");
 
     // Emit and aggregate usage.
     emitter.emit(makeEvent({ tenant: "t-1", charge: 0.5, timestamp: periodStart + 10_000 }));
@@ -221,7 +219,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     const count = await reporter.report();
 
@@ -242,7 +240,7 @@ describe("StripeUsageReporter", () => {
     const now = Date.now();
     const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
 
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_stripe_t1");
 
     emitter.emit(makeEvent({ tenant: "t-1", charge: 0.5, timestamp: periodStart + 10_000 }));
     emitter.flush();
@@ -250,7 +248,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     await reporter.report();
     const secondCount = await reporter.report();
@@ -270,7 +268,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -280,7 +278,7 @@ describe("StripeUsageReporter", () => {
   it("returns 0 when no unreported periods exist", async () => {
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -290,7 +288,7 @@ describe("StripeUsageReporter", () => {
     const now = Date.now();
     const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
 
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_stripe_t1");
 
     emitter.emit(makeEvent({ tenant: "t-1", capability: "embeddings", charge: 0.5, timestamp: periodStart + 10_000 }));
     emitter.emit(makeEvent({ tenant: "t-1", capability: "voice", charge: 1.0, timestamp: periodStart + 20_000 }));
@@ -299,7 +297,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     const count = await reporter.report();
     expect(count).toBe(2);
@@ -310,7 +308,7 @@ describe("StripeUsageReporter", () => {
     const now = Date.now();
     const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
 
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_stripe_t1");
 
     emitter.emit(makeEvent({ tenant: "t-1", capability: "embeddings", charge: 0.5, timestamp: periodStart + 10_000 }));
     emitter.emit(makeEvent({ tenant: "t-1", capability: "voice", charge: 1.0, timestamp: periodStart + 20_000 }));
@@ -319,7 +317,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockRejectedValue(new Error("Stripe API error"));
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     const count = await reporter.report();
     expect(count).toBe(0);
@@ -330,7 +328,7 @@ describe("StripeUsageReporter", () => {
     const now = Date.now();
     const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
 
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_stripe_t1");
 
     emitter.emit(makeEvent({ tenant: "t-1", charge: 0.5, timestamp: periodStart + 10_000 }));
     emitter.flush();
@@ -338,7 +336,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     await reporter.report();
 
@@ -353,7 +351,7 @@ describe("StripeUsageReporter", () => {
     const now = Date.now();
     const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
 
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_stripe_t1");
 
     emitter.emit(makeEvent({ tenant: "t-1", charge: 0.0, timestamp: periodStart + 10_000 }));
     emitter.flush();
@@ -361,7 +359,7 @@ describe("StripeUsageReporter", () => {
 
     const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo);
 
     const count = await reporter.report();
     expect(count).toBe(1); // Marked as reported
@@ -371,7 +369,7 @@ describe("StripeUsageReporter", () => {
   it("start/stop manages the periodic timer", () => {
     const mockCreate = vi.fn();
     const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore, { intervalMs: 60_000 });
+    const reporter = new StripeUsageReporter(db, stripe, tenantRepo, { intervalMs: 60_000 });
 
     reporter.start();
     reporter.start(); // Idempotent
@@ -384,12 +382,12 @@ describe("StripeUsageReporter", () => {
 
 describe("createCreditCheckoutSession", () => {
   let sqlite: BetterSqlite3.Database;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: DrizzleTenantCustomerRepository;
 
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    tenantStore = new TenantCustomerStore(testDb.db);
+    tenantRepo = new DrizzleTenantCustomerRepository(testDb.db);
   });
 
   afterEach(() => {
@@ -407,7 +405,7 @@ describe("createCreditCheckoutSession", () => {
     const sessionsCreate = vi.fn().mockResolvedValue(mockSession);
     const stripe = createMockStripe(sessionsCreate);
 
-    const result = await createCreditCheckoutSession(stripe, tenantStore, {
+    const result = await createCreditCheckoutSession(stripe, tenantRepo, {
       tenant: "t-1",
       priceId: "price_credit_25",
       successUrl: "https://example.com/success",
@@ -426,14 +424,14 @@ describe("createCreditCheckoutSession", () => {
   });
 
   it("reuses existing Stripe customer when mapping exists", async () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_existing" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_existing");
 
     const sessionsCreate = vi
       .fn()
       .mockResolvedValue({ id: "cs_test_456", url: "https://checkout.stripe.com/cs_test_456" });
     const stripe = createMockStripe(sessionsCreate);
 
-    await createCreditCheckoutSession(stripe, tenantStore, {
+    await createCreditCheckoutSession(stripe, tenantRepo, {
       tenant: "t-1",
       priceId: "price_credit_5",
       successUrl: "https://example.com/success",
@@ -449,7 +447,7 @@ describe("createCreditCheckoutSession", () => {
       .mockResolvedValue({ id: "cs_test_789", url: "https://checkout.stripe.com/cs_test_789" });
     const stripe = createMockStripe(sessionsCreate);
 
-    await createCreditCheckoutSession(stripe, tenantStore, {
+    await createCreditCheckoutSession(stripe, tenantRepo, {
       tenant: "t-new",
       priceId: "price_credit_10",
       successUrl: "https://example.com/success",
@@ -465,7 +463,7 @@ describe("createCreditCheckoutSession", () => {
     const stripe = createMockStripe(sessionsCreate);
 
     await expect(
-      createCreditCheckoutSession(stripe, tenantStore, {
+      createCreditCheckoutSession(stripe, tenantRepo, {
         tenant: "t-1",
         priceId: "price_credit_5",
         successUrl: "https://example.com/success",
@@ -511,12 +509,12 @@ describe("credit price points", () => {
 
 describe("createPortalSession", () => {
   let sqlite: BetterSqlite3.Database;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: DrizzleTenantCustomerRepository;
 
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    tenantStore = new TenantCustomerStore(testDb.db);
+    tenantRepo = new DrizzleTenantCustomerRepository(testDb.db);
   });
 
   afterEach(() => {
@@ -530,13 +528,13 @@ describe("createPortalSession", () => {
   }
 
   it("creates a portal session for existing customer", async () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc123");
 
     const mockSession = { url: "https://billing.stripe.com/session_xyz" };
     const portalCreate = vi.fn().mockResolvedValue(mockSession);
     const stripe = createMockStripe(portalCreate);
 
-    const result = await createPortalSession(stripe, tenantStore, {
+    const result = await createPortalSession(stripe, tenantRepo, {
       tenant: "t-1",
       returnUrl: "https://example.com/billing",
     });
@@ -553,7 +551,7 @@ describe("createPortalSession", () => {
     const stripe = createMockStripe(portalCreate);
 
     await expect(
-      createPortalSession(stripe, tenantStore, {
+      createPortalSession(stripe, tenantRepo, {
         tenant: "t-unknown",
         returnUrl: "https://example.com/billing",
       }),
@@ -563,13 +561,13 @@ describe("createPortalSession", () => {
   });
 
   it("propagates Stripe API errors", async () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc123");
 
     const portalCreate = vi.fn().mockRejectedValue(new Error("Portal config not found"));
     const stripe = createMockStripe(portalCreate);
 
     await expect(
-      createPortalSession(stripe, tenantStore, {
+      createPortalSession(stripe, tenantRepo, {
         tenant: "t-1",
         returnUrl: "https://example.com/billing",
       }),
@@ -581,14 +579,14 @@ describe("createPortalSession", () => {
 
 describe("handleWebhookEvent (credit model)", () => {
   let sqlite: BetterSqlite3.Database;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: DrizzleTenantCustomerRepository;
   let creditRepo: DrizzleCreditRepository;
 
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
     initCreditSchema(sqlite);
-    tenantStore = new TenantCustomerStore(testDb.db);
+    tenantRepo = new DrizzleTenantCustomerRepository(testDb.db);
     creditRepo = new DrizzleCreditRepository(testDb.db);
   });
 
@@ -610,7 +608,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
+    const result = await handleWebhookEvent({ tenantRepo, creditRepo }, event);
 
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-1");
@@ -621,8 +619,8 @@ describe("handleWebhookEvent (credit model)", () => {
     expect(balance.balance.toCents()).toBe(1000);
 
     // Verify tenant mapping was created
-    const mapping = tenantStore.getByTenant("t-1");
-    expect(mapping?.stripe_customer_id).toBe("cus_abc123");
+    const mapping = await tenantRepo.getByTenant(TenantId.create("t-1"));
+    expect(mapping?.stripeCustomerId).toBe("cus_abc123");
   });
 
   it("handles checkout.session.completed - uses metadata fallback", async () => {
@@ -639,7 +637,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
+    const result = await handleWebhookEvent({ tenantRepo, creditRepo }, event);
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-2");
     expect(result.creditedCents).toBe(500);
@@ -659,7 +657,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
+    const result = await handleWebhookEvent({ tenantRepo, creditRepo }, event);
     expect(result.handled).toBe(false);
   });
 
@@ -674,7 +672,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
+    const result = await handleWebhookEvent({ tenantRepo, creditRepo }, event);
     expect(result.handled).toBe(false);
   });
 
@@ -684,7 +682,7 @@ describe("handleWebhookEvent (credit model)", () => {
       data: { object: {} },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
+    const result = await handleWebhookEvent({ tenantRepo, creditRepo }, event);
     expect(result.handled).toBe(false);
     expect(result.event_type).toBe("payment_intent.succeeded");
   });
@@ -703,10 +701,10 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
+    const result = await handleWebhookEvent({ tenantRepo, creditRepo }, event);
     expect(result.handled).toBe(true);
-    const mapping = tenantStore.getByTenant("t-1");
-    expect(mapping?.stripe_customer_id).toBe("cus_abc123");
+    const mapping = await tenantRepo.getByTenant(TenantId.create("t-1"));
+    expect(mapping?.stripeCustomerId).toBe("cus_abc123");
   });
 });
 

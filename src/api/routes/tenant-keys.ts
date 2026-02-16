@@ -1,11 +1,14 @@
 import { createHmac } from "node:crypto";
 import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
+import * as dbSchema from "../../db/schema/index.js";
+import type { TenantKeyRepository } from "../../domain/repositories/tenant-key-repository.js";
+import { DrizzleTenantKeyRepository } from "../../infrastructure/persistence/drizzle-tenant-key-repository.js";
 import { encrypt } from "../../security/encryption.js";
-import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
 import { providerSchema } from "../../security/types.js";
 
 const DB_PATH = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
@@ -38,20 +41,21 @@ if (tokenMetadataMap.size === 0) {
 }
 tenantKeyRoutes.use("/*", scopedBearerAuthWithTenant(tokenMetadataMap, "write"));
 
-let store: TenantKeyStore | null = null;
+let repo: TenantKeyRepository | null = null;
 
-function getStore(): TenantKeyStore {
-  if (!store) {
+function getRepo(): TenantKeyRepository {
+  if (!repo) {
     const db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
-    store = new TenantKeyStore(db);
+    const drizzleDb = drizzle(db, { schema: dbSchema });
+    repo = new DrizzleTenantKeyRepository(drizzleDb);
   }
-  return store;
+  return repo;
 }
 
-/** Inject a TenantKeyStore for testing. */
-export function setStore(s: TenantKeyStore): void {
-  store = s;
+/** Inject a TenantKeyRepository for testing. */
+export function setRepo(r: TenantKeyRepository): void {
+  repo = r;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,13 +68,13 @@ export function setStore(s: TenantKeyStore): void {
  * List all API keys for the authenticated tenant.
  * Returns metadata only (never the encrypted key material).
  */
-tenantKeyRoutes.get("/", (c) => {
+tenantKeyRoutes.get("/", async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) {
     return c.json({ error: "Tenant context required" }, 400);
   }
 
-  const keys = getStore().listForTenant(tenantId);
+  const keys = await getRepo().listForTenant(tenantId);
   return c.json({ keys });
 });
 
@@ -80,7 +84,7 @@ tenantKeyRoutes.get("/", (c) => {
  * Check whether the tenant has a stored key for a specific provider.
  * Returns metadata only.
  */
-tenantKeyRoutes.get("/:provider", (c) => {
+tenantKeyRoutes.get("/:provider", async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) {
     return c.json({ error: "Tenant context required" }, 400);
@@ -92,7 +96,7 @@ tenantKeyRoutes.get("/:provider", (c) => {
     return c.json({ error: "Invalid provider", validProviders: providerSchema.options }, 400);
   }
 
-  const record = getStore().get(tenantId, parsed.data);
+  const record = await getRepo().get(tenantId, parsed.data);
   if (!record) {
     return c.json({ error: "No key stored for this provider" }, 404);
   }
@@ -100,11 +104,11 @@ tenantKeyRoutes.get("/:provider", (c) => {
   // Return metadata only, never the encrypted key
   return c.json({
     id: record.id,
-    tenant_id: record.tenant_id,
+    tenant_id: record.tenantId,
     provider: record.provider,
     label: record.label,
-    created_at: record.created_at,
-    updated_at: record.updated_at,
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
   });
 });
 
@@ -153,7 +157,7 @@ tenantKeyRoutes.put("/:provider", async (c) => {
   const tenantKey = deriveTenantKey(tenantId, PLATFORM_SECRET);
   const encryptedPayload = encrypt(parsed.data.apiKey, tenantKey);
 
-  const id = getStore().upsert(tenantId, providerParsed.data, encryptedPayload, parsed.data.label ?? "");
+  const id = await getRepo().upsert(tenantId, providerParsed.data, encryptedPayload, parsed.data.label ?? "");
 
   return c.json({ ok: true, id, provider: providerParsed.data });
 });
@@ -163,7 +167,7 @@ tenantKeyRoutes.put("/:provider", async (c) => {
  *
  * Delete a tenant's stored API key for a provider.
  */
-tenantKeyRoutes.delete("/:provider", (c) => {
+tenantKeyRoutes.delete("/:provider", async (c) => {
   const tenantId = getTenantId(c);
   if (!tenantId) {
     return c.json({ error: "Tenant context required" }, 400);
@@ -175,7 +179,7 @@ tenantKeyRoutes.delete("/:provider", (c) => {
     return c.json({ error: "Invalid provider", validProviders: providerSchema.options }, 400);
   }
 
-  const deleted = getStore().delete(tenantId, parsed.data);
+  const deleted = await getRepo().delete(tenantId, parsed.data);
   if (!deleted) {
     return c.json({ error: "No key stored for this provider" }, 404);
   }

@@ -1,21 +1,24 @@
 import type BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
+import * as dbSchema from "../../db/schema/index.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { DrizzleTenantStatusRepository } from "../../infrastructure/persistence/drizzle-tenant-status-repository.js";
 import { createTestDb } from "../../test/db.js";
 import { checkTenantStatus, createTenantStatusGate } from "./tenant-status-middleware.js";
-import { TenantStatusStore } from "./tenant-status-store.js";
 
 describe("createTenantStatusGate", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
-  let store: TenantStatusStore;
+  let repo: DrizzleTenantStatusRepository;
 
   beforeEach(() => {
     const t = createTestDb();
-    db = t.db;
+    db = drizzle(t.sqlite, { schema: dbSchema });
     sqlite = t.sqlite;
-    store = new TenantStatusStore(db);
+    repo = new DrizzleTenantStatusRepository(db);
   });
 
   afterEach(() => {
@@ -25,7 +28,7 @@ describe("createTenantStatusGate", () => {
   function createApp(tenantId: string | undefined) {
     const app = new Hono();
     const gate = createTenantStatusGate({
-      statusStore: store,
+      statusRepo: repo,
       resolveTenantId: () => tenantId,
     });
     app.use("*", gate);
@@ -34,7 +37,7 @@ describe("createTenantStatusGate", () => {
   }
 
   it("allows active tenant through", async () => {
-    store.ensureExists("tenant-1");
+    await repo.ensureExists(TenantId.create("tenant-1"));
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(200);
@@ -49,14 +52,14 @@ describe("createTenantStatusGate", () => {
   });
 
   it("allows grace_period tenant through", async () => {
-    store.setGracePeriod("tenant-1");
+    await repo.setGracePeriod(TenantId.create("tenant-1"));
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(200);
   });
 
   it("blocks suspended tenant with 403", async () => {
-    store.suspend("tenant-1", "testing", "admin-1");
+    await repo.suspend(TenantId.create("tenant-1"), "testing", "admin-1");
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(403);
@@ -65,7 +68,7 @@ describe("createTenantStatusGate", () => {
   });
 
   it("blocks banned tenant with 403", async () => {
-    store.ban("tenant-1", "tos violation", "admin-1");
+    await repo.ban(TenantId.create("tenant-1"), "tos violation", "admin-1");
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(403);
@@ -83,43 +86,43 @@ describe("createTenantStatusGate", () => {
 describe("checkTenantStatus", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
-  let store: TenantStatusStore;
+  let repo: DrizzleTenantStatusRepository;
 
   beforeEach(() => {
     const t = createTestDb();
-    db = t.db;
+    db = drizzle(t.sqlite, { schema: dbSchema });
     sqlite = t.sqlite;
-    store = new TenantStatusStore(db);
+    repo = new DrizzleTenantStatusRepository(db);
   });
 
   afterEach(() => {
     sqlite.close();
   });
 
-  it("returns null for active tenant", () => {
-    store.ensureExists("tenant-1");
-    expect(checkTenantStatus(store, "tenant-1")).toBeNull();
+  it("returns null for active tenant", async () => {
+    await repo.ensureExists(TenantId.create("tenant-1"));
+    expect(await checkTenantStatus(repo, "tenant-1")).toBeNull();
   });
 
-  it("returns null for unknown tenant", () => {
-    expect(checkTenantStatus(store, "unknown")).toBeNull();
+  it("returns null for unknown tenant", async () => {
+    expect(await checkTenantStatus(repo, "unknown")).toBeNull();
   });
 
-  it("returns null for grace_period tenant", () => {
-    store.setGracePeriod("tenant-1");
-    expect(checkTenantStatus(store, "tenant-1")).toBeNull();
+  it("returns null for grace_period tenant", async () => {
+    await repo.setGracePeriod(TenantId.create("tenant-1"));
+    expect(await checkTenantStatus(repo, "tenant-1")).toBeNull();
   });
 
-  it("returns error for suspended tenant", () => {
-    store.suspend("tenant-1", "reason", "admin-1");
-    const result = checkTenantStatus(store, "tenant-1");
+  it("returns error for suspended tenant", async () => {
+    await repo.suspend(TenantId.create("tenant-1"), "reason", "admin-1");
+    const result = await checkTenantStatus(repo, "tenant-1");
     expect(result).not.toBeNull();
     expect(result?.error).toBe("account_suspended");
   });
 
-  it("returns error for banned tenant", () => {
-    store.ban("tenant-1", "reason", "admin-1");
-    const result = checkTenantStatus(store, "tenant-1");
+  it("returns error for banned tenant", async () => {
+    await repo.ban(TenantId.create("tenant-1"), "reason", "admin-1");
+    const result = await checkTenantStatus(repo, "tenant-1");
     expect(result).not.toBeNull();
     expect(result?.error).toBe("account_banned");
   });

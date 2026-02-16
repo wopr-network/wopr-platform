@@ -1,10 +1,10 @@
 /**
  * Domain Entity: CreditBalance
- * 
+ *
  * Immutable representation of a tenant's current credit balance.
  */
-import { Money } from '../value-objects/money.js';
-import type { TenantId } from '../value-objects/tenant-id.js';
+import { Money } from "../value-objects/money.js";
+import type { TenantId } from "../value-objects/tenant-id.js";
 
 export interface CreditBalanceProps {
   tenantId: TenantId;

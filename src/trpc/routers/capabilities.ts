@@ -7,7 +7,8 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { providerSchema } from "../../security/types.js";
+import type { TenantKeyRepository } from "../../domain/repositories/tenant-key-repository.js";
+import { type EncryptedPayload, providerSchema } from "../../security/types.js";
 import { router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -15,17 +16,7 @@ import { router, tenantProcedure } from "../init.js";
 // ---------------------------------------------------------------------------
 
 export interface CapabilitiesRouterDeps {
-  getTenantKeyStore: () => {
-    listForTenant: (tenantId: string) => unknown[];
-    get: (
-      tenantId: string,
-      provider: string,
-    ) =>
-      | { id: string; tenant_id: string; provider: string; label: string; created_at: number; updated_at: number }
-      | undefined;
-    upsert: (tenantId: string, provider: string, encryptedPayload: unknown, label: string) => string;
-    delete: (tenantId: string, provider: string) => boolean;
-  };
+  tenantKeyRepo: TenantKeyRepository;
   encrypt: (plaintext: string, key: Buffer) => unknown;
   deriveTenantKey: (tenantId: string, platformSecret: string) => Buffer;
   platformSecret: string | undefined;
@@ -48,26 +39,26 @@ function deps(): CapabilitiesRouterDeps {
 
 export const capabilitiesRouter = router({
   /** List all stored API keys for the authenticated tenant (metadata only). */
-  listKeys: tenantProcedure.query(({ ctx }) => {
-    const { getTenantKeyStore } = deps();
-    const keys = getTenantKeyStore().listForTenant(ctx.tenantId);
+  listKeys: tenantProcedure.query(async ({ ctx }) => {
+    const { tenantKeyRepo } = deps();
+    const keys = await tenantKeyRepo.listForTenant(ctx.tenantId);
     return { keys };
   }),
 
   /** Check whether a key is stored for a specific provider. */
-  getKey: tenantProcedure.input(z.object({ provider: providerSchema })).query(({ input, ctx }) => {
-    const { getTenantKeyStore } = deps();
-    const record = getTenantKeyStore().get(ctx.tenantId, input.provider);
+  getKey: tenantProcedure.input(z.object({ provider: providerSchema })).query(async ({ input, ctx }) => {
+    const { tenantKeyRepo } = deps();
+    const record = await tenantKeyRepo.get(ctx.tenantId, input.provider);
     if (!record) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No key stored for this provider" });
     }
     return {
       id: record.id,
-      tenant_id: record.tenant_id,
+      tenant_id: record.tenantId,
       provider: record.provider,
       label: record.label,
-      created_at: record.created_at,
-      updated_at: record.updated_at,
+      created_at: record.createdAt,
+      updated_at: record.updatedAt,
     };
   }),
 
@@ -80,23 +71,28 @@ export const capabilitiesRouter = router({
         label: z.string().max(100).optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
-      const { getTenantKeyStore, encrypt, deriveTenantKey, platformSecret } = deps();
+    .mutation(async ({ input, ctx }) => {
+      const { tenantKeyRepo, encrypt, deriveTenantKey, platformSecret } = deps();
       if (!platformSecret) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Platform secret not configured" });
       }
 
       const tenantKey = deriveTenantKey(ctx.tenantId, platformSecret);
       const encryptedPayload = encrypt(input.apiKey, tenantKey);
-      const id = getTenantKeyStore().upsert(ctx.tenantId, input.provider, encryptedPayload, input.label ?? "");
+      const id = await tenantKeyRepo.upsert(
+        ctx.tenantId,
+        input.provider,
+        encryptedPayload as EncryptedPayload,
+        input.label ?? "",
+      );
 
       return { ok: true as const, id, provider: input.provider };
     }),
 
   /** Delete a stored API key. */
-  deleteKey: tenantProcedure.input(z.object({ provider: providerSchema })).mutation(({ input, ctx }) => {
-    const { getTenantKeyStore } = deps();
-    const deleted = getTenantKeyStore().delete(ctx.tenantId, input.provider);
+  deleteKey: tenantProcedure.input(z.object({ provider: providerSchema })).mutation(async ({ input, ctx }) => {
+    const { tenantKeyRepo } = deps();
+    const deleted = await tenantKeyRepo.delete(ctx.tenantId, input.provider);
     if (!deleted) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No key stored for this provider" });
     }

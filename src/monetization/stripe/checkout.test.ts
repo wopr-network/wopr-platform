@@ -1,7 +1,9 @@
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
+import { TenantCustomer } from "../../domain/entities/tenant-customer.js";
+import type { TenantCustomerRepository } from "../../domain/repositories/tenant-customer-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { createCreditCheckoutSession } from "./checkout.js";
-import type { TenantCustomerStore } from "./tenant-store.js";
 
 describe("createCreditCheckoutSession", () => {
   function mockStripe(sessionCreateResult: unknown = { id: "cs_test", url: "https://checkout.stripe.com/cs_test" }) {
@@ -14,17 +16,19 @@ describe("createCreditCheckoutSession", () => {
     } as unknown as Stripe;
   }
 
-  function mockTenantStore(existingMapping: { stripe_customer_id: string } | null = null) {
+  function mockTenantRepo(existingMapping: TenantCustomer | null = null) {
     return {
-      getByTenant: vi.fn().mockReturnValue(existingMapping),
-    } as unknown as TenantCustomerStore;
+      getByTenant: vi.fn().mockImplementation(async (_tenantId: TenantId) => {
+        return existingMapping;
+      }),
+    } as unknown as TenantCustomerRepository;
   }
 
   it("creates a payment-mode checkout session", async () => {
     const stripe = mockStripe();
-    const store = mockTenantStore();
+    const repo = mockTenantRepo();
 
-    const session = await createCreditCheckoutSession(stripe, store, {
+    const session = await createCreditCheckoutSession(stripe, repo, {
       tenant: "t-1",
       priceId: "price_abc",
       successUrl: "https://example.com/success",
@@ -46,9 +50,13 @@ describe("createCreditCheckoutSession", () => {
 
   it("reuses existing Stripe customer when available", async () => {
     const stripe = mockStripe();
-    const store = mockTenantStore({ stripe_customer_id: "cus_existing" });
+    const existing = TenantCustomer.create({
+      tenantId: TenantId.create("t-1"),
+      stripeCustomerId: "cus_existing",
+    });
+    const repo = mockTenantRepo(existing);
 
-    await createCreditCheckoutSession(stripe, store, {
+    await createCreditCheckoutSession(stripe, repo, {
       tenant: "t-1",
       priceId: "price_abc",
       successUrl: "https://example.com/s",
@@ -60,9 +68,9 @@ describe("createCreditCheckoutSession", () => {
 
   it("does not set customer when no existing mapping", async () => {
     const stripe = mockStripe();
-    const store = mockTenantStore(null);
+    const repo = mockTenantRepo(null);
 
-    await createCreditCheckoutSession(stripe, store, {
+    await createCreditCheckoutSession(stripe, repo, {
       tenant: "t-new",
       priceId: "price_abc",
       successUrl: "https://example.com/s",
@@ -76,10 +84,10 @@ describe("createCreditCheckoutSession", () => {
   it("propagates Stripe API errors", async () => {
     const stripe = mockStripe();
     (stripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Stripe error"));
-    const store = mockTenantStore();
+    const repo = mockTenantRepo();
 
     await expect(
-      createCreditCheckoutSession(stripe, store, {
+      createCreditCheckoutSession(stripe, repo, {
         tenant: "t-1",
         priceId: "price_abc",
         successUrl: "https://example.com/s",

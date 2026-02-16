@@ -1,14 +1,15 @@
 /**
  * Domain Entity: CreditTransaction
- * 
+ *
  * Immutable record of a credit change (credit or debit).
  */
-import type { TenantId } from '../value-objects/tenant-id.js';
-import type { Money } from '../value-objects/money.js';
-import type { TransactionId } from '../value-objects/transaction-id.js';
 
-export type CreditType = 'signup_grant' | 'purchase' | 'bounty' | 'referral' | 'promo';
-export type DebitType = 'bot_runtime' | 'adapter_usage' | 'addon' | 'refund' | 'correction';
+import type { Money } from "../value-objects/money.js";
+import type { TenantId } from "../value-objects/tenant-id.js";
+import type { TransactionId } from "../value-objects/transaction-id.js";
+
+export type CreditType = "signup_grant" | "purchase" | "bounty" | "referral" | "promo";
+export type DebitType = "bot_runtime" | "adapter_usage" | "addon" | "refund" | "correction";
 export type TransactionType = CreditType | DebitType;
 
 export interface CreditTransactionProps {
@@ -61,7 +62,7 @@ export class CreditTransaction {
    * Check if this is a credit (positive change).
    */
   isCredit(): boolean {
-    return ['signup_grant', 'purchase', 'bounty', 'referral', 'promo'].includes(this.props.type);
+    return ["signup_grant", "purchase", "bounty", "referral", "promo"].includes(this.props.type);
   }
 
   /**

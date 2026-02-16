@@ -1,25 +1,27 @@
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
 import { createDb } from "../../db/index.js";
+import { initTenantApiKeysSchema } from "../../db/schema/tenant-api-keys-init.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { DrizzleTenantCustomerRepository } from "../../infrastructure/persistence/drizzle-tenant-customer-repository.js";
 import { initMeterSchema } from "../metering/schema.js";
 import { initStripeSchema } from "./schema.js";
-import { TenantCustomerStore } from "./tenant-store.js";
 import { StripeUsageReporter } from "./usage-reporter.js";
 
 describe("StripeUsageReporter", () => {
   let sqlite: BetterSqlite3.Database;
-  let db: DrizzleDb;
-  let tenantStore: TenantCustomerStore;
+  let db: ReturnType<typeof createDb>;
+  let tenantRepo: DrizzleTenantCustomerRepository;
   let mockMeterEvents: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
     initMeterSchema(sqlite);
     initStripeSchema(sqlite);
+    initTenantApiKeysSchema(sqlite);
     db = createDb(sqlite);
-    tenantStore = new TenantCustomerStore(db);
+    tenantRepo = new DrizzleTenantCustomerRepository(db);
     mockMeterEvents = vi.fn().mockResolvedValue({});
   });
 
@@ -68,7 +70,7 @@ describe("StripeUsageReporter", () => {
 
   describe("report", () => {
     it("returns 0 when no unreported summaries", async () => {
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       const count = await reporter.report();
       expect(count).toBe(0);
     });
@@ -84,14 +86,14 @@ describe("StripeUsageReporter", () => {
         periodEnd: 2000,
       });
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       const count = await reporter.report();
       expect(count).toBe(0);
       expect(mockMeterEvents).not.toHaveBeenCalled();
     });
 
     it("reports usage for tenant with Stripe customer", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc");
       insertBillingPeriodSummary({
         tenant: "t-1",
         capability: "chat",
@@ -102,7 +104,7 @@ describe("StripeUsageReporter", () => {
         periodEnd: 2000000,
       });
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       const count = await reporter.report();
 
       expect(count).toBe(1);
@@ -117,7 +119,7 @@ describe("StripeUsageReporter", () => {
     });
 
     it("marks zero-charge periods as reported without calling Stripe", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc");
       insertBillingPeriodSummary({
         tenant: "t-1",
         capability: "chat",
@@ -128,7 +130,7 @@ describe("StripeUsageReporter", () => {
         periodEnd: 2000000,
       });
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       const count = await reporter.report();
 
       expect(count).toBe(1);
@@ -136,7 +138,7 @@ describe("StripeUsageReporter", () => {
     });
 
     it("does not re-report already reported periods (idempotent)", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc");
       insertBillingPeriodSummary({
         tenant: "t-1",
         capability: "chat",
@@ -147,7 +149,7 @@ describe("StripeUsageReporter", () => {
         periodEnd: 2000000,
       });
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
 
       // First report
       const first = await reporter.report();
@@ -159,7 +161,7 @@ describe("StripeUsageReporter", () => {
     });
 
     it("stops on first Stripe API error", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc");
       insertBillingPeriodSummary({
         tenant: "t-1",
         capability: "chat",
@@ -181,7 +183,7 @@ describe("StripeUsageReporter", () => {
 
       mockMeterEvents.mockRejectedValueOnce(new Error("Stripe rate limit"));
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       const count = await reporter.report();
 
       // Should stop after first failure
@@ -190,7 +192,7 @@ describe("StripeUsageReporter", () => {
     });
 
     it("skips __sentinel__ tenant", async () => {
-      tenantStore.upsert({ tenant: "__sentinel__", stripeCustomerId: "cus_sentinel" });
+      await tenantRepo.upsert(TenantId.create("__sentinel__"), "cus_sentinel");
       insertBillingPeriodSummary({
         tenant: "__sentinel__",
         capability: "chat",
@@ -201,7 +203,7 @@ describe("StripeUsageReporter", () => {
         periodEnd: 2000,
       });
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       const count = await reporter.report();
       expect(count).toBe(0);
     });
@@ -209,7 +211,7 @@ describe("StripeUsageReporter", () => {
 
   describe("queryReports", () => {
     it("returns reports for a tenant", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc");
       insertBillingPeriodSummary({
         tenant: "t-1",
         capability: "chat",
@@ -220,7 +222,7 @@ describe("StripeUsageReporter", () => {
         periodEnd: 2000000,
       });
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       await reporter.report();
 
       const reports = reporter.queryReports("t-1");
@@ -231,13 +233,13 @@ describe("StripeUsageReporter", () => {
     });
 
     it("returns empty array for unknown tenant", () => {
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       const reports = reporter.queryReports("unknown");
       expect(reports).toHaveLength(0);
     });
 
     it("respects limit parameter", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      await tenantRepo.upsert(TenantId.create("t-1"), "cus_abc");
       // Insert multiple periods
       for (let i = 0; i < 5; i++) {
         insertBillingPeriodSummary({
@@ -251,7 +253,7 @@ describe("StripeUsageReporter", () => {
         });
       }
 
-      const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+      const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
       await reporter.report();
 
       const reports = reporter.queryReports("t-1", { limit: 2 });
@@ -263,7 +265,7 @@ describe("StripeUsageReporter", () => {
     it("starts and stops periodic reporting", () => {
       vi.useFakeTimers();
       try {
-        const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+        const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
         reporter.start(1000);
 
         // Should not throw or fail
@@ -279,7 +281,7 @@ describe("StripeUsageReporter", () => {
     it("does not start twice", () => {
       vi.useFakeTimers();
       try {
-        const reporter = new StripeUsageReporter(db, mockStripe(), tenantStore);
+        const reporter = new StripeUsageReporter(db, mockStripe(), tenantRepo);
         reporter.start(1000);
         reporter.start(1000); // Should be no-op
 

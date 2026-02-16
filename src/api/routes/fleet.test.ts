@@ -81,8 +81,8 @@ vi.mock("dockerode", () => {
   return { default: class MockDocker {} };
 });
 
-vi.mock("../../fleet/profile-store.js", () => {
-  return { ProfileStore: class MockProfileStore {} };
+vi.mock("../../infrastructure/persistence/drizzle-profile-repository.js", () => {
+  return { DrizzleProfileRepository: class MockProfileRepository {} };
 });
 
 vi.mock("../../fleet/fleet-manager.js", () => {
@@ -145,8 +145,8 @@ vi.mock("better-sqlite3", () => {
 vi.mock("../../infrastructure/persistence/drizzle-credit-repository.js", () => {
   return {
     DrizzleCreditRepository: class {
-      getBalance = vi.fn().mockImplementation(async () => ({ 
-        balance: { toCents: () => creditLedgerMock.balance } 
+      getBalance = vi.fn().mockImplementation(async () => ({
+        balance: { toCents: () => creditLedgerMock.balance },
       }));
     },
   };

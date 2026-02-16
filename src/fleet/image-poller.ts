@@ -1,6 +1,6 @@
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
-import type { ProfileStore } from "./profile-store.js";
+import type { ProfileRepository } from "../domain/repositories/profile-repository.js";
 import type { BotProfile, ImageStatus, ReleaseChannel } from "./types.js";
 
 /** GHCR registry base URL for token and manifest requests */
@@ -138,7 +138,7 @@ export async function getContainerDigest(docker: Docker, botId: string): Promise
  */
 export class ImagePoller {
   private readonly docker: Docker;
-  private readonly store: ProfileStore;
+  private readonly store: ProfileRepository;
   private readonly tracked = new Map<string, TrackedBot>();
   private timers = new Map<string, ReturnType<typeof setInterval>>();
   private running = false;
@@ -146,7 +146,7 @@ export class ImagePoller {
   /** Injected callback for when an update is available and should be applied */
   onUpdateAvailable: ((botId: string, newDigest: string) => Promise<void>) | null = null;
 
-  constructor(docker: Docker, store: ProfileStore) {
+  constructor(docker: Docker, store: ProfileRepository) {
     this.docker = docker;
     this.store = store;
   }

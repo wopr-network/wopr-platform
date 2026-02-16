@@ -16,12 +16,12 @@ export const adminRecoveryRoutes = new Hono<AuthEnv>();
  * GET /api/admin/recovery
  * List recovery events (paginated)
  */
-adminRecoveryRoutes.get("/", adminAuth, (c) => {
+adminRecoveryRoutes.get("/", adminAuth, async (c) => {
   const rawLimit = Number.parseInt(c.req.query("limit") ?? "50", 10);
   const limit = Number.isNaN(rawLimit) || rawLimit < 1 ? 50 : Math.min(rawLimit, 500);
   const recoveryManager = getRecoveryManager();
 
-  const events = recoveryManager.listEvents(limit);
+  const events = await recoveryManager.listEvents(limit);
 
   return c.json({
     success: true,
@@ -34,11 +34,11 @@ adminRecoveryRoutes.get("/", adminAuth, (c) => {
  * GET /api/admin/recovery/:eventId
  * Get recovery event details with items
  */
-adminRecoveryRoutes.get("/:eventId", adminAuth, (c) => {
+adminRecoveryRoutes.get("/:eventId", adminAuth, async (c) => {
   const eventId = c.req.param("eventId");
   const recoveryManager = getRecoveryManager();
 
-  const { event, items } = recoveryManager.getEventDetails(eventId);
+  const { event, items } = await recoveryManager.getEventDetails(eventId);
 
   if (!event) {
     return c.json(
@@ -93,9 +93,9 @@ export const adminNodeRoutes = new Hono<AuthEnv>();
  * GET /api/admin/nodes
  * List all nodes with status
  */
-adminNodeRoutes.get("/", adminAuth, (c) => {
+adminNodeRoutes.get("/", adminAuth, async (c) => {
   const nodeConnections = getNodeConnections();
-  const nodes = nodeConnections.listNodes();
+  const nodes = await nodeConnections.listNodes();
 
   return c.json({
     success: true,
@@ -135,11 +135,11 @@ adminNodeRoutes.post("/:nodeId/recover", adminAuth, async (c) => {
  * GET /api/admin/nodes/:nodeId/tenants
  * Get tenants assigned to a specific node
  */
-adminNodeRoutes.get("/:nodeId/tenants", adminAuth, (c) => {
+adminNodeRoutes.get("/:nodeId/tenants", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
   const nodeConnections = getNodeConnections();
 
-  const tenants = nodeConnections.getNodeTenants(nodeId);
+  const tenants = await nodeConnections.getNodeTenants(nodeId);
 
   return c.json({
     success: true,

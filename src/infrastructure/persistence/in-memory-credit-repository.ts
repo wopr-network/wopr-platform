@@ -1,15 +1,21 @@
 /**
  * In-Memory Implementation: CreditRepository (ASYNC)
- * 
+ *
  * For fast unit testing without database.
  */
-import type { CreditRepository, HistoryOptions, TransactionPage, TenantBalance } from '../../domain/repositories/credit-repository.js';
-import { InsufficientBalanceError } from '../../domain/repositories/credit-repository.js';
-import { TenantId } from '../../domain/value-objects/tenant-id.js';
-import { Money } from '../../domain/value-objects/money.js';
-import { TransactionId } from '../../domain/value-objects/transaction-id.js';
-import { CreditTransaction, type CreditType, type DebitType } from '../../domain/entities/credit-transaction.js';
-import { CreditBalance } from '../../domain/entities/credit-balance.js';
+
+import { CreditBalance } from "../../domain/entities/credit-balance.js";
+import { CreditTransaction, type CreditType, type DebitType } from "../../domain/entities/credit-transaction.js";
+import type {
+  CreditRepository,
+  HistoryOptions,
+  TenantBalance,
+  TransactionPage,
+} from "../../domain/repositories/credit-repository.js";
+import { InsufficientBalanceError } from "../../domain/repositories/credit-repository.js";
+import { Money } from "../../domain/value-objects/money.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { TransactionId } from "../../domain/value-objects/transaction-id.js";
 
 interface StoredBalance {
   tenantId: string;
@@ -39,10 +45,10 @@ export class InMemoryCreditRepository implements CreditRepository {
     amount: Money,
     type: CreditType,
     description?: string,
-    referenceId?: string
+    referenceId?: string,
   ): Promise<CreditTransaction> {
     if (amount.toCents() <= 0) {
-      throw new Error('Credit amount must be positive');
+      throw new Error("Credit amount must be positive");
     }
 
     const tenantIdStr = tenantId.toString();
@@ -88,10 +94,10 @@ export class InMemoryCreditRepository implements CreditRepository {
     amount: Money,
     type: DebitType,
     description?: string,
-    referenceId?: string
+    referenceId?: string,
   ): Promise<CreditTransaction> {
     if (amount.toCents() <= 0) {
-      throw new Error('Debit amount must be positive');
+      throw new Error("Debit amount must be positive");
     }
 
     const tenantIdStr = tenantId.toString();
@@ -100,11 +106,7 @@ export class InMemoryCreditRepository implements CreditRepository {
     const currentBalanceCents = existing?.balanceCents ?? 0;
 
     if (currentBalanceCents < amount.toCents()) {
-      throw new InsufficientBalanceError(
-        tenantId,
-        Money.fromCents(currentBalanceCents),
-        amount
-      );
+      throw new InsufficientBalanceError(tenantId, Money.fromCents(currentBalanceCents), amount);
     }
 
     const newBalanceCents = currentBalanceCents - amount.toCents();
@@ -156,10 +158,7 @@ export class InMemoryCreditRepository implements CreditRepository {
     });
   }
 
-  async getTransactionHistory(
-    tenantId: TenantId,
-    options: HistoryOptions = {}
-  ): Promise<TransactionPage> {
+  async getTransactionHistory(tenantId: TenantId, options: HistoryOptions = {}): Promise<TransactionPage> {
     const { limit = 50, offset = 0, type } = options;
     const tenantIdStr = tenantId.toString();
 
@@ -179,17 +178,18 @@ export class InMemoryCreditRepository implements CreditRepository {
     const totalCount = filtered.length;
     const paginated = filtered.slice(offset, offset + limit);
 
-    const transactions = paginated.map((t) =>
-      new CreditTransaction({
-        id: TransactionId.fromString(t.id),
-        tenantId,
-        amount: Money.fromCents(Math.abs(t.amountCents)),
-        balanceAfter: Money.fromCents(t.balanceAfterCents),
-        type: t.type as CreditType | DebitType,
-        description: t.description,
-        referenceId: t.referenceId,
-        createdAt: t.createdAt,
-      })
+    const transactions = paginated.map(
+      (t) =>
+        new CreditTransaction({
+          id: TransactionId.fromString(t.id),
+          tenantId,
+          amount: Money.fromCents(Math.abs(t.amountCents)),
+          balanceAfter: Money.fromCents(t.balanceAfterCents),
+          type: t.type as CreditType | DebitType,
+          description: t.description,
+          referenceId: t.referenceId,
+          createdAt: t.createdAt,
+        }),
     );
 
     return {

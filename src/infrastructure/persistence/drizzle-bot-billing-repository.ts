@@ -1,29 +1,29 @@
 /**
  * Drizzle Implementation: BotBillingRepository (ASYNC API)
- * 
+ *
  * better-sqlite3 is synchronous, but we expose async API.
  * This allows swapping to PostgreSQL or other async databases later.
  */
-import { and, eq, lte, sql } from 'drizzle-orm';
-import type { DrizzleDb } from '../../db/index.js';
-import { botInstances } from '../../db/schema/bot-instances.js';
-import type { BotBillingRepository } from '../../domain/repositories/bot-billing-repository.js';
-import { TenantId } from '../../domain/value-objects/tenant-id.js';
-import { BotInstance, type BillingState } from '../../domain/entities/bot-instance.js';
+import { and, eq, lte, sql } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { botInstances } from "../../db/schema/bot-instances.js";
+import { type BillingState, BotInstance } from "../../domain/entities/bot-instance.js";
+import type { BotBillingRepository } from "../../domain/repositories/bot-billing-repository.js";
+import type { TenantId } from "../../domain/value-objects/tenant-id.js";
 
 const SUSPENSION_GRACE_DAYS = 30;
 
 function rowToBotInstance(row: typeof botInstances.$inferSelect): BotInstance {
-  return new BotInstance({
+  return BotInstance.fromRow({
     id: row.id,
-    tenantId: TenantId.create(row.tenantId),
+    tenantId: row.tenantId,
     name: row.name,
     nodeId: row.nodeId,
     billingState: row.billingState as BillingState,
-    suspendedAt: row.suspendedAt ? new Date(row.suspendedAt) : null,
-    destroyAfter: row.destroyAfter ? new Date(row.destroyAfter) : null,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
+    suspendedAt: row.suspendedAt,
+    destroyAfter: row.destroyAfter,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   });
 }
 
@@ -37,17 +37,13 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
         id: botId,
         tenantId: tenantId.toString(),
         name,
-        billingState: 'active',
+        billingState: "active",
       })
       .run();
   }
 
   async getBotBilling(botId: string): Promise<BotInstance | null> {
-    const row = this.db
-      .select()
-      .from(botInstances)
-      .where(eq(botInstances.id, botId))
-      .get();
+    const row = this.db.select().from(botInstances).where(eq(botInstances.id, botId)).get();
 
     return row ? rowToBotInstance(row) : null;
   }
@@ -56,23 +52,14 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
     const row = this.db
       .select({ count: sql<number>`count(*)` })
       .from(botInstances)
-      .where(
-        and(
-          eq(botInstances.tenantId, tenantId.toString()),
-          eq(botInstances.billingState, 'active')
-        )
-      )
+      .where(and(eq(botInstances.tenantId, tenantId.toString()), eq(botInstances.billingState, "active")))
       .get();
 
     return row?.count ?? 0;
   }
 
   async listForTenant(tenantId: TenantId): Promise<BotInstance[]> {
-    const rows = this.db
-      .select()
-      .from(botInstances)
-      .where(eq(botInstances.tenantId, tenantId.toString()))
-      .all();
+    const rows = this.db.select().from(botInstances).where(eq(botInstances.tenantId, tenantId.toString())).all();
 
     return rows.map(rowToBotInstance);
   }
@@ -81,7 +68,7 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
     this.db
       .update(botInstances)
       .set({
-        billingState: 'suspended',
+        billingState: "suspended",
         suspendedAt: sql`(datetime('now'))`,
         destroyAfter: sql`(datetime('now', '+${sql.raw(String(SUSPENSION_GRACE_DAYS))} days'))`,
         updatedAt: sql`(datetime('now'))`,
@@ -94,12 +81,7 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
     const active = this.db
       .select({ id: botInstances.id })
       .from(botInstances)
-      .where(
-        and(
-          eq(botInstances.tenantId, tenantId.toString()),
-          eq(botInstances.billingState, 'active')
-        )
-      )
+      .where(and(eq(botInstances.tenantId, tenantId.toString()), eq(botInstances.billingState, "active")))
       .all();
 
     for (const bot of active) {
@@ -113,12 +95,12 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
     this.db
       .update(botInstances)
       .set({
-        billingState: 'active',
+        billingState: "active",
         suspendedAt: null,
         destroyAfter: null,
         updatedAt: sql`(datetime('now'))`,
       })
-      .where(and(eq(botInstances.id, botId), eq(botInstances.billingState, 'suspended')))
+      .where(and(eq(botInstances.id, botId), eq(botInstances.billingState, "suspended")))
       .run();
   }
 
@@ -126,12 +108,7 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
     const rows = this.db
       .select()
       .from(botInstances)
-      .where(
-        and(
-          eq(botInstances.tenantId, tenantId.toString()),
-          eq(botInstances.billingState, 'suspended')
-        )
-      )
+      .where(and(eq(botInstances.tenantId, tenantId.toString()), eq(botInstances.billingState, "suspended")))
       .all();
 
     return rows.map(rowToBotInstance);
@@ -141,7 +118,7 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
     this.db
       .update(botInstances)
       .set({
-        billingState: 'destroyed',
+        billingState: "destroyed",
         updatedAt: sql`(datetime('now'))`,
       })
       .where(eq(botInstances.id, botId))
@@ -152,12 +129,7 @@ export class DrizzleBotBillingRepository implements BotBillingRepository {
     const expired = this.db
       .select({ id: botInstances.id })
       .from(botInstances)
-      .where(
-        and(
-          eq(botInstances.billingState, 'suspended'),
-          lte(botInstances.destroyAfter, sql`(datetime('now'))`)
-        )
-      )
+      .where(and(eq(botInstances.billingState, "suspended"), lte(botInstances.destroyAfter, sql`(datetime('now'))`)))
       .all();
 
     for (const bot of expired) {

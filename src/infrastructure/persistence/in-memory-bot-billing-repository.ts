@@ -1,11 +1,12 @@
 /**
  * In-Memory Implementation: BotBillingRepository (ASYNC)
- * 
+ *
  * For fast unit testing without database.
  */
-import type { BotBillingRepository } from '../../domain/repositories/bot-billing-repository.js';
-import { TenantId } from '../../domain/value-objects/tenant-id.js';
-import { BotInstance, type BillingState } from '../../domain/entities/bot-instance.js';
+
+import { type BillingState, BotInstance } from "../../domain/entities/bot-instance.js";
+import type { BotBillingRepository } from "../../domain/repositories/bot-billing-repository.js";
+import type { TenantId } from "../../domain/value-objects/tenant-id.js";
 
 interface StoredBot {
   id: string;
@@ -39,7 +40,7 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
       tenantId: tenantId.toString(),
       name,
       nodeId: null,
-      billingState: 'active',
+      billingState: "active",
       suspendedAt: null,
       destroyAfter: null,
       createdAt: now,
@@ -56,7 +57,7 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
   async getActiveBotCount(tenantId: TenantId): Promise<number> {
     let count = 0;
     for (const bot of this.bots.values()) {
-      if (bot.tenantId === tenantId.toString() && bot.billingState === 'active') {
+      if (bot.tenantId === tenantId.toString() && bot.billingState === "active") {
         count++;
       }
     }
@@ -83,7 +84,7 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
 
     this.setBot(botId, {
       ...bot,
-      billingState: 'suspended',
+      billingState: "suspended",
       suspendedAt: now,
       destroyAfter,
       updatedAt: now,
@@ -93,7 +94,7 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
   async suspendAllForTenant(tenantId: TenantId): Promise<string[]> {
     const suspendedIds: string[] = [];
     for (const bot of this.bots.values()) {
-      if (bot.tenantId === tenantId.toString() && bot.billingState === 'active') {
+      if (bot.tenantId === tenantId.toString() && bot.billingState === "active") {
         await this.suspendBot(bot.id);
         suspendedIds.push(bot.id);
       }
@@ -104,12 +105,12 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
   async reactivateBot(botId: string): Promise<void> {
     const bot = this.getBot(botId);
     if (!bot) return;
-    if (bot.billingState !== 'suspended') return;
+    if (bot.billingState !== "suspended") return;
 
     const now = new Date();
     this.setBot(botId, {
       ...bot,
-      billingState: 'active',
+      billingState: "active",
       suspendedAt: null,
       destroyAfter: null,
       updatedAt: now,
@@ -119,7 +120,7 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
   async getSuspendedBots(tenantId: TenantId): Promise<BotInstance[]> {
     const result: BotInstance[] = [];
     for (const bot of this.bots.values()) {
-      if (bot.tenantId === tenantId.toString() && bot.billingState === 'suspended') {
+      if (bot.tenantId === tenantId.toString() && bot.billingState === "suspended") {
         result.push(this.toBotInstance(bot));
       }
     }
@@ -132,7 +133,7 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
 
     this.setBot(botId, {
       ...bot,
-      billingState: 'destroyed',
+      billingState: "destroyed",
       updatedAt: new Date(),
     });
   }
@@ -142,7 +143,7 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
     const destroyedIds: string[] = [];
 
     for (const bot of this.bots.values()) {
-      if (bot.billingState === 'suspended' && bot.destroyAfter && bot.destroyAfter <= now) {
+      if (bot.billingState === "suspended" && bot.destroyAfter && bot.destroyAfter <= now) {
         await this.destroyBot(bot.id);
         destroyedIds.push(bot.id);
       }
@@ -174,16 +175,16 @@ export class InMemoryBotBillingRepository implements BotBillingRepository {
   }
 
   private toBotInstance(bot: StoredBot): BotInstance {
-    return new BotInstance({
+    return BotInstance.fromRow({
       id: bot.id,
-      tenantId: TenantId.create(bot.tenantId),
+      tenantId: bot.tenantId,
       name: bot.name,
       nodeId: bot.nodeId,
       billingState: bot.billingState,
-      suspendedAt: bot.suspendedAt,
-      destroyAfter: bot.destroyAfter,
-      createdAt: bot.createdAt,
-      updatedAt: bot.updatedAt,
+      suspendedAt: bot.suspendedAt ? bot.suspendedAt.toISOString() : null,
+      destroyAfter: bot.destroyAfter ? bot.destroyAfter.toISOString() : null,
+      createdAt: bot.createdAt.toISOString(),
+      updatedAt: bot.updatedAt.toISOString(),
     });
   }
 }

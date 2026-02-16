@@ -4,8 +4,8 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BackupStatusStore } from "../../backup/backup-status-store.js";
 import * as schema from "../../db/schema/index.js";
+import { DrizzleBackupStatusRepository } from "../../infrastructure/persistence/drizzle-backup-status-repository.js";
 import { createAdminBackupRoutes, isRemotePathOwnedBy } from "./admin-backups.js";
 
 const TEST_DIR = join(import.meta.dirname, "../../../.test-admin-backups");
@@ -37,14 +37,14 @@ function createTestDb(path: string) {
 
 describe("admin-backups routes", () => {
   let sqlite: Database.Database;
-  let store: BackupStatusStore;
+  let store: DrizzleBackupStatusRepository;
   let app: ReturnType<typeof createAdminBackupRoutes>;
 
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });
     const testDb = createTestDb(DB_PATH);
     sqlite = testDb.sqlite;
-    store = new BackupStatusStore(testDb.db);
+    store = new DrizzleBackupStatusRepository(testDb.db);
     app = createAdminBackupRoutes(store);
   });
 
@@ -64,8 +64,8 @@ describe("admin-backups routes", () => {
     });
 
     it("returns backup statuses", async () => {
-      store.recordSuccess("tenant_a", "node-1", 100, "path-a");
-      store.recordSuccess("tenant_b", "node-1", 200, "path-b");
+      await store.recordSuccess("tenant_a", "node-1", 100, "path-a");
+      await store.recordSuccess("tenant_b", "node-1", 200, "path-b");
 
       const res = await app.request("/");
       expect(res.status).toBe(200);
@@ -74,8 +74,8 @@ describe("admin-backups routes", () => {
     });
 
     it("filters stale backups when ?stale=true", async () => {
-      store.recordSuccess("tenant_a", "node-1", 100, "path-a");
-      store.recordFailure("tenant_b", "node-2", "error");
+      await store.recordSuccess("tenant_a", "node-1", 100, "path-a");
+      await store.recordFailure("tenant_b", "node-2", "error");
 
       const res = await app.request("/?stale=true");
       expect(res.status).toBe(200);
@@ -93,7 +93,7 @@ describe("admin-backups routes", () => {
     });
 
     it("returns backup status for known container", async () => {
-      store.recordSuccess("tenant_abc", "node-1", 150, "path-abc");
+      await store.recordSuccess("tenant_abc", "node-1", 150, "path-abc");
 
       const res = await app.request("/tenant_abc");
       expect(res.status).toBe(200);
@@ -106,7 +106,7 @@ describe("admin-backups routes", () => {
 
   describe("POST /:containerId/restore", () => {
     it("returns 400 without remotePath", async () => {
-      store.recordSuccess("tenant_abc", "node-1", 100, "path");
+      await store.recordSuccess("tenant_abc", "node-1", 100, "path");
 
       const res = await app.request("/tenant_abc/restore", {
         method: "POST",
@@ -117,7 +117,7 @@ describe("admin-backups routes", () => {
     });
 
     it("returns 403 when remotePath does not belong to container", async () => {
-      store.recordSuccess("tenant_abc", "node-1", 100, "path");
+      await store.recordSuccess("tenant_abc", "node-1", 100, "path");
 
       const res = await app.request("/tenant_abc/restore", {
         method: "POST",
@@ -128,7 +128,7 @@ describe("admin-backups routes", () => {
     });
 
     it("returns 403 for path traversal attempt using includes() bypass", async () => {
-      store.recordSuccess("tenant_abc", "node-1", 100, "path");
+      await store.recordSuccess("tenant_abc", "node-1", 100, "path");
 
       const res = await app.request("/tenant_abc/restore", {
         method: "POST",
@@ -139,7 +139,7 @@ describe("admin-backups routes", () => {
     });
 
     it("initiates restore for valid request", async () => {
-      store.recordSuccess("tenant_abc", "node-1", 100, "path");
+      await store.recordSuccess("tenant_abc", "node-1", 100, "path");
 
       const res = await app.request("/tenant_abc/restore", {
         method: "POST",
@@ -159,7 +159,7 @@ describe("admin-backups routes", () => {
 
   describe("GET /alerts/stale", () => {
     it("returns stale backup alerts", async () => {
-      store.recordFailure("tenant_stale", "node-1", "disk full");
+      await store.recordFailure("tenant_stale", "node-1", "disk full");
 
       const res = await app.request("/alerts/stale");
       expect(res.status).toBe(200);

@@ -3,8 +3,8 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
-import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
 import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
@@ -263,7 +263,7 @@ describe("billing routes", () => {
 
   describe("POST /portal", () => {
     it("creates portal session and returns URL", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      await tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
 
       const portalCreate = vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_123" });
       const mockStripe = createMockStripe({ portalCreate });
@@ -323,7 +323,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when Stripe API fails", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      await tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
 
       const portalCreate = vi.fn().mockRejectedValue(new Error("Portal unavailable"));
       const mockStripe = createMockStripe({ portalCreate });
@@ -409,7 +409,7 @@ describe("billing routes", () => {
 
       // Verify the tenant was persisted and credits granted
       const store = new TenantCustomerStore(db);
-      const mapping = store.getByTenant("t-new");
+      const mapping = await store.getByTenant("t-new");
       expect(mapping?.stripe_customer_id).toBe("cus_new");
 
       const repo = new DrizzleCreditRepository(db);

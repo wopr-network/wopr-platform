@@ -3,9 +3,9 @@ import { Hono } from "hono";
 import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { createDb } from "../../db/index.js";
-import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
 import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
 import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
 
@@ -148,8 +148,16 @@ quotaRoutes.get("/history/:tenant", async (c) => {
   const limit = limitRaw != null ? Number.parseInt(limitRaw, 10) : 50;
   const offset = offsetRaw != null ? Number.parseInt(offsetRaw, 10) : 0;
 
-  const result = await getCreditRepo().getTransactionHistory(TenantId.create(tenantId), { limit, offset, type: type || undefined });
-  return c.json({ transactions: result.transactions.map(t => t.toJSON()), totalCount: result.totalCount, hasMore: result.hasMore });
+  const result = await getCreditRepo().getTransactionHistory(TenantId.create(tenantId), {
+    limit,
+    offset,
+    type: type || undefined,
+  });
+  return c.json({
+    transactions: result.transactions.map((t) => t.toJSON()),
+    totalCount: result.totalCount,
+    hasMore: result.hasMore,
+  });
 });
 
 /**

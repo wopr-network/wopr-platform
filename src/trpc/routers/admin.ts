@@ -211,10 +211,10 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get tenant account status. */
-  tenantStatus: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
+  tenantStatus: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input, ctx }) => {
     requirePlatformAdmin(ctx.user?.roles ?? []);
     const { getTenantStatusStore } = deps();
-    const row = getTenantStatusStore().get(input.tenantId);
+    const row = await getTenantStatusStore().get(input.tenantId);
     return row ?? { tenantId: input.tenantId, status: "active" };
   }),
 
@@ -234,7 +234,7 @@ export const adminRouter = router({
       const adminUserId = ctx.user?.id ?? "unknown";
 
       // Check current status
-      const current = store.getStatus(input.tenantId);
+      const current = await store.getStatus(input.tenantId);
       if (current === "banned") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -249,7 +249,7 @@ export const adminRouter = router({
       }
 
       // Suspend the tenant
-      store.suspend(input.tenantId, input.reason, adminUserId);
+      await store.suspend(input.tenantId, input.reason, adminUserId);
 
       // Suspend all bots for this tenant
       let suspendedBots: string[] = [];
@@ -287,14 +287,14 @@ export const adminRouter = router({
         notifyByEmail: z.boolean().optional().default(false),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog } = deps();
       const store = getTenantStatusStore();
       const adminUserId = ctx.user?.id ?? "unknown";
 
       // Check current status
-      const current = store.getStatus(input.tenantId);
+      const current = await store.getStatus(input.tenantId);
       if (current === "banned") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -309,7 +309,7 @@ export const adminRouter = router({
       }
 
       // Reactivate the tenant
-      store.reactivate(input.tenantId, adminUserId);
+      await store.reactivate(input.tenantId, adminUserId);
 
       // Audit log
       getAuditLog().log({
@@ -356,7 +356,7 @@ export const adminRouter = router({
       }
 
       // Check current status
-      const current = store.getStatus(input.tenantId);
+      const current = await store.getStatus(input.tenantId);
       if (current === "banned") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -379,7 +379,7 @@ export const adminRouter = router({
       }
 
       // Ban the tenant
-      store.ban(input.tenantId, input.reason, adminUserId);
+      await store.ban(input.tenantId, input.reason, adminUserId);
 
       // Audit log
       getAuditLog().log({

@@ -7,7 +7,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import type { CredentialVaultStore } from "../../security/credential-vault/index.js";
+import type { CredentialVaultRepository } from "../../domain/repositories/credential-vault-repository.js";
 import { protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -15,7 +15,7 @@ import { protectedProcedure, router } from "../init.js";
 // ---------------------------------------------------------------------------
 
 export interface CredentialsRouterDeps {
-  getVault: () => CredentialVaultStore;
+  getVault: () => CredentialVaultRepository;
 }
 
 let _deps: CredentialsRouterDeps | null = null;
@@ -61,17 +61,17 @@ export const credentialsRouter = router({
         })
         .optional(),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       assertAdmin(ctx.user);
       const { getVault } = deps();
       return getVault().list(input?.provider);
     }),
 
   /** Get a single credential by ID. */
-  get: protectedProcedure.input(z.object({ id: z.string().uuid() })).query(({ input, ctx }) => {
+  get: protectedProcedure.input(z.object({ id: z.string().uuid() })).query(async ({ input, ctx }) => {
     assertAdmin(ctx.user);
     const { getVault } = deps();
-    const cred = getVault().getById(input.id);
+    const cred = await getVault().getById(input.id);
     if (!cred) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Credential not found" });
     }
@@ -89,10 +89,10 @@ export const credentialsRouter = router({
         authHeader: z.string().max(128).optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       assertAdmin(ctx.user);
       const { getVault } = deps();
-      const id = getVault().create({
+      const id = await getVault().create({
         provider: input.provider,
         keyName: input.keyName,
         plaintextKey: input.plaintextKey,
@@ -111,10 +111,10 @@ export const credentialsRouter = router({
         plaintextKey: z.string().min(1),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       assertAdmin(ctx.user);
       const { getVault } = deps();
-      const ok = getVault().rotate({
+      const ok = await getVault().rotate({
         id: input.id,
         plaintextKey: input.plaintextKey,
         rotatedBy: ctx.user.id,
@@ -133,10 +133,10 @@ export const credentialsRouter = router({
         isActive: z.boolean(),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       assertAdmin(ctx.user);
       const { getVault } = deps();
-      const ok = getVault().setActive(input.id, input.isActive, ctx.user.id);
+      const ok = await getVault().setActive(input.id, input.isActive, ctx.user.id);
       if (!ok) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Credential not found" });
       }
@@ -144,10 +144,10 @@ export const credentialsRouter = router({
     }),
 
   /** Delete a credential permanently. */
-  delete: protectedProcedure.input(z.object({ id: z.string().uuid() })).mutation(({ input, ctx }) => {
+  delete: protectedProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input, ctx }) => {
     assertAdmin(ctx.user);
     const { getVault } = deps();
-    const ok = getVault().delete(input.id, ctx.user.id);
+    const ok = await getVault().delete(input.id, ctx.user.id);
     if (!ok) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Credential not found" });
     }

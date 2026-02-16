@@ -7,9 +7,9 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { TenantCustomerRepository } from "../../domain/repositories/tenant-customer-repository.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
-import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import type { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
 import { protectedProcedure, router } from "../init.js";
 
@@ -38,7 +38,7 @@ export interface BillingRouterDeps {
     checkout: { sessions: { create: (...args: unknown[]) => Promise<{ id: string; url: string | null }> } };
     billingPortal: { sessions: { create: (...args: unknown[]) => Promise<{ url: string }> } };
   };
-  tenantStore: TenantCustomerStore;
+  tenantRepo: TenantCustomerRepository;
   creditStore: CreditAdjustmentStore;
   meterAggregator: MeterAggregator;
   usageReporter: StripeUsageReporter;
@@ -97,9 +97,9 @@ export const billingRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      const { stripe, tenantStore } = deps();
+      const { stripe, tenantRepo } = deps();
       const { createCreditCheckoutSession } = await import("../../monetization/stripe/checkout.js");
-      const session = await createCreditCheckoutSession(stripe as never, tenantStore, input);
+      const session = await createCreditCheckoutSession(stripe as never, tenantRepo, input);
       return { url: session.url, sessionId: session.id };
     }),
 
@@ -107,9 +107,9 @@ export const billingRouter = router({
   portalSession: protectedProcedure
     .input(z.object({ tenant: tenantIdSchema, returnUrl: urlSchema }))
     .mutation(async ({ input }) => {
-      const { stripe, tenantStore } = deps();
+      const { stripe, tenantRepo } = deps();
       const { createPortalSession } = await import("../../monetization/stripe/portal.js");
-      const session = await createPortalSession(stripe as never, tenantStore, input);
+      const session = await createPortalSession(stripe as never, tenantRepo, input);
       return { url: session.url };
     }),
 

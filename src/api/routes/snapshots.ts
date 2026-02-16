@@ -7,6 +7,7 @@ import { SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-ma
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
 import * as dbSchema from "../../db/schema/index.js";
+import { DrizzleProfileRepository } from "../../infrastructure/persistence/drizzle-profile-repository.js";
 
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
@@ -47,8 +48,7 @@ const writeAuth = scopedBearerAuthWithTenant(tokenMetadataMap, "write");
 /** Helper to get instance tenantId from bot profile */
 async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
   try {
-    const { ProfileStore } = await import("../../fleet/profile-store.js");
-    const store = new ProfileStore(FLEET_DATA_DIR);
+    const store = new DrizzleProfileRepository(FLEET_DATA_DIR);
     const profile = await store.get(instanceId);
     return profile?.tenantId;
   } catch {

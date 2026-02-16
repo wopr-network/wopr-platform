@@ -1,19 +1,24 @@
 /**
  * Drizzle Implementation: CreditRepository (ASYNC API)
- * 
+ *
  * better-sqlite3 is synchronous, but we expose async API.
  * This allows swapping to PostgreSQL or other async databases later.
  */
-import { eq, and, desc, sql } from 'drizzle-orm';
-import type { DrizzleDb } from '../../db/index.js';
-import { creditBalances, creditTransactions } from '../../db/schema/credits.js';
-import type { CreditRepository, HistoryOptions, TransactionPage, TenantBalance } from '../../domain/repositories/credit-repository.js';
-import { InsufficientBalanceError } from '../../domain/repositories/credit-repository.js';
-import { TenantId } from '../../domain/value-objects/tenant-id.js';
-import { Money } from '../../domain/value-objects/money.js';
-import { TransactionId } from '../../domain/value-objects/transaction-id.js';
-import { CreditTransaction, type CreditType, type DebitType } from '../../domain/entities/credit-transaction.js';
-import { CreditBalance } from '../../domain/entities/credit-balance.js';
+import { and, desc, eq, sql } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
+import { CreditBalance } from "../../domain/entities/credit-balance.js";
+import { CreditTransaction, type CreditType, type DebitType } from "../../domain/entities/credit-transaction.js";
+import type {
+  CreditRepository,
+  HistoryOptions,
+  TenantBalance,
+  TransactionPage,
+} from "../../domain/repositories/credit-repository.js";
+import { InsufficientBalanceError } from "../../domain/repositories/credit-repository.js";
+import { Money } from "../../domain/value-objects/money.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { TransactionId } from "../../domain/value-objects/transaction-id.js";
 
 export class DrizzleCreditRepository implements CreditRepository {
   constructor(private readonly db: DrizzleDb) {}
@@ -23,10 +28,10 @@ export class DrizzleCreditRepository implements CreditRepository {
     amount: Money,
     type: CreditType,
     description?: string,
-    referenceId?: string
+    referenceId?: string,
   ): Promise<CreditTransaction> {
     if (amount.toCents() <= 0) {
-      throw new Error('Credit amount must be positive');
+      throw new Error("Credit amount must be positive");
     }
 
     // better-sqlite3 transaction is synchronous, but we expose async API
@@ -89,10 +94,10 @@ export class DrizzleCreditRepository implements CreditRepository {
     amount: Money,
     type: DebitType,
     description?: string,
-    referenceId?: string
+    referenceId?: string,
   ): Promise<CreditTransaction> {
     if (amount.toCents() <= 0) {
-      throw new Error('Debit amount must be positive');
+      throw new Error("Debit amount must be positive");
     }
 
     return this.db.transaction((tx) => {
@@ -105,11 +110,7 @@ export class DrizzleCreditRepository implements CreditRepository {
       const currentBalanceCents = existing?.balanceCents ?? 0;
 
       if (currentBalanceCents < amount.toCents()) {
-        throw new InsufficientBalanceError(
-          tenantId,
-          Money.fromCents(currentBalanceCents),
-          amount
-        );
+        throw new InsufficientBalanceError(tenantId, Money.fromCents(currentBalanceCents), amount);
       }
 
       const newBalanceCents = currentBalanceCents - amount.toCents();
@@ -149,11 +150,7 @@ export class DrizzleCreditRepository implements CreditRepository {
   }
 
   async getBalance(tenantId: TenantId): Promise<CreditBalance> {
-    const row = this.db
-      .select()
-      .from(creditBalances)
-      .where(eq(creditBalances.tenantId, tenantId.toString()))
-      .get();
+    const row = this.db.select().from(creditBalances).where(eq(creditBalances.tenantId, tenantId.toString())).get();
 
     if (!row) {
       return CreditBalance.zero(tenantId);
@@ -166,14 +163,11 @@ export class DrizzleCreditRepository implements CreditRepository {
     });
   }
 
-  async getTransactionHistory(
-    tenantId: TenantId,
-    options: HistoryOptions = {}
-  ): Promise<TransactionPage> {
+  async getTransactionHistory(tenantId: TenantId, options: HistoryOptions = {}): Promise<TransactionPage> {
     const { limit = 50, offset = 0, type } = options;
 
     const conditions = [eq(creditTransactions.tenantId, tenantId.toString())];
-    
+
     if (type) {
       conditions.push(eq(creditTransactions.type, type));
     }
@@ -183,7 +177,7 @@ export class DrizzleCreditRepository implements CreditRepository {
       .from(creditTransactions)
       .where(and(...conditions))
       .get();
-    
+
     const totalCount = countResult?.count ?? 0;
 
     const rows = this.db
@@ -195,17 +189,18 @@ export class DrizzleCreditRepository implements CreditRepository {
       .offset(offset)
       .all();
 
-    const transactions = rows.map((row) =>
-      new CreditTransaction({
-        id: TransactionId.fromString(row.id),
-        tenantId,
-        amount: Money.fromCents(Math.abs(row.amountCents)),
-        balanceAfter: Money.fromCents(row.balanceAfterCents),
-        type: row.type as CreditType | DebitType,
-        description: row.description,
-        referenceId: row.referenceId,
-        createdAt: new Date(row.createdAt),
-      })
+    const transactions = rows.map(
+      (row) =>
+        new CreditTransaction({
+          id: TransactionId.fromString(row.id),
+          tenantId,
+          amount: Money.fromCents(Math.abs(row.amountCents)),
+          balanceAfter: Money.fromCents(row.balanceAfterCents),
+          type: row.type as CreditType | DebitType,
+          description: row.description,
+          referenceId: row.referenceId,
+          createdAt: new Date(row.createdAt),
+        }),
     );
 
     return {

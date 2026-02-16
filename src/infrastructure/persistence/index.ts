@@ -1,7 +1,30 @@
 // Export persistence implementations
-export { DrizzleCreditRepository } from './drizzle-credit-repository.js';
-export { InMemoryCreditRepository } from './in-memory-credit-repository.js';
-export { DrizzleBotBillingRepository } from './drizzle-bot-billing-repository.js';
-export { InMemoryBotBillingRepository } from './in-memory-bot-billing-repository.js';
-export { DrizzleTenantCustomerRepository } from './drizzle-tenant-customer-repository.js';
-export { InMemoryTenantCustomerRepository } from './in-memory-tenant-customer-repository.js';
+
+export { DrizzleAdminUserRepository } from "./drizzle-admin-user-repository.js";
+export { DrizzleBackupStatusRepository } from "./drizzle-backup-status-repository.js";
+export { DrizzleBotBillingRepository } from "./drizzle-bot-billing-repository.js";
+export { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
+export { DrizzleCredentialVaultRepository } from "./drizzle-credential-vault-repository.js";
+export { BalanceError, DrizzleCreditAdjustmentRepository } from "./drizzle-credit-adjustment-repository.js";
+export { DrizzleCreditRepository } from "./drizzle-credit-repository.js";
+export { DrizzleNodeRepository } from "./drizzle-node-repository.js";
+export { DrizzleProfileRepository } from "./drizzle-profile-repository.js";
+export { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
+export { DrizzleRoleRepository, PLATFORM_TENANT } from "./drizzle-role-repository.js";
+export { DrizzleTenantCustomerRepository } from "./drizzle-tenant-customer-repository.js";
+export { DrizzleTenantKeyRepository } from "./drizzle-tenant-key-repository.js";
+export { DrizzleTenantStatusRepository } from "./drizzle-tenant-status-repository.js";
+export { InMemoryAdminUserRepository } from "./in-memory-admin-user-repository.js";
+export { InMemoryBackupStatusRepository } from "./in-memory-backup-status-repository.js";
+export { InMemoryBotBillingRepository } from "./in-memory-bot-billing-repository.js";
+export { InMemoryBotInstanceRepository } from "./in-memory-bot-instance-repository.js";
+export { InMemoryCredentialVaultRepository } from "./in-memory-credential-vault-repository.js";
+export { InMemoryCreditAdjustmentRepository } from "./in-memory-credit-adjustment-repository.js";
+export { InMemoryCreditRepository } from "./in-memory-credit-repository.js";
+export { InMemoryNodeRepository } from "./in-memory-node-repository.js";
+export { InMemoryProfileRepository } from "./in-memory-profile-repository.js";
+export { InMemoryRecoveryRepository } from "./in-memory-recovery-repository.js";
+export { InMemoryRoleRepository } from "./in-memory-role-repository.js";
+export { InMemoryTenantCustomerRepository } from "./in-memory-tenant-customer-repository.js";
+export { InMemoryTenantKeyRepository } from "./in-memory-tenant-key-repository.js";
+export { InMemoryTenantStatusRepository } from "./in-memory-tenant-status-repository.js";

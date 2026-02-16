@@ -186,18 +186,20 @@ describe("tRPC appRouter", () => {
       const creditStore = new CreditAdjustmentStore(sqlite);
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
-      const tenantStore = new TenantCustomerStore(db);
+      const { DrizzleTenantCustomerRepository } = await import(
+        "../infrastructure/persistence/drizzle-tenant-customer-repository.js"
+      );
+      const tenantRepo = new DrizzleTenantCustomerRepository(db);
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantRepo);
 
       setBillingRouterDeps({
         stripe: {
           checkout: { sessions: { create: vi.fn() } },
           billingPortal: { sessions: { create: vi.fn() } },
         } as never,
-        tenantStore,
+        tenantRepo,
         creditStore,
         meterAggregator,
         usageReporter,

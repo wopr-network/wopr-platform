@@ -1,8 +1,8 @@
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProfileRepository } from "../domain/repositories/profile-repository.js";
 import type { NetworkPolicy } from "../network/network-policy.js";
 import { BotNotFoundError, FleetManager } from "./fleet-manager.js";
-import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile } from "./types.js";
 
 // --- Mock helpers ---
@@ -46,18 +46,16 @@ function mockDocker(containerMock: ReturnType<typeof mockContainer> | null = nul
   };
 }
 
-function mockStore(): ProfileStore {
+function mockStore(): ProfileRepository {
   const profiles = new Map<string, BotProfile>();
   return {
-    init: vi.fn().mockResolvedValue(undefined),
     save: vi.fn().mockImplementation(async (p: BotProfile) => {
       profiles.set(p.id, p);
     }),
     get: vi.fn().mockImplementation(async (id: string) => profiles.get(id) || null),
     list: vi.fn().mockImplementation(async () => [...profiles.values()]),
     delete: vi.fn().mockImplementation(async (id: string) => profiles.delete(id)),
-    dataDir: "/tmp/test-fleet",
-  } as unknown as ProfileStore;
+  } as unknown as ProfileRepository;
 }
 
 function mockNetworkPolicy(networkName = "wopr-tenant-user-123") {
@@ -83,7 +81,7 @@ const PROFILE_PARAMS = {
 
 describe("FleetManager", () => {
   let docker: ReturnType<typeof mockDocker>;
-  let store: ProfileStore;
+  let store: ProfileRepository;
   let container: ReturnType<typeof mockContainer>;
   let fleet: FleetManager;
 

@@ -1,6 +1,6 @@
 /**
  * Value Object: TenantId
- * 
+ *
  * Immutable identifier for tenants with validation.
  * Prevents mixing up different types of IDs (tenant vs user vs bot).
  */
@@ -13,10 +13,10 @@ export class TenantId {
    */
   static create(value: string): TenantId {
     if (!value || value.length === 0) {
-      throw new Error('TenantId cannot be empty');
+      throw new Error("TenantId cannot be empty");
     }
     if (value.length > 256) {
-      throw new Error('TenantId cannot exceed 256 characters');
+      throw new Error("TenantId cannot exceed 256 characters");
     }
     return new TenantId(value);
   }

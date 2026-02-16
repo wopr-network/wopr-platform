@@ -8,11 +8,12 @@ import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb } from "../../db/index.js";
-import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { initTenantApiKeysSchema } from "../../db/schema/tenant-api-keys-init.js";
 import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { DrizzleTenantCustomerRepository } from "../../infrastructure/persistence/drizzle-tenant-customer-repository.js";
 import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
 import { initStripeSchema } from "./schema.js";
-import { TenantCustomerStore } from "./tenant-store.js";
 import type { WebhookDeps } from "./webhook.js";
 import { handleWebhookEvent, WebhookReplayGuard } from "./webhook.js";
 
@@ -41,7 +42,7 @@ function initCreditSchema(sqlite: BetterSqlite3.Database): void {
 
 describe("handleWebhookEvent (credit model)", () => {
   let sqlite: BetterSqlite3.Database;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: DrizzleTenantCustomerRepository;
   let creditRepo: DrizzleCreditRepository;
   let deps: WebhookDeps;
 
@@ -49,10 +50,11 @@ describe("handleWebhookEvent (credit model)", () => {
     sqlite = new BetterSqlite3(":memory:");
     initStripeSchema(sqlite);
     initCreditSchema(sqlite);
-    const db = createDb(sqlite);
-    tenantStore = new TenantCustomerStore(db);
-    creditRepo = new DrizzleCreditRepository(db);
-    deps = { tenantStore, creditRepo };
+    initTenantApiKeysSchema(sqlite);
+    const drizzleDb = createDb(sqlite);
+    tenantRepo = new DrizzleTenantCustomerRepository(drizzleDb);
+    creditRepo = new DrizzleCreditRepository(drizzleDb);
+    deps = { tenantRepo, creditRepo };
   });
 
   afterEach(() => {
@@ -137,9 +139,9 @@ describe("handleWebhookEvent (credit model)", () => {
       const event = createCheckoutEvent();
       await handleWebhookEvent(deps, event);
 
-      const mapping = tenantStore.getByTenant("tenant-123");
+      const mapping = await tenantRepo.getByTenant(TenantId.create("tenant-123"));
       expect(mapping).not.toBeNull();
-      expect(mapping?.stripe_customer_id).toBe("cus_abc");
+      expect(mapping?.stripeCustomerId).toBe("cus_abc");
     });
 
     it("handles tenant from metadata when client_reference_id is null", async () => {
@@ -163,8 +165,8 @@ describe("handleWebhookEvent (credit model)", () => {
       const result = await handleWebhookEvent(deps, event);
 
       expect(result.handled).toBe(true);
-      const mapping = tenantStore.getByTenant("tenant-123");
-      expect(mapping?.stripe_customer_id).toBe("cus_obj_123");
+      const mapping = await tenantRepo.getByTenant(TenantId.create("tenant-123"));
+      expect(mapping?.stripeCustomerId).toBe("cus_obj_123");
     });
 
     it("returns handled:false when tenant is missing", async () => {

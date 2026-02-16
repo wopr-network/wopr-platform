@@ -1,11 +1,12 @@
 /**
  * Repository Interface: TenantCustomerRepository (ASYNC)
- * 
+ *
  * Manages tenant-to-Stripe customer mappings.
  * This is the bridge between WOPR tenant IDs and Stripe customer IDs.
  */
-import type { TenantId } from '../value-objects/tenant-id.js';
-import type { TenantCustomer } from '../entities/tenant-customer.js';
+
+import type { TenantCustomer } from "../entities/tenant-customer.js";
+import type { TenantId } from "../value-objects/tenant-id.js";
 
 export interface TenantCustomerRepository {
   /**

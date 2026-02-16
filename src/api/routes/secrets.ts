@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
+import { DrizzleProfileRepository } from "../../infrastructure/persistence/drizzle-profile-repository.js";
 import { decrypt, deriveInstanceKey } from "../../security/encryption.js";
 import { forwardSecretsToInstance, writeEncryptedSeed } from "../../security/key-injection.js";
 import { validateProviderKey } from "../../security/key-validation.js";
@@ -20,8 +21,7 @@ function isValidInstanceId(id: string): boolean {
 /** Helper to get instance tenantId from bot profile */
 async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
   try {
-    const { ProfileStore } = await import("../../fleet/profile-store.js");
-    const store = new ProfileStore(FLEET_DATA_DIR);
+    const store = new DrizzleProfileRepository(FLEET_DATA_DIR);
     const profile = await store.get(instanceId);
     return profile?.tenantId;
   } catch {

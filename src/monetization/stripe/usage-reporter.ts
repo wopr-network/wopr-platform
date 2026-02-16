@@ -5,8 +5,9 @@ import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { billingPeriodSummaries } from "../../db/schema/meter-events.js";
 import { stripeUsageReports } from "../../db/schema/stripe.js";
+import type { TenantCustomerRepository } from "../../domain/repositories/tenant-customer-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import type { MeterEventNameMap } from "../metering/usage-aggregation-worker.js";
-import type { TenantCustomerStore } from "./tenant-store.js";
 import type { StripeUsageReportRow } from "./types.js";
 
 const DEFAULT_EVENT_NAMES: MeterEventNameMap = {
@@ -48,7 +49,7 @@ export class StripeUsageReporter {
   constructor(
     private readonly db: DrizzleDb,
     private readonly stripe: Stripe,
-    private readonly tenantStore: TenantCustomerStore,
+    private readonly tenantRepo: TenantCustomerRepository,
     opts: UsageReporterOpts = {},
   ) {
     this.meterEventNames = { ...DEFAULT_EVENT_NAMES, ...opts.meterEventNames };
@@ -93,7 +94,7 @@ export class StripeUsageReporter {
     let reported = 0;
 
     for (const row of unreported) {
-      const mapping = this.tenantStore.getByTenant(row.tenant);
+      const mapping = await this.tenantRepo.getByTenant(TenantId.create(row.tenant));
       if (!mapping) {
         // Tenant has no Stripe customer -- skip silently.
         // They may be on a free tier or not yet signed up.
@@ -115,7 +116,7 @@ export class StripeUsageReporter {
           event_name: eventName,
           timestamp: Math.floor(row.periodStart / 1000), // Stripe expects seconds
           payload: {
-            stripe_customer_id: mapping.stripe_customer_id,
+            stripe_customer_id: mapping.stripeCustomerId,
             value: String(valueCents),
           },
         });

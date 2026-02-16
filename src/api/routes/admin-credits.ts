@@ -1,11 +1,19 @@
 import type DatabaseType from "better-sqlite3";
 import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
-import type { AdjustmentType } from "../../admin/credits/adjustment-store.js";
-import { BalanceError, CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
+import * as dbSchema from "../../db/schema/index.js";
+import type {
+  AdjustmentType,
+  CreditAdjustmentRepository,
+} from "../../domain/repositories/credit-adjustment-repository.js";
+import {
+  BalanceError,
+  DrizzleCreditAdjustmentRepository,
+} from "../../infrastructure/persistence/drizzle-credit-adjustment-repository.js";
 
 const CREDITS_DB_PATH = process.env.CREDITS_DB_PATH || "/data/platform/credits.db";
 const VALID_ADJUSTMENT_TYPES: AdjustmentType[] = ["grant", "refund", "correction"];
@@ -21,12 +29,13 @@ function getCreditsDb(): DatabaseType.Database {
   return _creditsDb;
 }
 
-let _store: CreditAdjustmentStore | null = null;
-function getStore(): CreditAdjustmentStore {
-  if (!_store) {
-    _store = new CreditAdjustmentStore(getCreditsDb());
+let _repo: CreditAdjustmentRepository | null = null;
+function getRepo(): CreditAdjustmentRepository {
+  if (!_repo) {
+    const drizzleDb = drizzle(getCreditsDb(), { schema: dbSchema });
+    _repo = new DrizzleCreditAdjustmentRepository(drizzleDb);
   }
-  return _store;
+  return _repo;
 }
 
 function parseIntParam(value: string | undefined): number | undefined {
@@ -41,16 +50,17 @@ function parseIntParam(value: string | undefined): number | undefined {
  */
 export function createAdminCreditApiRoutes(db: DatabaseType.Database): Hono<AuthEnv> {
   initCreditAdjustmentSchema(db);
-  const store = new CreditAdjustmentStore(db);
-  return buildRoutes(() => store);
+  const drizzleDb = drizzle(db, { schema: dbSchema });
+  const repo = new DrizzleCreditAdjustmentRepository(drizzleDb);
+  return buildRoutes(() => repo);
 }
 
-function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
+function buildRoutes(repoFactory: () => CreditAdjustmentRepository): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
 
   /** POST /:tenantId/grant */
   routes.post("/:tenantId/grant", async (c) => {
-    const store = storeFactory();
+    const repo = repoFactory();
     const tenant = c.req.param("tenantId");
 
     let body: Record<string, unknown>;
@@ -73,7 +83,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
     try {
       const user = c.get("user");
-      const adjustment = store.grant(tenant, amountCents, reason, user?.id ?? "unknown");
+      const adjustment = await repo.grant(tenant, amountCents, reason, user?.id ?? "unknown");
       return c.json(adjustment, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -82,7 +92,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
   /** POST /:tenantId/refund */
   routes.post("/:tenantId/refund", async (c) => {
-    const store = storeFactory();
+    const repo = repoFactory();
     const tenant = c.req.param("tenantId");
 
     let body: Record<string, unknown>;
@@ -113,7 +123,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
     try {
       const user = c.get("user");
-      const adjustment = store.refund(
+      const adjustment = await repo.refund(
         tenant,
         amountCents,
         reason,
@@ -131,7 +141,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
   /** POST /:tenantId/correction */
   routes.post("/:tenantId/correction", async (c) => {
-    const store = storeFactory();
+    const repo = repoFactory();
     const tenant = c.req.param("tenantId");
 
     let body: Record<string, unknown>;
@@ -154,7 +164,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
     try {
       const user = c.get("user");
-      const adjustment = store.correction(tenant, amountCents, reason, user?.id ?? "unknown");
+      const adjustment = await repo.correction(tenant, amountCents, reason, user?.id ?? "unknown");
       return c.json(adjustment, 201);
     } catch (err) {
       if (err instanceof BalanceError) {
@@ -165,12 +175,12 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
   });
 
   /** GET /:tenantId/balance */
-  routes.get("/:tenantId/balance", (c) => {
-    const store = storeFactory();
+  routes.get("/:tenantId/balance", async (c) => {
+    const repo = repoFactory();
     const tenant = c.req.param("tenantId");
 
     try {
-      const balance = store.getBalance(tenant);
+      const balance = await repo.getBalance(tenant);
       return c.json({ tenant, balance_cents: balance });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
@@ -178,8 +188,8 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
   });
 
   /** GET /:tenantId/transactions */
-  routes.get("/:tenantId/transactions", (c) => {
-    const store = storeFactory();
+  routes.get("/:tenantId/transactions", async (c) => {
+    const repo = repoFactory();
     const tenant = c.req.param("tenantId");
     const typeParam = c.req.query("type");
 
@@ -196,7 +206,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
     };
 
     try {
-      const result = store.listTransactions(tenant, filters);
+      const result = await repo.listTransactions(tenant, filters);
       return c.json(result);
     } catch {
       return c.json({ error: "Internal server error" }, 500);
@@ -204,8 +214,8 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
   });
 
   /** GET /:tenantId/adjustments -- alias for transactions */
-  routes.get("/:tenantId/adjustments", (c) => {
-    const store = storeFactory();
+  routes.get("/:tenantId/adjustments", async (c) => {
+    const repo = repoFactory();
     const tenant = c.req.param("tenantId");
     const typeParam = c.req.query("type");
 
@@ -222,7 +232,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
     };
 
     try {
-      const result = store.listTransactions(tenant, filters);
+      const result = await repo.listTransactions(tenant, filters);
       return c.json(result);
     } catch {
       return c.json({ error: "Internal server error" }, 500);
@@ -238,4 +248,4 @@ const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 /** Pre-built admin credit routes with auth and lazy DB initialization. */
 export const adminCreditRoutes = new Hono<AuthEnv>();
 adminCreditRoutes.use("*", adminAuth);
-adminCreditRoutes.route("/", buildRoutes(getStore));
+adminCreditRoutes.route("/", buildRoutes(getRepo));

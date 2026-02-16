@@ -1,6 +1,6 @@
 import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
-import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { Money } from "../../domain/value-objects/money.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 
 /** Signup grant amount: $5.00 = 500 cents */
 export const SIGNUP_GRANT_CENTS = 500;

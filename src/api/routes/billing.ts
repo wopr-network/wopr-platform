@@ -5,14 +5,15 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
 import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import type { TenantCustomerRepository } from "../../domain/repositories/tenant-customer-repository.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { DrizzleTenantCustomerRepository } from "../../infrastructure/persistence/drizzle-tenant-customer-repository.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
-import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
 import { handleWebhookEvent, WebhookReplayGuard } from "../../monetization/stripe/webhook.js";
 
@@ -96,7 +97,7 @@ const usageQuerySchema = z.object({
 // -- Route factory ------------------------------------------------------------
 
 let deps: BillingRouteDeps | null = null;
-let tenantStore: TenantCustomerStore | null = null;
+let tenantRepo: TenantCustomerRepository | null = null;
 let creditRepo: CreditRepository | null = null;
 let meterAggregator: MeterAggregator | null = null;
 let usageReporter: StripeUsageReporter | null = null;
@@ -109,10 +110,10 @@ let replayGuard: WebhookReplayGuard | undefined;
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
-  tenantStore = new TenantCustomerStore(d.db);
+  tenantRepo = new DrizzleTenantCustomerRepository(d.db);
   creditRepo = new DrizzleCreditRepository(d.db);
   meterAggregator = new MeterAggregator(d.db);
-  usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
+  usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantRepo);
   priceMap = loadCreditPriceMap();
   replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
 }
@@ -124,11 +125,11 @@ function getDeps(): BillingRouteDeps {
   return deps;
 }
 
-function getTenantStore(): TenantCustomerStore {
-  if (!tenantStore) {
+function getTenantRepo(): TenantCustomerRepository {
+  if (!tenantRepo) {
     throw new Error("Billing routes not initialized — call setBillingDeps() first");
   }
-  return tenantStore;
+  return tenantRepo;
 }
 
 function getCreditRepo(): CreditRepository {
@@ -167,7 +168,7 @@ if (metadataMap.size === 0) {
  */
 billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
   const { stripe } = getDeps();
-  const store = getTenantStore();
+  const repo = getTenantRepo();
 
   let body: Record<string, unknown>;
   try {
@@ -184,7 +185,7 @@ billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
   const { tenant, priceId, successUrl, cancelUrl } = parsed.data;
 
   try {
-    const session = await createCreditCheckoutSession(stripe, store, {
+    const session = await createCreditCheckoutSession(stripe, repo, {
       tenant,
       priceId,
       successUrl,
@@ -206,7 +207,7 @@ billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
  */
 billingRoutes.post("/portal", adminAuth, async (c) => {
   const { stripe } = getDeps();
-  const store = getTenantStore();
+  const repo = getTenantRepo();
 
   let body: Record<string, unknown>;
   try {
@@ -223,7 +224,7 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
   const { tenant, returnUrl } = parsed.data;
 
   try {
-    const session = await createPortalSession(stripe, store, { tenant, returnUrl });
+    const session = await createPortalSession(stripe, repo, { tenant, returnUrl });
     return c.json({ url: session.url });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Portal session creation failed";
@@ -285,10 +286,10 @@ billingRoutes.post("/webhook", async (c) => {
     return c.json({ error: "Invalid webhook signature" }, 400);
   }
 
-  const store = getTenantStore();
-  const repo = getCreditRepo();
+  const tenantRepo = getTenantRepo();
+  const creditRepo = getCreditRepo();
   const result = await handleWebhookEvent(
-    { tenantStore: store, creditRepo: repo, priceMap: priceMap ?? undefined, replayGuard },
+    { tenantRepo, creditRepo, priceMap: priceMap ?? undefined, replayGuard },
     event,
   );
 

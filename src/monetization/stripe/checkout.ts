@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
-import type { TenantCustomerStore } from "./tenant-store.js";
+import type { TenantCustomerRepository } from "../../domain/repositories/tenant-customer-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import type { CreditCheckoutOpts } from "./types.js";
 
 /**
@@ -13,10 +14,10 @@ import type { CreditCheckoutOpts } from "./types.js";
  */
 export async function createCreditCheckoutSession(
   stripe: Stripe,
-  tenantStore: TenantCustomerStore,
+  tenantRepo: TenantCustomerRepository,
   opts: CreditCheckoutOpts,
 ): Promise<Stripe.Checkout.Session> {
-  const existing = tenantStore.getByTenant(opts.tenant);
+  const existing = await tenantRepo.getByTenant(TenantId.create(opts.tenant));
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
@@ -37,7 +38,7 @@ export async function createCreditCheckoutSession(
 
   // Reuse existing Stripe customer if we have one.
   if (existing) {
-    params.customer = existing.stripe_customer_id;
+    params.customer = existing.stripeCustomerId;
   }
 
   return stripe.checkout.sessions.create(params);

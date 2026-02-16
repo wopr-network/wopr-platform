@@ -1,9 +1,9 @@
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
+import type { ProfileRepository } from "../domain/repositories/profile-repository.js";
 import type { FleetManager } from "./fleet-manager.js";
 import type { ImagePoller } from "./image-poller.js";
 import { getContainerDigest } from "./image-poller.js";
-import type { ProfileStore } from "./profile-store.js";
 
 /** How long to wait for a container to become healthy after update (ms) */
 const HEALTH_CHECK_TIMEOUT_MS = 60_000;
@@ -28,12 +28,12 @@ export interface UpdateResult {
  */
 export class ContainerUpdater {
   private readonly docker: Docker;
-  private readonly store: ProfileStore;
+  private readonly store: ProfileRepository;
   private readonly fleet: FleetManager;
   /** Per-bot lock to prevent concurrent updates to the same bot. */
   private readonly updating = new Set<string>();
 
-  constructor(docker: Docker, store: ProfileStore, fleet: FleetManager, _poller: ImagePoller) {
+  constructor(docker: Docker, store: ProfileRepository, fleet: FleetManager, _poller: ImagePoller) {
     this.docker = docker;
     this.store = store;
     this.fleet = fleet;

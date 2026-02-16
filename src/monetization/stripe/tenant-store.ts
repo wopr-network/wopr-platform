@@ -11,19 +11,21 @@ import type { TenantCustomerRow } from "./types.js";
  *
  * Note: No subscription tracking — WOPR uses credits, not subscriptions.
  * Credit balances are managed by CreditAdjustmentStore.
+ *
+ * All methods are async for future database flexibility.
  */
 export class TenantCustomerStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get a tenant's Stripe mapping. */
-  getByTenant(tenant: string): TenantCustomerRow | null {
-    const row = this.db.select().from(tenantCustomers).where(eq(tenantCustomers.tenant, tenant)).get();
+  async getByTenant(tenant: string): Promise<TenantCustomerRow | null> {
+    const row = await this.db.select().from(tenantCustomers).where(eq(tenantCustomers.tenant, tenant)).get();
     return row ? mapRow(row) : null;
   }
 
   /** Get a tenant mapping by Stripe customer ID. */
-  getByStripeCustomerId(stripeCustomerId: string): TenantCustomerRow | null {
-    const row = this.db
+  async getByStripeCustomerId(stripeCustomerId: string): Promise<TenantCustomerRow | null> {
+    const row = await this.db
       .select()
       .from(tenantCustomers)
       .where(eq(tenantCustomers.stripeCustomerId, stripeCustomerId))
@@ -32,9 +34,9 @@ export class TenantCustomerStore {
   }
 
   /** Upsert a tenant-to-customer mapping. */
-  upsert(row: { tenant: string; stripeCustomerId: string; tier?: string }): void {
+  async upsert(row: { tenant: string; stripeCustomerId: string; tier?: string }): Promise<void> {
     const now = Date.now();
-    this.db
+    await this.db
       .insert(tenantCustomers)
       .values({
         tenant: row.tenant,
@@ -55,8 +57,8 @@ export class TenantCustomerStore {
   }
 
   /** Update the tier for a tenant. */
-  setTier(tenant: string, tier: string): void {
-    this.db
+  async setTier(tenant: string, tier: string): Promise<void> {
+    await this.db
       .update(tenantCustomers)
       .set({ tier, updatedAt: Date.now() })
       .where(eq(tenantCustomers.tenant, tenant))
@@ -64,8 +66,8 @@ export class TenantCustomerStore {
   }
 
   /** Set or clear the billing hold flag for a tenant. */
-  setBillingHold(tenant: string, hold: boolean): void {
-    this.db
+  async setBillingHold(tenant: string, hold: boolean): Promise<void> {
+    await this.db
       .update(tenantCustomers)
       .set({ billingHold: hold ? 1 : 0, updatedAt: Date.now() })
       .where(eq(tenantCustomers.tenant, tenant))
@@ -73,8 +75,8 @@ export class TenantCustomerStore {
   }
 
   /** Check whether a tenant has an active billing hold. */
-  hasBillingHold(tenant: string): boolean {
-    const row = this.db
+  async hasBillingHold(tenant: string): Promise<boolean> {
+    const row = await this.db
       .select({ billingHold: tenantCustomers.billingHold })
       .from(tenantCustomers)
       .where(eq(tenantCustomers.tenant, tenant))
@@ -83,14 +85,14 @@ export class TenantCustomerStore {
   }
 
   /** List all tenants with Stripe mappings. */
-  list(): TenantCustomerRow[] {
-    const rows = this.db.select().from(tenantCustomers).orderBy(desc(tenantCustomers.createdAt)).all();
+  async list(): Promise<TenantCustomerRow[]> {
+    const rows = await this.db.select().from(tenantCustomers).orderBy(desc(tenantCustomers.createdAt)).all();
     return rows.map(mapRow);
   }
 
   /** Build a tenant -> stripe_customer_id map for use with UsageAggregationWorker. */
-  buildCustomerIdMap(): Record<string, string> {
-    const rows = this.db
+  async buildCustomerIdMap(): Promise<Record<string, string>> {
+    const rows = await this.db
       .select({
         tenant: tenantCustomers.tenant,
         stripeCustomerId: tenantCustomers.stripeCustomerId,

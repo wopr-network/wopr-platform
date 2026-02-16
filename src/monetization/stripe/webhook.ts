@@ -1,9 +1,10 @@
 import { LRUCache } from "lru-cache";
 import type Stripe from "stripe";
-import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import type { TenantCustomerRepository } from "../../domain/repositories/tenant-customer-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditPriceMap } from "./credit-prices.js";
-import type { TenantCustomerStore } from "./tenant-store.js";
 
 /**
  * Result of processing a Stripe webhook event.
@@ -46,7 +47,7 @@ export class WebhookReplayGuard {
  * Dependencies required by the webhook handler.
  */
 export interface WebhookDeps {
-  tenantStore: TenantCustomerStore;
+  tenantRepo: TenantCustomerRepository;
   creditRepo: CreditRepository;
   /** Map of Stripe Price ID -> CreditPricePoint for bonus calculation. */
   priceMap?: CreditPriceMap;
@@ -64,7 +65,7 @@ export interface WebhookDeps {
  *
  * All other event types are acknowledged but not processed.
  * No subscription events are handled — WOPR uses credits, not subscriptions.
- * 
+ *
  * MIGRATED: Now uses CreditRepository (async) instead of CreditLedger (sync)
  */
 export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Promise<WebhookResult> {
@@ -89,10 +90,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       const customerId = typeof session.customer === "string" ? session.customer : session.customer.id;
 
       // Upsert tenant-to-customer mapping (no subscription).
-      deps.tenantStore.upsert({
-        tenant,
-        stripeCustomerId: customerId,
-      });
+      await deps.tenantRepo.upsert(TenantId.create(tenant), customerId);
 
       // Determine credit amount from price metadata or payment amount.
       const amountPaid = session.amount_total; // in cents
@@ -128,9 +126,8 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
 
       // Credit the ledger with session ID as reference for idempotency.
       // MIGRATED: Use async CreditRepository
-      const { TenantId } = await import("../../domain/value-objects/tenant-id.js");
       const { Money } = await import("../../domain/value-objects/money.js");
-      
+
       await deps.creditRepo.credit(
         TenantId.create(tenant),
         Money.fromCents(creditCents),

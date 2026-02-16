@@ -1,23 +1,23 @@
 /**
  * Drizzle Implementation: TenantCustomerRepository (ASYNC API)
- * 
+ *
  * better-sqlite3 is synchronous, but we expose async API.
  */
-import { desc, eq } from 'drizzle-orm';
-import type { DrizzleDb } from '../../db/index.js';
-import { tenantCustomers } from '../../db/schema/stripe.js';
-import type { TenantCustomerRepository } from '../../domain/repositories/tenant-customer-repository.js';
-import { TenantId } from '../../domain/value-objects/tenant-id.js';
-import { TenantCustomer } from '../../domain/entities/tenant-customer.js';
+import { desc, eq } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { tenantCustomers } from "../../db/schema/stripe.js";
+import { TenantCustomer } from "../../domain/entities/tenant-customer.js";
+import type { TenantCustomerRepository } from "../../domain/repositories/tenant-customer-repository.js";
+import type { TenantId } from "../../domain/value-objects/tenant-id.js";
 
 function rowToTenantCustomer(row: typeof tenantCustomers.$inferSelect): TenantCustomer {
-  return new TenantCustomer({
-    tenantId: TenantId.create(row.tenant),
+  return TenantCustomer.fromRow({
+    tenant: row.tenant,
     stripeCustomerId: row.stripeCustomerId,
     tier: row.tier,
-    billingHold: row.billingHold === 1,
-    createdAt: new Date(row.createdAt),
-    updatedAt: new Date(row.updatedAt),
+    billingHold: row.billingHold,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   });
 }
 
@@ -25,11 +25,7 @@ export class DrizzleTenantCustomerRepository implements TenantCustomerRepository
   constructor(private readonly db: DrizzleDb) {}
 
   async getByTenant(tenantId: TenantId): Promise<TenantCustomer | null> {
-    const row = this.db
-      .select()
-      .from(tenantCustomers)
-      .where(eq(tenantCustomers.tenant, tenantId.toString()))
-      .get();
+    const row = this.db.select().from(tenantCustomers).where(eq(tenantCustomers.tenant, tenantId.toString())).get();
 
     return row ? rowToTenantCustomer(row) : null;
   }
@@ -51,7 +47,7 @@ export class DrizzleTenantCustomerRepository implements TenantCustomerRepository
       .values({
         tenant: tenantId.toString(),
         stripeCustomerId,
-        tier: tier ?? 'free',
+        tier: tier ?? "free",
         createdAt: now,
         updatedAt: now,
       })
@@ -93,11 +89,7 @@ export class DrizzleTenantCustomerRepository implements TenantCustomerRepository
   }
 
   async list(): Promise<TenantCustomer[]> {
-    const rows = this.db
-      .select()
-      .from(tenantCustomers)
-      .orderBy(desc(tenantCustomers.createdAt))
-      .all();
+    const rows = this.db.select().from(tenantCustomers).orderBy(desc(tenantCustomers.createdAt)).all();
 
     return rows.map(rowToTenantCustomer);
   }

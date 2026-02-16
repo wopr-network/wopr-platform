@@ -1,6 +1,6 @@
 /**
  * Value Object: TransactionId
- * 
+ *
  * Immutable identifier for transactions.
  */
 export class TransactionId {
@@ -19,7 +19,7 @@ export class TransactionId {
    */
   static fromString(value: string): TransactionId {
     if (!value || value.length === 0) {
-      throw new Error('TransactionId cannot be empty');
+      throw new Error("TransactionId cannot be empty");
     }
     return new TransactionId(value);
   }

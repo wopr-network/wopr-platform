@@ -1,4 +1,4 @@
-import type { TenantId } from '../value-objects/tenant-id.js';
+import { TenantId } from "../value-objects/tenant-id.js";
 
 export interface TenantCustomerProps {
   tenantId: TenantId;
@@ -40,19 +40,33 @@ export class TenantCustomer {
     return this.props.billingHold;
   }
 
-  static create(props: {
-    tenantId: TenantId;
-    stripeCustomerId: string;
-    tier?: string;
-  }): TenantCustomer {
+  static create(props: { tenantId: TenantId; stripeCustomerId: string; tier?: string }): TenantCustomer {
     const now = new Date();
     return new TenantCustomer({
       tenantId: props.tenantId,
       stripeCustomerId: props.stripeCustomerId,
-      tier: props.tier ?? 'free',
+      tier: props.tier ?? "free",
       billingHold: false,
       createdAt: now,
       updatedAt: now,
+    });
+  }
+
+  static fromRow(row: {
+    tenant: string;
+    stripeCustomerId: string;
+    tier: string;
+    billingHold: number;
+    createdAt: number;
+    updatedAt: number;
+  }): TenantCustomer {
+    return new TenantCustomer({
+      tenantId: TenantId.create(row.tenant),
+      stripeCustomerId: row.stripeCustomerId,
+      tier: row.tier,
+      billingHold: row.billingHold === 1,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
     });
   }
 

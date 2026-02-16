@@ -1,7 +1,10 @@
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
+import * as dbSchema from "../../db/schema/index.js";
+import { initTenantApiKeysSchema } from "../../db/schema/tenant-api-keys-init.js";
+import { DrizzleTenantKeyRepository } from "../../infrastructure/persistence/drizzle-tenant-key-repository.js";
 
 const TEST_TENANT = "ACME";
 const TEST_TOKEN = `write:wopr_write_test123`;
@@ -12,19 +15,21 @@ vi.stubEnv("PLATFORM_SECRET", "test-platform-secret-32bytes!!ok");
 
 const authHeader = { Authorization: `Bearer ${TENANT_TOKEN}` };
 
-const { tenantKeyRoutes, setStore } = await import("./tenant-keys.js");
+const { tenantKeyRoutes, setRepo } = await import("./tenant-keys.js");
 
 const app = new Hono();
 app.route("/api/tenant-keys", tenantKeyRoutes);
 
 describe("tenant-keys routes", () => {
   let db: BetterSqlite3.Database;
-  let store: TenantKeyStore;
+  let repo: DrizzleTenantKeyRepository;
 
   beforeEach(() => {
     db = new BetterSqlite3(":memory:");
-    store = new TenantKeyStore(db);
-    setStore(store);
+    initTenantApiKeysSchema(db);
+    const drizzleDb = drizzle(db, { schema: dbSchema });
+    repo = new DrizzleTenantKeyRepository(drizzleDb);
+    setRepo(repo);
   });
 
   afterEach(() => {
@@ -65,7 +70,7 @@ describe("tenant-keys routes", () => {
       expect(body.id).toBeTruthy();
 
       // Verify stored in DB
-      const record = store.get(TEST_TENANT, "anthropic");
+      const record = await repo.get(TEST_TENANT, "anthropic");
       expect(record).toBeDefined();
       expect(record?.label).toBe("My Anthropic Key");
     });
@@ -86,7 +91,7 @@ describe("tenant-keys routes", () => {
       });
 
       expect(res.status).toBe(200);
-      const record = store.get(TEST_TENANT, "openai");
+      const record = await repo.get(TEST_TENANT, "openai");
       expect(record?.label).toBe("Updated");
     });
 
@@ -166,7 +171,7 @@ describe("tenant-keys routes", () => {
       expect(body.keys[0].provider).toBe("anthropic");
       expect(body.keys[0].label).toBe("Test");
       // Should NOT contain the encrypted key
-      expect(body.keys[0]).not.toHaveProperty("encrypted_key");
+      expect(body.keys[0]).not.toHaveProperty("encryptedKey");
     });
   });
 
@@ -238,7 +243,8 @@ describe("tenant-keys routes", () => {
       expect(body.ok).toBe(true);
 
       // Verify gone
-      expect(store.get(TEST_TENANT, "anthropic")).toBeUndefined();
+      const record = await repo.get(TEST_TENANT, "anthropic");
+      expect(record).toBeNull();
     });
 
     it("rejects invalid provider", async () => {

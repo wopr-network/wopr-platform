@@ -1,11 +1,12 @@
 /**
  * Repository Interface: BotBillingRepository (ASYNC)
- * 
+ *
  * All operations are async for future flexibility.
  * Handles bot billing lifecycle: suspend, reactivate, destroy.
  */
-import type { TenantId } from '../value-objects/tenant-id.js';
-import type { BotInstance, BillingState } from '../entities/bot-instance.js';
+
+import type { BotInstance } from "../entities/bot-instance.js";
+import type { TenantId } from "../value-objects/tenant-id.js";
 
 export interface BotBillingRepository {
   /**

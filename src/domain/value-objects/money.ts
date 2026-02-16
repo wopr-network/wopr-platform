@@ -1,6 +1,6 @@
 /**
  * Value Object: Money
- * 
+ *
  * Immutable representation of monetary amounts in cents.
  * Prevents floating point errors and provides type safety.
  */
@@ -13,10 +13,10 @@ export class Money {
    */
   static fromCents(cents: number): Money {
     if (!Number.isInteger(cents)) {
-      throw new Error('Money cents must be an integer');
+      throw new Error("Money cents must be an integer");
     }
     if (cents < 0) {
-      throw new Error('Money cannot be negative');
+      throw new Error("Money cannot be negative");
     }
     return new Money(cents);
   }
@@ -28,7 +28,7 @@ export class Money {
    */
   static fromDollars(dollars: number): Money {
     if (dollars < 0) {
-      throw new Error('Money cannot be negative');
+      throw new Error("Money cannot be negative");
     }
     return new Money(Math.round(dollars * 100));
   }
@@ -90,9 +90,9 @@ export class Money {
   /**
    * Format as currency string.
    */
-  format(currency: string = 'USD'): string {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
+  format(currency: string = "USD"): string {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
       currency,
     }).format(this.toDollars());
   }
@@ -114,11 +114,9 @@ export class Money {
 export class InsufficientFundsError extends Error {
   constructor(
     public readonly available: Money,
-    public readonly requested: Money
+    public readonly requested: Money,
   ) {
-    super(
-      `Insufficient funds: available ${available.format()}, requested ${requested.format()}`
-    );
-    this.name = 'InsufficientFundsError';
+    super(`Insufficient funds: available ${available.format()}, requested ${requested.format()}`);
+    this.name = "InsufficientFundsError";
   }
 }

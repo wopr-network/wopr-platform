@@ -5,20 +5,20 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwners
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
 import { createDb } from "../../db/index.js";
+import type { BotBillingRepository } from "../../domain/repositories/bot-billing-repository.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { requireEmailVerified } from "../../email/require-verified.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
-import { BotBilling } from "../../monetization/credits/bot-billing.js";
-import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
 import { DrizzleBotBillingRepository } from "../../infrastructure/persistence/drizzle-bot-billing-repository.js";
-import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
-import type { BotBillingRepository } from "../../domain/repositories/bot-billing-repository.js";
-import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { DrizzleProfileRepository } from "../../infrastructure/persistence/drizzle-profile-repository.js";
+import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
 import { NetworkPolicy } from "../../network/network-policy.js";
@@ -39,7 +39,7 @@ function getAuthDb(): Database.Database {
 const emailVerified = requireEmailVerified(getAuthDb);
 
 const docker = new Docker();
-const store = new ProfileStore(DATA_DIR);
+const store = new DrizzleProfileRepository(DATA_DIR);
 const networkPolicy = new NetworkPolicy(docker);
 const fleet = new FleetManager(docker, store, config.discovery, networkPolicy);
 const imagePoller = new ImagePoller(docker, store);

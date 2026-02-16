@@ -3,13 +3,13 @@
  *
  * Handles suspend/reactivate/destroy transitions and provides
  * active-bot-count queries for the daily runtime cron.
- * 
+ *
  * MIGRATED: Now uses BotBillingRepository instead of direct Drizzle
  */
-import type { BotBillingRepository } from '../../domain/repositories/bot-billing-repository.js';
-import { TenantId } from '../../domain/value-objects/tenant-id.js';
+import type { BotBillingRepository } from "../../domain/repositories/bot-billing-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 
-export type BillingState = 'active' | 'suspended' | 'destroyed';
+export type BillingState = "active" | "suspended" | "destroyed";
 
 export const SUSPENSION_GRACE_DAYS = 30;
 
@@ -32,9 +32,12 @@ export class BotBilling {
     await this.repository.reactivateBot(botId);
   }
 
-  async checkReactivation(tenantId: string, creditRepository: { getBalance(tenantId: TenantId): Promise<{ balance: { toCents(): number } }> }): Promise<string[]> {
+  async checkReactivation(
+    tenantId: string,
+    creditRepository: { getBalance(tenantId: TenantId): Promise<{ balance: { toCents(): number } }> },
+  ): Promise<string[]> {
     const balance = await creditRepository.getBalance(TenantId.create(tenantId));
-    
+
     if (balance.balance.toCents() === 0) {
       return [];
     }

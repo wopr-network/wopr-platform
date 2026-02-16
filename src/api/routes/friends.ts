@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
+import { DrizzleProfileRepository } from "../../infrastructure/persistence/drizzle-profile-repository.js";
 import { proxyToInstance } from "./friends-proxy.js";
 import { autoAcceptRuleSchema, sendFriendRequestSchema, updateCapabilitiesSchema } from "./friends-types.js";
 
@@ -14,8 +15,7 @@ const friendsTokenMetadataMap = buildTokenMetadataMap();
 /** Helper to get instance tenantId from bot profile */
 async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
   try {
-    const { ProfileStore } = await import("../../fleet/profile-store.js");
-    const store = new ProfileStore(FLEET_DATA_DIR);
+    const store = new DrizzleProfileRepository(FLEET_DATA_DIR);
     const profile = await store.get(instanceId);
     return profile?.tenantId;
   } catch {

@@ -3,10 +3,11 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
-import { BackupStatusStore } from "../../backup/backup-status-store.js";
 import { SpacesClient } from "../../backup/spaces-client.js";
 import { logger } from "../../config/logger.js";
 import * as dbSchema from "../../db/schema/index.js";
+import type { BackupStatusRepository } from "../../domain/repositories/backup-status-repository.js";
+import { DrizzleBackupStatusRepository } from "../../infrastructure/persistence/drizzle-backup-status-repository.js";
 
 const BACKUP_DB_PATH = process.env.BACKUP_DB_PATH || "/data/platform/backup-status.db";
 const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
@@ -14,9 +15,9 @@ const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 
-/** Lazy-initialized backup status store */
-let _store: BackupStatusStore | null = null;
-function getStore(): BackupStatusStore {
+/** Lazy-initialized backup status repository */
+let _store: BackupStatusRepository | null = null;
+function getStore(): BackupStatusRepository {
   if (!_store) {
     const sqlite = new Database(BACKUP_DB_PATH);
     sqlite.pragma("journal_mode = WAL");
@@ -37,7 +38,7 @@ function getStore(): BackupStatusStore {
       CREATE INDEX IF NOT EXISTS idx_backup_status_last_backup ON backup_status (last_backup_at);
     `);
     const db = drizzle(sqlite, { schema: dbSchema });
-    _store = new BackupStatusStore(db);
+    _store = new DrizzleBackupStatusRepository(db);
   }
   return _store;
 }
@@ -62,7 +63,7 @@ function isRemotePathOwnedBy(remotePath: string, containerId: string): boolean {
   return segments.includes(containerId);
 }
 
-function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () => SpacesClient): Hono<AuthEnv> {
+function buildRoutes(storeFactory: () => BackupStatusRepository, spacesFactory: () => SpacesClient): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
 
   /**
@@ -70,10 +71,10 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
    * List backup status for all tenants.
    * Query params: ?stale=true to filter only stale backups.
    */
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const store = storeFactory();
     const staleOnly = c.req.query("stale") === "true";
-    const entries = staleOnly ? store.listStale() : store.listAll();
+    const entries = staleOnly ? await store.listStale() : await store.listAll();
     return c.json({
       backups: entries,
       total: entries.length,
@@ -86,9 +87,9 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
    * List containers with stale backups (>24h since last successful backup).
    * MUST be registered before /:containerId to avoid being shadowed.
    */
-  routes.get("/alerts/stale", (c) => {
+  routes.get("/alerts/stale", async (c) => {
     const store = storeFactory();
-    const stale = store.listStale();
+    const stale = await store.listStale();
     return c.json({
       alerts: stale.map((e) => ({
         containerId: e.containerId,
@@ -105,10 +106,10 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
    * GET /api/admin/backups/:containerId
    * Get backup status for a specific tenant container.
    */
-  routes.get("/:containerId", (c) => {
+  routes.get("/:containerId", async (c) => {
     const store = storeFactory();
     const containerId = c.req.param("containerId");
-    const entry = store.get(containerId);
+    const entry = await store.get(containerId);
     if (!entry) {
       return c.json({ error: "No backup status found for this container" }, 404);
     }
@@ -122,7 +123,7 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
   routes.get("/:containerId/snapshots", async (c) => {
     const store = storeFactory();
     const containerId = c.req.param("containerId");
-    const entry = store.get(containerId);
+    const entry = await store.get(containerId);
     if (!entry) {
       return c.json({ error: "No backup status found for this container" }, 404);
     }
@@ -182,9 +183,9 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
 }
 
 /**
- * Create admin backup routes with an explicit store (for testing).
+ * Create admin backup routes with an explicit repository (for testing).
  */
-export function createAdminBackupRoutes(store: BackupStatusStore, spaces?: SpacesClient): Hono<AuthEnv> {
+export function createAdminBackupRoutes(store: BackupStatusRepository, spaces?: SpacesClient): Hono<AuthEnv> {
   const spacesClient = spaces ?? getSpaces();
   return buildRoutes(
     () => store,

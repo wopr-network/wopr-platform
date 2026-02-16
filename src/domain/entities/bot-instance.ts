@@ -1,6 +1,6 @@
-import type { TenantId } from '../value-objects/tenant-id.js';
+import { TenantId } from "../value-objects/tenant-id.js";
 
-export type BillingState = 'active' | 'suspended' | 'destroyed';
+export type BillingState = "active" | "suspended" | "destroyed";
 
 export interface BotInstanceProps {
   id: string;
@@ -54,15 +54,15 @@ export class BotInstance {
   }
 
   isActive(): boolean {
-    return this.props.billingState === 'active';
+    return this.props.billingState === "active";
   }
 
   isSuspended(): boolean {
-    return this.props.billingState === 'suspended';
+    return this.props.billingState === "suspended";
   }
 
   isDestroyed(): boolean {
-    return this.props.billingState === 'destroyed';
+    return this.props.billingState === "destroyed";
   }
 
   static create(props: {
@@ -78,7 +78,7 @@ export class BotInstance {
       tenantId: props.tenantId,
       name: props.name,
       nodeId: props.nodeId ?? null,
-      billingState: props.billingState ?? 'active',
+      billingState: props.billingState ?? "active",
       suspendedAt: null,
       destroyAfter: null,
       createdAt: now,
@@ -86,17 +86,41 @@ export class BotInstance {
     });
   }
 
+  static fromRow(row: {
+    id: string;
+    tenantId: string;
+    name: string;
+    nodeId: string | null;
+    billingState: BillingState;
+    suspendedAt: string | null;
+    destroyAfter: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }): BotInstance {
+    return new BotInstance({
+      id: row.id,
+      tenantId: TenantId.create(row.tenantId),
+      name: row.name,
+      nodeId: row.nodeId,
+      billingState: row.billingState,
+      suspendedAt: row.suspendedAt ? new Date(row.suspendedAt) : null,
+      destroyAfter: row.destroyAfter ? new Date(row.destroyAfter) : null,
+      createdAt: new Date(row.createdAt),
+      updatedAt: new Date(row.updatedAt),
+    });
+  }
+
   suspend(): BotInstance {
-    if (this.props.billingState !== 'active') {
-      throw new Error('Can only suspend active bots');
+    if (this.props.billingState !== "active") {
+      throw new Error("Can only suspend active bots");
     }
     const now = new Date();
     const destroyAfter = new Date(now);
     destroyAfter.setDate(destroyAfter.getDate() + 30);
-    
+
     return new BotInstance({
       ...this.props,
-      billingState: 'suspended',
+      billingState: "suspended",
       suspendedAt: now,
       destroyAfter,
       updatedAt: now,
@@ -104,13 +128,13 @@ export class BotInstance {
   }
 
   reactivate(): BotInstance {
-    if (this.props.billingState !== 'suspended') {
-      throw new Error('Can only reactivate suspended bots');
+    if (this.props.billingState !== "suspended") {
+      throw new Error("Can only reactivate suspended bots");
     }
     const now = new Date();
     return new BotInstance({
       ...this.props,
-      billingState: 'active',
+      billingState: "active",
       suspendedAt: null,
       destroyAfter: null,
       updatedAt: now,
@@ -118,12 +142,12 @@ export class BotInstance {
   }
 
   destroy(): BotInstance {
-    if (this.props.billingState === 'destroyed') {
-      throw new Error('Bot is already destroyed');
+    if (this.props.billingState === "destroyed") {
+      throw new Error("Bot is already destroyed");
     }
     return new BotInstance({
       ...this.props,
-      billingState: 'destroyed',
+      billingState: "destroyed",
       updatedAt: new Date(),
     });
   }

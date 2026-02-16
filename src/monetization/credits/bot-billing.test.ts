@@ -11,13 +11,12 @@
  */
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDb, type DrizzleDb } from "../../db/index.js";
-import { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
-import { InMemoryCreditRepository } from "../../infrastructure/persistence/in-memory-credit-repository.js";
-import { InMemoryBotBillingRepository } from "../../infrastructure/persistence/in-memory-bot-billing-repository.js";
-import { TenantId } from "../../domain/value-objects/tenant-id.js";
-import { Money } from "../../domain/value-objects/money.js";
 import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { Money } from "../../domain/value-objects/money.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { InMemoryBotBillingRepository } from "../../infrastructure/persistence/in-memory-bot-billing-repository.js";
+import { InMemoryCreditRepository } from "../../infrastructure/persistence/in-memory-credit-repository.js";
+import { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
 
 /** Initialize schemas required for testing. */
 function initTestSchema(sqlite: BetterSqlite3.Database): void {
@@ -62,7 +61,6 @@ function initTestSchema(sqlite: BetterSqlite3.Database): void {
 
 describe("BotBilling", () => {
   let sqlite: BetterSqlite3.Database;
-  let db: DrizzleDb;
   let billing: BotBilling;
   let repository: InMemoryBotBillingRepository;
   let creditRepository: CreditRepository;
@@ -70,7 +68,6 @@ describe("BotBilling", () => {
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
     initTestSchema(sqlite);
-    db = createDb(sqlite);
     repository = new InMemoryBotBillingRepository();
     billing = new BotBilling(repository);
     creditRepository = new InMemoryCreditRepository();
@@ -153,9 +150,11 @@ describe("BotBilling", () => {
 
       const info = await billing.getBotBilling("bot-1");
       expect(info).not.toBeNull();
-      const suspendedAt = info!.suspendedAt!;
-      const destroyAfter = info!.destroyAfter!;
-      const diffDays = Math.round((destroyAfter.getTime() - suspendedAt.getTime()) / (1000 * 60 * 60 * 24));
+      expect(info?.suspendedAt).not.toBeNull();
+      expect(info?.destroyAfter).not.toBeNull();
+      const diffDays = Math.round(
+        ((info?.destroyAfter?.getTime() ?? 0) - (info?.suspendedAt?.getTime() ?? 0)) / (1000 * 60 * 60 * 24),
+      );
       expect(diffDays).toBe(SUSPENSION_GRACE_DAYS);
     });
   });

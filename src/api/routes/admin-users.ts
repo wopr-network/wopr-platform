@@ -1,10 +1,12 @@
 import type Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { initAdminUsersSchema } from "../../admin/users/schema.js";
-import type { AdminUserFilters } from "../../admin/users/user-store.js";
-import { AdminUserStore } from "../../admin/users/user-store.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
+import * as dbSchema from "../../db/schema/index.js";
+import type { AdminUserFilters, AdminUserRepository } from "../../domain/repositories/admin-user-repository.js";
+import { DrizzleAdminUserRepository } from "../../infrastructure/persistence/drizzle-admin-user-repository.js";
 
 // ---------------------------------------------------------------------------
 // Deps / lazy init
@@ -17,19 +19,20 @@ export interface AdminUsersRouteDeps {
   db: Database.Database;
 }
 
-let _userStore: AdminUserStore | null = null;
+let _userRepo: AdminUserRepository | null = null;
 
 /** Set dependencies for admin user routes. */
 export function setAdminUsersDeps(deps: AdminUsersRouteDeps): void {
   initAdminUsersSchema(deps.db);
-  _userStore = new AdminUserStore(deps.db);
+  const drizzleDb = drizzle(deps.db, { schema: dbSchema });
+  _userRepo = new DrizzleAdminUserRepository(drizzleDb);
 }
 
-function getUserStore(): AdminUserStore {
-  if (!_userStore) {
+function getUserRepo(): AdminUserRepository {
+  if (!_userRepo) {
     throw new Error("Admin user routes not initialized -- call setAdminUsersDeps() first");
   }
-  return _userStore;
+  return _userRepo;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,23 +64,24 @@ const VALID_SORT_ORDER = new Set(["asc", "desc"]);
  * Used in tests to inject an in-memory database.
  */
 export function createAdminUsersApiRoutes(db: Database.Database): Hono<AuthEnv> {
-  const userStore = new AdminUserStore(db);
+  const drizzleDb = drizzle(db, { schema: dbSchema });
+  const userRepo = new DrizzleAdminUserRepository(drizzleDb);
   const routes = new Hono<AuthEnv>();
 
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const filters = buildFilters(c);
     try {
-      const result = userStore.list(filters);
+      const result = await userRepo.list(filters);
       return c.json(result);
     } catch {
       return c.json({ error: "Internal server error" }, 500);
     }
   });
 
-  routes.get("/:userId", (c) => {
+  routes.get("/:userId", async (c) => {
     const userId = c.req.param("userId");
     try {
-      const user = userStore.getById(userId);
+      const user = await userRepo.getById(userId);
       if (!user) {
         return c.json({ error: "User not found" }, 404);
       }
@@ -98,22 +102,22 @@ export const adminUsersApiRoutes = new Hono<AuthEnv>();
 
 adminUsersApiRoutes.use("*", adminAuth);
 
-adminUsersApiRoutes.get("/", (c) => {
-  const store = getUserStore();
+adminUsersApiRoutes.get("/", async (c) => {
+  const repo = getUserRepo();
   const filters = buildFilters(c);
   try {
-    const result = store.list(filters);
+    const result = await repo.list(filters);
     return c.json(result);
   } catch {
     return c.json({ error: "Internal server error" }, 500);
   }
 });
 
-adminUsersApiRoutes.get("/:userId", (c) => {
-  const store = getUserStore();
+adminUsersApiRoutes.get("/:userId", async (c) => {
+  const repo = getUserRepo();
   const userId = c.req.param("userId");
   try {
-    const user = store.getById(userId);
+    const user = await repo.getById(userId);
     if (!user) {
       return c.json({ error: "User not found" }, 404);
     }

@@ -33,20 +33,20 @@ export class TenantStatusStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get the status row for a tenant. Returns null if not found. */
-  get(tenantId: string): TenantStatusRow | null {
-    const row = this.db.select().from(tenantStatus).where(eq(tenantStatus.tenantId, tenantId)).get();
+  async get(tenantId: string): Promise<TenantStatusRow | null> {
+    const row = await this.db.select().from(tenantStatus).where(eq(tenantStatus.tenantId, tenantId)).get();
     return (row as TenantStatusRow) ?? null;
   }
 
   /** Get the account status string for a tenant. Defaults to 'active' if no row exists. */
-  getStatus(tenantId: string): TenantAccountStatus {
-    const row = this.get(tenantId);
+  async getStatus(tenantId: string): Promise<TenantAccountStatus> {
+    const row = await this.get(tenantId);
     return (row?.status as TenantAccountStatus) ?? "active";
   }
 
   /** Ensure a tenant has a status row (upsert). */
-  ensureExists(tenantId: string): void {
-    this.db.insert(tenantStatus).values({ tenantId, status: "active" }).onConflictDoNothing().run();
+  async ensureExists(tenantId: string): Promise<void> {
+    await this.db.insert(tenantStatus).values({ tenantId, status: "active" }).onConflictDoNothing().run();
   }
 
   /**
@@ -55,11 +55,11 @@ export class TenantStatusStore {
    * Transitions from active or grace_period to suspended.
    * Requires a reason and the admin user ID performing the action.
    */
-  suspend(tenantId: string, reason: string, adminUserId: string): void {
+  async suspend(tenantId: string, reason: string, adminUserId: string): Promise<void> {
     const now = Date.now();
-    this.ensureExists(tenantId);
+    await this.ensureExists(tenantId);
 
-    this.db
+    await this.db
       .update(tenantStatus)
       .set({
         status: "suspended",
@@ -79,10 +79,10 @@ export class TenantStatusStore {
    * Transitions from suspended to active.
    * Clears the suspension reason and deadlines.
    */
-  reactivate(tenantId: string, adminUserId: string): void {
+  async reactivate(tenantId: string, adminUserId: string): Promise<void> {
     const now = Date.now();
 
-    this.db
+    await this.db
       .update(tenantStatus)
       .set({
         status: "active",
@@ -102,11 +102,11 @@ export class TenantStatusStore {
    * Transitions to banned. Sets data deletion deadline to 30 days from now.
    * Requires a reason and TOS reference.
    */
-  ban(tenantId: string, reason: string, adminUserId: string): void {
+  async ban(tenantId: string, reason: string, adminUserId: string): Promise<void> {
     const now = Date.now();
-    this.ensureExists(tenantId);
+    await this.ensureExists(tenantId);
 
-    this.db
+    await this.db
       .update(tenantStatus)
       .set({
         status: "banned",
@@ -126,11 +126,11 @@ export class TenantStatusStore {
    *
    * Sets the grace deadline to 3 days from now.
    */
-  setGracePeriod(tenantId: string): void {
+  async setGracePeriod(tenantId: string): Promise<void> {
     const now = Date.now();
-    this.ensureExists(tenantId);
+    await this.ensureExists(tenantId);
 
-    this.db
+    await this.db
       .update(tenantStatus)
       .set({
         status: "grace_period",
@@ -147,8 +147,8 @@ export class TenantStatusStore {
    *
    * Returns the IDs of tenants that were suspended.
    */
-  expireGracePeriods(): string[] {
-    const expired = this.db
+  async expireGracePeriods(): Promise<string[]> {
+    const expired = await this.db
       .select({ tenantId: tenantStatus.tenantId })
       .from(tenantStatus)
       .where(sql`${tenantStatus.status} = 'grace_period' AND ${tenantStatus.graceDeadline} <= datetime('now')`)
@@ -156,7 +156,7 @@ export class TenantStatusStore {
 
     const now = Date.now();
     for (const row of expired) {
-      this.db
+      await this.db
         .update(tenantStatus)
         .set({
           status: "suspended",
@@ -178,8 +178,8 @@ export class TenantStatusStore {
    *
    * Returns true if the tenant can perform operations.
    */
-  isOperational(tenantId: string): boolean {
-    const status = this.getStatus(tenantId);
+  async isOperational(tenantId: string): Promise<boolean> {
+    const status = await this.getStatus(tenantId);
     return status === "active" || status === "grace_period";
   }
 }

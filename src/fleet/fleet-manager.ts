@@ -3,9 +3,9 @@ import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
 import { buildDiscoveryEnv } from "../discovery/discovery-config.js";
 import type { PlatformDiscoveryConfig } from "../discovery/types.js";
+import type { ProfileRepository } from "../domain/repositories/profile-repository.js";
 import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
 import type { NetworkPolicy } from "../network/network-policy.js";
-import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile, BotStatus, ContainerStats } from "./types.js";
 
 const CONTAINER_LABEL = "wopr.managed";
@@ -13,13 +13,13 @@ const CONTAINER_ID_LABEL = "wopr.bot-id";
 
 export class FleetManager {
   private readonly docker: Docker;
-  private readonly store: ProfileStore;
+  private readonly store: ProfileRepository;
   private readonly platformDiscovery: PlatformDiscoveryConfig | undefined;
   private readonly networkPolicy: NetworkPolicy | undefined;
 
   constructor(
     docker: Docker,
-    store: ProfileStore,
+    store: ProfileRepository,
     platformDiscovery?: PlatformDiscoveryConfig,
     networkPolicy?: NetworkPolicy,
   ) {
@@ -210,8 +210,8 @@ export class FleetManager {
     return updated;
   }
 
-  /** Get the underlying profile store */
-  get profiles(): ProfileStore {
+  /** Get the underlying profile repository */
+  get profiles(): ProfileRepository {
     return this.store;
   }
 

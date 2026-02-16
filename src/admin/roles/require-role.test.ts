@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "../../api/routes/admin-roles.js";
 import type { AuthEnv, AuthUser } from "../../auth/index.js";
+import { createDb } from "../../db/index.js";
+import { DrizzleRoleRepository, PLATFORM_TENANT } from "../../infrastructure/persistence/drizzle-role-repository.js";
 import { requirePlatformAdmin, requireTenantAdmin } from "./require-role.js";
 import { RoleStore } from "./role-store.js";
 import { initRolesSchema } from "./schema.js";
@@ -11,6 +13,10 @@ function createTestDb() {
   const db = new BetterSqlite3(":memory:");
   initRolesSchema(db);
   return db;
+}
+
+function createDrizzleDb(sqlite: BetterSqlite3.Database) {
+  return createDb(sqlite);
 }
 
 /** Helper to create a Hono app with a fake user injected. */
@@ -27,23 +33,23 @@ function appWithUser(user: AuthUser | null) {
 }
 
 describe("requirePlatformAdmin middleware", () => {
-  let db: BetterSqlite3.Database;
-  let store: RoleStore;
+  let sqlite: BetterSqlite3.Database;
+  let roleRepo: DrizzleRoleRepository;
 
   beforeEach(() => {
-    db = createTestDb();
-    store = new RoleStore(db);
+    sqlite = createTestDb();
+    roleRepo = new DrizzleRoleRepository(createDrizzleDb(sqlite));
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("allows platform admins", async () => {
-    store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+    await roleRepo.setRole("admin-1", PLATFORM_TENANT, "platform_admin", null);
 
     const app = appWithUser({ id: "admin-1", roles: [] });
-    app.get("/test", requirePlatformAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/test", requirePlatformAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/test");
     expect(res.status).toBe(200);
@@ -51,10 +57,10 @@ describe("requirePlatformAdmin middleware", () => {
   });
 
   it("rejects non-platform-admins", async () => {
-    store.setRole("user-1", "tenant-1", "user", null);
+    await roleRepo.setRole("user-1", "tenant-1", "user", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
-    app.get("/test", requirePlatformAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/test", requirePlatformAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/test");
     expect(res.status).toBe(403);
@@ -62,7 +68,7 @@ describe("requirePlatformAdmin middleware", () => {
 
   it("rejects unauthenticated requests", async () => {
     const app = new Hono<AuthEnv>();
-    app.get("/test", requirePlatformAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/test", requirePlatformAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/test");
     expect(res.status).toBe(401);
@@ -70,53 +76,53 @@ describe("requirePlatformAdmin middleware", () => {
 });
 
 describe("requireTenantAdmin middleware", () => {
-  let db: BetterSqlite3.Database;
-  let store: RoleStore;
+  let sqlite: BetterSqlite3.Database;
+  let roleRepo: DrizzleRoleRepository;
 
   beforeEach(() => {
-    db = createTestDb();
-    store = new RoleStore(db);
+    sqlite = createTestDb();
+    roleRepo = new DrizzleRoleRepository(createDrizzleDb(sqlite));
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("allows platform admins for any tenant", async () => {
-    store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+    await roleRepo.setRole("admin-1", PLATFORM_TENANT, "platform_admin", null);
 
     const app = appWithUser({ id: "admin-1", roles: [] });
-    app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/tenants/:tenantId", requireTenantAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/tenants/any-tenant");
     expect(res.status).toBe(200);
   });
 
   it("allows tenant admins for their own tenant", async () => {
-    store.setRole("user-1", "tenant-1", "tenant_admin", null);
+    await roleRepo.setRole("user-1", "tenant-1", "tenant_admin", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
-    app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/tenants/:tenantId", requireTenantAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/tenants/tenant-1");
     expect(res.status).toBe(200);
   });
 
   it("rejects tenant admins for other tenants", async () => {
-    store.setRole("user-1", "tenant-1", "tenant_admin", null);
+    await roleRepo.setRole("user-1", "tenant-1", "tenant_admin", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
-    app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/tenants/:tenantId", requireTenantAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/tenants/tenant-2");
     expect(res.status).toBe(403);
   });
 
   it("rejects regular users", async () => {
-    store.setRole("user-1", "tenant-1", "user", null);
+    await roleRepo.setRole("user-1", "tenant-1", "user", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
-    app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/tenants/:tenantId", requireTenantAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/tenants/tenant-1");
     expect(res.status).toBe(403);
@@ -124,7 +130,7 @@ describe("requireTenantAdmin middleware", () => {
 
   it("rejects unauthenticated requests", async () => {
     const app = new Hono<AuthEnv>();
-    app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
+    app.get("/tenants/:tenantId", requireTenantAdmin(roleRepo), (c) => c.json({ ok: true }));
 
     const res = await app.request("/tenants/tenant-1");
     expect(res.status).toBe(401);

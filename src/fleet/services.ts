@@ -2,6 +2,9 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
 import * as dbSchema from "../db/schema/index.js";
+import { DrizzleBotInstanceRepository } from "../infrastructure/persistence/drizzle-bot-instance-repository.js";
+import { DrizzleNodeRepository } from "../infrastructure/persistence/drizzle-node-repository.js";
+import { DrizzleRecoveryRepository } from "../infrastructure/persistence/drizzle-recovery-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
@@ -19,6 +22,9 @@ const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platfor
 
 let _sqlite: Database.Database | null = null;
 let _db: ReturnType<typeof drizzle<typeof dbSchema>> | null = null;
+let _nodeRepository: DrizzleNodeRepository | null = null;
+let _botInstanceRepository: DrizzleBotInstanceRepository | null = null;
+let _recoveryRepository: DrizzleRecoveryRepository | null = null;
 let _nodeConnections: NodeConnectionManager | null = null;
 let _adminNotifier: AdminNotifier | null = null;
 let _recoveryManager: RecoveryManager | null = null;
@@ -33,9 +39,30 @@ export function getDb() {
   return _db;
 }
 
+export function getNodeRepository() {
+  if (!_nodeRepository) {
+    _nodeRepository = new DrizzleNodeRepository(getDb());
+  }
+  return _nodeRepository;
+}
+
+export function getBotInstanceRepository() {
+  if (!_botInstanceRepository) {
+    _botInstanceRepository = new DrizzleBotInstanceRepository(getDb());
+  }
+  return _botInstanceRepository;
+}
+
+export function getRecoveryRepository() {
+  if (!_recoveryRepository) {
+    _recoveryRepository = new DrizzleRecoveryRepository(getDb());
+  }
+  return _recoveryRepository;
+}
+
 export function getNodeConnections() {
   if (!_nodeConnections) {
-    _nodeConnections = new NodeConnectionManager(getDb());
+    _nodeConnections = new NodeConnectionManager(getNodeRepository(), getBotInstanceRepository());
   }
   return _nodeConnections;
 }
@@ -51,7 +78,7 @@ export function getAdminNotifier() {
 
 export function getRecoveryManager() {
   if (!_recoveryManager) {
-    _recoveryManager = new RecoveryManager(getDb(), getNodeConnections(), getAdminNotifier());
+    _recoveryManager = new RecoveryManager(getDb(), getNodeConnections(), getAdminNotifier(), getRecoveryRepository());
   }
   return _recoveryManager;
 }

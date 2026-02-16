@@ -13,17 +13,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initCreditAdjustmentSchema } from "../../src/admin/credits/schema.js";
 import { createDb } from "../../src/db/index.js";
 import { DrizzleCreditRepository } from "../../src/infrastructure/persistence/drizzle-credit-repository.js";
+import { DrizzleTenantCustomerRepository } from "../../src/infrastructure/persistence/drizzle-tenant-customer-repository.js";
 import { TenantId } from "../../src/domain/value-objects/tenant-id.js";
 import type { CreditRepository } from "../../src/domain/repositories/credit-repository.js";
 import { initCreditSchema } from "../../src/monetization/credits/schema.js";
 import { initStripeSchema } from "../../src/monetization/stripe/schema.js";
-import { TenantCustomerStore } from "../../src/monetization/stripe/tenant-store.js";
 import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
 
 describe("integration: auth → billing → credit flow", () => {
   let sqlite: BetterSqlite3.Database;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: DrizzleTenantCustomerRepository;
   let creditRepo: CreditRepository;
   let deps: WebhookDeps;
 
@@ -33,9 +33,9 @@ describe("integration: auth → billing → credit flow", () => {
     initCreditAdjustmentSchema(sqlite);
     initCreditSchema(sqlite);
     const db = createDb(sqlite);
-    tenantStore = new TenantCustomerStore(db);
+    tenantRepo = new DrizzleTenantCustomerRepository(db);
     creditRepo = new DrizzleCreditRepository(db);
-    deps = { tenantStore, creditRepo };
+    deps = { tenantRepo, creditRepo };
   });
 
   afterEach(() => {
@@ -51,13 +51,10 @@ describe("integration: auth → billing → credit flow", () => {
       const tenantId = "tenant-journey-1";
 
       // Step 1: User registers (starts on free tier)
-      tenantStore.upsert({
-        tenant: tenantId,
-        stripeCustomerId: "cus_new_user",
-      });
-      tenantStore.setTier(tenantId, "free");
+      await tenantRepo.upsert(TenantId.create(tenantId), "cus_new_user");
+      await tenantRepo.setTier(TenantId.create(tenantId), "free");
 
-      let mapping = tenantStore.getByTenant(tenantId);
+      let mapping = await tenantRepo.getByTenant(TenantId.create(tenantId));
       expect(mapping?.tier).toBe("free");
       expect((await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents()).toBe(0);
 
@@ -82,17 +79,14 @@ describe("integration: auth → billing → credit flow", () => {
       // Step 3: Balance reflects the purchase
       expect((await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents()).toBe(1000);
 
-      mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_customer_id).toBe("cus_new_user");
+      mapping = await tenantRepo.getByTenant(TenantId.create(tenantId));
+      expect(mapping?.stripeCustomerId).toBe("cus_new_user");
     });
 
     it("handles multiple credit purchases accumulating balance", async () => {
       const tenantId = "tenant-multi-purchase";
 
-      tenantStore.upsert({
-        tenant: tenantId,
-        stripeCustomerId: "cus_multi",
-      });
+      await tenantRepo.upsert(TenantId.create(tenantId), "cus_multi");
 
       // First purchase: $5
       const purchase1: Stripe.Event = {

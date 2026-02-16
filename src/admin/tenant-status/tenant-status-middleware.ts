@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
-import type { TenantStatusStore } from "./tenant-status-store.js";
+import type { TenantStatusRepository } from "../../domain/repositories/tenant-status-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 
 /**
  * Callback that resolves a tenant ID from the Hono context.
@@ -7,10 +8,14 @@ import type { TenantStatusStore } from "./tenant-status-store.js";
 export type ResolveTenantId = (c: Context) => string | undefined;
 
 export interface TenantStatusGateConfig {
-  /** TenantStatusStore instance for checking account state. */
-  statusStore: TenantStatusStore;
+  /** TenantStatusRepository instance for checking account state. */
+  statusRepo: TenantStatusRepository;
   /** Resolve the tenant ID from the request context. */
   resolveTenantId: ResolveTenantId;
+}
+
+function getStatusString(repo: TenantStatusRepository, tenantId: string): Promise<string> {
+  return repo.get(TenantId.create(tenantId)).then((row) => row?.status ?? "active");
 }
 
 /**
@@ -26,8 +31,7 @@ export function createTenantStatusGate(cfg: TenantStatusGateConfig) {
       return next();
     }
 
-    const row = cfg.statusStore.get(tenantId);
-    const status = row?.status ?? "active";
+    const status = await getStatusString(cfg.statusRepo, tenantId);
 
     if (status === "active" || status === "grace_period") {
       return next();
@@ -59,12 +63,11 @@ export function createTenantStatusGate(cfg: TenantStatusGateConfig) {
  *
  * Returns an error object if the tenant is not operational, null otherwise.
  */
-export function checkTenantStatus(
-  statusStore: TenantStatusStore,
+export async function checkTenantStatus(
+  statusRepo: TenantStatusRepository,
   tenantId: string,
-): { error: string; message: string } | null {
-  const row = statusStore.get(tenantId);
-  const status = row?.status ?? "active";
+): Promise<{ error: string; message: string } | null> {
+  const status = await getStatusString(statusRepo, tenantId);
 
   if (status === "active" || status === "grace_period") {
     return null;

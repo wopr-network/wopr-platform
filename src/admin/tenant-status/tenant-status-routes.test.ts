@@ -16,8 +16,8 @@ import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { initAdminUsersSchema } from "../../admin/users/schema.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
-import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import { InMemoryBotBillingRepository } from "../../infrastructure/persistence/in-memory-bot-billing-repository.js";
+import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import { appRouter } from "../../trpc/index.js";
 import type { TRPCContext } from "../../trpc/init.js";
 import { setAdminRouterDeps } from "../../trpc/routers/admin.js";
@@ -148,7 +148,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("returns current status for existing tenant", async () => {
-      statusStore.suspend("tenant-1", "test", "admin-1");
+      await statusStore.suspend("tenant-1", "test", "admin-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.tenantStatus({ tenantId: "tenant-1" });
       expect(result.status).toBe("suspended");
@@ -166,7 +166,7 @@ describe("admin tenant status tRPC routes", () => {
 
   describe("suspendTenant", () => {
     it("suspends an active tenant", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.suspendTenant({
         tenantId: "tenant-1",
@@ -175,7 +175,7 @@ describe("admin tenant status tRPC routes", () => {
 
       expect(result.status).toBe("suspended");
       expect(result.reason).toBe("Suspicious activity");
-      expect(statusStore.getStatus("tenant-1")).toBe("suspended");
+      expect(await statusStore.getStatus("tenant-1")).toBe("suspended");
     });
 
     it("requires a reason", async () => {
@@ -191,7 +191,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("rejects if already suspended", async () => {
-      statusStore.suspend("tenant-1", "initial", "admin-1");
+      await statusStore.suspend("tenant-1", "initial", "admin-1");
       const caller = createCaller(adminContext());
       await expect(caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "again" })).rejects.toThrow(
         "already suspended",
@@ -199,7 +199,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("rejects if banned", async () => {
-      statusStore.ban("tenant-1", "tos", "admin-1");
+      await statusStore.ban("tenant-1", "tos", "admin-1");
       const caller = createCaller(adminContext());
       await expect(caller.admin.suspendTenant({ tenantId: "tenant-1", reason: "suspend" })).rejects.toThrow(
         "Cannot suspend a banned account",
@@ -207,7 +207,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("suspends all bots for the tenant", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       await botBilling.registerBot("bot-1", "tenant-1", "bot-a");
       await botBilling.registerBot("bot-2", "tenant-1", "bot-b");
 
@@ -222,7 +222,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("logs to audit log", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       const caller = createCaller(adminContext());
       await caller.admin.suspendTenant({
         tenantId: "tenant-1",
@@ -236,7 +236,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("can suspend a grace_period tenant", async () => {
-      statusStore.setGracePeriod("tenant-1");
+      await statusStore.setGracePeriod("tenant-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.suspendTenant({
         tenantId: "tenant-1",
@@ -244,7 +244,7 @@ describe("admin tenant status tRPC routes", () => {
       });
 
       expect(result.status).toBe("suspended");
-      expect(statusStore.getStatus("tenant-1")).toBe("suspended");
+      expect(await statusStore.getStatus("tenant-1")).toBe("suspended");
     });
   });
 
@@ -254,12 +254,12 @@ describe("admin tenant status tRPC routes", () => {
 
   describe("reactivateTenant", () => {
     it("reactivates a suspended tenant", async () => {
-      statusStore.suspend("tenant-1", "review", "admin-1");
+      await statusStore.suspend("tenant-1", "review", "admin-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.reactivateTenant({ tenantId: "tenant-1" });
 
       expect(result.status).toBe("active");
-      expect(statusStore.getStatus("tenant-1")).toBe("active");
+      expect(await statusStore.getStatus("tenant-1")).toBe("active");
     });
 
     it("requires platform_admin role", async () => {
@@ -270,13 +270,13 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("rejects if already active", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       const caller = createCaller(adminContext());
       await expect(caller.admin.reactivateTenant({ tenantId: "tenant-1" })).rejects.toThrow("already active");
     });
 
     it("rejects if banned", async () => {
-      statusStore.ban("tenant-1", "tos", "admin-1");
+      await statusStore.ban("tenant-1", "tos", "admin-1");
       const caller = createCaller(adminContext());
       await expect(caller.admin.reactivateTenant({ tenantId: "tenant-1" })).rejects.toThrow(
         "Cannot reactivate a banned account",
@@ -284,7 +284,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("can reactivate a grace_period tenant", async () => {
-      statusStore.setGracePeriod("tenant-1");
+      await statusStore.setGracePeriod("tenant-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.reactivateTenant({ tenantId: "tenant-1" });
 
@@ -292,7 +292,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("logs to audit log", async () => {
-      statusStore.suspend("tenant-1", "review", "admin-1");
+      await statusStore.suspend("tenant-1", "review", "admin-1");
       const caller = createCaller(adminContext());
       await caller.admin.reactivateTenant({ tenantId: "tenant-1" });
 
@@ -308,7 +308,7 @@ describe("admin tenant status tRPC routes", () => {
 
   describe("banTenant", () => {
     it("bans a tenant with correct confirmation", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
         tenantId: "tenant-1",
@@ -319,7 +319,7 @@ describe("admin tenant status tRPC routes", () => {
 
       expect(result.status).toBe("banned");
       expect(result.reason).toBe("Spam abuse");
-      expect(statusStore.getStatus("tenant-1")).toBe("banned");
+      expect(await statusStore.getStatus("tenant-1")).toBe("banned");
     });
 
     it("requires correct typed confirmation", async () => {
@@ -347,7 +347,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("rejects if already banned", async () => {
-      statusStore.ban("tenant-1", "first ban", "admin-1");
+      await statusStore.ban("tenant-1", "first ban", "admin-1");
       const caller = createCaller(adminContext());
       await expect(
         caller.admin.banTenant({
@@ -360,7 +360,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("auto-refunds remaining credits", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       creditStore.grant("tenant-1", 5000, "initial credit", "system");
 
       const caller = createCaller(adminContext());
@@ -376,7 +376,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("does not refund when balance is zero", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
         tenantId: "tenant-1",
@@ -389,8 +389,8 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("suspends all bots for the tenant", async () => {
-      statusStore.ensureExists("tenant-1");
-      botBilling.registerBot("bot-1", "tenant-1", "bot-a");
+      await statusStore.ensureExists("tenant-1");
+      await botBilling.registerBot("bot-1", "tenant-1", "bot-a");
 
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
@@ -404,7 +404,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("logs to audit log with details", async () => {
-      statusStore.ensureExists("tenant-1");
+      await statusStore.ensureExists("tenant-1");
       creditStore.grant("tenant-1", 3000, "initial", "system");
 
       const caller = createCaller(adminContext());
@@ -424,7 +424,7 @@ describe("admin tenant status tRPC routes", () => {
     });
 
     it("can ban a suspended tenant", async () => {
-      statusStore.suspend("tenant-1", "review", "admin-1");
+      await statusStore.suspend("tenant-1", "review", "admin-1");
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
         tenantId: "tenant-1",
