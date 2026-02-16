@@ -1,4 +1,6 @@
-import type { CreditLedger } from "./credit-ledger.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { Money } from "../../domain/value-objects/money.js";
 
 /** Signup grant amount: $5.00 = 500 cents */
 export const SIGNUP_GRANT_CENTS = 500;
@@ -10,17 +12,16 @@ export const SIGNUP_GRANT_CENTS = 500;
  *
  * @returns true if the grant was applied, false if already granted.
  */
-export function grantSignupCredits(ledger: CreditLedger, tenantId: string): boolean {
+export async function grantSignupCredits(repo: CreditRepository, tenantId: string): Promise<boolean> {
   const refId = `signup:${tenantId}`;
 
-  // Idempotency check
-  if (ledger.hasReferenceId(refId)) {
+  if (await repo.hasReferenceId(refId)) {
     return false;
   }
 
-  ledger.credit(
-    tenantId,
-    SIGNUP_GRANT_CENTS,
+  await repo.credit(
+    TenantId.create(tenantId),
+    Money.fromCents(SIGNUP_GRANT_CENTS),
     "signup_grant",
     "Welcome bonus — $5.00 credit on email verification",
     refId,

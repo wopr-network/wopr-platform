@@ -11,20 +11,22 @@ import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
 const { app } = await import("../../src/api/app.js");
 const { setLedger } = await import("../../src/api/routes/quota.js");
 const { createDb } = await import("../../src/db/index.js");
-const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
+const { DrizzleCreditRepository } = await import("../../src/infrastructure/persistence/drizzle-credit-repository.js");
+const { TenantId } = await import("../../src/domain/value-objects/tenant-id.js");
+const { Money } = await import("../../src/domain/value-objects/money.js");
 const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
 
 describe("integration: quota routes", () => {
   let sqlite: BetterSqlite3.Database;
-  let ledger: InstanceType<typeof CreditLedger>;
+  let creditRepo: DrizzleCreditRepository;
 
   beforeEach(() => {
     vi.clearAllMocks();
     sqlite = new BetterSqlite3(":memory:");
     initCreditSchema(sqlite);
     const db = createDb(sqlite);
-    ledger = new CreditLedger(db);
-    setLedger(ledger);
+    creditRepo = new DrizzleCreditRepository(db);
+    setLedger(creditRepo);
   });
 
   afterEach(() => {
@@ -61,7 +63,7 @@ describe("integration: quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      ledger.credit("t-1", 5000, "purchase", "test");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(5000), "purchase", "test");
       const res = await app.request("/api/quota?tenant=t-1&activeInstances=2", {
         headers: AUTH_HEADER,
       });
@@ -99,7 +101,7 @@ describe("integration: quota routes", () => {
     });
 
     it("allows when tenant has positive balance (200)", async () => {
-      ledger.credit("t-1", 1000, "purchase", "test");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(1000), "purchase", "test");
       const res = await app.request("/api/quota/check", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -134,7 +136,7 @@ describe("integration: quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      ledger.credit("t-1", 2500, "purchase", "test purchase");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(2500), "purchase", "test purchase");
       const res = await app.request("/api/quota/balance/t-1", {
         headers: AUTH_HEADER,
       });
@@ -157,8 +159,8 @@ describe("integration: quota routes", () => {
     });
 
     it("returns transaction history", async () => {
-      ledger.credit("t-1", 1000, "purchase", "first");
-      ledger.credit("t-1", 500, "signup_grant", "welcome");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(1000), "purchase", "first");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(500), "signup_grant", "welcome");
 
       const res = await app.request("/api/quota/history/t-1", {
         headers: AUTH_HEADER,

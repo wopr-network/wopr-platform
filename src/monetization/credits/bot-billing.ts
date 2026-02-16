@@ -1,7 +1,8 @@
 import { and, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
-import type { CreditLedger } from "./credit-ledger.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 
 /** Billing state literals */
 export type BillingState = "active" | "suspended" | "destroyed";
@@ -48,25 +49,27 @@ export class BotBilling {
 
   /**
    * Suspend ALL active bots for a tenant.
-   * Returns the IDs of suspended bots.
+   * Used when balance hits zero or tenant is delinquent.
+   * Returns list of suspended bot IDs.
    */
   suspendAllForTenant(tenantId: string): string[] {
-    const activeBots = this.db
+    const active = this.db
       .select({ id: botInstances.id })
       .from(botInstances)
       .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "active")))
       .all();
 
-    for (const bot of activeBots) {
+    for (const bot of active) {
       this.suspendBot(bot.id);
     }
 
-    return activeBots.map((b) => b.id);
+    return active.map((b) => b.id);
   }
 
   /**
-   * Reactivate a suspended bot: clear suspension, resume billing.
-   * Sets billingState='active', clears suspendedAt and destroyAfter.
+   * Reactivate a suspended bot.
+   * Clears suspendedAt and destroyAfter, sets billingState='active'.
+   * Only reactivates bots that are currently suspended (not destroyed).
    */
   reactivateBot(botId: string): void {
     this.db
@@ -82,19 +85,25 @@ export class BotBilling {
   }
 
   /**
-   * Check if a tenant has suspended bots and reactivate them if balance > 0.
-   * Called after credit purchase (Stripe webhook).
-   *
-   * @returns IDs of reactivated bots.
+   * Check if suspended bots should be reactivated (balance is positive).
+   * Reactivates all suspended bots for a tenant if balance > 0.
+   * Returns list of reactivated bot IDs.
+   * 
+   * MIGRATED: Now uses CreditRepository instead of CreditLedger
    */
-  checkReactivation(tenantId: string, ledger: CreditLedger): string[] {
-    const balance = ledger.balance(tenantId);
-    if (balance <= 0) return [];
+  async checkReactivation(tenantId: string, repository: CreditRepository): Promise<string[]> {
+    const balance = await repository.getBalance(TenantId.create(tenantId));
+    
+    if (balance.balance.toCents() === 0) {
+      return [];
+    }
 
     const suspended = this.db
       .select({ id: botInstances.id })
       .from(botInstances)
-      .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "suspended")))
+      .where(
+        and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "suspended"))
+      )
       .all();
 
     for (const bot of suspended) {

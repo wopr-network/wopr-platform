@@ -14,7 +14,9 @@ import { ProfileStore } from "../../fleet/profile-store.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
 import { NetworkPolicy } from "../../network/network-policy.js";
@@ -41,9 +43,9 @@ const fleet = new FleetManager(docker, store, config.discovery, networkPolicy);
 const imagePoller = new ImagePoller(docker, store);
 const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
 
-// Initialize billing DB + credit ledger for balance checks
+// Initialize billing DB + credit repository for balance checks
 let billingDb: Database.Database | null = null;
-let creditLedger: CreditLedger | null = null;
+let creditRepo: CreditRepository | null = null;
 
 function getBillingDb(): Database.Database {
   if (!billingDb) {
@@ -53,11 +55,15 @@ function getBillingDb(): Database.Database {
   return billingDb;
 }
 
-function getCreditLedger(): CreditLedger {
-  if (!creditLedger) {
-    creditLedger = new CreditLedger(createDb(getBillingDb()));
+function getCreditRepo(): CreditRepository {
+  if (!creditRepo) {
+    creditRepo = new DrizzleCreditRepository(createDb(getBillingDb()));
   }
-  return creditLedger;
+  return creditRepo;
+}
+
+export function setCreditRepo(repo: CreditRepository): void {
+  creditRepo = repo;
 }
 
 let botBilling: BotBilling | null = null;
@@ -138,7 +144,7 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
     const tenantId = parsed.data.tenantId;
 
     // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
-    const balance = getCreditLedger().balance(tenantId);
+    const balance = (await getCreditRepo().getBalance(TenantId.create(tenantId))).balance.toCents();
     if (balance < 17) {
       return c.json(
         {
@@ -282,7 +288,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
   try {
     const tenantId = profile?.tenantId;
     if (!tenantId) return c.json({ error: "Missing tenant" }, 400);
-    const balance = getCreditLedger().balance(tenantId);
+    const balance = (await getCreditRepo().getBalance(TenantId.create(tenantId))).balance.toCents();
     if (balance < 17) {
       return c.json(
         {

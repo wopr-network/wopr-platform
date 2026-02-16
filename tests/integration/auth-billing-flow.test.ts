@@ -12,7 +12,9 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { initCreditAdjustmentSchema } from "../../src/admin/credits/schema.js";
 import { createDb } from "../../src/db/index.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { DrizzleCreditRepository } from "../../src/infrastructure/persistence/drizzle-credit-repository.js";
+import { TenantId } from "../../src/domain/value-objects/tenant-id.js";
+import type { CreditRepository } from "../../src/domain/repositories/credit-repository.js";
 import { initCreditSchema } from "../../src/monetization/credits/schema.js";
 import { initStripeSchema } from "../../src/monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../src/monetization/stripe/tenant-store.js";
@@ -22,7 +24,7 @@ import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
 describe("integration: auth → billing → credit flow", () => {
   let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
-  let creditLedger: CreditLedger;
+  let creditRepo: CreditRepository;
   let deps: WebhookDeps;
 
   beforeEach(() => {
@@ -32,8 +34,8 @@ describe("integration: auth → billing → credit flow", () => {
     initCreditSchema(sqlite);
     const db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
-    creditLedger = new CreditLedger(db);
-    deps = { tenantStore, creditLedger };
+    creditRepo = new DrizzleCreditRepository(db);
+    deps = { tenantStore, creditRepo };
   });
 
   afterEach(() => {
@@ -45,7 +47,7 @@ describe("integration: auth → billing → credit flow", () => {
   // ---------------------------------------------------------------------------
 
   describe("complete user journey", () => {
-    it("free tier user → purchases credits → balance updated", () => {
+    it("free tier user → purchases credits → balance updated", async () => {
       const tenantId = "tenant-journey-1";
 
       // Step 1: User registers (starts on free tier)
@@ -57,7 +59,7 @@ describe("integration: auth → billing → credit flow", () => {
 
       let mapping = tenantStore.getByTenant(tenantId);
       expect(mapping?.tier).toBe("free");
-      expect(creditLedger.balance(tenantId)).toBe(0);
+      expect((await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents()).toBe(0);
 
       // Step 2: User completes a $10 credit purchase via Stripe checkout
       const checkoutEvent: Stripe.Event = {
@@ -73,18 +75,18 @@ describe("integration: auth → billing → credit flow", () => {
         },
       } as Stripe.Event;
 
-      const result = handleWebhookEvent(deps, checkoutEvent);
+      const result = await handleWebhookEvent(deps, checkoutEvent);
       expect(result.handled).toBe(true);
       expect(result.creditedCents).toBe(1000);
 
       // Step 3: Balance reflects the purchase
-      expect(creditLedger.balance(tenantId)).toBe(1000);
+      expect((await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents()).toBe(1000);
 
       mapping = tenantStore.getByTenant(tenantId);
       expect(mapping?.stripe_customer_id).toBe("cus_new_user");
     });
 
-    it("handles multiple credit purchases accumulating balance", () => {
+    it("handles multiple credit purchases accumulating balance", async () => {
       const tenantId = "tenant-multi-purchase";
 
       tenantStore.upsert({
@@ -105,8 +107,8 @@ describe("integration: auth → billing → credit flow", () => {
           } as Stripe.Checkout.Session,
         },
       } as Stripe.Event;
-      handleWebhookEvent(deps, purchase1);
-      expect(creditLedger.balance(tenantId)).toBe(500);
+      await handleWebhookEvent(deps, purchase1);
+      expect((await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents()).toBe(500);
 
       // Second purchase: $10
       const purchase2: Stripe.Event = {
@@ -121,11 +123,11 @@ describe("integration: auth → billing → credit flow", () => {
           } as Stripe.Checkout.Session,
         },
       } as Stripe.Event;
-      handleWebhookEvent(deps, purchase2);
-      expect(creditLedger.balance(tenantId)).toBe(1500);
+      await handleWebhookEvent(deps, purchase2);
+      expect((await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents()).toBe(1500);
     });
 
-    it("handles checkout for tenant identified via metadata", () => {
+    it("handles checkout for tenant identified via metadata", async () => {
       const tenantId = "tenant-from-metadata";
 
       const checkoutEvent: Stripe.Event = {
@@ -141,10 +143,10 @@ describe("integration: auth → billing → credit flow", () => {
         },
       } as Stripe.Event;
 
-      const result = handleWebhookEvent(deps, checkoutEvent);
+      const result = await handleWebhookEvent(deps, checkoutEvent);
       expect(result.handled).toBe(true);
       expect(result.tenant).toBe(tenantId);
-      expect(creditLedger.balance(tenantId)).toBe(500);
+      expect((await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents()).toBe(500);
     });
   });
 
@@ -153,7 +155,7 @@ describe("integration: auth → billing → credit flow", () => {
   // ---------------------------------------------------------------------------
 
   describe("multi-tenant isolation", () => {
-    it("credit purchases for different tenants are independent", () => {
+    it("credit purchases for different tenants are independent", async () => {
       const tenant1 = "tenant-credit-1";
       const tenant2 = "tenant-credit-2";
 
@@ -170,7 +172,7 @@ describe("integration: auth → billing → credit flow", () => {
           } as Stripe.Checkout.Session,
         },
       } as Stripe.Event;
-      handleWebhookEvent(deps, purchase1);
+      await handleWebhookEvent(deps, purchase1);
 
       // Tenant 2 purchases $5
       const purchase2: Stripe.Event = {
@@ -185,10 +187,10 @@ describe("integration: auth → billing → credit flow", () => {
           } as Stripe.Checkout.Session,
         },
       } as Stripe.Event;
-      handleWebhookEvent(deps, purchase2);
+      await handleWebhookEvent(deps, purchase2);
 
-      expect(creditLedger.balance(tenant1)).toBe(1000);
-      expect(creditLedger.balance(tenant2)).toBe(500);
+      expect((await creditRepo.getBalance(TenantId.create(tenant1))).balance.toCents()).toBe(1000);
+      expect((await creditRepo.getBalance(TenantId.create(tenant2))).balance.toCents()).toBe(500);
     });
   });
 
@@ -197,7 +199,7 @@ describe("integration: auth → billing → credit flow", () => {
   // ---------------------------------------------------------------------------
 
   describe("error scenarios", () => {
-    it("handles subscription events for unknown customers", () => {
+    it("handles subscription events for unknown customers", async () => {
       const updateEvent: Stripe.Event = {
         type: "customer.subscription.updated",
         data: {
@@ -208,7 +210,7 @@ describe("integration: auth → billing → credit flow", () => {
         },
       } as Stripe.Event;
 
-      const result = handleWebhookEvent(deps, updateEvent);
+      const result = await handleWebhookEvent(deps, updateEvent);
       expect(result.handled).toBe(false);
     });
   });

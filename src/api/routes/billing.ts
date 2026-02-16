@@ -5,7 +5,8 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
@@ -96,7 +97,7 @@ const usageQuerySchema = z.object({
 
 let deps: BillingRouteDeps | null = null;
 let tenantStore: TenantCustomerStore | null = null;
-let creditLedger: CreditLedger | null = null;
+let creditRepo: CreditRepository | null = null;
 let meterAggregator: MeterAggregator | null = null;
 let usageReporter: StripeUsageReporter | null = null;
 let priceMap: CreditPriceMap | null = null;
@@ -109,7 +110,7 @@ let replayGuard: WebhookReplayGuard | undefined;
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
   tenantStore = new TenantCustomerStore(d.db);
-  creditLedger = new CreditLedger(d.db);
+  creditRepo = new DrizzleCreditRepository(d.db);
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
@@ -130,11 +131,11 @@ function getTenantStore(): TenantCustomerStore {
   return tenantStore;
 }
 
-function getCreditLedger(): CreditLedger {
-  if (!creditLedger) {
+function getCreditRepo(): CreditRepository {
+  if (!creditRepo) {
     throw new Error("Billing routes not initialized — call setBillingDeps() first");
   }
-  return creditLedger;
+  return creditRepo;
 }
 
 function getMeterAggregator(): MeterAggregator {
@@ -285,9 +286,9 @@ billingRoutes.post("/webhook", async (c) => {
   }
 
   const store = getTenantStore();
-  const ledger = getCreditLedger();
-  const result = handleWebhookEvent(
-    { tenantStore: store, creditLedger: ledger, priceMap: priceMap ?? undefined, replayGuard },
+  const repo = getCreditRepo();
+  const result = await handleWebhookEvent(
+    { tenantStore: store, creditRepo: repo, priceMap: priceMap ?? undefined, replayGuard },
     event,
   );
 

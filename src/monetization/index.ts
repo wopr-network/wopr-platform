@@ -68,7 +68,6 @@ export type {
   CreditType,
   DebitType,
   GetActiveBotCount,
-  HistoryOptions,
   OnSuspend,
   RuntimeCronConfig,
   RuntimeCronResult,
@@ -76,7 +75,6 @@ export type {
 } from "./credits/index.js";
 export {
   BotBilling,
-  CreditLedger,
   DAILY_BOT_COST_CENTS,
   grantSignupCredits,
   InsufficientBalanceError,

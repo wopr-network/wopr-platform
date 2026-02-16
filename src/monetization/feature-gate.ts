@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
-import type { CreditLedger } from "./credits/credit-ledger.js";
+import type { CreditRepository } from "../domain/repositories/credit-repository.js";
+import { TenantId } from "../domain/value-objects/tenant-id.js";
 
 /**
  * Callback to resolve the user's current credit balance in cents.
@@ -21,7 +22,7 @@ export interface FeatureGateConfig {
  * Usage:
  * ```ts
  * const { requireBalance } = createFeatureGate({
- *   getUserBalance: (tenantId) => creditLedger.balance(tenantId),
+ *   getUserBalance: async (tenantId) => (await creditRepo.getBalance(tenantId)).balance.toCents(),
  * });
  * app.post('/api/bots', requireAuth, requireBalance(), handler);
  * ```
@@ -70,11 +71,14 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
 }
 
 /**
- * Convenience factory that creates a requireBalance middleware from a CreditLedger instance.
+ * Convenience factory that creates a requireBalance middleware from a CreditRepository instance.
  */
-export function createBalanceGate(ledger: CreditLedger, userKey?: string, userIdField?: string) {
+export function createBalanceGate(repo: CreditRepository, userKey?: string, userIdField?: string) {
   return createFeatureGate({
-    getUserBalance: (tenantId) => ledger.balance(tenantId),
+    getUserBalance: async (tenantId) => {
+      const balance = await repo.getBalance(TenantId.create(tenantId));
+      return balance.balance.toCents();
+    },
     userKey,
     userIdField,
   });
@@ -91,8 +95,8 @@ export function createBalanceGate(ledger: CreditLedger, userKey?: string, userId
 export type ResolveTenantId = (c: Context) => string | undefined | Promise<string | undefined>;
 
 export interface CreditGateConfig {
-  /** CreditLedger instance used to check balance. */
-  ledger: CreditLedger;
+  /** CreditRepository instance used to check balance. */
+  repo: CreditRepository;
   /** Resolve the tenant ID from the request context. */
   resolveTenantId: ResolveTenantId;
 }
@@ -106,7 +110,7 @@ export interface CreditGateConfig {
  * Usage:
  * ```ts
  * const { requireCredits } = createCreditGate({
- *   ledger: creditLedger,
+ *   repo: creditRepo,
  *   resolveTenantId: (c) => c.get('tenantId'),
  * });
  * app.post('/fleet/bots', writeAuth, requireCredits(), handler);
@@ -120,7 +124,7 @@ export function createCreditGate(cfg: CreditGateConfig) {
         return c.json({ error: "Authentication required" }, 401);
       }
 
-      const balance = cfg.ledger.balance(tenantId);
+      const balance = (await cfg.repo.getBalance(TenantId.create(tenantId))).balance.toCents();
 
       if (balance < minCents) {
         return c.json(

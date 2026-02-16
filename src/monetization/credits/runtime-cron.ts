@@ -1,6 +1,7 @@
 import { logger } from "../../config/logger.js";
-import type { CreditLedger } from "./credit-ledger.js";
-import { InsufficientBalanceError } from "./credit-ledger.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { InsufficientBalanceError } from "../../domain/repositories/credit-repository.js";
+import { Money } from "../../domain/value-objects/money.js";
 
 /**
  * Bot runtime cost: $5/bot/month prorated daily.
@@ -15,7 +16,7 @@ export type OnSuspend = (tenantId: string) => void | Promise<void>;
 export type GetActiveBotCount = (tenantId: string) => number | Promise<number>;
 
 export interface RuntimeCronConfig {
-  ledger: CreditLedger;
+  ledger: CreditRepository;
   getActiveBotCount: GetActiveBotCount;
   onSuspend?: OnSuspend;
 }
@@ -41,52 +42,50 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
     errors: [],
   };
 
-  const tenants = cfg.ledger.tenantsWithBalance();
+  const tenants = await cfg.ledger.getTenantsWithPositiveBalance();
 
-  for (const { tenantId, balanceCents } of tenants) {
+  for (const { tenantId, balance } of tenants) {
     try {
-      const botCount = await cfg.getActiveBotCount(tenantId);
+      const botCount = await cfg.getActiveBotCount(tenantId.toString());
       if (botCount <= 0) continue;
 
-      const totalCost = botCount * DAILY_BOT_COST_CENTS;
+      const totalCost = Money.fromCents(botCount * DAILY_BOT_COST_CENTS);
 
-      if (balanceCents >= totalCost) {
-        // Full deduction
-        cfg.ledger.debit(
+      if (balance.toCents() >= totalCost.toCents()) {
+        await cfg.ledger.debit(
           tenantId,
           totalCost,
           "bot_runtime",
           `Daily runtime: ${botCount} bot(s) x $${(DAILY_BOT_COST_CENTS / 100).toFixed(2)}`,
         );
       } else {
-        // Partial deduction — debit remaining balance, then suspend
-        if (balanceCents > 0) {
-          cfg.ledger.debit(
+        if (balance.toCents() > 0) {
+          await cfg.ledger.debit(
             tenantId,
-            balanceCents,
+            balance,
             "bot_runtime",
             `Partial daily runtime (balance exhausted): ${botCount} bot(s)`,
           );
         }
 
-        result.suspended.push(tenantId);
+        result.suspended.push(tenantId.toString());
         if (cfg.onSuspend) {
-          await cfg.onSuspend(tenantId);
+          await cfg.onSuspend(tenantId.toString());
         }
       }
 
       result.processed++;
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {
-        result.suspended.push(tenantId);
+        result.suspended.push(tenantId.toString());
         if (cfg.onSuspend) {
-          await cfg.onSuspend(tenantId);
+          await cfg.onSuspend(tenantId.toString());
         }
         result.processed++;
       } else {
         const msg = err instanceof Error ? err.message : String(err);
-        logger.error("Runtime deduction failed", { tenantId, error: msg });
-        result.errors.push(`${tenantId}: ${msg}`);
+        logger.error("Runtime deduction failed", { tenantId: tenantId.toString(), error: msg });
+        result.errors.push(`${tenantId.toString()}: ${msg}`);
       }
     }
   }

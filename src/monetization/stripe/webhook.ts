@@ -1,7 +1,7 @@
 import { LRUCache } from "lru-cache";
 import type Stripe from "stripe";
 import type { BotBilling } from "../credits/bot-billing.js";
-import type { CreditLedger } from "../credits/credit-ledger.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
 import type { CreditPriceMap } from "./credit-prices.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
 
@@ -47,7 +47,7 @@ export class WebhookReplayGuard {
  */
 export interface WebhookDeps {
   tenantStore: TenantCustomerStore;
-  creditLedger: CreditLedger;
+  creditRepo: CreditRepository;
   /** Map of Stripe Price ID -> CreditPricePoint for bonus calculation. */
   priceMap?: CreditPriceMap;
   /** Bot billing manager for reactivation after credit purchase (WOP-447). */
@@ -64,8 +64,10 @@ export interface WebhookDeps {
  *
  * All other event types are acknowledged but not processed.
  * No subscription events are handled — WOPR uses credits, not subscriptions.
+ * 
+ * MIGRATED: Now uses CreditRepository (async) instead of CreditLedger (sync)
  */
-export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): WebhookResult {
+export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Promise<WebhookResult> {
   // Replay guard: reject duplicate event IDs within the TTL window.
   if (deps.replayGuard?.isDuplicate(event.id)) {
     return { handled: true, event_type: event.type, duplicate: true };
@@ -101,7 +103,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
 
       // Idempotency: skip if this session was already processed.
       const stripeSessionId = session.id ?? "unknown";
-      if (deps.creditLedger.hasReferenceId(stripeSessionId)) {
+      if (await deps.creditRepo.hasReferenceId(stripeSessionId)) {
         result = { handled: true, event_type: event.type, tenant, creditedCents: 0 };
         break;
       }
@@ -125,18 +127,23 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       }
 
       // Credit the ledger with session ID as reference for idempotency.
-      deps.creditLedger.credit(
-        tenant,
-        creditCents,
+      // MIGRATED: Use async CreditRepository
+      const { TenantId } = await import("../../domain/value-objects/tenant-id.js");
+      const { Money } = await import("../../domain/value-objects/money.js");
+      
+      await deps.creditRepo.credit(
+        TenantId.create(tenant),
+        Money.fromCents(creditCents),
         "purchase",
         `Stripe credit purchase (session: ${stripeSessionId})`,
         stripeSessionId,
       );
 
       // Reactivate suspended bots now that balance is positive (WOP-447).
+      // MIGRATED: BotBilling.checkReactivation now takes CreditRepository
       let reactivatedBots: string[] | undefined;
       if (deps.botBilling) {
-        reactivatedBots = deps.botBilling.checkReactivation(tenant, deps.creditLedger);
+        reactivatedBots = await deps.botBilling.checkReactivation(tenant, deps.creditRepo);
         if (reactivatedBots.length === 0) reactivatedBots = undefined;
       }
 

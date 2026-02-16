@@ -4,8 +4,10 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
@@ -457,7 +459,7 @@ describe("E2E: Billing flow (credit model)", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
   let tenantStore: TenantCustomerStore;
-  let creditLedger: CreditLedger;
+  let creditRepo: CreditRepository;
 
   const mockStripe = {
     checkout: {
@@ -489,10 +491,10 @@ describe("E2E: Billing flow (credit model)", () => {
     initCreditSchema(sqlite);
     db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
-    creditLedger = new CreditLedger(db);
+    creditRepo = new DrizzleCreditRepository(db);
 
-    // Inject credit ledger for quota routes
-    setLedger(creditLedger);
+    // Inject credit repo for quota routes
+    setLedger(creditRepo);
 
     // Inject billing deps
     setBillingDeps({
@@ -565,7 +567,7 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const webhookResult = handleWebhookEvent({ tenantStore, creditLedger }, checkoutEvent);
+    const webhookResult = await handleWebhookEvent({ tenantStore, creditRepo }, checkoutEvent);
     expect(webhookResult.handled).toBe(true);
     expect(webhookResult.tenant).toBe(tenantId);
     expect(webhookResult.creditedCents).toBe(2500);
@@ -576,7 +578,7 @@ describe("E2E: Billing flow (credit model)", () => {
     expect(mapping?.stripe_customer_id).toBe("cus_e2e_123");
 
     // Step 6: Verify credits were granted
-    const balance = creditLedger.balance(tenantId);
+    const balance = (await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents();
     expect(balance).toBe(2500);
 
     // Step 7: Check balance via quota route
@@ -618,12 +620,12 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const secondResult = handleWebhookEvent({ tenantStore, creditLedger }, secondCheckoutEvent);
+    const secondResult = await handleWebhookEvent({ tenantStore, creditRepo }, secondCheckoutEvent);
     expect(secondResult.handled).toBe(true);
     expect(secondResult.creditedCents).toBe(5000); // 1:1 without priceMap
 
     // Step 10: Verify accumulated balance
-    const finalBalance = creditLedger.balance(tenantId);
+    const finalBalance = (await creditRepo.getBalance(TenantId.create(tenantId))).balance.toCents();
     expect(finalBalance).toBe(7500); // 2500 + 5000
   });
 });

@@ -3,7 +3,8 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
@@ -411,9 +412,9 @@ describe("billing routes", () => {
       const mapping = store.getByTenant("t-new");
       expect(mapping?.stripe_customer_id).toBe("cus_new");
 
-      const ledger = new CreditLedger(db);
-      const balance = ledger.balance("t-new");
-      expect(balance).toBe(2500);
+      const repo = new DrizzleCreditRepository(db);
+      const balance = await repo.getBalance(TenantId.create("t-new"));
+      expect(balance.balance.toCents()).toBe(2500);
     });
 
     it("returns handled=false for subscription events (no longer handled)", async () => {

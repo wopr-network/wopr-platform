@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { CreditLedger } from "./credits/credit-ledger.js";
+import type { CreditRepository } from "../domain/repositories/credit-repository.js";
 import { createCreditGate, createFeatureGate, type GetUserBalance } from "./feature-gate.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper type for flexible Hono vars
@@ -152,9 +152,15 @@ describe("requireBalance middleware", () => {
 // ---------------------------------------------------------------------------
 
 function createCreditApp(balanceCents: number, minCents?: number) {
-  const mockLedger = { balance: vi.fn().mockReturnValue(balanceCents) } as unknown as CreditLedger;
+  const mockRepo = {
+    getBalance: vi.fn().mockResolvedValue({
+      tenantId: { toString: () => "test-tenant" },
+      balance: { toCents: () => balanceCents },
+      lastUpdated: new Date(),
+    }),
+  } as unknown as CreditRepository;
   const { requireCredits } = createCreditGate({
-    ledger: mockLedger,
+    repo: mockRepo,
     resolveTenantId: (c) => c.req.header("x-tenant-id"),
   });
 

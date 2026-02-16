@@ -3,7 +3,8 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
-import { CreditLedger } from "../credits/credit-ledger.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { initCreditSchema } from "../credits/schema.js";
 import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
@@ -581,21 +582,21 @@ describe("createPortalSession", () => {
 describe("handleWebhookEvent (credit model)", () => {
   let sqlite: BetterSqlite3.Database;
   let tenantStore: TenantCustomerStore;
-  let creditLedger: CreditLedger;
+  let creditRepo: DrizzleCreditRepository;
 
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
     initCreditSchema(sqlite);
     tenantStore = new TenantCustomerStore(testDb.db);
-    creditLedger = new CreditLedger(testDb.db);
+    creditRepo = new DrizzleCreditRepository(testDb.db);
   });
 
   afterEach(() => {
     sqlite.close();
   });
 
-  it("handles checkout.session.completed - credits the ledger", () => {
+  it("handles checkout.session.completed - credits the ledger", async () => {
     const event = {
       type: "checkout.session.completed",
       data: {
@@ -609,22 +610,22 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
 
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-1");
     expect(result.creditedCents).toBe(1000);
 
     // Verify credit was granted
-    const balance = creditLedger.balance("t-1");
-    expect(balance).toBe(1000);
+    const balance = await creditRepo.getBalance(TenantId.create("t-1"));
+    expect(balance.balance.toCents()).toBe(1000);
 
     // Verify tenant mapping was created
     const mapping = tenantStore.getByTenant("t-1");
     expect(mapping?.stripe_customer_id).toBe("cus_abc123");
   });
 
-  it("handles checkout.session.completed - uses metadata fallback", () => {
+  it("handles checkout.session.completed - uses metadata fallback", async () => {
     const event = {
       type: "checkout.session.completed",
       data: {
@@ -638,13 +639,13 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-2");
     expect(result.creditedCents).toBe(500);
   });
 
-  it("handles checkout.session.completed - returns unhandled when no tenant", () => {
+  it("handles checkout.session.completed - returns unhandled when no tenant", async () => {
     const event = {
       type: "checkout.session.completed",
       data: {
@@ -658,11 +659,11 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
     expect(result.handled).toBe(false);
   });
 
-  it("returns unhandled for subscription event types (no longer handled)", () => {
+  it("returns unhandled for subscription event types (no longer handled)", async () => {
     const event = {
       type: "customer.subscription.updated",
       data: {
@@ -673,22 +674,22 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
     expect(result.handled).toBe(false);
   });
 
-  it("returns unhandled for unknown event types", () => {
+  it("returns unhandled for unknown event types", async () => {
     const event = {
       type: "payment_intent.succeeded",
       data: { object: {} },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
     expect(result.handled).toBe(false);
     expect(result.event_type).toBe("payment_intent.succeeded");
   });
 
-  it("handles customer objects instead of string IDs", () => {
+  it("handles customer objects instead of string IDs", async () => {
     const event = {
       type: "checkout.session.completed",
       data: {
@@ -702,7 +703,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditRepo }, event);
     expect(result.handled).toBe(true);
     const mapping = tenantStore.getByTenant("t-1");
     expect(mapping?.stripe_customer_id).toBe("cus_abc123");

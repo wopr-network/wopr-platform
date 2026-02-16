@@ -13,7 +13,10 @@ import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
-import { CreditLedger } from "./credit-ledger.js";
+import { InMemoryCreditRepository } from "../../infrastructure/persistence/in-memory-credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { Money } from "../../domain/value-objects/money.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
 
 /** Initialize schemas required for testing. */
 function initTestSchema(sqlite: BetterSqlite3.Database): void {
@@ -60,14 +63,14 @@ describe("BotBilling", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
   let billing: BotBilling;
-  let ledger: CreditLedger;
+  let repository: CreditRepository;
 
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
     initTestSchema(sqlite);
     db = createDb(sqlite);
     billing = new BotBilling(db);
-    ledger = new CreditLedger(db);
+    repository = new InMemoryCreditRepository();
   });
 
   afterEach(() => {
@@ -208,41 +211,41 @@ describe("BotBilling", () => {
   // ---------------------------------------------------------------------------
 
   describe("checkReactivation", () => {
-    it("reactivates suspended bots when balance is positive", () => {
+    it("reactivates suspended bots when balance is positive", async () => {
       billing.registerBot("bot-1", "tenant-1", "bot-a");
       billing.registerBot("bot-2", "tenant-1", "bot-b");
       billing.suspendBot("bot-1");
       billing.suspendBot("bot-2");
 
-      ledger.credit("tenant-1", 500, "purchase", "test credit");
-      const reactivated = billing.checkReactivation("tenant-1", ledger);
+      await repository.credit(TenantId.create("tenant-1"), Money.fromCents(500), "purchase", "test credit");
+      const reactivated = await billing.checkReactivation("tenant-1", repository);
 
       expect(reactivated).toEqual(["bot-1", "bot-2"]);
       expect(billing.getActiveBotCount("tenant-1")).toBe(2);
     });
 
-    it("does not reactivate when balance is zero", () => {
+    it("does not reactivate when balance is zero", async () => {
       billing.registerBot("bot-1", "tenant-1", "bot-a");
       billing.suspendBot("bot-1");
 
-      const reactivated = billing.checkReactivation("tenant-1", ledger);
+      const reactivated = await billing.checkReactivation("tenant-1", repository);
       expect(reactivated).toEqual([]);
       expect(billing.getActiveBotCount("tenant-1")).toBe(0);
     });
 
-    it("does not reactivate destroyed bots", () => {
+    it("does not reactivate destroyed bots", async () => {
       billing.registerBot("bot-1", "tenant-1", "bot-a");
       billing.destroyBot("bot-1");
 
-      ledger.credit("tenant-1", 500, "purchase", "test credit");
-      const reactivated = billing.checkReactivation("tenant-1", ledger);
+      await repository.credit(TenantId.create("tenant-1"), Money.fromCents(500), "purchase", "test credit");
+      const reactivated = await billing.checkReactivation("tenant-1", repository);
 
       expect(reactivated).toEqual([]);
     });
 
-    it("returns empty array for tenant with no bots", () => {
-      ledger.credit("tenant-1", 500, "purchase", "test credit");
-      const reactivated = billing.checkReactivation("tenant-1", ledger);
+    it("returns empty array for tenant with no bots", async () => {
+      await repository.credit(TenantId.create("tenant-1"), Money.fromCents(500), "purchase", "test credit");
+      const reactivated = await billing.checkReactivation("tenant-1", repository);
       expect(reactivated).toEqual([]);
     });
   });

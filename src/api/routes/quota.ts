@@ -3,7 +3,9 @@ import { Hono } from "hono";
 import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { createDb } from "../../db/index.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
 
@@ -18,20 +20,20 @@ if (quotaTokenMap.size === 0) {
 }
 quotaRoutes.use("/*", scopedBearerAuth(quotaTokenMap, "admin"));
 
-let ledger: CreditLedger | null = null;
+let creditRepo: CreditRepository | null = null;
 
-function getLedger(): CreditLedger {
-  if (!ledger) {
+function getCreditRepo(): CreditRepository {
+  if (!creditRepo) {
     const db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
-    ledger = new CreditLedger(createDb(db));
+    creditRepo = new DrizzleCreditRepository(createDb(db));
   }
-  return ledger;
+  return creditRepo;
 }
 
-/** Inject a CreditLedger for testing */
-export function setLedger(l: CreditLedger): void {
-  ledger = l;
+/** Inject a CreditRepository for testing */
+export function setLedger(l: CreditRepository): void {
+  creditRepo = l;
 }
 
 /**
@@ -43,7 +45,7 @@ export function setLedger(l: CreditLedger): void {
  *   - tenant: tenant ID (required)
  *   - activeInstances: current instance count (temporary — will come from fleet DB)
  */
-quotaRoutes.get("/", (c) => {
+quotaRoutes.get("/", async (c) => {
   const tenantId = c.req.query("tenant");
   if (!tenantId) {
     return c.json({ error: "tenant query param is required" }, 400);
@@ -56,7 +58,7 @@ quotaRoutes.get("/", (c) => {
     return c.json({ error: "Invalid activeInstances parameter" }, 400);
   }
 
-  const balance = getLedger().balance(tenantId);
+  const balance = (await getCreditRepo().getBalance(TenantId.create(tenantId))).balance.toCents();
 
   return c.json({
     balanceCents: balance,
@@ -99,7 +101,7 @@ quotaRoutes.post("/check", async (c) => {
   }
 
   // Check credit balance
-  const balance = getLedger().balance(tenantId);
+  const balance = (await getCreditRepo().getBalance(TenantId.create(tenantId))).balance.toCents();
   if (balance <= 0) {
     return c.json(
       {
@@ -126,9 +128,9 @@ quotaRoutes.post("/check", async (c) => {
  *
  * Get a tenant's credit balance.
  */
-quotaRoutes.get("/balance/:tenant", (c) => {
+quotaRoutes.get("/balance/:tenant", async (c) => {
   const tenantId = c.req.param("tenant");
-  const balance = getLedger().balance(tenantId);
+  const balance = (await getCreditRepo().getBalance(TenantId.create(tenantId))).balance.toCents();
   return c.json({ tenantId, balanceCents: balance });
 });
 
@@ -137,7 +139,7 @@ quotaRoutes.get("/balance/:tenant", (c) => {
  *
  * Get a tenant's credit transaction history.
  */
-quotaRoutes.get("/history/:tenant", (c) => {
+quotaRoutes.get("/history/:tenant", async (c) => {
   const tenantId = c.req.param("tenant");
   const limitRaw = c.req.query("limit");
   const offsetRaw = c.req.query("offset");
@@ -146,8 +148,8 @@ quotaRoutes.get("/history/:tenant", (c) => {
   const limit = limitRaw != null ? Number.parseInt(limitRaw, 10) : 50;
   const offset = offsetRaw != null ? Number.parseInt(offsetRaw, 10) : 0;
 
-  const transactions = getLedger().history(tenantId, { limit, offset, type: type || undefined });
-  return c.json({ transactions });
+  const result = await getCreditRepo().getTransactionHistory(TenantId.create(tenantId), { limit, offset, type: type || undefined });
+  return c.json({ transactions: result.transactions.map(t => t.toJSON()), totalCount: result.totalCount, hasMore: result.hasMore });
 });
 
 /**

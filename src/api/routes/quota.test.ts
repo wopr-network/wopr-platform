@@ -1,7 +1,10 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type DrizzleDb } from "../../db/index.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { DrizzleCreditRepository } from "../../infrastructure/persistence/drizzle-credit-repository.js";
+import { TenantId } from "../../domain/value-objects/tenant-id.js";
+import { Money } from "../../domain/value-objects/money.js";
+import type { CreditRepository } from "../../domain/repositories/credit-repository.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
 
 // Set env var BEFORE importing quota routes so bearer auth uses this token
@@ -17,14 +20,14 @@ const { quotaRoutes, setLedger } = await import("./quota.js");
 describe("quota routes", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
-  let ledger: CreditLedger;
+  let creditRepo: CreditRepository;
 
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
     initCreditSchema(sqlite);
     db = createDb(sqlite);
-    ledger = new CreditLedger(db);
-    setLedger(ledger);
+    creditRepo = new DrizzleCreditRepository(db);
+    setLedger(creditRepo);
   });
 
   afterEach(() => {
@@ -59,7 +62,7 @@ describe("quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      ledger.credit("t-1", 5000, "purchase", "test");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(5000), "purchase", "test");
       const res = await quotaRoutes.request("/?tenant=t-1&activeInstances=2", {
         headers: authHeader,
       });
@@ -96,7 +99,7 @@ describe("quota routes", () => {
     });
 
     it("allows when tenant has positive balance", async () => {
-      ledger.credit("t-1", 1000, "purchase", "test");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(1000), "purchase", "test");
       const res = await quotaRoutes.request("/check", {
         method: "POST",
         headers: jsonAuth,
@@ -136,7 +139,7 @@ describe("quota routes", () => {
     });
 
     it("returns current balance for tenant with credits", async () => {
-      ledger.credit("t-1", 2500, "purchase", "test purchase");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(2500), "purchase", "test purchase");
       const res = await quotaRoutes.request("/balance/t-1", { headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -153,8 +156,8 @@ describe("quota routes", () => {
     });
 
     it("returns transaction history", async () => {
-      ledger.credit("t-1", 1000, "purchase", "first purchase");
-      ledger.credit("t-1", 500, "signup_grant", "welcome bonus");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(1000), "purchase", "first purchase");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(500), "signup_grant", "welcome bonus");
 
       const res = await quotaRoutes.request("/history/t-1", { headers: authHeader });
       expect(res.status).toBe(200);
@@ -163,8 +166,8 @@ describe("quota routes", () => {
     });
 
     it("supports type filter", async () => {
-      ledger.credit("t-1", 1000, "purchase", "purchase");
-      ledger.credit("t-1", 500, "signup_grant", "grant");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(1000), "purchase", "purchase");
+      await creditRepo.credit(TenantId.create("t-1"), Money.fromCents(500), "signup_grant", "grant");
 
       const res = await quotaRoutes.request("/history/t-1?type=purchase", {
         headers: authHeader,
