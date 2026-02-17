@@ -41,4 +41,3 @@ adminMigrationRoutes.post("/:botId", adminAuth, async (c) => {
     return c.json({ success: false, error: err instanceof Error ? err.message : "Unknown error" }, 500);
   }
 });
-

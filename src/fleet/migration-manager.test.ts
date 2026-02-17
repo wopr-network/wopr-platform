@@ -168,9 +168,7 @@ describe("MigrationManager.migrateTenant", () => {
 
     // DB update should have been called to persist nodeId
     expect(updateMock).toHaveBeenCalled();
-    const setCall = (setMock as ReturnType<typeof vi.fn>).mock.calls.find(
-      (call) => call[0]?.nodeId === TARGET_NODE,
-    );
+    const setCall = (setMock as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0]?.nodeId === TARGET_NODE);
     expect(setCall).toBeDefined();
     expect(setCall?.[0]?.nodeId).toBe(TARGET_NODE);
     expect(runMock).toHaveBeenCalled();
