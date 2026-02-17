@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 
 /** Initialize the sell_rates and provider_costs tables and indexes. */
 export function initRateSchema(db: Database.Database): void {
-	db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS sell_rates (
       id TEXT PRIMARY KEY,
       capability TEXT NOT NULL,
@@ -17,11 +17,11 @@ export function initRateSchema(db: Database.Database): void {
     )
   `);
 
-	db.exec("CREATE INDEX IF NOT EXISTS idx_sell_rates_capability ON sell_rates(capability)");
-	db.exec("CREATE INDEX IF NOT EXISTS idx_sell_rates_active ON sell_rates(is_active)");
-	db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sell_rates_cap_model ON sell_rates(capability, model)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_sell_rates_capability ON sell_rates(capability)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_sell_rates_active ON sell_rates(is_active)");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sell_rates_cap_model ON sell_rates(capability, model)");
 
-	db.exec(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS provider_costs (
       id TEXT PRIMARY KEY,
       capability TEXT NOT NULL,
@@ -37,10 +37,10 @@ export function initRateSchema(db: Database.Database): void {
     )
   `);
 
-	db.exec("CREATE INDEX IF NOT EXISTS idx_provider_costs_capability ON provider_costs(capability)");
-	db.exec("CREATE INDEX IF NOT EXISTS idx_provider_costs_adapter ON provider_costs(adapter)");
-	db.exec("CREATE INDEX IF NOT EXISTS idx_provider_costs_active ON provider_costs(is_active)");
-	db.exec(
-		"CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_costs_cap_adapter_model ON provider_costs(capability, adapter, model)",
-	);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_provider_costs_capability ON provider_costs(capability)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_provider_costs_adapter ON provider_costs(adapter)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_provider_costs_active ON provider_costs(is_active)");
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_costs_cap_adapter_model ON provider_costs(capability, adapter, model)",
+  );
 }
