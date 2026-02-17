@@ -4,6 +4,7 @@ import { logger } from "../config/logger.js";
 import * as dbSchema from "../db/schema/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
+import { MigrationManager } from "./migration-manager.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
 import { RecoveryManager } from "./recovery-manager.js";
 
@@ -23,6 +24,7 @@ let _nodeConnections: NodeConnectionManager | null = null;
 let _adminNotifier: AdminNotifier | null = null;
 let _recoveryManager: RecoveryManager | null = null;
 let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
+let _migrationManager: MigrationManager | null = null;
 
 export function getDb() {
   if (!_db) {
@@ -63,4 +65,11 @@ export function getHeartbeatWatchdog() {
     });
   }
   return _heartbeatWatchdog;
+}
+
+export function getMigrationManager() {
+  if (!_migrationManager) {
+    _migrationManager = new MigrationManager(getDb(), getNodeConnections(), getAdminNotifier());
+  }
+  return _migrationManager;
 }

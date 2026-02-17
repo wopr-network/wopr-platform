@@ -12,7 +12,7 @@ export const nodes = sqliteTable(
     id: text("id").primaryKey(),
     /** IP address or hostname */
     host: text("host").notNull(),
-    /** Node status: active | unhealthy | offline | recovering */
+    /** Node status: active | unhealthy | offline | recovering | draining */
     status: text("status").notNull().default("active"),
     /** Total memory capacity in MB */
     capacityMb: integer("capacity_mb").notNull(),
