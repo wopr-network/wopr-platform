@@ -16,7 +16,7 @@ env:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +37,7 @@ jobs:
         run: npm test
 
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: ci
     permissions:
       contents: read
@@ -75,7 +75,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: build-and-push
     environment: staging
     steps:
