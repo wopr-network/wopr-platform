@@ -331,8 +331,20 @@ describe("ArbitrageRouter", () => {
 
     it("uses cost then priority as tiebreaker when preferLowLatency is true and latency classes are equal", () => {
       // Both are "normal" latency — latencyDiff is 0, so falls through to cost/priority tiebreaker
-      const p1 = makeEntry({ adapter: "normal-priority2", tier: "hosted", providerCost: 0.12, priority: 2, latencyClass: "normal" });
-      const p2 = makeEntry({ adapter: "normal-priority1", tier: "hosted", providerCost: 0.12, priority: 1, latencyClass: "normal" });
+      const p1 = makeEntry({
+        adapter: "normal-priority2",
+        tier: "hosted",
+        providerCost: 0.12,
+        priority: 2,
+        latencyClass: "normal",
+      });
+      const p2 = makeEntry({
+        adapter: "normal-priority1",
+        tier: "hosted",
+        providerCost: 0.12,
+        priority: 1,
+        latencyClass: "normal",
+      });
       const registry = makeRegistry([p1, p2]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map(), preferLowLatency: true });
@@ -343,8 +355,13 @@ describe("ArbitrageRouter", () => {
     });
 
     it("uses cost as tiebreaker when preferLowLatency is true and latency classes are equal but costs differ", () => {
-      const expensive = makeEntry({ adapter: "normal-expensive", tier: "hosted", providerCost: 0.15, latencyClass: "normal" });
-      const cheap = makeEntry({ adapter: "normal-cheap", tier: "hosted", providerCost: 0.10, latencyClass: "normal" });
+      const expensive = makeEntry({
+        adapter: "normal-expensive",
+        tier: "hosted",
+        providerCost: 0.15,
+        latencyClass: "normal",
+      });
+      const cheap = makeEntry({ adapter: "normal-cheap", tier: "hosted", providerCost: 0.1, latencyClass: "normal" });
       const registry = makeRegistry([expensive, cheap]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map(), preferLowLatency: true });
