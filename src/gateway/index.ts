@@ -6,7 +6,9 @@
  * providers, meters usage, and responds.
  */
 
-export { mapProviderError } from "./error-mapping.js";
+export { mapBudgetError, mapProviderError } from "./error-mapping.js";
+export { gatewayHealthHandler } from "./health.js";
+export { modelsHandler } from "./models.js";
 export {
   anthropicToOpenAI,
   createAnthropicRoutes,
@@ -29,6 +31,7 @@ export {
 } from "./proxy.js";
 export { createGatewayRoutes } from "./routes.js";
 export { type GatewayAuthEnv, serviceKeyAuth } from "./service-key-auth.js";
+export { proxySSEStream } from "./streaming.js";
 export type {
   BillingUnit,
   FetchFn,
@@ -42,6 +45,8 @@ export type {
 } from "./types.js";
 
 import type { Hono } from "hono";
+import { gatewayHealthHandler } from "./health.js";
+import { buildProxyDeps } from "./proxy.js";
 import { createGatewayRoutes } from "./routes.js";
 import type { GatewayConfig } from "./types.js";
 
@@ -53,4 +58,8 @@ import type { GatewayConfig } from "./types.js";
  */
 export function mountGateway(app: Hono, config: GatewayConfig): void {
   app.route("/v1", createGatewayRoutes(config));
+
+  // Gateway health endpoint (outside /v1, at /gateway/health)
+  const deps = buildProxyDeps(config);
+  app.get("/gateway/health", gatewayHealthHandler(deps));
 }

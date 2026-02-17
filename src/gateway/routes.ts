@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 import { rateLimit } from "../api/middleware/rate-limit.js";
 import { withMargin } from "../monetization/adapters/types.js";
+import { modelsHandler } from "./models.js";
 import { createAnthropicRoutes } from "./protocol/anthropic.js";
 import type { ProtocolDeps } from "./protocol/deps.js";
 import { createOpenAIRoutes } from "./protocol/openai.js";
@@ -60,6 +61,18 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   // All remaining gateway routes require service key authentication via Bearer
   gateway.use("/*", serviceKeyAuth(config.resolveServiceKey));
 
+  // Per-tenant rate limiting (applies to all gateway endpoints after auth)
+  const tenantLimit = rateLimit({
+    max: config.tenantRateLimit ?? 60,
+    windowMs: 60_000,
+    keyGenerator: (c) => {
+      const tenant = c.get("gatewayTenant") as { id: string } | undefined;
+      return tenant?.id ?? "unknown";
+    },
+    message: "Rate limit exceeded for your account. Please slow down.",
+  });
+  gateway.use("/*", tenantLimit);
+
   // LLM endpoints (OpenRouter)
   gateway.post("/chat/completions", chatCompletions(deps));
   gateway.post("/completions", textCompletions(deps));
@@ -96,6 +109,9 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   gateway.post("/messages/sms", smsRateLimit, smsOutbound(deps));
   gateway.post("/messages/sms/inbound", smsInbound(deps));
   gateway.post("/messages/sms/status", smsDeliveryStatus(deps));
+
+  // Model discovery
+  gateway.get("/models", modelsHandler(deps));
 
   return gateway;
 }

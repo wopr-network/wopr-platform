@@ -15,8 +15,9 @@ import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
-import { mapProviderError } from "./error-mapping.js";
+import { mapBudgetError, mapProviderError } from "./error-mapping.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
+import { proxySSEStream } from "./streaming.js";
 import type { FetchFn, GatewayConfig, ProviderConfig } from "./types.js";
 
 const DEFAULT_MARGIN = 1.3;
@@ -48,17 +49,8 @@ function budgetCheck(c: Context<GatewayAuthEnv>, deps: ProxyDeps): Response | nu
   const result = deps.budgetChecker.check(tenant.id, tenant.spendLimits);
 
   if (!result.allowed) {
-    const status = result.httpStatus ?? 429;
-    return c.json(
-      {
-        error: {
-          message: result.reason ?? "Budget exceeded",
-          type: "billing_error",
-          code: "insufficient_credits",
-        },
-      },
-      status as 429,
-    );
+    const mapped = mapBudgetError(result.reason ?? "Budget exceeded");
+    return c.json(mapped.body, mapped.status as 402 | 429);
   }
 
   return null;
@@ -108,6 +100,15 @@ export function chatCompletions(deps: ProxyDeps) {
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
+      // Detect streaming before making the request
+      let isStreaming = false;
+      try {
+        const parsed = JSON.parse(body) as { stream?: boolean };
+        isStreaming = parsed.stream === true;
+      } catch {
+        // Not valid JSON, assume non-streaming
+      }
+
       const res = await deps.fetchFn(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         headers: {
@@ -116,6 +117,17 @@ export function chatCompletions(deps: ProxyDeps) {
         },
         body,
       });
+
+      // If streaming, pipe SSE through without buffering
+      if (isStreaming && res.ok) {
+        return proxySSEStream(res, {
+          tenant,
+          deps,
+          capability: "chat-completions",
+          provider: "openrouter",
+          costHeader: res.headers.get("x-openrouter-cost"),
+        });
+      }
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");

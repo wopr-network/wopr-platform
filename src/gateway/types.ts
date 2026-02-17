@@ -43,6 +43,10 @@ export interface GatewayTenant {
   id: string;
   /** Spend limits for budget checking */
   spendLimits: SpendLimits;
+  /** Plan tier for rate limit lookup */
+  planTier?: string;
+  /** Instance ID this token belongs to */
+  instanceId?: string;
 }
 
 /** Fetch function type for dependency injection in tests. */
@@ -56,6 +60,17 @@ export interface ProviderConfig {
   replicate?: { apiToken: string; baseUrl?: string };
   twilio?: { accountSid: string; authToken: string; baseUrl?: string };
   telnyx?: { apiKey: string; baseUrl?: string };
+  /** GPU backend configuration (private network, WOP-505) */
+  gpu?: {
+    /** Base URL for text-gen (llama.cpp). Default: http://gpu-internal:8080 */
+    textGen?: { baseUrl: string };
+    /** Base URL for TTS (chatterbox). Default: http://gpu-internal:8081 */
+    tts?: { baseUrl: string };
+    /** Base URL for STT (whisper). Default: http://gpu-internal:8082 */
+    stt?: { baseUrl: string };
+    /** Base URL for embeddings (qwen). Default: http://gpu-internal:8083 */
+    embeddings?: { baseUrl: string };
+  };
 }
 
 /** Full gateway configuration. */
@@ -74,6 +89,10 @@ export interface GatewayConfig {
   resolveServiceKey: (key: string) => GatewayTenant | null;
   /** Maximum outbound SMS per tenant per minute (default: 100) */
   smsRateLimit?: number;
+  /** Per-tenant requests per minute (default: 60) */
+  tenantRateLimit?: number;
+  /** Per-capability requests per minute. Keys are capability names. */
+  capabilityRateLimits?: Record<string, number>;
 }
 
 /** Standard gateway error response. */
