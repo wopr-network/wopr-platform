@@ -19,6 +19,7 @@ export interface CreditTransaction {
   type: string;
   description: string | null;
   referenceId: string | null;
+  fundingSource: string | null;
   createdAt: string;
 }
 
@@ -61,6 +62,7 @@ export class CreditLedger {
     type: CreditType,
     description?: string,
     referenceId?: string,
+    fundingSource?: string,
   ): CreditTransaction {
     if (amountCents <= 0) {
       throw new Error("amountCents must be positive for credits");
@@ -105,6 +107,7 @@ export class CreditLedger {
         type,
         description: description ?? null,
         referenceId: referenceId ?? null,
+        fundingSource: fundingSource ?? null,
       };
 
       tx.insert(creditTransactions).values(txn).run();
@@ -117,6 +120,7 @@ export class CreditLedger {
         type: txn.type,
         description: txn.description ?? null,
         referenceId: txn.referenceId ?? null,
+        fundingSource: txn.fundingSource ?? null,
         createdAt: new Date().toISOString(),
       };
     });
@@ -172,6 +176,7 @@ export class CreditLedger {
         type,
         description: description ?? null,
         referenceId: referenceId ?? null,
+        fundingSource: null,
       };
 
       tx.insert(creditTransactions).values(txn).run();
@@ -184,6 +189,7 @@ export class CreditLedger {
         type: txn.type,
         description: txn.description ?? null,
         referenceId: txn.referenceId ?? null,
+        fundingSource: null,
         createdAt: new Date().toISOString(),
       };
     });

@@ -15,6 +15,7 @@ export const creditTransactions = sqliteTable(
     type: text("type").notNull(), // signup_grant | purchase | bounty | referral | promo | bot_runtime | adapter_usage | addon | refund | correction
     description: text("description"),
     referenceId: text("reference_id").unique(),
+    fundingSource: text("funding_source"), // "stripe" | "payram" | null (null = legacy/signup)
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [

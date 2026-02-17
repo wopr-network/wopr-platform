@@ -26,6 +26,7 @@ function initCreditSchema(sqlite: BetterSqlite3.Database): void {
       type TEXT NOT NULL,
       description TEXT,
       reference_id TEXT,
+      funding_source TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);

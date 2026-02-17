@@ -6,6 +6,7 @@ import { createDb, type DrizzleDb } from "../../db/index.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
+import { initPayRamSchema } from "../../monetization/payram/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 
@@ -24,6 +25,7 @@ function createBillingTestDb() {
   initStripeSchema(sqlite);
   initCreditAdjustmentSchema(sqlite);
   initCreditSchema(sqlite);
+  initPayRamSchema(sqlite);
   const db = createDb(sqlite);
   return { sqlite, db };
 }
@@ -872,6 +874,83 @@ describe("billing routes", () => {
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error).toBe("Invalid query parameters");
+    });
+  });
+
+  // -- POST /crypto/checkout -------------------------------------------------
+
+  describe("POST /crypto/checkout", () => {
+    it("returns 503 when PayRam not configured (no env vars)", async () => {
+      // By default in tests, PAYRAM_API_KEY and PAYRAM_BASE_URL are not set.
+      const res = await billingRoutes.request("/crypto/checkout", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
+      });
+
+      expect(res.status).toBe(503);
+      const body = await res.json();
+      expect(body.error).toBe("Crypto payments not configured");
+    });
+
+    it("requires bearer auth", async () => {
+      const res = await billingRoutes.request("/crypto/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant: "t-1", amountUsd: 25 }),
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for invalid JSON body (when PayRam is configured)", async () => {
+      // Configure PayRam so that the JSON parsing path is reached
+      vi.stubEnv("PAYRAM_API_KEY", "test-key");
+      vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret" });
+
+      const res = await billingRoutes.request("/crypto/checkout", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: "not-json",
+      });
+
+      vi.unstubAllEnvs();
+      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret" });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // -- POST /crypto/webhook --------------------------------------------------
+
+  describe("POST /crypto/webhook", () => {
+    it("returns 503 when PayRam not configured (no env vars)", async () => {
+      const res = await billingRoutes.request("/crypto/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reference_id: "ref-001",
+          status: "FILLED",
+          amount: "25.00",
+          currency: "USDC",
+          filled_amount: "25.00",
+        }),
+      });
+
+      expect(res.status).toBe(503);
+    });
+
+    it("does NOT require bearer auth (uses API key header)", async () => {
+      // Without bearer auth, it should NOT return 401.
+      // It should return 503 (not configured) or some other non-401 status.
+      const res = await billingRoutes.request("/crypto/webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+
+      expect(res.status).not.toBe(401);
     });
   });
 });

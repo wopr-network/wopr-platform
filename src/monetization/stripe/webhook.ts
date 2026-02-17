@@ -131,6 +131,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         "purchase",
         `Stripe credit purchase (session: ${stripeSessionId})`,
         stripeSessionId,
+        "stripe",
       );
 
       // Reactivate suspended bots now that balance is positive (WOP-447).

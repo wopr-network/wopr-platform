@@ -11,9 +11,16 @@ export function initCreditSchema(db: Database.Database): void {
       type TEXT NOT NULL,
       description TEXT,
       reference_id TEXT UNIQUE,
+      funding_source TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // Migration: add funding_source column if it doesn't exist
+  const cols = db.prepare("PRAGMA table_info(credit_transactions)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "funding_source")) {
+    db.exec("ALTER TABLE credit_transactions ADD COLUMN funding_source TEXT");
+  }
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_credit_tx_tenant ON credit_transactions(tenant_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_credit_tx_type ON credit_transactions(type)");

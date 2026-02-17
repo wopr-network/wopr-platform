@@ -38,6 +38,9 @@ importers:
       lru-cache:
         specifier: ^11.2.6
         version: 11.2.6
+      payram:
+        specifier: ^1.0.1
+        version: 1.0.1
       resend:
         specifier: ^6.9.2
         version: 6.9.2
@@ -1297,6 +1300,9 @@ packages:
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
+  payram@1.0.1:
+    resolution: {integrity: sha512-CynLVEAwApIQtFiJQJKE/TSMlvuXKH2bZ8ner2aUSt9sFlVlCnC6Pa42EAiWhigb02aCuCbN6pcyzeDl8g9xrQ==}
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -2505,6 +2511,8 @@ snapshots:
       fn.name: 1.1.0
 
   pathe@2.0.3: {}
+
+  payram@1.0.1: {}
 
   picocolors@1.1.1: {}
 
