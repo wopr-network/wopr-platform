@@ -12,6 +12,13 @@ import type { ProxyDeps } from "./proxy.js";
 import type { GatewayTenant } from "./types.js";
 
 /**
+ * Default token rates (per 1000 tokens) — used as fallback if no model-specific rates are configured.
+ * TODO: Replace with per-model rate lookup from provider config or rate table.
+ */
+const DEFAULT_INPUT_RATE = 0.001; // $0.001 per 1K input tokens
+const DEFAULT_OUTPUT_RATE = 0.002; // $0.002 per 1K output tokens
+
+/**
  * Proxy an SSE stream from upstream, metering after completion.
  *
  * If credits run out mid-stream, append a final SSE chunk with
@@ -70,17 +77,28 @@ export function proxySSEStream(
             if (data.usage && accumulatedCost === 0) {
               const inputTokens = data.usage.prompt_tokens ?? 0;
               const outputTokens = data.usage.completion_tokens ?? 0;
-              // Rough estimate: $0.001 per 1000 input tokens, $0.002 per 1000 output tokens
-              accumulatedCost = inputTokens * 0.000001 + outputTokens * 0.000002;
+              // Use default rates as fallback (TODO: lookup model-specific rates)
+              accumulatedCost = (inputTokens * DEFAULT_INPUT_RATE + outputTokens * DEFAULT_OUTPUT_RATE) / 1000;
             }
-          } catch {
-            // Not valid JSON, continue
+          } catch (err) {
+            // Log malformed SSE chunks for debugging
+            logger.warn("Failed to parse SSE chunk JSON", {
+              tenant: tenant.id,
+              capability,
+              provider,
+              error: err instanceof Error ? err.message : String(err),
+              jsonStr: jsonStr.length > 100 ? `${jsonStr.slice(0, 100)}...` : jsonStr,
+            });
           }
         }
       }
     },
 
     async flush() {
+      // Wait for transform to complete (ensures all chunks are processed before metering)
+      // The TransformStream calls flush() after transform() completes, so this is safe.
+      // No additional async work needed — transform() already completed.
+
       // Stream ended — emit meter event with accumulated cost
       const charge = withMargin(accumulatedCost, deps.defaultMargin);
       deps.meter.emit({

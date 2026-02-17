@@ -46,24 +46,51 @@ export function gatewayHealthHandler(deps: ProxyDeps) {
       }
     }
 
-    // Check hosted providers (assume healthy if configured — no outbound health checks to SaaS APIs)
+    // Check hosted providers — validate API keys are configured (minimal check)
     if (deps.providers.openrouter) {
-      backends.push({ name: "openrouter", status: "healthy" });
+      backends.push({
+        name: "openrouter",
+        status: deps.providers.openrouter.apiKey ? "healthy" : "unhealthy",
+        error: deps.providers.openrouter.apiKey ? undefined : "API key not configured",
+      });
     }
     if (deps.providers.deepgram) {
-      backends.push({ name: "deepgram", status: "healthy" });
+      backends.push({
+        name: "deepgram",
+        status: deps.providers.deepgram.apiKey ? "healthy" : "unhealthy",
+        error: deps.providers.deepgram.apiKey ? undefined : "API key not configured",
+      });
     }
     if (deps.providers.elevenlabs) {
-      backends.push({ name: "elevenlabs", status: "healthy" });
+      backends.push({
+        name: "elevenlabs",
+        status: deps.providers.elevenlabs.apiKey ? "healthy" : "unhealthy",
+        error: deps.providers.elevenlabs.apiKey ? undefined : "API key not configured",
+      });
     }
     if (deps.providers.replicate) {
-      backends.push({ name: "replicate", status: "healthy" });
+      backends.push({
+        name: "replicate",
+        status: deps.providers.replicate.apiToken ? "healthy" : "unhealthy",
+        error: deps.providers.replicate.apiToken ? undefined : "API token not configured",
+      });
     }
     if (deps.providers.twilio) {
-      backends.push({ name: "twilio", status: "healthy" });
+      backends.push({
+        name: "twilio",
+        status: deps.providers.twilio.accountSid && deps.providers.twilio.authToken ? "healthy" : "unhealthy",
+        error:
+          deps.providers.twilio.accountSid && deps.providers.twilio.authToken
+            ? undefined
+            : "Account SID or auth token not configured",
+      });
     }
     if (deps.providers.telnyx) {
-      backends.push({ name: "telnyx", status: "healthy" });
+      backends.push({
+        name: "telnyx",
+        status: deps.providers.telnyx.apiKey ? "healthy" : "unhealthy",
+        error: deps.providers.telnyx.apiKey ? undefined : "API key not configured",
+      });
     }
 
     // Wait for GPU backend health checks (with timeout)
@@ -118,6 +145,34 @@ async function checkBackendHealth(deps: ProxyDeps, name: string, baseUrl: string
     const latency = Date.now() - startTime;
 
     if (res.ok) {
+      // Validate Content-Type is application/json before parsing
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        logger.warn("GPU backend health check returned non-JSON response", {
+          name,
+          baseUrl,
+          contentType,
+        });
+        return {
+          name,
+          status: "unhealthy",
+          latency,
+          error: `Invalid Content-Type: ${contentType}`,
+        };
+      }
+
+      // Optional: Parse and validate JSON structure
+      try {
+        await res.json();
+      } catch {
+        return {
+          name,
+          status: "unhealthy",
+          latency,
+          error: "Invalid JSON response",
+        };
+      }
+
       return { name, status: "healthy", latency };
     } else {
       return {
