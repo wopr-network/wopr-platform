@@ -469,8 +469,16 @@ export function audioSpeech(deps: ProxyDeps) {
 
     // WOP-463: If arbitrage router is available, delegate routing to it (non-streaming only)
     if (deps.arbitrageRouter) {
+      let body: { input?: string; voice?: string; model?: string; response_format?: string };
       try {
-        const body = await c.req.json<{ input?: string; voice?: string; model?: string; response_format?: string }>();
+        body = await c.req.json<{ input?: string; voice?: string; model?: string; response_format?: string }>();
+      } catch {
+        return c.json(
+          { error: { message: "Invalid JSON in request body", type: "invalid_request_error", code: "parse_error" } },
+          400,
+        );
+      }
+      try {
         const text = body.input ?? "";
         const voice = body.voice ?? "21m00Tcm4TlvDq8ikWAM";
         const format = body.response_format ?? "mp3";
