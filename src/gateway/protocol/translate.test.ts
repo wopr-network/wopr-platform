@@ -247,6 +247,32 @@ describe("anthropicToOpenAI", () => {
     };
     expect(anthropicToOpenAI(req).user).toBe("user-42");
   });
+
+  it("converts assistant string content directly", () => {
+    const req: AnthropicRequest = {
+      model: "m",
+      messages: [
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Hi there!" },
+      ],
+      max_tokens: 1,
+    };
+    const result = anthropicToOpenAI(req);
+    const assistantMsg = result.messages[1];
+    expect(assistantMsg.role).toBe("assistant");
+    expect(assistantMsg.content).toBe("Hi there!");
+  });
+
+  it("uses default tool_choice for unknown types", () => {
+    const req: AnthropicRequest = {
+      model: "m",
+      messages: [{ role: "user", content: "Hi" }],
+      max_tokens: 1,
+      // Cast to bypass TypeScript so we can test the default branch
+      tool_choice: { type: "unknown_type" } as unknown as AnthropicRequest["tool_choice"],
+    };
+    expect(anthropicToOpenAI(req).tool_choice).toBe("auto");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -463,6 +489,50 @@ describe("mapToAnthropicError", () => {
     const result = mapToAnthropicError(529, "overloaded");
     expect(result.status).toBe(529);
     expect(result.body.error.type).toBe("overloaded_error");
+  });
+
+  it("maps status < 400 to 500", () => {
+    // Status 200 or similar edge case should map to 500
+    const result = mapToAnthropicError(200, "unexpected");
+    expect(result.status).toBe(500);
+  });
+});
+
+describe("openAIResponseToAnthropic — JSON parse failure", () => {
+  it("handles tool call with invalid JSON arguments gracefully", () => {
+    const res: OpenAIResponse = {
+      id: "msg_test",
+      object: "chat.completion",
+      created: 0,
+      model: "gpt-4",
+      choices: [
+        {
+          index: 0,
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_bad",
+                type: "function",
+                function: {
+                  name: "my_tool",
+                  arguments: "not valid json {{{",
+                },
+              },
+            ],
+          },
+          finish_reason: "tool_calls",
+        },
+      ],
+    };
+
+    const result = openAIResponseToAnthropic(res, "m");
+
+    expect(result.content).toHaveLength(1);
+    expect(result.content[0].type).toBe("tool_use");
+    // When JSON parse fails, input should fall back to {}
+    expect(result.content[0].input).toEqual({});
   });
 });
 

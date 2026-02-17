@@ -396,6 +396,39 @@ describe("AnalyticsStore — getTimeSeries", () => {
 
     expect(result.length).toBeLessThanOrEqual(1000);
   });
+
+  it("creates credit-only periods when there are no meter events for that bucket", () => {
+    const DAY = 86_400_000;
+    const now = Math.floor(Date.now() / DAY) * DAY;
+    const day1 = now - 2 * DAY;
+    const day2 = now - 1 * DAY;
+
+    // day1: meter event only (no credit transaction)
+    seedMeterEvent(db, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
+
+    // day2: credit transaction only (no meter event) — exercises the else branch in getTimeSeries
+    const day2Iso = new Date(day2 + 1000).toISOString();
+    seedCredits(db, "t1", "purchase", 500, day2Iso);
+    seedCredits(db, "t1", "bot_runtime", -100, day2Iso);
+
+    const range = { from: day1, to: day2 + DAY };
+    const result = store.getTimeSeries(range, DAY);
+
+    expect(result.length).toBe(2);
+
+    const meterOnlyPoint = result.find((p) => p.periodStart === day1);
+    expect(meterOnlyPoint).toBeDefined();
+    expect(meterOnlyPoint!.creditsSoldCents).toBe(0);
+    expect(meterOnlyPoint!.revenueConsumedCents).toBe(20);
+    expect(meterOnlyPoint!.providerCostCents).toBe(10);
+
+    const creditOnlyPoint = result.find((p) => p.periodStart === day2);
+    expect(creditOnlyPoint).toBeDefined();
+    expect(creditOnlyPoint!.creditsSoldCents).toBe(500);
+    expect(creditOnlyPoint!.revenueConsumedCents).toBe(100); // bot_runtime ABS
+    expect(creditOnlyPoint!.providerCostCents).toBe(0);
+    expect(creditOnlyPoint!.marginCents).toBe(100);
+  });
 });
 
 describe("AnalyticsStore — exportCsv", () => {
@@ -478,5 +511,22 @@ describe("AnalyticsStore — exportCsv", () => {
 
     // The capability "chat,text" should be quoted in CSV
     expect(csv).toContain('"chat,text"');
+  });
+
+  it("escapes values containing double-quotes in CSV output", () => {
+    db.prepare(
+      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run(crypto.randomUUID(), "t1", 0.01, 0.02, 'chat"premium"', "openai", NOW);
+
+    const csv = store.exportCsv(range, "margin_by_capability");
+
+    // Double-quotes inside a quoted field must be escaped as ""
+    expect(csv).toContain('"chat""premium"""');
+  });
+
+  it("returns empty string for unknown export section", () => {
+    const csv = store.exportCsv(range, "nonexistent_section");
+
+    expect(csv).toBe("");
   });
 });

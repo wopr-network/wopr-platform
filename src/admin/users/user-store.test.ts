@@ -277,6 +277,15 @@ describe("AdminUserStore.list", () => {
     expect(result.users[0].id).toBe("rich");
   });
 
+  it("filters users with no credits when hasCredits is false", () => {
+    insertUser(db, { id: "rich", credit_balance_cents: 5000 });
+    insertUser(db, { id: "broke", credit_balance_cents: 0 });
+
+    const result = store.list({ hasCredits: false });
+    expect(result.users).toHaveLength(1);
+    expect(result.users[0].id).toBe("broke");
+  });
+
   it("filters by lowBalance", () => {
     insertUser(db, { id: "low", credit_balance_cents: 200 });
     insertUser(db, { id: "high", credit_balance_cents: 5000 });
