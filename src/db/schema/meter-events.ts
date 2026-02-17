@@ -12,6 +12,10 @@ export const meterEvents = sqliteTable(
     timestamp: integer("timestamp").notNull(),
     sessionId: text("session_id"),
     duration: integer("duration"),
+    usageUnits: real("usage_units"),
+    usageUnitType: text("usage_unit_type"),
+    tier: text("tier"),
+    metadata: text("metadata"),
   },
   (table) => [
     index("idx_meter_tenant").on(table.tenant),
@@ -19,6 +23,7 @@ export const meterEvents = sqliteTable(
     index("idx_meter_capability").on(table.capability),
     index("idx_meter_session").on(table.sessionId),
     index("idx_meter_tenant_timestamp").on(table.tenant, table.timestamp),
+    index("idx_meter_tier").on(table.tier),
   ],
 );
 

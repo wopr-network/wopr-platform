@@ -16,6 +16,17 @@ export interface MeterEvent {
   sessionId?: string;
   /** Session duration in ms (for usage dashboard display). */
   duration?: number;
+  /** Generic usage measurement — units + unitType (WOP-512). */
+  usage?: {
+    /** Quantity consumed (tokens, seconds, characters, pixels, requests, etc.). */
+    units: number;
+    /** What the units represent. */
+    unitType: string;
+  };
+  /** Pricing tier for billing multiplier lookup (WOP-512). */
+  tier?: "wopr" | "branded" | "byok";
+  /** Provider-specific details (model name, voice ID, resolution, etc.) (WOP-512). */
+  metadata?: Record<string, unknown>;
 }
 
 /** A meter event row as stored in SQLite. */
@@ -29,6 +40,11 @@ export interface MeterEventRow {
   timestamp: number;
   session_id: string | null;
   duration: number | null;
+  /** WOP-512: Generic usage fields */
+  usage_units: number | null;
+  usage_unit_type: string | null;
+  tier: string | null;
+  metadata: string | null; // JSON string
 }
 
 /** Per-tenant usage summary for a given time window. */
