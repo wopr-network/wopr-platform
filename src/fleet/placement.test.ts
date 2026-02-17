@@ -20,7 +20,16 @@ function setupDb() {
       agent_version TEXT,
       last_heartbeat_at INTEGER,
       registered_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      droplet_id TEXT,
+      region TEXT,
+      size TEXT,
+      monthly_cost_cents INTEGER,
+      provision_stage TEXT,
+      last_error TEXT,
+      drain_status TEXT,
+      drain_migrated INTEGER,
+      drain_total INTEGER
     )
   `);
 

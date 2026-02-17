@@ -12,7 +12,7 @@ export const nodes = sqliteTable(
     id: text("id").primaryKey(),
     /** IP address or hostname */
     host: text("host").notNull(),
-    /** Node status: active | unhealthy | offline | recovering | draining */
+    /** Node status: active | unhealthy | offline | recovering | draining | provisioning | failed */
     status: text("status").notNull().default("active"),
     /** Total memory capacity in MB */
     capacityMb: integer("capacity_mb").notNull(),
@@ -26,6 +26,24 @@ export const nodes = sqliteTable(
     registeredAt: integer("registered_at").notNull().default(sql`(unixepoch())`),
     /** Unix epoch seconds when node was last updated */
     updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+    /** DigitalOcean droplet ID (null for manually registered nodes) */
+    dropletId: text("droplet_id"),
+    /** DO region slug (e.g. "nyc1") */
+    region: text("region"),
+    /** DO size slug (e.g. "s-4vcpu-8gb") */
+    size: text("size"),
+    /** Monthly cost in USD cents (e.g. 4800 for $48/mo) */
+    monthlyCostCents: integer("monthly_cost_cents"),
+    /** Provisioning progress stage: null | "creating" | "waiting_active" | "installing_docker" | "pulling_image" | "waiting_agent" | "ready" | "failed" */
+    provisionStage: text("provision_stage"),
+    /** Error message if provisioning or drain failed */
+    lastError: text("last_error"),
+    /** Drain state: null (not draining) | "draining" | "drained" */
+    drainStatus: text("drain_status"),
+    /** Number of tenants migrated during current drain */
+    drainMigrated: integer("drain_migrated"),
+    /** Total tenants to migrate during current drain */
+    drainTotal: integer("drain_total"),
   },
-  (table) => [index("idx_nodes_status").on(table.status)],
+  (table) => [index("idx_nodes_status").on(table.status), index("idx_nodes_droplet").on(table.dropletId)],
 );
