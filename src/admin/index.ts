@@ -1,3 +1,14 @@
+export type {
+  DateRange,
+  FloatMetrics,
+  MarginByCapability,
+  ProviderSpendRow,
+  RevenueBreakdownRow,
+  RevenueOverview,
+  TenantHealthSummary,
+  TimeSeriesPoint,
+} from "./analytics/index.js";
+export { AnalyticsStore } from "./analytics/index.js";
 export type { AdminAuditLogRow, AuditCategory, AuditEntry, AuditFilters } from "./audit-log.js";
 export { AdminAuditLog } from "./audit-log.js";
 export type { AdjustmentFilters, AdjustmentType, CreditAdjustment } from "./credits/adjustment-store.js";

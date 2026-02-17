@@ -6,6 +6,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { RateStore } from "../../admin/rates/rate-store.js";
@@ -25,6 +26,7 @@ export interface AdminRouterDeps {
   getUserStore: () => AdminUserStore;
   getTenantStatusStore: () => TenantStatusStore;
   getBotBilling?: () => BotBilling;
+  getAnalyticsStore?: () => AnalyticsStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -53,6 +55,20 @@ const VALID_ROLES = ["platform_admin", "tenant_admin", "user"] as const;
 const VALID_SORT_BY = ["last_seen", "created_at", "balance", "agent_count"] as const;
 const VALID_SORT_ORDER = ["asc", "desc"] as const;
 
+const dateRangeSchema = z.object({
+  from: z.number().int().positive(),
+  to: z.number().int().positive(),
+});
+
+const VALID_CSV_SECTIONS = [
+  "revenue_overview",
+  "revenue_breakdown",
+  "margin_by_capability",
+  "provider_spend",
+  "tenant_health",
+  "time_series",
+] as const;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -61,6 +77,12 @@ function requirePlatformAdmin(roles: string[]): void {
   if (!roles.includes("platform_admin")) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Platform admin role required" });
   }
+}
+
+function resolveRange(input: { from?: number; to?: number }): { from: number; to: number } {
+  const to = input.to ?? Date.now();
+  const from = input.from ?? to - 30 * 24 * 60 * 60 * 1000; // 30 days
+  return { from, to };
 }
 
 // ---------------------------------------------------------------------------
@@ -581,4 +603,114 @@ export const adminRouter = router({
     }
     return { margins: getRateStore().getMarginReport(input.capability) };
   }),
+
+  // -------------------------------------------------------------------------
+  // Revenue Analytics (WOP-408)
+  // -------------------------------------------------------------------------
+
+  /** Revenue overview cards: credits sold, consumed, provider cost, margin. */
+  analyticsRevenue: protectedProcedure
+    .input(dateRangeSchema.partial())
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getAnalyticsStore } = deps();
+      if (!getAnalyticsStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+      }
+      return getAnalyticsStore().getRevenueOverview(resolveRange(input));
+    }),
+
+  /** Credit float: total unspent credits across all tenants. */
+  analyticsFloat: protectedProcedure.query(({ ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getAnalyticsStore } = deps();
+    if (!getAnalyticsStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+    }
+    return getAnalyticsStore().getFloat();
+  }),
+
+  /** Revenue breakdown by category and capability. */
+  analyticsRevenueBreakdown: protectedProcedure
+    .input(dateRangeSchema.partial())
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getAnalyticsStore } = deps();
+      if (!getAnalyticsStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+      }
+      return { breakdown: getAnalyticsStore().getRevenueBreakdown(resolveRange(input)) };
+    }),
+
+  /** Margin by capability: revenue, cost, margin for each capability. */
+  analyticsMarginByCapability: protectedProcedure
+    .input(dateRangeSchema.partial())
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getAnalyticsStore } = deps();
+      if (!getAnalyticsStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+      }
+      return { margins: getAnalyticsStore().getMarginByCapability(resolveRange(input)) };
+    }),
+
+  /** Provider spend breakdown. */
+  analyticsProviderSpend: protectedProcedure
+    .input(dateRangeSchema.partial())
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getAnalyticsStore } = deps();
+      if (!getAnalyticsStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+      }
+      return { providers: getAnalyticsStore().getProviderSpend(resolveRange(input)) };
+    }),
+
+  /** Tenant health summary. */
+  analyticsTenantHealth: protectedProcedure.query(({ ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getAnalyticsStore } = deps();
+    if (!getAnalyticsStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+    }
+    return getAnalyticsStore().getTenantHealth();
+  }),
+
+  /** Time series data for charts. */
+  analyticsTimeSeries: protectedProcedure
+    .input(
+      z.object({
+        from: z.number().int().positive().optional(),
+        to: z.number().int().positive().optional(),
+        bucketMs: z.number().int().positive().optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getAnalyticsStore } = deps();
+      if (!getAnalyticsStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+      }
+      const range = resolveRange(input);
+      const bucketMs = input.bucketMs ?? 86_400_000; // default 1 day
+      return { series: getAnalyticsStore().getTimeSeries(range, bucketMs) };
+    }),
+
+  /** Export analytics data as CSV. */
+  analyticsExport: protectedProcedure
+    .input(
+      z.object({
+        from: z.number().int().positive().optional(),
+        to: z.number().int().positive().optional(),
+        section: z.enum(VALID_CSV_SECTIONS),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getAnalyticsStore } = deps();
+      if (!getAnalyticsStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+      }
+      return { csv: getAnalyticsStore().exportCsv(resolveRange(input), input.section) };
+    }),
 });
