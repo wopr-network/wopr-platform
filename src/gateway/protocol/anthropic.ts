@@ -12,6 +12,7 @@
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
+import { creditBalanceCheck, debitCredits } from "../credit-gate.js";
 import type { GatewayAuthEnv } from "../service-key-auth.js";
 import type { GatewayTenant } from "../types.js";
 import type { ProtocolDeps } from "./deps.js";
@@ -126,6 +127,14 @@ function messagesHandler(deps: ProtocolDeps) {
       return anthropicErrorResponse(mapped.status, mapped.body);
     }
 
+    // Credit balance check (estimate minimum 1 cent for LLM calls)
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      // Convert to Anthropic error format
+      const mapped = mapToAnthropicError(402, creditErr.message);
+      return anthropicErrorResponse(mapped.status, mapped.body);
+    }
+
     // Parse Anthropic request
     let anthropicReq: AnthropicRequest;
     try {
@@ -177,10 +186,28 @@ function messagesHandler(deps: ProtocolDeps) {
       // If the request asked for streaming, pipe the upstream response through
       // without JSON parsing. The upstream SSE stream is not valid JSON.
       if (anthropicReq.stream) {
+        // Estimate cost for streaming (cannot parse usage from SSE)
+        const costHeader = res.headers.get("x-openrouter-cost");
+        const cost = costHeader ? parseFloat(costHeader) : 0;
+
         logger.info("Anthropic handler: streaming messages", {
           tenant: tenant.id,
           model: anthropicReq.model,
+          cost,
         });
+
+        // Meter and debit credits for streaming
+        if (cost > 0) {
+          deps.meter.emit({
+            tenant: tenant.id,
+            cost,
+            charge: deps.withMarginFn(cost, deps.defaultMargin),
+            capability: "chat-completions",
+            provider: "openrouter",
+            timestamp: Date.now(),
+          });
+          debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
+        }
 
         return new Response(res.body, {
           status: res.status,
@@ -218,6 +245,7 @@ function messagesHandler(deps: ProtocolDeps) {
         provider: "openrouter",
         timestamp: Date.now(),
       });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
 
       return c.json(anthropicRes);
     } catch (error) {

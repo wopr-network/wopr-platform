@@ -48,6 +48,8 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   const protocolDeps: ProtocolDeps = {
     meter: config.meter,
     budgetChecker: config.budgetChecker,
+    creditLedger: config.creditLedger,
+    topUpUrl: config.topUpUrl ?? "/dashboard/credits",
     providers: config.providers,
     defaultMargin: config.defaultMargin ?? 1.3,
     fetchFn: config.fetchFn ?? fetch,

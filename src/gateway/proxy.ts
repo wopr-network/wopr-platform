@@ -14,7 +14,9 @@ import type { Context } from "hono";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
+import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
+import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
 import { mapBudgetError, mapProviderError } from "./error-mapping.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 import { proxySSEStream } from "./streaming.js";
@@ -26,6 +28,8 @@ const DEFAULT_MARGIN = 1.3;
 export interface ProxyDeps {
   meter: MeterEmitter;
   budgetChecker: BudgetChecker;
+  creditLedger?: CreditLedger;
+  topUpUrl: string;
   providers: ProviderConfig;
   defaultMargin: number;
   fetchFn: FetchFn;
@@ -35,6 +39,8 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
   return {
     meter: config.meter,
     budgetChecker: config.budgetChecker,
+    creditLedger: config.creditLedger,
+    topUpUrl: config.topUpUrl ?? "/dashboard/credits",
     providers: config.providers,
     defaultMargin: config.defaultMargin ?? DEFAULT_MARGIN,
     fetchFn: config.fetchFn ?? fetch,
@@ -95,6 +101,12 @@ export function chatCompletions(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for chat completions
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -171,6 +183,7 @@ export function chatCompletions(deps: ProxyDeps) {
           tier: "branded",
           metadata,
         });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
       }
 
       return new Response(responseBody, {
@@ -194,6 +207,12 @@ export function textCompletions(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for text completions
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -246,6 +265,7 @@ export function textCompletions(deps: ProxyDeps) {
           tier: "branded",
           metadata,
         });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "text-completions", "openrouter");
       }
 
       return new Response(responseBody, {
@@ -269,6 +289,12 @@ export function embeddings(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for embeddings
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -319,6 +345,7 @@ export function embeddings(deps: ProxyDeps) {
           tier: "branded",
           metadata,
         });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "embeddings", "openrouter");
       }
 
       return new Response(responseBody, {
@@ -342,6 +369,12 @@ export function audioTranscriptions(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for STT
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.deepgram;
     if (!providerCfg) {
@@ -390,11 +423,15 @@ export function audioTranscriptions(deps: ProxyDeps) {
       }
 
       logger.info("Gateway proxy: audio/transcriptions", { tenant: tenant.id, status: res.status, cost });
-      emitMeterEvent(deps, tenant.id, "transcription", "deepgram", cost, undefined, {
-        usage: durationSeconds > 0 ? { units: durationSeconds / 60, unitType: "minutes" } : undefined,
-        tier: "branded",
-        metadata: durationSeconds > 0 ? { model, durationSeconds } : undefined,
-      });
+
+      if (res.ok) {
+        emitMeterEvent(deps, tenant.id, "transcription", "deepgram", cost, undefined, {
+          usage: durationSeconds > 0 ? { units: durationSeconds / 60, unitType: "minutes" } : undefined,
+          tier: "branded",
+          metadata: durationSeconds > 0 ? { model, durationSeconds } : undefined,
+        });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "transcription", "deepgram");
+      }
 
       return new Response(responseBody, {
         status: res.status,
@@ -417,6 +454,12 @@ export function audioSpeech(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for TTS
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.elevenlabs;
     if (!providerCfg) {
@@ -466,6 +509,7 @@ export function audioSpeech(deps: ProxyDeps) {
         tier: "branded",
         metadata: { voice, model: body.model ?? "eleven_multilingual_v2" },
       });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "tts", "elevenlabs");
 
       const audioBuffer = await res.arrayBuffer();
       const contentType = res.headers.get("content-type") ?? "audio/mpeg";
@@ -491,6 +535,12 @@ export function imageGenerations(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for image generation
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.replicate;
     if (!providerCfg) {
@@ -550,6 +600,7 @@ export function imageGenerations(deps: ProxyDeps) {
         tier: "branded",
         metadata: { width, height, predictTimeSeconds: predictTime },
       });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "image-generation", "replicate");
 
       // Return in OpenAI-compatible format
       const images = Array.isArray(prediction.output) ? prediction.output : [];
@@ -574,6 +625,12 @@ export function videoGenerations(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for image generation
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.replicate;
     if (!providerCfg) {
@@ -620,6 +677,7 @@ export function videoGenerations(deps: ProxyDeps) {
         tier: "branded",
         metadata: { predictTimeSeconds: predictTime },
       });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "video-generation", "replicate");
 
       return c.json({
         created: Math.floor(Date.now() / 1000),
@@ -642,6 +700,9 @@ export function phoneOutbound(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // NOTE: Credit gate removed from stub endpoint. This endpoint does not charge
+    // until actual implementation exists. Metering happens on phoneInbound webhooks.
 
     const providerCfg = deps.providers.twilio ?? deps.providers.telnyx;
     const providerName = deps.providers.twilio ? "twilio" : "telnyx";
@@ -703,6 +764,7 @@ export function phoneInbound(deps: ProxyDeps) {
         usage: { units: durationMinutes, unitType: "minutes" },
         tier: "branded",
       });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "phone-inbound", providerName);
 
       return c.json({ status: "metered", duration_minutes: durationMinutes });
     } catch (error) {
@@ -730,6 +792,12 @@ export function smsOutbound(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for SMS/MMS
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {
@@ -822,6 +890,7 @@ export function smsOutbound(deps: ProxyDeps) {
         usage: { units: 1, unitType: "messages" },
         tier: "branded",
       });
+      debitCredits(deps, tenant.id, cost, margin, capability, "twilio");
 
       return c.json({
         sid: twilioMsg.sid,
@@ -874,6 +943,7 @@ export function smsInbound(deps: ProxyDeps) {
         usage: { units: 1, unitType: "messages" },
         tier: "branded",
       });
+      debitCredits(deps, tenant.id, cost, margin, capability, "twilio");
 
       return c.json({
         status: "received",
@@ -940,6 +1010,12 @@ export function phoneNumberProvision(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
+
+    // Estimate minimum 1 cent for phone number provision
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {
@@ -1053,6 +1129,7 @@ export function phoneNumberProvision(deps: ProxyDeps) {
           tier: "branded",
         },
       );
+      debitCredits(deps, tenant.id, PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN, "phone-number-provision", "twilio");
 
       logger.info("Gateway proxy: phone/numbers provisioned", {
         tenant: tenant.id,

@@ -981,7 +981,7 @@ describe("MeterEmitter - fail-closed policy", () => {
       expect(rows[0].usage_units).toBe(500);
       expect(rows[0].usage_unit_type).toBe("characters");
       expect(rows[0].tier).toBe("branded");
-      expect(JSON.parse(rows[0].metadata!)).toEqual({ voice: "adam", model: "eleven_v2" });
+      expect(JSON.parse(rows[0].metadata as string)).toEqual({ voice: "adam", model: "eleven_v2" });
     });
 
     it("handles null usage/tier/metadata (backwards compatibility)", () => {
