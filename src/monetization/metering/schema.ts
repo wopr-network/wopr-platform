@@ -12,7 +12,11 @@ export function initMeterSchema(db: Database.Database): void {
       provider TEXT NOT NULL,
       timestamp INTEGER NOT NULL,
       session_id TEXT,
-      duration INTEGER
+      duration INTEGER,
+      usage_units REAL,
+      usage_unit_type TEXT,
+      tier TEXT,
+      metadata TEXT
     )
   `);
 
@@ -21,6 +25,7 @@ export function initMeterSchema(db: Database.Database): void {
   db.exec("CREATE INDEX IF NOT EXISTS idx_meter_capability ON meter_events (capability)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_meter_session ON meter_events (session_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_meter_tenant_timestamp ON meter_events (tenant, timestamp)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_meter_tier ON meter_events (tier)");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS usage_summaries (
