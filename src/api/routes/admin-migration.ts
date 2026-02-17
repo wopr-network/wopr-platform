@@ -42,23 +42,3 @@ adminMigrationRoutes.post("/:botId", adminAuth, async (c) => {
   }
 });
 
-/**
- * POST /api/admin/nodes/:nodeId/drain
- * Drain all tenants from a node (for decommissioning or maintenance).
- */
-adminMigrationRoutes.post("/nodes/:nodeId/drain", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
-
-  try {
-    const migrationManager = getMigrationManager();
-    const result = await migrationManager.drainNode(nodeId);
-
-    return c.json({
-      success: result.failed.length === 0,
-      result,
-    });
-  } catch (err) {
-    logger.error("Drain failed", { nodeId, err });
-    return c.json({ success: false, error: err instanceof Error ? err.message : "Unknown error" }, 500);
-  }
-});

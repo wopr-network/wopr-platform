@@ -50,7 +50,7 @@ export class MigrationManager {
    * Migrate a single tenant (bot) from its current node to a specific target.
    * If targetNodeId is not specified, auto-selects via bin-packing.
    */
-  async migrateTenant(botId: string, targetNodeId?: string): Promise<MigrationResult> {
+  async migrateTenant(botId: string, targetNodeId?: string, estimatedMb?: number): Promise<MigrationResult> {
     const startTime = Date.now();
 
     // 1. Look up bot instance to find current node
@@ -141,32 +141,52 @@ export class MigrationManager {
         payload: { name: containerName },
       });
 
-      // 7. Import + start on target
-      const image = "ghcr.io/wopr-network/wopr:latest";
-      logger.info(`[migrate] Importing ${containerName} on ${resolvedTarget}`);
-      await this.nodeConnections.sendCommand(resolvedTarget, {
-        type: "bot.import",
-        payload: {
-          name: containerName,
-          image,
-          env: {},
-        },
-      });
+      const image = process.env.WOPR_BOT_IMAGE ?? "ghcr.io/wopr-network/wopr:stable";
 
-      // 8. Verify running on target
-      logger.info(`[migrate] Verifying ${containerName} on ${resolvedTarget}`);
-      await this.nodeConnections.sendCommand(resolvedTarget, {
-        type: "bot.inspect",
-        payload: { name: containerName },
-      });
+      try {
+        // 7. Import + start on target
+        logger.info(`[migrate] Importing ${containerName} on ${resolvedTarget}`);
+        await this.nodeConnections.sendCommand(resolvedTarget, {
+          type: "bot.import",
+          payload: {
+            name: containerName,
+            image,
+            env: {},
+          },
+        });
 
-      // 9. Update routing table — DOWNTIME ENDS
-      this.nodeConnections.reassignTenant(botId, resolvedTarget);
+        // 8. Verify running on target
+        logger.info(`[migrate] Verifying ${containerName} on ${resolvedTarget}`);
+        await this.nodeConnections.sendCommand(resolvedTarget, {
+          type: "bot.inspect",
+          payload: { name: containerName },
+        });
 
-      // 10. Update node capacity tracking
-      const estimatedMb = 100;
-      this.nodeConnections.addNodeCapacity(resolvedTarget, estimatedMb);
-      this.nodeConnections.addNodeCapacity(sourceNodeId, -estimatedMb);
+        // 9. Update routing table — DOWNTIME ENDS
+        this.nodeConnections.reassignTenant(botId, resolvedTarget);
+
+        // 10. Update node capacity tracking
+        const memoryMb = estimatedMb ?? 100;
+        this.nodeConnections.addNodeCapacity(resolvedTarget, memoryMb);
+        this.nodeConnections.addNodeCapacity(sourceNodeId, -memoryMb);
+      } catch (migrationErr) {
+        // Attempt to restart the source container to restore service before re-throwing
+        logger.error(`[migrate] Migration failed after stop for bot ${botId}, attempting source restart`, {
+          err: migrationErr instanceof Error ? migrationErr.message : String(migrationErr),
+        });
+        try {
+          await this.nodeConnections.sendCommand(sourceNodeId, {
+            type: "bot.start",
+            payload: { name: containerName },
+          });
+          logger.info(`[migrate] Source container ${containerName} restarted on ${sourceNodeId}`);
+        } catch (restartErr) {
+          logger.error(`[migrate] Failed to restart source container ${containerName} on ${sourceNodeId}`, {
+            err: restartErr instanceof Error ? restartErr.message : String(restartErr),
+          });
+        }
+        throw migrationErr;
+      }
 
       const downtimeMs = Date.now() - downtimeStart;
       logger.info(
@@ -218,7 +238,7 @@ export class MigrationManager {
     const failed: MigrationResult[] = [];
 
     for (const tenant of tenants) {
-      const result = await this.migrateTenant(tenant.id);
+      const result = await this.migrateTenant(tenant.id, undefined, tenant.estimatedMb);
       if (result.success) {
         migrated.push(result);
       } else {
