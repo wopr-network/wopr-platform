@@ -328,5 +328,80 @@ describe("ArbitrageRouter", () => {
 
       expect(decision.provider.adapter).toBe("slow-cheap");
     });
+
+    it("uses cost then priority as tiebreaker when preferLowLatency is true and latency classes are equal", () => {
+      // Both are "normal" latency — latencyDiff is 0, so falls through to cost/priority tiebreaker
+      const p1 = makeEntry({ adapter: "normal-priority2", tier: "hosted", providerCost: 0.12, priority: 2, latencyClass: "normal" });
+      const p2 = makeEntry({ adapter: "normal-priority1", tier: "hosted", providerCost: 0.12, priority: 1, latencyClass: "normal" });
+      const registry = makeRegistry([p1, p2]);
+
+      const router = new ArbitrageRouter({ registry, adapters: new Map(), preferLowLatency: true });
+      const decision = router.selectProvider("tts");
+
+      // Same cost and same latency class — priority tiebreaker picks lower priority number
+      expect(decision.provider.adapter).toBe("normal-priority1");
+    });
+
+    it("uses cost as tiebreaker when preferLowLatency is true and latency classes are equal but costs differ", () => {
+      const expensive = makeEntry({ adapter: "normal-expensive", tier: "hosted", providerCost: 0.15, latencyClass: "normal" });
+      const cheap = makeEntry({ adapter: "normal-cheap", tier: "hosted", providerCost: 0.10, latencyClass: "normal" });
+      const registry = makeRegistry([expensive, cheap]);
+
+      const router = new ArbitrageRouter({ registry, adapters: new Map(), preferLowLatency: true });
+      const decision = router.selectProvider("tts");
+
+      expect(decision.provider.adapter).toBe("normal-cheap");
+    });
+  });
+
+  describe("buildFailoverChain (priority tiebreaker coverage)", () => {
+    it("orders GPU failover candidates by priority when costs are equal", async () => {
+      // Two GPU providers at equal cost — priority tiebreaker in buildFailoverChain line 173
+      const gpu1 = makeEntry({ adapter: "gpu-priority2", tier: "gpu", providerCost: 0.02, priority: 2 });
+      const gpu2 = makeEntry({ adapter: "gpu-priority1", tier: "gpu", providerCost: 0.02, priority: 1 });
+      const hostedEntry = makeEntry({ adapter: "hosted-fallback", tier: "hosted", providerCost: 0.15 });
+
+      const serverError = Object.assign(new Error("Server error"), { httpStatus: 500 });
+      const gpu2Adapter = makeAdapter("gpu-priority2", ["tts"], serverError);
+      const gpu1Adapter = makeAdapter("gpu-priority1", ["tts"], serverError);
+      const hostedAdapter = makeAdapter("hosted-fallback", ["tts"], fakeTTSResult);
+
+      const registryWithHosted = makeRegistry([gpu1, gpu2, hostedEntry]);
+      const adapters = new Map([
+        ["gpu-priority2", gpu2Adapter],
+        ["gpu-priority1", gpu1Adapter],
+        ["hosted-fallback", hostedAdapter],
+      ]);
+
+      const router = new ArbitrageRouter({ registry: registryWithHosted, adapters });
+      const result = await router.route({ capability: "tts", tenantId: "t1", input: {} });
+
+      // Should ultimately reach hosted-fallback after both GPU providers fail
+      expect(result.provider).toBe("hosted-fallback");
+    });
+
+    it("orders hosted failover candidates by priority when costs are equal", async () => {
+      // Selected provider is GPU. Hosted failover has two providers at equal cost — priority tiebreaker line 177.
+      const gpu = makeEntry({ adapter: "gpu-primary", tier: "gpu", providerCost: 0.02 });
+      const hosted1 = makeEntry({ adapter: "hosted-priority2", tier: "hosted", providerCost: 0.12, priority: 2 });
+      const hosted2 = makeEntry({ adapter: "hosted-priority1", tier: "hosted", providerCost: 0.12, priority: 1 });
+      const registry = makeRegistry([gpu, hosted1, hosted2]);
+
+      const serverError = Object.assign(new Error("Server error"), { httpStatus: 500 });
+      const gpuAdapter = makeAdapter("gpu-primary", ["tts"], serverError);
+      const hosted1Adapter = makeAdapter("hosted-priority2", ["tts"], serverError);
+      const hosted2Adapter = makeAdapter("hosted-priority1", ["tts"], fakeTTSResult);
+      const adapters = new Map([
+        ["gpu-primary", gpuAdapter],
+        ["hosted-priority2", hosted1Adapter],
+        ["hosted-priority1", hosted2Adapter],
+      ]);
+
+      const router = new ArbitrageRouter({ registry, adapters });
+      const result = await router.route({ capability: "tts", tenantId: "t1", input: {} });
+
+      // hosted-priority1 (priority:1) should be tried before hosted-priority2 (priority:2)
+      expect(result.provider).toBe("hosted-priority1");
+    });
   });
 });
