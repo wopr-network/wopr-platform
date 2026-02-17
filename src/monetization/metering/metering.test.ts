@@ -711,6 +711,8 @@ describe("MeterEmitter - edge cases", () => {
     const testDb = createTestDb();
     db = testDb.db;
     sqlite = testDb.sqlite;
+    // Clear any existing meter_events data from previous tests to ensure isolation
+    db.delete(meterEvents).run();
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, batchSize: 100 });
   });
 
