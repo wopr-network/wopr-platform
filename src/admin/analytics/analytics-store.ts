@@ -133,8 +133,7 @@ export class AnalyticsStore {
     const revenueConsumedCents = revenueConsumedRow.total;
     const providerCostCents = providerCostRow.total_cents;
     const grossMarginCents = revenueConsumedCents - providerCostCents;
-    const grossMarginPct =
-      revenueConsumedCents > 0 ? (grossMarginCents / revenueConsumedCents) * 100 : 0;
+    const grossMarginPct = revenueConsumedCents > 0 ? (grossMarginCents / revenueConsumedCents) * 100 : 0;
 
     return {
       creditsSoldCents,
