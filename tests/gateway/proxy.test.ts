@@ -147,7 +147,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ model: "gpt-4o", messages: [] }),
       });
 
-      expect(res.status).toBe(429);
+      expect(res.status).toBe(402);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code).toBe("insufficient_credits");
     });
@@ -512,7 +512,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ to: "+15551234567", body: "test", from: "+15559999999" }),
       });
 
-      expect(res.status).toBe(429);
+      expect(res.status).toBe(402);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code).toBe("insufficient_credits");
       expect(meterEvents.length).toBe(0);

@@ -7,6 +7,35 @@
 
 import type { GatewayErrorResponse } from "./types.js";
 
+/** Map a budget check result to the appropriate HTTP status for the inference gateway. */
+export function mapBudgetError(reason: string): { status: number; body: GatewayErrorResponse } {
+  // Insufficient credits → 402 Payment Required
+  if (reason.includes("spending limit") || reason.includes("Budget exceeded")) {
+    return {
+      status: 402,
+      body: {
+        error: {
+          message: `${reason}. Add credits at https://wopr.bot/billing to continue.`,
+          type: "billing_error",
+          code: "insufficient_credits",
+        },
+      },
+    };
+  }
+
+  // Rate limit → 429
+  return {
+    status: 429,
+    body: {
+      error: {
+        message: reason,
+        type: "rate_limit_error",
+        code: "rate_limit_exceeded",
+      },
+    },
+  };
+}
+
 /** Map an upstream error to a gateway error response with HTTP status. */
 export function mapProviderError(error: unknown, provider: string): { status: number; body: GatewayErrorResponse } {
   const err = error instanceof Error ? error : new Error(String(error));
