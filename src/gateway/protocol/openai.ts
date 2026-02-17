@@ -12,6 +12,7 @@
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
+import { creditBalanceCheck, debitCredits } from "../credit-gate.js";
 import type { GatewayAuthEnv } from "../service-key-auth.js";
 import type { GatewayTenant } from "../types.js";
 import type { ProtocolDeps } from "./deps.js";
@@ -142,6 +143,24 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
       );
     }
 
+    // Credit balance check
+    const creditErr = creditBalanceCheck(c, deps);
+    if (creditErr) {
+      // Convert to OpenAI error format
+      const body = await creditErr.json();
+      return c.json(
+        {
+          error: {
+            message: body.error.message,
+            type: body.error.type,
+            param: null,
+            code: body.error.code,
+          },
+        },
+        402,
+      );
+    }
+
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
       return c.json(
@@ -200,6 +219,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
             provider: "openrouter",
             timestamp: Date.now(),
           });
+          debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
         }
 
         return new Response(res.body, {
@@ -232,6 +252,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
           provider: "openrouter",
           timestamp: Date.now(),
         });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
       }
 
       return new Response(responseBody, {
@@ -277,6 +298,24 @@ function embeddingsHandler(deps: ProtocolDeps) {
           },
         },
         429,
+      );
+    }
+
+    // Credit balance check
+    const creditErr = creditBalanceCheck(c, deps);
+    if (creditErr) {
+      // Convert to OpenAI error format
+      const body = await creditErr.json();
+      return c.json(
+        {
+          error: {
+            message: body.error.message,
+            type: body.error.type,
+            param: null,
+            code: body.error.code,
+          },
+        },
+        402,
       );
     }
 
@@ -327,6 +366,7 @@ function embeddingsHandler(deps: ProtocolDeps) {
           provider: "openrouter",
           timestamp: Date.now(),
         });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "embeddings", "openrouter");
       }
 
       return new Response(responseBody, {

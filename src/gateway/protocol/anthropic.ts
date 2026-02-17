@@ -12,6 +12,7 @@
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
+import { creditBalanceCheck, debitCredits } from "../credit-gate.js";
 import type { GatewayAuthEnv } from "../service-key-auth.js";
 import type { GatewayTenant } from "../types.js";
 import type { ProtocolDeps } from "./deps.js";
@@ -126,6 +127,15 @@ function messagesHandler(deps: ProtocolDeps) {
       return anthropicErrorResponse(mapped.status, mapped.body);
     }
 
+    // Credit balance check
+    const creditErr = creditBalanceCheck(c, deps);
+    if (creditErr) {
+      // Convert to Anthropic error format
+      const body = await creditErr.json();
+      const mapped = mapToAnthropicError(402, body.error.message);
+      return anthropicErrorResponse(mapped.status, mapped.body);
+    }
+
     // Parse Anthropic request
     let anthropicReq: AnthropicRequest;
     try {
@@ -218,6 +228,7 @@ function messagesHandler(deps: ProtocolDeps) {
         provider: "openrouter",
         timestamp: Date.now(),
       });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
 
       return c.json(anthropicRes);
     } catch (error) {

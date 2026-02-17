@@ -8,6 +8,7 @@
 
 import type { BudgetChecker, SpendLimits } from "../monetization/budget/budget-checker.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
+import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 
 /** Billing unit determines how a capability is metered. */
 export type BillingUnit =
@@ -79,6 +80,10 @@ export interface GatewayConfig {
   meter: MeterEmitter;
   /** BudgetChecker instance for pre-call budget validation */
   budgetChecker: BudgetChecker;
+  /** CreditLedger instance for deducting credits after proxy calls (optional — if absent, credit deduction is skipped) */
+  creditLedger?: CreditLedger;
+  /** URL to direct users to when they need to add credits (default: "/dashboard/credits") */
+  topUpUrl?: string;
   /** Upstream provider credentials */
   providers: ProviderConfig;
   /** Default margin multiplier (default: 1.3 = 30%) */

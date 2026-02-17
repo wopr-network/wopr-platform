@@ -36,6 +36,7 @@ function createMockDeps(overrides?: Partial<ProtocolDeps>): ProtocolDeps & { met
         }),
       ),
     } as unknown as ProtocolDeps["budgetChecker"],
+    topUpUrl: "/dashboard/credits",
     providers: {
       openrouter: { apiKey: "or-test-key", baseUrl: "https://mock-openrouter.test" },
     },
