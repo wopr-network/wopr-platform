@@ -59,6 +59,18 @@ export {
   type TTSOutput,
   withMargin,
 } from "./adapters/types.js";
+// Arbitrage router — multi-provider routing for maximum margin (WOP-463)
+export {
+  type ArbitrageRequest,
+  ArbitrageRouter,
+  type ArbitrageRouterConfig,
+  type MarginRecord,
+  type ModelProviderEntry,
+  NoProviderAvailableError,
+  ProviderRegistry,
+  type ProviderRegistryConfig,
+  type RoutingDecision,
+} from "./arbitrage/index.js";
 export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budget/index.js";
 export { BudgetChecker } from "./budget/index.js";
 // Credit ledger (WOP-384)

@@ -88,6 +88,8 @@ export interface GatewayConfig {
   providers: ProviderConfig;
   /** Default margin multiplier (default: 1.3 = 30%) */
   defaultMargin?: number;
+  /** Optional arbitrage router for multi-provider cost optimization (WOP-463) */
+  arbitrageRouter?: import("../monetization/arbitrage/router.js").ArbitrageRouter;
   /** Injectable fetch for testing */
   fetchFn?: FetchFn;
   /** Function to resolve a service key to a tenant */

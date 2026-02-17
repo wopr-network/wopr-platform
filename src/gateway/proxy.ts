@@ -13,6 +13,7 @@
 import type { Context } from "hono";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
+import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
@@ -33,6 +34,7 @@ export interface ProxyDeps {
   providers: ProviderConfig;
   defaultMargin: number;
   fetchFn: FetchFn;
+  arbitrageRouter?: import("../monetization/arbitrage/router.js").ArbitrageRouter;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -44,6 +46,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     providers: config.providers,
     defaultMargin: config.defaultMargin ?? DEFAULT_MARGIN,
     fetchFn: config.fetchFn ?? fetch,
+    arbitrageRouter: config.arbitrageRouter,
   };
 }
 
@@ -107,6 +110,9 @@ export function chatCompletions(deps: ProxyDeps) {
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
+
+    // TODO(WOP-463): Add arbitrage routing for chat completions (non-streaming only)
+    // Streaming requests need raw Response piping via proxySSEStream; skip for now.
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -459,6 +465,52 @@ export function audioSpeech(deps: ProxyDeps) {
     const creditErr = creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
+    }
+
+    // WOP-463: If arbitrage router is available, delegate routing to it (non-streaming only)
+    if (deps.arbitrageRouter) {
+      try {
+        const body = await c.req.json<{ input?: string; voice?: string; model?: string; response_format?: string }>();
+        const text = body.input ?? "";
+        const voice = body.voice ?? "21m00Tcm4TlvDq8ikWAM";
+        const format = body.response_format ?? "mp3";
+
+        const result = await deps.arbitrageRouter.route<{ audioBuffer: ArrayBuffer; contentType: string }>({
+          capability: "tts",
+          tenantId: tenant.id,
+          input: { text, voice, format },
+        });
+
+        const characterCount = text.length;
+        const cost = result.cost;
+
+        logger.info("Gateway proxy: audio/speech (arbitrage)", {
+          tenant: tenant.id,
+          characters: characterCount,
+          cost,
+        });
+        emitMeterEvent(deps, tenant.id, "tts", "arbitrage", cost, undefined, {
+          usage: { units: characterCount, unitType: "characters" },
+          tier: "branded",
+        });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "tts", "arbitrage");
+
+        const audioData = result.result as { audioBuffer: ArrayBuffer; contentType: string };
+        return new Response(audioData.audioBuffer, {
+          status: 200,
+          headers: { "Content-Type": audioData.contentType ?? "audio/mpeg" },
+        });
+      } catch (error) {
+        if (error instanceof NoProviderAvailableError) {
+          return c.json(
+            { error: { message: error.message, type: "server_error", code: "no_provider_available" } },
+            503,
+          );
+        }
+        logger.error("Gateway proxy error: audio/speech (arbitrage)", { tenant: tenant.id, error });
+        const mapped = mapProviderError(error, "arbitrage");
+        return c.json(mapped.body, mapped.status as 502);
+      }
     }
 
     const providerCfg = deps.providers.elevenlabs;
