@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type Stripe from "stripe";
@@ -387,7 +388,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   }
 
   const incomingKey = c.req.header("API-Key");
-  if (!incomingKey || incomingKey !== payramApiKey) {
+  if (!incomingKey || !crypto.timingSafeEqual(Buffer.from(incomingKey), Buffer.from(payramApiKey))) {
     logger.error("PayRam webhook API key verification failed");
     return c.json({ error: "Unauthorized" }, 401);
   }

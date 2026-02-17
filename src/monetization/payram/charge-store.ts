@@ -36,8 +36,8 @@ export class PayRamChargeStore {
       .update(payramCharges)
       .set({
         status,
-        currency: currency ?? undefined,
-        filledAmount: filledAmount ?? undefined,
+        currency,
+        filledAmount,
         updatedAt: sql`(datetime('now'))`,
       })
       .where(eq(payramCharges.referenceId, referenceId))
