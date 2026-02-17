@@ -165,6 +165,13 @@ export class MigrationManager {
         // 9. Update routing table — DOWNTIME ENDS
         this.nodeConnections.reassignTenant(botId, resolvedTarget);
 
+        // 9b. Persist node assignment to DB so routing survives platform restart
+        this.db
+          .update(botInstances)
+          .set({ nodeId: resolvedTarget, updatedAt: new Date().toISOString() })
+          .where(eq(botInstances.id, botId))
+          .run();
+
         // 10. Update node capacity tracking
         const memoryMb = estimatedMb ?? 100;
         this.nodeConnections.addNodeCapacity(resolvedTarget, memoryMb);

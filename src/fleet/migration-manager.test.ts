@@ -145,6 +145,69 @@ describe("MigrationManager.migrateTenant", () => {
     expect(nodeConnections.reassignTenant).toHaveBeenCalledWith(BOT_ID, TARGET_NODE);
   });
 
+  it("persists bot_instances.node_id to DB after successful migration", async () => {
+    const runMock = vi.fn();
+    const whereMock = vi.fn().mockReturnValue({ run: runMock });
+    const setMock = vi.fn().mockReturnValue({ where: whereMock });
+    const updateMock = vi.fn().mockReturnValue({ set: setMock });
+
+    const db = {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            get: vi.fn().mockReturnValue(defaultInstance),
+          }),
+        }),
+      }),
+      update: updateMock,
+    };
+
+    const mgr = new MigrationManager(db as never, nodeConnections, notifier);
+
+    await mgr.migrateTenant(BOT_ID, TARGET_NODE);
+
+    // DB update should have been called to persist nodeId
+    expect(updateMock).toHaveBeenCalled();
+    const setCall = (setMock as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0]?.nodeId === TARGET_NODE,
+    );
+    expect(setCall).toBeDefined();
+    expect(setCall?.[0]?.nodeId).toBe(TARGET_NODE);
+    expect(runMock).toHaveBeenCalled();
+  });
+
+  it("does not persist node_id to DB when migration fails", async () => {
+    const runMock = vi.fn();
+    const setMock = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ run: runMock }),
+    });
+    const updateMock = vi.fn().mockReturnValue({ set: setMock });
+
+    const db = {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            get: vi.fn().mockReturnValue(defaultInstance),
+          }),
+        }),
+      }),
+      update: updateMock,
+    };
+
+    const sendCommand = vi.fn().mockRejectedValue(new Error("Export failed"));
+    nodeConnections = makeNodeConnections({ sendCommand });
+    const mgr = new MigrationManager(db as never, nodeConnections, notifier);
+
+    const result = await mgr.migrateTenant(BOT_ID, TARGET_NODE);
+
+    expect(result.success).toBe(false);
+    // No DB update with nodeId should have been called
+    const setCallWithNodeId = (setMock as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0]?.nodeId !== undefined,
+    );
+    expect(setCallWithNodeId).toBeUndefined();
+  });
+
   it("updates node capacity tracking on both source and target", async () => {
     const db = makeDb(defaultInstance);
     const mgr = new MigrationManager(db as never, nodeConnections, notifier);
