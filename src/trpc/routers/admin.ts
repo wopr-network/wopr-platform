@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { TenantStatusStore } from "../../admin/tenant-status/tenant-status-store.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
@@ -20,6 +21,7 @@ import { protectedProcedure, router } from "../init.js";
 export interface AdminRouterDeps {
   getAuditLog: () => AdminAuditLog;
   getCreditStore: () => CreditAdjustmentStore;
+  getRateStore?: () => RateStore;
   getUserStore: () => AdminUserStore;
   getTenantStatusStore: () => TenantStatusStore;
   getBotBilling?: () => BotBilling;
@@ -404,4 +406,179 @@ export const adminRouter = router({
         suspendedBots,
       };
     }),
+
+  // -------------------------------------------------------------------------
+  // Rate Table Management (WOP-464)
+  // -------------------------------------------------------------------------
+
+  /** List sell rates with optional filters. */
+  ratesListSell: protectedProcedure
+    .input(
+      z.object({
+        capability: z.string().optional(),
+        isActive: z.boolean().optional(),
+        limit: z.number().int().positive().max(250).optional(),
+        offset: z.number().int().min(0).optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRateStore } = deps();
+      if (!getRateStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+      }
+      return getRateStore().listSellRates(input);
+    }),
+
+  /** Create a sell rate. */
+  ratesCreateSell: protectedProcedure
+    .input(
+      z.object({
+        capability: z.string().min(1),
+        displayName: z.string().min(1).max(200),
+        unit: z.string().min(1).max(100),
+        priceUsd: z.number().positive(),
+        model: z.string().max(200).optional(),
+        isActive: z.boolean().optional(),
+        sortOrder: z.number().int().min(0).optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRateStore } = deps();
+      if (!getRateStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+      }
+      return getRateStore().createSellRate(input);
+    }),
+
+  /** Update a sell rate. */
+  ratesUpdateSell: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        capability: z.string().min(1).optional(),
+        displayName: z.string().min(1).max(200).optional(),
+        unit: z.string().min(1).max(100).optional(),
+        priceUsd: z.number().positive().optional(),
+        model: z.string().max(200).optional(),
+        isActive: z.boolean().optional(),
+        sortOrder: z.number().int().min(0).optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRateStore } = deps();
+      if (!getRateStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+      }
+      const { id, ...updates } = input;
+      return getRateStore().updateSellRate(id, updates);
+    }),
+
+  /** Delete a sell rate. */
+  ratesDeleteSell: protectedProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getRateStore } = deps();
+    if (!getRateStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+    }
+    const deleted = getRateStore().deleteSellRate(input.id);
+    if (!deleted) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Sell rate not found" });
+    }
+    return { success: true };
+  }),
+
+  /** List provider costs with optional filters. */
+  ratesListProvider: protectedProcedure
+    .input(
+      z.object({
+        capability: z.string().optional(),
+        adapter: z.string().optional(),
+        isActive: z.boolean().optional(),
+        limit: z.number().int().positive().max(250).optional(),
+        offset: z.number().int().min(0).optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRateStore } = deps();
+      if (!getRateStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+      }
+      return getRateStore().listProviderCosts(input);
+    }),
+
+  /** Create a provider cost. */
+  ratesCreateProvider: protectedProcedure
+    .input(
+      z.object({
+        capability: z.string().min(1),
+        adapter: z.string().min(1).max(100),
+        model: z.string().max(200).optional(),
+        unit: z.string().min(1).max(100),
+        costUsd: z.number().positive(),
+        priority: z.number().int().min(0).optional(),
+        latencyClass: z.enum(["fast", "standard", "batch"]).optional(),
+        isActive: z.boolean().optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRateStore } = deps();
+      if (!getRateStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+      }
+      return getRateStore().createProviderCost(input);
+    }),
+
+  /** Update a provider cost. */
+  ratesUpdateProvider: protectedProcedure
+    .input(
+      z.object({
+        id: z.string().min(1),
+        capability: z.string().min(1).optional(),
+        adapter: z.string().min(1).max(100).optional(),
+        model: z.string().max(200).optional(),
+        unit: z.string().min(1).max(100).optional(),
+        costUsd: z.number().positive().optional(),
+        priority: z.number().int().min(0).optional(),
+        latencyClass: z.enum(["fast", "standard", "batch"]).optional(),
+        isActive: z.boolean().optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRateStore } = deps();
+      if (!getRateStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+      }
+      const { id, ...updates } = input;
+      return getRateStore().updateProviderCost(id, updates);
+    }),
+
+  /** Delete a provider cost. */
+  ratesDeleteProvider: protectedProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getRateStore } = deps();
+    if (!getRateStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+    }
+    const deleted = getRateStore().deleteProviderCost(input.id);
+    if (!deleted) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Provider cost not found" });
+    }
+    return { success: true };
+  }),
+
+  /** Get margin report. */
+  ratesMargins: protectedProcedure.input(z.object({ capability: z.string().optional() })).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getRateStore } = deps();
+    if (!getRateStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
+    }
+    return { margins: getRateStore().getMarginReport(input.capability) };
+  }),
 });

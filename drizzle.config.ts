@@ -10,6 +10,7 @@ export default defineConfig({
     "./src/db/schema/audit.ts",
     "./src/db/schema/admin-audit.ts",
     "./src/db/schema/provider-credentials.ts",
+    "./src/db/schema/rates.ts",
     "./src/db/schema/snapshots.ts",
     "./src/db/schema/tenant-status.ts",
     "./src/db/schema/nodes.ts",
