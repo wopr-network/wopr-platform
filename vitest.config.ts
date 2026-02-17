@@ -24,6 +24,7 @@ export default defineConfig({
         // Barrel re-export files (no logic, just re-exports)
         "src/audit/index.ts",
         "src/monetization/index.ts",
+        "src/monetization/arbitrage/index.ts",
         "src/monetization/metering/index.ts",
         "src/monetization/stripe/index.ts",
         "src/observability/index.ts",
