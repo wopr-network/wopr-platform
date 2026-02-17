@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { getNodeConnections, getRecoveryManager } from "../../fleet/services.js";
+import { getMigrationManager, getNodeConnections, getRecoveryManager } from "../../fleet/services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
@@ -146,4 +146,25 @@ adminNodeRoutes.get("/:nodeId/tenants", adminAuth, (c) => {
     tenants,
     count: tenants.length,
   });
+});
+
+/**
+ * POST /api/admin/nodes/:nodeId/drain
+ * Drain all tenants from a node (for decommissioning or maintenance).
+ */
+adminNodeRoutes.post("/:nodeId/drain", adminAuth, async (c) => {
+  const nodeId = c.req.param("nodeId");
+
+  try {
+    const migrationManager = getMigrationManager();
+    const result = await migrationManager.drainNode(nodeId);
+
+    return c.json({
+      success: result.failed.length === 0,
+      result,
+    });
+  } catch (err) {
+    logger.error("Drain failed", { nodeId, err });
+    return c.json({ success: false, error: err instanceof Error ? err.message : "Unknown error" }, 500);
+  }
 });

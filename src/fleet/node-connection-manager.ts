@@ -306,4 +306,19 @@ export class NodeConnectionManager {
       .where(eq(nodes.id, nodeId))
       .run();
   }
+
+  /**
+   * Get a single node by ID
+   */
+  getNode(nodeId: string): NodeInfo | undefined {
+    return this.db.select().from(nodes).where(eq(nodes.id, nodeId)).get();
+  }
+
+  /**
+   * Check if a node is connected (has active WebSocket)
+   */
+  isConnected(nodeId: string): boolean {
+    const ws = this.connections.get(nodeId);
+    return ws != null && ws.readyState === 1;
+  }
 }
