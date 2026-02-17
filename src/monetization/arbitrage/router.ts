@@ -62,8 +62,9 @@ export class ArbitrageRouter {
    * Route a request to the best available provider.
    * Tries GPU tier first, falls back to hosted tier (cheapest first).
    * On 5xx errors, retries with next provider in the failover chain.
+   * Returns the AdapterResult plus the name of the provider that served the request.
    */
-  async route<T>(request: ArbitrageRequest): Promise<AdapterResult<T>> {
+  async route<T>(request: ArbitrageRequest): Promise<AdapterResult<T> & { provider: string }> {
     const decision = this.selectProvider(request.capability, request.model);
     const orderedCandidates = this.buildFailoverChain(decision);
 
@@ -96,7 +97,7 @@ export class ArbitrageRouter {
           });
         }
 
-        return result;
+        return { ...result, provider: entry.adapter };
       } catch (error) {
         const httpStatus = (error as { httpStatus?: number }).httpStatus;
         if (httpStatus !== undefined && httpStatus >= 500 && httpStatus < 600) {

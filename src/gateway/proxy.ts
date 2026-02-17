@@ -12,6 +12,7 @@
 
 import type { Context } from "hono";
 import { logger } from "../config/logger.js";
+import type { TTSOutput } from "../monetization/adapters/types.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
@@ -467,23 +468,25 @@ export function audioSpeech(deps: ProxyDeps) {
       return c.json({ error: creditErr }, 402);
     }
 
+    // Parse body once — reused by both the arbitrage path and the ElevenLabs fallback.
+    let body: { input?: string; voice?: string; model?: string; response_format?: string };
+    try {
+      body = await c.req.json<{ input?: string; voice?: string; model?: string; response_format?: string }>();
+    } catch {
+      return c.json(
+        { error: { message: "Invalid JSON in request body", type: "invalid_request_error", code: "parse_error" } },
+        400,
+      );
+    }
+
     // WOP-463: If arbitrage router is available, delegate routing to it (non-streaming only)
     if (deps.arbitrageRouter) {
-      let body: { input?: string; voice?: string; model?: string; response_format?: string };
-      try {
-        body = await c.req.json<{ input?: string; voice?: string; model?: string; response_format?: string }>();
-      } catch {
-        return c.json(
-          { error: { message: "Invalid JSON in request body", type: "invalid_request_error", code: "parse_error" } },
-          400,
-        );
-      }
       try {
         const text = body.input ?? "";
         const voice = body.voice ?? "21m00Tcm4TlvDq8ikWAM";
         const format = body.response_format ?? "mp3";
 
-        const result = await deps.arbitrageRouter.route<{ audioBuffer: ArrayBuffer; contentType: string }>({
+        const result = await deps.arbitrageRouter.route<TTSOutput>({
           capability: "tts",
           tenantId: tenant.id,
           input: { text, voice, format },
@@ -491,22 +494,36 @@ export function audioSpeech(deps: ProxyDeps) {
 
         const characterCount = text.length;
         const cost = result.cost;
+        const provider = result.provider;
 
         logger.info("Gateway proxy: audio/speech (arbitrage)", {
           tenant: tenant.id,
           characters: characterCount,
           cost,
+          provider,
         });
-        emitMeterEvent(deps, tenant.id, "tts", "arbitrage", cost, undefined, {
+        emitMeterEvent(deps, tenant.id, "tts", provider, cost, undefined, {
           usage: { units: characterCount, unitType: "characters" },
           tier: "branded",
         });
-        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "tts", "arbitrage");
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "tts", provider);
 
-        const audioData = result.result as { audioBuffer: ArrayBuffer; contentType: string };
-        return new Response(audioData.audioBuffer, {
+        const { audioUrl, format: audioFormat } = result.result;
+        // audioUrl may be a data URL (data:<mime>;base64,<data>) or a remote URL.
+        if (audioUrl.startsWith("data:")) {
+          const [header, b64] = audioUrl.split(",", 2);
+          const mimeType = header.split(";")[0].slice(5);
+          const audioBuffer = Buffer.from(b64 ?? "", "base64");
+          return new Response(audioBuffer, {
+            status: 200,
+            headers: { "Content-Type": mimeType || `audio/${audioFormat}` },
+          });
+        }
+        // Remote URL — fetch and forward.
+        const audioRes = await deps.fetchFn(audioUrl);
+        return new Response(audioRes.body, {
           status: 200,
-          headers: { "Content-Type": audioData.contentType ?? "audio/mpeg" },
+          headers: { "Content-Type": audioRes.headers.get("Content-Type") ?? `audio/${audioFormat}` },
         });
       } catch (error) {
         if (error instanceof NoProviderAvailableError) {
@@ -530,7 +547,6 @@ export function audioSpeech(deps: ProxyDeps) {
     }
 
     try {
-      const body = await c.req.json<{ input?: string; voice?: string; model?: string; response_format?: string }>();
       const text = body.input ?? "";
       const voice = body.voice ?? "21m00Tcm4TlvDq8ikWAM";
       const format = body.response_format ?? "mp3";
