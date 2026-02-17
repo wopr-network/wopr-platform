@@ -6,8 +6,8 @@
  */
 
 import type { BudgetChecker } from "../../monetization/budget/budget-checker.js";
-import type { MeterEmitter } from "../../monetization/metering/emitter.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import type { MeterEmitter } from "../../monetization/metering/emitter.js";
 import type { FetchFn, GatewayTenant, ProviderConfig } from "../types.js";
 
 export interface ProtocolDeps {

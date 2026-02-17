@@ -8,9 +8,9 @@
 
 import type { Context } from "hono";
 import { logger } from "../config/logger.js";
-import { InsufficientBalanceError } from "../monetization/credits/credit-ledger.js";
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import { withMargin } from "../monetization/adapters/types.js";
+import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import { InsufficientBalanceError } from "../monetization/credits/credit-ledger.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 
 export interface CreditGateDeps {
@@ -18,36 +18,46 @@ export interface CreditGateDeps {
   topUpUrl: string;
 }
 
+export interface CreditError {
+  message: string;
+  type: string;
+  code: string;
+  needsCredits: boolean;
+  topUpUrl: string;
+  currentBalanceCents: number;
+  requiredCents: number;
+}
+
 /**
  * Pre-call credit balance check.
- * Returns a 402 Response if credits are insufficient, or null if OK.
+ * Returns a structured error object if credits are insufficient, or null if OK.
+ *
+ * IMPORTANT: This check is NOT atomic with the debit call. Concurrent requests
+ * can both pass this check, then one debit may fail. This is an accepted trade-off:
+ * we prefer fire-and-forget debits (logged but not failing the response) over locking.
+ * Reconciliation via ledger queries catches discrepancies.
  */
 export function creditBalanceCheck(
   c: Context<GatewayAuthEnv>,
   deps: CreditGateDeps,
   estimatedCostCents: number = 0,
-): Response | null {
+): CreditError | null {
   if (!deps.creditLedger) return null;
 
   const tenant = c.get("gatewayTenant");
   const balance = deps.creditLedger.balance(tenant.id);
-  const required = Math.max(1, estimatedCostCents);
+  const required = Math.max(0, estimatedCostCents);
 
   if (balance < required) {
-    return c.json(
-      {
-        error: {
-          message: "Insufficient credits. Please add credits to continue.",
-          type: "billing_error",
-          code: "insufficient_credits",
-          needsCredits: true,
-          topUpUrl: deps.topUpUrl,
-          currentBalanceCents: balance,
-          requiredCents: required,
-        },
-      },
-      402,
-    );
+    return {
+      message: "Insufficient credits. Please add credits to continue.",
+      type: "billing_error",
+      code: "insufficient_credits",
+      needsCredits: true,
+      topUpUrl: deps.topUpUrl,
+      currentBalanceCents: balance,
+      requiredCents: required,
+    };
   }
 
   return null;
@@ -72,12 +82,7 @@ export function debitCredits(
   if (chargeCents <= 0) return;
 
   try {
-    deps.creditLedger.debit(
-      tenantId,
-      chargeCents,
-      "adapter_usage",
-      `Gateway ${capability} via ${provider}`,
-    );
+    deps.creditLedger.debit(tenantId, chargeCents, "adapter_usage", `Gateway ${capability} via ${provider}`);
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
       logger.warn("Credit debit failed after proxy (insufficient balance)", {

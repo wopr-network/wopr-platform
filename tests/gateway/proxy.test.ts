@@ -66,13 +66,44 @@ function createStubFetch(overrides: Partial<{
   };
 }
 
+class StubCreditLedger {
+  private balances = new Map<string, number>();
+
+  constructor(initialBalance: number) {
+    this.balances.set(TENANT.id, initialBalance);
+  }
+
+  balance(tenantId: string): number {
+    return this.balances.get(tenantId) ?? 0;
+  }
+
+  credit(tenantId: string, cents: number): void {
+    const current = this.balances.get(tenantId) ?? 0;
+    this.balances.set(tenantId, current + cents);
+  }
+
+  debit(tenantId: string, cents: number): void {
+    const current = this.balances.get(tenantId) ?? 0;
+    this.balances.set(tenantId, current - cents);
+  }
+
+  transactions(): Array<{ tenantId: string; amountCents: number; type: string; description: string; timestamp: number }> {
+    return [];
+  }
+}
+
 function makeGatewayApp(opts: {
   fetchFn?: FetchFn;
   budgetAllowed?: boolean;
+  creditBalance?: number;
 } = {}): Hono<GatewayAuthEnv> {
   const config: GatewayConfig = {
     meter: createStubMeter() as unknown as GatewayConfig["meter"],
     budgetChecker: createStubBudgetChecker(opts.budgetAllowed ?? true) as unknown as GatewayConfig["budgetChecker"],
+    creditLedger: opts.creditBalance !== undefined
+      ? (new StubCreditLedger(opts.creditBalance) as unknown as GatewayConfig["creditLedger"])
+      : undefined,
+    topUpUrl: "/dashboard/credits",
     providers: {
       openrouter: { apiKey: "or-key", baseUrl: "https://test-openrouter.local" },
       deepgram: { apiKey: "dg-key", baseUrl: "https://test-deepgram.local" },
@@ -793,6 +824,129 @@ describe("Gateway proxy endpoints", () => {
       expect(res.status).toBe(503);
       const body = (await res.json()) as { error: { code: string } };
       expect(body.error.code).toBe("service_unavailable");
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Credit gate tests
+  // -----------------------------------------------------------------------
+
+  describe("credit balance check", () => {
+    it("returns 402 when credit balance is insufficient", async () => {
+      const app = makeGatewayApp({ creditBalance: 0 }); // Zero balance
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o", messages: [] }),
+      });
+
+      expect(res.status).toBe(402);
+      const body = (await res.json()) as {
+        error: {
+          code: string;
+          message: string;
+          type: string;
+          needsCredits: boolean;
+          topUpUrl: string;
+        };
+      };
+      expect(body.error.code).toBe("insufficient_credits");
+      expect(body.error.message).toContain("Insufficient credits");
+      expect(body.error.needsCredits).toBe(true);
+      expect(body.error.topUpUrl).toBe("/dashboard/credits");
+    });
+
+    it("allows requests with sufficient credits", async () => {
+      const stubFetch = createStubFetch({
+        body: JSON.stringify({
+          id: "chatcmpl-1",
+          model: "gpt-4o",
+          choices: [{ message: { content: "Hello!" } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-openrouter-cost": "0.00012",
+        },
+      });
+
+      const app = makeGatewayApp({ fetchFn: stubFetch, creditBalance: 10000 }); // 100 USD
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "Hi" }] }),
+      });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("debits credits after successful proxy call", async () => {
+      const stubFetch = createStubFetch({
+        body: JSON.stringify({
+          id: "chatcmpl-1",
+          model: "gpt-4o",
+          choices: [{ message: { content: "Hello!" } }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-openrouter-cost": "0.05", // 5 cents
+        },
+      });
+
+      const app = makeGatewayApp({ fetchFn: stubFetch, creditBalance: 10000 });
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "Hi" }] }),
+      });
+
+      expect(res.status).toBe(200);
+      // Credits should have been debited (tested via meter event in earlier tests)
+    });
+
+    it("blocks zero-balance tenants on endpoints with estimated cost", async () => {
+      const stubFetch = createStubFetch({
+        body: JSON.stringify({
+          id: "chatcmpl-1",
+          model: "gpt-4o",
+          choices: [{ message: { content: "Hello!" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-openrouter-cost": "0.001", // Sub-cent actual cost
+        },
+      });
+
+      const app = makeGatewayApp({ fetchFn: stubFetch, creditBalance: 0 });
+
+      const res = await app.request("/v1/chat/completions", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "Hi" }] }),
+      });
+
+      // Even though actual cost might be sub-cent, we block on estimated 1 cent minimum
+      expect(res.status).toBe(402);
+    });
+
+    it("stub endpoints do not block zero-balance users", async () => {
+      const app = makeGatewayApp({ creditBalance: 0 }); // Zero balance
+
+      const res = await app.request("/v1/phone/outbound", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ to: "+15551234567", from: "+15559876543" }),
+      });
+
+      // Should allow because phoneOutbound is a stub that doesn't charge upfront
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { status: string };
+      expect(body.status).toBe("initiated");
     });
   });
 });

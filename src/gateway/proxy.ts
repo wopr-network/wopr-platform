@@ -14,13 +14,13 @@ import type { Context } from "hono";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
-import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { MeterEmitter } from "../monetization/metering/emitter.js";
+import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
 import { mapBudgetError, mapProviderError } from "./error-mapping.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 import { proxySSEStream } from "./streaming.js";
 import type { FetchFn, GatewayConfig, ProviderConfig } from "./types.js";
-import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
 
 const DEFAULT_MARGIN = 1.3;
 
@@ -102,8 +102,11 @@ export function chatCompletions(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for chat completions
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -205,8 +208,11 @@ export function textCompletions(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for text completions
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -284,8 +290,11 @@ export function embeddings(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for embeddings
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -361,8 +370,11 @@ export function audioTranscriptions(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for STT
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.deepgram;
     if (!providerCfg) {
@@ -443,8 +455,11 @@ export function audioSpeech(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for TTS
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.elevenlabs;
     if (!providerCfg) {
@@ -521,8 +536,11 @@ export function imageGenerations(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for image generation
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.replicate;
     if (!providerCfg) {
@@ -608,8 +626,11 @@ export function videoGenerations(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for image generation
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const providerCfg = deps.providers.replicate;
     if (!providerCfg) {
@@ -680,8 +701,8 @@ export function phoneOutbound(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // NOTE: Credit gate removed from stub endpoint. This endpoint does not charge
+    // until actual implementation exists. Metering happens on phoneInbound webhooks.
 
     const providerCfg = deps.providers.twilio ?? deps.providers.telnyx;
     const providerName = deps.providers.twilio ? "twilio" : "telnyx";
@@ -772,8 +793,11 @@ export function smsOutbound(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for SMS/MMS
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {
@@ -987,8 +1011,11 @@ export function phoneNumberProvision(deps: ProxyDeps) {
     const budgetErr = budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps);
-    if (creditErr) return creditErr;
+    // Estimate minimum 1 cent for phone number provision
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
 
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {

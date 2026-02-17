@@ -7,8 +7,8 @@
  */
 
 import type { BudgetChecker, SpendLimits } from "../monetization/budget/budget-checker.js";
-import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { MeterEmitter } from "../monetization/metering/emitter.js";
 
 /** Billing unit determines how a capability is metered. */
 export type BillingUnit =

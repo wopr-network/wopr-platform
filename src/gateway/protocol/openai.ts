@@ -143,18 +143,17 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
       );
     }
 
-    // Credit balance check
-    const creditErr = creditBalanceCheck(c, deps);
+    // Credit balance check (estimate minimum 1 cent for LLM calls)
+    const creditErr = creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       // Convert to OpenAI error format
-      const body = await creditErr.json();
       return c.json(
         {
           error: {
-            message: body.error.message,
-            type: body.error.type,
+            message: creditErr.message,
+            type: creditErr.type,
             param: null,
-            code: body.error.code,
+            code: creditErr.code,
           },
         },
         402,
@@ -301,18 +300,17 @@ function embeddingsHandler(deps: ProtocolDeps) {
       );
     }
 
-    // Credit balance check
-    const creditErr = creditBalanceCheck(c, deps);
+    // Credit balance check (estimate minimum 1 cent for LLM calls)
+    const creditErr = creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       // Convert to OpenAI error format
-      const body = await creditErr.json();
       return c.json(
         {
           error: {
-            message: body.error.message,
-            type: body.error.type,
+            message: creditErr.message,
+            type: creditErr.type,
             param: null,
-            code: body.error.code,
+            code: creditErr.code,
           },
         },
         402,

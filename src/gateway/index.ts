@@ -6,7 +6,7 @@
  * providers, meters usage, and responds.
  */
 
-export { creditBalanceCheck, debitCredits, type CreditGateDeps } from "./credit-gate.js";
+export { type CreditGateDeps, creditBalanceCheck, debitCredits } from "./credit-gate.js";
 export { mapBudgetError, mapProviderError } from "./error-mapping.js";
 export { gatewayHealthHandler } from "./health.js";
 export { modelsHandler } from "./models.js";
