@@ -1,11 +1,14 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { AdminAuditLog } from "../admin/audit-log.js";
 import { logger } from "../config/logger.js";
 import * as dbSchema from "../db/schema/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
+import { DOClient } from "./do-client.js";
 import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
 import { MigrationManager } from "./migration-manager.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
+import { NodeProvisioner } from "./node-provisioner.js";
 import { RecoveryManager } from "./recovery-manager.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
@@ -72,4 +75,37 @@ export function getMigrationManager() {
     _migrationManager = new MigrationManager(getDb(), getNodeConnections(), getAdminNotifier());
   }
   return _migrationManager;
+}
+
+let _doClient: DOClient | null = null;
+let _nodeProvisioner: NodeProvisioner | null = null;
+let _adminAuditLog: AdminAuditLog | null = null;
+
+export function getDOClient(): DOClient {
+  if (!_doClient) {
+    const token = process.env.DO_API_TOKEN;
+    if (!token) throw new Error("DO_API_TOKEN environment variable is required for node provisioning");
+    _doClient = new DOClient(token);
+  }
+  return _doClient;
+}
+
+export function getNodeProvisioner(): NodeProvisioner {
+  if (!_nodeProvisioner) {
+    const sshKeyIdStr = process.env.DO_SSH_KEY_ID;
+    if (!sshKeyIdStr) throw new Error("DO_SSH_KEY_ID environment variable is required");
+    _nodeProvisioner = new NodeProvisioner(getDb(), getDOClient(), {
+      sshKeyId: Number(sshKeyIdStr),
+      defaultRegion: process.env.DO_DEFAULT_REGION,
+      defaultSize: process.env.DO_DEFAULT_SIZE,
+    });
+  }
+  return _nodeProvisioner;
+}
+
+export function getAdminAuditLog(): AdminAuditLog {
+  if (!_adminAuditLog) {
+    _adminAuditLog = new AdminAuditLog(getDb());
+  }
+  return _adminAuditLog;
 }

@@ -50,6 +50,20 @@
       "when": 1771356380632,
       "tag": "0006_married_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1771368550000,
+      "tag": "0007_wakeful_master_mold",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1771368556464,
+      "tag": "0008_steep_maddog",
+      "breakpoints": true
     }
   ]
 }
