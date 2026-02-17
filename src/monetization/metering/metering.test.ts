@@ -961,4 +961,142 @@ describe("MeterEmitter - fail-closed policy", () => {
 
     newEmitter.close();
   });
+
+  describe("generic usage fields (WOP-512)", () => {
+    it("persists usage, tier, and metadata fields", () => {
+      emitter.emit(
+        makeEvent({
+          tenant: "t-1",
+          capability: "tts",
+          provider: "elevenlabs",
+          usage: { units: 500, unitType: "characters" },
+          tier: "branded",
+          metadata: { voice: "adam", model: "eleven_v2" },
+        }),
+      );
+      emitter.flush();
+      const rows = emitter.queryEvents("t-1");
+      expect(rows[0].usage_units).toBe(500);
+      expect(rows[0].usage_unit_type).toBe("characters");
+      expect(rows[0].tier).toBe("branded");
+      expect(JSON.parse(rows[0].metadata!)).toEqual({ voice: "adam", model: "eleven_v2" });
+    });
+
+    it("handles null usage/tier/metadata (backwards compatibility)", () => {
+      emitter.emit(makeEvent({ tenant: "t-1" }));
+      emitter.flush();
+      const rows = emitter.queryEvents("t-1");
+      expect(rows[0].usage_units).toBeNull();
+      expect(rows[0].usage_unit_type).toBeNull();
+      expect(rows[0].tier).toBeNull();
+      expect(rows[0].metadata).toBeNull();
+    });
+
+    it("works with multiple capability types in the same flush", () => {
+      emitter.emit(
+        makeEvent({
+          capability: "tts",
+          provider: "elevenlabs",
+          usage: { units: 500, unitType: "characters" },
+          tier: "branded",
+        }),
+      );
+      emitter.emit(
+        makeEvent({
+          capability: "chat-completions",
+          provider: "openrouter",
+          usage: { units: 1500, unitType: "tokens" },
+          tier: "branded",
+        }),
+      );
+      emitter.emit(
+        makeEvent({
+          capability: "transcription",
+          provider: "self-hosted-whisper",
+          usage: { units: 120, unitType: "seconds" },
+          tier: "wopr",
+        }),
+      );
+      emitter.emit(
+        makeEvent({
+          capability: "image-generation",
+          provider: "replicate",
+          usage: { units: 2, unitType: "images" },
+          tier: "branded",
+        }),
+      );
+      emitter.flush();
+      const rows = emitter.queryEvents("tenant-1");
+      expect(rows).toHaveLength(4);
+      // Verify each has correct unitType
+      const unitTypes = rows.map((r) => r.usage_unit_type).sort();
+      expect(unitTypes).toEqual(["characters", "images", "seconds", "tokens"]);
+    });
+
+    it("BYOK tier records zero cost/charge with tier='byok'", () => {
+      emitter.emit(
+        makeEvent({
+          cost: 0,
+          charge: 0,
+          capability: "chat-completions",
+          provider: "openrouter",
+          usage: { units: 1000, unitType: "tokens" },
+          tier: "byok",
+        }),
+      );
+      emitter.flush();
+      const rows = emitter.queryEvents("tenant-1");
+      expect(rows[0].cost).toBe(0);
+      expect(rows[0].charge).toBe(0);
+      expect(rows[0].tier).toBe("byok");
+      expect(rows[0].usage_units).toBe(1000);
+    });
+
+    it("aggregator works unchanged with new fields present", () => {
+      const WINDOW = 60_000; // 1 minute
+      const aggregator = new MeterAggregator(db, { windowMs: WINDOW });
+      const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
+      emitter.emit(
+        makeEvent({
+          tenant: "t-1",
+          cost: 0.01,
+          charge: 0.02,
+          timestamp: pastWindow + 10,
+          usage: { units: 100, unitType: "tokens" },
+          tier: "branded",
+        }),
+      );
+      emitter.emit(
+        makeEvent({
+          tenant: "t-1",
+          cost: 0.03,
+          charge: 0.06,
+          timestamp: pastWindow + 20,
+          usage: { units: 200, unitType: "tokens" },
+          tier: "branded",
+        }),
+      );
+      emitter.flush();
+      const count = aggregator.aggregate();
+      expect(count).toBe(1);
+      const summaries = aggregator.querySummaries("t-1");
+      expect(summaries[0].event_count).toBe(2);
+      expect(summaries[0].total_cost).toBeCloseTo(0.04, 10);
+    });
+
+    it("WAL/DLQ handles events with new fields", () => {
+      const event = makeEvent({
+        usage: { units: 42, unitType: "requests" },
+        tier: "wopr",
+        metadata: { foo: "bar" },
+      });
+      emitter.emit(event);
+      // WAL should persist new fields
+      const walContent = readFileSync(TEST_WAL_PATH, "utf8");
+      const walEvent = JSON.parse(walContent.trim());
+      expect(walEvent.usage.units).toBe(42);
+      expect(walEvent.tier).toBe("wopr");
+      expect(walEvent.metadata.foo).toBe("bar");
+    });
+  });
 });

@@ -125,6 +125,10 @@ export class MeterEmitter {
               timestamp: e.timestamp,
               sessionId: e.sessionId ?? null,
               duration: e.duration ?? null,
+              usageUnits: e.usage?.units ?? null,
+              usageUnitType: e.usage?.unitType ?? null,
+              tier: e.tier ?? null,
+              metadata: e.metadata ? JSON.stringify(e.metadata) : null,
             })
             .run();
         }
@@ -207,6 +211,10 @@ export class MeterEmitter {
       timestamp: r.timestamp,
       session_id: r.sessionId,
       duration: r.duration,
+      usage_units: r.usageUnits,
+      usage_unit_type: r.usageUnitType,
+      tier: r.tier,
+      metadata: r.metadata,
     }));
   }
 }

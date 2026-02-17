@@ -74,6 +74,11 @@ function emitMeterEvent(
   provider: string,
   cost: number,
   margin?: number,
+  opts?: {
+    usage?: { units: number; unitType: string };
+    tier?: "wopr" | "branded" | "byok";
+    metadata?: Record<string, unknown>;
+  },
 ): void {
   const charge = withMargin(cost, margin ?? deps.defaultMargin);
   deps.meter.emit({
@@ -83,6 +88,9 @@ function emitMeterEvent(
     capability,
     provider,
     timestamp: Date.now(),
+    ...(opts?.usage ? { usage: opts.usage } : {}),
+    ...(opts?.tier ? { tier: opts.tier } : {}),
+    ...(opts?.metadata ? { metadata: opts.metadata } : {}),
   });
 }
 
@@ -128,7 +136,29 @@ export function chatCompletions(deps: ProxyDeps) {
       });
 
       if (res.ok) {
-        emitMeterEvent(deps, tenant.id, "chat-completions", "openrouter", cost);
+        // Parse token counts and model from response (WOP-512)
+        let usage: { units: number; unitType: string } | undefined;
+        let metadata: Record<string, unknown> | undefined;
+        try {
+          const parsed = JSON.parse(responseBody) as {
+            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+            model?: string;
+          };
+          const inputTokens = parsed.usage?.prompt_tokens ?? 0;
+          const outputTokens = parsed.usage?.completion_tokens ?? 0;
+          const totalTokens = parsed.usage?.total_tokens ?? inputTokens + outputTokens;
+          if (totalTokens > 0) {
+            usage = { units: totalTokens, unitType: "tokens" };
+            metadata = { inputTokens, outputTokens, model: parsed.model };
+          }
+        } catch {
+          // If parsing fails, proceed without usage data
+        }
+        emitMeterEvent(deps, tenant.id, "chat-completions", "openrouter", cost, undefined, {
+          usage,
+          tier: "branded",
+          metadata,
+        });
       }
 
       return new Response(responseBody, {
@@ -181,7 +211,29 @@ export function textCompletions(deps: ProxyDeps) {
       logger.info("Gateway proxy: completions", { tenant: tenant.id, status: res.status, cost });
 
       if (res.ok) {
-        emitMeterEvent(deps, tenant.id, "text-completions", "openrouter", cost);
+        // Parse token counts and model from response (WOP-512)
+        let usage: { units: number; unitType: string } | undefined;
+        let metadata: Record<string, unknown> | undefined;
+        try {
+          const parsed = JSON.parse(responseBody) as {
+            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+            model?: string;
+          };
+          const inputTokens = parsed.usage?.prompt_tokens ?? 0;
+          const outputTokens = parsed.usage?.completion_tokens ?? 0;
+          const totalTokens = parsed.usage?.total_tokens ?? inputTokens + outputTokens;
+          if (totalTokens > 0) {
+            usage = { units: totalTokens, unitType: "tokens" };
+            metadata = { inputTokens, outputTokens, model: parsed.model };
+          }
+        } catch {
+          // If parsing fails, proceed without usage data
+        }
+        emitMeterEvent(deps, tenant.id, "text-completions", "openrouter", cost, undefined, {
+          usage,
+          tier: "branded",
+          metadata,
+        });
       }
 
       return new Response(responseBody, {
@@ -234,7 +286,27 @@ export function embeddings(deps: ProxyDeps) {
       logger.info("Gateway proxy: embeddings", { tenant: tenant.id, status: res.status, cost });
 
       if (res.ok) {
-        emitMeterEvent(deps, tenant.id, "embeddings", "openrouter", cost);
+        // Parse token counts from response (WOP-512)
+        let usage: { units: number; unitType: string } | undefined;
+        let metadata: Record<string, unknown> | undefined;
+        try {
+          const parsed = JSON.parse(responseBody) as {
+            usage?: { total_tokens?: number };
+            model?: string;
+          };
+          const totalTokens = parsed.usage?.total_tokens ?? 0;
+          if (totalTokens > 0) {
+            usage = { units: totalTokens, unitType: "tokens" };
+            metadata = { model: parsed.model };
+          }
+        } catch {
+          // If parsing fails, proceed without usage data
+        }
+        emitMeterEvent(deps, tenant.id, "embeddings", "openrouter", cost, undefined, {
+          usage,
+          tier: "branded",
+          metadata,
+        });
       }
 
       return new Response(responseBody, {
@@ -294,17 +366,23 @@ export function audioTranscriptions(deps: ProxyDeps) {
 
       // Estimate cost from audio duration in response
       let cost = 0.001; // minimum fallback
+      let durationSeconds = 0;
       try {
         const parsed = JSON.parse(responseBody) as { metadata?: { duration?: number } };
         if (parsed.metadata?.duration) {
-          cost = (parsed.metadata.duration / 60) * 0.0043; // Nova-2 wholesale rate
+          durationSeconds = parsed.metadata.duration;
+          cost = (durationSeconds / 60) * 0.0043; // Nova-2 wholesale rate
         }
       } catch {
         // use fallback cost
       }
 
       logger.info("Gateway proxy: audio/transcriptions", { tenant: tenant.id, status: res.status, cost });
-      emitMeterEvent(deps, tenant.id, "transcription", "deepgram", cost);
+      emitMeterEvent(deps, tenant.id, "transcription", "deepgram", cost, undefined, {
+        usage: durationSeconds > 0 ? { units: durationSeconds / 60, unitType: "minutes" } : undefined,
+        tier: "branded",
+        metadata: durationSeconds > 0 ? { model, durationSeconds } : undefined,
+      });
 
       return new Response(responseBody, {
         status: res.status,
@@ -371,7 +449,11 @@ export function audioSpeech(deps: ProxyDeps) {
       const cost = characterCount * 0.000015; // wholesale rate
 
       logger.info("Gateway proxy: audio/speech", { tenant: tenant.id, characters: characterCount, cost });
-      emitMeterEvent(deps, tenant.id, "tts", "elevenlabs", cost);
+      emitMeterEvent(deps, tenant.id, "tts", "elevenlabs", cost, undefined, {
+        usage: { units: characterCount, unitType: "characters" },
+        tier: "branded",
+        metadata: { voice, model: body.model ?? "eleven_multilingual_v2" },
+      });
 
       const audioBuffer = await res.arrayBuffer();
       const contentType = res.headers.get("content-type") ?? "audio/mpeg";
@@ -451,7 +533,11 @@ export function imageGenerations(deps: ProxyDeps) {
       const cost = predictTime * 0.0023; // SDXL wholesale rate
 
       logger.info("Gateway proxy: images/generations", { tenant: tenant.id, cost });
-      emitMeterEvent(deps, tenant.id, "image-generation", "replicate", cost);
+      emitMeterEvent(deps, tenant.id, "image-generation", "replicate", cost, undefined, {
+        usage: { units: body.n ?? 1, unitType: "images" },
+        tier: "branded",
+        metadata: { width, height, predictTimeSeconds: predictTime },
+      });
 
       // Return in OpenAI-compatible format
       const images = Array.isArray(prediction.output) ? prediction.output : [];
@@ -517,7 +603,11 @@ export function videoGenerations(deps: ProxyDeps) {
       const cost = predictTime * 0.005; // video gen wholesale rate
 
       logger.info("Gateway proxy: video/generations", { tenant: tenant.id, cost });
-      emitMeterEvent(deps, tenant.id, "video-generation", "replicate", cost);
+      emitMeterEvent(deps, tenant.id, "video-generation", "replicate", cost, undefined, {
+        usage: { units: body.duration ?? 4, unitType: "seconds" },
+        tier: "branded",
+        metadata: { predictTimeSeconds: predictTime },
+      });
 
       return c.json({
         created: Math.floor(Date.now() / 1000),
@@ -597,7 +687,10 @@ export function phoneInbound(deps: ProxyDeps) {
         status: body.status,
       });
 
-      emitMeterEvent(deps, tenant.id, "phone-inbound", providerName, cost);
+      emitMeterEvent(deps, tenant.id, "phone-inbound", providerName, cost, undefined, {
+        usage: { units: durationMinutes, unitType: "minutes" },
+        tier: "branded",
+      });
 
       return c.json({ status: "metered", duration_minutes: durationMinutes });
     } catch (error) {
@@ -713,7 +806,10 @@ export function smsOutbound(deps: ProxyDeps) {
         cost,
       });
 
-      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin);
+      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin, {
+        usage: { units: 1, unitType: "messages" },
+        tier: "branded",
+      });
 
       return c.json({
         sid: twilioMsg.sid,
@@ -762,7 +858,10 @@ export function smsInbound(deps: ProxyDeps) {
         sid: body.message_sid,
       });
 
-      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin);
+      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin, {
+        usage: { units: 1, unitType: "messages" },
+        tier: "branded",
+      });
 
       return c.json({
         status: "received",
@@ -937,6 +1036,10 @@ export function phoneNumberProvision(deps: ProxyDeps) {
         "twilio",
         PHONE_NUMBER_MONTHLY_COST,
         PHONE_NUMBER_MARGIN,
+        {
+          usage: { units: 1, unitType: "numbers" },
+          tier: "branded",
+        },
       );
 
       logger.info("Gateway proxy: phone/numbers provisioned", {

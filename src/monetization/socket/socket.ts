@@ -101,7 +101,7 @@ export class AdapterSocket {
     const margin = request.margin ?? this.defaultMargin;
     const charge = adapterResult.charge ?? withMargin(adapterResult.cost, margin);
 
-    // Emit meter event — BYOK tenants get zero cost/charge
+    // Emit meter event — BYOK tenants get zero cost/charge (WOP-512)
     const isByok = request.byok === true;
     this.meter.emit({
       tenant: request.tenantId,
@@ -111,6 +111,7 @@ export class AdapterSocket {
       provider: adapter.name,
       timestamp: Date.now(),
       ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+      tier: isByok ? "byok" : adapter.selfHosted ? "wopr" : "branded",
     });
 
     return adapterResult.result;
