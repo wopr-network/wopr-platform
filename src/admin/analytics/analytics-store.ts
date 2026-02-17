@@ -13,10 +13,21 @@ export interface RevenueOverview {
   grossMarginPct: number;
 }
 
+/**
+ * Float metrics compare the *current* outstanding credit balance against
+ * *all-time* credits ever sold (no date range applied).  This is intentional:
+ * floatPct = what fraction of every dollar ever sold is still sitting as
+ * unspent balance, consumedPct = what fraction has been consumed over the
+ * platform's lifetime.  Do not interpret these as period-scoped ratios.
+ */
 export interface FloatMetrics {
+  /** Current total unspent credits across all tenants with balance > 0 */
   totalFloatCents: number;
+  /** All-time total credits ever purchased (lifetime, not period-scoped) */
   totalCreditsSoldCents: number;
+  /** Percentage of all-time credits sold that have been consumed (lifetime ratio) */
   consumedPct: number;
+  /** Percentage of all-time credits sold still held as float (lifetime ratio) */
   floatPct: number;
   tenantCount: number;
 }
@@ -78,7 +89,9 @@ export class AnalyticsStore {
         headers
           .map((h) => {
             const val = row[h];
-            if (typeof val === "string" && val.includes(",")) return `"${val}"`;
+            if (typeof val === "string" && /[",\r\n]/.test(val)) {
+              return `"${val.replace(/"/g, '""')}"`;
+            }
             return String(val ?? "");
           })
           .join(","),
@@ -132,6 +145,11 @@ export class AnalyticsStore {
     };
   }
 
+  /**
+   * Returns lifetime float metrics: current outstanding balance vs all-time
+   * credits sold.  Neither figure is date-range-scoped; consumedPct/floatPct
+   * are lifetime ratios, not period ratios.
+   */
   getFloat(): FloatMetrics {
     const floatRow = this.db
       .prepare(
