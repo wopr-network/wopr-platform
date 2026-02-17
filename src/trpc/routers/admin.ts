@@ -609,16 +609,14 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Revenue overview cards: credits sold, consumed, provider cost, margin. */
-  analyticsRevenue: protectedProcedure
-    .input(dateRangeSchema.partial())
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getAnalyticsStore } = deps();
-      if (!getAnalyticsStore) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
-      }
-      return getAnalyticsStore().getRevenueOverview(resolveRange(input));
-    }),
+  analyticsRevenue: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getAnalyticsStore } = deps();
+    if (!getAnalyticsStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+    }
+    return getAnalyticsStore().getRevenueOverview(resolveRange(input));
+  }),
 
   /** Credit float: total unspent credits across all tenants. */
   analyticsFloat: protectedProcedure.query(({ ctx }) => {
@@ -631,40 +629,34 @@ export const adminRouter = router({
   }),
 
   /** Revenue breakdown by category and capability. */
-  analyticsRevenueBreakdown: protectedProcedure
-    .input(dateRangeSchema.partial())
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getAnalyticsStore } = deps();
-      if (!getAnalyticsStore) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
-      }
-      return { breakdown: getAnalyticsStore().getRevenueBreakdown(resolveRange(input)) };
-    }),
+  analyticsRevenueBreakdown: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getAnalyticsStore } = deps();
+    if (!getAnalyticsStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+    }
+    return { breakdown: getAnalyticsStore().getRevenueBreakdown(resolveRange(input)) };
+  }),
 
   /** Margin by capability: revenue, cost, margin for each capability. */
-  analyticsMarginByCapability: protectedProcedure
-    .input(dateRangeSchema.partial())
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getAnalyticsStore } = deps();
-      if (!getAnalyticsStore) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
-      }
-      return { margins: getAnalyticsStore().getMarginByCapability(resolveRange(input)) };
-    }),
+  analyticsMarginByCapability: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getAnalyticsStore } = deps();
+    if (!getAnalyticsStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+    }
+    return { margins: getAnalyticsStore().getMarginByCapability(resolveRange(input)) };
+  }),
 
   /** Provider spend breakdown. */
-  analyticsProviderSpend: protectedProcedure
-    .input(dateRangeSchema.partial())
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getAnalyticsStore } = deps();
-      if (!getAnalyticsStore) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
-      }
-      return { providers: getAnalyticsStore().getProviderSpend(resolveRange(input)) };
-    }),
+  analyticsProviderSpend: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getAnalyticsStore } = deps();
+    if (!getAnalyticsStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+    }
+    return { providers: getAnalyticsStore().getProviderSpend(resolveRange(input)) };
+  }),
 
   /** Tenant health summary. */
   analyticsTenantHealth: protectedProcedure.query(({ ctx }) => {
