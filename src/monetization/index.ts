@@ -163,3 +163,24 @@ export {
   TenantCustomerStore,
   validateStripeMeters,
 } from "./stripe/index.js";
+
+// PayRam crypto payments (WOP-407)
+export type {
+  PayRamBillingConfig,
+  PayRamCheckoutOpts,
+  PayRamConfig,
+  PayRamPaymentState,
+  PayRamWebhookDeps,
+  PayRamWebhookPayload,
+  PayRamWebhookResult,
+} from "./payram/index.js";
+export {
+  createPayRamCheckout,
+  createPayRamClient,
+  handlePayRamWebhook,
+  initPayRamSchema,
+  loadPayRamConfig,
+  MIN_PAYMENT_USD,
+  PayRamChargeStore,
+  PayRamReplayGuard,
+} from "./payram/index.js";

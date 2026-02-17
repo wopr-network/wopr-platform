@@ -7,6 +7,11 @@ import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
+import { createPayRamClient, loadPayRamConfig } from "../../monetization/payram/client.js";
+import { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
+import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
+import type { PayRamWebhookPayload } from "../../monetization/payram/types.js";
+import { handlePayRamWebhook, PayRamReplayGuard } from "../../monetization/payram/webhook.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
@@ -92,6 +97,20 @@ const usageQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(1000).optional(),
 });
 
+const cryptoCheckoutBodySchema = z.object({
+  tenant: tenantIdSchema,
+  amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
+});
+
+const payramWebhookBodySchema = z.object({
+  reference_id: z.string().min(1).max(256),
+  invoice_id: z.string().optional(),
+  status: z.enum(["OPEN", "VERIFYING", "FILLED", "OVER_FILLED", "PARTIALLY_FILLED", "CANCELLED"]),
+  amount: z.string(),
+  currency: z.string(),
+  filled_amount: z.string(),
+});
+
 // -- Route factory ------------------------------------------------------------
 
 let deps: BillingRouteDeps | null = null;
@@ -105,6 +124,10 @@ let priceMap: CreditPriceMap | null = null;
 const WEBHOOK_TIMESTAMP_TOLERANCE = 300;
 let replayGuard: WebhookReplayGuard | undefined;
 
+let payramClient: import("payram").Payram | null = null;
+let payramChargeStore: PayRamChargeStore | null = null;
+let payramReplayGuard: PayRamReplayGuard | undefined;
+
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
   deps = d;
@@ -114,6 +137,18 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
   replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
+
+  // PayRam initialization (optional — only if env vars are set)
+  const payramConfig = loadPayRamConfig();
+  if (payramConfig) {
+    payramClient = createPayRamClient(payramConfig);
+    payramChargeStore = new PayRamChargeStore(d.db);
+    payramReplayGuard = new PayRamReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
+  } else {
+    payramClient = null;
+    payramChargeStore = null;
+    payramReplayGuard = undefined;
+  }
 }
 
 function getDeps(): BillingRouteDeps {
@@ -300,6 +335,97 @@ billingRoutes.post("/webhook", async (c) => {
   }
 
   return c.json(result, 200);
+});
+
+/**
+ * POST /billing/crypto/checkout
+ *
+ * Create a PayRam payment session for a one-time crypto credit purchase.
+ * Body: { tenant, amountUsd }
+ */
+billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
+  if (!payramClient || !payramChargeStore) {
+    return c.json({ error: "Crypto payments not configured" }, 503);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = cryptoCheckoutBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  try {
+    const result = await createPayRamCheckout(payramClient, payramChargeStore, parsed.data);
+    return c.json({ url: result.url, referenceId: result.referenceId });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Crypto checkout failed";
+    return c.json({ error: message }, 500);
+  }
+});
+
+/**
+ * POST /billing/crypto/webhook
+ *
+ * PayRam webhook endpoint. Verifies the API key and processes payment events.
+ * Note: No bearer auth — webhook uses PayRam API key verification.
+ */
+billingRoutes.post("/crypto/webhook", async (c) => {
+  if (!payramChargeStore) {
+    return c.json({ error: "Crypto payments not configured" }, 503);
+  }
+
+  // Verify the webhook is from our PayRam instance via API-Key header.
+  const payramApiKey = process.env.PAYRAM_API_KEY;
+  if (!payramApiKey) {
+    return c.json({ error: "PayRam not configured" }, 503);
+  }
+
+  const incomingKey = c.req.header("API-Key");
+  if (!incomingKey || incomingKey !== payramApiKey) {
+    logger.error("PayRam webhook API key verification failed");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ received: false }, 400);
+  }
+
+  const parsed = payramWebhookBodySchema.safeParse(body);
+  if (!parsed.success) {
+    logger.error("PayRam webhook payload validation failed", {
+      errors: parsed.error.flatten().fieldErrors,
+    });
+    return c.json({ received: false }, 400);
+  }
+
+  const ledger = getCreditLedger();
+  const result = handlePayRamWebhook(
+    {
+      chargeStore: payramChargeStore,
+      creditLedger: ledger,
+      replayGuard: payramReplayGuard,
+    },
+    parsed.data as PayRamWebhookPayload,
+  );
+
+  if (result.duplicate) {
+    logger.warn("PayRam webhook replay attempt detected", {
+      referenceId: parsed.data.reference_id,
+      status: parsed.data.status,
+    });
+  }
+
+  // PayRam expects { received: true } as acknowledgement.
+  return c.json({ received: result.handled }, 200);
 });
 
 /**
