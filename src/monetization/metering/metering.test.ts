@@ -1,12 +1,37 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { createTestDb } from "../../test/db.js";
 import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
 import type { MeterEvent } from "./types.js";
+
+// Clean up the default WAL/DLQ files before any test runs to prevent
+// stale events from being replayed into fresh in-memory databases.
+// This is the root cause of the flaky "preserves event ordering" test —
+// the MeterEmitter constructor calls replayWAL() which reads from these
+// files if they exist from a prior test run.
+const DEFAULT_WAL_PATH = "./data/meter-wal.jsonl";
+const DEFAULT_DLQ_PATH = "./data/meter-dlq.jsonl";
+
+function cleanDefaultWalFiles() {
+  try {
+    unlinkSync(DEFAULT_WAL_PATH);
+  } catch {
+    /* ignore */
+  }
+  try {
+    unlinkSync(DEFAULT_DLQ_PATH);
+  } catch {
+    /* ignore */
+  }
+}
+
+beforeAll(() => {
+  cleanDefaultWalFiles();
+});
 
 function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
   return {
@@ -708,6 +733,7 @@ describe("MeterEmitter - edge cases", () => {
   let emitter: MeterEmitter;
 
   beforeEach(() => {
+    cleanDefaultWalFiles();
     const testDb = createTestDb();
     db = testDb.db;
     sqlite = testDb.sqlite;
@@ -719,6 +745,7 @@ describe("MeterEmitter - edge cases", () => {
   afterEach(() => {
     emitter.close();
     sqlite.close();
+    cleanDefaultWalFiles();
   });
 
   it("handles large batch of events", () => {
