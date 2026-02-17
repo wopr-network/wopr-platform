@@ -38,10 +38,7 @@ export interface PayRamWebhookDeps {
  * Uses the PayRam reference_id mapped to the stored charge record
  * for tenant resolution and idempotency.
  */
-export function handlePayRamWebhook(
-  deps: PayRamWebhookDeps,
-  payload: PayRamWebhookPayload,
-): PayRamWebhookResult {
+export function handlePayRamWebhook(deps: PayRamWebhookDeps, payload: PayRamWebhookPayload): PayRamWebhookResult {
   const { chargeStore, creditLedger } = deps;
 
   // Replay guard: deduplicate by reference_id + status combination.
@@ -57,12 +54,7 @@ export function handlePayRamWebhook(
   }
 
   // Update charge status regardless of payment state.
-  chargeStore.updateStatus(
-    payload.reference_id,
-    payload.status,
-    payload.currency,
-    payload.filled_amount,
-  );
+  chargeStore.updateStatus(payload.reference_id, payload.status, payload.currency, payload.filled_amount);
 
   let result: PayRamWebhookResult;
 

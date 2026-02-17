@@ -1,11 +1,5 @@
 /** PayRam payment states (from PayRam API docs). */
-export type PayRamPaymentState =
-  | "OPEN"
-  | "VERIFYING"
-  | "FILLED"
-  | "OVER_FILLED"
-  | "PARTIALLY_FILLED"
-  | "CANCELLED";
+export type PayRamPaymentState = "OPEN" | "VERIFYING" | "FILLED" | "OVER_FILLED" | "PARTIALLY_FILLED" | "CANCELLED";
 
 /** Options for creating a PayRam payment session. */
 export interface PayRamCheckoutOpts {

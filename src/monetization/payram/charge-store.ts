@@ -14,29 +14,26 @@ export class PayRamChargeStore {
 
   /** Create a new charge record when a payment session is initiated. */
   create(referenceId: string, tenantId: string, amountUsdCents: number): void {
-    this.db.insert(payramCharges).values({
-      referenceId,
-      tenantId,
-      amountUsdCents,
-      status: "OPEN",
-    }).run();
+    this.db
+      .insert(payramCharges)
+      .values({
+        referenceId,
+        tenantId,
+        amountUsdCents,
+        status: "OPEN",
+      })
+      .run();
   }
 
   /** Get a charge by reference ID. Returns null if not found. */
   getByReferenceId(referenceId: string): typeof payramCharges.$inferSelect | null {
-    return this.db.select().from(payramCharges)
-      .where(eq(payramCharges.referenceId, referenceId))
-      .get() ?? null;
+    return this.db.select().from(payramCharges).where(eq(payramCharges.referenceId, referenceId)).get() ?? null;
   }
 
   /** Update charge status and payment details from webhook. */
-  updateStatus(
-    referenceId: string,
-    status: PayRamPaymentState,
-    currency?: string,
-    filledAmount?: string,
-  ): void {
-    this.db.update(payramCharges)
+  updateStatus(referenceId: string, status: PayRamPaymentState, currency?: string, filledAmount?: string): void {
+    this.db
+      .update(payramCharges)
       .set({
         status,
         currency: currency ?? undefined,
@@ -49,7 +46,8 @@ export class PayRamChargeStore {
 
   /** Mark a charge as credited (idempotency flag). */
   markCredited(referenceId: string): void {
-    this.db.update(payramCharges)
+    this.db
+      .update(payramCharges)
       .set({
         creditedAt: sql`(datetime('now'))`,
         updatedAt: sql`(datetime('now'))`,
@@ -60,7 +58,8 @@ export class PayRamChargeStore {
 
   /** Check if a charge has already been credited (for idempotency). */
   isCredited(referenceId: string): boolean {
-    const row = this.db.select({ creditedAt: payramCharges.creditedAt })
+    const row = this.db
+      .select({ creditedAt: payramCharges.creditedAt })
       .from(payramCharges)
       .where(eq(payramCharges.referenceId, referenceId))
       .get();

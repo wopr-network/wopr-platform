@@ -9,9 +9,7 @@ import { PayRamChargeStore } from "./charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "./checkout.js";
 import { initPayRamSchema } from "./schema.js";
 
-function createMockPayram(
-  overrides: { initiatePayment?: ReturnType<typeof vi.fn> } = {},
-): Payram {
+function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn> } = {}): Payram {
   return {
     payments: {
       initiatePayment:
@@ -42,15 +40,13 @@ describe("createPayRamCheckout", () => {
   });
 
   it("rejects amounts below $10 minimum", async () => {
-    await expect(
-      createPayRamCheckout(payram, chargeStore, { tenant: "t-1", amountUsd: 5 }),
-    ).rejects.toThrow(`Minimum payment amount is $${MIN_PAYMENT_USD}`);
+    await expect(createPayRamCheckout(payram, chargeStore, { tenant: "t-1", amountUsd: 5 })).rejects.toThrow(
+      `Minimum payment amount is $${MIN_PAYMENT_USD}`,
+    );
   });
 
   it("rejects amounts of exactly $0", async () => {
-    await expect(
-      createPayRamCheckout(payram, chargeStore, { tenant: "t-1", amountUsd: 0 }),
-    ).rejects.toThrow();
+    await expect(createPayRamCheckout(payram, chargeStore, { tenant: "t-1", amountUsd: 0 })).rejects.toThrow();
   });
 
   it("calls payram.payments.initiatePayment with correct params", async () => {
@@ -93,8 +89,6 @@ describe("createPayRamCheckout", () => {
   });
 
   it("accepts exactly $10 (minimum boundary)", async () => {
-    await expect(
-      createPayRamCheckout(payram, chargeStore, { tenant: "t-4", amountUsd: 10 }),
-    ).resolves.toBeDefined();
+    await expect(createPayRamCheckout(payram, chargeStore, { tenant: "t-4", amountUsd: 10 })).resolves.toBeDefined();
   });
 });

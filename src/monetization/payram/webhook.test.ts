@@ -10,8 +10,8 @@ import { createDb } from "../../db/index.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { initCreditSchema } from "../credits/schema.js";
 import { PayRamChargeStore } from "./charge-store.js";
-import { initPayRamSchema } from "./schema.js";
 import type { PayRamWebhookDeps, PayRamWebhookPayload } from "./index.js";
+import { initPayRamSchema } from "./schema.js";
 import { handlePayRamWebhook, PayRamReplayGuard } from "./webhook.js";
 
 function makePayload(overrides: Partial<PayRamWebhookPayload> = {}): PayRamWebhookPayload {
@@ -102,12 +102,15 @@ describe("handlePayRamWebhook", () => {
     it("credits the requested USD amount (not the overpayment)", () => {
       chargeStore.create("ref-over-001", "tenant-b", 1000);
 
-      const result = handlePayRamWebhook(deps, makePayload({
-        reference_id: "ref-over-001",
-        status: "OVER_FILLED",
-        filled_amount: "12.50", // Overpaid by $2.50
-        currency: "ETH",
-      }));
+      const result = handlePayRamWebhook(
+        deps,
+        makePayload({
+          reference_id: "ref-over-001",
+          status: "OVER_FILLED",
+          filled_amount: "12.50", // Overpaid by $2.50
+          currency: "ETH",
+        }),
+      );
 
       expect(result.handled).toBe(true);
       expect(result.creditedCents).toBe(1000); // Only the requested amount
@@ -261,7 +264,9 @@ describe("handlePayRamWebhook", () => {
       const mockCheckReactivation = vi.fn().mockReturnValue(["bot-1", "bot-2"]);
       const depsWithBotBilling: PayRamWebhookDeps = {
         ...deps,
-        botBilling: { checkReactivation: mockCheckReactivation } as unknown as Parameters<typeof handlePayRamWebhook>[0]["botBilling"],
+        botBilling: { checkReactivation: mockCheckReactivation } as unknown as Parameters<
+          typeof handlePayRamWebhook
+        >[0]["botBilling"],
       };
 
       const result = handlePayRamWebhook(depsWithBotBilling, makePayload({ status: "FILLED" }));
@@ -274,7 +279,9 @@ describe("handlePayRamWebhook", () => {
       const mockCheckReactivation = vi.fn().mockReturnValue([]);
       const depsWithBotBilling: PayRamWebhookDeps = {
         ...deps,
-        botBilling: { checkReactivation: mockCheckReactivation } as unknown as Parameters<typeof handlePayRamWebhook>[0]["botBilling"],
+        botBilling: { checkReactivation: mockCheckReactivation } as unknown as Parameters<
+          typeof handlePayRamWebhook
+        >[0]["botBilling"],
       };
 
       const result = handlePayRamWebhook(depsWithBotBilling, makePayload({ status: "FILLED" }));
