@@ -27,7 +27,7 @@ import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { snapshotRoutes } from "./routes/snapshots.js";
 import { tenantKeyRoutes } from "./routes/tenant-keys.js";
-import { tenantProxyRoutes } from "./routes/tenant-proxy.js";
+import { tenantProxyMiddleware } from "./routes/tenant-proxy.js";
 import { verifyEmailRoutes } from "./routes/verify-email.js";
 
 export const app = new Hono();
@@ -36,7 +36,9 @@ export const app = new Hono();
 // Mounted BEFORE global middleware so that CORS, secureHeaders, and
 // rate-limiting do not interfere with proxied tenant traffic. The
 // upstream containers apply their own middleware independently.
-app.route("/", tenantProxyRoutes);
+// Uses app.use() so that requests without a tenant subdomain (no host
+// header, reserved subdomains, localhost) fall through to subsequent routes.
+app.use("/*", tenantProxyMiddleware);
 
 app.use(
   "/*",
