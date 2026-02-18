@@ -6,7 +6,7 @@ import type { SpacesClient } from "./spaces-client.js";
 export interface RestoreResult {
   success: boolean;
   restoreLogId: string;
-  preRestoreKey: string;
+  preRestoreKey: string | null;
   snapshotKey: string;
   downtimeMs: number;
   error?: string;
@@ -21,7 +21,6 @@ export class RestoreService {
     spaces: SpacesClient;
     nodeConnections: NodeConnectionManager;
     restoreLog: RestoreLogStore;
-    backupDir: string;
   }) {
     this.spaces = opts.spaces;
     this.nodeConnections = opts.nodeConnections;
@@ -97,7 +96,7 @@ export class RestoreService {
       logger.info(`Uploading pre-restore snapshot to ${preRestoreKey}`);
       await this.nodeConnections.sendCommand(params.nodeId, {
         type: "backup.upload",
-        payload: { filename: `${containerName}.tar.gz` },
+        payload: { filename: `${containerName}.tar.gz`, destination: preRestoreKey },
       });
 
       // 3. Stop current container
@@ -178,7 +177,7 @@ export class RestoreService {
       return {
         success: false,
         restoreLogId: logEntry.id,
-        preRestoreKey,
+        preRestoreKey: null,
         snapshotKey: params.snapshotKey,
         downtimeMs: Date.now() - startTime,
         error: errorMessage,

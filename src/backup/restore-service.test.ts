@@ -51,7 +51,6 @@ describe("RestoreService", () => {
       spaces: mockSpaces,
       nodeConnections: mockNodeConns,
       restoreLog: mockRestoreLog,
-      backupDir: "/backups",
     });
   });
 

@@ -87,7 +87,6 @@ let _restoreLogStore: RestoreLogStore | null = null;
 let _restoreService: RestoreService | null = null;
 
 const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
-const BACKUP_DIR = process.env.BACKUP_DIR || "/backups";
 
 export function getDOClient(): DOClient {
   if (!_doClient) {
@@ -131,7 +130,6 @@ export function getRestoreService(): RestoreService {
       spaces: new SpacesClient(S3_BUCKET),
       nodeConnections: getNodeConnections(),
       restoreLog: getRestoreLogStore(),
-      backupDir: BACKUP_DIR,
     });
   }
   return _restoreService;
