@@ -1905,14 +1905,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "tenant": {
-          "name": "tenant",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "''"
-        },
         "instance_id": {
           "name": "instance_id",
           "type": "text",
@@ -1927,27 +1919,13 @@
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
+        "created_at": {
+          "name": "created_at",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'on-demand'"
-        },
-        "s3_key": {
-          "name": "s3_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "default": "(datetime('now'))"
         },
         "size_mb": {
           "name": "size_mb",
@@ -1956,20 +1934,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
-        },
-        "size_bytes": {
-          "name": "size_bytes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "node_id": {
-          "name": "node_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         },
         "trigger": {
           "name": "trigger",
@@ -2000,28 +1964,6 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(datetime('now'))"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
@@ -2039,27 +1981,6 @@
             "user_id"
           ],
           "isUnique": false
-        },
-        "idx_snapshots_tenant": {
-          "name": "idx_snapshots_tenant",
-          "columns": [
-            "tenant"
-          ],
-          "isUnique": false
-        },
-        "idx_snapshots_type": {
-          "name": "idx_snapshots_type",
-          "columns": [
-            "type"
-          ],
-          "isUnique": false
-        },
-        "idx_snapshots_expires": {
-          "name": "idx_snapshots_expires",
-          "columns": [
-            "expires_at"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -2069,10 +1990,6 @@
         "trigger_check": {
           "name": "trigger_check",
           "value": "trigger IN ('manual', 'scheduled', 'pre_update')"
-        },
-        "type_check": {
-          "name": "type_check",
-          "value": "type IN ('nightly', 'on-demand', 'pre-restore')"
         }
       }
     },
