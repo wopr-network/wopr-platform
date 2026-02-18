@@ -1,53 +1,23 @@
-## Staging environment for wopr-platform.
+## DEPRECATED — do not use this file.
 ##
-## Docker Compose configuration for the staging VPS.
-## Includes the platform service with Docker socket access and a persistent
-## SQLite volume.
+## This file is kept for historical reference only.
+## It predates the unified compose-first deployment stack.
 ##
-## Run:
-##   docker compose -f docker-compose.staging.yml up -d
+## Use the unified docker-compose.yml with staging environment variables instead:
 ##
-## Load env from file:
-##   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
-
-services:
-  platform:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: wopr-platform-staging
-    restart: unless-stopped
-    ports:
-      - "3100:3100"
-    environment:
-      NODE_ENV: production
-      PORT: "3100"
-      LOG_LEVEL: debug
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_DEFAULT_PRICE_ID: ${STRIPE_DEFAULT_PRICE_ID:-}
-      FLEET_API_TOKEN: ${FLEET_API_TOKEN:-}
-      DHT_NODE_COUNT: ${DHT_NODE_COUNT:-3}
-      DHT_BASE_PORT: ${DHT_BASE_PORT:-49737}
-      DHT_IMAGE: ${DHT_IMAGE:-wopr-dht-bootstrap:latest}
-      DISCOVERY_DEFAULT_TOPIC: ${DISCOVERY_DEFAULT_TOPIC:-}
-    volumes:
-      - staging-data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
-    networks:
-      - wopr-staging
-
-networks:
-  wopr-staging:
-    name: wopr-staging
-    driver: bridge
-
-volumes:
-  staging-data:
-    name: wopr-staging-data
+##   docker compose --env-file .env.staging up -d
+##
+## Copy .env.staging.example → .env.staging and fill in staging values.
+## The same docker-compose.yml is used for both production and staging;
+## only the .env file differs. This is the compose-first principle:
+##
+##   "Same compose file on both — different .env values."
+##
+## Why this file was stale:
+## - Used `build: .` instead of pre-built GHCR images
+## - Missing Caddy reverse proxy service
+## - Missing platform-ui service
+## - Hardcoded staging-only env vars that belong in .env.staging
+## - Separate staging network instead of the shared wopr-platform network
+##
+## See: WOP-428, WOP-431
