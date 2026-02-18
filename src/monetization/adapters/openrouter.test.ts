@@ -166,7 +166,7 @@ describe("createOpenRouterAdapter", () => {
 
       const adapter = createOpenRouterAdapter(
         makeConfig({
-          appUrl: "https://wopr.network",
+          appUrl: "https://wopr.bot",
           appName: "WOPR Platform",
         }),
         fetchFn,
@@ -174,7 +174,7 @@ describe("createOpenRouterAdapter", () => {
       await adapter.generateText({ prompt: "test" });
 
       const headers = fetchFn.mock.calls[0][1]?.headers as Record<string, string>;
-      expect(headers["HTTP-Referer"]).toBe("https://wopr.network");
+      expect(headers["HTTP-Referer"]).toBe("https://wopr.bot");
       expect(headers["X-Title"]).toBe("WOPR Platform");
     });
 

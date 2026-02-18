@@ -1,14 +1,21 @@
 # Reverse proxy for the WOPR platform.
 #
-# Caddy automatically provisions TLS via Let's Encrypt.
-# The {$DOMAIN} placeholder is replaced by the DOMAIN env var.
+# Caddy provisions TLS automatically.
+# The {$DOMAIN} placeholder is replaced by the DOMAIN env var (wopr.bot).
+#
+# Wildcard tenant subdomains (*.wopr.bot) are handled by WOP-432/WOP-373.
 
-# Platform UI — root domain
-{$DOMAIN} {
+# Platform UI — app subdomain
+app.{$DOMAIN} {
 	reverse_proxy platform-ui:3000
 }
 
 # Platform API — api subdomain
 api.{$DOMAIN} {
 	reverse_proxy platform-api:3100
+}
+
+# Root domain — redirect to app subdomain (or serve landing page per WOP-372)
+{$DOMAIN} {
+	redir https://app.{$DOMAIN}{uri} permanent
 }

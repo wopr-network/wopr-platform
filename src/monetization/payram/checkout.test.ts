@@ -59,7 +59,7 @@ describe("createPayRamCheckout", () => {
     await createPayRamCheckout(mockPayram, chargeStore, { tenant: "t-test", amountUsd: 25 });
 
     expect(initiatePayment).toHaveBeenCalledWith({
-      customerEmail: "t-test@wopr.network",
+      customerEmail: "t-test@wopr.bot",
       customerId: "t-test",
       amountInUSD: 25,
     });

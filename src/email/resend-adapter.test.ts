@@ -153,7 +153,7 @@ describe("sendEmail", () => {
 
 describe("passwordResetTemplate", () => {
   it("should generate HTML template with reset URL", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
+    const resetUrl = "https://wopr.bot/reset?token=abc123";
     const email = "user@example.com";
 
     const html = passwordResetTemplate(resetUrl, email);
@@ -166,7 +166,7 @@ describe("passwordResetTemplate", () => {
   });
 
   it("should escape HTML characters in email and URL to prevent XSS", () => {
-    const resetUrl = "https://wopr.network/reset?token=<script>alert(1)</script>";
+    const resetUrl = "https://wopr.bot/reset?token=<script>alert(1)</script>";
     const email = "<script>alert('xss')</script>@example.com";
 
     const html = passwordResetTemplate(resetUrl, email);
@@ -185,7 +185,7 @@ describe("passwordResetTemplate", () => {
   });
 
   it("should include current year in footer", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
+    const resetUrl = "https://wopr.bot/reset?token=abc123";
     const email = "user@example.com";
 
     const html = passwordResetTemplate(resetUrl, email);
@@ -195,7 +195,7 @@ describe("passwordResetTemplate", () => {
   });
 
   it("should be valid HTML structure", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
+    const resetUrl = "https://wopr.bot/reset?token=abc123";
     const email = "user@example.com";
 
     const html = passwordResetTemplate(resetUrl, email);
@@ -211,7 +211,7 @@ describe("passwordResetTemplate", () => {
 
 describe("passwordResetText", () => {
   it("should generate plain text with reset URL", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
+    const resetUrl = "https://wopr.bot/reset?token=abc123";
     const email = "user@example.com";
 
     const text = passwordResetText(resetUrl, email);
@@ -222,7 +222,7 @@ describe("passwordResetText", () => {
   });
 
   it("should not contain HTML tags", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
+    const resetUrl = "https://wopr.bot/reset?token=abc123";
     const email = "user@example.com";
 
     const text = passwordResetText(resetUrl, email);
@@ -232,7 +232,7 @@ describe("passwordResetText", () => {
   });
 
   it("should include current year in footer", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
+    const resetUrl = "https://wopr.bot/reset?token=abc123";
     const email = "user@example.com";
 
     const text = passwordResetText(resetUrl, email);
@@ -242,7 +242,7 @@ describe("passwordResetText", () => {
   });
 
   it("should be readable plain text format", () => {
-    const resetUrl = "https://wopr.network/reset?token=abc123";
+    const resetUrl = "https://wopr.bot/reset?token=abc123";
     const email = "user@example.com";
 
     const text = passwordResetText(resetUrl, email);
