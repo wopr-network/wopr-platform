@@ -121,6 +121,14 @@ async function validateUpstreamHost(host: string): Promise<void> {
     throw new Error(`Upstream host "${host}" resolves to a private IP address`);
   }
 
+  // Allow internal WOPR container hostnames — these resolve to Docker bridge
+  // IPs (172.x.x.x) which are only reachable inside the Docker network.
+  // DNS resolution would fail from the host since the names are only
+  // resolvable via Docker's embedded DNS server.
+  if (/^wopr-[a-z0-9][a-z0-9_-]*$/.test(normalizedHost)) {
+    return;
+  }
+
   // Resolve DNS and validate all resulting IPs
   const ips: string[] = [];
   let v4NotFound = false;

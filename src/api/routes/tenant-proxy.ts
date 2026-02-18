@@ -14,6 +14,9 @@ const RESERVED_SUBDOMAINS = new Set([
   "ftp", "admin", "dashboard", "status", "docs",
 ]);
 
+/** DNS label rules (RFC 1123) — compiled once at module scope. */
+const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
 /**
  * Extract the tenant subdomain from a Host header value.
  * Returns null if the host is the root domain, a reserved subdomain,
@@ -43,7 +46,6 @@ export function extractTenantSubdomain(host: string): string | null {
   if (RESERVED_SUBDOMAINS.has(subdomain)) return null;
 
   // Must match DNS label rules (RFC 1123)
-  const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
   if (!SUBDOMAIN_RE.test(subdomain)) return null;
 
   return subdomain;

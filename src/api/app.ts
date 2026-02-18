@@ -29,6 +29,12 @@ import { verifyEmailRoutes } from "./routes/verify-email.js";
 
 export const app = new Hono();
 
+// Tenant subdomain proxy — catch-all for *.wopr.bot requests.
+// Mounted BEFORE global middleware so that CORS, secureHeaders, and
+// rate-limiting do not interfere with proxied tenant traffic. The
+// upstream containers apply their own middleware independently.
+app.route("/", tenantProxyRoutes);
+
 app.use(
   "/*",
   cors({
@@ -159,7 +165,3 @@ export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
 };
 
 app.onError(errorHandler);
-
-// Tenant subdomain proxy — catch-all for *.wopr.bot requests
-// Must be registered LAST so explicit routes take priority
-app.route("/", tenantProxyRoutes);
