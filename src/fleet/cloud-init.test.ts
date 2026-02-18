@@ -28,4 +28,21 @@ describe("generateCloudInit", () => {
     expect(result).toContain("systemctl enable docker");
     expect(result).toContain("systemctl start docker");
   });
+
+  it("rejects invalid botImage with shell metacharacters", () => {
+    expect(() => generateCloudInit("image; rm -rf /")).toThrow("Invalid botImage");
+  });
+
+  it("rejects botImage with backticks", () => {
+    expect(() => generateCloudInit("`whoami`")).toThrow("Invalid botImage");
+  });
+
+  it("rejects botImage with spaces", () => {
+    expect(() => generateCloudInit("image name")).toThrow("Invalid botImage");
+  });
+
+  it("accepts image without tag", () => {
+    const result = generateCloudInit("ghcr.io/wopr-network/wopr");
+    expect(result).toContain("docker pull ghcr.io/wopr-network/wopr");
+  });
 });
