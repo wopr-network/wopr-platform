@@ -23,7 +23,7 @@ export { createGeminiAdapter, type GeminiAdapterConfig } from "./adapters/gemini
 export { createKimiAdapter, type KimiAdapterConfig } from "./adapters/kimi.js";
 // Margin config (WOP-364)
 export {
-  DEFAULT_MARGIN_CONFIG,
+  loadMarginConfig,
   getMargin,
   type MarginConfig,
   type MarginRule,
