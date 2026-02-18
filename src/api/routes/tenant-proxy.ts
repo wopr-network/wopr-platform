@@ -77,15 +77,21 @@ tenantProxyRoutes.all("/*", async (c) => {
   const url = new URL(c.req.url);
   const targetUrl = `${upstream}${url.pathname}${url.search}`;
 
-  const response = await fetch(targetUrl, {
-    method: c.req.method,
-    headers: c.req.raw.headers,
-    body: c.req.method !== "GET" && c.req.method !== "HEAD"
-      ? c.req.raw.body
-      : undefined,
-    // @ts-expect-error -- duplex needed for streaming request bodies
-    duplex: "half",
-  });
+  let response: Response;
+  try {
+    response = await fetch(targetUrl, {
+      method: c.req.method,
+      headers: c.req.raw.headers,
+      body: c.req.method !== "GET" && c.req.method !== "HEAD"
+        ? c.req.raw.body
+        : undefined,
+      // @ts-expect-error -- duplex needed for streaming request bodies
+      duplex: "half",
+    });
+  } catch (err) {
+    logger.warn(`Upstream fetch failed for subdomain "${subdomain}"`, { err });
+    return c.json({ error: "Bad Gateway: upstream container unavailable" }, 502);
+  }
 
   return new Response(response.body, {
     status: response.status,
