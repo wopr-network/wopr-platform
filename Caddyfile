@@ -1,14 +1,29 @@
-# Reverse proxy for the WOPR platform.
-#
-# Caddy automatically provisions TLS via Let's Encrypt.
-# The {$DOMAIN} placeholder is replaced by the DOMAIN env var.
+# Global options — Cloudflare DNS challenge for wildcard TLS
+{
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
 
-# Platform UI — root domain
+# Landing page — root domain (marketing)
 {$DOMAIN} {
+	reverse_proxy platform-ui:3000
+}
+
+# Platform UI — app subdomain (authenticated dashboard)
+app.{$DOMAIN} {
 	reverse_proxy platform-ui:3000
 }
 
 # Platform API — api subdomain
 api.{$DOMAIN} {
+	reverse_proxy platform-api:3100
+}
+
+# Staging — staging subdomain (only active if the staging container exists)
+staging.{$DOMAIN} {
+	reverse_proxy platform-ui-staging:3000
+}
+
+# Tenant subdomain routing — *.wopr.bot → platform-api resolves to container
+*.{$DOMAIN} {
 	reverse_proxy platform-api:3100
 }

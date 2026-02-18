@@ -24,6 +24,7 @@ import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { snapshotRoutes } from "./routes/snapshots.js";
 import { tenantKeyRoutes } from "./routes/tenant-keys.js";
+import { tenantProxyRoutes } from "./routes/tenant-proxy.js";
 import { verifyEmailRoutes } from "./routes/verify-email.js";
 
 export const app = new Hono();
@@ -31,7 +32,7 @@ export const app = new Hono();
 app.use(
   "/*",
   cors({
-    origin: process.env.UI_ORIGIN || "http://localhost:3001",
+    origin: (process.env.UI_ORIGIN || "http://localhost:3001").split(",").map((s) => s.trim()),
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowHeaders: ["Content-Type", "Authorization"],
@@ -158,3 +159,7 @@ export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
 };
 
 app.onError(errorHandler);
+
+// Tenant subdomain proxy — catch-all for *.wopr.bot requests
+// Must be registered LAST so explicit routes take priority
+app.route("/", tenantProxyRoutes);

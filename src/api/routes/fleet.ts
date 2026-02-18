@@ -18,6 +18,7 @@ import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
 import { NetworkPolicy } from "../../network/network-policy.js";
+import { getProxyManager } from "../../proxy/singleton.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
@@ -185,6 +186,20 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
       logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
     }
 
+    // Register proxy route for tenant subdomain routing
+    try {
+      const pm = getProxyManager();
+      await pm.addRoute({
+        instanceId: profile.id,
+        subdomain: profile.name.toLowerCase().replace(/_/g, "-"),
+        upstreamHost: `wopr-${profile.name}`,
+        upstreamPort: 7437,
+        healthy: true,
+      });
+    } catch (proxyErr) {
+      logger.warn("Proxy route registration failed (non-fatal)", { botId: profile.id, err: proxyErr });
+    }
+
     return c.json(profile, 201);
   } catch (err) {
     logger.error("Failed to create bot", { err });
@@ -262,6 +277,7 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
 
   try {
     await fleet.remove(botId, c.req.query("removeVolumes") === "true");
+    getProxyManager().removeRoute(botId);
     return c.body(null, 204);
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -300,6 +316,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
 
   try {
     await fleet.start(botId);
+    getProxyManager().updateHealth(botId, true);
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -318,6 +335,7 @@ fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
 
   try {
     await fleet.stop(botId);
+    getProxyManager().updateHealth(botId, false);
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
