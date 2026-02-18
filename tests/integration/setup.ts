@@ -110,6 +110,16 @@ vi.mock("../../src/network/network-policy.js", () => ({
   },
 }));
 
+// Proxy singleton mock — prevents real DNS resolution in tests
+vi.mock("../../src/proxy/singleton.js", () => ({
+  getProxyManager: () => ({
+    addRoute: vi.fn().mockResolvedValue(undefined),
+    removeRoute: vi.fn(),
+    updateHealth: vi.fn(),
+  }),
+  hydrateProxyRoutes: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Friends proxy mock
 export const mockProxyToInstance = vi.fn();
 

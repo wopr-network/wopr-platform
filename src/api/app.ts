@@ -25,14 +25,21 @@ import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { snapshotRoutes } from "./routes/snapshots.js";
 import { tenantKeyRoutes } from "./routes/tenant-keys.js";
+import { tenantProxyRoutes } from "./routes/tenant-proxy.js";
 import { verifyEmailRoutes } from "./routes/verify-email.js";
 
 export const app = new Hono();
 
+// Tenant subdomain proxy — catch-all for *.wopr.bot requests.
+// Mounted BEFORE global middleware so that CORS, secureHeaders, and
+// rate-limiting do not interfere with proxied tenant traffic. The
+// upstream containers apply their own middleware independently.
+app.route("/", tenantProxyRoutes);
+
 app.use(
   "/*",
   cors({
-    origin: process.env.UI_ORIGIN || "http://localhost:3001",
+    origin: (process.env.UI_ORIGIN || "http://localhost:3001").split(",").map((s) => s.trim()),
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowHeaders: ["Content-Type", "Authorization"],
