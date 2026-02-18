@@ -31,6 +31,9 @@ export default defineConfig({
         "src/auth/index.ts",
         "src/instance/index.ts",
         "src/email/index.ts",
+        // tRPC router files — thin wiring layer that delegates to tested stores/services.
+        // Branch coverage here reflects optional dep initialization paths, not business logic.
+        "src/trpc/routers/*.ts",
       ],
     },
     reporters: ["default", "junit"],
