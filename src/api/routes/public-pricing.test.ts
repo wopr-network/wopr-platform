@@ -1,5 +1,5 @@
 import BetterSqlite3 from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import { initRateSchema } from "../../admin/rates/schema.js";
 
@@ -91,18 +91,19 @@ describe("RateStore.listPublicRates (used by public pricing route)", () => {
 
 describe("publicPricingRoutes Hono app", () => {
   it("returns 500 with error JSON when DB is unavailable", async () => {
-    // The route uses a singleton DB at /data/platform/rates.db — doesn't exist in tests.
-    // The try/catch in the route should return a 500 with an error key.
-    const { publicPricingRoutes } = await import("./public-pricing.js");
-    const res = await publicPricingRoutes.request("/");
-    // Either 200 (if rates.db exists) or 500 (if it doesn't)
-    expect([200, 500]).toContain(res.status);
-    if (res.status === 500) {
+    // Force the route to use a guaranteed non-existent DB path so the error
+    // branch is always exercised, regardless of host filesystem state.
+    vi.resetModules();
+    process.env.RATES_DB_PATH = "/nonexistent/path/rates.db";
+    try {
+      const { publicPricingRoutes } = await import("./public-pricing.js");
+      const res = await publicPricingRoutes.request("/");
+      expect(res.status).toBe(500);
       const body = (await res.json()) as { error: string };
       expect(body).toHaveProperty("error");
-    } else {
-      const body = (await res.json()) as { rates: unknown };
-      expect(body).toHaveProperty("rates");
+    } finally {
+      delete process.env.RATES_DB_PATH;
+      vi.resetModules();
     }
   });
 });
