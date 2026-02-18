@@ -210,12 +210,8 @@ describe("bot snapshot routes", () => {
       expect(res.status).toBe(201);
 
       // The service was called with the DB tier ("free"), NOT the spoofed header value
-      expect(serviceMock.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tier: "free" }),
-      );
-      expect(serviceMock.create).not.toHaveBeenCalledWith(
-        expect.objectContaining({ tier: "enterprise" }),
-      );
+      expect(serviceMock.create).toHaveBeenCalledWith(expect.objectContaining({ tier: "free" }));
+      expect(serviceMock.create).not.toHaveBeenCalledWith(expect.objectContaining({ tier: "enterprise" }));
     });
 
     it("quota is enforced using DB tier even when X-Tier: enterprise is sent", async () => {
