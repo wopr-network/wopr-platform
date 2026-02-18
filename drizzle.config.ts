@@ -14,6 +14,7 @@ export default defineConfig({
     "./src/db/schema/provider-credentials.ts",
     "./src/db/schema/rates.ts",
     "./src/db/schema/recovery-events.ts",
+    "./src/db/schema/restore-log.ts",
     "./src/db/schema/snapshots.ts",
     "./src/db/schema/stripe.ts",
     "./src/db/schema/tenant-status.ts",

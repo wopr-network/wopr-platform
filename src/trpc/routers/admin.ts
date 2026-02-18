@@ -35,6 +35,8 @@ export interface AdminRouterDeps {
   getMeterAggregator?: () => MeterAggregator;
   getRoleStore?: () => RoleStore;
   getBulkStore?: () => BulkOperationsStore;
+  getRestoreService?: () => import("../../backup/restore-service.js").RestoreService;
+  getRestoreLogStore?: () => import("../../backup/restore-log-store.js").RestoreLogStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -1038,5 +1040,106 @@ export const adminRouter = router({
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
       return getBulkStore().bulkExport(input, ctx.user?.id ?? "unknown");
+    }),
+  // Backup Restore (WOP-439)
+  // -------------------------------------------------------------------------
+
+  /** List available snapshots for a tenant. */
+  restoreListSnapshots: protectedProcedure
+    .input(z.object({ tenantId: tenantIdSchema }))
+    .query(async ({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRestoreService } = deps();
+      if (!getRestoreService) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore service not initialized" });
+      }
+      return { snapshots: await getRestoreService().listSnapshots(input.tenantId) };
+    }),
+
+  /** Trigger a restore from a snapshot. Destructive — requires confirmation. */
+  restoreFromSnapshot: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        nodeId: z.string().min(1),
+        snapshotKey: z
+          .string()
+          .regex(
+            /^(nightly|latest)\/[a-zA-Z0-9._/-]+$/,
+            "snapshotKey must begin with 'nightly/' or 'latest/' and contain only safe path characters",
+          ),
+        reason: z.string().min(1).max(1000).optional(),
+        /** Must type "RESTORE {tenantId}" to confirm. */
+        confirmRestore: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRestoreService, getAuditLog } = deps();
+      if (!getRestoreService) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore service not initialized" });
+      }
+
+      // Verify typed confirmation
+      const expectedConfirmation = `RESTORE ${input.tenantId}`;
+      if (input.confirmRestore !== expectedConfirmation) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Type "${expectedConfirmation}" to confirm the restore`,
+        });
+      }
+
+      const adminUserId = ctx.user?.id ?? "unknown";
+      const result = await getRestoreService().restore({
+        tenantId: input.tenantId,
+        nodeId: input.nodeId,
+        snapshotKey: input.snapshotKey,
+        restoredBy: adminUserId,
+        reason: input.reason,
+      });
+
+      // Audit log
+      getAuditLog().log({
+        adminUser: adminUserId,
+        action: "backup.restore",
+        category: "config",
+        targetTenant: input.tenantId,
+        details: {
+          snapshotKey: input.snapshotKey,
+          nodeId: input.nodeId,
+          success: result.success,
+          downtimeMs: result.downtimeMs,
+          preRestoreKey: result.preRestoreKey,
+          restoreLogId: result.restoreLogId,
+          error: result.error,
+          reason: input.reason,
+        },
+      });
+
+      if (!result.success) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Restore failed: ${result.error}`,
+        });
+      }
+
+      return result;
+    }),
+
+  /** List restore history for a tenant. */
+  restoreHistory: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        limit: z.number().int().positive().max(250).optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRestoreLogStore } = deps();
+      if (!getRestoreLogStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore log store not initialized" });
+      }
+      return { entries: getRestoreLogStore().listForTenant(input.tenantId, input.limit) };
     }),
 });
