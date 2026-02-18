@@ -15,6 +15,7 @@ export default defineConfig({
     "./src/db/schema/tenant-status.ts",
     "./src/db/schema/nodes.ts",
     "./src/db/schema/recovery-events.ts",
+    "./src/db/schema/restore-log.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "sqlite",

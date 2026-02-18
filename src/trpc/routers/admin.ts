@@ -730,7 +730,7 @@ export const adminRouter = router({
       z.object({
         tenantId: tenantIdSchema,
         nodeId: z.string().min(1),
-        snapshotKey: z.string().min(1),
+        snapshotKey: z.string().regex(/^(nightly|latest)\/[a-zA-Z0-9._/-]+$/, "snapshotKey must begin with 'nightly/' or 'latest/' and contain only safe path characters"),
         reason: z.string().min(1).max(1000).optional(),
         /** Must type "RESTORE {tenantId}" to confirm. */
         confirmRestore: z.string().min(1),

@@ -84,6 +84,10 @@ export class RestoreService {
       restoredBy: params.restoredBy,
     });
 
+    // Track whether we've crossed the point of no return (container removed).
+    // If true and a later step fails, we must attempt recovery from preRestoreKey.
+    let containerRemoved = false;
+
     try {
       // 1. Take pre-restore safety snapshot (export current container)
       logger.info(`Taking pre-restore snapshot of ${containerName}`);
@@ -106,12 +110,13 @@ export class RestoreService {
         payload: { name: containerName },
       });
 
-      // 4. Remove current container
+      // 4. Remove current container — point of no return
       logger.info(`Removing container ${containerName}`);
       await this.nodeConnections.sendCommand(params.nodeId, {
         type: "bot.remove",
         payload: { name: containerName },
       });
+      containerRemoved = true;
 
       // 5. Download backup snapshot from DO Spaces to node
       logger.info(`Downloading snapshot ${params.snapshotKey} to node ${params.nodeId}`);
@@ -164,6 +169,32 @@ export class RestoreService {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       logger.error(`Restore failed for ${containerName}`, { err: errorMessage });
+
+      // If the container was already removed, attempt to recover from the pre-restore snapshot.
+      if (containerRemoved) {
+        logger.warn(`Container ${containerName} was removed before failure — attempting recovery from ${preRestoreKey}`);
+        try {
+          await this.nodeConnections.sendCommand(params.nodeId, {
+            type: "backup.download",
+            payload: { filename: preRestoreKey },
+          });
+          await this.nodeConnections.sendCommand(params.nodeId, {
+            type: "bot.import",
+            payload: {
+              name: containerName,
+              image: `${containerName}:pre-restore`,
+              env: {},
+            },
+          });
+          logger.info(`Recovery successful: ${containerName} restored from pre-restore snapshot`);
+        } catch (recoveryErr) {
+          const recoveryMessage = recoveryErr instanceof Error ? recoveryErr.message : String(recoveryErr);
+          logger.error(`CRITICAL: Recovery from pre-restore snapshot also failed for ${containerName}`, {
+            preRestoreKey,
+            err: recoveryMessage,
+          });
+        }
+      }
 
       // Still log the failed attempt
       const logEntry = this.restoreLog.record({

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../config/logger.js";
 import type { NodeConnectionManager } from "../fleet/node-connection-manager.js";
 import type { RestoreLogStore } from "./restore-log-store.js";
 import { RestoreService } from "./restore-service.js";
@@ -131,6 +132,61 @@ describe("RestoreService", () => {
           preRestoreKey: null,
           reason: "FAILED: Container export failed",
         }),
+      );
+    });
+
+    it("attempts recovery from pre-restore snapshot when bot.import fails after container removal", async () => {
+      // First 4 calls succeed (export, upload, stop, remove), 5th (download target) succeeds,
+      // 6th (bot.import) fails — container is already gone.
+      vi.mocked(mockNodeConns.sendCommand)
+        .mockResolvedValueOnce({ id: "cmd-1", type: "command_result", command: "bot.export", success: true }) // 1. export
+        .mockResolvedValueOnce({ id: "cmd-2", type: "command_result", command: "backup.upload", success: true }) // 2. upload
+        .mockResolvedValueOnce({ id: "cmd-3", type: "command_result", command: "bot.stop", success: true }) // 3. stop
+        .mockResolvedValueOnce({ id: "cmd-4", type: "command_result", command: "bot.remove", success: true }) // 4. remove (point of no return)
+        .mockResolvedValueOnce({ id: "cmd-5", type: "command_result", command: "backup.download", success: true }) // 5. download target
+        .mockRejectedValueOnce(new Error("Import failed")) // 6. bot.import fails
+        .mockResolvedValueOnce({ id: "cmd-7", type: "command_result", command: "backup.download", success: true }) // 7. recovery download
+        .mockResolvedValueOnce({ id: "cmd-8", type: "command_result", command: "bot.import", success: true }); // 8. recovery import
+
+      const result = await service.restore({
+        tenantId: "abc",
+        nodeId: "node-1",
+        snapshotKey: "nightly/node-1/tenant_abc/snap.tar.gz",
+        restoredBy: "admin-1",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Import failed");
+
+      // Should have attempted recovery: backup.download + bot.import from pre-restore key
+      const calls = vi.mocked(mockNodeConns.sendCommand).mock.calls;
+      expect(calls).toHaveLength(8);
+      expect(calls[6][1].type).toBe("backup.download"); // recovery download
+      expect(calls[7][1].type).toBe("bot.import"); // recovery import
+    });
+
+    it("logs CRITICAL alert when recovery from pre-restore snapshot also fails", async () => {
+      const errorSpy = vi.spyOn(logger, "error");
+
+      vi.mocked(mockNodeConns.sendCommand)
+        .mockResolvedValueOnce({ id: "cmd-1", type: "command_result", command: "bot.export", success: true })
+        .mockResolvedValueOnce({ id: "cmd-2", type: "command_result", command: "backup.upload", success: true })
+        .mockResolvedValueOnce({ id: "cmd-3", type: "command_result", command: "bot.stop", success: true })
+        .mockResolvedValueOnce({ id: "cmd-4", type: "command_result", command: "bot.remove", success: true })
+        .mockRejectedValueOnce(new Error("Download failed")) // step 5 fails after remove
+        .mockRejectedValueOnce(new Error("Recovery also failed")); // recovery download also fails
+
+      const result = await service.restore({
+        tenantId: "abc",
+        nodeId: "node-1",
+        snapshotKey: "nightly/node-1/tenant_abc/snap.tar.gz",
+        restoredBy: "admin-1",
+      });
+
+      expect(result.success).toBe(false);
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("CRITICAL"),
+        expect.objectContaining({ err: "Recovery also failed" }),
       );
     });
   });
