@@ -117,5 +117,15 @@ describe("key-injection", () => {
       expect(result.status).toBe(502);
       expect(result.error).toBe("Connection refused");
     });
+
+    it("returns 502 with fallback message when thrown value is not an Error", async () => {
+      vi.mocked(globalThis.fetch).mockRejectedValue("string error");
+
+      const result = await forwardSecretsToInstance("http://container:3000", "token", "{}");
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(502);
+      expect(result.error).toBe("Failed to forward secrets");
+    });
   });
 });

@@ -308,10 +308,47 @@ describe("CreditAdjustmentStore.listTransactions", () => {
     expect(result.entries[0].id).toBe("new");
   });
 
+  it("filters by upper date bound (to)", () => {
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO credit_adjustments (id, tenant, type, amount_cents, reason, admin_user, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run("old", "tenant-1", "grant", 100, "Old", "admin-1", now - 100000);
+    db.prepare(
+      "INSERT INTO credit_adjustments (id, tenant, type, amount_cents, reason, admin_user, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).run("new", "tenant-1", "grant", 200, "New", "admin-1", now);
+
+    const result = store.listTransactions("tenant-1", { to: now - 5000 });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0].id).toBe("old");
+  });
+
   it("returns empty results when no entries match", () => {
     const result = store.listTransactions("nonexistent");
     expect(result.entries).toHaveLength(0);
     expect(result.total).toBe(0);
+  });
+});
+
+describe("CreditAdjustmentStore.hasReferenceId", () => {
+  let db: BetterSqlite3.Database;
+  let store: CreditAdjustmentStore;
+
+  beforeEach(() => {
+    db = createTestDb();
+    store = new CreditAdjustmentStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("returns true when a transaction with the reference ID exists", () => {
+    store.grant("tenant-1", 5000, "Initial", "admin-1", ["ref-abc-123"]);
+    expect(store.hasReferenceId("ref-abc-123")).toBe(true);
+  });
+
+  it("returns false when no transaction has the reference ID", () => {
+    expect(store.hasReferenceId("nonexistent-ref")).toBe(false);
   });
 });
 
@@ -613,6 +650,76 @@ describe("admin credit API routes", () => {
       const body = await res.json();
       expect(body.entries).toHaveLength(2);
       expect(body.total).toBe(2);
+    });
+
+    it("returns 400 for invalid type filter", async () => {
+      const app = makeApp();
+      const res = await app.request("/api/admin/credits/tenant-1/adjustments?type=invalid_type");
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("Invalid type");
+    });
+  });
+
+  describe("GET /api/admin/credits/:tenantId/transactions — additional filters", () => {
+    it("returns 400 for invalid type query parameter", async () => {
+      const app = makeApp();
+      const res = await app.request("/api/admin/credits/tenant-1/transactions?type=badtype");
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("Invalid type");
+    });
+
+    it("filters by from and to query params", async () => {
+      const now = Date.now();
+      db.prepare(
+        "INSERT INTO credit_adjustments (id, tenant, type, amount_cents, reason, admin_user, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).run("old", "tenant-1", "grant", 100, "Old", "admin-1", now - 100000);
+      db.prepare(
+        "INSERT INTO credit_adjustments (id, tenant, type, amount_cents, reason, admin_user, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      ).run("new", "tenant-1", "grant", 200, "New", "admin-1", now);
+
+      const app = makeApp();
+      const res = await app.request(`/api/admin/credits/tenant-1/transactions?from=${now - 5000}&to=${now + 5000}`);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].id).toBe("new");
+    });
+  });
+
+  describe("POST /api/admin/credits/:tenantId/refund — reference_ids edge cases", () => {
+    it("accepts refund without reference_ids", async () => {
+      store.grant("tenant-1", 5000, "Initial", "admin-1");
+
+      const app = makeApp();
+      const res = await app.request("/api/admin/credits/tenant-1/refund", {
+        method: "POST",
+        body: JSON.stringify({ amount_cents: 1000, reason: "No refs" }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.type).toBe("refund");
+    });
+
+    it("returns 400 when reference_ids contains non-string elements", async () => {
+      store.grant("tenant-1", 5000, "Initial", "admin-1");
+
+      const app = makeApp();
+      const res = await app.request("/api/admin/credits/tenant-1/refund", {
+        method: "POST",
+        body: JSON.stringify({ amount_cents: 100, reason: "Test", reference_ids: [1, 2, 3] }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("reference_ids");
     });
   });
 });

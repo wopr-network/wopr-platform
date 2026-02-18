@@ -132,6 +132,23 @@ describe("parseImageRef", () => {
       tag: "latest",
     });
   });
+
+  it("handles single-segment image name without registry", () => {
+    const ref = parseImageRef("myimage:v1");
+    expect(ref.registry).toBe("ghcr.io");
+    expect(ref.owner).toBe("myimage");
+    expect(ref.repo).toBe("myimage");
+    expect(ref.tag).toBe("v1");
+  });
+
+  it("handles image without a dot in first segment (no registry prefix)", () => {
+    // "wopr-network/wopr:stable" — first segment has no dot, so treated as owner/repo
+    const ref = parseImageRef("wopr-network/wopr:stable");
+    expect(ref.registry).toBe("ghcr.io");
+    expect(ref.owner).toBe("wopr-network");
+    expect(ref.repo).toBe("wopr");
+    expect(ref.tag).toBe("stable");
+  });
 });
 
 describe("ImagePoller", () => {
@@ -346,6 +363,90 @@ describe("ImagePoller", () => {
       expect(ImagePoller.POLL_INTERVALS.pinned).toBe(0);
     });
   });
+
+  describe("shouldAutoUpdate — nightly and cron policies", () => {
+    it("does not call onUpdateAvailable for nightly policy outside the nightly window", async () => {
+      // The test runs outside 03:00-03:05 UTC, so nightly bots should NOT auto-update
+      const profile = makeProfile({ updatePolicy: "nightly" });
+      const onUpdate = vi.fn().mockResolvedValue(undefined);
+      poller.onUpdateAvailable = onUpdate;
+
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
+      );
+
+      poller.trackBot(profile);
+      await vi.waitFor(() => {
+        const status = poller.getImageStatus(profile.id, profile);
+        expect(status.lastCheckedAt).not.toBeNull();
+      });
+
+      // onUpdate should not be called since we're not in the nightly window
+      expect(onUpdate).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it("does not call onUpdateAvailable for cron: policy", async () => {
+      const profile = makeProfile({ updatePolicy: "cron:0 3 * * *" });
+      const onUpdate = vi.fn().mockResolvedValue(undefined);
+      poller.onUpdateAvailable = onUpdate;
+
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "test-token" }) })
+          .mockResolvedValueOnce({ ok: true, headers: new Headers({ "docker-content-digest": "sha256:new999" }) }),
+      );
+
+      poller.trackBot(profile);
+      await vi.waitFor(() => {
+        const status = poller.getImageStatus(profile.id, profile);
+        expect(status.lastCheckedAt).not.toBeNull();
+      });
+
+      expect(onUpdate).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe("start", () => {
+    it("does not re-initialize when called twice", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ token: "test-token" }) }));
+
+      await poller.start();
+      // Second call should be a no-op
+      await poller.start();
+
+      // store.list should only have been called once
+      expect(store.list).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe("trackBot — re-tracking clears existing timer", () => {
+    it("replaces existing timer when bot is re-tracked", () => {
+      const profile = makeProfile({
+        id: "stable-bot",
+        releaseChannel: "stable",
+        image: "ghcr.io/wopr-network/wopr:stable",
+      });
+
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ token: "test-token" }) }));
+
+      poller.trackBot(profile);
+      // Re-tracking should clear the old timer and create a new one
+      poller.trackBot(profile);
+
+      const status = poller.getImageStatus(profile.id, profile);
+      expect(status.releaseChannel).toBe("stable");
+      vi.unstubAllGlobals();
+    });
+  });
 });
 
 describe("getContainerDigest", () => {
@@ -362,6 +463,38 @@ describe("getContainerDigest", () => {
     docker.listContainers.mockResolvedValue([]);
 
     const digest = await getContainerDigest(docker as unknown as Docker, "missing");
+    expect(digest).toBeNull();
+  });
+
+  it("returns null when RepoDigests is empty", async () => {
+    const container = mockContainer({
+      inspect: vi.fn().mockResolvedValue({ Id: "c1", Image: "sha256:cfgdigest" }),
+    });
+    const docker = {
+      ...mockDocker(container),
+      getImage: vi.fn().mockReturnValue({
+        inspect: vi.fn().mockResolvedValue({ RepoDigests: [] }),
+      }),
+    };
+    docker.listContainers.mockResolvedValue([{ Id: "c1" }]);
+
+    const digest = await getContainerDigest(docker as unknown as Docker, "bot-1");
+    expect(digest).toBeNull();
+  });
+
+  it("returns null when RepoDigests entry has no @ character", async () => {
+    const container = mockContainer({
+      inspect: vi.fn().mockResolvedValue({ Id: "c1", Image: "sha256:cfgdigest" }),
+    });
+    const docker = {
+      ...mockDocker(container),
+      getImage: vi.fn().mockReturnValue({
+        inspect: vi.fn().mockResolvedValue({ RepoDigests: ["noatsignhere"] }),
+      }),
+    };
+    docker.listContainers.mockResolvedValue([{ Id: "c1" }]);
+
+    const digest = await getContainerDigest(docker as unknown as Docker, "bot-1");
     expect(digest).toBeNull();
   });
 });

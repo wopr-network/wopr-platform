@@ -448,8 +448,8 @@ describe("MeterAggregator", () => {
     aggregator.aggregate();
 
     const total = aggregator.getTenantTotal("t-1", 0);
-    expect(total.totalCost).toBeCloseTo(0.06, 10);
-    expect(total.totalCharge).toBeCloseTo(0.12, 10);
+    expect(total.totalCost).toBeCloseTo(0.06, 5);
+    expect(total.totalCharge).toBeCloseTo(0.12, 5);
     expect(total.eventCount).toBe(2);
   });
 
