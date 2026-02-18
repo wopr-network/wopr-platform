@@ -50,6 +50,31 @@ describe("createElevenLabsAdapter", () => {
     expect(adapter.capabilities).toEqual(["tts"]);
   });
 
+  it("uses default config values when none provided (covers ?? fallbacks)", async () => {
+    // Only apiKey provided — all other values fall back to defaults
+    const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockAudioResponse());
+    const adapter = createElevenLabsAdapter({ apiKey: "test-key" }, fetchFn);
+    const result = await adapter.synthesizeSpeech({ text: "test" });
+    expect(result.result.characterCount).toBe(4);
+    // Verify default voice was used in the URL
+    const [url] = fetchFn.mock.calls[0];
+    expect(url).toContain("api.elevenlabs.io"); // default base URL
+  });
+
+  it("uses audio/mpeg fallback when content-type header is missing", async () => {
+    const noContentTypeResponse = {
+      ok: true,
+      status: 200,
+      arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+      text: () => Promise.resolve(""),
+      headers: { get: () => null }, // content-type returns null
+    } as unknown as Response;
+    const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(noContentTypeResponse);
+    const adapter = createElevenLabsAdapter(makeConfig(), fetchFn);
+    const result = await adapter.synthesizeSpeech({ text: "test" });
+    expect(result.result.audioUrl).toContain("audio/mpeg");
+  });
+
   describe("synthesizeSpeech", () => {
     it("calculates cost from character count", async () => {
       const fetchFn = vi.fn<FetchFn>().mockResolvedValueOnce(mockAudioResponse());

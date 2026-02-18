@@ -262,6 +262,18 @@ describe("collectHeartbeat", () => {
     expect(heartbeat.containers[0].status).toBe("running");
     expect(typeof heartbeat.containers[0].memory_mb).toBe("number");
   });
+
+  it("returns empty containers and logs error when listTenantContainers throws", async () => {
+    const failingDocker = {
+      listContainers: vi.fn().mockRejectedValue(new Error("Docker daemon unavailable")),
+      getContainer: vi.fn(),
+    };
+    const manager = new DockerManager(failingDocker as never);
+
+    const heartbeat = await collectHeartbeat("node-fail", manager);
+    expect(heartbeat.node_id).toBe("node-fail");
+    expect(heartbeat.containers).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

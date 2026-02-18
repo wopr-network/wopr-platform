@@ -139,4 +139,20 @@ describe("verify-email route", () => {
     };
     expect(row.email_verified).toBe(1);
   });
+
+  it("should still verify and redirect to success even if credit grant throws", async () => {
+    // Close the credits DB so the grant call throws
+    creditsDb.close();
+
+    const { token } = generateVerificationToken(authDb, "user-1");
+    const res = await app.request(`/auth/verify?token=${token}`);
+
+    // Verification should still succeed despite the credit grant failure
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("status=success");
+
+    // Re-open a fresh DB to avoid afterEach close errors
+    creditsDb = new Database(":memory:");
+    initCreditAdjustmentSchema(creditsDb);
+  });
 });
