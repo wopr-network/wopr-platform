@@ -80,7 +80,15 @@ describe("MeterDLQ", () => {
 
   it("count returns correct count after appending", () => {
     const dlq = new MeterDLQ(dlqPath);
-    const event = { id: "evt-1", tenant: "t1", capability: "tts", provider: "elevenlabs", cost: 0.01, charge: 0.02, timestamp: Date.now() };
+    const event = {
+      id: "evt-1",
+      tenant: "t1",
+      capability: "tts",
+      provider: "elevenlabs",
+      cost: 0.01,
+      charge: 0.02,
+      timestamp: Date.now(),
+    };
     dlq.append(event, "err", 1);
     dlq.append({ ...event, id: "evt-2" }, "err2", 2);
     expect(dlq.count()).toBe(2);
