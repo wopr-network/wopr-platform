@@ -192,7 +192,7 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
       await pm.addRoute({
         instanceId: profile.id,
         subdomain: profile.name.toLowerCase().replace(/_/g, "-"),
-        upstreamHost: `wopr-${profile.name}`,
+        upstreamHost: `wopr-${profile.name.toLowerCase().replace(/_/g, "-")}`,
         upstreamPort: 7437,
         healthy: true,
       });
