@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [main, staging]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -133,3 +135,4 @@ jobs:
           path: test-results/e2e-junit.xml
           retention-days: 30
           if-no-files-found: ignore
+
