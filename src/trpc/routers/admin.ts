@@ -10,10 +10,13 @@ import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { BulkOperationsStore } from "../../admin/bulk/bulk-operations-store.js";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { AdminNotesStore } from "../../admin/notes/notes-store.js";
 import type { RateStore } from "../../admin/rates/rate-store.js";
+import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { TenantStatusStore } from "../../admin/tenant-status/tenant-status-store.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
+import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -28,6 +31,9 @@ export interface AdminRouterDeps {
   getTenantStatusStore: () => TenantStatusStore;
   getBotBilling?: () => BotBilling;
   getAnalyticsStore?: () => AnalyticsStore;
+  getNotesStore?: () => AdminNotesStore;
+  getMeterAggregator?: () => MeterAggregator;
+  getRoleStore?: () => RoleStore;
   getBulkStore?: () => BulkOperationsStore;
 }
 
@@ -706,6 +712,165 @@ export const adminRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
       }
       return { csv: getAnalyticsStore().exportCsv(resolveRange(input), input.section) };
+    }),
+
+  // -------------------------------------------------------------------------
+  // Tenant God View (WOP-411)
+  // -------------------------------------------------------------------------
+
+  /** Get full tenant detail (god view). Aggregates user info, credits, status, usage. */
+  tenantDetail: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getUserStore, getCreditStore, getTenantStatusStore, getMeterAggregator } = deps();
+
+    const user = getUserStore().getById(input.tenantId);
+    const balance = getCreditStore().getBalance(input.tenantId);
+    const recentTransactions = getCreditStore().listTransactions(input.tenantId, { limit: 10 });
+    const status = getTenantStatusStore().get(input.tenantId);
+
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const usageSummaries = getMeterAggregator
+      ? getMeterAggregator().querySummaries(input.tenantId, { since: thirtyDaysAgo, limit: 1000 })
+      : [];
+    const usageTotal = getMeterAggregator
+      ? getMeterAggregator().getTenantTotal(input.tenantId, thirtyDaysAgo)
+      : { totalCost: 0, totalCharge: 0, eventCount: 0 };
+
+    return {
+      user: user ?? null,
+      credits: { balance_cents: balance, recent_transactions: recentTransactions },
+      status: status ?? { tenantId: input.tenantId, status: "active" },
+      usage: { summaries: usageSummaries, total: usageTotal },
+    };
+  }),
+
+  /** List bot instances for a tenant. */
+  tenantAgents: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getBotBilling } = deps();
+    if (!getBotBilling) {
+      return { agents: [] };
+    }
+    const agents = getBotBilling().listForTenant(input.tenantId);
+    return { agents };
+  }),
+
+  /** List admin notes for a tenant. */
+  tenantNotes: protectedProcedure
+    .input(z.object({ tenantId: tenantIdSchema, limit: z.number().int().positive().max(250).optional() }))
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore } = deps();
+      if (!getNotesStore) {
+        return { notes: [] };
+      }
+      return { notes: getNotesStore().listForTenant(input.tenantId, input.limit) };
+    }),
+
+  /** Add an admin note to a tenant. */
+  tenantNoteAdd: protectedProcedure
+    .input(z.object({ tenantId: tenantIdSchema, content: z.string().min(1).max(10000) }))
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore, getAuditLog } = deps();
+      if (!getNotesStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
+      }
+      const adminUserId = ctx.user?.id ?? "unknown";
+      const note = getNotesStore().add(input.tenantId, adminUserId, input.content);
+
+      getAuditLog().log({
+        adminUser: adminUserId,
+        action: "tenant.note_added",
+        category: "support",
+        targetTenant: input.tenantId,
+        details: { noteId: note.id },
+      });
+
+      return note;
+    }),
+
+  /** Change a user's role. */
+  tenantChangeRole: protectedProcedure
+    .input(
+      z.object({
+        userId: z.string().min(1),
+        tenantId: tenantIdSchema,
+        role: z.enum(VALID_ROLES),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getRoleStore, getAuditLog } = deps();
+      if (!getRoleStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Role store not initialized" });
+      }
+      const adminUserId = ctx.user?.id ?? "unknown";
+      getRoleStore().setRole(input.userId, input.tenantId, input.role, adminUserId);
+
+      getAuditLog().log({
+        adminUser: adminUserId,
+        action: "tenant.role_changed",
+        category: "roles",
+        targetTenant: input.tenantId,
+        targetUser: input.userId,
+        details: { newRole: input.role },
+      });
+
+      return { ok: true, role: input.role };
+    }),
+
+  /** Get usage breakdown by capability for a tenant (for chart). */
+  tenantUsageByCapability: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        days: z.number().int().positive().max(90).optional().default(30),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getMeterAggregator } = deps();
+      if (!getMeterAggregator) {
+        return { usage: [] };
+      }
+      const since = Date.now() - input.days * 24 * 60 * 60 * 1000;
+      const summaries = getMeterAggregator().querySummaries(input.tenantId, { since, limit: 1000 });
+      return { usage: summaries };
+    }),
+
+  /** Export credit transactions as CSV. */
+  creditsTransactionsExport: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        type: z.enum(["grant", "refund", "correction"]).optional(),
+        from: z.number().int().optional(),
+        to: z.number().int().optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getCreditStore } = deps();
+      const { tenantId, ...filters } = input;
+      const result = getCreditStore().listTransactions(tenantId, { ...filters, limit: 10000 });
+
+      const header = "id,tenant,type,amount_cents,reason,admin_user,reference_ids,created_at";
+      const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+      const lines = result.entries.map((r) =>
+        [
+          csvEscape(r.id),
+          csvEscape(r.tenant),
+          csvEscape(r.type),
+          String(r.amount_cents),
+          csvEscape(r.reason),
+          csvEscape(r.admin_user),
+          csvEscape(r.reference_ids ?? ""),
+          String(r.created_at),
+        ].join(","),
+      );
+
+      return { csv: [header, ...lines].join("\n") };
     }),
 
   // -------------------------------------------------------------------------
