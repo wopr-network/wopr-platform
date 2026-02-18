@@ -3,10 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, lt } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
 import { snapshots } from "../db/schema/snapshots.js";
+import type { SpacesClient } from "./spaces-client.js";
 import type { Snapshot, SnapshotTrigger } from "./types.js";
 import { rowToSnapshot } from "./types.js";
 
@@ -20,23 +21,28 @@ export interface SnapshotManagerOptions {
   snapshotDir: string;
   /** Drizzle database instance */
   db: BetterSQLite3Database<Record<string, unknown>>;
+  /** Optional DO Spaces client for remote upload */
+  spaces?: SpacesClient;
 }
 
 export class SnapshotManager {
   private readonly snapshotDir: string;
   private readonly db: BetterSQLite3Database<Record<string, unknown>>;
+  private readonly spaces?: SpacesClient;
 
   constructor(opts: SnapshotManagerOptions) {
     this.snapshotDir = opts.snapshotDir;
     this.db = opts.db;
+    this.spaces = opts.spaces;
   }
 
   /**
    * Create a snapshot of an instance's WOPR_HOME directory.
    *
    * 1. Tar the WOPR_HOME directory
-   * 2. Store metadata in SQLite
-   * 3. Return the snapshot record
+   * 2. Optionally upload to DO Spaces
+   * 3. Store metadata in SQLite
+   * 4. Return the snapshot record
    */
   async create(params: {
     instanceId: string;
@@ -44,6 +50,11 @@ export class SnapshotManager {
     woprHomePath: string;
     trigger: SnapshotTrigger;
     plugins?: string[];
+    tenant?: string;
+    name?: string;
+    type?: "nightly" | "on-demand" | "pre-restore";
+    nodeId?: string;
+    expiresAt?: number;
   }): Promise<Snapshot> {
     if (!SAFE_ID_RE.test(params.instanceId)) {
       throw new Error(`Invalid instanceId: ${params.instanceId}`);
@@ -51,6 +62,8 @@ export class SnapshotManager {
 
     const id = randomUUID();
     const createdAt = new Date().toISOString();
+    const snapshotType = params.type ?? "on-demand";
+    const tenant = params.tenant ?? "";
     const tarPath = join(this.snapshotDir, params.instanceId, `${id}.tar.gz`);
 
     await mkdir(dirname(tarPath), { recursive: true });
@@ -78,8 +91,33 @@ export class SnapshotManager {
     // Get file size
     const info = await stat(tarPath);
     const sizeMb = Math.round((info.size / (1024 * 1024)) * 100) / 100;
+    const sizeBytes = info.size;
 
     const plugins = params.plugins ?? [];
+
+    // Optionally upload to DO Spaces
+    let s3Key: string | null = null;
+    if (this.spaces) {
+      try {
+        if (snapshotType === "on-demand") {
+          const namePart = params.name ? `_${params.name}` : "";
+          s3Key = `on-demand/${tenant}/${id}${namePart}.tar.gz`;
+        } else if (snapshotType === "nightly") {
+          const dateStr = new Date().toISOString().slice(0, 10);
+          s3Key = `nightly/${params.nodeId ?? "unknown"}/${tenant}/${tenant}_${dateStr}.tar.gz`;
+        } else if (snapshotType === "pre-restore") {
+          s3Key = `pre-restore/${tenant}/${tenant}_pre_restore.tar.gz`;
+        }
+        if (s3Key) {
+          await this.spaces.upload(tarPath, s3Key);
+        }
+      } catch (err) {
+        logger.warn(`Spaces upload failed for snapshot ${id}, continuing with local only`, {
+          err: err instanceof Error ? err.message : String(err),
+        });
+        s3Key = null;
+      }
+    }
 
     // Store metadata in SQLite -- clean up tar if insert fails
     try {
@@ -87,14 +125,22 @@ export class SnapshotManager {
         .insert(snapshots)
         .values({
           id,
+          tenant,
           instanceId: params.instanceId,
           userId: params.userId,
-          createdAt,
+          name: params.name ?? null,
+          type: snapshotType,
+          s3Key,
           sizeMb,
+          sizeBytes,
+          nodeId: params.nodeId ?? null,
           trigger: params.trigger,
           plugins: JSON.stringify(plugins),
           configHash,
           storagePath: tarPath,
+          createdAt,
+          expiresAt: params.expiresAt ?? null,
+          deletedAt: null,
         })
         .run();
     } catch (err) {
@@ -102,14 +148,22 @@ export class SnapshotManager {
       throw err;
     }
 
-    logger.info(`Snapshot ${id} created for instance ${params.instanceId} (${sizeMb}MB)`);
+    logger.info(`Snapshot ${id} created for instance ${params.instanceId} (${sizeMb}MB, type=${snapshotType})`);
 
     return {
       id,
+      tenant,
       instanceId: params.instanceId,
       userId: params.userId,
-      createdAt,
+      name: params.name ?? null,
+      type: snapshotType,
+      s3Key,
       sizeMb,
+      sizeBytes,
+      nodeId: params.nodeId ?? null,
+      createdAt,
+      expiresAt: params.expiresAt ?? null,
+      deletedAt: null,
       trigger: params.trigger,
       plugins,
       configHash,
@@ -167,44 +221,132 @@ export class SnapshotManager {
     return row ? rowToSnapshot(mapDrizzleRow(row)) : null;
   }
 
-  /** List all snapshots for an instance, newest first */
-  list(instanceId: string): Snapshot[] {
+  /** List all non-deleted snapshots for an instance, newest first */
+  list(instanceId: string, type?: string): Snapshot[] {
+    const conditions = type
+      ? and(
+          eq(snapshots.instanceId, instanceId),
+          isNull(snapshots.deletedAt),
+          eq(snapshots.type, type as "nightly" | "on-demand" | "pre-restore"),
+        )
+      : and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt));
+
+    const rows = this.db.select().from(snapshots).where(conditions).orderBy(desc(snapshots.createdAt)).all();
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+  }
+
+  /** List all non-deleted snapshots for a tenant */
+  listByTenant(tenant: string, type?: string): Snapshot[] {
+    const conditions = type
+      ? and(
+          eq(snapshots.tenant, tenant),
+          isNull(snapshots.deletedAt),
+          eq(snapshots.type, type as "nightly" | "on-demand" | "pre-restore"),
+        )
+      : and(eq(snapshots.tenant, tenant), isNull(snapshots.deletedAt));
+
+    const rows = this.db.select().from(snapshots).where(conditions).orderBy(desc(snapshots.createdAt)).all();
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+  }
+
+  /** Count on-demand snapshots for a tenant (non-deleted only) */
+  countByTenant(tenant: string, type: "on-demand"): number {
+    const row = this.db
+      .select({ cnt: count() })
+      .from(snapshots)
+      .where(and(eq(snapshots.tenant, tenant), eq(snapshots.type, type), isNull(snapshots.deletedAt)))
+      .get();
+    return row?.cnt ?? 0;
+  }
+
+  /** List all active (non-deleted) snapshots of a given type across all tenants */
+  listAllActive(type: "on-demand"): Snapshot[] {
     const rows = this.db
       .select()
       .from(snapshots)
-      .where(eq(snapshots.instanceId, instanceId))
-      .orderBy(desc(snapshots.createdAt))
+      .where(and(eq(snapshots.type, type), isNull(snapshots.deletedAt)))
       .all();
     return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
 
-  /** Delete a snapshot: remove tar file and metadata */
+  /** List snapshots that have passed their expiresAt time */
+  listExpired(now: number): Snapshot[] {
+    const rows = this.db
+      .select()
+      .from(snapshots)
+      .where(and(isNull(snapshots.deletedAt), lt(snapshots.expiresAt, now)))
+      .all();
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+  }
+
+  /**
+   * Soft-delete a snapshot: set deletedAt timestamp.
+   * Also removes from DO Spaces if s3Key is set.
+   */
   async delete(id: string): Promise<boolean> {
+    const snapshot = this.get(id);
+    if (!snapshot) return false;
+
+    // Remove from DO Spaces if available
+    if (this.spaces && snapshot.s3Key) {
+      try {
+        await this.spaces.remove(snapshot.s3Key);
+      } catch (err) {
+        logger.warn(`Failed to remove snapshot ${id} from Spaces (s3Key=${snapshot.s3Key})`, {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Soft-delete in SQLite
+    this.db.update(snapshots).set({ deletedAt: Date.now() }).where(eq(snapshots.id, id)).run();
+
+    logger.info(`Soft-deleted snapshot ${id}`);
+    return true;
+  }
+
+  /** Hard-delete a snapshot: remove tar file, Spaces object, and DB row. */
+  async hardDelete(id: string): Promise<boolean> {
     const snapshot = this.get(id);
     if (!snapshot) return false;
 
     // Remove tar file
     await rm(snapshot.storagePath, { force: true });
 
-    // Remove metadata
+    // Remove from DO Spaces if available
+    if (this.spaces && snapshot.s3Key) {
+      try {
+        await this.spaces.remove(snapshot.s3Key);
+      } catch (err) {
+        logger.warn(`Failed to remove expired snapshot ${id} from Spaces`, {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Hard-delete from SQLite
     this.db.delete(snapshots).where(eq(snapshots.id, id)).run();
 
-    logger.info(`Deleted snapshot ${id}`);
+    logger.info(`Hard-deleted snapshot ${id}`);
     return true;
   }
 
-  /** Count snapshots for an instance */
+  /** Count non-deleted snapshots for an instance */
   count(instanceId: string): number {
-    const row = this.db.select({ cnt: count() }).from(snapshots).where(eq(snapshots.instanceId, instanceId)).get();
+    const row = this.db
+      .select({ cnt: count() })
+      .from(snapshots)
+      .where(and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt)))
+      .get();
     return row?.cnt ?? 0;
   }
 
-  /** Get oldest snapshots for an instance (for retention cleanup) */
+  /** Get oldest non-deleted snapshots for an instance (for retention cleanup) */
   getOldest(instanceId: string, limit: number): Snapshot[] {
     const rows = this.db
       .select()
       .from(snapshots)
-      .where(eq(snapshots.instanceId, instanceId))
+      .where(and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt)))
       .orderBy(asc(snapshots.createdAt))
       .limit(limit)
       .all();
@@ -216,14 +358,22 @@ export class SnapshotManager {
 function mapDrizzleRow(row: typeof snapshots.$inferSelect) {
   return {
     id: row.id,
+    tenant: row.tenant,
     instance_id: row.instanceId,
     user_id: row.userId,
-    created_at: row.createdAt,
+    name: row.name ?? null,
+    type: row.type,
+    s3_key: row.s3Key ?? null,
     size_mb: row.sizeMb,
+    size_bytes: row.sizeBytes ?? null,
+    node_id: row.nodeId ?? null,
     trigger: row.trigger,
     plugins: row.plugins,
     config_hash: row.configHash,
     storage_path: row.storagePath,
+    created_at: row.createdAt,
+    expires_at: row.expiresAt ?? null,
+    deleted_at: row.deletedAt ?? null,
   };
 }
 

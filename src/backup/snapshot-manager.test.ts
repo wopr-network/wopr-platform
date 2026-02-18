@@ -17,17 +17,28 @@ function createFileDb(path: string) {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS snapshots (
       id TEXT PRIMARY KEY,
+      tenant TEXT NOT NULL DEFAULT '',
       instance_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      name TEXT,
+      type TEXT NOT NULL DEFAULT 'on-demand' CHECK (type IN ('nightly', 'on-demand', 'pre-restore')),
+      s3_key TEXT,
       size_mb REAL NOT NULL DEFAULT 0,
+      size_bytes INTEGER,
+      node_id TEXT,
       trigger TEXT NOT NULL CHECK (trigger IN ('manual', 'scheduled', 'pre_update')),
       plugins TEXT NOT NULL DEFAULT '[]',
       config_hash TEXT NOT NULL DEFAULT '',
-      storage_path TEXT NOT NULL
+      storage_path TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at INTEGER,
+      deleted_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_snapshots_instance ON snapshots (instance_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_snapshots_user ON snapshots (user_id);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_tenant ON snapshots (tenant);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_type ON snapshots (type);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_expires ON snapshots (expires_at);
   `);
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
@@ -133,8 +144,8 @@ describe("SnapshotManager", () => {
     });
   });
 
-  describe("delete", () => {
-    it("removes snapshot tar and metadata", async () => {
+  describe("delete (soft-delete)", () => {
+    it("soft-deletes snapshot: sets deletedAt, excludes from list and count", async () => {
       const snapshot = await manager.create({
         instanceId: "inst-1",
         userId: "user-1",
@@ -145,11 +156,41 @@ describe("SnapshotManager", () => {
       const deleted = await manager.delete(snapshot.id);
       expect(deleted).toBe(true);
 
-      expect(manager.get(snapshot.id)).toBeNull();
+      // Soft-deleted: still retrievable by id, but not in list/count
+      const found = manager.get(snapshot.id);
+      expect(found).not.toBeNull();
+      expect(found?.deletedAt).not.toBeNull();
+
+      // Not in list
+      const listed = manager.list("inst-1");
+      expect(listed.find((s) => s.id === snapshot.id)).toBeUndefined();
+
+      // Not counted
+      expect(manager.count("inst-1")).toBe(0);
     });
 
     it("returns false for unknown snapshot", async () => {
       expect(await manager.delete("nonexistent")).toBe(false);
+    });
+  });
+
+  describe("hardDelete", () => {
+    it("removes snapshot tar and DB row", async () => {
+      const snapshot = await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+      });
+
+      const deleted = await manager.hardDelete(snapshot.id);
+      expect(deleted).toBe(true);
+
+      expect(manager.get(snapshot.id)).toBeNull();
+    });
+
+    it("returns false for unknown snapshot", async () => {
+      expect(await manager.hardDelete("nonexistent")).toBe(false);
     });
   });
 
@@ -200,6 +241,168 @@ describe("SnapshotManager", () => {
       const oldest = manager.getOldest("inst-1", 2);
       expect(oldest).toHaveLength(2);
       expect(new Date(oldest[0].createdAt).getTime()).toBeLessThanOrEqual(new Date(oldest[1].createdAt).getTime());
+    });
+  });
+
+  describe("listByTenant", () => {
+    it("lists non-deleted snapshots for a tenant", async () => {
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+      });
+      await manager.create({
+        instanceId: "inst-2",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+      });
+      await manager.create({
+        instanceId: "inst-3",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-b",
+      });
+
+      const list = manager.listByTenant("tenant-a");
+      expect(list).toHaveLength(2);
+      expect(list.every((s) => s.tenant === "tenant-a")).toBe(true);
+    });
+
+    it("filters by type when provided", async () => {
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+        type: "on-demand",
+      });
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "scheduled",
+        tenant: "tenant-a",
+        type: "nightly",
+      });
+
+      const onDemand = manager.listByTenant("tenant-a", "on-demand");
+      expect(onDemand).toHaveLength(1);
+      expect(onDemand[0].type).toBe("on-demand");
+    });
+  });
+
+  describe("countByTenant", () => {
+    it("counts on-demand snapshots for a tenant", async () => {
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+        type: "on-demand",
+      });
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "scheduled",
+        tenant: "tenant-a",
+        type: "nightly",
+      });
+      await manager.create({
+        instanceId: "inst-2",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-b",
+        type: "on-demand",
+      });
+
+      expect(manager.countByTenant("tenant-a", "on-demand")).toBe(1);
+      expect(manager.countByTenant("tenant-b", "on-demand")).toBe(1);
+    });
+
+    it("excludes soft-deleted snapshots from count", async () => {
+      const snap = await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+        type: "on-demand",
+      });
+      await manager.delete(snap.id);
+
+      expect(manager.countByTenant("tenant-a", "on-demand")).toBe(0);
+    });
+  });
+
+  describe("listAllActive", () => {
+    it("lists all non-deleted on-demand snapshots across all tenants", async () => {
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+        type: "on-demand",
+      });
+      await manager.create({
+        instanceId: "inst-2",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-b",
+        type: "on-demand",
+      });
+      await manager.create({
+        instanceId: "inst-3",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "scheduled",
+        tenant: "tenant-a",
+        type: "nightly",
+      });
+
+      const active = manager.listAllActive("on-demand");
+      expect(active).toHaveLength(2);
+      expect(active.every((s) => s.type === "on-demand")).toBe(true);
+    });
+  });
+
+  describe("listExpired", () => {
+    it("lists snapshots past their expiresAt", async () => {
+      const pastExpiry = Date.now() - 1000;
+      const futureExpiry = Date.now() + 1_000_000;
+
+      // We insert directly via the DB since create() doesn't allow past expiresAt
+      // Just use future expiry and a past expiry snapshot created manually
+      const s1 = await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+        expiresAt: pastExpiry,
+      });
+      const s2 = await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "manual",
+        tenant: "tenant-a",
+        expiresAt: futureExpiry,
+      });
+
+      const expired = manager.listExpired(Date.now());
+      expect(expired.some((s) => s.id === s1.id)).toBe(true);
+      expect(expired.some((s) => s.id === s2.id)).toBe(false);
     });
   });
 });
