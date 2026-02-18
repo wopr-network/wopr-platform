@@ -10,7 +10,7 @@ import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { BulkOperationsStore } from "../../admin/bulk/bulk-operations-store.js";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
-import type { AdminNotesStore } from "../../admin/notes/notes-store.js";
+import type { AdminNotesStore } from "../../admin/notes/store.js";
 import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { TenantStatusStore } from "../../admin/tenant-status/tenant-status-store.js";
@@ -755,39 +755,96 @@ export const adminRouter = router({
     return { agents };
   }),
 
-  /** List admin notes for a tenant. */
-  tenantNotes: protectedProcedure
-    .input(z.object({ tenantId: tenantIdSchema, limit: z.number().int().positive().max(250).optional() }))
+  // Admin Notes (WOP-409)
+  // -------------------------------------------------------------------------
+
+  /** List notes for a tenant. */
+  notesList: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        limit: z.number().int().positive().max(250).optional(),
+        offset: z.number().int().min(0).optional(),
+      }),
+    )
     .query(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotesStore } = deps();
       if (!getNotesStore) {
-        return { notes: [] };
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
-      return { notes: getNotesStore().listForTenant(input.tenantId, input.limit) };
+      return getNotesStore().list(input);
     }),
 
-  /** Add an admin note to a tenant. */
-  tenantNoteAdd: protectedProcedure
-    .input(z.object({ tenantId: tenantIdSchema, content: z.string().min(1).max(10000) }))
+  /** Create a note on a tenant. */
+  notesCreate: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        content: z.string().min(1).max(10000),
+        isPinned: z.boolean().optional(),
+      }),
+    )
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotesStore, getAuditLog } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
-      const adminUserId = ctx.user?.id ?? "unknown";
-      const note = getNotesStore().add(input.tenantId, adminUserId, input.content);
-
+      const note = getNotesStore().create({
+        tenantId: input.tenantId,
+        authorId: ctx.user?.id ?? "unknown",
+        content: input.content,
+        isPinned: input.isPinned,
+      });
       getAuditLog().log({
-        adminUser: adminUserId,
-        action: "tenant.note_added",
+        adminUser: ctx.user?.id ?? "unknown",
+        action: "note.create",
         category: "support",
         targetTenant: input.tenantId,
         details: { noteId: note.id },
       });
-
       return note;
+    }),
+
+  /** Update a note. */
+  notesUpdate: protectedProcedure
+    .input(
+      z.object({
+        noteId: z.string().min(1),
+        tenantId: tenantIdSchema,
+        content: z.string().min(1).max(10000).optional(),
+        isPinned: z.boolean().optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore } = deps();
+      if (!getNotesStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
+      }
+      const { noteId, tenantId, ...updates } = input;
+      const note = getNotesStore().update(noteId, tenantId, updates);
+      if (!note) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+      }
+      return note;
+    }),
+
+  /** Delete a note. */
+  notesDelete: protectedProcedure
+    .input(z.object({ noteId: z.string().min(1), tenantId: tenantIdSchema }))
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore } = deps();
+      if (!getNotesStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
+      }
+      const deleted = getNotesStore().delete(input.noteId, input.tenantId);
+      if (!deleted) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+      }
+      return { success: true };
     }),
 
   /** Change a user's role. */

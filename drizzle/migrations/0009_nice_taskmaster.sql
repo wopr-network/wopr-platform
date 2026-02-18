@@ -1,0 +1,1 @@
+ALTER TABLE `credit_transactions` ADD `funding_source` text;

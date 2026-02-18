@@ -27,6 +27,11 @@ export { initBulkOperationsSchema } from "./bulk/schema.js";
 export type { AdjustmentFilters, AdjustmentType, CreditAdjustment } from "./credits/adjustment-store.js";
 export { BalanceError, CreditAdjustmentStore } from "./credits/adjustment-store.js";
 export { initCreditAdjustmentSchema } from "./credits/schema.js";
+export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
+export { AdminNotesStore } from "./notes/index.js";
+export { initAdminNotesSchema } from "./notes/schema.js";
+export type { NotificationEmailType, NotificationInput, NotificationRow } from "./notifications/index.js";
+export { NotificationQueueStore } from "./notifications/index.js";
 export type {
   ProviderCost,
   ProviderCostFilters,
@@ -44,6 +49,3 @@ export { initRolesSchema } from "./roles/schema.js";
 export { initAdminUsersSchema } from "./users/schema.js";
 export type { AdminUserFilters, AdminUserListResponse, AdminUserSummary } from "./users/user-store.js";
 export { AdminUserStore } from "./users/user-store.js";
-export type { AdminNoteRow } from "./notes/notes-store.js";
-export { AdminNotesStore } from "./notes/notes-store.js";
-export { initAdminNotesSchema } from "./notes/schema.js";
