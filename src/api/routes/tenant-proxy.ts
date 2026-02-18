@@ -1,3 +1,4 @@
+import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
 
@@ -60,14 +61,22 @@ export function extractTenantSubdomain(host: string): string | null {
   return subdomain;
 }
 
-export const tenantProxyRoutes = new Hono();
-
-tenantProxyRoutes.all("/*", async (c) => {
+/**
+ * Tenant subdomain proxy middleware.
+ *
+ * If the request Host header identifies a tenant subdomain (e.g. alice.wopr.bot),
+ * the request is proxied to the upstream container for that tenant.
+ *
+ * If the host is absent, the root domain, a reserved subdomain, or localhost,
+ * the middleware calls next() so subsequent routes (health, API, etc.) handle
+ * the request normally. This is critical for tests and direct-IP access.
+ */
+export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
   const host = c.req.header("host");
-  if (!host) return c.notFound();
+  if (!host) return next();
 
   const subdomain = extractTenantSubdomain(host);
-  if (!subdomain) return c.notFound();
+  if (!subdomain) return next();
 
   const { getProxyManager } = await import("../../proxy/singleton.js");
   const pm = getProxyManager();
@@ -106,4 +115,9 @@ tenantProxyRoutes.all("/*", async (c) => {
     status: response.status,
     headers: response.headers,
   });
-});
+};
+
+// Keep the Hono sub-app export for backward compatibility with existing tests
+// that import tenantProxyRoutes directly.
+export const tenantProxyRoutes = new Hono();
+tenantProxyRoutes.use("/*", tenantProxyMiddleware);

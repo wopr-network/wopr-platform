@@ -340,7 +340,7 @@ export class BulkOperationsStore {
     if (enabledKeys.has("account_info")) headers.push("name", "email", "status", "role");
     if (enabledKeys.has("credit_balance")) headers.push("credit_balance_cents");
     if (enabledKeys.has("monthly_products")) headers.push("agent_count");
-    if (enabledKeys.has("lifetime_spend")) headers.push("balance_cents");
+    if (enabledKeys.has("lifetime_spend")) headers.push("lifetime_spend_cents");
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
 
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);

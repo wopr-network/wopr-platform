@@ -1,3 +1,6 @@
+import { rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -175,6 +178,8 @@ describe("StripeUsageReporter", () => {
   let emitter: MeterEmitter;
   let worker: UsageAggregationWorker;
   let tenantStore: TenantCustomerStore;
+  let testWalPath: string;
+  let testDlqPath: string;
 
   const BILLING_PERIOD = 300_000; // 5 minutes
 
@@ -189,9 +194,16 @@ describe("StripeUsageReporter", () => {
   }
 
   beforeEach(() => {
+    const id = Math.random().toString(36).slice(2);
+    testWalPath = join(tmpdir(), `meter-wal-${id}.jsonl`);
+    testDlqPath = join(tmpdir(), `meter-dlq-${id}.jsonl`);
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    emitter = new MeterEmitter(testDb.db, { flushIntervalMs: 60_000 });
+    emitter = new MeterEmitter(testDb.db, {
+      flushIntervalMs: 60_000,
+      walPath: testWalPath,
+      dlqPath: testDlqPath,
+    });
     worker = new UsageAggregationWorker(testDb.db, {
       periodMs: BILLING_PERIOD,
       lateArrivalGraceMs: BILLING_PERIOD,
@@ -204,6 +216,13 @@ describe("StripeUsageReporter", () => {
     worker.stop();
     emitter.close();
     sqlite.close();
+    for (const p of [testWalPath, testDlqPath]) {
+      try {
+        rmSync(p);
+      } catch {
+        // file may not exist
+      }
+    }
   });
 
   it("reports unreported billing periods to Stripe", async () => {
