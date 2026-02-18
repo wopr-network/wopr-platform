@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
+import type { BulkOperationsStore } from "../../admin/bulk/bulk-operations-store.js";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { TenantStatusStore } from "../../admin/tenant-status/tenant-status-store.js";
@@ -27,6 +28,7 @@ export interface AdminRouterDeps {
   getTenantStatusStore: () => TenantStatusStore;
   getBotBilling?: () => BotBilling;
   getAnalyticsStore?: () => AnalyticsStore;
+  getBulkStore?: () => BulkOperationsStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -704,5 +706,115 @@ export const adminRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
       }
       return { csv: getAnalyticsStore().exportCsv(resolveRange(input), input.section) };
+    }),
+
+  // -------------------------------------------------------------------------
+  // Bulk Operations (WOP-418)
+  // -------------------------------------------------------------------------
+
+  /** Get all tenant IDs matching current filters (for "select all matching"). */
+  bulkSelectAll: protectedProcedure
+    .input(
+      z.object({
+        search: z.string().optional(),
+        status: z.enum(VALID_STATUSES).optional(),
+        role: z.enum(VALID_ROLES).optional(),
+        hasCredits: z.boolean().optional(),
+        lowBalance: z.boolean().optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getBulkStore } = deps();
+      if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
+      return { tenantIds: getBulkStore().listMatchingTenantIds(input) };
+    }),
+
+  /** Dry-run: preview which tenants would be affected. */
+  bulkDryRun: protectedProcedure
+    .input(z.object({ tenantIds: z.array(tenantIdSchema).min(1).max(500) }))
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getBulkStore } = deps();
+      if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
+      return { tenants: getBulkStore().dryRun(input.tenantIds) };
+    }),
+
+  /** Mass grant credits. */
+  bulkGrant: protectedProcedure
+    .input(
+      z.object({
+        tenantIds: z.array(tenantIdSchema).min(1).max(500),
+        amountCents: z.number().int().positive().max(100_000_00),
+        reason: z.string().min(1).max(1000),
+        notifyByEmail: z.boolean().default(false),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getBulkStore } = deps();
+      if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
+      return getBulkStore().bulkGrant(input, ctx.user?.id ?? "unknown");
+    }),
+
+  /** Undo a mass grant within 5 minutes. */
+  bulkGrantUndo: protectedProcedure.input(z.object({ operationId: z.string().uuid() })).mutation(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getBulkStore } = deps();
+    if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
+    return getBulkStore().undoGrant(input.operationId, ctx.user?.id ?? "unknown");
+  }),
+
+  /** Mass suspend tenants. */
+  bulkSuspend: protectedProcedure
+    .input(
+      z.object({
+        tenantIds: z.array(tenantIdSchema).min(1).max(500),
+        reason: z.string().min(1).max(1000),
+        notifyByEmail: z.boolean().default(false),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getBulkStore } = deps();
+      if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
+      return getBulkStore().bulkSuspend(input, ctx.user?.id ?? "unknown");
+    }),
+
+  /** Mass reactivate tenants. */
+  bulkReactivate: protectedProcedure
+    .input(z.object({ tenantIds: z.array(tenantIdSchema).min(1).max(500) }))
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getBulkStore } = deps();
+      if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
+      return getBulkStore().bulkReactivate(input, ctx.user?.id ?? "unknown");
+    }),
+
+  /** Mass export to CSV. */
+  bulkExport: protectedProcedure
+    .input(
+      z.object({
+        tenantIds: z.array(tenantIdSchema).min(1).max(500),
+        fields: z.array(
+          z.object({
+            key: z.enum([
+              "account_info",
+              "credit_balance",
+              "monthly_products",
+              "lifetime_spend",
+              "last_seen",
+              "transaction_history",
+            ]),
+            enabled: z.boolean(),
+          }),
+        ),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getBulkStore } = deps();
+      if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
+      return getBulkStore().bulkExport(input, ctx.user?.id ?? "unknown");
     }),
 });
