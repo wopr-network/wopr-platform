@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseS3CmdLsOutput } from "./spaces-client.js";
+import { parseS3CmdLsOutput, SpacesClient } from "./spaces-client.js";
 
 describe("parseS3CmdLsOutput", () => {
   it("parses standard s3cmd ls output", () => {
@@ -39,5 +39,24 @@ describe("parseS3CmdLsOutput", () => {
     const result = parseS3CmdLsOutput(output);
     expect(result).toHaveLength(1);
     expect(result[0].path).toBe("nightly/file.tar.gz");
+  });
+});
+
+describe("SpacesClient.removeMany", () => {
+  it("returns immediately when given an empty array (no s3cmd call)", async () => {
+    // This tests the early-return branch without needing to mock s3cmd
+    const client = new SpacesClient("test-bucket");
+    // Should resolve without error and without calling any external process
+    await expect(client.removeMany([])).resolves.toBeUndefined();
+  });
+});
+
+describe("SpacesClient.list", () => {
+  it("returns empty array when s3cmd is unavailable (error path)", async () => {
+    // s3cmd is not installed in the test environment, so execFileAsync throws.
+    // The catch block in list() handles this gracefully by returning [].
+    const client = new SpacesClient("test-bucket");
+    const result = await client.list("nightly/does-not-exist/");
+    expect(result).toEqual([]);
   });
 });
