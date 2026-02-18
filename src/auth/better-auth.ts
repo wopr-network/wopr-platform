@@ -77,6 +77,21 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
     session: {
       cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
+    advanced: {
+      // Set cookie domain to the root domain so the session cookie is visible
+      // on both app.wopr.bot (the dashboard) and wopr.bot (the marketing domain).
+      // The middleware at src/middleware.ts in wopr-platform-ui checks for this cookie
+      // on wopr.bot to redirect authenticated users to the app — without this, the
+      // redirect is dead code because the cookie would only be scoped to app.wopr.bot.
+      cookiePrefix: "better-auth",
+      cookies: {
+        session_token: {
+          attributes: {
+            domain: process.env.COOKIE_DOMAIN || ".wopr.bot",
+          },
+        },
+      },
+    },
     trustedOrigins: (process.env.UI_ORIGIN || "http://localhost:3001").split(","),
   };
 }

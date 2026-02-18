@@ -150,6 +150,18 @@ vi.mock("../../monetization/credits/credit-ledger.js", () => {
   };
 });
 
+// Mock proxy singleton to avoid real DNS resolution in tests
+vi.mock("../../proxy/singleton.js", () => {
+  return {
+    getProxyManager: () => ({
+      addRoute: vi.fn().mockResolvedValue(undefined),
+      removeRoute: vi.fn(),
+      updateHealth: vi.fn(),
+    }),
+    hydrateProxyRoutes: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 // Import AFTER mocks are set up
 const { fleetRoutes, seedBots } = await import("./fleet.js");
 
