@@ -55,6 +55,21 @@ function isPrivateIPv4(ip: string): boolean {
 }
 
 /**
+ * Returns true if the given IPv4 address is a trusted internal address.
+ * This allows Docker container IPs (172.16.0.0/12) and loopback (127.0.0.0/8 and ::1)
+ * to be used as upstream hosts for internally-routed requests (e.g. WOPR bot containers).
+ */
+function isTrustedInternalIPv4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4) return false;
+  const [a, b] = parts;
+  return (
+    a === 127 || // 127.0.0.0/8  loopback
+    (a === 172 && b >= 16 && b <= 31) // 172.16.0.0/12 Docker default bridge network
+  );
+}
+
+/**
  * Returns true if the given IPv6 address string belongs to a private/reserved range.
  * Normalizes to canonical form first to catch non-standard representations.
  */
@@ -76,13 +91,16 @@ function isPrivateIPv6(ip: string): boolean {
 }
 
 /**
- * Validate that an upstream host is not a private/internal IP address.
+ * Validate that an upstream host is not a private/internal IP address,
+ * unless it is a trusted internal address (loopback or Docker container range).
  * Resolves hostnames via DNS and checks all resolved IPs against private ranges.
- * Throws if the host resolves to or is a private IP.
+ * Throws if the host resolves to or is a non-trusted private IP.
  */
 async function validateUpstreamHost(host: string): Promise<void> {
   const ipVersion = isIP(host);
   if (ipVersion === 4) {
+    // Allow trusted internal IPs (loopback + Docker 172.16.0.0/12)
+    if (isTrustedInternalIPv4(host)) return;
     if (isPrivateIPv4(host)) {
       throw new Error(`Upstream host "${host}" resolves to a private IP address`);
     }
@@ -101,6 +119,14 @@ async function validateUpstreamHost(host: string): Promise<void> {
   // Reject obviously dangerous names first
   if (normalizedHost === "localhost" || normalizedHost.endsWith(".local") || normalizedHost.endsWith(".internal")) {
     throw new Error(`Upstream host "${host}" resolves to a private IP address`);
+  }
+
+  // Allow internal WOPR container hostnames — these resolve to Docker bridge
+  // IPs (172.x.x.x) which are only reachable inside the Docker network.
+  // DNS resolution would fail from the host since the names are only
+  // resolvable via Docker's embedded DNS server.
+  if (/^wopr-[a-z0-9][a-z0-9_-]*$/.test(normalizedHost)) {
+    return;
   }
 
   // Resolve DNS and validate all resulting IPs
@@ -136,6 +162,7 @@ async function validateUpstreamHost(host: string): Promise<void> {
   }
 
   for (const ip of ips) {
+    if (isIP(ip) === 4 && isTrustedInternalIPv4(ip)) continue; // Allow trusted internal IPs
     if (isIP(ip) === 4 && isPrivateIPv4(ip)) {
       throw new Error(`Upstream host "${host}" resolves to a private IP address`);
     }

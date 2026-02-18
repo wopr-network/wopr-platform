@@ -4,7 +4,11 @@ import { app } from "./api/app.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
+import { ProfileStore } from "./fleet/profile-store.js";
 import { getHeartbeatWatchdog, getNodeConnections } from "./fleet/services.js";
+import { hydrateProxyRoutes } from "./proxy/singleton.js";
+
+const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
 const port = config.port;
 
@@ -39,6 +43,10 @@ process.on("uncaughtException", uncaughtExceptionHandler);
 // Only start the server if not imported by tests
 if (process.env.NODE_ENV !== "test") {
   logger.info(`wopr-platform starting on port ${port}`);
+
+  // Hydrate proxy route table from persisted profiles so tenant subdomains
+  // are not lost on server restart.
+  await hydrateProxyRoutes(new ProfileStore(DATA_DIR));
 
   // Start heartbeat watchdog
   getHeartbeatWatchdog().start();

@@ -158,16 +158,20 @@ describe("ProxyManager", () => {
   });
 
   describe("SSRF upstream validation", () => {
-    it("rejects loopback IPv4 (127.0.0.1)", async () => {
-      await expect(manager.addRoute(makeRoute({ upstreamHost: "127.0.0.1" }))).rejects.toThrow("private IP");
+    it("accepts loopback IPv4 (127.0.0.1) as trusted internal", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "127.0.0.1" }))).resolves.toBeUndefined();
     });
 
     it("rejects 10.x.x.x private range", async () => {
       await expect(manager.addRoute(makeRoute({ upstreamHost: "10.0.0.5" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects 172.16.x.x private range", async () => {
-      await expect(manager.addRoute(makeRoute({ upstreamHost: "172.16.0.1" }))).rejects.toThrow("private IP");
+    it("accepts 172.16.x.x Docker container range as trusted internal", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "172.16.0.1" }))).resolves.toBeUndefined();
+    });
+
+    it("accepts 172.31.x.x Docker container range as trusted internal", async () => {
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "172.31.255.254" }))).resolves.toBeUndefined();
     });
 
     it("rejects 192.168.x.x private range", async () => {
@@ -197,9 +201,9 @@ describe("ProxyManager", () => {
   });
 
   describe("DNS rebinding protection", () => {
-    it("rejects hostname resolving to loopback (127.0.0.1)", async () => {
+    it("accepts hostname resolving to loopback (127.0.0.1) as trusted internal", async () => {
       vi.mocked(dnsPromises.resolve4).mockResolvedValue(["127.0.0.1"]);
-      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "container.internal.example" }))).resolves.toBeUndefined();
     });
 
     it("rejects hostname resolving to private 10.x range", async () => {
@@ -207,9 +211,9 @@ describe("ProxyManager", () => {
       await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
     });
 
-    it("rejects hostname resolving to private 172.16.x range", async () => {
+    it("accepts hostname resolving to Docker 172.16.x range as trusted internal", async () => {
       vi.mocked(dnsPromises.resolve4).mockResolvedValue(["172.16.5.1"]);
-      await expect(manager.addRoute(makeRoute({ upstreamHost: "evil.com" }))).rejects.toThrow("private IP");
+      await expect(manager.addRoute(makeRoute({ upstreamHost: "wopr-bot-container.example" }))).resolves.toBeUndefined();
     });
 
     it("rejects hostname resolving to private 192.168.x range", async () => {

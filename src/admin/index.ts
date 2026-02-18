@@ -11,9 +11,27 @@ export type {
 export { AnalyticsStore } from "./analytics/index.js";
 export type { AdminAuditLogRow, AuditCategory, AuditEntry, AuditFilters } from "./audit-log.js";
 export { AdminAuditLog } from "./audit-log.js";
+export type {
+  BulkActionType,
+  BulkExportInput,
+  BulkExportResult,
+  BulkGrantInput,
+  BulkGrantResult,
+  BulkReactivateInput,
+  BulkResult,
+  BulkSuspendInput,
+  ExportField,
+} from "./bulk/bulk-operations-store.js";
+export { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk/bulk-operations-store.js";
+export { initBulkOperationsSchema } from "./bulk/schema.js";
 export type { AdjustmentFilters, AdjustmentType, CreditAdjustment } from "./credits/adjustment-store.js";
 export { BalanceError, CreditAdjustmentStore } from "./credits/adjustment-store.js";
 export { initCreditAdjustmentSchema } from "./credits/schema.js";
+export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
+export { AdminNotesStore } from "./notes/index.js";
+export { initAdminNotesSchema } from "./notes/schema.js";
+export type { NotificationEmailType, NotificationInput, NotificationRow } from "./notifications/index.js";
+export { NotificationQueueStore } from "./notifications/index.js";
 export type {
   ProviderCost,
   ProviderCostFilters,
@@ -24,10 +42,6 @@ export type {
 } from "./rates/rate-store.js";
 export { RateStore } from "./rates/rate-store.js";
 export { initRateSchema } from "./rates/schema.js";
-export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
-export { AdminNotesStore } from "./notes/index.js";
-export type { NotificationEmailType, NotificationInput, NotificationRow } from "./notifications/index.js";
-export { NotificationQueueStore } from "./notifications/index.js";
 export { requirePlatformAdmin, requireTenantAdmin } from "./roles/require-role.js";
 export type { Role, UserRoleRow } from "./roles/role-store.js";
 export { isValidRole, RoleStore } from "./roles/role-store.js";
