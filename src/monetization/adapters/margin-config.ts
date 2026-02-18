@@ -4,6 +4,9 @@
  * Expensive models (Opus at $15/$75 per 1M tokens) need lower margins than
  * cheap models (Haiku at $0.80/$4). This module provides rule-based margin
  * lookup so each provider+model combo can have its own multiplier.
+ *
+ * Production margin values are loaded from the MARGIN_CONFIG_JSON environment
+ * variable. See .env.example for the expected shape.
  */
 
 import { withMargin } from "./types.js";
@@ -40,7 +43,7 @@ export interface MarginConfig {
  */
 function matchesPattern(pattern: string, value: string): boolean {
   if (pattern === "*") return true;
-  if (!pattern.includes("*")) return pattern === value;
+  if (\!pattern.includes("*")) return pattern === value;
 
   // Convert glob pattern to regex: escape regex-special chars, then replace * with .*
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
@@ -71,26 +74,20 @@ export function withMarginConfig(cost: number, config: MarginConfig, provider: s
   return withMargin(cost, margin);
 }
 
-/** Default margin rules -- can be overridden per-deployment via env/config */
-export const DEFAULT_MARGIN_CONFIG: MarginConfig = {
-  defaultMargin: 1.3,
-  rules: [
-    // Self-hosted adapters — low margin because we own the hardware
-    // These come first so they match before third-party rules
-    { provider: "chatterbox-tts", modelPattern: "*", margin: 1.2 },
-    { provider: "self-hosted-llm", modelPattern: "*", margin: 1.15 },
-    { provider: "self-hosted-whisper", modelPattern: "*", margin: 1.2 },
-    { provider: "self-hosted-embeddings", modelPattern: "*", margin: 1.15 },
-    // Expensive models -- lower margin (still profitable at volume)
-    { provider: "openrouter", modelPattern: "anthropic/claude-opus-*", margin: 1.15 },
-    { provider: "openrouter", modelPattern: "anthropic/claude-sonnet-*", margin: 1.2 },
-    { provider: "gemini", modelPattern: "gemini-2.5-pro*", margin: 1.2 },
-    // Cheap models -- higher margin
-    { provider: "openrouter", modelPattern: "anthropic/claude-haiku-*", margin: 1.5 },
-    { provider: "openrouter", modelPattern: "openai/gpt-4o-mini*", margin: 1.5 },
-    { provider: "gemini", modelPattern: "gemini-2.0-flash*", margin: 1.4 },
-    // Voice -- high perceived value
-    { provider: "elevenlabs", modelPattern: "*", margin: 1.5 },
-    { provider: "deepgram", modelPattern: "*", margin: 1.4 },
-  ],
-};
+/**
+ * Load margin configuration from the MARGIN_CONFIG_JSON environment variable.
+ * Falls back to a safe 1.3x default if the variable is not set.
+ *
+ * Set MARGIN_CONFIG_JSON in your environment to override. See .env.example.
+ */
+export function loadMarginConfig(): MarginConfig {
+  const raw = process.env.MARGIN_CONFIG_JSON;
+  if (\!raw) {
+    return { defaultMargin: 1.3, rules: [] };
+  }
+  try {
+    return JSON.parse(raw) as MarginConfig;
+  } catch {
+    throw new Error("MARGIN_CONFIG_JSON is set but is not valid JSON. Check your environment configuration.");
+  }
+}
