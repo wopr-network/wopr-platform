@@ -108,7 +108,7 @@ export class OnDemandSnapshotService {
 
   /** List all non-deleted snapshots for a tenant's bot. */
   list(tenant: string, instanceId: string): Snapshot[] {
-    return this.manager.list(instanceId).filter((s) => s.tenant === tenant);
+    return this.manager.list(instanceId).filter((s) => s.tenant === tenant && !s.deletedAt);
   }
 }
 
