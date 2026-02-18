@@ -118,11 +118,16 @@ export class BulkOperationsStore {
     const errors: Array<{ tenantId: string; error: string }> = [];
     let succeeded = 0;
 
+    const succeededIds: string[] = [];
+
+    // Wrapped in a transaction for batch performance — individual errors are
+    // caught so partial success is expected (this is NOT all-or-nothing).
     this.db.transaction(() => {
       for (const tenantId of input.tenantIds) {
         try {
           this.creditStore.grant(tenantId, input.amountCents, input.reason, adminUser);
           succeeded++;
+          succeededIds.push(tenantId);
         } catch (err) {
           errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
         }
@@ -137,7 +142,7 @@ export class BulkOperationsStore {
         `INSERT INTO bulk_undo_grants (operation_id, tenant_ids, amount_cents, admin_user, created_at, undo_deadline, undone)
          VALUES (?, ?, ?, ?, ?, ?, 0)`,
       )
-      .run(operationId, JSON.stringify(input.tenantIds), input.amountCents, adminUser, now, undoDeadline);
+      .run(operationId, JSON.stringify(succeededIds), input.amountCents, adminUser, now, undoDeadline);
 
     this.auditLog.log({
       adminUser,
@@ -191,7 +196,9 @@ export class BulkOperationsStore {
           errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
         }
       }
-      this.db.prepare("UPDATE bulk_undo_grants SET undone = 1 WHERE operation_id = ?").run(operationId);
+      if (errors.length === 0) {
+        this.db.prepare("UPDATE bulk_undo_grants SET undone = 1 WHERE operation_id = ?").run(operationId);
+      }
     })();
 
     this.auditLog.log({
@@ -333,7 +340,7 @@ export class BulkOperationsStore {
     if (enabledKeys.has("account_info")) headers.push("name", "email", "status", "role");
     if (enabledKeys.has("credit_balance")) headers.push("credit_balance_cents");
     if (enabledKeys.has("monthly_products")) headers.push("agent_count");
-    if (enabledKeys.has("lifetime_spend")) headers.push("lifetime_spend_cents");
+    if (enabledKeys.has("lifetime_spend")) headers.push("balance_cents");
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
 
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
