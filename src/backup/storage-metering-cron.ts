@@ -34,11 +34,13 @@ export async function runStorageMeteringCron(cfg: StorageMeteringCronConfig): Pr
   // Get all active on-demand snapshots
   const activeSnapshots = cfg.manager.listAllActive("on-demand");
 
-  // Group by tenant
+  // Group by tenant, tracking both total bytes and count
   const tenantSizes = new Map<string, number>(); // tenant -> total bytes
+  const tenantCounts = new Map<string, number>(); // tenant -> snapshot count
   for (const snap of activeSnapshots) {
     const bytes = snap.sizeBytes ?? Math.round(snap.sizeMb * 1024 * 1024);
     tenantSizes.set(snap.tenant, (tenantSizes.get(snap.tenant) ?? 0) + bytes);
+    tenantCounts.set(snap.tenant, (tenantCounts.get(snap.tenant) ?? 0) + 1);
     result.snapshotsCounted++;
   }
 
@@ -61,7 +63,7 @@ export async function runStorageMeteringCron(cfg: StorageMeteringCronConfig): Pr
         metadata: {
           type: "monthly-storage",
           totalBytes,
-          snapshotCount: activeSnapshots.filter((s) => s.tenant === tenant).length,
+          snapshotCount: tenantCounts.get(tenant) ?? 0,
         },
       });
 

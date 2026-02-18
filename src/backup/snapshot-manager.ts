@@ -145,6 +145,16 @@ export class SnapshotManager {
         .run();
     } catch (err) {
       await rm(tarPath, { force: true });
+      // Clean up orphaned S3 object if upload succeeded but DB insert failed
+      if (this.spaces && s3Key) {
+        try {
+          await this.spaces.remove(s3Key);
+        } catch (cleanupErr) {
+          logger.warn(`Failed to clean up orphaned S3 object ${s3Key} after DB insert failure`, {
+            err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+          });
+        }
+      }
       throw err;
     }
 
