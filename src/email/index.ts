@@ -13,6 +13,14 @@ export type { BillingEmailServiceConfig, BillingEmailType } from "./billing-emai
 export { BillingEmailService } from "./billing-emails.js";
 export type { EmailClientConfig, EmailSendResult, SendTemplateEmailOpts } from "./client.js";
 export { EmailClient, getEmailClient, resetEmailClient, setEmailClient } from "./client.js";
+export type { NotificationPrefs } from "./notification-preferences-store.js";
+export { NotificationPreferencesStore } from "./notification-preferences-store.js";
+export type { NotificationStatus, QueuedNotification } from "./notification-queue-store.js";
+export { NotificationQueueStore } from "./notification-queue-store.js";
+export { NotificationService } from "./notification-service.js";
+export type { TemplateName as NotificationTemplateName } from "./notification-templates.js";
+export { renderNotificationTemplate } from "./notification-templates.js";
+export { NotificationWorker } from "./notification-worker.js";
 export { requireEmailVerified } from "./require-verified.js";
 export type { EmailOptions } from "./resend-adapter.js";
 export { escapeHtml, sendEmail } from "./resend-adapter.js";

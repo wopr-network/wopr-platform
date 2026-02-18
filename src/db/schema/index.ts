@@ -7,6 +7,7 @@ export * from "./credits.js";
 export * from "./email-notifications.js";
 export * from "./meter-events.js";
 export * from "./nodes.js";
+export * from "./notification-preferences.js";
 export * from "./notification-queue.js";
 export * from "./payram.js";
 export * from "./provider-credentials.js";

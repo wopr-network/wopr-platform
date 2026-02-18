@@ -15,6 +15,8 @@ import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { TenantStatusStore } from "../../admin/tenant-status/tenant-status-store.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
+import type { NotificationQueueStore } from "../../email/notification-queue-store.js";
+import type { NotificationService } from "../../email/notification-service.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { protectedProcedure, router } from "../init.js";
@@ -37,6 +39,8 @@ export interface AdminRouterDeps {
   getBulkStore?: () => BulkOperationsStore;
   getRestoreService?: () => import("../../backup/restore-service.js").RestoreService;
   getRestoreLogStore?: () => import("../../backup/restore-log-store.js").RestoreLogStore;
+  getNotificationService?: () => NotificationService;
+  getNotificationQueueStore?: () => NotificationQueueStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -1141,5 +1145,92 @@ export const adminRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore log store not initialized" });
       }
       return { entries: getRestoreLogStore().listForTenant(input.tenantId, input.limit) };
+    }),
+
+  // -------------------------------------------------------------------------
+  // Notification Management (WOP-417)
+  // -------------------------------------------------------------------------
+
+  /** Send a specific notification template to a tenant (admin override). */
+  notificationSend: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        template: z.string().min(1).max(100),
+        data: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotificationQueueStore, getAuditLog } = deps();
+      const queueStore = getNotificationQueueStore?.();
+      if (!queueStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notification queue not initialized" });
+      }
+
+      const id = queueStore.enqueue(input.tenantId, input.template, input.data ?? {});
+
+      getAuditLog().log({
+        adminUser: ctx.user?.id ?? "unknown",
+        action: "notification.send",
+        category: "support",
+        targetTenant: input.tenantId,
+        details: { template: input.template, notificationId: id },
+      });
+
+      return { notificationId: id };
+    }),
+
+  /** Send a custom email to a tenant. */
+  notificationSendCustom: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        email: z.string().email(),
+        subject: z.string().min(1).max(500),
+        body: z.string().min(1).max(10000),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotificationService, getAuditLog } = deps();
+      const service = getNotificationService?.();
+      if (!service) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notification service not initialized" });
+      }
+
+      service.sendCustomEmail(input.tenantId, input.email, input.subject, input.body);
+
+      getAuditLog().log({
+        adminUser: ctx.user?.id ?? "unknown",
+        action: "notification.custom",
+        category: "support",
+        targetTenant: input.tenantId,
+        details: { subject: input.subject },
+      });
+
+      return { success: true };
+    }),
+
+  /** List notifications sent to a tenant (admin view). */
+  notificationLog: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        status: z.enum(["pending", "sent", "failed"]).optional(),
+        limit: z.number().int().positive().max(250).optional(),
+        offset: z.number().int().min(0).optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotificationQueueStore } = deps();
+      const queueStore = getNotificationQueueStore?.();
+      if (!queueStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notification queue not initialized" });
+      }
+
+      const { tenantId, ...opts } = input;
+      return queueStore.listForTenant(tenantId, opts);
     }),
 });
