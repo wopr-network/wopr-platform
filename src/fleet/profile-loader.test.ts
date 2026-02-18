@@ -90,3 +90,33 @@ image: "ghcr.io/wopr-network/test:stable"
     expect(() => loadProfileTemplates(tmpDir)).toThrow("Invalid profile template");
   });
 });
+
+import { defaultTemplatesDir } from "./profile-loader.js";
+
+describe("defaultTemplatesDir", () => {
+  it("returns FLEET_TEMPLATES_DIR env var when set", () => {
+    const orig = process.env.FLEET_TEMPLATES_DIR;
+    try {
+      process.env.FLEET_TEMPLATES_DIR = "/custom/templates";
+      const dir = defaultTemplatesDir();
+      expect(dir).toBe("/custom/templates");
+    } finally {
+      if (orig === undefined) {
+        delete process.env.FLEET_TEMPLATES_DIR;
+      } else {
+        process.env.FLEET_TEMPLATES_DIR = orig;
+      }
+    }
+  });
+
+  it("returns a path containing 'templates' when env var is not set", () => {
+    const orig = process.env.FLEET_TEMPLATES_DIR;
+    try {
+      delete process.env.FLEET_TEMPLATES_DIR;
+      const dir = defaultTemplatesDir();
+      expect(dir).toContain("templates");
+    } finally {
+      if (orig !== undefined) process.env.FLEET_TEMPLATES_DIR = orig;
+    }
+  });
+});
