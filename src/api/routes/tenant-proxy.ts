@@ -10,8 +10,17 @@ const PLATFORM_DOMAIN = process.env.PLATFORM_DOMAIN || "wopr.bot";
 
 /** Reserved subdomains that should never resolve to a tenant. */
 const RESERVED_SUBDOMAINS = new Set([
-  "app", "api", "staging", "www", "mail", "smtp",
-  "ftp", "admin", "dashboard", "status", "docs",
+  "app",
+  "api",
+  "staging",
+  "www",
+  "mail",
+  "smtp",
+  "ftp",
+  "admin",
+  "dashboard",
+  "status",
+  "docs",
 ]);
 
 /** DNS label rules (RFC 1123) — compiled once at module scope. */
@@ -84,9 +93,7 @@ tenantProxyRoutes.all("/*", async (c) => {
     response = await fetch(targetUrl, {
       method: c.req.method,
       headers: c.req.raw.headers,
-      body: c.req.method !== "GET" && c.req.method !== "HEAD"
-        ? c.req.raw.body
-        : undefined,
+      body: c.req.method !== "GET" && c.req.method !== "HEAD" ? c.req.raw.body : undefined,
       // @ts-expect-error -- duplex needed for streaming request bodies
       duplex: "half",
     });

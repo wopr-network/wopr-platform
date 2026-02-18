@@ -38,10 +38,7 @@ export class RestoreLogStore {
       reason: params.reason ?? null,
     };
 
-    this.db
-      .insert(restoreLog)
-      .values(entry)
-      .run();
+    this.db.insert(restoreLog).values(entry).run();
 
     return entry;
   }

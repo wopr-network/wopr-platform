@@ -57,11 +57,7 @@ export class NotificationQueueStore {
       })
       .run();
 
-    return this.db
-      .select()
-      .from(notificationQueue)
-      .where(eq(notificationQueue.id, id))
-      .get() as NotificationRow;
+    return this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id)).get() as NotificationRow;
   }
 
   /** Get pending notifications ready for sending. */
@@ -82,11 +78,7 @@ export class NotificationQueueStore {
 
   /** Mark a notification as sent. */
   markSent(id: string): void {
-    const row = this.db
-      .select()
-      .from(notificationQueue)
-      .where(eq(notificationQueue.id, id))
-      .get();
+    const row = this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id)).get();
 
     if (!row) return;
 
@@ -105,11 +97,7 @@ export class NotificationQueueStore {
 
   /** Mark a notification as failed with retry logic. */
   markFailed(id: string, error: string): void {
-    const row = this.db
-      .select()
-      .from(notificationQueue)
-      .where(eq(notificationQueue.id, id))
-      .get();
+    const row = this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id)).get();
 
     if (!row) return;
 
@@ -118,7 +106,7 @@ export class NotificationQueueStore {
     const isDeadLetter = newAttempts >= row.maxAttempts;
 
     // Exponential backoff: 1min, 4min, 16min, ...
-    const backoffMinutes = Math.pow(4, newAttempts - 1);
+    const backoffMinutes = 4 ** (newAttempts - 1);
     const retryAfter = isDeadLetter ? null : now + backoffMinutes * 60 * 1000;
 
     this.db

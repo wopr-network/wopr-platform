@@ -49,7 +49,7 @@ export async function sendEmail(
     throw new Error("RESEND_API_KEY environment variable is required");
   }
 
-  const fromEmail = from || process.env.RESEND_FROM_EMAIL || "noreply@wopr.network";
+  const fromEmail = from || process.env.RESEND_FROM_EMAIL || "noreply@wopr.bot";
   const resend = new Resend(key);
 
   const { data, error } = await resend.emails.send({

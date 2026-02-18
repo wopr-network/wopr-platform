@@ -553,8 +553,8 @@ describe("E2E: Billing flow (credit model)", () => {
       body: JSON.stringify({
         tenant: tenantId,
         priceId: "price_credit_25",
-        successUrl: "https://app.wopr.network/billing/success",
-        cancelUrl: "https://app.wopr.network/billing/cancel",
+        successUrl: "https://app.wopr.bot/billing/success",
+        cancelUrl: "https://app.wopr.bot/billing/cancel",
       }),
     });
     expect(checkoutRes.status).toBe(200);
@@ -609,7 +609,7 @@ describe("E2E: Billing flow (credit model)", () => {
       headers: jsonAuth,
       body: JSON.stringify({
         tenant: tenantId,
-        returnUrl: "https://app.wopr.network/settings",
+        returnUrl: "https://app.wopr.bot/settings",
       }),
     });
     expect(portalRes.status).toBe(200);

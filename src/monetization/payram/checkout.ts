@@ -21,7 +21,7 @@ export async function createPayRamCheckout(
   }
 
   const result = await payram.payments.initiatePayment({
-    customerEmail: `${opts.tenant}@wopr.network`,
+    customerEmail: `${opts.tenant}@wopr.bot`,
     customerId: opts.tenant,
     amountInUSD: opts.amountUsd,
   });

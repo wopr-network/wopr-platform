@@ -163,6 +163,17 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           script: docker image prune -f
 
+      - name: Verify domain resolution
+        if: steps.health.outcome != 'failure'
+        run: |
+          for domain in wopr.bot app.wopr.bot api.wopr.bot; do
+            IP=$(dig +short "$domain" @1.1.1.1 | head -1)
+            echo "$domain -> $IP"
+            if [ -z "$IP" ]; then
+              echo "::warning::$domain does not resolve"
+            fi
+          done
+
       - name: Fail workflow if health check failed
         if: steps.health.outcome == 'failure'
         run: |

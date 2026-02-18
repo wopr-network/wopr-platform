@@ -172,7 +172,9 @@ export class RestoreService {
 
       // If the container was already removed, attempt to recover from the pre-restore snapshot.
       if (containerRemoved) {
-        logger.warn(`Container ${containerName} was removed before failure — attempting recovery from ${preRestoreKey}`);
+        logger.warn(
+          `Container ${containerName} was removed before failure — attempting recovery from ${preRestoreKey}`,
+        );
         try {
           await this.nodeConnections.sendCommand(params.nodeId, {
             type: "backup.download",

@@ -29,7 +29,7 @@ describe("generateCaddyConfig", () => {
     expect(routes).toHaveLength(2);
 
     // Subdomain route
-    expect(routes[0].match).toEqual([{ host: ["inst-1.wopr.network"] }]);
+    expect(routes[0].match).toEqual([{ host: ["inst-1.wopr.bot"] }]);
     expect(routes[0].handle).toEqual([{ handler: "reverse_proxy", upstreams: [{ dial: "203.0.113.2:7437" }] }]);
 
     // Path route

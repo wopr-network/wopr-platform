@@ -1,9 +1,9 @@
 import type { CaddyConfig, CaddyRoute, ProxyRoute } from "./types.js";
 
-const DEFAULT_DOMAIN = "wopr.network";
+const DEFAULT_DOMAIN = "wopr.bot";
 
 export interface CaddyConfigOptions {
-  /** Base domain for subdomain routing (default: "wopr.network") */
+  /** Base domain for subdomain routing (default: "wopr.bot") */
   domain?: string;
   /** HTTP listen addresses (default: [":443"]) */
   listenAddresses?: string[];
@@ -17,7 +17,7 @@ function buildProxyRoute(route: ProxyRoute, domain: string): CaddyRoute[] {
   const routes: CaddyRoute[] = [];
 
   if (route.healthy) {
-    // Subdomain route: {instanceId}.wopr.network
+    // Subdomain route: {instanceId}.wopr.bot
     routes.push({
       match: [{ host: [`${route.subdomain}.${domain}`] }],
       handle: [

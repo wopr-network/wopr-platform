@@ -203,7 +203,9 @@ describe("ProxyManager", () => {
   describe("DNS rebinding protection", () => {
     it("accepts hostname resolving to loopback (127.0.0.1) as trusted internal", async () => {
       vi.mocked(dnsPromises.resolve4).mockResolvedValue(["127.0.0.1"]);
-      await expect(manager.addRoute(makeRoute({ upstreamHost: "container.internal.example" }))).resolves.toBeUndefined();
+      await expect(
+        manager.addRoute(makeRoute({ upstreamHost: "container.internal.example" })),
+      ).resolves.toBeUndefined();
     });
 
     it("rejects hostname resolving to private 10.x range", async () => {
@@ -213,7 +215,9 @@ describe("ProxyManager", () => {
 
     it("accepts hostname resolving to Docker 172.16.x range as trusted internal", async () => {
       vi.mocked(dnsPromises.resolve4).mockResolvedValue(["172.16.5.1"]);
-      await expect(manager.addRoute(makeRoute({ upstreamHost: "wopr-bot-container.example" }))).resolves.toBeUndefined();
+      await expect(
+        manager.addRoute(makeRoute({ upstreamHost: "wopr-bot-container.example" })),
+      ).resolves.toBeUndefined();
     });
 
     it("rejects hostname resolving to private 192.168.x range", async () => {

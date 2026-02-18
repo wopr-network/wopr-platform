@@ -17,7 +17,9 @@ function createMockSpaces(): SpacesClient {
 
 function createMockNodeConnections(): NodeConnectionManager {
   return {
-    sendCommand: vi.fn().mockResolvedValue({ id: "cmd-1", type: "command_result", command: "bot.inspect", success: true }),
+    sendCommand: vi
+      .fn()
+      .mockResolvedValue({ id: "cmd-1", type: "command_result", command: "bot.inspect", success: true }),
   } as unknown as NodeConnectionManager;
 }
 
@@ -60,15 +62,25 @@ describe("RestoreService", () => {
       vi.mocked(mockSpaces.list).mockImplementation(async (prefix: string) => {
         if (prefix === "nightly/") {
           return [
-            { date: "2026-02-14T03:00:00Z", size: 10485760, path: "nightly/node-1/tenant_abc/tenant_abc_20260214.tar.gz" },
-            { date: "2026-02-13T03:00:00Z", size: 9437184, path: "nightly/node-1/tenant_abc/tenant_abc_20260213.tar.gz" },
-            { date: "2026-02-14T03:00:00Z", size: 5242880, path: "nightly/node-1/tenant_xyz/tenant_xyz_20260214.tar.gz" },
+            {
+              date: "2026-02-14T03:00:00Z",
+              size: 10485760,
+              path: "nightly/node-1/tenant_abc/tenant_abc_20260214.tar.gz",
+            },
+            {
+              date: "2026-02-13T03:00:00Z",
+              size: 9437184,
+              path: "nightly/node-1/tenant_abc/tenant_abc_20260213.tar.gz",
+            },
+            {
+              date: "2026-02-14T03:00:00Z",
+              size: 5242880,
+              path: "nightly/node-1/tenant_xyz/tenant_xyz_20260214.tar.gz",
+            },
           ];
         }
         if (prefix === "latest/tenant_abc/") {
-          return [
-            { date: "2026-02-14T09:00:00Z", size: 11534336, path: "latest/tenant_abc/latest.tar.gz" },
-          ];
+          return [{ date: "2026-02-14T09:00:00Z", size: 11534336, path: "latest/tenant_abc/latest.tar.gz" }];
         }
         return [];
       });

@@ -1,7 +1,7 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initAdminNotesSchema } from "./schema.js";
 import { AdminNotesStore } from "./notes-store.js";
+import { initAdminNotesSchema } from "./schema.js";
 
 describe("AdminNotesStore", () => {
   let db: BetterSqlite3.Database;

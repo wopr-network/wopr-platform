@@ -65,11 +65,7 @@ export class AdminNotesStore {
   list(filters: AdminNoteFilters): { entries: AdminNote[]; total: number } {
     const where = eq(adminNotes.tenantId, filters.tenantId);
 
-    const countResult = this.db
-      .select({ count: count() })
-      .from(adminNotes)
-      .where(where)
-      .get();
+    const countResult = this.db.select({ count: count() }).from(adminNotes).where(where).get();
     const total = countResult?.count ?? 0;
 
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
@@ -100,11 +96,7 @@ export class AdminNotesStore {
 
   /** Update a note's content or pinned status. Returns null if not found or tenantId mismatch. */
   update(noteId: string, tenantId: string, updates: { content?: string; isPinned?: boolean }): AdminNote | null {
-    const existing = this.db
-      .select()
-      .from(adminNotes)
-      .where(eq(adminNotes.id, noteId))
-      .get();
+    const existing = this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId)).get();
 
     if (!existing) return null;
     if (existing.tenantId !== tenantId) return null;
@@ -115,17 +107,9 @@ export class AdminNotesStore {
     if (updates.content !== undefined) setValues.content = updates.content;
     if (updates.isPinned !== undefined) setValues.isPinned = updates.isPinned ? 1 : 0;
 
-    this.db
-      .update(adminNotes)
-      .set(setValues)
-      .where(eq(adminNotes.id, noteId))
-      .run();
+    this.db.update(adminNotes).set(setValues).where(eq(adminNotes.id, noteId)).run();
 
-    const updated = this.db
-      .select()
-      .from(adminNotes)
-      .where(eq(adminNotes.id, noteId))
-      .get();
+    const updated = this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId)).get();
 
     if (!updated) return null;
 
@@ -142,19 +126,12 @@ export class AdminNotesStore {
 
   /** Delete a note by ID. Returns false if not found or tenantId mismatch. */
   delete(noteId: string, tenantId: string): boolean {
-    const existing = this.db
-      .select()
-      .from(adminNotes)
-      .where(eq(adminNotes.id, noteId))
-      .get();
+    const existing = this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId)).get();
 
     if (!existing) return false;
     if (existing.tenantId !== tenantId) return false;
 
-    const result = this.db
-      .delete(adminNotes)
-      .where(eq(adminNotes.id, noteId))
-      .run();
+    const result = this.db.delete(adminNotes).where(eq(adminNotes.id, noteId)).run();
     return result.changes > 0;
   }
 }
