@@ -1,11 +1,14 @@
-# Reverse proxy for the WOPR platform.
-#
-# Caddy provisions TLS automatically.
-# The {$DOMAIN} placeholder is replaced by the DOMAIN env var (wopr.bot).
-#
-# Wildcard tenant subdomains (*.wopr.bot) are handled by WOP-432/WOP-373.
+# Global options — Cloudflare DNS challenge for wildcard TLS
+{
+	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+}
 
-# Platform UI — app subdomain
+# Landing page — root domain (marketing)
+{$DOMAIN} {
+	reverse_proxy platform-ui:3000
+}
+
+# Platform UI — app subdomain (authenticated dashboard)
 app.{$DOMAIN} {
 	reverse_proxy platform-ui:3000
 }
@@ -15,7 +18,12 @@ api.{$DOMAIN} {
 	reverse_proxy platform-api:3100
 }
 
-# Root domain — redirect to app subdomain (or serve landing page per WOP-372)
-{$DOMAIN} {
-	redir https://app.{$DOMAIN}{uri} permanent
+# Staging — staging subdomain (only active if the staging container exists)
+staging.{$DOMAIN} {
+	reverse_proxy platform-ui-staging:3000
+}
+
+# Tenant subdomain routing — *.wopr.bot → platform-api resolves to container
+*.{$DOMAIN} {
+	reverse_proxy platform-api:3100
 }

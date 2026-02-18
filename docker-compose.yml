@@ -10,7 +10,9 @@
 
 services:
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
     ports:
       - "80:80"
       - "443:443"
@@ -25,7 +27,7 @@ services:
         condition: service_healthy
     environment:
       - DOMAIN=${DOMAIN}
-      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
     restart: unless-stopped
 
   platform-api:
@@ -46,11 +48,12 @@ services:
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - STRIPE_DEFAULT_PRICE_ID=${STRIPE_DEFAULT_PRICE_ID}
       - RESEND_API_KEY=${RESEND_API_KEY}
-      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@wopr.bot}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@wopr.network}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=https://api.${DOMAIN}
       - AUTH_DB_PATH=/data/auth.db
-      - UI_ORIGIN=https://app.${DOMAIN}
+      - UI_ORIGIN=https://${DOMAIN},https://app.${DOMAIN}
+      - PLATFORM_DOMAIN=${DOMAIN}
       - WOPR_BOT_IMAGE=${WOPR_BOT_IMAGE:-ghcr.io/wopr-network/wopr:latest}
       - BACKUP_DB_PATH=/data/platform/backup-status.db
       - S3_BUCKET=${S3_BUCKET:-wopr-backups}
@@ -70,6 +73,7 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=https://api.${DOMAIN}
       - BETTER_AUTH_URL=https://api.${DOMAIN}
+      - NEXT_PUBLIC_APP_DOMAIN=app.${DOMAIN}
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))\""]
       interval: 30s

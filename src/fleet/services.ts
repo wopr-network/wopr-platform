@@ -1,6 +1,9 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { AdminAuditLog } from "../admin/audit-log.js";
+import { RestoreLogStore } from "../backup/restore-log-store.js";
+import { RestoreService } from "../backup/restore-service.js";
+import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
 import * as dbSchema from "../db/schema/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
@@ -80,6 +83,10 @@ export function getMigrationManager() {
 let _doClient: DOClient | null = null;
 let _nodeProvisioner: NodeProvisioner | null = null;
 let _adminAuditLog: AdminAuditLog | null = null;
+let _restoreLogStore: RestoreLogStore | null = null;
+let _restoreService: RestoreService | null = null;
+
+const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
 
 export function getDOClient(): DOClient {
   if (!_doClient) {
@@ -108,4 +115,22 @@ export function getAdminAuditLog(): AdminAuditLog {
     _adminAuditLog = new AdminAuditLog(getDb());
   }
   return _adminAuditLog;
+}
+
+export function getRestoreLogStore(): RestoreLogStore {
+  if (!_restoreLogStore) {
+    _restoreLogStore = new RestoreLogStore(getDb());
+  }
+  return _restoreLogStore;
+}
+
+export function getRestoreService(): RestoreService {
+  if (!_restoreService) {
+    _restoreService = new RestoreService({
+      spaces: new SpacesClient(S3_BUCKET),
+      nodeConnections: getNodeConnections(),
+      restoreLog: getRestoreLogStore(),
+    });
+  }
+  return _restoreService;
 }
