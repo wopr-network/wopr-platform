@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { AdminNotesStore } from "../../admin/notes/store.js";
 import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { TenantStatusStore } from "../../admin/tenant-status/tenant-status-store.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
@@ -27,6 +28,7 @@ export interface AdminRouterDeps {
   getTenantStatusStore: () => TenantStatusStore;
   getBotBilling?: () => BotBilling;
   getAnalyticsStore?: () => AnalyticsStore;
+  getNotesStore?: () => AdminNotesStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -704,5 +706,97 @@ export const adminRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
       }
       return { csv: getAnalyticsStore().exportCsv(resolveRange(input), input.section) };
+    }),
+
+  // -------------------------------------------------------------------------
+  // Admin Notes (WOP-409)
+  // -------------------------------------------------------------------------
+
+  /** List notes for a tenant. */
+  notesList: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        limit: z.number().int().positive().max(250).optional(),
+        offset: z.number().int().min(0).optional(),
+      }),
+    )
+    .query(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore } = deps();
+      if (!getNotesStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
+      }
+      return getNotesStore().list(input);
+    }),
+
+  /** Create a note on a tenant. */
+  notesCreate: protectedProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        content: z.string().min(1).max(10000),
+        isPinned: z.boolean().optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore, getAuditLog } = deps();
+      if (!getNotesStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
+      }
+      const note = getNotesStore().create({
+        tenantId: input.tenantId,
+        authorId: ctx.user?.id ?? "unknown",
+        content: input.content,
+        isPinned: input.isPinned,
+      });
+      getAuditLog().log({
+        adminUser: ctx.user?.id ?? "unknown",
+        action: "note.create",
+        category: "support",
+        targetTenant: input.tenantId,
+        details: { noteId: note.id },
+      });
+      return note;
+    }),
+
+  /** Update a note. */
+  notesUpdate: protectedProcedure
+    .input(
+      z.object({
+        noteId: z.string().min(1),
+        content: z.string().min(1).max(10000).optional(),
+        isPinned: z.boolean().optional(),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore } = deps();
+      if (!getNotesStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
+      }
+      const { noteId, ...updates } = input;
+      const note = getNotesStore().update(noteId, updates);
+      if (!note) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
+      }
+      return note;
+    }),
+
+  /** Delete a note. */
+  notesDelete: protectedProcedure
+    .input(z.object({ noteId: z.string().min(1) }))
+    .mutation(({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user?.roles ?? []);
+      const { getNotesStore } = deps();
+      if (!getNotesStore) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
+      }
+      const deleted = getNotesStore().delete(input.noteId);
+      if (!deleted) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
+      }
+      return { success: true };
     }),
 });

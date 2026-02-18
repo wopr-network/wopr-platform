@@ -1,4 +1,5 @@
 export * from "./admin-audit.js";
+export * from "./admin-notes.js";
 export * from "./audit.js";
 export * from "./backup-status.js";
 export * from "./bot-instances.js";
@@ -6,6 +7,7 @@ export * from "./credits.js";
 export * from "./email-notifications.js";
 export * from "./meter-events.js";
 export * from "./nodes.js";
+export * from "./notification-queue.js";
 export * from "./payram.js";
 export * from "./provider-credentials.js";
 export * from "./rates.js";
@@ -13,3 +15,4 @@ export * from "./recovery-events.js";
 export * from "./snapshots.js";
 export * from "./stripe.js";
 export * from "./tenant-status.js";
+export * from "./user-roles.js";

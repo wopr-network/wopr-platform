@@ -24,6 +24,10 @@ export type {
 } from "./rates/rate-store.js";
 export { RateStore } from "./rates/rate-store.js";
 export { initRateSchema } from "./rates/schema.js";
+export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
+export { AdminNotesStore } from "./notes/index.js";
+export type { NotificationEmailType, NotificationInput, NotificationRow } from "./notifications/index.js";
+export { NotificationQueueStore } from "./notifications/index.js";
 export { requirePlatformAdmin, requireTenantAdmin } from "./roles/require-role.js";
 export type { Role, UserRoleRow } from "./roles/role-store.js";
 export { isValidRole, RoleStore } from "./roles/role-store.js";
