@@ -31,3 +31,6 @@ export { initRolesSchema } from "./roles/schema.js";
 export { initAdminUsersSchema } from "./users/schema.js";
 export type { AdminUserFilters, AdminUserListResponse, AdminUserSummary } from "./users/user-store.js";
 export { AdminUserStore } from "./users/user-store.js";
+export type { AdminNoteRow } from "./notes/notes-store.js";
+export { AdminNotesStore } from "./notes/notes-store.js";
+export { initAdminNotesSchema } from "./notes/schema.js";
