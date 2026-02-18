@@ -1,12 +1,10 @@
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
-import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { SnapshotManager } from "./snapshot-manager.js";
 import type { Snapshot, Tier } from "./types.js";
 import { SNAPSHOT_TIER_POLICIES, STORAGE_CHARGE_PER_GB_MONTH, STORAGE_COST_PER_GB_MONTH } from "./types.js";
 
 export interface OnDemandSnapshotServiceConfig {
   manager: SnapshotManager;
-  meterEmitter: MeterEmitter;
   ledger: CreditLedger;
 }
 
@@ -27,12 +25,10 @@ export interface CreateSnapshotResult {
 
 export class OnDemandSnapshotService {
   private readonly manager: SnapshotManager;
-  private readonly meter: MeterEmitter;
   private readonly ledger: CreditLedger;
 
   constructor(cfg: OnDemandSnapshotServiceConfig) {
     this.manager = cfg.manager;
-    this.meter = cfg.meterEmitter;
     this.ledger = cfg.ledger;
   }
 
@@ -91,25 +87,10 @@ export class OnDemandSnapshotService {
       expiresAt,
     });
 
-    // 5. Emit metering event for the initial storage
+    // Metering is handled exclusively by the storage-metering cron, which runs
+    // periodically and bills for all active on-demand snapshots. Emitting here
+    // as well would cause double-billing.
     const sizeBytes = snapshot.sizeBytes ?? Math.round(snapshot.sizeMb * 1024 * 1024);
-    const sizeGb = sizeBytes / (1024 * 1024 * 1024);
-    this.meter.emit({
-      tenant: params.tenant,
-      cost: sizeGb * STORAGE_COST_PER_GB_MONTH,
-      charge: sizeGb * STORAGE_CHARGE_PER_GB_MONTH,
-      capability: "storage",
-      provider: "do-spaces",
-      timestamp: Date.now(),
-      metadata: {
-        snapshotId: snapshot.id,
-        snapshotName: params.name ?? null,
-        sizeBytes,
-        type: "on-demand",
-        action: "create",
-      },
-    });
-
     const cost = this.estimateCost(sizeBytes);
     return { snapshot, estimatedMonthlyCostCents: cost.monthlyChargeCents };
   }

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
-import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import {
   InsufficientCreditsError,
   OnDemandSnapshotService,
@@ -48,20 +47,15 @@ function makeManager(overrides: Record<string, unknown> = {}): SnapshotManager {
   } as unknown as SnapshotManager;
 }
 
-function makeMeter(): MeterEmitter {
-  return { emit: vi.fn() } as unknown as MeterEmitter;
-}
-
 function makeLedger(balanceCents = 100): CreditLedger {
   return { balance: vi.fn().mockReturnValue(balanceCents) } as unknown as CreditLedger;
 }
 
 function makeService(managerOverrides: Record<string, unknown> = {}, balanceCents = 100) {
   const manager = makeManager(managerOverrides);
-  const meter = makeMeter();
   const ledger = makeLedger(balanceCents);
-  const service = new OnDemandSnapshotService({ manager, meterEmitter: meter, ledger });
-  return { service, manager, meter, ledger };
+  const service = new OnDemandSnapshotService({ manager, ledger });
+  return { service, manager, ledger };
 }
 
 // ---- tests ------------------------------------------------------------------
@@ -135,8 +129,8 @@ describe("OnDemandSnapshotService", () => {
       tier: "free" as Tier,
     };
 
-    it("creates snapshot: calls ledger.balance, checks quota, calls manager.create, emits meter event", async () => {
-      const { service, manager, meter, ledger } = makeService();
+    it("creates snapshot: calls ledger.balance, checks quota, calls manager.create, returns cost estimate", async () => {
+      const { service, manager, ledger } = makeService();
       const result = await service.create(createParams);
 
       expect(ledger.balance).toHaveBeenCalledWith("tenant-a");
@@ -147,13 +141,6 @@ describe("OnDemandSnapshotService", () => {
           instanceId: "bot-1",
           type: "on-demand",
           trigger: "manual",
-        }),
-      );
-      expect(meter.emit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tenant: "tenant-a",
-          capability: "storage",
-          provider: "do-spaces",
         }),
       );
       expect(result.snapshot).toBeDefined();

@@ -8,6 +8,7 @@ import {
 } from "../../backup/on-demand-snapshot-service.js";
 import { createOnDemandSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
+import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 
 /** Only allow safe characters in IDs used for filesystem paths. */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
@@ -24,6 +25,7 @@ if (metadataMap.size === 0) {
 
 // Lazy-initialized service
 let _service: OnDemandSnapshotService | null = null;
+let _tenantStore: TenantCustomerStore | null = null;
 
 function getService(): OnDemandSnapshotService {
   if (!_service) {
@@ -32,14 +34,20 @@ function getService(): OnDemandSnapshotService {
   return _service;
 }
 
+function getTenantStore(): TenantCustomerStore | null {
+  return _tenantStore;
+}
+
 /** Initialize the service with runtime dependencies. */
-export function initBotSnapshotRoutes(service: OnDemandSnapshotService): void {
+export function initBotSnapshotRoutes(service: OnDemandSnapshotService, tenantStore?: TenantCustomerStore): void {
   _service = service;
+  _tenantStore = tenantStore ?? null;
 }
 
 /** Export for testing */
-export function setService(service: OnDemandSnapshotService | null): void {
+export function setService(service: OnDemandSnapshotService | null, tenantStore?: TenantCustomerStore | null): void {
   _service = service;
+  _tenantStore = tenantStore ?? null;
 }
 
 /**
@@ -65,12 +73,6 @@ botSnapshotRoutes.post("/", writeAuth, async (c) => {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
   }
 
-  const tierHeader = c.req.header("X-Tier") || "free";
-  const tier = tierSchema.safeParse(tierHeader);
-  if (!tier.success) {
-    return c.json({ error: "Invalid tier" }, 400);
-  }
-
   // Resolve tenant from token
   let tenantId: string | undefined;
   try {
@@ -80,6 +82,15 @@ botSnapshotRoutes.post("/", writeAuth, async (c) => {
   }
   if (!tenantId) {
     return c.json({ error: "Tenant not identified" }, 401);
+  }
+
+  // Read tier from authenticated tenant record in DB — never trust the client-supplied header
+  const store = getTenantStore();
+  const tenantRecord = store?.getByTenant(tenantId) ?? null;
+  const rawTier = tenantRecord?.tier ?? "free";
+  const tier = tierSchema.safeParse(rawTier);
+  if (!tier.success) {
+    return c.json({ error: "Invalid tier" }, 400);
   }
 
   const userId = c.req.header("X-User-Id") || "system";

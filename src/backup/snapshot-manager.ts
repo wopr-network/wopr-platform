@@ -282,15 +282,21 @@ export class SnapshotManager {
   /**
    * Soft-delete a snapshot: set deletedAt timestamp.
    * Also removes from DO Spaces if s3Key is set.
+   *
+   * If Spaces removal succeeds but the DB update fails, the S3 object is
+   * already gone. In that case we log the orphaned key for manual
+   * reconciliation and re-throw so the caller knows the delete failed.
    */
   async delete(id: string): Promise<boolean> {
     const snapshot = this.get(id);
     if (!snapshot) return false;
 
     // Remove from DO Spaces if available
+    let spacesRemoved = false;
     if (this.spaces && snapshot.s3Key) {
       try {
         await this.spaces.remove(snapshot.s3Key);
+        spacesRemoved = true;
       } catch (err) {
         logger.warn(`Failed to remove snapshot ${id} from Spaces (s3Key=${snapshot.s3Key})`, {
           err: err instanceof Error ? err.message : String(err),
@@ -299,7 +305,18 @@ export class SnapshotManager {
     }
 
     // Soft-delete in SQLite
-    this.db.update(snapshots).set({ deletedAt: Date.now() }).where(eq(snapshots.id, id)).run();
+    try {
+      this.db.update(snapshots).set({ deletedAt: Date.now() }).where(eq(snapshots.id, id)).run();
+    } catch (err) {
+      if (spacesRemoved && snapshot.s3Key) {
+        // S3 object is already deleted but DB record is still active — log for manual reconciliation
+        logger.error(
+          `Orphaned Spaces object after DB soft-delete failure: snapshotId=${id} s3Key=${snapshot.s3Key} — manual reconciliation required`,
+          { err: err instanceof Error ? err.message : String(err) },
+        );
+      }
+      throw err;
+    }
 
     logger.info(`Soft-deleted snapshot ${id}`);
     return true;

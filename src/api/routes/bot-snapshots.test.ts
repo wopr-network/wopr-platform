@@ -74,6 +74,14 @@ vi.mock("../../backup/on-demand-snapshot-service.js", () => {
 // Import AFTER mocks
 const { botSnapshotRoutes, setService } = await import("./bot-snapshots.js");
 
+// Mock TenantCustomerStore: tenant-a is "free" tier
+const mockTenantStore = {
+  getByTenant: vi.fn((tenant: string) => {
+    if (tenant === "tenant-a") return { tier: "free" };
+    return null;
+  }),
+};
+
 // Mount the routes under the expected path pattern
 const app = new Hono();
 app.route("/api/bots/:id/snapshots", botSnapshotRoutes);
@@ -81,12 +89,20 @@ app.route("/api/bots/:id/snapshots", botSnapshotRoutes);
 describe("bot snapshot routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Inject the mocked service
-    setService({
-      create: serviceMock.create,
-      delete: serviceMock.delete,
-      list: serviceMock.list,
-    } as never);
+    // Reset tenant store mock to default (tenant-a = free tier)
+    mockTenantStore.getByTenant.mockImplementation((tenant: string) => {
+      if (tenant === "tenant-a") return { tier: "free" };
+      return null;
+    });
+    // Inject the mocked service and tenant store
+    setService(
+      {
+        create: serviceMock.create,
+        delete: serviceMock.delete,
+        list: serviceMock.list,
+      } as never,
+      mockTenantStore as never,
+    );
   });
 
   // ---------- POST /api/bots/:id/snapshots ----------
@@ -159,13 +175,63 @@ describe("bot snapshot routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 400 for invalid tier header", async () => {
-      const res = await app.request("/api/bots/bot-1/snapshots", {
-        method: "POST",
-        headers: { ...authHeader, "X-Tier": "invalid-tier" },
+    it("ignores invalid X-Tier header — tier is always read from DB", async () => {
+      // The X-Tier header is no longer validated or used; the DB tier ("free") is used instead
+      serviceMock.create.mockResolvedValue({
+        snapshot: mockSnapshot,
+        estimatedMonthlyCostCents: 1,
       });
 
-      expect(res.status).toBe(400);
+      const res = await app.request("/api/bots/bot-1/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader, "X-Tier": "invalid-tier" },
+        body: JSON.stringify({ name: "test" }),
+      });
+
+      // Should succeed using DB tier, not reject because of invalid header
+      expect(res.status).toBe(201);
+      expect(serviceMock.create).toHaveBeenCalledWith(expect.objectContaining({ tier: "free" }));
+    });
+
+    it("ignores X-Tier: enterprise header — tier is read from DB, not the request", async () => {
+      // tenant-a is "free" in the DB; sending enterprise in the header must not upgrade it
+      serviceMock.create.mockResolvedValue({
+        snapshot: mockSnapshot,
+        estimatedMonthlyCostCents: 1,
+      });
+
+      const res = await app.request("/api/bots/bot-1/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader, "X-Tier": "enterprise" },
+        body: JSON.stringify({ name: "bypass-attempt" }),
+      });
+
+      // Request succeeds (tenant-a has credits and free quota not yet exhausted)
+      expect(res.status).toBe(201);
+
+      // The service was called with the DB tier ("free"), NOT the spoofed header value
+      expect(serviceMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({ tier: "free" }),
+      );
+      expect(serviceMock.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ tier: "enterprise" }),
+      );
+    });
+
+    it("quota is enforced using DB tier even when X-Tier: enterprise is sent", async () => {
+      // tenant-a is "free" in the DB (1 on-demand max); simulate quota exceeded for free tier
+      serviceMock.create.mockRejectedValue(new MockSnapshotQuotaExceededError(1, 1, "free"));
+
+      const res = await app.request("/api/bots/bot-1/snapshots", {
+        method: "POST",
+        headers: { ...authHeader, "X-Tier": "enterprise" },
+      });
+
+      // Must be 403 quota exceeded — enterprise header did not bypass the free quota
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe("snapshot_quota_exceeded");
+      expect(body.tier).toBe("free");
     });
 
     it("returns 500 on unexpected manager error", async () => {
