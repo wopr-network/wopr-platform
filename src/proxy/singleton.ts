@@ -1,5 +1,6 @@
-import type { ProfileStore } from "../fleet/profile-store.js";
 import { logger } from "../config/logger.js";
+import type { ProfileStore } from "../fleet/profile-store.js";
+import type { BotProfile } from "../fleet/types.js";
 import { ProxyManager } from "./manager.js";
 
 const PLATFORM_DOMAIN = process.env.PLATFORM_DOMAIN || "wopr.bot";
@@ -20,7 +21,7 @@ export function getProxyManager(): ProxyManager {
  */
 export async function hydrateProxyRoutes(store: ProfileStore): Promise<void> {
   const pm = getProxyManager();
-  let profiles;
+  let profiles: BotProfile[] | undefined;
   try {
     profiles = await store.list();
   } catch (err) {
