@@ -766,6 +766,7 @@ export const adminRouter = router({
     .input(
       z.object({
         noteId: z.string().min(1),
+        tenantId: tenantIdSchema,
         content: z.string().min(1).max(10000).optional(),
         isPinned: z.boolean().optional(),
       }),
@@ -776,26 +777,26 @@ export const adminRouter = router({
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
-      const { noteId, ...updates } = input;
-      const note = getNotesStore().update(noteId, updates);
+      const { noteId, tenantId, ...updates } = input;
+      const note = getNotesStore().update(noteId, tenantId, updates);
       if (!note) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
       return note;
     }),
 
   /** Delete a note. */
   notesDelete: protectedProcedure
-    .input(z.object({ noteId: z.string().min(1) }))
+    .input(z.object({ noteId: z.string().min(1), tenantId: tenantIdSchema }))
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotesStore } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
-      const deleted = getNotesStore().delete(input.noteId);
+      const deleted = getNotesStore().delete(input.noteId, input.tenantId);
       if (!deleted) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
       return { success: true };
     }),

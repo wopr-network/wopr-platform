@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, isNull, lte, or } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { notificationQueue } from "../../db/schema/index.js";
 
@@ -28,11 +28,15 @@ export interface NotificationRow {
   status: string;
   attempts: number;
   maxAttempts: number;
-  lastAttemptAt: string | null;
+  /** Unix epoch ms of last attempt */
+  lastAttemptAt: number | null;
   lastError: string | null;
-  retryAfter: string | null;
-  createdAt: string;
-  sentAt: string | null;
+  /** Unix epoch ms for next retry. Null = immediately eligible. */
+  retryAfter: number | null;
+  /** Unix epoch ms */
+  createdAt: number;
+  /** Unix epoch ms */
+  sentAt: number | null;
 }
 
 export class NotificationQueueStore {
@@ -62,13 +66,14 @@ export class NotificationQueueStore {
 
   /** Get pending notifications ready for sending. */
   getPending(limit = 10): NotificationRow[] {
+    const now = Date.now();
     return this.db
       .select()
       .from(notificationQueue)
       .where(
         and(
           eq(notificationQueue.status, "pending"),
-          sql`(${notificationQueue.retryAfter} IS NULL OR ${notificationQueue.retryAfter} <= datetime('now'))`,
+          or(isNull(notificationQueue.retryAfter), lte(notificationQueue.retryAfter, now)),
         ),
       )
       .limit(limit)
@@ -77,13 +82,22 @@ export class NotificationQueueStore {
 
   /** Mark a notification as sent. */
   markSent(id: string): void {
+    const row = this.db
+      .select()
+      .from(notificationQueue)
+      .where(eq(notificationQueue.id, id))
+      .get();
+
+    if (!row) return;
+
+    const now = Date.now();
     this.db
       .update(notificationQueue)
       .set({
         status: "sent",
-        sentAt: sql`(datetime('now'))`,
-        lastAttemptAt: sql`(datetime('now'))`,
-        attempts: sql`${notificationQueue.attempts} + 1`,
+        sentAt: now,
+        lastAttemptAt: now,
+        attempts: row.attempts + 1,
       })
       .where(eq(notificationQueue.id, id))
       .run();
@@ -99,21 +113,20 @@ export class NotificationQueueStore {
 
     if (!row) return;
 
+    const now = Date.now();
     const newAttempts = row.attempts + 1;
     const isDeadLetter = newAttempts >= row.maxAttempts;
 
     // Exponential backoff: 1min, 4min, 16min, ...
     const backoffMinutes = Math.pow(4, newAttempts - 1);
-    const retryAfter = isDeadLetter
-      ? null
-      : sql`(datetime('now', '+${sql.raw(String(backoffMinutes))} minutes'))`;
+    const retryAfter = isDeadLetter ? null : now + backoffMinutes * 60 * 1000;
 
     this.db
       .update(notificationQueue)
       .set({
         status: isDeadLetter ? "dead_letter" : "failed",
         attempts: newAttempts,
-        lastAttemptAt: sql`(datetime('now'))`,
+        lastAttemptAt: now,
         lastError: error,
         retryAfter,
       })

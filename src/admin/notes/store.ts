@@ -98,8 +98,8 @@ export class AdminNotesStore {
     };
   }
 
-  /** Update a note's content or pinned status. */
-  update(noteId: string, updates: { content?: string; isPinned?: boolean }): AdminNote | null {
+  /** Update a note's content or pinned status. Returns null if not found or tenantId mismatch. */
+  update(noteId: string, tenantId: string, updates: { content?: string; isPinned?: boolean }): AdminNote | null {
     const existing = this.db
       .select()
       .from(adminNotes)
@@ -107,6 +107,7 @@ export class AdminNotesStore {
       .get();
 
     if (!existing) return null;
+    if (existing.tenantId !== tenantId) return null;
 
     const now = Math.floor(Date.now() / 1000);
     const setValues: Record<string, unknown> = { updatedAt: now };
@@ -139,8 +140,17 @@ export class AdminNotesStore {
     };
   }
 
-  /** Delete a note by ID. Returns true if found and deleted. */
-  delete(noteId: string): boolean {
+  /** Delete a note by ID. Returns false if not found or tenantId mismatch. */
+  delete(noteId: string, tenantId: string): boolean {
+    const existing = this.db
+      .select()
+      .from(adminNotes)
+      .where(eq(adminNotes.id, noteId))
+      .get();
+
+    if (!existing) return false;
+    if (existing.tenantId !== tenantId) return false;
+
     const result = this.db
       .delete(adminNotes)
       .where(eq(adminNotes.id, noteId))

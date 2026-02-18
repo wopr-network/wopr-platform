@@ -6,6 +6,8 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
  *
  * Types: low_balance, grace_entered, suspended, receipt, welcome, reactivated
  * States: pending -> sent | failed | dead_letter
+ *
+ * All timestamps are unix epoch milliseconds (integer) to match admin_notes.
  */
 export const notificationQueue = sqliteTable(
   "notification_queue",
@@ -23,14 +25,14 @@ export const notificationQueue = sqliteTable(
     attempts: integer("attempts").notNull().default(0),
     /** Max retry attempts before dead-lettering */
     maxAttempts: integer("max_attempts").notNull().default(3),
-    /** ISO timestamp of last attempt */
-    lastAttemptAt: text("last_attempt_at"),
+    /** Unix epoch ms of last attempt */
+    lastAttemptAt: integer("last_attempt_at"),
     /** Error message from last failed attempt */
     lastError: text("last_error"),
-    /** When to next retry (ISO timestamp). Null = immediately eligible. */
-    retryAfter: text("retry_after"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    sentAt: text("sent_at"),
+    /** When to next retry (unix epoch ms). Null = immediately eligible. */
+    retryAfter: integer("retry_after"),
+    createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
+    sentAt: integer("sent_at"),
   },
   (table) => [
     index("idx_notif_queue_tenant").on(table.tenantId),

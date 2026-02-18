@@ -148,7 +148,7 @@ describe("AdminNotesStore.update", () => {
 
   it("modifies content", () => {
     const note = store.create({ tenantId: "tenant-1", authorId: "admin-1", content: "Original" });
-    const updated = store.update(note.id, { content: "Updated content" });
+    const updated = store.update(note.id, "tenant-1", { content: "Updated content" });
 
     expect(updated).not.toBeNull();
     expect(updated!.content).toBe("Updated content");
@@ -157,17 +157,23 @@ describe("AdminNotesStore.update", () => {
 
   it("toggles isPinned", () => {
     const note = store.create({ tenantId: "tenant-1", authorId: "admin-1", content: "Note", isPinned: false });
-    const pinned = store.update(note.id, { isPinned: true });
+    const pinned = store.update(note.id, "tenant-1", { isPinned: true });
 
     expect(pinned).not.toBeNull();
     expect(pinned!.isPinned).toBe(true);
 
-    const unpinned = store.update(note.id, { isPinned: false });
+    const unpinned = store.update(note.id, "tenant-1", { isPinned: false });
     expect(unpinned!.isPinned).toBe(false);
   });
 
   it("returns null for non-existent noteId", () => {
-    const result = store.update("nonexistent-id", { content: "New content" });
+    const result = store.update("nonexistent-id", "tenant-1", { content: "New content" });
+    expect(result).toBeNull();
+  });
+
+  it("returns null when tenantId does not match", () => {
+    const note = store.create({ tenantId: "tenant-1", authorId: "admin-1", content: "Note" });
+    const result = store.update(note.id, "tenant-2", { content: "Hijacked" });
     expect(result).toBeNull();
   });
 });
@@ -190,7 +196,7 @@ describe("AdminNotesStore.delete", () => {
 
   it("removes the note and returns true", () => {
     const note = store.create({ tenantId: "tenant-1", authorId: "admin-1", content: "Delete me" });
-    const deleted = store.delete(note.id);
+    const deleted = store.delete(note.id, "tenant-1");
 
     expect(deleted).toBe(true);
     const result = store.list({ tenantId: "tenant-1" });
@@ -198,8 +204,17 @@ describe("AdminNotesStore.delete", () => {
   });
 
   it("returns false for non-existent noteId", () => {
-    const result = store.delete("nonexistent-id");
+    const result = store.delete("nonexistent-id", "tenant-1");
     expect(result).toBe(false);
+  });
+
+  it("returns false when tenantId does not match", () => {
+    const note = store.create({ tenantId: "tenant-1", authorId: "admin-1", content: "Delete me" });
+    const result = store.delete(note.id, "tenant-2");
+    expect(result).toBe(false);
+    // Note should still exist
+    const list = store.list({ tenantId: "tenant-1" });
+    expect(list.entries).toHaveLength(1);
   });
 });
 
@@ -290,7 +305,7 @@ describe("admin notes API routes", () => {
     expect(body.content).toBe("Updated");
   });
 
-  it("PATCH /:tenantId/:noteId returns 404 for non-existent note", async () => {
+  it("PATCH /:tenantId/:noteId returns 403 for non-existent note", async () => {
     const app = new Hono();
     app.route("/admin/notes", createAdminNotesApiRoutes(db));
 
@@ -299,7 +314,21 @@ describe("admin notes API routes", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: "Updated" }),
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
+  });
+
+  it("PATCH /:tenantId/:noteId returns 403 when tenantId does not match note owner", async () => {
+    const note = store.create({ tenantId: "tenant-1", authorId: "admin-1", content: "Original" });
+
+    const app = new Hono();
+    app.route("/admin/notes", createAdminNotesApiRoutes(db));
+
+    const res = await app.request(`/admin/notes/tenant-2/${note.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Hijacked" }),
+    });
+    expect(res.status).toBe(403);
   });
 
   it("DELETE /:tenantId/:noteId deletes a note", async () => {
@@ -316,13 +345,25 @@ describe("admin notes API routes", () => {
     expect(body.ok).toBe(true);
   });
 
-  it("DELETE /:tenantId/:noteId returns 404 for non-existent note", async () => {
+  it("DELETE /:tenantId/:noteId returns 403 for non-existent note", async () => {
     const app = new Hono();
     app.route("/admin/notes", createAdminNotesApiRoutes(db));
 
     const res = await app.request("/admin/notes/tenant-1/nonexistent", {
       method: "DELETE",
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
+  });
+
+  it("DELETE /:tenantId/:noteId returns 403 when tenantId does not match note owner", async () => {
+    const note = store.create({ tenantId: "tenant-1", authorId: "admin-1", content: "Delete me" });
+
+    const app = new Hono();
+    app.route("/admin/notes", createAdminNotesApiRoutes(db));
+
+    const res = await app.request(`/admin/notes/tenant-2/${note.id}`, {
+      method: "DELETE",
+    });
+    expect(res.status).toBe(403);
   });
 });

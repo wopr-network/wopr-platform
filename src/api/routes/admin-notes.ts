@@ -3,6 +3,7 @@ import { AdminNotesStore } from "../../admin/notes/store.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { getDb } from "../../fleet/services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
@@ -13,13 +14,15 @@ export interface AdminNotesRouteDeps {
 
 let _notesStore: AdminNotesStore | null = null;
 
+/** Override the store (used in tests or for explicit wiring). */
 export function setAdminNotesDeps(deps: AdminNotesRouteDeps): void {
   _notesStore = new AdminNotesStore(deps.db);
 }
 
+/** Lazily initialize from the platform DB on first request. */
 function getNotesStore(): AdminNotesStore {
   if (!_notesStore) {
-    throw new Error("Admin notes routes not initialized -- call setAdminNotesDeps() first");
+    _notesStore = new AdminNotesStore(getDb());
   }
   return _notesStore;
 }
@@ -87,6 +90,7 @@ function buildRoutes(storeFactory: () => AdminNotesStore): Hono<AuthEnv> {
   // PATCH /:tenantId/:noteId -- update note
   routes.patch("/:tenantId/:noteId", async (c) => {
     const store = storeFactory();
+    const tenantId = c.req.param("tenantId");
     const noteId = c.req.param("noteId");
     let body: Record<string, unknown>;
     try {
@@ -98,8 +102,11 @@ function buildRoutes(storeFactory: () => AdminNotesStore): Hono<AuthEnv> {
     if (typeof body.content === "string") updates.content = body.content;
     if (typeof body.isPinned === "boolean") updates.isPinned = body.isPinned;
     try {
-      const note = store.update(noteId, updates);
-      if (!note) return c.json({ error: "Note not found" }, 404);
+      const note = store.update(noteId, tenantId, updates);
+      if (note === null) {
+        // Could be not found or ownership mismatch — return 403 to avoid leaking note existence
+        return c.json({ error: "Forbidden" }, 403);
+      }
       return c.json(note);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -109,10 +116,11 @@ function buildRoutes(storeFactory: () => AdminNotesStore): Hono<AuthEnv> {
   // DELETE /:tenantId/:noteId -- delete note
   routes.delete("/:tenantId/:noteId", (c) => {
     const store = storeFactory();
+    const tenantId = c.req.param("tenantId");
     const noteId = c.req.param("noteId");
     try {
-      const deleted = store.delete(noteId);
-      if (!deleted) return c.json({ error: "Note not found" }, 404);
+      const deleted = store.delete(noteId, tenantId);
+      if (!deleted) return c.json({ error: "Forbidden" }, 403);
       return c.json({ ok: true });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
