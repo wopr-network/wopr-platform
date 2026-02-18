@@ -18,17 +18,28 @@ function createFileDb(path: string) {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS snapshots (
       id TEXT PRIMARY KEY,
+      tenant TEXT NOT NULL DEFAULT '',
       instance_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      name TEXT,
+      type TEXT NOT NULL DEFAULT 'on-demand' CHECK (type IN ('nightly', 'on-demand', 'pre-restore')),
+      s3_key TEXT,
       size_mb REAL NOT NULL DEFAULT 0,
+      size_bytes INTEGER,
+      node_id TEXT,
       trigger TEXT NOT NULL CHECK (trigger IN ('manual', 'scheduled', 'pre_update')),
       plugins TEXT NOT NULL DEFAULT '[]',
       config_hash TEXT NOT NULL DEFAULT '',
-      storage_path TEXT NOT NULL
+      storage_path TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at INTEGER,
+      deleted_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_snapshots_instance ON snapshots (instance_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_snapshots_user ON snapshots (user_id);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_tenant ON snapshots (tenant);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_type ON snapshots (type);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_expires ON snapshots (expires_at);
   `);
   const db = drizzle(sqlite, { schema });
   return { db, sqlite };
