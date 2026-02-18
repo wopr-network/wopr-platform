@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { DEFAULT_MARGIN_CONFIG, getMargin, type MarginConfig, withMarginConfig } from "./margin-config.js";
+import { describe, expect, it, vi } from "vitest";
+import { getMargin, loadMarginConfig, type MarginConfig, withMarginConfig } from "./margin-config.js";
 
 describe("getMargin", () => {
   const config: MarginConfig = {
@@ -97,22 +97,28 @@ describe("withMarginConfig", () => {
   });
 });
 
-describe("DEFAULT_MARGIN_CONFIG", () => {
-  it("has a default margin of 1.3", () => {
-    expect(DEFAULT_MARGIN_CONFIG.defaultMargin).toBe(1.3);
+describe("loadMarginConfig", () => {
+  it("returns flat 1.3x default with empty rules when MARGIN_CONFIG_JSON is unset", () => {
+    vi.stubEnv("MARGIN_CONFIG_JSON", undefined);
+    const config = loadMarginConfig();
+    expect(config.defaultMargin).toBe(1.3);
+    expect(config.rules).toEqual([]);
+    vi.unstubAllEnvs();
   });
 
-  it("has rules for openrouter, gemini, elevenlabs, and deepgram", () => {
-    const providers = new Set(DEFAULT_MARGIN_CONFIG.rules.map((r) => r.provider));
-    expect(providers).toContain("openrouter");
-    expect(providers).toContain("gemini");
-    expect(providers).toContain("elevenlabs");
-    expect(providers).toContain("deepgram");
+  it("parses MARGIN_CONFIG_JSON when set", () => {
+    const margin = { defaultMargin: 1.25, rules: [{ provider: "elevenlabs", modelPattern: "*", margin: 1.6 }] };
+    vi.stubEnv("MARGIN_CONFIG_JSON", JSON.stringify(margin));
+    const config = loadMarginConfig();
+    expect(config.defaultMargin).toBe(1.25);
+    expect(config.rules).toHaveLength(1);
+    expect(config.rules[0].margin).toBe(1.6);
+    vi.unstubAllEnvs();
   });
 
-  it("gives expensive models lower margins than cheap models", () => {
-    const opusMargin = getMargin(DEFAULT_MARGIN_CONFIG, "openrouter", "anthropic/claude-opus-4");
-    const haikuMargin = getMargin(DEFAULT_MARGIN_CONFIG, "openrouter", "anthropic/claude-haiku-3.5");
-    expect(opusMargin).toBeLessThan(haikuMargin);
+  it("throws on invalid JSON", () => {
+    vi.stubEnv("MARGIN_CONFIG_JSON", "{not valid json}");
+    expect(() => loadMarginConfig()).toThrow("MARGIN_CONFIG_JSON is set but is not valid JSON");
+    vi.unstubAllEnvs();
   });
 });
