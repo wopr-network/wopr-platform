@@ -5,89 +5,10 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  check_run:
+    types: [completed]
 
 jobs:
-  check-and-trigger:
-    # Fire when greptile or coderabbit post on a PR
-    if: |
-      (github.event.comment.user.login == 'greptile-apps[bot]' ||
-       github.event.comment.user.login == 'coderabbitai[bot]') &&
-      github.event.issue.pull_request != null
-    runs-on: [self-hosted, Linux, X64]
-    permissions:
-      contents: write
-      pull-requests: write
-      issues: write
-    steps:
-      - name: Check for auto-fixing label
-        id: label-check
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            if (labels.some(l => l.name === 'auto-fixing')) {
-              console.log('auto-fixing label present, skipping');
-              core.setOutput('skip', 'true');
-            } else {
-              core.setOutput('skip', 'false');
-            }
-
-      - name: Add auto-fixing label
-        if: steps.label-check.outputs.skip == 'false'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              labels: ['auto-fixing'],
-            });
-
-      # Wait to give the other reviewer a chance to post before Claude reads comments.
-      # If coderabbit is rate-limited or absent, we still proceed after the window.
-      - name: Wait for other reviewers (3 min window)
-        if: steps.label-check.outputs.skip == 'false'
-        run: sleep 180
-
-      - name: Trigger Claude to fix all review feedback
-        if: steps.label-check.outputs.skip == 'false'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Collect which reviewers actually posted so Claude knows what to read
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              per_page: 100,
-            });
-            const hasGreptile = comments.some(c => c.user.login === 'greptile-apps[bot]');
-            const hasCodeRabbit = comments.some(c => c.user.login === 'coderabbitai[bot]');
-
-            const reviewers = [
-              hasGreptile && '`greptile-apps[bot]`',
-              hasCodeRabbit && '`coderabbitai[bot]`',
-            ].filter(Boolean).join(' and ');
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `@claude Please fix all issues raised by the reviewers on this PR.
-
-            Feedback available from: ${reviewers}
-
-            Steps:
-            1. Read every comment from ${reviewers} on this PR
-            2. Fix every issue they flagged — bugs, security concerns, TypeScript issues, missing error handling, test gaps
-            3. Commit and push fixes to this branch
-            4. Remove the \`auto-fixing\` label from this PR
-            5. Run \`gh pr merge --auto --squash --repo ${{ github.repository }} ${context.issue.number}\` to queue it for merge
-
-            Do not skip issues. If a reviewer flags something, fix it or leave a clear explanation as a PR comment.`,
-            });
+  auto-fix:
+    uses: wopr-network/.github/.github/workflows/auto-fix.yml@main
+    secrets: inherit
