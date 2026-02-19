@@ -16,30 +16,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm lint
 
   build:
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
   unit-test:
     runs-on: [self-hosted, Linux, X64]
@@ -50,15 +54,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Unit tests with coverage
-        run: npm run test:coverage
+        run: pnpm test:coverage
 
       - name: Upload test results
         if: always()
@@ -90,15 +96,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Integration tests
-        run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/integration-junit.xml "src/**/*.integration.test.ts"
+        run: pnpm exec vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/integration-junit.xml "src/**/*.integration.test.ts"
         continue-on-error: true
 
       - name: Upload integration test results
@@ -116,15 +124,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: E2E tests
-        run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/e2e-junit.xml "src/**/*.e2e.test.ts"
+        run: pnpm exec vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/e2e-junit.xml "src/**/*.e2e.test.ts"
         continue-on-error: true
 
       - name: Upload E2E test results
@@ -135,4 +145,3 @@ jobs:
           path: test-results/e2e-junit.xml
           retention-days: 30
           if-no-files-found: ignore
-
