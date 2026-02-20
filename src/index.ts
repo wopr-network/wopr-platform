@@ -1,12 +1,26 @@
 import { serve } from "@hono/node-server";
+import Database from "better-sqlite3";
 import { WebSocketServer } from "ws";
+import { RateStore } from "./admin/rates/rate-store.js";
+import { initRateSchema } from "./admin/rates/schema.js";
 import { app } from "./api/app.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
+import { buildTokenMetadataMap } from "./auth/index.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
+import { createDb } from "./db/index.js";
 import { ProfileStore } from "./fleet/profile-store.js";
 import { getHeartbeatWatchdog, getNodeConnections } from "./fleet/services.js";
+import { mountGateway } from "./gateway/index.js";
+import { createCachedRateLookup } from "./gateway/rate-lookup.js";
+import type { GatewayTenant } from "./gateway/types.js";
+import { BudgetChecker } from "./monetization/budget/budget-checker.js";
+import { CreditLedger } from "./monetization/credits/credit-ledger.js";
+import { MeterEmitter } from "./monetization/metering/emitter.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
+
+const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
+const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
@@ -43,6 +57,60 @@ process.on("uncaughtException", uncaughtExceptionHandler);
 // Only start the server if not imported by tests
 if (process.env.NODE_ENV !== "test") {
   logger.info(`wopr-platform starting on port ${port}`);
+
+  // ── Gateway wiring ──────────────────────────────────────────────────────────
+  // Mount /v1/* gateway routes. Must be done before serve() so routes are
+  // registered. Provider API keys are optional — omitting one disables that
+  // capability silently (gateway returns 503 for unconfigured providers).
+  {
+    const billingDb = new Database(BILLING_DB_PATH);
+    billingDb.pragma("journal_mode = WAL");
+    const billingDrizzle = createDb(billingDb);
+
+    const ratesDb = new Database(RATES_DB_PATH);
+    ratesDb.pragma("journal_mode = WAL");
+    initRateSchema(ratesDb);
+    const rateStore = new RateStore(ratesDb);
+
+    const meter = new MeterEmitter(billingDrizzle);
+    const budgetChecker = new BudgetChecker(billingDrizzle);
+    const creditLedger = new CreditLedger(billingDrizzle);
+
+    // Build resolveServiceKey from FLEET_TOKEN_<TENANT>=<scope>:<token> env vars.
+    // The same tokens that authenticate the fleet API also authenticate gateway calls.
+    const tokenMetadata = buildTokenMetadataMap();
+    const resolveServiceKey = (key: string): GatewayTenant | null => {
+      const meta = tokenMetadata.get(key);
+      if (!meta?.tenantId) return null;
+      return {
+        id: meta.tenantId,
+        // Unlimited spend limits at key resolution — BudgetChecker enforces per-tenant
+        // limits against actual meter_events at call time.
+        spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null },
+      };
+    };
+
+    mountGateway(app, {
+      meter,
+      budgetChecker,
+      creditLedger,
+      providers: {
+        openrouter: process.env.OPENROUTER_API_KEY ? { apiKey: process.env.OPENROUTER_API_KEY } : undefined,
+        deepgram: process.env.DEEPGRAM_API_KEY ? { apiKey: process.env.DEEPGRAM_API_KEY } : undefined,
+        elevenlabs: process.env.ELEVENLABS_API_KEY ? { apiKey: process.env.ELEVENLABS_API_KEY } : undefined,
+        replicate: process.env.REPLICATE_API_TOKEN ? { apiToken: process.env.REPLICATE_API_TOKEN } : undefined,
+        twilio:
+          process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+            ? { accountSid: process.env.TWILIO_ACCOUNT_SID, authToken: process.env.TWILIO_AUTH_TOKEN }
+            : undefined,
+        telnyx: process.env.TELNYX_API_KEY ? { apiKey: process.env.TELNYX_API_KEY } : undefined,
+      },
+      rateLookupFn: createCachedRateLookup(rateStore.getSellRateByModel.bind(rateStore)),
+      resolveServiceKey,
+    });
+
+    logger.info("Gateway mounted at /v1");
+  }
 
   // Hydrate proxy route table from persisted profiles so tenant subdomains
   // are not lost on server restart.

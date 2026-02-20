@@ -79,7 +79,7 @@ describe("resolveTokenRates", () => {
     const lookupFn: SellRateLookupFn = () => rate;
     const rates = resolveTokenRates(lookupFn, "chat-completions", "anthropic/claude-3.5-sonnet");
     expect(rates.inputRatePer1K).toBe(0.015);
-    expect(rates.outputRatePer1K).toBe(0.03); // 2x the input rate
+    expect(rates.outputRatePer1K).toBe(0.015); // blended rate applied equally to both
   });
 
   it("handles unit containing 'input' — sets only inputRatePer1K", () => {
@@ -103,6 +103,6 @@ describe("resolveTokenRates", () => {
     const lookupFn: SellRateLookupFn = () => rate;
     const rates = resolveTokenRates(lookupFn, "chat-completions", "some-model");
     expect(rates.inputRatePer1K).toBe(0.005);
-    expect(rates.outputRatePer1K).toBe(0.01); // 2x
+    expect(rates.outputRatePer1K).toBe(0.005); // blended rate applied equally to both
   });
 });

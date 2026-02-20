@@ -84,9 +84,12 @@ export function resolveTokenRates(
     return { inputRatePer1K: DEFAULT_TOKEN_RATES.inputRatePer1K, outputRatePer1K: rate.price_usd };
   }
 
-  // Single blended rate — use it for input, 2x for output (industry standard ratio)
+  // Single blended rate — apply to both input and output tokens.
+  // TODO: add separate "1K-input-tokens" / "1K-output-tokens" rows per model in sell_rates
+  // to correctly reflect models with non-1:1 output ratios (e.g., Claude Opus 4 is 5:1).
+  // Using the blended rate for both avoids the incorrect 2x assumption that was here before.
   return {
     inputRatePer1K: rate.price_usd,
-    outputRatePer1K: rate.price_usd * 2,
+    outputRatePer1K: rate.price_usd,
   };
 }
