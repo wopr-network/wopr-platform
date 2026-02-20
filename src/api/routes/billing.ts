@@ -301,6 +301,9 @@ billingRoutes.post("/setup-intent", adminAuth, async (c) => {
 
   try {
     const intent = await createSetupIntent(stripe, store, { tenant: parsedTenant.data });
+    if (!intent.client_secret) {
+      return c.json({ error: "Failed to create setup intent" }, 500);
+    }
     return c.json({ clientSecret: intent.client_secret });
   } catch (err) {
     const message = err instanceof Error ? err.message : "SetupIntent creation failed";
@@ -326,6 +329,11 @@ billingRoutes.delete("/payment-methods/:id", adminAuth, async (c) => {
   // Get tenant from query param or token
   const tenant = c.req.query("tenant");
   const tokenTenantId = c.get("tokenTenantId");
+
+  if (tokenTenantId && tenant && tenant !== tokenTenantId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   const effectiveTenant = tokenTenantId ?? tenant;
 
   if (!effectiveTenant) {
