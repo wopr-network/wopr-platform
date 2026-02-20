@@ -17,6 +17,8 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -78,6 +80,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     needs: build-and-push
     environment: production
+    permissions: {}
     steps:
       - name: Record previous image SHA tag
         id: previous

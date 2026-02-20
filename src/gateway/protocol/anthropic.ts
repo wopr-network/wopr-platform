@@ -68,9 +68,7 @@ function anthropicAuth(resolveServiceKey: (key: string) => GatewayTenant | null)
 
     const tenant = resolveServiceKey(key);
     if (!tenant) {
-      logger.warn("Invalid service key attempted (anthropic handler)", {
-        keyPrefix: `${key.slice(0, 8)}...`,
-      });
+      logger.warn("Invalid service key attempted (anthropic handler)");
       return c.json(
         {
           type: "error",
