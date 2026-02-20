@@ -64,6 +64,9 @@ export const billingRouter = router({
   /** Get credits balance for a tenant. Tenant defaults to ctx.tenantId when omitted. */
   creditsBalance: protectedProcedure.input(z.object({ tenant: tenantIdSchema.optional() })).query(({ input, ctx }) => {
     const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+    if (ctx.tenantId && tenant !== ctx.tenantId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
+    }
     const { creditStore } = deps();
     const balance = creditStore.getBalance(tenant);
     return { tenant, balance_cents: balance };
@@ -84,6 +87,9 @@ export const billingRouter = router({
     .query(({ input, ctx }) => {
       const { creditStore } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (ctx.tenantId && tenant !== ctx.tenantId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
+      }
       const { tenant: _t, ...filters } = { ...input, tenant };
       return creditStore.listTransactions(tenant, filters);
     }),
@@ -102,6 +108,9 @@ export const billingRouter = router({
       const { stripe, tenantStore } = deps();
       const { createCreditCheckoutSession } = await import("../../monetization/stripe/checkout.js");
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (ctx.tenantId && tenant !== ctx.tenantId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
+      }
       const session = await createCreditCheckoutSession(stripe as never, tenantStore, { ...input, tenant });
       return { url: session.url, sessionId: session.id };
     }),
@@ -113,6 +122,9 @@ export const billingRouter = router({
       const { stripe, tenantStore } = deps();
       const { createPortalSession } = await import("../../monetization/stripe/portal.js");
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (ctx.tenantId && tenant !== ctx.tenantId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
+      }
       const session = await createPortalSession(stripe as never, tenantStore, { ...input, tenant });
       return { url: session.url };
     }),
