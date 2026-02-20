@@ -207,7 +207,7 @@ describe("tRPC appRouter", () => {
 
     it("creditsBalance returns 0 for new tenant", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.billing.creditsBalance({ tenant: "new-tenant" });
+      const result = await caller.billing.creditsBalance({ tenant: "test-tenant" });
       expect(result.balance_cents).toBe(0);
     });
 
@@ -241,7 +241,7 @@ describe("tRPC appRouter", () => {
 
     it("creditsHistory returns transactions", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.billing.creditsHistory({ tenant: "new-tenant" });
+      const result = await caller.billing.creditsHistory({ tenant: "test-tenant" });
       expect(result.entries).toEqual([]);
     });
 

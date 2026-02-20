@@ -95,6 +95,7 @@ function purgeExpiredStates(): void {
 interface CompletedOAuth {
   token: string;
   provider: string;
+  userId: string;
   createdAt: number;
 }
 
@@ -247,6 +248,7 @@ channelOAuthRoutes.get("/callback", async (c) => {
     completedTokens.set(state, {
       token: accessToken,
       provider: pending.provider,
+      userId: pending.userId,
       createdAt: Date.now(),
     });
 
@@ -298,6 +300,11 @@ channelOAuthRoutes.get("/poll", async (c) => {
     return c.json({ status: "pending" });
   }
 
+  // Ownership check: only the user who initiated the flow can retrieve the token
+  if (completed.userId !== user.id) {
+    return c.json({ status: "pending" });
+  }
+
   if (Date.now() - completed.createdAt > COMPLETED_TTL_MS) {
     completedTokens.delete(state);
     return c.json({ status: "expired" });
@@ -321,6 +328,16 @@ function extractAccessToken(provider: string, data: Record<string, unknown>): st
   }
 }
 
+/** Escape a string for safe interpolation into HTML. */
+function htmlEscape(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Generate an HTML page that communicates back to the opener window.
  * On success, posts `{ type: "wopr-oauth-callback", status: "success", state }`.
@@ -337,7 +354,7 @@ function callbackHtml(status: "success" | "error", payload: string): string {
 <html>
 <head><title>OAuth Callback</title></head>
 <body>
-<p>${status === "success" ? "Authorization successful. This window will close." : `Error: ${payload}`}</p>
+<p>${status === "success" ? "Authorization successful. This window will close." : `Error: ${htmlEscape(payload)}`}</p>
 <script>
   if (window.opener) {
     window.opener.postMessage(${message}, window.location.origin);
