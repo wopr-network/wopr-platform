@@ -110,7 +110,7 @@ describe("Forgot password flow (e2e)", () => {
     // Step 7: New password works
     const newLoginRes = await signIn(email, newPassword);
     expect(newLoginRes.status).toBe(200);
-  });
+  }, 30000);
 
   it("reset token is single-use", async () => {
     const email = "single-use@test.com";

@@ -260,7 +260,7 @@ export const platformRateLimitRules: RateLimitRule[] = [
   { method: "POST", pathPrefix: "/api/auth/sign-up", config: AUTH_SIGNUP_LIMIT },
 
   // Auth: password reset abuse prevention — 3 req/hr per IP (WOP-839)
-  { method: "POST", pathPrefix: "/api/auth/forget-password", config: AUTH_RESET_LIMIT },
+  { method: "POST", pathPrefix: "/api/auth/request-password-reset", config: AUTH_RESET_LIMIT },
 
   // Secrets validation — most restrictive, check first
   { method: "POST", pathPrefix: "/api/validate-key", config: SECRETS_VALIDATION_LIMIT },
