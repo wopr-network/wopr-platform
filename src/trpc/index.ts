@@ -7,6 +7,7 @@
  */
 
 import { router } from "./init.js";
+import { accountRouter } from "./routers/account.js";
 import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
 import { capabilitiesRouter } from "./routers/capabilities.js";
@@ -16,6 +17,7 @@ import { twoFactorRouter } from "./routers/two-factor.js";
 import { usageRouter } from "./routers/usage.js";
 
 export const appRouter = router({
+  account: accountRouter,
   billing: billingRouter,
   capabilities: capabilitiesRouter,
   credentials: credentialsRouter,
@@ -30,6 +32,7 @@ export type AppRouter = typeof appRouter;
 
 // Re-export context type for adapter usage
 export type { TRPCContext } from "./init.js";
+export { setAccountRouterDeps } from "./routers/account.js";
 export { setAdminRouterDeps } from "./routers/admin.js";
 // Re-export dep setters for initialization
 export { setBillingRouterDeps } from "./routers/billing.js";

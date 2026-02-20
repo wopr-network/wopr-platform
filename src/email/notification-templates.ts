@@ -32,6 +32,10 @@ export type NotificationTemplateName =
   | "channel-disconnected"
   | "agent-suspended"
   | "custom"
+  // Account deletion lifecycle
+  | "account-deletion-requested"
+  | "account-deletion-cancelled"
+  | "account-deletion-completed"
   // Passthrough to existing templates
   | "low-balance"
   | "credit-purchase-receipt"
@@ -416,6 +420,71 @@ function agentSuspendedTemplate(data: Record<string, unknown>): TemplateResult {
   };
 }
 
+function accountDeletionRequestedTemplate(data: Record<string, unknown>): TemplateResult {
+  const email = escapeHtml((data.email as string) || "");
+  const deleteAfterDate = escapeHtml((data.deleteAfterDate as string) || "");
+  const cancelUrl = (data.cancelUrl as string) || "";
+
+  const parts = [
+    heading("Account Deletion Requested"),
+    paragraph(
+      `<p>Hi <strong>${email}</strong>,</p>` +
+        `<p>We've received your request to delete your WOPR account and all associated data.</p>` +
+        `<p>Your account will be permanently deleted on <strong>${deleteAfterDate}</strong>. Until then, you can cancel this request and keep your account.</p>` +
+        `<p>After that date, all your data will be permanently and irreversibly removed, including bots, conversation history, credit records, and plugin configurations.</p>`,
+    ),
+  ];
+  if (cancelUrl) parts.push(button(cancelUrl, "Cancel Deletion", "#22c55e"));
+  parts.push(footer("If you did not request this, please contact support@wopr.bot immediately."));
+
+  return {
+    subject: "Your WOPR account deletion request",
+    html: wrapHtml("Account Deletion Requested", parts.join("\n")),
+    text: `Account Deletion Requested\n\nHi ${data.email as string},\n\nWe've received your request to delete your WOPR account and all associated data.\n\nYour account will be permanently deleted on ${data.deleteAfterDate as string}. Until then, you can cancel this request.\n\nAfter that date, all your data will be permanently and irreversibly removed.\n${cancelUrl ? `\nCancel deletion: ${cancelUrl}\n` : ""}If you did not request this, please contact support@wopr.bot immediately.${copyright()}`,
+  };
+}
+
+function accountDeletionCancelledTemplate(data: Record<string, unknown>): TemplateResult {
+  const email = escapeHtml((data.email as string) || "");
+
+  const parts = [
+    heading("Account Deletion Cancelled"),
+    paragraph(
+      `<p>Hi <strong>${email}</strong>,</p>` +
+        `<p>Your account deletion request has been cancelled. Your account and all data remain intact.</p>` +
+        `<p>No further action is needed.</p>`,
+    ),
+    footer("If you didn't cancel this, please contact support@wopr.bot."),
+  ];
+
+  return {
+    subject: "Your WOPR account deletion has been cancelled",
+    html: wrapHtml("Account Deletion Cancelled", parts.join("\n")),
+    text: `Account Deletion Cancelled\n\nHi ${data.email as string},\n\nYour account deletion request has been cancelled. Your account and all data remain intact.\n\nNo further action is needed.${copyright()}`,
+  };
+}
+
+function accountDeletionCompletedTemplate(data: Record<string, unknown>): TemplateResult {
+  const email = escapeHtml((data.email as string) || "");
+
+  const parts = [
+    heading("Your Account Has Been Deleted"),
+    paragraph(
+      `<p>Hi <strong>${email}</strong>,</p>` +
+        `<p>Your WOPR account and all associated data have been permanently deleted as requested.</p>` +
+        `<p>This includes all bots, conversation history, credit records, billing data, and plugin configurations.</p>` +
+        `<p>If you'd like to use WOPR again in the future, you're welcome to create a new account.</p>`,
+    ),
+    footer("Thank you for using WOPR. We're sorry to see you go."),
+  ];
+
+  return {
+    subject: "Your WOPR account has been deleted",
+    html: wrapHtml("Account Deleted", parts.join("\n")),
+    text: `Your Account Has Been Deleted\n\nHi ${data.email as string},\n\nYour WOPR account and all associated data have been permanently deleted as requested.\n\nThis includes all bots, conversation history, credit records, billing data, and plugin configurations.\n\nIf you'd like to use WOPR again in the future, you're welcome to create a new account.${copyright()}`,
+  };
+}
+
 function customTemplate(data: Record<string, unknown>): TemplateResult {
   const subject = (data.subject as string) || "Message from WOPR";
   const rawBody = (data.bodyText as string) || "";
@@ -477,6 +546,12 @@ export function renderNotificationTemplate(template: TemplateName, data: Record<
       return agentSuspendedTemplate(data);
     case "custom":
       return customTemplate(data);
+    case "account-deletion-requested":
+      return accountDeletionRequestedTemplate(data);
+    case "account-deletion-cancelled":
+      return accountDeletionCancelledTemplate(data);
+    case "account-deletion-completed":
+      return accountDeletionCompletedTemplate(data);
     case "low-balance":
       return {
         subject: "Your WOPR credits are running low",
