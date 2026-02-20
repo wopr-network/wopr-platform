@@ -39,7 +39,7 @@ export function auditCredentialEncryption(db: Database.Database): PlaintextFindi
     } catch {
       // Not valid JSON = likely plaintext
       const leaks = scanForKeyLeaks(row.encrypted_value);
-      if (leaks.length > 0 || row.encrypted_value.length > 0) {
+      if (leaks.length > 0 || row.encrypted_value.trim().length > 0) {
         findings.push({
           table: "provider_credentials",
           column: "encrypted_value",
@@ -70,7 +70,7 @@ export function auditCredentialEncryption(db: Database.Database): PlaintextFindi
         }
       } catch {
         const leaks = scanForKeyLeaks(row.encrypted_key);
-        if (leaks.length > 0 || row.encrypted_key.length > 0) {
+        if (leaks.length > 0 || row.encrypted_key.trim().length > 0) {
           findings.push({
             table: "tenant_api_keys",
             column: "encrypted_key",
@@ -80,7 +80,8 @@ export function auditCredentialEncryption(db: Database.Database): PlaintextFindi
         }
       }
     }
-  } catch {
+  } catch (err) {
+    if (!(err instanceof Error && err.message.includes("no such table"))) throw err;
     // Table doesn't exist yet — that's fine
   }
 

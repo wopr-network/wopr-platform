@@ -101,7 +101,8 @@ export function migratePlaintextCredentials(
     }
 
     results.push(tenantResult);
-  } catch {
+  } catch (err) {
+    if (!(err instanceof Error && err.message.includes("no such table"))) throw err;
     // Table doesn't exist
   }
 

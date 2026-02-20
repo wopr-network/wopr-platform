@@ -91,7 +91,8 @@ export function reEncryptAllCredentials(db: Database.Database, oldSecret: string
         result.tenantKeys.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-  } catch {
+  } catch (err) {
+    if (!(err instanceof Error && err.message.includes("no such table"))) throw err;
     // Table doesn't exist yet — fine
   }
 
