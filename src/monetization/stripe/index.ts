@@ -10,8 +10,12 @@ export {
 } from "./credit-prices.js";
 export type { MeterValidatorOpts, ValidationMode, ValidationResult } from "./meter-validator.js";
 export { validateStripeMeters } from "./meter-validator.js";
+export type { DetachPaymentMethodOpts } from "./payment-methods.js";
+export { detachPaymentMethod } from "./payment-methods.js";
 export { createPortalSession } from "./portal.js";
 export { initStripeSchema } from "./schema.js";
+export type { SetupIntentOpts } from "./setup-intent.js";
+export { createSetupIntent } from "./setup-intent.js";
 export { TenantCustomerStore } from "./tenant-store.js";
 export type {
   CreditCheckoutOpts,

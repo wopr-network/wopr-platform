@@ -16,7 +16,9 @@ import { handlePayRamWebhook, PayRamReplayGuard } from "../../monetization/payra
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
+import { detachPaymentMethod, PaymentMethodOwnershipError } from "../../monetization/stripe/payment-methods.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
+import { createSetupIntent } from "../../monetization/stripe/setup-intent.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
 import { handleWebhookEvent, WebhookReplayGuard } from "../../monetization/stripe/webhook.js";
@@ -96,6 +98,16 @@ const usageQuerySchema = z.object({
   startDate: z.coerce.number().int().positive().optional(),
   endDate: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
+});
+
+const paymentMethodIdSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .regex(/^pm_[a-zA-Z0-9_]+$/);
+
+const detachPaymentMethodParamsSchema = z.object({
+  id: paymentMethodIdSchema,
 });
 
 const cryptoCheckoutBodySchema = z.object({
@@ -262,6 +274,81 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
     return c.json({ url: session.url });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Portal session creation failed";
+    return c.json({ error: message }, 500);
+  }
+});
+
+/**
+ * POST /billing/setup-intent
+ *
+ * Create a Stripe SetupIntent for saving a payment method.
+ * Tenant is resolved from the auth token context (consistent with DELETE /payment-methods/:id).
+ * Returns: { clientSecret }
+ */
+billingRoutes.post("/setup-intent", adminAuth, async (c) => {
+  const { stripe } = getDeps();
+  const store = getTenantStore();
+
+  const tokenTenantId = c.get("tokenTenantId");
+  if (!tokenTenantId) {
+    return c.json({ error: "Missing tenant" }, 400);
+  }
+
+  const parsedTenant = tenantIdSchema.safeParse(tokenTenantId);
+  if (!parsedTenant.success) {
+    return c.json({ error: "Invalid tenant" }, 400);
+  }
+
+  try {
+    const intent = await createSetupIntent(stripe, store, { tenant: parsedTenant.data });
+    return c.json({ clientSecret: intent.client_secret });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "SetupIntent creation failed";
+    return c.json({ error: message }, 500);
+  }
+});
+
+/**
+ * DELETE /billing/payment-methods/:id
+ *
+ * Detach a payment method from the tenant's Stripe customer.
+ */
+billingRoutes.delete("/payment-methods/:id", adminAuth, async (c) => {
+  const { stripe } = getDeps();
+  const store = getTenantStore();
+
+  const id = c.req.param("id");
+  const parsedId = detachPaymentMethodParamsSchema.safeParse({ id });
+  if (!parsedId.success) {
+    return c.json({ error: "Invalid payment method ID" }, 400);
+  }
+
+  // Get tenant from query param or token
+  const tenant = c.req.query("tenant");
+  const tokenTenantId = c.get("tokenTenantId");
+  const effectiveTenant = tokenTenantId ?? tenant;
+
+  if (!effectiveTenant) {
+    return c.json({ error: "Missing tenant" }, 400);
+  }
+
+  // Validate tenant format
+  const parsedTenant = tenantIdSchema.safeParse(effectiveTenant);
+  if (!parsedTenant.success) {
+    return c.json({ error: "Invalid tenant" }, 400);
+  }
+
+  try {
+    await detachPaymentMethod(stripe, store, {
+      tenant: parsedTenant.data,
+      paymentMethodId: parsedId.data.id,
+    });
+    return c.json({ removed: true });
+  } catch (err) {
+    if (err instanceof PaymentMethodOwnershipError) {
+      return c.json({ error: err.message }, 403);
+    }
+    const message = err instanceof Error ? err.message : "Failed to remove payment method";
     return c.json({ error: message }, 500);
   }
 });

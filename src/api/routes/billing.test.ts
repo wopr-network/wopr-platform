@@ -10,11 +10,17 @@ import { initPayRamSchema } from "../../monetization/payram/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 
-// Set env var BEFORE importing billing routes so bearer auth uses this token
+// Set env vars BEFORE importing billing routes so bearer auth uses these tokens
 const TEST_TOKEN = "test-billing-token";
+const TEST_TENANT_TOKEN = "test-billing-tenant-t1-token";
+const TEST_TENANT_UNKNOWN_TOKEN = "test-billing-tenant-unknown-token";
 vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
+vi.stubEnv("FLEET_TOKEN_t-1", `admin:${TEST_TENANT_TOKEN}`);
+vi.stubEnv("FLEET_TOKEN_t-unknown", `admin:${TEST_TENANT_UNKNOWN_TOKEN}`);
 
 const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
+const tenantT1AuthHeader = { Authorization: `Bearer ${TEST_TENANT_TOKEN}` };
+const tenantUnknownAuthHeader = { Authorization: `Bearer ${TEST_TENANT_UNKNOWN_TOKEN}` };
 
 // Import AFTER env stub
 const { billingRoutes, setBillingDeps, resetSignatureFailurePenalties } = await import("./billing.js");
@@ -35,6 +41,9 @@ function createMockStripe(
     checkoutCreate?: ReturnType<typeof vi.fn>;
     portalCreate?: ReturnType<typeof vi.fn>;
     constructEvent?: ReturnType<typeof vi.fn>;
+    setupIntentCreate?: ReturnType<typeof vi.fn>;
+    paymentMethodRetrieve?: ReturnType<typeof vi.fn>;
+    paymentMethodDetach?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   return {
@@ -59,6 +68,23 @@ function createMockStripe(
     },
     webhooks: {
       constructEvent: overrides.constructEvent ?? vi.fn(),
+    },
+    setupIntents: {
+      create:
+        overrides.setupIntentCreate ??
+        vi.fn().mockResolvedValue({
+          id: "seti_test_123",
+          client_secret: "seti_test_123_secret_abc",
+        }),
+    },
+    paymentMethods: {
+      retrieve:
+        overrides.paymentMethodRetrieve ??
+        vi.fn().mockResolvedValue({
+          id: "pm_test_123",
+          customer: "cus_abc123",
+        }),
+      detach: overrides.paymentMethodDetach ?? vi.fn().mockResolvedValue({ id: "pm_test_123" }),
     },
   } as unknown as Stripe;
 }
@@ -951,6 +977,177 @@ describe("billing routes", () => {
       });
 
       expect(res.status).not.toBe(401);
+    });
+  });
+
+  // -- POST /setup-intent ----------------------------------------------------
+
+  describe("POST /setup-intent", () => {
+    it("creates setup intent and returns client secret", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const setupIntentCreate = vi.fn().mockResolvedValue({
+        id: "seti_test_123",
+        client_secret: "seti_test_123_secret_abc",
+      });
+      const mockStripe = createMockStripe({ setupIntentCreate });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      // tenant is resolved from auth context (tokenTenantId), not from request body
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.clientSecret).toBe("seti_test_123_secret_abc");
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for invalid JSON body (no tenant in auth context)", async () => {
+      // Legacy token (TEST_TOKEN) has no tenantId in context — route returns 400 Missing tenant
+      // before it ever attempts to parse the body
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        body: "not-json",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Missing tenant");
+    });
+
+    it("returns 400 for missing tenant", async () => {
+      // Legacy token (TEST_TOKEN) has no tenantId in auth context — route returns 400 Missing tenant
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Missing tenant");
+    });
+
+    it("returns 500 when tenant has no Stripe customer", async () => {
+      // t-unknown has no Stripe customer in the store
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        headers: { ...tenantUnknownAuthHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain("No Stripe customer found");
+    });
+
+    it("returns 500 when Stripe API fails", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const setupIntentCreate = vi.fn().mockRejectedValue(new Error("Stripe is down"));
+      const mockStripe = createMockStripe({ setupIntentCreate });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      // tenant is resolved from auth context (tokenTenantId)
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe("Stripe is down");
+    });
+  });
+
+  // -- DELETE /payment-methods/:id -------------------------------------------
+
+  describe("DELETE /payment-methods/:id", () => {
+    it("detaches payment method and returns removed=true", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const paymentMethodRetrieve = vi.fn().mockResolvedValue({
+        id: "pm_test_123",
+        customer: "cus_abc123",
+      });
+      const paymentMethodDetach = vi.fn().mockResolvedValue({ id: "pm_test_123" });
+      const mockStripe = createMockStripe({ paymentMethodRetrieve, paymentMethodDetach });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.removed).toBe(true);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for invalid payment method ID format", async () => {
+      const res = await billingRoutes.request("/payment-methods/invalid_id?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Invalid payment method ID");
+    });
+
+    it("returns 403 when payment method belongs to another tenant", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const paymentMethodRetrieve = vi.fn().mockResolvedValue({
+        id: "pm_test_123",
+        customer: "cus_other_customer",
+      });
+      const mockStripe = createMockStripe({ paymentMethodRetrieve });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toContain("does not belong");
+    });
+
+    it("returns 500 when Stripe API fails", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const paymentMethodRetrieve = vi.fn().mockRejectedValue(new Error("Stripe error"));
+      const mockStripe = createMockStripe({ paymentMethodRetrieve });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe("Stripe error");
     });
   });
 });
