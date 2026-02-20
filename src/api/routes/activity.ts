@@ -4,7 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuditEnv } from "../../audit/types.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createDb } from "../../db/index.js";
+import { applyPlatformPragmas, createDb } from "../../db/index.js";
 import { auditLog } from "../../db/schema/index.js";
 
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
@@ -13,7 +13,7 @@ let _db: DrizzleDb | null = null;
 function getDb(): DrizzleDb {
   if (!_db) {
     const sqlite = new Database(AUDIT_DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
+    applyPlatformPragmas(sqlite);
     _db = createDb(sqlite);
   }
   return _db;

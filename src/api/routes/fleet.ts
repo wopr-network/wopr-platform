@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
-import { createDb } from "../../db/index.js";
+import { applyPlatformPragmas, createDb } from "../../db/index.js";
 import { requireEmailVerified } from "../../email/require-verified.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
@@ -28,7 +28,7 @@ let _authDb: Database.Database | null = null;
 function getAuthDb(): Database.Database {
   if (!_authDb) {
     _authDb = new Database(AUTH_DB_PATH);
-    _authDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(_authDb);
   }
   return _authDb;
 }
@@ -49,7 +49,7 @@ let creditLedger: CreditLedger | null = null;
 function getBillingDb(): Database.Database {
   if (!billingDb) {
     billingDb = new Database(BILLING_DB_PATH);
-    billingDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(billingDb);
   }
   return billingDb;
 }
@@ -183,7 +183,10 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
     try {
       getBotBilling().registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
     } catch (regErr) {
-      logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
+      logger.warn("Bot billing registration failed (non-fatal)", {
+        botId: profile.id,
+        err: regErr,
+      });
     }
 
     // Register proxy route for tenant subdomain routing
@@ -197,7 +200,10 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
         healthy: true,
       });
     } catch (proxyErr) {
-      logger.warn("Proxy route registration failed (non-fatal)", { botId: profile.id, err: proxyErr });
+      logger.warn("Proxy route registration failed (non-fatal)", {
+        botId: profile.id,
+        err: proxyErr,
+      });
     }
 
     return c.json(profile, 201);

@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { Hono } from "hono";
 import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { createDb } from "../../db/index.js";
+import { applyPlatformPragmas, createDb } from "../../db/index.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
@@ -23,7 +23,7 @@ let ledger: CreditLedger | null = null;
 function getLedger(): CreditLedger {
   if (!ledger) {
     const db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
+    applyPlatformPragmas(db);
     ledger = new CreditLedger(createDb(db));
   }
   return ledger;
