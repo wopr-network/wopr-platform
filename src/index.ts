@@ -94,6 +94,7 @@ if (process.env.NODE_ENV !== "test") {
       meter,
       budgetChecker,
       creditLedger,
+      billingDb: billingDrizzle,
       providers: {
         openrouter: process.env.OPENROUTER_API_KEY ? { apiKey: process.env.OPENROUTER_API_KEY } : undefined,
         deepgram: process.env.DEEPGRAM_API_KEY ? { apiKey: process.env.DEEPGRAM_API_KEY } : undefined,
@@ -107,6 +108,28 @@ if (process.env.NODE_ENV !== "test") {
       },
       rateLookupFn: createCachedRateLookup(rateStore.getSellRateByModel.bind(rateStore)),
       resolveServiceKey,
+      capabilityRateLimitConfig: {
+        llm: Number(process.env.GATEWAY_RATE_LIMIT_LLM ?? 60),
+        imageGen: Number(process.env.GATEWAY_RATE_LIMIT_IMAGE ?? 10),
+        audioSpeech: Number(process.env.GATEWAY_RATE_LIMIT_AUDIO ?? 30),
+        telephony: Number(process.env.GATEWAY_RATE_LIMIT_TELEPHONY ?? 100),
+      },
+      circuitBreakerConfig: {
+        maxRequestsPerWindow: Number(process.env.GATEWAY_CIRCUIT_BREAKER_MAX ?? 100),
+        windowMs: Number(process.env.GATEWAY_CIRCUIT_BREAKER_WINDOW_MS ?? 10_000),
+        pauseDurationMs: Number(process.env.GATEWAY_CIRCUIT_BREAKER_PAUSE_MS ?? 300_000),
+      },
+      onCircuitBreakerTrip: (tenantId, instanceId, requestCount) => {
+        logger.warn("Circuit breaker tripped", { tenantId, instanceId, requestCount });
+        meter.emit({
+          tenant: tenantId,
+          cost: 0,
+          charge: 0,
+          capability: "circuit-breaker-trip",
+          provider: "gateway",
+          timestamp: Date.now(),
+        });
+      },
     });
 
     logger.info("Gateway mounted at /v1");

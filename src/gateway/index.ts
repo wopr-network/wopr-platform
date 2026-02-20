@@ -6,8 +6,20 @@
  * providers, meters usage, and responds.
  */
 
+export {
+  type CapabilityRateLimitConfig,
+  capabilityRateLimit,
+  DEFAULT_CAPABILITY_LIMITS,
+  resolveCapabilityCategory,
+} from "./capability-rate-limit.js";
+export {
+  type CircuitBreakerConfig,
+  circuitBreaker,
+  DEFAULT_CIRCUIT_BREAKER_CONFIG,
+  getCircuitStates,
+} from "./circuit-breaker.js";
 export { type CreditGateDeps, creditBalanceCheck, debitCredits } from "./credit-gate.js";
-export { mapBudgetError, mapProviderError } from "./error-mapping.js";
+export { mapBudgetError, mapCircuitBreakerError, mapProviderError, mapSpendingCapError } from "./error-mapping.js";
 export { gatewayHealthHandler } from "./health.js";
 export { modelsHandler } from "./models.js";
 export {
@@ -32,6 +44,7 @@ export {
 } from "./proxy.js";
 export { createGatewayRoutes } from "./routes.js";
 export { type GatewayAuthEnv, serviceKeyAuth } from "./service-key-auth.js";
+export { type SpendingCapConfig, type SpendingCaps, spendingCapCheck } from "./spending-cap.js";
 export { proxySSEStream } from "./streaming.js";
 export { validateTwilioSignature } from "./twilio-signature.js";
 export type {
