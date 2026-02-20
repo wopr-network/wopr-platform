@@ -34,7 +34,8 @@ const MAX_CALL_DURATION_MINUTES = 240;
 
 const phoneInboundBodySchema = z.object({
   call_sid: z.string().optional(),
-  duration_minutes: z.number().min(0).max(MAX_CALL_DURATION_MINUTES).optional(),
+  // Twilio sends all fields as strings in form-encoded bodies; coerce to number.
+  duration_minutes: z.coerce.number().min(0).max(MAX_CALL_DURATION_MINUTES).optional(),
   status: z.string().optional(),
 });
 
@@ -44,13 +45,15 @@ const smsInboundBodySchema = z.object({
   to: z.string(),
   body: z.string(),
   media_url: z.array(z.string().url()).optional(),
-  num_media: z.number().int().min(0).optional(),
+  // Twilio sends numeric fields as strings in form-encoded bodies; coerce to number.
+  num_media: z.coerce.number().int().min(0).optional(),
 });
 
 const smsDeliveryStatusBodySchema = z.object({
   message_sid: z.string(),
   message_status: z.string(),
-  error_code: z.number().nullable().optional(),
+  // Twilio sends numeric fields as strings in form-encoded bodies; coerce to number.
+  error_code: z.coerce.number().nullable().optional(),
   error_message: z.string().nullable().optional(),
 });
 
@@ -945,7 +948,9 @@ export function phoneInbound(deps: ProxyDeps) {
     const providerName = deps.providers.twilio ? "twilio" : "telnyx";
 
     try {
-      const rawBody = await c.req.json();
+      // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
+      // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
+      const rawBody = c.get("webhookBody") ?? (await c.req.json());
       const parsed = phoneInboundBodySchema.safeParse(rawBody);
       if (!parsed.success) {
         logger.warn("Gateway proxy: phone/inbound invalid body", {
@@ -1135,7 +1140,9 @@ export function smsInbound(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
 
     try {
-      const rawBody = await c.req.json();
+      // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
+      // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
+      const rawBody = c.get("webhookBody") ?? (await c.req.json());
       const parsed = smsInboundBodySchema.safeParse(rawBody);
       if (!parsed.success) {
         logger.warn("Gateway proxy: messages/sms/inbound invalid body", {
@@ -1189,7 +1196,9 @@ export function smsDeliveryStatus(_deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
 
     try {
-      const rawBody = await c.req.json();
+      // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
+      // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
+      const rawBody = c.get("webhookBody") ?? (await c.req.json());
       const parsed = smsDeliveryStatusBodySchema.safeParse(rawBody);
       if (!parsed.success) {
         logger.warn("Gateway proxy: messages/sms/status invalid body", {

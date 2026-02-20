@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { rateLimit } from "../api/middleware/rate-limit.js";
+import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { modelsHandler } from "./models.js";
 import { createAnthropicRoutes } from "./protocol/anthropic.js";
@@ -65,6 +66,16 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   // --- Webhook routes (Twilio HMAC signature auth, NOT Bearer) ---
   // These MUST be registered BEFORE the serviceKeyAuth("/*") middleware.
   // Twilio sends X-Twilio-Signature headers, not Bearer tokens.
+  if (config.webhookBaseUrl && !config.resolveTenantFromWebhook) {
+    logger.warn(
+      "Gateway: webhookBaseUrl is set but resolveTenantFromWebhook is missing — Twilio webhook routes will not be registered and webhooks will receive 404",
+    );
+  }
+  if (config.resolveTenantFromWebhook && !config.webhookBaseUrl) {
+    logger.warn(
+      "Gateway: resolveTenantFromWebhook is set but webhookBaseUrl is missing — Twilio webhook routes will not be registered and webhooks will receive 404",
+    );
+  }
   if (config.providers.twilio?.authToken && config.webhookBaseUrl && config.resolveTenantFromWebhook) {
     const webhookAuth = createTwilioWebhookAuth({
       twilioAuthToken: config.providers.twilio.authToken,

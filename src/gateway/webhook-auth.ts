@@ -89,12 +89,18 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
     // Strip the base path prefix from the request path so we don't double it
     const relativePath = reqPath.startsWith(basePath) ? reqPath.slice(basePath.length) : reqPath;
 
-    // Full URL = webhookBaseUrl (no trailing slash) + relative path
-    const fullUrl = config.webhookBaseUrl.replace(/\/$/, "") + relativePath;
+    // Full URL = webhookBaseUrl (no trailing slash) + relative path + query string
+    // Twilio's HMAC algorithm includes the complete URL with all query parameters.
+    const fullUrl = config.webhookBaseUrl.replace(/\/$/, "") + relativePath + parsedReq.search;
 
     // Parse body params for signature verification.
     // Twilio sends application/x-www-form-urlencoded; we also support JSON for adapters/testing.
+    //
+    // We track two things:
+    //   params     — scalar string values used for Twilio HMAC signature computation
+    //   fullBody   — the complete parsed body passed to downstream handlers
     let params: Record<string, string> = {};
+    let fullBody: Record<string, unknown> = {};
     const contentType = c.req.header("content-type") ?? "";
     try {
       if (contentType.includes("application/x-www-form-urlencoded")) {
@@ -102,12 +108,14 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
         const urlParams = new URLSearchParams(text);
         for (const [key, value] of urlParams.entries()) {
           params[key] = value;
+          fullBody[key] = value;
         }
       } else {
         // JSON body — stringify all top-level scalar values for signature computation.
         // Twilio normally sends form-encoded data, so all values are strings.
         // For JSON adapters/testing, coerce scalars to strings to match Twilio's algorithm.
         const json = await c.req.json<Record<string, unknown>>();
+        fullBody = json;
         for (const [key, value] of Object.entries(json)) {
           if (value !== null && value !== undefined && !Array.isArray(value) && typeof value !== "object") {
             params[key] = String(value);
@@ -117,6 +125,7 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
     } catch {
       // Empty or unparseable body — use empty params
       params = {};
+      fullBody = {};
     }
 
     // Verify Twilio HMAC-SHA1 signature
@@ -157,6 +166,9 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
     }
 
     c.set("gatewayTenant", tenant);
+    // Store the full parsed body so downstream handlers can read it without
+    // consuming the already-drained request body stream a second time.
+    c.set("webhookBody", fullBody);
     return next();
   };
 }

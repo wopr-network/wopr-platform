@@ -13,6 +13,7 @@ import type { GatewayTenant } from "./types.js";
 export interface GatewayAuthEnv {
   Variables: {
     gatewayTenant: GatewayTenant;
+    webhookBody: Record<string, unknown>;
   };
 }
 
