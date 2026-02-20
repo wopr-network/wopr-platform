@@ -317,3 +317,98 @@ describe("platform rate limit rules", () => {
     expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Auth endpoint rate limits (WOP-839)
+// ---------------------------------------------------------------------------
+
+describe("auth endpoint rate limits (WOP-839)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function buildPlatformApp() {
+    const app = new Hono();
+    app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
+    // Auth routes
+    app.post("/api/auth/sign-in/email", (c) => c.json({ ok: true }));
+    app.post("/api/auth/sign-up/email", (c) => c.json({ ok: true }));
+    app.post("/api/auth/forget-password", (c) => c.json({ ok: true }));
+    return app;
+  }
+
+  it("locks out after 5 login attempts within 15 minutes", async () => {
+    const app = buildPlatformApp();
+    for (let i = 0; i < 5; i++) {
+      expect((await app.request(postReq("/api/auth/sign-in/email"))).status).toBe(200);
+    }
+    const res = await app.request(postReq("/api/auth/sign-in/email"));
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body.error).toContain("login attempts");
+  });
+
+  it("returns rate limit headers on auth login responses", async () => {
+    const app = buildPlatformApp();
+    const res = await app.request(postReq("/api/auth/sign-in/email"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("5");
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("4");
+    expect(res.headers.get("X-RateLimit-Reset")).toBeTruthy();
+  });
+
+  it("returns Retry-After header on login lockout", async () => {
+    const app = buildPlatformApp();
+    for (let i = 0; i < 5; i++) {
+      await app.request(postReq("/api/auth/sign-in/email"));
+    }
+    const res = await app.request(postReq("/api/auth/sign-in/email"));
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
+  });
+
+  it("resets login limit after 15-minute window", async () => {
+    const app = buildPlatformApp();
+    for (let i = 0; i < 5; i++) {
+      await app.request(postReq("/api/auth/sign-in/email"));
+    }
+    expect((await app.request(postReq("/api/auth/sign-in/email"))).status).toBe(429);
+
+    // Advance past the 15-minute window
+    vi.advanceTimersByTime(15 * 60 * 1000 + 1);
+
+    expect((await app.request(postReq("/api/auth/sign-in/email"))).status).toBe(200);
+  });
+
+  it("tracks login attempts per IP independently", async () => {
+    const app = buildPlatformApp();
+    // Exhaust limit for IP 10.0.0.1
+    for (let i = 0; i < 5; i++) {
+      await app.request(postReq("/api/auth/sign-in/email", "10.0.0.1"));
+    }
+    expect((await app.request(postReq("/api/auth/sign-in/email", "10.0.0.1"))).status).toBe(429);
+
+    // Different IP should still be allowed
+    expect((await app.request(postReq("/api/auth/sign-in/email", "10.0.0.2"))).status).toBe(200);
+  });
+
+  it("limits signup to 10 per hour per IP", async () => {
+    const app = buildPlatformApp();
+    for (let i = 0; i < 10; i++) {
+      expect((await app.request(postReq("/api/auth/sign-up/email"))).status).toBe(200);
+    }
+    expect((await app.request(postReq("/api/auth/sign-up/email"))).status).toBe(429);
+  });
+
+  it("limits password reset to 3 per hour per IP", async () => {
+    const app = buildPlatformApp();
+    for (let i = 0; i < 3; i++) {
+      expect((await app.request(postReq("/api/auth/forget-password"))).status).toBe(200);
+    }
+    expect((await app.request(postReq("/api/auth/forget-password"))).status).toBe(429);
+  });
+});

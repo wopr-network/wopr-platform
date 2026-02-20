@@ -227,11 +227,41 @@ const FLEET_READ_LIMIT: RateLimitConfig = { max: 120 };
 /** Default for everything else: 60 req/min */
 const DEFAULT_LIMIT: RateLimitConfig = { max: 60 };
 
+/** Auth login: 5 failed attempts per 15 minutes (WOP-839) */
+const AUTH_LOGIN_LIMIT: RateLimitConfig = {
+  max: 5,
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  message: "Too many login attempts. Please try again in 15 minutes.",
+};
+
+/** Auth signup: 10 per hour per IP (WOP-839) */
+const AUTH_SIGNUP_LIMIT: RateLimitConfig = {
+  max: 10,
+  windowMs: 60 * 60 * 1000, // 1 hour
+  message: "Too many sign-up attempts. Please try again later.",
+};
+
+/** Auth password reset: 3 per hour per IP (WOP-839) */
+const AUTH_RESET_LIMIT: RateLimitConfig = {
+  max: 3,
+  windowMs: 60 * 60 * 1000, // 1 hour
+  message: "Too many password reset requests. Please try again later.",
+};
+
 /**
  * Pre-configured route rules for the WOPR platform. Evaluated top-to-bottom;
  * first match wins.
  */
 export const platformRateLimitRules: RateLimitRule[] = [
+  // Auth: brute force prevention — 5 req/15min for login (WOP-839)
+  { method: "POST", pathPrefix: "/api/auth/sign-in", config: AUTH_LOGIN_LIMIT },
+
+  // Auth: signup abuse prevention — 10 req/hr per IP (WOP-839)
+  { method: "POST", pathPrefix: "/api/auth/sign-up", config: AUTH_SIGNUP_LIMIT },
+
+  // Auth: password reset abuse prevention — 3 req/hr per IP (WOP-839)
+  { method: "POST", pathPrefix: "/api/auth/forget-password", config: AUTH_RESET_LIMIT },
+
   // Secrets validation — most restrictive, check first
   { method: "POST", pathPrefix: "/api/validate-key", config: SECRETS_VALIDATION_LIMIT },
 
