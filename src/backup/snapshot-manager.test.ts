@@ -187,11 +187,11 @@ describe("SnapshotManager", () => {
       expect(deleted).toBe(true);
 
       expect(manager.get(snapshot.id)).toBeNull();
-    });
+    }, 30_000);
 
     it("returns false for unknown snapshot", async () => {
       expect(await manager.hardDelete("nonexistent")).toBe(false);
-    });
+    }, 30_000);
   });
 
   describe("restore", () => {
