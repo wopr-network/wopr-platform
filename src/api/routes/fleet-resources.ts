@@ -37,7 +37,7 @@ fleetResourceRoutes.get("/", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  const bots = await getFleet().listAll();
+  const bots = await getFleet().listByTenant(user.id);
 
   let totalCpuPercent = 0;
   let totalMemoryMb = 0;

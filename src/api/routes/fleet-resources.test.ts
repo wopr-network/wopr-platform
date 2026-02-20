@@ -20,7 +20,7 @@ function makeMockFleet(
   bots: { stats: { cpuPercent: number; memoryUsageMb: number; memoryLimitMb: number; memoryPercent: number } | null }[],
 ) {
   return {
-    listAll: vi.fn().mockResolvedValue(bots),
+    listByTenant: vi.fn().mockResolvedValue(bots),
   };
 }
 
@@ -104,5 +104,17 @@ describe("GET /api/fleet/resources", () => {
     expect(body).toHaveProperty("totalCpuPercent");
     expect(body).toHaveProperty("totalMemoryMb");
     expect(body).toHaveProperty("memoryCapacityMb");
+  });
+
+  it("only aggregates the authenticated user's bots (tenant isolation)", async () => {
+    const mockFleet = makeMockFleet([
+      { stats: { cpuPercent: 10, memoryUsageMb: 100, memoryLimitMb: 200, memoryPercent: 50 } },
+    ]);
+    setFleetManager(mockFleet as unknown as import("../../fleet/fleet-manager.js").FleetManager);
+
+    const app = makeApp({ id: "user-123", roles: ["user"] });
+    const res = await app.request("/api/fleet/resources");
+    expect(res.status).toBe(200);
+    expect(mockFleet.listByTenant).toHaveBeenCalledWith("user-123");
   });
 });

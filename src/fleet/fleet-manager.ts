@@ -138,6 +138,15 @@ export class FleetManager {
   }
 
   /**
+   * List bots belonging to a specific tenant with live status.
+   */
+  async listByTenant(tenantId: string): Promise<BotStatus[]> {
+    const profiles = await this.store.list();
+    const tenantProfiles = profiles.filter((p) => p.tenantId === tenantId);
+    return Promise.all(tenantProfiles.map((p) => this.statusForProfile(p)));
+  }
+
+  /**
    * Get container logs.
    */
   async logs(id: string, tail = 100): Promise<string> {
