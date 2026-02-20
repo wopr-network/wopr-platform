@@ -7,8 +7,8 @@ describe("secure headers middleware", () => {
     expect(res.status).toBe(200);
 
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
-    expect(res.headers.get("strict-transport-security")).toContain("max-age=");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
+    expect(res.headers.get("strict-transport-security")).toContain("max-age=31536000");
     expect(res.headers.get("strict-transport-security")).toContain("includeSubDomains");
     expect(res.headers.get("x-xss-protection")).toBe("0");
   });
@@ -17,6 +17,6 @@ describe("secure headers middleware", () => {
     const res = await app.request("/nonexistent");
 
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(res.headers.get("x-frame-options")).toBe("DENY");
   });
 });

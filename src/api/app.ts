@@ -53,7 +53,20 @@ app.use(
     allowHeaders: ["Content-Type", "Authorization"],
   }),
 );
-app.use("/*", secureHeaders());
+app.use(
+  "/*",
+  secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+    // Caddy terminates TLS; max-age 1 year with includeSubDomains and preload
+    strictTransportSecurity: "max-age=31536000; includeSubDomains; preload",
+    // DENY is stricter than SAMEORIGIN for an API that serves no HTML
+    xFrameOptions: "DENY",
+    removePoweredBy: true,
+  }),
+);
 app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
 
 // better-auth handler — serves /api/auth/* (signup, login, session, etc.)
