@@ -1,6 +1,14 @@
 import type Stripe from "stripe";
 import type { TenantCustomerStore } from "./tenant-store.js";
 
+export class PaymentMethodOwnershipError extends Error {
+  readonly code = "PAYMENT_METHOD_NOT_OWNED" as const;
+  constructor() {
+    super("Payment method does not belong to this tenant");
+    this.name = "PaymentMethodOwnershipError";
+  }
+}
+
 export interface DetachPaymentMethodOpts {
   tenant: string;
   paymentMethodId: string;
@@ -24,8 +32,8 @@ export async function detachPaymentMethod(
 
   // Retrieve the payment method to verify it belongs to this customer
   const pm = await stripe.paymentMethods.retrieve(opts.paymentMethodId);
-  if (pm.customer !== mapping.stripe_customer_id) {
-    throw new Error("Payment method does not belong to this tenant");
+  if (!pm.customer || pm.customer !== mapping.stripe_customer_id) {
+    throw new PaymentMethodOwnershipError();
   }
 
   await stripe.paymentMethods.detach(opts.paymentMethodId);

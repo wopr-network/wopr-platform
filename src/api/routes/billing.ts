@@ -16,7 +16,7 @@ import { handlePayRamWebhook, PayRamReplayGuard } from "../../monetization/payra
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
-import { detachPaymentMethod } from "../../monetization/stripe/payment-methods.js";
+import { detachPaymentMethod, PaymentMethodOwnershipError } from "../../monetization/stripe/payment-methods.js";
 import { createPortalSession } from "../../monetization/stripe/portal.js";
 import { createSetupIntent } from "../../monetization/stripe/setup-intent.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
@@ -98,10 +98,6 @@ const usageQuerySchema = z.object({
   startDate: z.coerce.number().int().positive().optional(),
   endDate: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
-});
-
-const setupIntentBodySchema = z.object({
-  tenant: tenantIdSchema,
 });
 
 const paymentMethodIdSchema = z
@@ -286,29 +282,25 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
  * POST /billing/setup-intent
  *
  * Create a Stripe SetupIntent for saving a payment method.
- * Body: { tenant }
+ * Tenant is resolved from the auth token context (consistent with DELETE /payment-methods/:id).
  * Returns: { clientSecret }
  */
 billingRoutes.post("/setup-intent", adminAuth, async (c) => {
   const { stripe } = getDeps();
   const store = getTenantStore();
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await c.req.json()) as Record<string, unknown>;
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
+  const tokenTenantId = c.get("tokenTenantId");
+  if (!tokenTenantId) {
+    return c.json({ error: "Missing tenant" }, 400);
   }
 
-  const parsed = setupIntentBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }, 400);
+  const parsedTenant = tenantIdSchema.safeParse(tokenTenantId);
+  if (!parsedTenant.success) {
+    return c.json({ error: "Invalid tenant" }, 400);
   }
 
-  const { tenant } = parsed.data;
-
   try {
-    const intent = await createSetupIntent(stripe, store, { tenant });
+    const intent = await createSetupIntent(stripe, store, { tenant: parsedTenant.data });
     return c.json({ clientSecret: intent.client_secret });
   } catch (err) {
     const message = err instanceof Error ? err.message : "SetupIntent creation failed";
@@ -353,9 +345,11 @@ billingRoutes.delete("/payment-methods/:id", adminAuth, async (c) => {
     });
     return c.json({ removed: true });
   } catch (err) {
+    if (err instanceof PaymentMethodOwnershipError) {
+      return c.json({ error: err.message }, 403);
+    }
     const message = err instanceof Error ? err.message : "Failed to remove payment method";
-    const status = message.includes("does not belong") ? 403 : 500;
-    return c.json({ error: message }, status);
+    return c.json({ error: message }, 500);
   }
 });
 
