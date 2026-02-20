@@ -35,6 +35,9 @@ function createMockStripe(
     checkoutCreate?: ReturnType<typeof vi.fn>;
     portalCreate?: ReturnType<typeof vi.fn>;
     constructEvent?: ReturnType<typeof vi.fn>;
+    setupIntentCreate?: ReturnType<typeof vi.fn>;
+    paymentMethodRetrieve?: ReturnType<typeof vi.fn>;
+    paymentMethodDetach?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   return {
@@ -59,6 +62,23 @@ function createMockStripe(
     },
     webhooks: {
       constructEvent: overrides.constructEvent ?? vi.fn(),
+    },
+    setupIntents: {
+      create:
+        overrides.setupIntentCreate ??
+        vi.fn().mockResolvedValue({
+          id: "seti_test_123",
+          client_secret: "seti_test_123_secret_abc",
+        }),
+    },
+    paymentMethods: {
+      retrieve:
+        overrides.paymentMethodRetrieve ??
+        vi.fn().mockResolvedValue({
+          id: "pm_test_123",
+          customer: "cus_abc123",
+        }),
+      detach: overrides.paymentMethodDetach ?? vi.fn().mockResolvedValue({ id: "pm_test_123" }),
     },
   } as unknown as Stripe;
 }
@@ -951,6 +971,176 @@ describe("billing routes", () => {
       });
 
       expect(res.status).not.toBe(401);
+    });
+  });
+
+  // -- POST /setup-intent ----------------------------------------------------
+
+  describe("POST /setup-intent", () => {
+    it("creates setup intent and returns client secret", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const setupIntentCreate = vi.fn().mockResolvedValue({
+        id: "seti_test_123",
+        client_secret: "seti_test_123_secret_abc",
+      });
+      const mockStripe = createMockStripe({ setupIntentCreate });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        body: JSON.stringify({ tenant: "t-1" }),
+        headers: { ...authHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.clientSecret).toBe("seti_test_123_secret_abc");
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        body: JSON.stringify({ tenant: "t-1" }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for invalid JSON body", async () => {
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        body: "not-json",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Invalid JSON body");
+    });
+
+    it("returns 400 for missing tenant", async () => {
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: { ...authHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Invalid input");
+    });
+
+    it("returns 500 when tenant has no Stripe customer", async () => {
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        body: JSON.stringify({ tenant: "t-unknown" }),
+        headers: { ...authHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toContain("No Stripe customer found");
+    });
+
+    it("returns 500 when Stripe API fails", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const setupIntentCreate = vi.fn().mockRejectedValue(new Error("Stripe is down"));
+      const mockStripe = createMockStripe({ setupIntentCreate });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/setup-intent", {
+        method: "POST",
+        body: JSON.stringify({ tenant: "t-1" }),
+        headers: { ...authHeader, "Content-Type": "application/json" },
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe("Stripe is down");
+    });
+  });
+
+  // -- DELETE /payment-methods/:id -------------------------------------------
+
+  describe("DELETE /payment-methods/:id", () => {
+    it("detaches payment method and returns removed=true", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const paymentMethodRetrieve = vi.fn().mockResolvedValue({
+        id: "pm_test_123",
+        customer: "cus_abc123",
+      });
+      const paymentMethodDetach = vi.fn().mockResolvedValue({ id: "pm_test_123" });
+      const mockStripe = createMockStripe({ paymentMethodRetrieve, paymentMethodDetach });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.removed).toBe(true);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for invalid payment method ID format", async () => {
+      const res = await billingRoutes.request("/payment-methods/invalid_id?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Invalid payment method ID");
+    });
+
+    it("returns 403 when payment method belongs to another tenant", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const paymentMethodRetrieve = vi.fn().mockResolvedValue({
+        id: "pm_test_123",
+        customer: "cus_other_customer",
+      });
+      const mockStripe = createMockStripe({ paymentMethodRetrieve });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toContain("does not belong");
+    });
+
+    it("returns 500 when Stripe API fails", async () => {
+      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+
+      const paymentMethodRetrieve = vi.fn().mockRejectedValue(new Error("Stripe error"));
+      const mockStripe = createMockStripe({ paymentMethodRetrieve });
+      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+
+      const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe("Stripe error");
     });
   });
 });
