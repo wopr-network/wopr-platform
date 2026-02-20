@@ -12,6 +12,7 @@ import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
 import { capabilitiesRouter } from "./routers/capabilities.js";
 import { credentialsRouter } from "./routers/credentials.js";
+import { fleetRouter } from "./routers/fleet.js";
 import { nodesRouter } from "./routers/nodes.js";
 import { orgRouter } from "./routers/org.js";
 import { settingsRouter } from "./routers/settings.js";
@@ -23,6 +24,7 @@ export const appRouter = router({
   billing: billingRouter,
   capabilities: capabilitiesRouter,
   credentials: credentialsRouter,
+  fleet: fleetRouter,
   usage: usageRouter,
   settings: settingsRouter,
   admin: adminRouter,
@@ -42,6 +44,7 @@ export { setAdminRouterDeps } from "./routers/admin.js";
 export { setBillingRouterDeps } from "./routers/billing.js";
 export { setCapabilitiesRouterDeps } from "./routers/capabilities.js";
 export { setCredentialsRouterDeps } from "./routers/credentials.js";
+export { setFleetRouterDeps } from "./routers/fleet.js";
 export { setNodesRouterDeps } from "./routers/nodes.js";
 export { setOrgRouterDeps } from "./routers/org.js";
 export { setTwoFactorRouterDeps } from "./routers/two-factor.js";
