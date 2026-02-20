@@ -92,6 +92,26 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
         },
       },
     },
+    rateLimit: {
+      enabled: true,
+      window: 60, // 60-second window (global default)
+      max: 100, // generous global default for all auth endpoints
+      customRules: {
+        "/sign-in/email": {
+          window: 900, // 15 minutes (900 seconds)
+          max: 5, // 5 attempts per 15 minutes per IP (WOP-839)
+        },
+        "/sign-up/email": {
+          window: 3600, // 1 hour
+          max: 10, // 10 sign-ups per hour per IP (WOP-839)
+        },
+        "/forget-password": {
+          window: 3600, // 1 hour
+          max: 3, // 3 reset requests per hour (WOP-839)
+        },
+      },
+      storage: "memory", // in-memory is fine for single-process deployment
+    },
     trustedOrigins: (process.env.UI_ORIGIN || "http://localhost:3001").split(","),
   };
 }
