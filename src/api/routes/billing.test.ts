@@ -10,11 +10,17 @@ import { initPayRamSchema } from "../../monetization/payram/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 
-// Set env var BEFORE importing billing routes so bearer auth uses this token
+// Set env vars BEFORE importing billing routes so bearer auth uses these tokens
 const TEST_TOKEN = "test-billing-token";
+const TEST_TENANT_TOKEN = "test-billing-tenant-t1-token";
+const TEST_TENANT_UNKNOWN_TOKEN = "test-billing-tenant-unknown-token";
 vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
+vi.stubEnv("FLEET_TOKEN_t-1", `admin:${TEST_TENANT_TOKEN}`);
+vi.stubEnv("FLEET_TOKEN_t-unknown", `admin:${TEST_TENANT_UNKNOWN_TOKEN}`);
 
 const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
+const tenantT1AuthHeader = { Authorization: `Bearer ${TEST_TENANT_TOKEN}` };
+const tenantUnknownAuthHeader = { Authorization: `Bearer ${TEST_TENANT_UNKNOWN_TOKEN}` };
 
 // Import AFTER env stub
 const { billingRoutes, setBillingDeps, resetSignatureFailurePenalties } = await import("./billing.js");
@@ -987,10 +993,10 @@ describe("billing routes", () => {
       const mockStripe = createMockStripe({ setupIntentCreate });
       setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
 
+      // tenant is resolved from auth context (tokenTenantId), not from request body
       const res = await billingRoutes.request("/setup-intent", {
         method: "POST",
-        body: JSON.stringify({ tenant: "t-1" }),
-        headers: { ...authHeader, "Content-Type": "application/json" },
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
       });
 
       expect(res.status).toBe(200);
@@ -1001,14 +1007,15 @@ describe("billing routes", () => {
     it("returns 401 without auth", async () => {
       const res = await billingRoutes.request("/setup-intent", {
         method: "POST",
-        body: JSON.stringify({ tenant: "t-1" }),
         headers: { "Content-Type": "application/json" },
       });
 
       expect(res.status).toBe(401);
     });
 
-    it("returns 400 for invalid JSON body", async () => {
+    it("returns 400 for invalid JSON body (no tenant in auth context)", async () => {
+      // Legacy token (TEST_TOKEN) has no tenantId in context — route returns 400 Missing tenant
+      // before it ever attempts to parse the body
       const res = await billingRoutes.request("/setup-intent", {
         method: "POST",
         body: "not-json",
@@ -1017,26 +1024,26 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("Invalid JSON body");
+      expect(body.error).toBe("Missing tenant");
     });
 
     it("returns 400 for missing tenant", async () => {
+      // Legacy token (TEST_TOKEN) has no tenantId in auth context — route returns 400 Missing tenant
       const res = await billingRoutes.request("/setup-intent", {
         method: "POST",
-        body: JSON.stringify({}),
         headers: { ...authHeader, "Content-Type": "application/json" },
       });
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBe("Invalid input");
+      expect(body.error).toBe("Missing tenant");
     });
 
     it("returns 500 when tenant has no Stripe customer", async () => {
+      // t-unknown has no Stripe customer in the store
       const res = await billingRoutes.request("/setup-intent", {
         method: "POST",
-        body: JSON.stringify({ tenant: "t-unknown" }),
-        headers: { ...authHeader, "Content-Type": "application/json" },
+        headers: { ...tenantUnknownAuthHeader, "Content-Type": "application/json" },
       });
 
       expect(res.status).toBe(500);
@@ -1051,10 +1058,10 @@ describe("billing routes", () => {
       const mockStripe = createMockStripe({ setupIntentCreate });
       setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
 
+      // tenant is resolved from auth context (tokenTenantId)
       const res = await billingRoutes.request("/setup-intent", {
         method: "POST",
-        body: JSON.stringify({ tenant: "t-1" }),
-        headers: { ...authHeader, "Content-Type": "application/json" },
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
       });
 
       expect(res.status).toBe(500);
