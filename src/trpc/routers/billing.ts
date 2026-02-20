@@ -64,8 +64,8 @@ export const billingRouter = router({
   /** Get credits balance for a tenant. Tenant defaults to ctx.tenantId when omitted. */
   creditsBalance: protectedProcedure.input(z.object({ tenant: tenantIdSchema.optional() })).query(({ input, ctx }) => {
     const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-    if (ctx.tenantId && tenant !== ctx.tenantId) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
+    if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
     }
     const { creditStore } = deps();
     const balance = creditStore.getBalance(tenant);
@@ -85,11 +85,11 @@ export const billingRouter = router({
       }),
     )
     .query(({ input, ctx }) => {
-      const { creditStore } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
+      const { creditStore } = deps();
       const { tenant: _t, ...filters } = { ...input, tenant };
       return creditStore.listTransactions(tenant, filters);
     }),
@@ -105,12 +105,12 @@ export const billingRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
       const { stripe, tenantStore } = deps();
       const { createCreditCheckoutSession } = await import("../../monetization/stripe/checkout.js");
-      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
-      }
       const session = await createCreditCheckoutSession(stripe as never, tenantStore, { ...input, tenant });
       return { url: session.url, sessionId: session.id };
     }),
@@ -119,12 +119,12 @@ export const billingRouter = router({
   portalSession: protectedProcedure
     .input(z.object({ tenant: tenantIdSchema.optional(), returnUrl: urlSchema }))
     .mutation(async ({ input, ctx }) => {
+      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
       const { stripe, tenantStore } = deps();
       const { createPortalSession } = await import("../../monetization/stripe/portal.js");
-      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Tenant mismatch" });
-      }
       const session = await createPortalSession(stripe as never, tenantStore, { ...input, tenant });
       return { url: session.url };
     }),
@@ -145,7 +145,7 @@ export const billingRouter = router({
       const { meterAggregator } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
       // Enforce tenant isolation if token is tenant-scoped
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
@@ -176,7 +176,7 @@ export const billingRouter = router({
     .query(({ input, ctx }) => {
       const { meterAggregator } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
@@ -203,7 +203,7 @@ export const billingRouter = router({
     .query(({ input, ctx }) => {
       const { usageReporter } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
@@ -371,14 +371,14 @@ export const billingRouter = router({
     .input(
       z.object({
         global: z.object({
-          alertAt: z.number().nullable(),
-          hardCap: z.number().nullable(),
+          alertAt: z.number().nonnegative().nullable(),
+          hardCap: z.number().nonnegative().nullable(),
         }),
         perCapability: z.record(
           z.string(),
           z.object({
-            alertAt: z.number().nullable(),
-            hardCap: z.number().nullable(),
+            alertAt: z.number().nonnegative().nullable(),
+            hardCap: z.number().nonnegative().nullable(),
           }),
         ),
       }),

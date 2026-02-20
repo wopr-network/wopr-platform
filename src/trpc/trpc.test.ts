@@ -148,7 +148,11 @@ describe("tRPC appRouter", () => {
     it("creditsCorrection applies correction", async () => {
       const caller = createCaller(authedContext());
       await caller.admin.creditsGrant({ tenantId: "t3", amount_cents: 5000, reason: "Initial" });
-      await caller.admin.creditsCorrection({ tenantId: "t3", amount_cents: -2000, reason: "Correction" });
+      await caller.admin.creditsCorrection({
+        tenantId: "t3",
+        amount_cents: -2000,
+        reason: "Correction",
+      });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t3" });
       expect(balance.balance_cents).toBe(3000);
@@ -206,8 +210,8 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsBalance returns 0 for new tenant", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.billing.creditsBalance({ tenant: "test-tenant" });
+      const caller = createCaller(authedContext({ tenantId: undefined }));
+      const result = await caller.billing.creditsBalance({ tenant: "test-user" });
       expect(result.balance_cents).toBe(0);
     });
 
@@ -240,8 +244,8 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsHistory returns transactions", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.billing.creditsHistory({ tenant: "test-tenant" });
+      const caller = createCaller(authedContext({ tenantId: undefined }));
+      const result = await caller.billing.creditsHistory({ tenant: "test-user" });
       expect(result.entries).toEqual([]);
     });
 

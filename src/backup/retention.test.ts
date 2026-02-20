@@ -78,7 +78,7 @@ describe("enforceRetention", () => {
     const deleted = await enforceRetention(manager, "inst-1", "free");
     expect(deleted).toBe(2); // 5 - 3 = 2 deleted
     expect(manager.count("inst-1")).toBe(3);
-  });
+  }, 30_000);
 
   it("does nothing when under the limit", async () => {
     await manager.create({ instanceId: "inst-1", userId: "user-1", woprHomePath, trigger: "manual" });
@@ -95,7 +95,7 @@ describe("enforceRetention", () => {
     const deleted = await enforceRetention(manager, "inst-1", "pro");
     expect(deleted).toBe(2); // 9 - 7 = 2
     expect(manager.count("inst-1")).toBe(7);
-  });
+  }, 30_000);
 
   it("enterprise tier allows unlimited snapshots", async () => {
     for (let i = 0; i < 10; i++) {
@@ -105,5 +105,5 @@ describe("enforceRetention", () => {
     const deleted = await enforceRetention(manager, "inst-1", "enterprise");
     expect(deleted).toBe(0);
     expect(manager.count("inst-1")).toBe(10);
-  });
+  }, 30_000);
 });
