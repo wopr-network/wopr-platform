@@ -6,6 +6,7 @@ import { RateStore } from "../../admin/rates/rate-store.js";
 import { initRateSchema } from "../../admin/rates/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
+import { applyPlatformPragmas } from "../../db/pragmas.js";
 
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
 
@@ -14,7 +15,7 @@ let _ratesDb: DatabaseType.Database | null = null;
 function getRatesDb(): DatabaseType.Database {
   if (!_ratesDb) {
     _ratesDb = new Database(RATES_DB_PATH);
-    _ratesDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(_ratesDb);
     initRateSchema(_ratesDb);
   }
   return _ratesDb;

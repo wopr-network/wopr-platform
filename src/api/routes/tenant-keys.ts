@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
+import { applyPlatformPragmas } from "../../db/pragmas.js";
 import { encrypt } from "../../security/encryption.js";
 import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
 import { providerSchema } from "../../security/types.js";
@@ -43,7 +44,7 @@ let store: TenantKeyStore | null = null;
 function getStore(): TenantKeyStore {
   if (!store) {
     const db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
+    applyPlatformPragmas(db);
     store = new TenantKeyStore(db);
   }
   return store;

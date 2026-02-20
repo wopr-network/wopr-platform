@@ -19,6 +19,7 @@ import { Hono } from "hono";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { logger } from "../../config/logger.js";
+import { applyPlatformPragmas } from "../../db/pragmas.js";
 import { getEmailClient } from "../../email/client.js";
 import { welcomeTemplate } from "../../email/templates.js";
 import { verifyToken } from "../../email/verification.js";
@@ -33,7 +34,7 @@ let _authDb: DatabaseType.Database | null = null;
 function getAuthDb(): DatabaseType.Database {
   if (!_authDb) {
     _authDb = new Database(AUTH_DB_PATH);
-    _authDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(_authDb);
   }
   return _authDb;
 }
@@ -43,7 +44,7 @@ let _creditsDb: DatabaseType.Database | null = null;
 function getCreditsDb(): DatabaseType.Database {
   if (!_creditsDb) {
     _creditsDb = new Database(CREDITS_DB_PATH);
-    _creditsDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(_creditsDb);
     initCreditAdjustmentSchema(_creditsDb);
   }
   return _creditsDb;

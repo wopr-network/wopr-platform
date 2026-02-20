@@ -5,6 +5,7 @@ import { RestoreLogStore } from "../backup/restore-log-store.js";
 import { RestoreService } from "../backup/restore-service.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
+import { applyPlatformPragmas } from "../db/pragmas.js";
 import * as dbSchema from "../db/schema/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import { DOClient } from "./do-client.js";
@@ -35,7 +36,7 @@ let _migrationManager: MigrationManager | null = null;
 export function getDb() {
   if (!_db) {
     _sqlite = new Database(PLATFORM_DB_PATH);
-    _sqlite.pragma("journal_mode = WAL");
+    applyPlatformPragmas(_sqlite);
     _db = drizzle(_sqlite, { schema: dbSchema });
   }
   return _db;

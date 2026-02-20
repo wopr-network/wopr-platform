@@ -6,6 +6,7 @@ import { BalanceError, CreditAdjustmentStore } from "../../admin/credits/adjustm
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
+import { applyPlatformPragmas } from "../../db/pragmas.js";
 
 const CREDITS_DB_PATH = process.env.CREDITS_DB_PATH || "/data/platform/credits.db";
 const VALID_ADJUSTMENT_TYPES: AdjustmentType[] = ["grant", "refund", "correction"];
@@ -15,7 +16,7 @@ let _creditsDb: DatabaseType.Database | null = null;
 function getCreditsDb(): DatabaseType.Database {
   if (!_creditsDb) {
     _creditsDb = new Database(CREDITS_DB_PATH);
-    _creditsDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(_creditsDb);
     initCreditAdjustmentSchema(_creditsDb);
   }
   return _creditsDb;
