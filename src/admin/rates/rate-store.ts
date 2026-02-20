@@ -180,10 +180,14 @@ export class RateStore {
   }
 
   /** Look up an active sell rate by capability and model. Returns null if not found. */
-  getSellRateByModel(capability: string, model: string): SellRate | null {
+  getSellRateByModel(capability: string, model: string, unit?: string): SellRate | null {
+    const unitClause = unit ? " AND unit = ?" : "";
+    const params: unknown[] = unit ? [capability, model, unit] : [capability, model];
     const result = this.db
-      .prepare("SELECT * FROM sell_rates WHERE capability = ? AND model = ? AND is_active = 1 LIMIT 1")
-      .get(capability, model);
+      .prepare(
+        `SELECT * FROM sell_rates WHERE capability = ? AND model = ? AND is_active = 1${unitClause} ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
+      )
+      .get(...params);
     return (result as SellRate) ?? null;
   }
 

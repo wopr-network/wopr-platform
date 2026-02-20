@@ -18,14 +18,15 @@ export const DEFAULT_TOKEN_RATES: TokenRates = {
 /**
  * Function signature for looking up sell rates by capability and model.
  * Abstracts the DB dependency so streaming.ts doesn't import RateStore directly.
+ * Optional `unit` parameter allows filtering to a specific unit (e.g., "1K-input-tokens").
  */
-export type SellRateLookupFn = (capability: string, model: string) => SellRate | null;
+export type SellRateLookupFn = (capability: string, model: string, unit?: string) => SellRate | null;
 
 /**
  * Create a cached sell-rate lookup function.
  *
  * Wraps a raw DB lookup with an LRU cache that has a 5-minute TTL.
- * Cache key: `${capability}:${model}`.
+ * Cache key: `${capability}:${model}:${unit ?? ""}` so input and output rates cache independently.
  *
  * @param rawLookup - Function that queries the sell_rates table for a given capability+model.
  * @returns Cached lookup function
@@ -39,13 +40,13 @@ export function createCachedRateLookup(rawLookup: SellRateLookupFn, ttlMs = 5 * 
     ttl: ttlMs,
   });
 
-  return (capability: string, model: string): SellRate | null => {
-    const key = `${capability}:${model}`;
+  return (capability: string, model: string, unit?: string): SellRate | null => {
+    const key = `${capability}:${model}:${unit ?? ""}`;
     if (cache.has(key)) {
       const cached = cache.get(key);
       return cached === MISS || cached === undefined ? null : cached;
     }
-    const result = rawLookup(capability, model);
+    const result = rawLookup(capability, model, unit);
     cache.set(key, result ?? MISS);
     return result;
   };
@@ -55,12 +56,13 @@ export function createCachedRateLookup(rawLookup: SellRateLookupFn, ttlMs = 5 * 
  * Resolve token rates for a given model by looking up the sell_rates table.
  *
  * Lookup strategy:
- * 1. Try exact model match: capability="chat-completions", model=<model>
- * 2. If no match, return DEFAULT_TOKEN_RATES
+ * 1. Perform two independent lookups — one for "1K-input-tokens" and one for "1K-output-tokens".
+ * 2. If a direction-specific row is found, use its price_usd for that direction.
+ * 3. If no direction-specific row is found, fall back to a blended lookup (no unit filter).
+ * 4. If still no match, return DEFAULT_TOKEN_RATES for that direction.
  *
  * The sell_rates table stores `price_usd` per `unit`. For token-based rates,
  * `unit` may be "1K-input-tokens", "1K-output-tokens", or a blended "1K-tokens".
- * If only a single blended rate exists, use price_usd for input and price_usd*2 for output.
  *
  * @param lookupFn - Cached sell rate lookup function
  * @param capability - e.g., "chat-completions"
@@ -74,22 +76,25 @@ export function resolveTokenRates(
 ): TokenRates {
   if (!model) return DEFAULT_TOKEN_RATES;
 
-  const rate = lookupFn(capability, model);
-  if (!rate) return DEFAULT_TOKEN_RATES;
+  // Perform two independent lookups so models with separate input/output rows are handled correctly.
+  const inputRate = lookupFn(capability, model, "1K-input-tokens");
+  const outputRate = lookupFn(capability, model, "1K-output-tokens");
 
-  if (rate.unit.includes("input")) {
-    return { inputRatePer1K: rate.price_usd, outputRatePer1K: DEFAULT_TOKEN_RATES.outputRatePer1K };
+  if (inputRate || outputRate) {
+    return {
+      inputRatePer1K: inputRate ? inputRate.price_usd : DEFAULT_TOKEN_RATES.inputRatePer1K,
+      outputRatePer1K: outputRate ? outputRate.price_usd : DEFAULT_TOKEN_RATES.outputRatePer1K,
+    };
   }
-  if (rate.unit.includes("output")) {
-    return { inputRatePer1K: DEFAULT_TOKEN_RATES.inputRatePer1K, outputRatePer1K: rate.price_usd };
-  }
+
+  // Fall back to a blended rate row (no unit filter).
+  const blended = lookupFn(capability, model);
+  if (!blended) return DEFAULT_TOKEN_RATES;
 
   // Single blended rate — apply to both input and output tokens.
-  // TODO: add separate "1K-input-tokens" / "1K-output-tokens" rows per model in sell_rates
-  // to correctly reflect models with non-1:1 output ratios (e.g., Claude Opus 4 is 5:1).
-  // Using the blended rate for both avoids the incorrect 2x assumption that was here before.
+  // Using the blended rate for both avoids the incorrect 2x assumption.
   return {
-    inputRatePer1K: rate.price_usd,
-    outputRatePer1K: rate.price_usd,
+    inputRatePer1K: blended.price_usd,
+    outputRatePer1K: blended.price_usd,
   };
 }

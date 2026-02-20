@@ -276,7 +276,7 @@ export function textCompletions(deps: ProxyDeps) {
       const costHeader = res.headers.get("x-openrouter-cost");
       const cost = costHeader
         ? parseFloat(costHeader)
-        : estimateTokenCost(responseBody, requestModel, deps.rateLookupFn);
+        : estimateTokenCost(responseBody, requestModel, deps.rateLookupFn, "text-completions");
 
       logger.info("Gateway proxy: completions", { tenant: tenant.id, status: res.status, cost });
 
@@ -1517,14 +1517,19 @@ export function phoneNumberRelease(deps: ProxyDeps) {
 // -----------------------------------------------------------------------
 
 /** Estimate token cost from an OpenAI-compatible response body. */
-function estimateTokenCost(responseBody: string, model?: string, rateLookupFn?: SellRateLookupFn): number {
+function estimateTokenCost(
+  responseBody: string,
+  model?: string,
+  rateLookupFn?: SellRateLookupFn,
+  capability = "chat-completions",
+): number {
   try {
     const parsed = JSON.parse(responseBody) as {
       usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     };
     const inputTokens = parsed.usage?.prompt_tokens ?? 0;
     const outputTokens = parsed.usage?.completion_tokens ?? 0;
-    const rates = resolveTokenRates(rateLookupFn ?? (() => null), "chat-completions", model);
+    const rates = resolveTokenRates(rateLookupFn ?? (() => null), capability, model);
     return (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
   } catch {
     return 0.001; // minimum fallback

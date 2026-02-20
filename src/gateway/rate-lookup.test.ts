@@ -75,32 +75,53 @@ describe("resolveTokenRates", () => {
   });
 
   it("uses sell rate price_usd for matching model with blended unit", () => {
-    const rate = makeSellRate({ price_usd: 0.015, unit: "1K-tokens", model: "anthropic/claude-3.5-sonnet" });
-    const lookupFn: SellRateLookupFn = () => rate;
+    const rate = makeSellRate({
+      price_usd: 0.015,
+      unit: "1K-tokens",
+      model: "anthropic/claude-3.5-sonnet",
+    });
+    // No unit-specific rows; blended row returned only when no unit filter is passed
+    const lookupFn: SellRateLookupFn = (_cap, _model, unit) => (unit ? null : rate);
     const rates = resolveTokenRates(lookupFn, "chat-completions", "anthropic/claude-3.5-sonnet");
     expect(rates.inputRatePer1K).toBe(0.015);
     expect(rates.outputRatePer1K).toBe(0.015); // blended rate applied equally to both
   });
 
-  it("handles unit containing 'input' — sets only inputRatePer1K", () => {
-    const rate = makeSellRate({ price_usd: 0.015, unit: "1K-input-tokens" });
-    const lookupFn: SellRateLookupFn = () => rate;
+  it("handles unit containing 'input' — sets only inputRatePer1K when no output row exists", () => {
+    const inputRate = makeSellRate({ price_usd: 0.015, unit: "1K-input-tokens" });
+    // Return input rate for "1K-input-tokens" lookup, null for "1K-output-tokens"
+    const lookupFn: SellRateLookupFn = (_cap, _model, unit) => (unit === "1K-input-tokens" ? inputRate : null);
     const rates = resolveTokenRates(lookupFn, "chat-completions", "some-model");
     expect(rates.inputRatePer1K).toBe(0.015);
     expect(rates.outputRatePer1K).toBe(DEFAULT_TOKEN_RATES.outputRatePer1K);
   });
 
-  it("handles unit containing 'output' — sets only outputRatePer1K", () => {
-    const rate = makeSellRate({ price_usd: 0.075, unit: "1K-output-tokens" });
-    const lookupFn: SellRateLookupFn = () => rate;
+  it("handles unit containing 'output' — sets only outputRatePer1K when no input row exists", () => {
+    const outputRate = makeSellRate({ price_usd: 0.075, unit: "1K-output-tokens" });
+    // Return output rate for "1K-output-tokens" lookup, null for "1K-input-tokens"
+    const lookupFn: SellRateLookupFn = (_cap, _model, unit) => (unit === "1K-output-tokens" ? outputRate : null);
     const rates = resolveTokenRates(lookupFn, "chat-completions", "some-model");
     expect(rates.inputRatePer1K).toBe(DEFAULT_TOKEN_RATES.inputRatePer1K);
     expect(rates.outputRatePer1K).toBe(0.075);
   });
 
+  it("uses separate input and output rates when both direction rows exist", () => {
+    const inputRate = makeSellRate({ price_usd: 0.015, unit: "1K-input-tokens" });
+    const outputRate = makeSellRate({ price_usd: 0.075, unit: "1K-output-tokens" });
+    const lookupFn: SellRateLookupFn = (_cap, _model, unit) => {
+      if (unit === "1K-input-tokens") return inputRate;
+      if (unit === "1K-output-tokens") return outputRate;
+      return null;
+    };
+    const rates = resolveTokenRates(lookupFn, "chat-completions", "some-model");
+    expect(rates.inputRatePer1K).toBe(0.015);
+    expect(rates.outputRatePer1K).toBe(0.075);
+  });
+
   it("handles blended rate with single price for both directions", () => {
     const rate = makeSellRate({ price_usd: 0.005, unit: "per-1K-tokens" });
-    const lookupFn: SellRateLookupFn = () => rate;
+    // No unit-specific rows; blended row returned only when no unit filter is passed
+    const lookupFn: SellRateLookupFn = (_cap, _model, unit) => (unit ? null : rate);
     const rates = resolveTokenRates(lookupFn, "chat-completions", "some-model");
     expect(rates.inputRatePer1K).toBe(0.005);
     expect(rates.outputRatePer1K).toBe(0.005); // blended rate applied equally to both
