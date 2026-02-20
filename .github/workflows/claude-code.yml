@@ -10,7 +10,10 @@ on:
   pull_request_review:
     types: [submitted]
 
+permissions: {}
+
 jobs:
   claude:
-    uses: wopr-network/.github/.github/workflows/claude-code.yml@main
-    secrets: inherit
+    uses: wopr-network/.github/.github/workflows/claude-code.yml@bc564f39ee14e978fa0a742f92c6b8b064351017
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
