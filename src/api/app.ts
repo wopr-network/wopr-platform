@@ -18,6 +18,7 @@ import { adminNodeRoutes, adminRecoveryRoutes } from "./routes/admin-recovery.js
 import { adminUsersApiRoutes } from "./routes/admin-users.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
+import { botPluginRoutes } from "./routes/bot-plugins.js";
 import { botSnapshotRoutes } from "./routes/bot-snapshots.js";
 import { channelOAuthRoutes } from "./routes/channel-oauth.js";
 import { fleetRoutes } from "./routes/fleet.js";
@@ -71,6 +72,7 @@ app.use("/fleet/*", resolveSessionUser());
 
 app.route("/health", healthRoutes);
 app.route("/fleet", fleetRoutes);
+app.route("/fleet", botPluginRoutes);
 app.route("/api/quota", quotaRoutes);
 app.route("/api/billing", billingRoutes);
 app.route("/api", secretsRoutes);
