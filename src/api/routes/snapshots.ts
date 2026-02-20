@@ -6,6 +6,7 @@ import { enforceRetention } from "../../backup/retention.js";
 import { SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
+import { applyPlatformPragmas } from "../../db/pragmas.js";
 import * as dbSchema from "../../db/schema/index.js";
 
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
@@ -22,7 +23,7 @@ let _manager: SnapshotManager | null = null;
 function getManager(): SnapshotManager {
   if (!_manager) {
     const sqlite = new Database(SNAPSHOT_DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
+    applyPlatformPragmas(sqlite);
     const db = drizzle(sqlite, { schema: dbSchema });
     _manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db });
   }

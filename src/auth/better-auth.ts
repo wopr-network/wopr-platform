@@ -11,6 +11,7 @@
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import Database from "better-sqlite3";
 import { logger } from "../config/logger.js";
+import { applyPlatformPragmas } from "../db/pragmas.js";
 import { getEmailClient } from "../email/client.js";
 import { passwordResetEmailTemplate, verifyEmailTemplate } from "../email/templates.js";
 import { generateVerificationToken, initVerificationSchema } from "../email/verification.js";
@@ -22,7 +23,7 @@ const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || "http://localhost:3100";
 function authOptions(db?: Database.Database): BetterAuthOptions {
   const database = db ?? new Database(AUTH_DB_PATH);
   if ("pragma" in database && typeof database.pragma === "function") {
-    (database as Database.Database).pragma("journal_mode = WAL");
+    applyPlatformPragmas(database as Database.Database);
   }
   return {
     database,

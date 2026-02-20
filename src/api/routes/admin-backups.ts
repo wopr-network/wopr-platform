@@ -6,6 +6,7 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/in
 import { BackupStatusStore } from "../../backup/backup-status-store.js";
 import { SpacesClient } from "../../backup/spaces-client.js";
 import { logger } from "../../config/logger.js";
+import { applyPlatformPragmas } from "../../db/pragmas.js";
 import * as dbSchema from "../../db/schema/index.js";
 
 const BACKUP_DB_PATH = process.env.BACKUP_DB_PATH || "/data/platform/backup-status.db";
@@ -19,7 +20,7 @@ let _store: BackupStatusStore | null = null;
 function getStore(): BackupStatusStore {
   if (!_store) {
     const sqlite = new Database(BACKUP_DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
+    applyPlatformPragmas(sqlite);
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS backup_status (
         container_id TEXT PRIMARY KEY,

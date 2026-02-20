@@ -8,7 +8,7 @@ import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { buildTokenMetadataMap } from "./auth/index.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
-import { createDb } from "./db/index.js";
+import { applyPlatformPragmas, createDb } from "./db/index.js";
 import { ProfileStore } from "./fleet/profile-store.js";
 import { getHeartbeatWatchdog, getNodeConnections } from "./fleet/services.js";
 import { mountGateway } from "./gateway/index.js";
@@ -64,11 +64,11 @@ if (process.env.NODE_ENV !== "test") {
   // capability silently (gateway returns 503 for unconfigured providers).
   {
     const billingDb = new Database(BILLING_DB_PATH);
-    billingDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(billingDb);
     const billingDrizzle = createDb(billingDb);
 
     const ratesDb = new Database(RATES_DB_PATH);
-    ratesDb.pragma("journal_mode = WAL");
+    applyPlatformPragmas(ratesDb);
     initRateSchema(ratesDb);
     const rateStore = new RateStore(ratesDb);
 

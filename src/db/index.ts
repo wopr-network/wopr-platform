@@ -11,3 +11,4 @@ export function createDb(sqlite: Database.Database) {
 }
 
 export { schema };
+export { applyPlatformPragmas } from "./pragmas.js";

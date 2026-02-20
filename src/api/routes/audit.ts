@@ -6,6 +6,7 @@ import { purgeExpiredEntriesForUser } from "../../audit/retention.js";
 import type { AuditEnv } from "../../audit/types.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { createDb } from "../../db/index.js";
+import { applyPlatformPragmas } from "../../db/pragmas.js";
 
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
 
@@ -14,7 +15,7 @@ let _auditDb: DrizzleDb | null = null;
 function getAuditDb(): DrizzleDb {
   if (!_auditDb) {
     const sqlite = new Database(AUDIT_DB_PATH);
-    sqlite.pragma("journal_mode = WAL");
+    applyPlatformPragmas(sqlite);
     _auditDb = createDb(sqlite);
   }
   return _auditDb;
