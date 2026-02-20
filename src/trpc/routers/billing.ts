@@ -371,14 +371,14 @@ export const billingRouter = router({
     .input(
       z.object({
         global: z.object({
-          alertAt: z.number().nullable(),
-          hardCap: z.number().nullable(),
+          alertAt: z.number().nonnegative().nullable(),
+          hardCap: z.number().nonnegative().nullable(),
         }),
         perCapability: z.record(
           z.string(),
           z.object({
-            alertAt: z.number().nullable(),
-            hardCap: z.number().nullable(),
+            alertAt: z.number().nonnegative().nullable(),
+            hardCap: z.number().nonnegative().nullable(),
           }),
         ),
       }),
