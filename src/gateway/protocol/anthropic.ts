@@ -12,6 +12,8 @@
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
+import { capabilityRateLimit } from "../capability-rate-limit.js";
+import { circuitBreaker } from "../circuit-breaker.js";
 import { creditBalanceCheck, debitCredits } from "../credit-gate.js";
 import type { GatewayAuthEnv } from "../service-key-auth.js";
 import type { GatewayTenant } from "../types.js";
@@ -103,6 +105,16 @@ export function createAnthropicRoutes(deps: ProtocolDeps): Hono<GatewayAuthEnv> 
   const app = new Hono<GatewayAuthEnv>();
 
   app.use("/*", anthropicAuth(deps.resolveServiceKey));
+
+  // Rate limiting for protocol routes (these bypass the main gateway rate limiters)
+  app.use("/*", capabilityRateLimit(deps.capabilityRateLimitConfig));
+  app.use(
+    "/*",
+    circuitBreaker({
+      ...deps.circuitBreakerConfig,
+      onTrip: deps.onCircuitBreakerTrip,
+    }),
+  );
 
   // POST /v1/messages — the main Messages API endpoint
   app.post("/v1/messages", messagesHandler(deps));

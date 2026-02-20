@@ -9,6 +9,9 @@
 import type { BudgetChecker, SpendLimits } from "../monetization/budget/budget-checker.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
+import type { CapabilityRateLimitConfig } from "./capability-rate-limit.js";
+import type { CircuitBreakerConfig } from "./circuit-breaker.js";
+import type { SpendingCapConfig, SpendingCaps } from "./spending-cap.js";
 
 /** Billing unit determines how a capability is metered. */
 export type BillingUnit =
@@ -48,6 +51,8 @@ export interface GatewayTenant {
   planTier?: string;
   /** Instance ID this token belongs to */
   instanceId?: string;
+  /** User-configured spending caps (null fields = no cap). */
+  spendingCaps?: SpendingCaps;
 }
 
 /** Fetch function type for dependency injection in tests. */
@@ -117,6 +122,16 @@ export interface GatewayConfig {
   tenantRateLimit?: number;
   /** Per-capability requests per minute. Keys are capability names. */
   capabilityRateLimits?: Record<string, number>;
+  /** Per-capability rate limit config (req/min). Keys: llm, imageGen, audioSpeech, telephony. */
+  capabilityRateLimitConfig?: Partial<CapabilityRateLimitConfig>;
+  /** Circuit breaker config for runaway instance detection. */
+  circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
+  /** Spending cap enforcement config. */
+  spendingCapConfig?: Partial<SpendingCapConfig>;
+  /** Database handle for spending cap queries. */
+  billingDb?: import("../db/index.js").DrizzleDb;
+  /** Callback when circuit breaker trips (for notifications/logging). */
+  onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
 }
 
 /** Standard gateway error response. */

@@ -7,6 +7,41 @@
 
 import type { GatewayErrorResponse } from "./types.js";
 
+/** Map a circuit breaker trip to a gateway error response. */
+export function mapCircuitBreakerError(
+  _instanceId: string,
+  pausedUntil: number,
+): { status: number; body: GatewayErrorResponse } {
+  return {
+    status: 429,
+    body: {
+      error: {
+        message: `Circuit breaker triggered: too many requests from this bot instance. Paused until ${new Date(pausedUntil).toISOString()}.`,
+        type: "rate_limit_error",
+        code: "circuit_breaker_tripped",
+      },
+    },
+  };
+}
+
+/** Map a spending cap exceeded to a gateway error response. */
+export function mapSpendingCapError(
+  capType: string,
+  currentSpend: number,
+  cap: number,
+): { status: number; body: GatewayErrorResponse } {
+  return {
+    status: 402,
+    body: {
+      error: {
+        message: `${capType.charAt(0).toUpperCase() + capType.slice(1)} spending cap exceeded: $${currentSpend.toFixed(2)}/$${cap.toFixed(2)}. Adjust your cap in settings to continue.`,
+        type: "billing_error",
+        code: "spending_cap_exceeded",
+      },
+    },
+  };
+}
+
 /** Map a budget check result to the appropriate HTTP status for the inference gateway. */
 export function mapBudgetError(reason: string): { status: number; body: GatewayErrorResponse } {
   // Insufficient credits → 402 Payment Required

@@ -10,6 +10,8 @@ import { Hono } from "hono";
 import { rateLimit } from "../api/middleware/rate-limit.js";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
+import { capabilityRateLimit } from "./capability-rate-limit.js";
+import { circuitBreaker } from "./circuit-breaker.js";
 import { modelsHandler } from "./models.js";
 import { createAnthropicRoutes } from "./protocol/anthropic.js";
 import type { ProtocolDeps } from "./protocol/deps.js";
@@ -33,6 +35,7 @@ import {
   videoGenerations,
 } from "./proxy.js";
 import { type GatewayAuthEnv, serviceKeyAuth } from "./service-key-auth.js";
+import { spendingCapCheck } from "./spending-cap.js";
 import type { GatewayConfig } from "./types.js";
 import { createTwilioWebhookAuth } from "./webhook-auth.js";
 
@@ -58,6 +61,9 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
     resolveServiceKey: config.resolveServiceKey,
     withMarginFn: withMargin,
     rateLookupFn: config.rateLookupFn,
+    capabilityRateLimitConfig: config.capabilityRateLimitConfig,
+    circuitBreakerConfig: config.circuitBreakerConfig,
+    onCircuitBreakerTrip: config.onCircuitBreakerTrip,
   };
 
   gateway.route("/anthropic", createAnthropicRoutes(protocolDeps));
@@ -90,17 +96,22 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   // All remaining gateway routes require service key authentication via Bearer
   gateway.use("/*", serviceKeyAuth(config.resolveServiceKey));
 
-  // Per-tenant rate limiting (applies to all gateway endpoints after auth)
-  const tenantLimit = rateLimit({
-    max: config.tenantRateLimit ?? 60,
-    windowMs: 60_000,
-    keyGenerator: (c) => {
-      const tenant = c.get("gatewayTenant") as { id: string } | undefined;
-      return tenant?.id ?? "unknown";
-    },
-    message: "Rate limit exceeded for your account. Please slow down.",
-  });
-  gateway.use("/*", tenantLimit);
+  // 1. Spending cap enforcement — reject if over daily/monthly cap before consuming rate limit tokens
+  if (config.billingDb) {
+    gateway.use("/*", spendingCapCheck(config.billingDb, config.spendingCapConfig));
+  }
+
+  // 2. Per-capability rate limiting (replaces flat tenantLimit)
+  gateway.use("/*", capabilityRateLimit(config.capabilityRateLimitConfig));
+
+  // 3. Circuit breaker for runaway instances
+  gateway.use(
+    "/*",
+    circuitBreaker({
+      ...config.circuitBreakerConfig,
+      onTrip: config.onCircuitBreakerTrip,
+    }),
+  );
 
   // LLM endpoints (OpenRouter)
   gateway.post("/chat/completions", chatCompletions(deps));
