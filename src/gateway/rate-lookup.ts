@@ -1,5 +1,6 @@
 import { LRUCache } from "lru-cache";
 import type { SellRate } from "../admin/rates/rate-store.js";
+import { logger } from "../config/logger.js";
 
 /**
  * Token rates (per 1K tokens) for metering.
@@ -81,6 +82,20 @@ export function resolveTokenRates(
   const outputRate = lookupFn(capability, model, "1K-output-tokens");
 
   if (inputRate || outputRate) {
+    if (!inputRate) {
+      logger.warn("No input sell rate found for model — using default for input direction", {
+        capability,
+        model,
+        fallbackInputRatePer1K: DEFAULT_TOKEN_RATES.inputRatePer1K,
+      });
+    }
+    if (!outputRate) {
+      logger.warn("No output sell rate found for model — using default for output direction", {
+        capability,
+        model,
+        fallbackOutputRatePer1K: DEFAULT_TOKEN_RATES.outputRatePer1K,
+      });
+    }
     return {
       inputRatePer1K: inputRate ? inputRate.price_usd : DEFAULT_TOKEN_RATES.inputRatePer1K,
       outputRatePer1K: outputRate ? outputRate.price_usd : DEFAULT_TOKEN_RATES.outputRatePer1K,
@@ -89,7 +104,15 @@ export function resolveTokenRates(
 
   // Fall back to a blended rate row (no unit filter).
   const blended = lookupFn(capability, model);
-  if (!blended) return DEFAULT_TOKEN_RATES;
+  if (!blended) {
+    logger.warn("No sell rate found for model — using default fallback rates", {
+      capability,
+      model,
+      fallbackInputRatePer1K: DEFAULT_TOKEN_RATES.inputRatePer1K,
+      fallbackOutputRatePer1K: DEFAULT_TOKEN_RATES.outputRatePer1K,
+    });
+    return DEFAULT_TOKEN_RATES;
+  }
 
   // Single blended rate — apply to both input and output tokens.
   // Using the blended rate for both avoids the incorrect 2x assumption.

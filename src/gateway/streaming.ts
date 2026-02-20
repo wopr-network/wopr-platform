@@ -75,6 +75,14 @@ export function proxySSEStream(
             if (data.usage && accumulatedCost === 0) {
               const inputTokens = data.usage.prompt_tokens ?? 0;
               const outputTokens = data.usage.completion_tokens ?? 0;
+              if (!opts.rateLookupFn) {
+                logger.warn("SSE stream: no rateLookupFn provided — token cost will use default fallback rates", {
+                  model: opts.model ?? "unknown",
+                  capability,
+                  inputTokens,
+                  outputTokens,
+                });
+              }
               const rates = resolveTokenRates(opts.rateLookupFn ?? (() => null), capability, opts.model);
               accumulatedCost = (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
             }

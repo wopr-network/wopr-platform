@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { logger } from "../config/logger.js";
 import type { SellRateLookupFn } from "./rate-lookup.js";
 import { createCachedRateLookup, DEFAULT_TOKEN_RATES, resolveTokenRates } from "./rate-lookup.js";
+
+vi.mock("../config/logger.js", () => ({
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
 
 function makeSellRate(overrides: Partial<{ price_usd: number; unit: string; model: string }> = {}) {
   return {
@@ -125,5 +130,52 @@ describe("resolveTokenRates", () => {
     const rates = resolveTokenRates(lookupFn, "chat-completions", "some-model");
     expect(rates.inputRatePer1K).toBe(0.005);
     expect(rates.outputRatePer1K).toBe(0.005); // blended rate applied equally to both
+  });
+
+  it("logs a warning when no sell rate exists for a known model", () => {
+    vi.mocked(logger.warn).mockClear();
+    const lookupFn: SellRateLookupFn = () => null;
+    resolveTokenRates(lookupFn, "chat-completions", "anthropic/claude-3.5-sonnet");
+    expect(logger.warn).toHaveBeenCalledWith(
+      "No sell rate found for model — using default fallback rates",
+      expect.objectContaining({
+        capability: "chat-completions",
+        model: "anthropic/claude-3.5-sonnet",
+      }),
+    );
+  });
+
+  it("logs a warning when only input rate exists but not output rate", () => {
+    vi.mocked(logger.warn).mockClear();
+    const inputRate = makeSellRate({ price_usd: 0.015, unit: "1K-input-tokens" });
+    const lookupFn: SellRateLookupFn = (_cap, _model, unit) => (unit === "1K-input-tokens" ? inputRate : null);
+    resolveTokenRates(lookupFn, "chat-completions", "some-model");
+    expect(logger.warn).toHaveBeenCalledWith(
+      "No output sell rate found for model — using default for output direction",
+      expect.objectContaining({
+        capability: "chat-completions",
+        model: "some-model",
+      }),
+    );
+  });
+
+  it("does not log a warning when model is undefined", () => {
+    vi.mocked(logger.warn).mockClear();
+    const lookupFn: SellRateLookupFn = () => null;
+    resolveTokenRates(lookupFn, "chat-completions", undefined);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("does not log a warning when both direction rates are found", () => {
+    vi.mocked(logger.warn).mockClear();
+    const inputRate = makeSellRate({ price_usd: 0.015, unit: "1K-input-tokens" });
+    const outputRate = makeSellRate({ price_usd: 0.075, unit: "1K-output-tokens" });
+    const lookupFn: SellRateLookupFn = (_cap, _model, unit) => {
+      if (unit === "1K-input-tokens") return inputRate;
+      if (unit === "1K-output-tokens") return outputRate;
+      return null;
+    };
+    resolveTokenRates(lookupFn, "chat-completions", "some-model");
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
