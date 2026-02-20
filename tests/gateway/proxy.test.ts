@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGatewayRoutes } from "../../src/gateway/routes.js";
@@ -13,6 +14,45 @@ const TENANT: GatewayTenant = {
   id: "tenant-1",
   spendLimits: { maxSpendPerHour: 100, maxSpendPerMonth: 1000 },
 };
+
+/** Twilio auth token used for test webhook signature verification. */
+const TEST_TWILIO_AUTH_TOKEN = "test-twilio-auth-token";
+/** Base URL used for webhook signature computation in tests. */
+const TEST_WEBHOOK_BASE_URL = "https://api.test.wopr.network/v1";
+
+/** Compute a valid Twilio HMAC-SHA1 signature for testing. */
+function computeTwilioSignature(url: string, params: Record<string, string>): string {
+  const sortedKeys = Object.keys(params).sort();
+  let data = url;
+  for (const key of sortedKeys) {
+    data += key + params[key];
+  }
+  return crypto.createHmac("sha1", TEST_TWILIO_AUTH_TOKEN).update(data).digest("base64");
+}
+
+/** Build Twilio signature headers for a webhook test request.
+ *
+ * Coerces all scalar body values to strings (matching middleware behavior for JSON bodies).
+ */
+function twilioWebhookHeaders(path: string, bodyParams: Record<string, unknown> = {}) {
+  const url = `${TEST_WEBHOOK_BASE_URL}${path}`;
+  // Coerce scalars to strings — same as middleware JSON body handling
+  const stringParams: Record<string, string> = {};
+  for (const [key, value] of Object.entries(bodyParams)) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      !Array.isArray(value) &&
+      typeof value !== "object"
+    ) {
+      stringParams[key] = String(value);
+    }
+  }
+  return {
+    "Content-Type": "application/json",
+    "X-Twilio-Signature": computeTwilioSignature(url, stringParams),
+  };
+}
 
 function resolver(key: string): GatewayTenant | null {
   return key === VALID_KEY ? TENANT : null;
@@ -52,12 +92,14 @@ function createStubBudgetChecker(allowed = true) {
 }
 
 /** Create a stub fetch that returns configurable responses. */
-function createStubFetch(overrides: Partial<{
-  status: number;
-  body: string;
-  headers: Record<string, string>;
-  arrayBuffer: ArrayBuffer;
-}> = {}): FetchFn {
+function createStubFetch(
+  overrides: Partial<{
+    status: number;
+    body: string;
+    headers: Record<string, string>;
+    arrayBuffer: ArrayBuffer;
+  }> = {},
+): FetchFn {
   return async () => {
     return new Response(overrides.body ?? "{}", {
       status: overrides.status ?? 200,
@@ -87,33 +129,42 @@ class StubCreditLedger {
     this.balances.set(tenantId, current - cents);
   }
 
-  transactions(): Array<{ tenantId: string; amountCents: number; type: string; description: string; timestamp: number }> {
+  transactions(): Array<{
+    tenantId: string;
+    amountCents: number;
+    type: string;
+    description: string;
+    timestamp: number;
+  }> {
     return [];
   }
 }
 
-function makeGatewayApp(opts: {
-  fetchFn?: FetchFn;
-  budgetAllowed?: boolean;
-  creditBalance?: number;
-} = {}): Hono<GatewayAuthEnv> {
+function makeGatewayApp(
+  opts: { fetchFn?: FetchFn; budgetAllowed?: boolean; creditBalance?: number } = {},
+): Hono<GatewayAuthEnv> {
   const config: GatewayConfig = {
     meter: createStubMeter() as unknown as GatewayConfig["meter"],
-    budgetChecker: createStubBudgetChecker(opts.budgetAllowed ?? true) as unknown as GatewayConfig["budgetChecker"],
-    creditLedger: opts.creditBalance !== undefined
-      ? (new StubCreditLedger(opts.creditBalance) as unknown as GatewayConfig["creditLedger"])
-      : undefined,
+    budgetChecker: createStubBudgetChecker(
+      opts.budgetAllowed ?? true,
+    ) as unknown as GatewayConfig["budgetChecker"],
+    creditLedger:
+      opts.creditBalance !== undefined
+        ? (new StubCreditLedger(opts.creditBalance) as unknown as GatewayConfig["creditLedger"])
+        : undefined,
     topUpUrl: "/dashboard/credits",
     providers: {
       openrouter: { apiKey: "or-key", baseUrl: "https://test-openrouter.local" },
       deepgram: { apiKey: "dg-key", baseUrl: "https://test-deepgram.local" },
       elevenlabs: { apiKey: "el-key", baseUrl: "https://test-elevenlabs.local" },
       replicate: { apiToken: "rep-token", baseUrl: "https://test-replicate.local" },
-      twilio: { accountSid: "AC123", authToken: "auth-token" },
+      twilio: { accountSid: "AC123", authToken: TEST_TWILIO_AUTH_TOKEN },
     },
     defaultMargin: 1.3,
     fetchFn: opts.fetchFn ?? createStubFetch(),
     resolveServiceKey: resolver,
+    webhookBaseUrl: TEST_WEBHOOK_BASE_URL,
+    resolveTenantFromWebhook: () => TENANT,
   };
 
   const app = new Hono<GatewayAuthEnv>();
@@ -306,7 +357,7 @@ describe("Gateway proxy endpoints", () => {
       expect(meterEvents[0].capability).toBe("transcription");
       expect(meterEvents[0].provider).toBe("deepgram");
       // 30 seconds = 0.5 minutes * 0.0043 = ~0.00215
-      expect((meterEvents[0].cost as number)).toBeGreaterThan(0);
+      expect(meterEvents[0].cost as number).toBeGreaterThan(0);
     });
   });
 
@@ -426,13 +477,15 @@ describe("Gateway proxy endpoints", () => {
   // Phone Inbound
   // -----------------------------------------------------------------------
 
-  describe("POST /v1/phone/inbound", () => {
+  describe("POST /v1/phone/inbound/:tenantId", () => {
     it("meters per-minute events for inbound calls", async () => {
       const app = makeGatewayApp();
-      const res = await app.request("/v1/phone/inbound", {
+      const path = "/phone/inbound/tenant-1";
+      const bodyJson = { call_sid: "CA123", duration_minutes: 5, status: "completed" };
+      const res = await app.request(`/v1${path}`, {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ call_sid: "CA123", duration_minutes: 5, status: "completed" }),
+        headers: twilioWebhookHeaders(path, bodyJson),
+        body: JSON.stringify(bodyJson),
       });
 
       expect(res.status).toBe(200);
@@ -442,7 +495,7 @@ describe("Gateway proxy endpoints", () => {
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("phone-inbound");
       // 5 minutes * $0.013/min = $0.065
-      expect((meterEvents[0].cost as number)).toBeCloseTo(0.065, 3);
+      expect(meterEvents[0].cost as number).toBeCloseTo(0.065, 3);
     });
   });
 
@@ -474,7 +527,7 @@ describe("Gateway proxy endpoints", () => {
       expect(meterEvents[0].tenant).toBe("tenant-1");
       expect(meterEvents[0].capability).toBe("sms-outbound");
       expect(meterEvents[0].provider).toBe("twilio");
-      expect((meterEvents[0].cost as number)).toBeCloseTo(0.0079, 4);
+      expect(meterEvents[0].cost as number).toBeCloseTo(0.0079, 4);
     });
 
     it("sends MMS when media_url is present and meters at MMS rate", async () => {
@@ -501,7 +554,7 @@ describe("Gateway proxy endpoints", () => {
 
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("mms-outbound");
-      expect((meterEvents[0].cost as number)).toBeCloseTo(0.02, 4);
+      expect(meterEvents[0].cost as number).toBeCloseTo(0.02, 4);
     });
 
     it("rejects requests missing required fields", async () => {
@@ -554,13 +607,20 @@ describe("Gateway proxy endpoints", () => {
   // SMS Inbound
   // -----------------------------------------------------------------------
 
-  describe("POST /v1/messages/sms/inbound", () => {
+  describe("POST /v1/messages/sms/inbound/:tenantId", () => {
     it("meters inbound SMS at wholesale rate", async () => {
       const app = makeGatewayApp();
-      const res = await app.request("/v1/messages/sms/inbound", {
+      const path = "/messages/sms/inbound/tenant-1";
+      const bodyParams = {
+        from: "+15551234567",
+        to: "+15559876543",
+        body: "Hi there",
+        message_sid: "SM789",
+      };
+      const res = await app.request(`/v1${path}`, {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ from: "+15551234567", to: "+15559876543", body: "Hi there", message_sid: "SM789" }),
+        headers: twilioWebhookHeaders(path, bodyParams),
+        body: JSON.stringify(bodyParams),
       });
 
       expect(res.status).toBe(200);
@@ -570,20 +630,17 @@ describe("Gateway proxy endpoints", () => {
 
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("sms-inbound");
-      expect((meterEvents[0].cost as number)).toBeCloseTo(0.0079, 4);
+      expect(meterEvents[0].cost as number).toBeCloseTo(0.0079, 4);
     });
 
     it("meters inbound MMS at higher rate", async () => {
       const app = makeGatewayApp();
-      const res = await app.request("/v1/messages/sms/inbound", {
+      const path = "/messages/sms/inbound/tenant-1";
+      const bodyParams = { from: "+15551234567", to: "+15559876543", body: "Photo" };
+      const res = await app.request(`/v1${path}`, {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: "+15551234567",
-          to: "+15559876543",
-          body: "Photo",
-          media_url: ["https://example.com/photo.jpg"],
-        }),
+        headers: twilioWebhookHeaders(path, bodyParams),
+        body: JSON.stringify({ ...bodyParams, media_url: ["https://example.com/photo.jpg"] }),
       });
 
       expect(res.status).toBe(200);
@@ -592,7 +649,7 @@ describe("Gateway proxy endpoints", () => {
 
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("mms-inbound");
-      expect((meterEvents[0].cost as number)).toBeCloseTo(0.02, 4);
+      expect(meterEvents[0].cost as number).toBeCloseTo(0.02, 4);
     });
   });
 
@@ -600,20 +657,23 @@ describe("Gateway proxy endpoints", () => {
   // SMS Delivery Status
   // -----------------------------------------------------------------------
 
-  describe("POST /v1/messages/sms/status", () => {
+  describe("POST /v1/messages/sms/status/:tenantId", () => {
     it("acknowledges delivery status callbacks", async () => {
       const app = makeGatewayApp();
-      const res = await app.request("/v1/messages/sms/status", {
+      const path = "/messages/sms/status/tenant-1";
+      const bodyParams = { message_sid: "SM123", message_status: "delivered" };
+      const res = await app.request(`/v1${path}`, {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message_sid: "SM123",
-          message_status: "delivered",
-        }),
+        headers: twilioWebhookHeaders(path, bodyParams),
+        body: JSON.stringify(bodyParams),
       });
 
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: string; message_sid: string; message_status: string };
+      const body = (await res.json()) as {
+        status: string;
+        message_sid: string;
+        message_status: string;
+      };
       expect(body.status).toBe("acknowledged");
       expect(body.message_sid).toBe("SM123");
       expect(body.message_status).toBe("delivered");
@@ -621,15 +681,17 @@ describe("Gateway proxy endpoints", () => {
 
     it("handles failed delivery status", async () => {
       const app = makeGatewayApp();
-      const res = await app.request("/v1/messages/sms/status", {
+      const path = "/messages/sms/status/tenant-1";
+      const bodyJson = {
+        message_sid: "SM456",
+        message_status: "failed",
+        error_code: 30008,
+        error_message: "Unknown error",
+      };
+      const res = await app.request(`/v1${path}`, {
         method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message_sid: "SM456",
-          message_status: "failed",
-          error_code: 30008,
-          error_message: "Unknown error",
-        }),
+        headers: twilioWebhookHeaders(path, bodyJson),
+        body: JSON.stringify(bodyJson),
       });
 
       expect(res.status).toBe(200);
@@ -649,21 +711,29 @@ describe("Gateway proxy endpoints", () => {
         callCount++;
         // First call: search for available numbers
         if (callCount === 1) {
-          return new Response(JSON.stringify({
-            available_phone_numbers: [{
-              phone_number: "+15551112222",
-              friendly_name: "(555) 111-2222",
-              capabilities: { sms: true, voice: true, mms: true },
-            }],
-          }), { status: 200, headers: { "Content-Type": "application/json" } });
+          return new Response(
+            JSON.stringify({
+              available_phone_numbers: [
+                {
+                  phone_number: "+15551112222",
+                  friendly_name: "(555) 111-2222",
+                  capabilities: { sms: true, voice: true, mms: true },
+                },
+              ],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
         }
         // Second call: purchase the number
-        return new Response(JSON.stringify({
-          sid: "PN123",
-          phone_number: "+15551112222",
-          friendly_name: "(555) 111-2222",
-          capabilities: { sms: true, voice: true, mms: true },
-        }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(
+          JSON.stringify({
+            sid: "PN123",
+            phone_number: "+15551112222",
+            friendly_name: "(555) 111-2222",
+            capabilities: { sms: true, voice: true, mms: true },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
       };
 
       const app = makeGatewayApp({ fetchFn: stubFetch });
@@ -706,8 +776,18 @@ describe("Gateway proxy endpoints", () => {
       const stubFetch = createStubFetch({
         body: JSON.stringify({
           incoming_phone_numbers: [
-            { sid: "PN123", phone_number: "+15551112222", friendly_name: "Main", capabilities: { sms: true, voice: true, mms: true } },
-            { sid: "PN456", phone_number: "+15553334444", friendly_name: "Support", capabilities: { sms: true, voice: false, mms: false } },
+            {
+              sid: "PN123",
+              phone_number: "+15551112222",
+              friendly_name: "Main",
+              capabilities: { sms: true, voice: true, mms: true },
+            },
+            {
+              sid: "PN456",
+              phone_number: "+15553334444",
+              friendly_name: "Support",
+              capabilities: { sms: true, voice: false, mms: false },
+            },
           ],
         }),
       });
@@ -733,9 +813,12 @@ describe("Gateway proxy endpoints", () => {
         callCount++;
         // First call: GET to verify ownership (returns number info with tenant FriendlyName)
         if (callCount === 1) {
-          return new Response(JSON.stringify({
-            friendly_name: "wopr:tenant:tenant-1",
-          }), { status: 200, headers: { "Content-Type": "application/json" } });
+          return new Response(
+            JSON.stringify({
+              friendly_name: "wopr:tenant:tenant-1",
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
         }
         // Second call: DELETE
         return new Response(null, { status: 204 });

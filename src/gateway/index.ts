@@ -33,6 +33,7 @@ export {
 export { createGatewayRoutes } from "./routes.js";
 export { type GatewayAuthEnv, serviceKeyAuth } from "./service-key-auth.js";
 export { proxySSEStream } from "./streaming.js";
+export { validateTwilioSignature } from "./twilio-signature.js";
 export type {
   BillingUnit,
   FetchFn,
@@ -44,6 +45,7 @@ export type {
   ProviderConfig,
   UpstreamProvider,
 } from "./types.js";
+export { createTwilioWebhookAuth, type TwilioWebhookAuthConfig } from "./webhook-auth.js";
 
 import type { Hono } from "hono";
 import { gatewayHealthHandler } from "./health.js";

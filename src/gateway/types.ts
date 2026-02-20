@@ -59,8 +59,19 @@ export interface ProviderConfig {
   deepgram?: { apiKey: string; baseUrl?: string };
   elevenlabs?: { apiKey: string; baseUrl?: string };
   replicate?: { apiToken: string; baseUrl?: string };
-  twilio?: { accountSid: string; authToken: string; baseUrl?: string };
-  telnyx?: { apiKey: string; baseUrl?: string };
+  twilio?: {
+    accountSid: string;
+    authToken: string;
+    baseUrl?: string;
+    /** Base URL for webhook signature verification (e.g., https://api.wopr.network/v1). Required for Twilio webhook endpoints. */
+    webhookBaseUrl?: string;
+  };
+  telnyx?: {
+    apiKey: string;
+    baseUrl?: string;
+    /** Webhook signing secret for signature verification */
+    webhookSigningSecret?: string;
+  };
   /** GPU backend configuration (private network, WOP-505) */
   gpu?: {
     /** Base URL for text-gen (llama.cpp). Default: http://gpu-internal:8080 */
@@ -96,6 +107,10 @@ export interface GatewayConfig {
   rateLookupFn?: import("./rate-lookup.js").SellRateLookupFn;
   /** Function to resolve a service key to a tenant */
   resolveServiceKey: (key: string) => GatewayTenant | null;
+  /** Base URL for Twilio webhook signature verification (e.g., https://api.wopr.network/v1). Required for Twilio/Telnyx webhook endpoints. */
+  webhookBaseUrl?: string;
+  /** Resolve a tenant from an inbound webhook request (e.g., from a tenantId URL path param). Required when webhookBaseUrl is set. */
+  resolveTenantFromWebhook?: (c: import("hono").Context) => GatewayTenant | null;
   /** Maximum outbound SMS per tenant per minute (default: 100) */
   smsRateLimit?: number;
   /** Per-tenant requests per minute (default: 60) */

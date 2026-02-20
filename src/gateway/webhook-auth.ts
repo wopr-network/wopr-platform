@@ -1,0 +1,162 @@
+/**
+ * Webhook authentication middleware for Twilio/Telnyx inbound endpoints.
+ *
+ * Replaces serviceKeyAuth on webhook routes. Instead of Bearer token auth,
+ * verifies provider-specific webhook signatures (X-Twilio-Signature HMAC).
+ *
+ * Follows the same exponential backoff pattern as Stripe webhook auth
+ * in src/api/routes/billing.ts.
+ */
+
+import type { Context, Next } from "hono";
+import { logger } from "../config/logger.js";
+import type { GatewayAuthEnv } from "./service-key-auth.js";
+import { validateTwilioSignature } from "./twilio-signature.js";
+import type { GatewayTenant } from "./types.js";
+
+export interface TwilioWebhookAuthConfig {
+  /** Twilio auth token for HMAC verification */
+  twilioAuthToken: string;
+  /** The base URL that Twilio sends webhooks to (e.g., https://api.wopr.network/v1) */
+  webhookBaseUrl: string;
+  /** Resolve tenant from a webhook request context */
+  resolveTenantFromWebhook: (c: Context) => GatewayTenant | null;
+}
+
+interface PenaltyEntry {
+  failures: number;
+  blockedUntil: number;
+}
+
+const MAX_BACKOFF_MS = 15 * 60 * 1000; // 15 minutes
+const PENALTY_DECAY_MS = 60 * 60 * 1000; // 1 hour
+
+function getClientIp(c: Context): string {
+  const xff = c.req.header("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const incoming = (c.env as Record<string, unknown>)?.incoming as { socket?: { remoteAddress?: string } } | undefined;
+  return incoming?.socket?.remoteAddress ?? "unknown";
+}
+
+/**
+ * Create Twilio webhook authentication middleware.
+ *
+ * Verifies the X-Twilio-Signature HMAC header on inbound webhook requests.
+ * On success, resolves and sets the gatewayTenant in context.
+ * On failure, applies exponential IP-based backoff to deter brute-force attacks.
+ */
+export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
+  const sigFailurePenalties = new Map<string, PenaltyEntry>();
+
+  return async (c: Context<GatewayAuthEnv>, next: Next) => {
+    const ip = getClientIp(c);
+    const now = Date.now();
+
+    // Prune stale penalty entries (lazy cleanup)
+    if (sigFailurePenalties.size > 1000) {
+      for (const [k, v] of sigFailurePenalties) {
+        if (now - v.blockedUntil > PENALTY_DECAY_MS) sigFailurePenalties.delete(k);
+      }
+    }
+
+    // Check if this IP is currently in penalty backoff
+    const penalty = sigFailurePenalties.get(ip);
+    if (penalty && now < penalty.blockedUntil) {
+      const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
+      c.header("Retry-After", String(retryAfterSec));
+      return c.json({ error: "Too many failed webhook signature attempts" }, 429);
+    }
+
+    // Require X-Twilio-Signature header
+    const signature = c.req.header("x-twilio-signature");
+    if (!signature) {
+      return c.json({ error: "Missing X-Twilio-Signature header" }, 400);
+    }
+
+    // Reconstruct the full URL that Twilio was configured to send to.
+    // webhookBaseUrl is the public-facing base (e.g., https://api.wopr.network/v1).
+    // We derive the path-after-base by parsing the request URL, extracting the
+    // pathname, then stripping the base path prefix that is already in webhookBaseUrl.
+    const parsedBase = new URL(config.webhookBaseUrl);
+    const basePath = parsedBase.pathname.replace(/\/$/, ""); // e.g., "/v1"
+
+    const parsedReq = new URL(c.req.url, "http://localhost");
+    const reqPath = parsedReq.pathname; // e.g., "/v1/phone/inbound/tenant-abc"
+
+    // Strip the base path prefix from the request path so we don't double it
+    const relativePath = reqPath.startsWith(basePath) ? reqPath.slice(basePath.length) : reqPath;
+
+    // Full URL = webhookBaseUrl (no trailing slash) + relative path
+    const fullUrl = config.webhookBaseUrl.replace(/\/$/, "") + relativePath;
+
+    // Parse body params for signature verification.
+    // Twilio sends application/x-www-form-urlencoded; we also support JSON for adapters/testing.
+    let params: Record<string, string> = {};
+    const contentType = c.req.header("content-type") ?? "";
+    try {
+      if (contentType.includes("application/x-www-form-urlencoded")) {
+        const text = await c.req.text();
+        const urlParams = new URLSearchParams(text);
+        for (const [key, value] of urlParams.entries()) {
+          params[key] = value;
+        }
+      } else {
+        // JSON body — stringify all top-level scalar values for signature computation.
+        // Twilio normally sends form-encoded data, so all values are strings.
+        // For JSON adapters/testing, coerce scalars to strings to match Twilio's algorithm.
+        const json = await c.req.json<Record<string, unknown>>();
+        for (const [key, value] of Object.entries(json)) {
+          if (value !== null && value !== undefined && !Array.isArray(value) && typeof value !== "object") {
+            params[key] = String(value);
+          }
+        }
+      }
+    } catch {
+      // Empty or unparseable body — use empty params
+      params = {};
+    }
+
+    // Verify Twilio HMAC-SHA1 signature
+    const valid = validateTwilioSignature(config.twilioAuthToken, signature, fullUrl, params);
+
+    if (!valid) {
+      // Track signature failure for exponential backoff
+      const existing = sigFailurePenalties.get(ip) ?? { failures: 0, blockedUntil: 0 };
+      existing.failures++;
+      const backoffMs = Math.min(1000 * 2 ** existing.failures, MAX_BACKOFF_MS);
+      existing.blockedUntil = now + backoffMs;
+      sigFailurePenalties.set(ip, existing);
+
+      logger.error("Twilio webhook signature verification failed", {
+        ip,
+        consecutiveFailures: existing.failures,
+        url: fullUrl,
+      });
+      return c.json({ error: "Invalid webhook signature" }, 400);
+    }
+
+    // Clear any stale penalties on successful verification
+    sigFailurePenalties.delete(ip);
+
+    // Resolve tenant from webhook context
+    const tenant = config.resolveTenantFromWebhook(c);
+    if (!tenant) {
+      return c.json(
+        {
+          error: {
+            message: "Tenant not found",
+            type: "authentication_error",
+            code: "invalid_tenant",
+          },
+        },
+        401,
+      );
+    }
+
+    c.set("gatewayTenant", tenant);
+    return next();
+  };
+}
