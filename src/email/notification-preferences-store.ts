@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationPreferences } from "../db/schema/notification-preferences.js";
 
+type NotificationPrefsRow = typeof notificationPreferences.$inferInsert;
+
 export interface NotificationPrefs {
   billing_low_balance: boolean;
   billing_receipts: boolean;
@@ -48,7 +50,7 @@ export class NotificationPreferencesStore {
 
   /** Update preferences for a tenant. Upserts — creates row if missing. */
   update(tenantId: string, prefs: Partial<NotificationPrefs>): void {
-    const values: Record<string, unknown> = { tenantId, updatedAt: Math.floor(Date.now() / 1000) };
+    const values: Partial<NotificationPrefsRow> = { tenantId, updatedAt: Math.floor(Date.now() / 1000) };
 
     if (prefs.billing_low_balance !== undefined) values.billingLowBalance = prefs.billing_low_balance ? 1 : 0;
     if (prefs.billing_receipts !== undefined) values.billingReceipts = prefs.billing_receipts ? 1 : 0;
@@ -68,15 +70,10 @@ export class NotificationPreferencesStore {
 
     if (existing) {
       // Only update the set fields
-      // biome-ignore lint/suspicious/noExplicitAny: Drizzle set() requires any
-      this.db
-        .update(notificationPreferences)
-        .set(values as any)
-        .where(eq(notificationPreferences.tenantId, tenantId))
-        .run();
+      this.db.update(notificationPreferences).set(values).where(eq(notificationPreferences.tenantId, tenantId)).run();
     } else {
       // Insert with defaults for unspecified fields
-      const insertValues: Record<string, unknown> = {
+      const insertValues: NotificationPrefsRow = {
         tenantId,
         billingLowBalance: DEFAULTS.billing_low_balance ? 1 : 0,
         billingReceipts: DEFAULTS.billing_receipts ? 1 : 0,
@@ -88,11 +85,7 @@ export class NotificationPreferencesStore {
         updatedAt: Math.floor(Date.now() / 1000),
         ...values,
       };
-      // biome-ignore lint/suspicious/noExplicitAny: Drizzle insert requires any
-      this.db
-        .insert(notificationPreferences)
-        .values(insertValues as any)
-        .run();
+      this.db.insert(notificationPreferences).values(insertValues).run();
     }
   }
 }

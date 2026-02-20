@@ -43,7 +43,7 @@ export interface MarginConfig {
  */
 function matchesPattern(pattern: string, value: string): boolean {
   if (pattern === "*") return true;
-  if (\!pattern.includes("*")) return pattern === value;
+  if (!pattern.includes("*")) return pattern === value;
 
   // Convert glob pattern to regex: escape regex-special chars, then replace * with .*
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
@@ -82,9 +82,7 @@ export function withMarginConfig(cost: number, config: MarginConfig, provider: s
  */
 export function loadMarginConfig(): MarginConfig {
   const raw = process.env.MARGIN_CONFIG_JSON;
-  if (\!raw) {
-    return { defaultMargin: 1.3, rules: [] };
-  }
+  if (!raw) return { defaultMargin: 1.3, rules: [] };
   try {
     return JSON.parse(raw) as MarginConfig;
   } catch {

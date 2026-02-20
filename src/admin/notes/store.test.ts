@@ -151,8 +151,8 @@ describe("AdminNotesStore.update", () => {
     const updated = store.update(note.id, "tenant-1", { content: "Updated content" });
 
     expect(updated).not.toBeNull();
-    expect(updated!.content).toBe("Updated content");
-    expect(updated!.id).toBe(note.id);
+    expect(updated?.content).toBe("Updated content");
+    expect(updated?.id).toBe(note.id);
   });
 
   it("toggles isPinned", () => {
@@ -160,10 +160,10 @@ describe("AdminNotesStore.update", () => {
     const pinned = store.update(note.id, "tenant-1", { isPinned: true });
 
     expect(pinned).not.toBeNull();
-    expect(pinned!.isPinned).toBe(true);
+    expect(pinned?.isPinned).toBe(true);
 
     const unpinned = store.update(note.id, "tenant-1", { isPinned: false });
-    expect(unpinned!.isPinned).toBe(false);
+    expect(unpinned?.isPinned).toBe(false);
   });
 
   it("returns null for non-existent noteId", () => {

@@ -142,7 +142,7 @@ describe("NotificationQueueStore.markFailed", () => {
     store.markFailed(row.id, "SMTP timeout");
 
     const counts = store.countByStatus();
-    expect(counts["failed"]).toBe(1);
+    expect(counts.failed).toBe(1);
   });
 
   it("dead-letters after maxAttempts", () => {
@@ -157,8 +157,8 @@ describe("NotificationQueueStore.markFailed", () => {
     store.markFailed(row.id, "Second failure — dead letter");
 
     const counts = store.countByStatus();
-    expect(counts["dead_letter"]).toBe(1);
-    expect(counts["failed"]).toBeUndefined();
+    expect(counts.dead_letter).toBe(1);
+    expect(counts.failed).toBeUndefined();
   });
 
   it("handles non-existent id gracefully", () => {
@@ -192,9 +192,9 @@ describe("NotificationQueueStore.countByStatus", () => {
     store.markFailed(r2.id, "error");
 
     const counts = store.countByStatus();
-    expect(counts["pending"]).toBe(1);
-    expect(counts["sent"]).toBe(1);
-    expect(counts["failed"]).toBe(1);
+    expect(counts.pending).toBe(1);
+    expect(counts.sent).toBe(1);
+    expect(counts.failed).toBe(1);
   });
 
   it("returns empty object when no notifications", () => {

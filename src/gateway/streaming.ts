@@ -9,14 +9,9 @@
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import type { ProxyDeps } from "./proxy.js";
+import type { SellRateLookupFn } from "./rate-lookup.js";
+import { resolveTokenRates } from "./rate-lookup.js";
 import type { GatewayTenant } from "./types.js";
-
-/**
- * Default token rates (per 1000 tokens) — used as fallback if no model-specific rates are configured.
- * TODO: Replace with per-model rate lookup from provider config or rate table.
- */
-const DEFAULT_INPUT_RATE = 0.001; // $0.001 per 1K input tokens
-const DEFAULT_OUTPUT_RATE = 0.002; // $0.002 per 1K output tokens
 
 /**
  * Proxy an SSE stream from upstream, metering after completion.
@@ -32,6 +27,8 @@ export function proxySSEStream(
     capability: string;
     provider: string;
     costHeader: string | null;
+    model?: string;
+    rateLookupFn?: SellRateLookupFn;
   },
 ): Response {
   const { tenant, deps, capability, provider, costHeader } = opts;
@@ -63,6 +60,7 @@ export function proxySSEStream(
                 tenant: tenant.id,
                 capability,
                 provider,
+                model: opts.model ?? "unknown",
               });
             }
             break;
@@ -77,8 +75,8 @@ export function proxySSEStream(
             if (data.usage && accumulatedCost === 0) {
               const inputTokens = data.usage.prompt_tokens ?? 0;
               const outputTokens = data.usage.completion_tokens ?? 0;
-              // Use default rates as fallback (TODO: lookup model-specific rates)
-              accumulatedCost = (inputTokens * DEFAULT_INPUT_RATE + outputTokens * DEFAULT_OUTPUT_RATE) / 1000;
+              const rates = resolveTokenRates(opts.rateLookupFn ?? (() => null), capability, opts.model);
+              accumulatedCost = (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
             }
           } catch (err) {
             // Log malformed SSE chunks for debugging

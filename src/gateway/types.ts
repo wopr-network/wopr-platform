@@ -92,6 +92,8 @@ export interface GatewayConfig {
   arbitrageRouter?: import("../monetization/arbitrage/router.js").ArbitrageRouter;
   /** Injectable fetch for testing */
   fetchFn?: FetchFn;
+  /** Optional cached rate lookup for model-specific token pricing (WOP-646) */
+  rateLookupFn?: import("./rate-lookup.js").SellRateLookupFn;
   /** Function to resolve a service key to a tenant */
   resolveServiceKey: (key: string) => GatewayTenant | null;
   /** Maximum outbound SMS per tenant per minute (default: 100) */

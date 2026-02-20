@@ -13,6 +13,7 @@ import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
 import { creditBalanceCheck, debitCredits } from "../credit-gate.js";
+import { resolveTokenRates } from "../rate-lookup.js";
 import type { GatewayAuthEnv } from "../service-key-auth.js";
 import type { GatewayTenant } from "../types.js";
 import type { ProtocolDeps } from "./deps.js";
@@ -179,11 +180,13 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
-      // Detect streaming before forwarding
+      // Detect streaming and extract model before forwarding
       let isStreaming = false;
+      let requestModel: string | undefined;
       try {
-        const parsed = JSON.parse(body) as { stream?: boolean };
+        const parsed = JSON.parse(body) as { stream?: boolean; model?: string };
         isStreaming = parsed.stream === true;
+        requestModel = parsed.model;
       } catch {
         // If body isn't valid JSON, proceed without streaming detection
       }
@@ -234,7 +237,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");
-      const cost = costHeader ? parseFloat(costHeader) : estimateTokenCostFromBody(responseBody);
+      const cost = costHeader ? parseFloat(costHeader) : estimateTokenCostFromBody(responseBody, requestModel, deps);
 
       logger.info("OpenAI handler: chat/completions", {
         tenant: tenant.id,
@@ -393,14 +396,15 @@ function embeddingsHandler(deps: ProtocolDeps) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function estimateTokenCostFromBody(body: string): number {
+function estimateTokenCostFromBody(body: string, model?: string, deps?: ProtocolDeps): number {
   try {
     const parsed = JSON.parse(body) as {
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     const inputTokens = parsed.usage?.prompt_tokens ?? 0;
     const outputTokens = parsed.usage?.completion_tokens ?? 0;
-    return inputTokens * 0.000001 + outputTokens * 0.000002;
+    const rates = resolveTokenRates(deps?.rateLookupFn ?? (() => null), "chat-completions", model);
+    return (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
   } catch {
     return 0.001;
   }
