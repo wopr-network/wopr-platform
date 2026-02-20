@@ -64,7 +64,7 @@ export const billingRouter = router({
   /** Get credits balance for a tenant. Tenant defaults to ctx.tenantId when omitted. */
   creditsBalance: protectedProcedure.input(z.object({ tenant: tenantIdSchema.optional() })).query(({ input, ctx }) => {
     const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-    if (ctx.tenantId && tenant !== ctx.tenantId) {
+    if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
     }
     const { creditStore } = deps();
@@ -86,7 +86,7 @@ export const billingRouter = router({
     )
     .query(({ input, ctx }) => {
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { creditStore } = deps();
@@ -106,7 +106,7 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { stripe, tenantStore } = deps();
@@ -120,7 +120,7 @@ export const billingRouter = router({
     .input(z.object({ tenant: tenantIdSchema.optional(), returnUrl: urlSchema }))
     .mutation(async ({ input, ctx }) => {
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { stripe, tenantStore } = deps();
@@ -145,7 +145,7 @@ export const billingRouter = router({
       const { meterAggregator } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
       // Enforce tenant isolation if token is tenant-scoped
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
@@ -176,7 +176,7 @@ export const billingRouter = router({
     .query(({ input, ctx }) => {
       const { meterAggregator } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
@@ -203,7 +203,7 @@ export const billingRouter = router({
     .query(({ input, ctx }) => {
       const { usageReporter } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (ctx.tenantId && tenant !== ctx.tenantId) {
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
