@@ -150,6 +150,26 @@ export class NotificationService {
   }
 
   // ---------------------------------------------------------------------------
+  // Account Deletion
+  // ---------------------------------------------------------------------------
+
+  notifyAccountDeletionRequested(tenantId: string, email: string, deleteAfterDate: string): void {
+    this.queue.enqueue(tenantId, "account-deletion-requested", {
+      email,
+      deleteAfterDate,
+      cancelUrl: `${this.appBaseUrl}/settings/account`,
+    });
+  }
+
+  notifyAccountDeletionCancelled(tenantId: string, email: string): void {
+    this.queue.enqueue(tenantId, "account-deletion-cancelled", { email });
+  }
+
+  notifyAccountDeletionCompleted(tenantId: string, email: string): void {
+    this.queue.enqueue(tenantId, "account-deletion-completed", { email });
+  }
+
+  // ---------------------------------------------------------------------------
   // Admin custom email
   // ---------------------------------------------------------------------------
 

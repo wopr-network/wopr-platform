@@ -27,6 +27,9 @@ const CRITICAL_TEMPLATES: Set<string> = new Set([
   "admin-reactivated",
   "password-reset",
   "welcome",
+  "account-deletion-requested",
+  "account-deletion-cancelled",
+  "account-deletion-completed",
 ]);
 
 /** Map from template name to preference key. */
