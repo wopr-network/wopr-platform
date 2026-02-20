@@ -249,6 +249,158 @@ describe("tRPC appRouter", () => {
       const caller = createCaller(unauthContext());
       await expect(caller.billing.creditsBalance({ tenant: "t1" })).rejects.toThrow("Authentication required");
     });
+
+    // ---- tenant-optional overloads (WOP-687) ----
+
+    it("creditsBalance uses ctx.tenantId when tenant omitted", async () => {
+      const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
+      const result = await caller.billing.creditsBalance({});
+      expect(result.balance_cents).toBe(0);
+      expect(result.tenant).toBe("ctx-tenant");
+    });
+
+    it("creditsHistory works without explicit tenant", async () => {
+      const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
+      const result = await caller.billing.creditsHistory({});
+      expect(result.entries).toEqual([]);
+    });
+
+    it("portalSession accepts omitted tenant and uses ctx.tenantId", async () => {
+      const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
+      // portalSession needs a Stripe customer — it will throw a portal/customer error,
+      // but NOT "Tenant context required" — proving tenant is derived from ctx
+      await expect(caller.billing.portalSession({ returnUrl: "https://example.com/billing" })).rejects.toThrow(); // throws Stripe/customer error, not missing-tenant error
+    });
+
+    // ---- new stub procedures (WOP-687) ----
+
+    it("plans returns array of plan objects", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.plans();
+      expect(Array.isArray(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
+      expect(result[0]).toHaveProperty("id");
+      expect(result[0]).toHaveProperty("tier");
+      expect(result[0]).toHaveProperty("name");
+      expect(result[0]).toHaveProperty("price");
+      expect(result[0]).toHaveProperty("priceLabel");
+      expect(result[0]).toHaveProperty("features");
+    });
+
+    it("plans includes all four tiers", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.plans();
+      const tiers = result.map((p) => p.tier);
+      expect(tiers).toContain("free");
+      expect(tiers).toContain("pro");
+      expect(tiers).toContain("team");
+      expect(tiers).toContain("enterprise");
+    });
+
+    it("currentPlan returns tier object", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.currentPlan();
+      expect(result).toHaveProperty("tier");
+      expect(["free", "pro", "team", "enterprise"]).toContain(result.tier);
+    });
+
+    it("changePlan returns updated tier", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.changePlan({ tier: "pro" });
+      expect(result.tier).toBe("pro");
+    });
+
+    it("inferenceMode returns mode object", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.inferenceMode();
+      expect(result).toHaveProperty("mode");
+      expect(["byok", "hosted"]).toContain(result.mode);
+    });
+
+    it("providerCosts returns array", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.providerCosts();
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it("hostedUsageSummary returns summary shape", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.hostedUsageSummary();
+      expect(result).toHaveProperty("periodStart");
+      expect(result).toHaveProperty("periodEnd");
+      expect(result).toHaveProperty("capabilities");
+      expect(result).toHaveProperty("totalCost");
+      expect(result).toHaveProperty("includedCredit");
+      expect(result).toHaveProperty("amountDue");
+    });
+
+    it("hostedUsageEvents returns array", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.hostedUsageEvents();
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it("hostedUsageEvents accepts filter params", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.hostedUsageEvents({
+        capability: "transcription",
+        from: "2026-01-01",
+        to: "2026-02-01",
+      });
+      expect(Array.isArray(result)).toBe(true);
+    });
+
+    it("spendingLimits returns limits shape", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.spendingLimits();
+      expect(result).toHaveProperty("global");
+      expect(result.global).toHaveProperty("alertAt");
+      expect(result.global).toHaveProperty("hardCap");
+      expect(result).toHaveProperty("perCapability");
+    });
+
+    it("updateSpendingLimits returns updated limits", async () => {
+      const caller = createCaller(authedContext());
+      const limits = {
+        global: { alertAt: 100, hardCap: 200 },
+        perCapability: {
+          transcription: { alertAt: null, hardCap: null },
+          image_gen: { alertAt: 10, hardCap: 50 },
+          text_gen: { alertAt: null, hardCap: null },
+          embeddings: { alertAt: null, hardCap: null },
+        },
+      };
+      const result = await caller.billing.updateSpendingLimits(limits);
+      expect(result.global.alertAt).toBe(100);
+      expect(result.global.hardCap).toBe(200);
+    });
+
+    it("billingInfo returns info shape", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.billingInfo();
+      expect(result).toHaveProperty("email");
+      expect(result).toHaveProperty("paymentMethods");
+      expect(result).toHaveProperty("invoices");
+    });
+
+    it("updateBillingEmail returns updated email", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.updateBillingEmail({ email: "test@example.com" });
+      expect(result.email).toBe("test@example.com");
+    });
+
+    it("removePaymentMethod returns removed confirmation", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.removePaymentMethod({ id: "pm-123" });
+      expect(result.removed).toBe(true);
+    });
+
+    it("new procedures reject unauthenticated requests", async () => {
+      const caller = createCaller(unauthContext());
+      await expect(caller.billing.plans()).rejects.toThrow("Authentication required");
+      await expect(caller.billing.currentPlan()).rejects.toThrow("Authentication required");
+      await expect(caller.billing.inferenceMode()).rejects.toThrow("Authentication required");
+    });
   });
 
   // -------------------------------------------------------------------------
