@@ -9,6 +9,7 @@
  */
 
 import { type BetterAuthOptions, betterAuth } from "better-auth";
+import { twoFactor } from "better-auth/plugins";
 import Database from "better-sqlite3";
 import { logger } from "../config/logger.js";
 import { applyPlatformPragmas } from "../db/pragmas.js";
@@ -93,6 +94,7 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
         },
       },
     },
+    plugins: [twoFactor()],
     rateLimit: {
       enabled: true,
       window: 60, // 60-second window (global default)
