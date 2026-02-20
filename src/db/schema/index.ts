@@ -14,6 +14,7 @@ export * from "./provider-credentials.js";
 export * from "./rates.js";
 export * from "./recovery-events.js";
 export * from "./restore-log.js";
+export * from "./security-settings.js";
 export * from "./snapshots.js";
 export * from "./stripe.js";
 export * from "./tenant-status.js";

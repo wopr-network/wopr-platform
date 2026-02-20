@@ -12,6 +12,7 @@ import { billingRouter } from "./routers/billing.js";
 import { capabilitiesRouter } from "./routers/capabilities.js";
 import { credentialsRouter } from "./routers/credentials.js";
 import { settingsRouter } from "./routers/settings.js";
+import { twoFactorRouter } from "./routers/two-factor.js";
 import { usageRouter } from "./routers/usage.js";
 
 export const appRouter = router({
@@ -21,6 +22,7 @@ export const appRouter = router({
   usage: usageRouter,
   settings: settingsRouter,
   admin: adminRouter,
+  twoFactor: twoFactorRouter,
 });
 
 /** The root router type — import this in the UI repo for full type inference. */
@@ -33,3 +35,4 @@ export { setAdminRouterDeps } from "./routers/admin.js";
 export { setBillingRouterDeps } from "./routers/billing.js";
 export { setCapabilitiesRouterDeps } from "./routers/capabilities.js";
 export { setCredentialsRouterDeps } from "./routers/credentials.js";
+export { setTwoFactorRouterDeps } from "./routers/two-factor.js";
