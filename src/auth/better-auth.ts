@@ -106,7 +106,7 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
           window: 3600, // 1 hour
           max: 10, // 10 sign-ups per hour per IP (WOP-839)
         },
-        "/forget-password": {
+        "/request-password-reset": {
           window: 3600, // 1 hour
           max: 3, // 3 reset requests per hour (WOP-839)
         },

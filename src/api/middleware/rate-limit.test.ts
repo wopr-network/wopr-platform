@@ -336,7 +336,7 @@ describe("auth endpoint rate limits (WOP-839)", () => {
     // Auth routes
     app.post("/api/auth/sign-in/email", (c) => c.json({ ok: true }));
     app.post("/api/auth/sign-up/email", (c) => c.json({ ok: true }));
-    app.post("/api/auth/forget-password", (c) => c.json({ ok: true }));
+    app.post("/api/auth/request-password-reset", (c) => c.json({ ok: true }));
     return app;
   }
 
@@ -407,8 +407,8 @@ describe("auth endpoint rate limits (WOP-839)", () => {
   it("limits password reset to 3 per hour per IP", async () => {
     const app = buildPlatformApp();
     for (let i = 0; i < 3; i++) {
-      expect((await app.request(postReq("/api/auth/forget-password"))).status).toBe(200);
+      expect((await app.request(postReq("/api/auth/request-password-reset"))).status).toBe(200);
     }
-    expect((await app.request(postReq("/api/auth/forget-password"))).status).toBe(429);
+    expect((await app.request(postReq("/api/auth/request-password-reset"))).status).toBe(429);
   });
 });
