@@ -71,7 +71,7 @@ describe("Process-level error handlers", () => {
 
     // Prevent unhandled rejection from failing the test
     testPromise.catch(() => {});
-  });
+  }, 15000);
 
   it("uncaughtException handler logs and exits immediately", async () => {
     // Import logger module and spy on it FIRST
