@@ -100,9 +100,12 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   afterEach(async () => {
-    // Flush remaining events before closing SQLite (fail-closed ordering).
-    meter.close();
+    // Stop the aggregator worker first to prevent in-flight interval callbacks
+    // from racing with meter close.
     aggregator.stop();
+    // Flush remaining meter events to SQLite before closing the DB.
+    meter.close();
+    // Close SQLite last — meter.close() flushes synchronously so no race here.
     sqlite.close();
 
     // Clean up temp WAL/DLQ files.
@@ -160,8 +163,12 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     expect(event.charge).toBeCloseTo(0.026, 5);
 
     // STEP 5: Usage aggregation rolls up into billing_period_summaries.
-    // Wait for the 1-second billing period to elapse before aggregating.
-    await new Promise((r) => setTimeout(r, 1_100));
+    // Poll until the billing period has elapsed (up to 3s to tolerate slow CI).
+    const periodBoundary = aggregator.getBillingPeriod(Date.now()).start + 1_000;
+    for (let i = 0; i < 60; i++) {
+      if (Date.now() >= periodBoundary) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
 
     const aggregated = aggregator.aggregate();
     expect(aggregated).toBeGreaterThanOrEqual(1);
@@ -248,8 +255,12 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
         meter.flush();
 
-        // Wait for billing period and aggregate
-        await new Promise((r) => setTimeout(r, 1_100));
+        // Poll until the billing period has elapsed (up to 3s to tolerate slow CI).
+        const periodBoundary2 = aggregator.getBillingPeriod(Date.now()).start + 1_000;
+        for (let i = 0; i < 60; i++) {
+          if (Date.now() >= periodBoundary2) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
         aggregator.aggregate();
 
         // Create reporter and send to Stripe
