@@ -898,14 +898,9 @@ export function videoGenerations(deps: ProxyDeps) {
 export function phoneOutbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
-    if (budgetErr) return budgetErr;
 
-    // NOTE: Credit gate removed from stub endpoint. This endpoint does not charge
-    // until actual implementation exists. Metering happens on phoneInbound webhooks.
-
+    // Provider config check — keep existing 503 for unconfigured phone
     const providerCfg = deps.providers.twilio ?? deps.providers.telnyx;
-    const providerName = deps.providers.twilio ? "twilio" : "telnyx";
     if (!providerCfg) {
       return c.json(
         {
@@ -919,22 +914,20 @@ export function phoneOutbound(deps: ProxyDeps) {
       );
     }
 
-    try {
-      const body = await c.req.json<{ to: string; from: string; webhook_url?: string }>();
+    // Outbound calling is not yet implemented. Return 501 so callers
+    // know this endpoint exists but is not functional.
+    logger.info("Gateway proxy: phone/outbound — not implemented", { tenant: tenant.id });
 
-      // TODO: Make HTTP call to Twilio/Telnyx API to actually initiate the call.
-      // Metering should only happen after a successful upstream response.
-      logger.info("Gateway proxy: phone/outbound (stub)", { tenant: tenant.id, to: body.to });
-
-      return c.json({
-        status: "initiated",
-        message: "Call initiated. Per-minute billing will be applied during the active call.",
-      });
-    } catch (error) {
-      logger.error("Gateway proxy error: phone/outbound", { tenant: tenant.id, error });
-      const mapped = mapProviderError(error, providerName);
-      return c.json(mapped.body, mapped.status as 502);
-    }
+    return c.json(
+      {
+        error: {
+          message: "Outbound calling is not yet implemented. This endpoint will be available in a future release.",
+          type: "server_error",
+          code: "not_implemented",
+        },
+      },
+      501,
+    );
   };
 }
 
@@ -958,7 +951,13 @@ export function phoneInbound(deps: ProxyDeps) {
           errors: parsed.error.flatten().fieldErrors,
         });
         return c.json(
-          { error: { message: "Invalid webhook payload", type: "invalid_request_error", code: "validation_error" } },
+          {
+            error: {
+              message: "Invalid webhook payload",
+              type: "invalid_request_error",
+              code: "validation_error",
+            },
+          },
           400,
         );
       }
@@ -1150,7 +1149,13 @@ export function smsInbound(deps: ProxyDeps) {
           errors: parsed.error.flatten().fieldErrors,
         });
         return c.json(
-          { error: { message: "Invalid webhook payload", type: "invalid_request_error", code: "validation_error" } },
+          {
+            error: {
+              message: "Invalid webhook payload",
+              type: "invalid_request_error",
+              code: "validation_error",
+            },
+          },
           400,
         );
       }
@@ -1206,7 +1211,13 @@ export function smsDeliveryStatus(_deps: ProxyDeps) {
           errors: parsed.error.flatten().fieldErrors,
         });
         return c.json(
-          { error: { message: "Invalid webhook payload", type: "invalid_request_error", code: "validation_error" } },
+          {
+            error: {
+              message: "Invalid webhook payload",
+              type: "invalid_request_error",
+              code: "validation_error",
+            },
+          },
           400,
         );
       }

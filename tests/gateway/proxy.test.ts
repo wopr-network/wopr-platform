@@ -456,7 +456,7 @@ describe("Gateway proxy endpoints", () => {
   // -----------------------------------------------------------------------
 
   describe("POST /v1/phone/outbound", () => {
-    it("initiates outbound call without metering (stub)", async () => {
+    it("returns 501 Not Implemented", async () => {
       const app = makeGatewayApp();
       const res = await app.request("/v1/phone/outbound", {
         method: "POST",
@@ -464,11 +464,12 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ to: "+15551234567", from: "+15559876543" }),
       });
 
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: string };
-      expect(body.status).toBe("initiated");
+      expect(res.status).toBe(501);
+      const body = (await res.json()) as { error: { code: string; message: string } };
+      expect(body.error.code).toBe("not_implemented");
+      expect(body.error.message).toContain("not yet implemented");
 
-      // No meter event -- handler is stubbed, no upstream call is made
+      // No meter event — endpoint is not implemented
       expect(meterEvents.length).toBe(0);
     });
   });
@@ -1017,7 +1018,7 @@ describe("Gateway proxy endpoints", () => {
       expect(res.status).toBe(402);
     });
 
-    it("stub endpoints do not block zero-balance users", async () => {
+    it("unimplemented endpoints return 501 regardless of balance", async () => {
       const app = makeGatewayApp({ creditBalance: 0 }); // Zero balance
 
       const res = await app.request("/v1/phone/outbound", {
@@ -1026,10 +1027,10 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ to: "+15551234567", from: "+15559876543" }),
       });
 
-      // Should allow because phoneOutbound is a stub that doesn't charge upfront
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { status: string };
-      expect(body.status).toBe("initiated");
+      // Should return 501 Not Implemented regardless of balance
+      expect(res.status).toBe(501);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("not_implemented");
     });
   });
 });
