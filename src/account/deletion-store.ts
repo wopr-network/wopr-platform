@@ -68,7 +68,7 @@ export class AccountDeletionStore {
       .run();
   }
 
-  /** Mark a deletion request as completed with a summary. */
+  /** Mark a deletion request as completed with a summary. Only transitions from pending. */
   markCompleted(id: string, summary: Record<string, number>): void {
     this.db
       .update(accountDeletionRequests)
@@ -78,7 +78,7 @@ export class AccountDeletionStore {
         deletionSummary: JSON.stringify(summary),
         updatedAt: sql`(datetime('now'))`,
       })
-      .where(eq(accountDeletionRequests.id, id))
+      .where(and(eq(accountDeletionRequests.id, id), eq(accountDeletionRequests.status, "pending")))
       .run();
   }
 

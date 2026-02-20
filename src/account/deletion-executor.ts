@@ -194,24 +194,35 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
     db.delete(tenantCustomers).where(eq(tenantCustomers.tenant, tenantId)).run(),
   );
 
-  // 13. Better Auth user record
+  // 13. Better Auth user record — each operation has its own error boundary so a
+  //     failure on sessions or accounts cannot prevent the critical user-row deletion.
   if (authDb) {
     try {
       const sessionResult = authDb.prepare("DELETE FROM session WHERE user_id = ?").run(tenantId);
       result.deletedCounts.auth_sessions = sessionResult.changes;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      result.errors.push(`auth_sessions: ${msg}`);
+    }
 
+    try {
       const accountResult = authDb.prepare("DELETE FROM account WHERE user_id = ?").run(tenantId);
       result.deletedCounts.auth_accounts = accountResult.changes;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      result.errors.push(`auth_accounts: ${msg}`);
+    }
 
-      try {
-        const verificationResult = authDb
-          .prepare("DELETE FROM email_verification_tokens WHERE user_id = ?")
-          .run(tenantId);
-        result.deletedCounts.auth_verification_tokens = verificationResult.changes;
-      } catch {
-        // Table may not exist in all better-auth versions
-      }
+    try {
+      const verificationResult = authDb
+        .prepare("DELETE FROM email_verification_tokens WHERE user_id = ?")
+        .run(tenantId);
+      result.deletedCounts.auth_verification_tokens = verificationResult.changes;
+    } catch {
+      // Table may not exist in all better-auth versions — not an error
+    }
 
+    try {
       const userResult = authDb.prepare("DELETE FROM user WHERE id = ?").run(tenantId);
       result.deletedCounts.auth_users = userResult.changes;
       result.authUserDeleted = userResult.changes > 0;
