@@ -27,7 +27,6 @@ botPluginRoutes.use("/bots/:botId/*", async (c, next) => {
 // Zod schema for install request body
 const installPluginSchema = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
-  providerChoices: z.record(z.string(), z.enum(["byok", "hosted"])).default({}),
 });
 
 /** POST /fleet/bots/:botId/plugins/:pluginId — Install a plugin on a bot */
@@ -63,8 +62,15 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
   }
 
+  // Re-fetch profile immediately before write to minimise the race window
+  // between concurrent install requests for the same bot.
+  const freshProfile = await store.get(botId);
+  if (!freshProfile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
   // Read existing WOPR_PLUGINS env var (comma-separated plugin IDs)
-  const existingPlugins = (profile.env.WOPR_PLUGINS || "")
+  const existingPlugins = (freshProfile.env.WOPR_PLUGINS || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -79,19 +85,19 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
   // Merge plugin config into env as WOPR_PLUGIN_<UPPER_SNAKE>_CONFIG=<json>
   const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
   const updatedEnv = {
-    ...profile.env,
+    ...freshProfile.env,
     WOPR_PLUGINS: updatedPlugins,
     [configEnvKey]: JSON.stringify(parsed.data.config),
   };
 
   // Save updated profile (env change triggers container recreation via fleet update)
-  const updated = { ...profile, env: updatedEnv };
+  const updated = { ...freshProfile, env: updatedEnv };
   await store.save(updated);
 
   logger.info(`Installed plugin ${pluginId} on bot ${botId}`, {
     botId,
     pluginId,
-    tenantId: profile.tenantId,
+    tenantId: freshProfile.tenantId,
   });
 
   return c.json(
