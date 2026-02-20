@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "wopr-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "wopr-network/wopr-claude-hooks",
+        "ref": "main"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "wopr-hooks@wopr-marketplace": true
+  }
+}
