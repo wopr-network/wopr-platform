@@ -1,9 +1,115 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0d8ee079-5c83-497a-a066-39fd1e9ed197",
-  "prevId": "45138269-631d-48f0-92e1-edc1fe23aeaa",
+  "id": "b95813a2-2830-408c-a541-e52824d1e073",
+  "prevId": "0d8ee079-5c83-497a-a066-39fd1e9ed197",
   "tables": {
+    "account_deletion_requests": {
+      "name": "account_deletion_requests",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requested_by": {
+          "name": "requested_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "delete_after": {
+          "name": "delete_after",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deletion_summary": {
+          "name": "deletion_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "idx_acct_del_tenant": {
+          "name": "idx_acct_del_tenant",
+          "columns": [
+            "tenant_id"
+          ],
+          "isUnique": false
+        },
+        "idx_acct_del_status": {
+          "name": "idx_acct_del_status",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "idx_acct_del_delete_after": {
+          "name": "idx_acct_del_delete_after",
+          "columns": [
+            "status",
+            "delete_after"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "admin_audit_log": {
       "name": "admin_audit_log",
       "columns": {

@@ -156,10 +156,15 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
   deleteFromTable("admin_notes", () => db.delete(adminNotes).where(eq(adminNotes.tenantId, tenantId)).run());
 
   // 8. Snapshots (DB rows only; S3 objects require separate cleanup)
+  // NOTE: S3 object deletion for snapshots is tracked in WOP-853.
   deleteFromTable("snapshots", () => db.delete(snapshots).where(eq(snapshots.tenant, tenantId)).run());
   // backup_status uses containerId (container name pattern "tenant_{id}")
+  // Escape LIKE special characters in tenantId to prevent cross-tenant wildcard matching.
   try {
-    const r = rawDb.prepare("DELETE FROM backup_status WHERE container_id LIKE ?").run(`%${tenantId}%`);
+    const escapedTenantId = tenantId.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+    const r = rawDb
+      .prepare("DELETE FROM backup_status WHERE container_id LIKE ? ESCAPE '\\'")
+      .run(`%${escapedTenantId}%`);
     result.deletedCounts.backup_status = r.changes;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

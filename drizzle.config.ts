@@ -2,6 +2,7 @@ import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
   schema: [
+    "./src/db/schema/account-deletion-requests.ts",
     "./src/db/schema/admin-audit.ts",
     "./src/db/schema/admin-notes.ts",
     "./src/db/schema/audit.ts",

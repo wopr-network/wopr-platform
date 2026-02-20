@@ -44,6 +44,7 @@ export async function runDeletionCronWithExecutor(
       cronResult.succeeded++;
       cronResult.results.push(result);
     } catch (_err) {
+      console.error("deletion-cron: executor failed for tenant", request.tenantId, _err);
       cronResult.failed++;
     }
   }
