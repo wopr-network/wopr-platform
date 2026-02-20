@@ -50,6 +50,7 @@ interface CircuitState {
 // ---------------------------------------------------------------------------
 
 let _lastStore: Map<string, CircuitState> = new Map();
+let _lastConfig: CircuitBreakerConfig = DEFAULT_CIRCUIT_BREAKER_CONFIG;
 
 // ---------------------------------------------------------------------------
 // Middleware factory
@@ -72,8 +73,9 @@ export function circuitBreaker(config?: Partial<CircuitBreakerConfig>): Middlewa
   // Each middleware instance gets its own isolated store
   const store = new Map<string, CircuitState>();
 
-  // Register as the "current" store for observability
+  // Register as the "current" store and config for observability
   _lastStore = store;
+  _lastConfig = cfg;
 
   return async (c: Context, next: Next) => {
     const tenant = c.get("gatewayTenant") as GatewayTenant | undefined;
@@ -179,9 +181,7 @@ export function getCircuitStates(): Map<string, { count: number; trippedAt: numb
   const result = new Map<string, { count: number; trippedAt: number | null; remainingPauseMs: number }>();
   for (const [instanceId, state] of _lastStore) {
     const remainingPauseMs =
-      state.trippedAt !== null
-        ? Math.max(0, DEFAULT_CIRCUIT_BREAKER_CONFIG.pauseDurationMs - (now - state.trippedAt))
-        : 0;
+      state.trippedAt !== null ? Math.max(0, _lastConfig.pauseDurationMs - (now - state.trippedAt)) : 0;
     result.set(instanceId, {
       count: state.count,
       trippedAt: state.trippedAt,

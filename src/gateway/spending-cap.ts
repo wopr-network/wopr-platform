@@ -13,11 +13,11 @@
  * single-server architecture.
  */
 
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler, Next } from "hono";
 import { LRUCache } from "lru-cache";
 import type { DrizzleDb } from "../db/index.js";
-import { meterEvents, usageSummaries } from "../db/schema/meter-events.js";
+import { meterEvents } from "../db/schema/meter-events.js";
 import type { GatewayTenant } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -59,10 +59,10 @@ function getDayStart(now: number): number {
   return d.getTime();
 }
 
-/** Get the start of the current calendar month in milliseconds (local time, matching BudgetChecker). */
+/** Get the start of the current UTC calendar month in milliseconds. */
 function getMonthStart(now: number): number {
   const d = new Date(now);
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0).getTime();
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
 }
 
 /** Query current daily and monthly spend for a tenant. */
@@ -70,7 +70,7 @@ function querySpend(db: DrizzleDb, tenant: string, now: number): CachedSpend {
   const dayStart = getDayStart(now);
   const monthStart = getMonthStart(now);
 
-  // Daily spend from meter_events
+  // Daily spend from meter_events only (source of truth — avoids double-counting with usage_summaries)
   const dailyEvents = db
     .select({
       total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
@@ -79,24 +79,9 @@ function querySpend(db: DrizzleDb, tenant: string, now: number): CachedSpend {
     .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, dayStart)))
     .get();
 
-  // Daily spend from usage_summaries (may overlap — conservative to sum both)
-  const dailySummaries = db
-    .select({
-      total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-    })
-    .from(usageSummaries)
-    .where(
-      and(
-        eq(usageSummaries.tenant, tenant),
-        gte(usageSummaries.windowEnd, dayStart),
-        lte(usageSummaries.windowStart, now),
-      ),
-    )
-    .get();
+  const dailySpend = dailyEvents?.total ?? 0;
 
-  const dailySpend = (dailyEvents?.total ?? 0) + (dailySummaries?.total ?? 0);
-
-  // Monthly spend from meter_events
+  // Monthly spend from meter_events only (source of truth — avoids double-counting with usage_summaries)
   const monthlyEvents = db
     .select({
       total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
@@ -105,22 +90,7 @@ function querySpend(db: DrizzleDb, tenant: string, now: number): CachedSpend {
     .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)))
     .get();
 
-  // Monthly spend from usage_summaries
-  const monthlySummaries = db
-    .select({
-      total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-    })
-    .from(usageSummaries)
-    .where(
-      and(
-        eq(usageSummaries.tenant, tenant),
-        gte(usageSummaries.windowEnd, monthStart),
-        lte(usageSummaries.windowStart, now),
-      ),
-    )
-    .get();
-
-  const monthlySpend = (monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0);
+  const monthlySpend = monthlyEvents?.total ?? 0;
 
   return { dailySpend, monthlySpend };
 }
