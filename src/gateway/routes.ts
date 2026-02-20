@@ -8,6 +8,7 @@
 
 import { Hono } from "hono";
 import { rateLimit } from "../api/middleware/rate-limit.js";
+import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { modelsHandler } from "./models.js";
 import { createAnthropicRoutes } from "./protocol/anthropic.js";
@@ -33,6 +34,7 @@ import {
 } from "./proxy.js";
 import { type GatewayAuthEnv, serviceKeyAuth } from "./service-key-auth.js";
 import type { GatewayConfig } from "./types.js";
+import { createTwilioWebhookAuth } from "./webhook-auth.js";
 
 /**
  * Create the gateway router with all /v1/... endpoints.
@@ -60,6 +62,30 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
 
   gateway.route("/anthropic", createAnthropicRoutes(protocolDeps));
   gateway.route("/openai", createOpenAIRoutes(protocolDeps));
+
+  // --- Webhook routes (Twilio HMAC signature auth, NOT Bearer) ---
+  // These MUST be registered BEFORE the serviceKeyAuth("/*") middleware.
+  // Twilio sends X-Twilio-Signature headers, not Bearer tokens.
+  if (config.webhookBaseUrl && !config.resolveTenantFromWebhook) {
+    logger.warn(
+      "Gateway: webhookBaseUrl is set but resolveTenantFromWebhook is missing — Twilio webhook routes will not be registered and webhooks will receive 404",
+    );
+  }
+  if (config.resolveTenantFromWebhook && !config.webhookBaseUrl) {
+    logger.warn(
+      "Gateway: resolveTenantFromWebhook is set but webhookBaseUrl is missing — Twilio webhook routes will not be registered and webhooks will receive 404",
+    );
+  }
+  if (config.providers.twilio?.authToken && config.webhookBaseUrl && config.resolveTenantFromWebhook) {
+    const webhookAuth = createTwilioWebhookAuth({
+      twilioAuthToken: config.providers.twilio.authToken,
+      webhookBaseUrl: config.webhookBaseUrl,
+      resolveTenantFromWebhook: config.resolveTenantFromWebhook,
+    });
+    gateway.post("/phone/inbound/:tenantId", webhookAuth, phoneInbound(deps));
+    gateway.post("/messages/sms/inbound/:tenantId", webhookAuth, smsInbound(deps));
+    gateway.post("/messages/sms/status/:tenantId", webhookAuth, smsDeliveryStatus(deps));
+  }
 
   // All remaining gateway routes require service key authentication via Bearer
   gateway.use("/*", serviceKeyAuth(config.resolveServiceKey));
@@ -91,7 +117,6 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
 
   // Phone (Twilio/Telnyx)
   gateway.post("/phone/outbound", phoneOutbound(deps));
-  gateway.post("/phone/inbound", phoneInbound(deps));
 
   // Phone Number Management
   gateway.post("/phone/numbers", phoneNumberProvision(deps));
@@ -110,8 +135,6 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   });
 
   gateway.post("/messages/sms", smsRateLimit, smsOutbound(deps));
-  gateway.post("/messages/sms/inbound", smsInbound(deps));
-  gateway.post("/messages/sms/status", smsDeliveryStatus(deps));
 
   // Model discovery
   gateway.get("/models", modelsHandler(deps));

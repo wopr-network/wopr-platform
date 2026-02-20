@@ -11,6 +11,7 @@
  */
 
 import type { Context } from "hono";
+import { z } from "zod";
 import { logger } from "../config/logger.js";
 import type { TTSOutput } from "../monetization/adapters/types.js";
 import { withMargin } from "../monetization/adapters/types.js";
@@ -27,6 +28,34 @@ import { proxySSEStream } from "./streaming.js";
 import type { FetchFn, GatewayConfig, ProviderConfig } from "./types.js";
 
 const DEFAULT_MARGIN = 1.3;
+
+/** Max call duration cap: 4 hours = 240 minutes. */
+const MAX_CALL_DURATION_MINUTES = 240;
+
+const phoneInboundBodySchema = z.object({
+  call_sid: z.string().optional(),
+  // Twilio sends all fields as strings in form-encoded bodies; coerce to number.
+  duration_minutes: z.coerce.number().min(0).max(MAX_CALL_DURATION_MINUTES).optional(),
+  status: z.string().optional(),
+});
+
+const smsInboundBodySchema = z.object({
+  message_sid: z.string().optional(),
+  from: z.string(),
+  to: z.string(),
+  body: z.string(),
+  media_url: z.array(z.string().url()).optional(),
+  // Twilio sends numeric fields as strings in form-encoded bodies; coerce to number.
+  num_media: z.coerce.number().int().min(0).optional(),
+});
+
+const smsDeliveryStatusBodySchema = z.object({
+  message_sid: z.string(),
+  message_status: z.string(),
+  // Twilio sends numeric fields as strings in form-encoded bodies; coerce to number.
+  error_code: z.coerce.number().nullable().optional(),
+  error_message: z.string().nullable().optional(),
+});
 
 /** Shared state for all proxy handlers. */
 export interface ProxyDeps {
@@ -919,11 +948,21 @@ export function phoneInbound(deps: ProxyDeps) {
     const providerName = deps.providers.twilio ? "twilio" : "telnyx";
 
     try {
-      const body = await c.req.json<{
-        call_sid?: string;
-        duration_minutes?: number;
-        status?: string;
-      }>();
+      // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
+      // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
+      const rawBody = c.get("webhookBody") ?? (await c.req.json());
+      const parsed = phoneInboundBodySchema.safeParse(rawBody);
+      if (!parsed.success) {
+        logger.warn("Gateway proxy: phone/inbound invalid body", {
+          tenant: tenant.id,
+          errors: parsed.error.flatten().fieldErrors,
+        });
+        return c.json(
+          { error: { message: "Invalid webhook payload", type: "invalid_request_error", code: "validation_error" } },
+          400,
+        );
+      }
+      const body = parsed.data;
 
       // Meter per-minute events for active calls
       const durationMinutes = body.duration_minutes ?? 1;
@@ -1101,14 +1140,21 @@ export function smsInbound(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
 
     try {
-      const body = await c.req.json<{
-        message_sid?: string;
-        from: string;
-        to: string;
-        body: string;
-        media_url?: string[];
-        num_media?: number;
-      }>();
+      // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
+      // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
+      const rawBody = c.get("webhookBody") ?? (await c.req.json());
+      const parsed = smsInboundBodySchema.safeParse(rawBody);
+      if (!parsed.success) {
+        logger.warn("Gateway proxy: messages/sms/inbound invalid body", {
+          tenant: tenant.id,
+          errors: parsed.error.flatten().fieldErrors,
+        });
+        return c.json(
+          { error: { message: "Invalid webhook payload", type: "invalid_request_error", code: "validation_error" } },
+          400,
+        );
+      }
+      const body = parsed.data;
 
       const isMMS = (body.media_url && body.media_url.length > 0) || (body.num_media && body.num_media > 0);
       const capability = isMMS ? "mms-inbound" : "sms-inbound";
@@ -1150,12 +1196,21 @@ export function smsDeliveryStatus(_deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
 
     try {
-      const body = await c.req.json<{
-        message_sid: string;
-        message_status: string;
-        error_code?: number | null;
-        error_message?: string | null;
-      }>();
+      // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
+      // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
+      const rawBody = c.get("webhookBody") ?? (await c.req.json());
+      const parsed = smsDeliveryStatusBodySchema.safeParse(rawBody);
+      if (!parsed.success) {
+        logger.warn("Gateway proxy: messages/sms/status invalid body", {
+          tenant: tenant.id,
+          errors: parsed.error.flatten().fieldErrors,
+        });
+        return c.json(
+          { error: { message: "Invalid webhook payload", type: "invalid_request_error", code: "validation_error" } },
+          400,
+        );
+      }
+      const body = parsed.data;
 
       logger.info("Gateway proxy: messages/sms/status", {
         tenant: tenant.id,
