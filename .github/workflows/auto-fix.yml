@@ -42,6 +42,15 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            async function getPR(prNumber) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+              return pr;
+            }
+
             if (context.eventName === 'pull_request_review_comment') {
               const headRepo = context.payload.pull_request.head.repo.full_name;
               const baseRepo = context.payload.pull_request.base.repo.full_name;
@@ -50,30 +59,26 @@ jobs:
                 return;
               }
             }
+
             if (context.eventName === 'issue_comment') {
-              const prNumber = context.payload.issue.number;
-              const { data: pr } = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber,
-              });
-              const headRepo = pr.head.repo.full_name;
-              const baseRepo = pr.base.repo.full_name;
-              if (headRepo !== baseRepo) {
-                const login = context.payload.comment.user.login;
-                const { data: permLevel } = await github.rest.repos.getCollaboratorPermissionLevel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  username: login,
-                });
-                const perm = permLevel.permission;
-                if (perm !== 'admin' && perm !== 'write') {
-                  core.setFailed(`Skipping auto-fix: fork PR and commenter ${login} lacks write access (${perm})`);
-                  return;
-                }
+              const pr = await getPR(context.payload.issue.number);
+              if (pr.head.repo.full_name !== pr.base.repo.full_name) {
+                // Never auto-fix fork PRs — the fork branch is untrusted code
+                core.setFailed(`Skipping auto-fix: fork PRs are not eligible (${pr.head.repo.full_name})`);
+                return;
               }
             }
-            core.info('Fork safety check passed');
+
+            if (context.eventName === 'check_run') {
+              const pr = await getPR(context.payload.check_run.pull_requests[0].number);
+              if (pr.head.repo.full_name !== pr.base.repo.full_name) {
+                core.setFailed(`Skipping auto-fix: fork PR (${pr.head.repo.full_name})`);
+                return;
+              }
+            }
+
+            core.setOutput('safe', 'true');
+            core.info('Fork safety check passed — same-repo PR');
 
       - name: Get PR number and event context
         id: ctx
@@ -135,7 +140,7 @@ jobs:
             core.setOutput('head_ref', pr.head.ref);
 
       - uses: actions/checkout@v4
-        if: steps.label-check.outputs.skip == 'false'
+        if: steps.label-check.outputs.skip == 'false' && steps.fork-check.outputs.safe == 'true'
         with:
           ref: ${{ steps.pr-info.outputs.head_ref }}
           fetch-depth: 0
