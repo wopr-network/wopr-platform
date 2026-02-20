@@ -13,6 +13,8 @@ concurrency:
 jobs:
   lint:
     runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +30,8 @@ jobs:
 
   build:
     runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -87,6 +91,8 @@ jobs:
 
   integration-test:
     runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -113,6 +119,8 @@ jobs:
   e2e-test:
     runs-on: [self-hosted, Linux, X64]
     needs: [build]
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
