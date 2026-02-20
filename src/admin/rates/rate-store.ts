@@ -179,6 +179,14 @@ export class RateStore {
     return (result as SellRate) ?? null;
   }
 
+  /** Look up an active sell rate by capability and model. Returns null if not found. */
+  getSellRateByModel(capability: string, model: string): SellRate | null {
+    const result = this.db
+      .prepare("SELECT * FROM sell_rates WHERE capability = ? AND model = ? AND is_active = 1 LIMIT 1")
+      .get(capability, model);
+    return (result as SellRate) ?? null;
+  }
+
   listSellRates(filters?: RateFilters): { entries: SellRate[]; total: number } {
     const whereClauses: string[] = [];
     const whereValues: unknown[] = [];

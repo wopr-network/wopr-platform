@@ -55,6 +55,7 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
     fetchFn: config.fetchFn ?? fetch,
     resolveServiceKey: config.resolveServiceKey,
     withMarginFn: withMargin,
+    rateLookupFn: config.rateLookupFn,
   };
 
   gateway.route("/anthropic", createAnthropicRoutes(protocolDeps));

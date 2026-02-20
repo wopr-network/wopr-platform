@@ -20,6 +20,8 @@ import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
 import { mapBudgetError, mapProviderError } from "./error-mapping.js";
+import type { SellRateLookupFn } from "./rate-lookup.js";
+import { resolveTokenRates } from "./rate-lookup.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 import { proxySSEStream } from "./streaming.js";
 import type { FetchFn, GatewayConfig, ProviderConfig } from "./types.js";
@@ -36,6 +38,7 @@ export interface ProxyDeps {
   defaultMargin: number;
   fetchFn: FetchFn;
   arbitrageRouter?: import("../monetization/arbitrage/router.js").ArbitrageRouter;
+  rateLookupFn?: SellRateLookupFn;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -48,6 +51,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     defaultMargin: config.defaultMargin ?? DEFAULT_MARGIN,
     fetchFn: config.fetchFn ?? fetch,
     arbitrageRouter: config.arbitrageRouter,
+    rateLookupFn: config.rateLookupFn,
   };
 }
 
@@ -118,7 +122,13 @@ export function chatCompletions(deps: ProxyDeps) {
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
       return c.json(
-        { error: { message: "LLM service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "LLM service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -127,11 +137,13 @@ export function chatCompletions(deps: ProxyDeps) {
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
-      // Detect streaming before making the request
+      // Detect streaming and extract model before making the request
       let isStreaming = false;
+      let requestModel: string | undefined;
       try {
-        const parsed = JSON.parse(body) as { stream?: boolean };
+        const parsed = JSON.parse(body) as { stream?: boolean; model?: string };
         isStreaming = parsed.stream === true;
+        requestModel = parsed.model;
       } catch {
         // Not valid JSON, assume non-streaming
       }
@@ -153,12 +165,16 @@ export function chatCompletions(deps: ProxyDeps) {
           capability: "chat-completions",
           provider: "openrouter",
           costHeader: res.headers.get("x-openrouter-cost"),
+          model: requestModel,
+          rateLookupFn: deps.rateLookupFn,
         });
       }
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");
-      const cost = costHeader ? parseFloat(costHeader) : estimateTokenCost(responseBody);
+      const cost = costHeader
+        ? parseFloat(costHeader)
+        : estimateTokenCost(responseBody, requestModel, deps.rateLookupFn);
 
       logger.info("Gateway proxy: chat/completions", {
         tenant: tenant.id,
@@ -224,7 +240,13 @@ export function textCompletions(deps: ProxyDeps) {
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
       return c.json(
-        { error: { message: "LLM service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "LLM service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -232,6 +254,14 @@ export function textCompletions(deps: ProxyDeps) {
     try {
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
+
+      let requestModel: string | undefined;
+      try {
+        const parsed = JSON.parse(body) as { model?: string };
+        requestModel = parsed.model;
+      } catch {
+        // ignore parse errors
+      }
 
       const res = await deps.fetchFn(`${baseUrl}/v1/completions`, {
         method: "POST",
@@ -244,7 +274,9 @@ export function textCompletions(deps: ProxyDeps) {
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");
-      const cost = costHeader ? parseFloat(costHeader) : estimateTokenCost(responseBody);
+      const cost = costHeader
+        ? parseFloat(costHeader)
+        : estimateTokenCost(responseBody, requestModel, deps.rateLookupFn);
 
       logger.info("Gateway proxy: completions", { tenant: tenant.id, status: res.status, cost });
 
@@ -306,7 +338,13 @@ export function embeddings(deps: ProxyDeps) {
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
       return c.json(
-        { error: { message: "Embeddings service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "Embeddings service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -386,7 +424,13 @@ export function audioTranscriptions(deps: ProxyDeps) {
     const providerCfg = deps.providers.deepgram;
     if (!providerCfg) {
       return c.json(
-        { error: { message: "STT service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "STT service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -429,7 +473,11 @@ export function audioTranscriptions(deps: ProxyDeps) {
         // use fallback cost
       }
 
-      logger.info("Gateway proxy: audio/transcriptions", { tenant: tenant.id, status: res.status, cost });
+      logger.info("Gateway proxy: audio/transcriptions", {
+        tenant: tenant.id,
+        status: res.status,
+        cost,
+      });
 
       if (res.ok) {
         emitMeterEvent(deps, tenant.id, "transcription", "deepgram", cost, undefined, {
@@ -471,10 +519,21 @@ export function audioSpeech(deps: ProxyDeps) {
     // Parse body once — reused by both the arbitrage path and the ElevenLabs fallback.
     let body: { input?: string; voice?: string; model?: string; response_format?: string };
     try {
-      body = await c.req.json<{ input?: string; voice?: string; model?: string; response_format?: string }>();
+      body = await c.req.json<{
+        input?: string;
+        voice?: string;
+        model?: string;
+        response_format?: string;
+      }>();
     } catch {
       return c.json(
-        { error: { message: "Invalid JSON in request body", type: "invalid_request_error", code: "parse_error" } },
+        {
+          error: {
+            message: "Invalid JSON in request body",
+            type: "invalid_request_error",
+            code: "parse_error",
+          },
+        },
         400,
       );
     }
@@ -523,12 +582,20 @@ export function audioSpeech(deps: ProxyDeps) {
         const audioRes = await deps.fetchFn(audioUrl);
         return new Response(audioRes.body, {
           status: 200,
-          headers: { "Content-Type": audioRes.headers.get("Content-Type") ?? `audio/${audioFormat}` },
+          headers: {
+            "Content-Type": audioRes.headers.get("Content-Type") ?? `audio/${audioFormat}`,
+          },
         });
       } catch (error) {
         if (error instanceof NoProviderAvailableError) {
           return c.json(
-            { error: { message: error.message, type: "server_error", code: "no_provider_available" } },
+            {
+              error: {
+                message: error.message,
+                type: "server_error",
+                code: "no_provider_available",
+              },
+            },
             503,
           );
         }
@@ -541,7 +608,13 @@ export function audioSpeech(deps: ProxyDeps) {
     const providerCfg = deps.providers.elevenlabs;
     if (!providerCfg) {
       return c.json(
-        { error: { message: "TTS service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "TTS service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -579,7 +652,11 @@ export function audioSpeech(deps: ProxyDeps) {
       const characterCount = text.length;
       const cost = characterCount * 0.000015; // wholesale rate
 
-      logger.info("Gateway proxy: audio/speech", { tenant: tenant.id, characters: characterCount, cost });
+      logger.info("Gateway proxy: audio/speech", {
+        tenant: tenant.id,
+        characters: characterCount,
+        cost,
+      });
       emitMeterEvent(deps, tenant.id, "tts", "elevenlabs", cost, undefined, {
         usage: { units: characterCount, unitType: "characters" },
         tier: "branded",
@@ -621,7 +698,13 @@ export function imageGenerations(deps: ProxyDeps) {
     const providerCfg = deps.providers.replicate;
     if (!providerCfg) {
       return c.json(
-        { error: { message: "Image service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "Image service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -666,7 +749,10 @@ export function imageGenerations(deps: ProxyDeps) {
         });
       }
 
-      const prediction = (await res.json()) as { output?: string[]; metrics?: { predict_time?: number } };
+      const prediction = (await res.json()) as {
+        output?: string[];
+        metrics?: { predict_time?: number };
+      };
       const predictTime = prediction.metrics?.predict_time ?? 5;
       const cost = predictTime * 0.0023; // SDXL wholesale rate
 
@@ -711,7 +797,13 @@ export function videoGenerations(deps: ProxyDeps) {
     const providerCfg = deps.providers.replicate;
     if (!providerCfg) {
       return c.json(
-        { error: { message: "Video service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "Video service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -743,7 +835,10 @@ export function videoGenerations(deps: ProxyDeps) {
         });
       }
 
-      const prediction = (await res.json()) as { output?: string; metrics?: { predict_time?: number } };
+      const prediction = (await res.json()) as {
+        output?: string;
+        metrics?: { predict_time?: number };
+      };
       const predictTime = prediction.metrics?.predict_time ?? 30;
       const cost = predictTime * 0.005; // video gen wholesale rate
 
@@ -784,7 +879,13 @@ export function phoneOutbound(deps: ProxyDeps) {
     const providerName = deps.providers.twilio ? "twilio" : "telnyx";
     if (!providerCfg) {
       return c.json(
-        { error: { message: "Phone service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "Phone service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -878,7 +979,13 @@ export function smsOutbound(deps: ProxyDeps) {
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {
       return c.json(
-        { error: { message: "SMS service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "SMS service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -1096,7 +1203,13 @@ export function phoneNumberProvision(deps: ProxyDeps) {
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {
       return c.json(
-        { error: { message: "Phone service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "Phone service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -1238,7 +1351,13 @@ export function phoneNumberList(deps: ProxyDeps) {
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {
       return c.json(
-        { error: { message: "Phone service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "Phone service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -1303,7 +1422,13 @@ export function phoneNumberRelease(deps: ProxyDeps) {
     const twilioCfg = deps.providers.twilio;
     if (!twilioCfg) {
       return c.json(
-        { error: { message: "Phone service not configured", type: "server_error", code: "service_unavailable" } },
+        {
+          error: {
+            message: "Phone service not configured",
+            type: "server_error",
+            code: "service_unavailable",
+          },
+        },
         503,
       );
     }
@@ -1312,7 +1437,13 @@ export function phoneNumberRelease(deps: ProxyDeps) {
       const numberId = c.req.param("id");
       if (!numberId) {
         return c.json(
-          { error: { message: "Missing phone number ID", type: "invalid_request_error", code: "missing_field" } },
+          {
+            error: {
+              message: "Missing phone number ID",
+              type: "invalid_request_error",
+              code: "missing_field",
+            },
+          },
           400,
         );
       }
@@ -1386,14 +1517,15 @@ export function phoneNumberRelease(deps: ProxyDeps) {
 // -----------------------------------------------------------------------
 
 /** Estimate token cost from an OpenAI-compatible response body. */
-function estimateTokenCost(responseBody: string): number {
+function estimateTokenCost(responseBody: string, model?: string, rateLookupFn?: SellRateLookupFn): number {
   try {
     const parsed = JSON.parse(responseBody) as {
       usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     };
     const inputTokens = parsed.usage?.prompt_tokens ?? 0;
     const outputTokens = parsed.usage?.completion_tokens ?? 0;
-    return inputTokens * 0.000001 + outputTokens * 0.000002;
+    const rates = resolveTokenRates(rateLookupFn ?? (() => null), "chat-completions", model);
+    return (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
   } catch {
     return 0.001; // minimum fallback
   }

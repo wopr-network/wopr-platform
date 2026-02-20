@@ -8,6 +8,7 @@
 import type { BudgetChecker } from "../../monetization/budget/budget-checker.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../../monetization/metering/emitter.js";
+import type { SellRateLookupFn } from "../rate-lookup.js";
 import type { FetchFn, GatewayTenant, ProviderConfig } from "../types.js";
 
 export interface ProtocolDeps {
@@ -21,4 +22,5 @@ export interface ProtocolDeps {
   resolveServiceKey: (key: string) => GatewayTenant | null;
   /** Apply margin to a cost. Defaults to withMargin from adapters/types. */
   withMarginFn: (cost: number, margin: number) => number;
+  rateLookupFn?: SellRateLookupFn;
 }
