@@ -1,13 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-<<<<<<<< HEAD:drizzle/migrations/meta/0013_snapshot.json
   "id": "31c2058d-1b8b-492d-a22f-d43f59ef80b8",
   "prevId": "0d8ee079-5c83-497a-a066-39fd1e9ed197",
-========
-  "id": "4dba23ed-ac86-46ef-83bc-8dee61114615",
-  "prevId": "31c2058d-1b8b-492d-a22f-d43f59ef80b8",
->>>>>>>> 14163e5 (fix: renumber migration 0014 -> 0015 to avoid index collision (WOP-860)):drizzle/migrations/meta/0015_snapshot.json
   "tables": {
     "admin_audit_log": {
       "name": "admin_audit_log",
