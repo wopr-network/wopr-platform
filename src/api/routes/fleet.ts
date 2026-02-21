@@ -11,6 +11,7 @@ import { ImagePoller } from "../../fleet/image-poller.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
+import { getRecoveryManager } from "../../fleet/services.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
@@ -278,6 +279,14 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
   try {
     await fleet.remove(botId, c.req.query("removeVolumes") === "true");
     getProxyManager().removeRoute(botId);
+
+    // Capacity freed -- check if any waiting recovery tenants can now be placed
+    getRecoveryManager()
+      .checkAndRetryWaiting()
+      .catch((err) => {
+        logger.error("Auto-retry after bot removal failed", { err });
+      });
+
     return c.body(null, 204);
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
