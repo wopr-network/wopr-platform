@@ -81,8 +81,10 @@ export class DockerManager {
     // Stop and remove old container
     try {
       await container.stop();
-    } catch {
-      // may already be stopped
+    } catch (err) {
+      // Docker 304: container already stopped — not an error
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("container already stopped")) throw err;
     }
     await container.remove();
 
@@ -110,8 +112,10 @@ export class DockerManager {
     // Stop the old container (ignore error if already stopped)
     try {
       await container.stop();
-    } catch {
-      // Container may already be stopped
+    } catch (err) {
+      // Docker 304: container already stopped — not an error
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("container already stopped")) throw err;
     }
 
     // Remove the old container
@@ -156,8 +160,10 @@ export class DockerManager {
     const container = this.docker.getContainer(name);
     try {
       await container.stop();
-    } catch {
-      // may already be stopped
+    } catch (err) {
+      // Docker 304: container already stopped — not an error
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("container already stopped")) throw err;
     }
     await container.remove();
   }
