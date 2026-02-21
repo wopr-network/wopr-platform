@@ -1,9 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import type { WebSocket } from "ws";
 import { logger } from "../../config/logger.js";
-import type { NodeRegistration } from "../../fleet/node-connection-manager.js";
-import { getNodeConnections, getRegistrationTokenStore } from "../../fleet/services.js";
+import type { NodeRegistration } from "../../fleet/repository-types.js";
+import { getNodeRegistrar, getNodeRepo, getRegistrationTokenStore } from "../../fleet/services.js";
 
 /**
  * Validate node authentication against static NODE_SECRET.
@@ -41,20 +40,29 @@ internalNodeRoutes.post("/register", async (c) => {
     return c.json({ success: false, error: "Unauthorized" }, 401);
   }
 
-  let body: NodeRegistration;
+  let body: { node_id: string; host: string; capacity_mb: number; agent_version: string };
   try {
-    body = (await c.req.json()) as NodeRegistration;
+    body = await c.req.json();
   } catch {
     return c.json({ success: false, error: "Invalid registration data" }, 400);
   }
 
-  const nodeConnections = getNodeConnections();
+  const registrar = getNodeRegistrar();
+  const nodeRepo = getNodeRepo();
+
+  // Map snake_case HTTP body to camelCase domain type
+  const registration: NodeRegistration = {
+    nodeId: body.node_id,
+    host: body.host,
+    capacityMb: body.capacity_mb,
+    agentVersion: body.agent_version,
+  };
 
   // Path 1: Static NODE_SECRET (backwards-compatible)
   const staticSecret = process.env.NODE_SECRET;
   if (staticSecret && bearer === staticSecret) {
-    nodeConnections.registerNode(body);
-    logger.info(`Node registered via static secret: ${body.node_id}`);
+    registrar.register(registration);
+    logger.info(`Node registered via static secret: ${registration.nodeId}`);
     return c.json({ success: true });
   }
 
@@ -62,9 +70,9 @@ internalNodeRoutes.post("/register", async (c) => {
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidPattern.test(bearer)) {
     // Might be a per-node secret (wopr_node_ prefix or similar non-UUID format)
-    const existingNode = nodeConnections.getNodeBySecret(bearer);
+    const existingNode = nodeRepo.getBySecret(bearer);
     if (existingNode) {
-      nodeConnections.registerNode({ ...body, node_id: existingNode.id });
+      registrar.register({ ...registration, nodeId: existingNode.id });
       logger.info(`Node re-registered via per-node secret: ${existingNode.id}`);
       return c.json({ success: true });
     }
@@ -84,10 +92,10 @@ internalNodeRoutes.post("/register", async (c) => {
   const nodeSecret = `wopr_node_${randomUUID().replace(/-/g, "")}`;
   const hashedSecret = createHash("sha256").update(nodeSecret).digest("hex");
 
-  // Register node with owner info
-  nodeConnections.registerSelfHostedNode({
-    ...body,
-    node_id: nodeId,
+  // Register self-hosted node via registrar
+  registrar.registerSelfHosted({
+    ...registration,
+    nodeId,
     ownerUserId: consumed.userId,
     label: consumed.label,
     nodeSecretHash: hashedSecret,
@@ -101,11 +109,3 @@ internalNodeRoutes.post("/register", async (c) => {
     node_secret: nodeSecret, // Agent saves this — only returned once
   });
 });
-
-/**
- * Export helper for WebSocket upgrade handling
- */
-export function handleNodeWebSocket(nodeId: string, ws: WebSocket): void {
-  const nodeConnections = getNodeConnections();
-  nodeConnections.handleWebSocket(nodeId, ws);
-}

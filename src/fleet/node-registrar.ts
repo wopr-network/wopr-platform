@@ -1,9 +1,18 @@
-import type { Node, NodeRegistration, RecoveryEvent, RecoveryItem } from "./repository-types.js";
+import type {
+  Node,
+  NodeRegistration,
+  RecoveryEvent,
+  RecoveryItem,
+  SelfHostedNodeRegistration,
+} from "./repository-types.js";
 
 /** Subset of INodeRepository used by NodeRegistrar. */
 export interface NodeRegistrarNodeRepo {
   register(data: NodeRegistration): Node;
+  registerSelfHosted(data: SelfHostedNodeRegistration): Node;
 }
+
+export type { SelfHostedNodeRegistration };
 
 /** Subset of IRecoveryRepository used by NodeRegistrar. */
 export interface NodeRegistrarRecoveryRepo {
@@ -39,6 +48,22 @@ export class NodeRegistrar {
     if (node.status === "returning" && this.onReturning) {
       this.onReturning(node.id);
     }
+
+    if (this.onRetryWaiting) {
+      const openEvents = this.recoveryRepo.listOpenEvents();
+      for (const event of openEvents) {
+        const waiting = this.recoveryRepo.getWaitingItems(event.id);
+        if (waiting.length > 0) {
+          this.onRetryWaiting(event.id);
+        }
+      }
+    }
+
+    return node;
+  }
+
+  registerSelfHosted(data: SelfHostedNodeRegistration): Node {
+    const node = this.nodeRepo.registerSelfHosted(data);
 
     if (this.onRetryWaiting) {
       const openEvents = this.recoveryRepo.listOpenEvents();
