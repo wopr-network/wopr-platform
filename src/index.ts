@@ -6,7 +6,7 @@ import { RateStore } from "./admin/rates/rate-store.js";
 import { initRateSchema } from "./admin/rates/schema.js";
 import { app } from "./api/app.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
-import { buildTokenMetadataMap } from "./auth/index.js";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { applyPlatformPragmas, createDb } from "./db/index.js";
@@ -182,6 +182,7 @@ if (process.env.NODE_ENV !== "test") {
         return Math.round(rows.reduce((sum, r) => sum + r.charge, 0) * 100);
       },
     });
+    adminHealth.use("*", scopedBearerAuthWithTenant(tokenMetadata, "admin"));
     app.route("/admin/health", adminHealth);
   }
 
