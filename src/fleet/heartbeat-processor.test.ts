@@ -37,8 +37,7 @@ describe("HeartbeatProcessor", () => {
     const nodeRepo = makeNodeRepo();
     const processor = new HeartbeatProcessor(nodeRepo);
 
-    // Cast to simulate runtime message where containers field is missing
-    const msg = {
+    const msg: HeartbeatMessage = {
       type: "heartbeat",
       node_id: "node-1",
       uptime_s: 3600,
@@ -46,7 +45,7 @@ describe("HeartbeatProcessor", () => {
       memory_used_mb: 4096,
       disk_total_gb: 100,
       disk_used_gb: 50,
-    } as unknown as HeartbeatMessage;
+    };
 
     processor.process("node-1", msg);
 

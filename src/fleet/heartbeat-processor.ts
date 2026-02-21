@@ -18,11 +18,8 @@ export class HeartbeatProcessor {
     this.nodeRepo = nodeRepo;
   }
 
-  process(nodeId: string, msg: HeartbeatMessage): void {
-    const containers = (msg as unknown as Record<string, unknown>).containers as
-      | Array<{ memory_mb?: number }>
-      | undefined;
-    const usedMb = containers?.reduce((sum, c) => sum + (c.memory_mb ?? 0), 0) ?? 0;
-    this.nodeRepo.updateHeartbeat(nodeId, usedMb);
+  process(_nodeId: string, msg: HeartbeatMessage): void {
+    const usedMb = msg.containers?.reduce((sum, c) => sum + (c.memory_mb ?? 0), 0) ?? 0;
+    this.nodeRepo.updateHeartbeat(msg.node_id, usedMb);
   }
 }
