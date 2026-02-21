@@ -10,7 +10,7 @@ import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import type { ProxyDeps } from "./proxy.js";
 import type { SellRateLookupFn } from "./rate-lookup.js";
-import { resolveTokenRates } from "./rate-lookup.js";
+import { DEFAULT_TOKEN_RATES, resolveTokenRates } from "./rate-lookup.js";
 import type { GatewayTenant } from "./types.js";
 
 /**
@@ -75,7 +75,17 @@ export function proxySSEStream(
             if (data.usage && accumulatedCost === 0) {
               const inputTokens = data.usage.prompt_tokens ?? 0;
               const outputTokens = data.usage.completion_tokens ?? 0;
-              const rates = resolveTokenRates(opts.rateLookupFn ?? (() => null), capability, opts.model);
+              if (!opts.rateLookupFn) {
+                logger.warn("SSE stream: no rateLookupFn provided — token cost will use default fallback rates", {
+                  model: opts.model ?? "unknown",
+                  capability,
+                  inputTokens,
+                  outputTokens,
+                });
+              }
+              const rates = opts.rateLookupFn
+                ? resolveTokenRates(opts.rateLookupFn, capability, opts.model)
+                : DEFAULT_TOKEN_RATES;
               accumulatedCost = (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
             }
           } catch (err) {
