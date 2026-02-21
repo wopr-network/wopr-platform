@@ -79,7 +79,6 @@ vi.mock("../../fleet/services.js", () => ({
 
 // Import AFTER mocks are set up
 const { botPluginRoutes, setBotPluginDeps } = await import("./bot-plugins.js");
-const { BotNotFoundError } = await import("../../fleet/fleet-manager.js");
 
 // Wire in mock deps
 setBotPluginDeps({
