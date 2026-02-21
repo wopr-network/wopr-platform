@@ -142,6 +142,8 @@ export interface RecoveryItem {
   backupKey: string | null;
   status: RecoveryItemStatus;
   reason: string | null;
+  /** Number of recovery retry attempts for this item */
+  retryCount: number;
   startedAt: number | null;
   completedAt: number | null;
 }
