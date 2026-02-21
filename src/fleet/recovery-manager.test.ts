@@ -6,7 +6,7 @@ import * as schema from "../db/schema/index.js";
 import * as dbSchema from "../db/schema/index.js";
 import { recoveryEvents, recoveryItems } from "../db/schema/index.js";
 import type { AdminNotifier } from "./admin-notifier.js";
-import type { NodeConnectionManager } from "./node-connection-manager.js";
+import type { CommandResult, NodeConnectionManager } from "./node-connection-manager.js";
 import { RecoveryManager } from "./recovery-manager.js";
 
 // We test RecoveryManager by verifying the bot.import command payload
@@ -190,7 +190,7 @@ function createTestDb() {
 }
 
 function createMockNodeConnections(
-  sendCommandOrOverrides?: NodeConnectionManager["sendCommand"] | Partial<NodeConnectionManager>,
+  sendCommandOrOverrides?: ((...args: unknown[]) => Promise<CommandResult>) | Partial<NodeConnectionManager>,
 ): NodeConnectionManager {
   const overrides =
     typeof sendCommandOrOverrides === "function"

@@ -149,7 +149,7 @@ export interface NewRecoveryEvent {
 // ---------------------------------------------------------------------------
 
 /** Status of a per-tenant recovery item. */
-export type RecoveryItemStatus = "recovered" | "failed" | "skipped" | "waiting";
+export type RecoveryItemStatus = "recovered" | "failed" | "skipped" | "retried" | "waiting";
 
 /** Plain domain object for a per-tenant recovery item — mirrors `recovery_items` table. */
 export interface RecoveryItem {
@@ -161,6 +161,7 @@ export interface RecoveryItem {
   backupKey: string | null;
   status: RecoveryItemStatus;
   reason: string | null;
+  retryCount: number;
   startedAt: number | null;
   completedAt: number | null;
 }
