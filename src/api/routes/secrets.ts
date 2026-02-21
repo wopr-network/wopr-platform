@@ -29,6 +29,9 @@ async function getInstanceTenantId(instanceId: string): Promise<string | undefin
   }
 }
 
+// BOUNDARY(WOP-805): REST is the correct layer for secrets/key-injection.
+// Used by fleet manager internals (bearer-token-scoped, not session cookie).
+// Not consumed by the dashboard UI directly.
 export const secretsRoutes = new Hono();
 
 // Secrets management requires write scope

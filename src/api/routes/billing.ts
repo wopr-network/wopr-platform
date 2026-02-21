@@ -199,6 +199,13 @@ function getUsageReporter(): StripeUsageReporter {
   return usageReporter;
 }
 
+// BOUNDARY(WOP-805): REST is the correct layer for billing routes.
+// - /billing/webhook: Stripe signature verification (raw HTTP, not tRPC)
+// - /billing/crypto/*: PayRam webhook + checkout (external service signatures)
+// - /billing/setup-intent: returns Stripe.js clientSecret (REST is simpler)
+// - /billing/payment-methods/:id: Stripe detach (REST for now)
+// - /billing/credits/checkout and /billing/portal: have tRPC mirrors;
+//   keep REST until the UI fully migrates to tRPC (WOP-810+).
 export const billingRoutes = new Hono();
 
 // Auth — admin scope required for billing operations (webhook uses Stripe signature)

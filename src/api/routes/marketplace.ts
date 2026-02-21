@@ -4,6 +4,10 @@ import type { AuditEnv } from "../../audit/types.js";
 import { logger } from "../../config/logger.js";
 import { pluginRegistry } from "./marketplace-registry.js";
 
+// BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
+// The UI calls GET /api/marketplace/plugins via session cookie. Should become
+// tRPC procedures (marketplace.list, marketplace.get, marketplace.install).
+// Blocker: none — straightforward migration.
 export const marketplaceRoutes = new Hono<AuditEnv>();
 
 /**

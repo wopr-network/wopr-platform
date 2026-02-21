@@ -24,6 +24,10 @@ export function setActivityDb(db: DrizzleDb | null): void {
   _db = db;
 }
 
+// BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
+// The UI calls GET /api/activity via session cookie. Should become
+// a tRPC procedure (e.g., activity.feed) for type safety.
+// Blocker: none — straightforward migration.
 export const activityRoutes = new Hono<AuditEnv>();
 
 /**

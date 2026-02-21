@@ -32,6 +32,9 @@ function getStore(): RateStore {
  * Public endpoint returning active sell rates grouped by capability.
  * Used by the pricing page (wopr-platform-ui) to replace hardcoded pricingData.
  */
+// BOUNDARY(WOP-805): REST is the correct layer for public pricing.
+// Unauthenticated, consumed by the marketing/pricing page.
+// No session context needed.
 export const publicPricingRoutes = new Hono();
 
 publicPricingRoutes.get("/", (c) => {

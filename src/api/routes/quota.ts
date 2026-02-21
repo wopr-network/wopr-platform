@@ -10,6 +10,10 @@ import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } from "../../monetization
 const DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const quotaTokenMap = buildTokenMap();
 
+// BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
+// The tRPC usage router already provides quota, quotaCheck, and resourceLimits.
+// Once the UI switches to tRPC usage.*, this REST route can be removed.
+// Blocker: UI still calls REST /api/quota via bearer token.
 export const quotaRoutes = new Hono();
 
 // Quota viewing = admin scope (billing/quota management is an admin operation)

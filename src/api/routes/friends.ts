@@ -23,6 +23,9 @@ async function getInstanceTenantId(instanceId: string): Promise<string | undefin
   }
 }
 
+// BOUNDARY(WOP-805): REST is the correct layer for friends management.
+// These routes proxy to the bot instance's internal API. Bearer-token-scoped,
+// not consumed by the dashboard UI's tRPC client.
 export const friendsRoutes = new Hono();
 
 // Friends management: read for viewing, write for mutations (enforced per-route)

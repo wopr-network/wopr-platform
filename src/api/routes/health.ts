@@ -24,6 +24,10 @@ function getHealthStore(): BackupStatusStore | null {
   }
 }
 
+// BOUNDARY(WOP-805): REST is the correct layer for health checks.
+// Public, unauthenticated, used by load balancers and monitoring.
+// Note: tRPC settings.health also exists as a tRPC-level health check
+// for the tRPC adapter itself — both are intentional.
 export function createHealthRoutes(storeFactory?: () => BackupStatusStore | null): Hono {
   const routes = new Hono();
   const resolveStore = storeFactory ?? getHealthStore;
