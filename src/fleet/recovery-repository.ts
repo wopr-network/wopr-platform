@@ -81,14 +81,14 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
   }
 
   updateEvent(id: string, data: Partial<Omit<RecoveryEvent, "id" | "nodeId">>): RecoveryEvent {
-    this.db
+    const row = this.db
       .update(recoveryEvents)
       .set(data as Record<string, unknown>)
       .where(eq(recoveryEvents.id, id))
-      .run();
-    const updated = this.getEvent(id);
-    if (!updated) throw new Error(`Recovery event not found: ${id}`);
-    return updated;
+      .returning()
+      .get();
+    if (!row) throw new Error(`Recovery event not found: ${id}`);
+    return toEvent(row);
   }
 
   getEvent(id: string): RecoveryEvent | null {
@@ -128,12 +128,12 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
   }
 
   updateItem(id: string, data: Partial<Omit<RecoveryItem, "id">>): RecoveryItem {
-    this.db
+    const row = this.db
       .update(recoveryItems)
       .set(data as Record<string, unknown>)
       .where(eq(recoveryItems.id, id))
-      .run();
-    const row = this.db.select().from(recoveryItems).where(eq(recoveryItems.id, id)).get();
+      .returning()
+      .get();
     if (!row) throw new Error(`Recovery item not found: ${id}`);
     return toItem(row);
   }
@@ -159,10 +159,11 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
   }
 
   incrementRetryCount(itemId: string): void {
-    this.db
+    const result = this.db
       .update(recoveryItems)
       .set({ retryCount: sql`${recoveryItems.retryCount} + 1` })
       .where(eq(recoveryItems.id, itemId))
       .run();
+    if (result.changes === 0) throw new Error(`Recovery item not found: ${itemId}`);
   }
 }
