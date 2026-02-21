@@ -281,8 +281,8 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
     getProxyManager().removeRoute(botId);
 
     // Capacity freed -- check if any waiting recovery tenants can now be placed
-    getRecoveryManager()
-      .checkAndRetryWaiting()
+    Promise.resolve()
+      .then(() => getRecoveryManager().checkAndRetryWaiting())
       .catch((err) => {
         logger.error("Auto-retry after bot removal failed", { err });
       });
