@@ -1,21 +1,26 @@
 import Database from "better-sqlite3";
 import { eq, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { AdminAuditLog } from "../admin/audit-log.js";
 import { RestoreLogStore } from "../backup/restore-log-store.js";
 import { RestoreService } from "../backup/restore-service.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
-import { applyPlatformPragmas } from "../db/pragmas.js";
-import * as dbSchema from "../db/schema/index.js";
+import { applyPlatformPragmas, createDb, type DrizzleDb } from "../db/index.js";
 import { nodes } from "../db/schema/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
+import type { IBotProfileRepository } from "./bot-profile-repository.js";
+import { DrizzleBotProfileRepository } from "./bot-profile-repository.js";
 import { DOClient } from "./do-client.js";
+import { HeartbeatProcessor } from "./heartbeat-processor.js";
 import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
 import { MigrationManager } from "./migration-manager.js";
+import { NodeCommandBus } from "./node-command-bus.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
+import { NodeConnectionRegistry } from "./node-connection-registry.js";
 import { NodeProvisioner } from "./node-provisioner.js";
-// TODO: WOP-864 — replace inline shim with: import { DrizzleNodeRepository } from "./node-repository.js";
+import { NodeRegistrar } from "./node-registrar.js";
+import type { INodeRepository as INodeRepositoryFull } from "./node-repository.js";
+import { DrizzleNodeRepository } from "./node-repository.js";
 import { NodeNotFoundError } from "./node-state-machine.js";
 import { OrphanCleaner } from "./orphan-cleaner.js";
 import { RecoveryManager } from "./recovery-manager.js";
@@ -33,7 +38,7 @@ const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platfor
  */
 
 let _sqlite: Database.Database | null = null;
-let _db: ReturnType<typeof drizzle<typeof dbSchema>> | null = null;
+let _db: DrizzleDb | null = null;
 let _nodeConnections: NodeConnectionManager | null = null;
 let _registrationTokenStore: RegistrationTokenStore | null = null;
 let _adminNotifier: AdminNotifier | null = null;
@@ -44,11 +49,19 @@ let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
 let _migrationManager: MigrationManager | null = null;
 let _orphanCleaner: OrphanCleaner | null = null;
 
+// New fleet architecture singletons (WOP-879)
+let _connectionRegistry: NodeConnectionRegistry | null = null;
+let _commandBus: NodeCommandBus | null = null;
+let _heartbeatProcessor: HeartbeatProcessor | null = null;
+let _nodeRegistrar: NodeRegistrar | null = null;
+let _nodeRepo: INodeRepositoryFull | null = null;
+let _botProfileRepo: IBotProfileRepository | null = null;
+
 export function getDb() {
   if (!_db) {
     _sqlite = new Database(PLATFORM_DB_PATH);
     applyPlatformPragmas(_sqlite);
-    _db = drizzle(_sqlite, { schema: dbSchema });
+    _db = createDb(_sqlite);
   }
   return _db;
 }
@@ -147,6 +160,76 @@ export function getOrphanCleaner(): OrphanCleaner {
 /** Call once at server startup to wire up OrphanCleaner into NodeConnectionManager. */
 export function initFleet(): void {
   getOrphanCleaner();
+}
+
+// ---------------------------------------------------------------------------
+// New fleet architecture getters (WOP-879)
+// ---------------------------------------------------------------------------
+
+export function getConnectionRegistry(): NodeConnectionRegistry {
+  if (!_connectionRegistry) {
+    _connectionRegistry = new NodeConnectionRegistry();
+  }
+  return _connectionRegistry;
+}
+
+export function getCommandBus(): NodeCommandBus {
+  if (!_commandBus) {
+    _commandBus = new NodeCommandBus(getConnectionRegistry());
+  }
+  return _commandBus;
+}
+
+export function getHeartbeatProcessor(): HeartbeatProcessor {
+  if (!_heartbeatProcessor) {
+    _heartbeatProcessor = new HeartbeatProcessor(getNodeRepo());
+  }
+  return _heartbeatProcessor;
+}
+
+export function getNodeRepo(): INodeRepositoryFull {
+  if (!_nodeRepo) {
+    _nodeRepo = new DrizzleNodeRepository(getDb());
+  }
+  return _nodeRepo;
+}
+
+export function getNodeRegistrar(): NodeRegistrar {
+  if (!_nodeRegistrar) {
+    _nodeRegistrar = new NodeRegistrar(
+      getNodeRepo(),
+      {
+        // Stub pending WOP-867: IRecoveryRepository is not yet wired into NodeRegistrar.
+        // Once WOP-867 lands, replace with a real DrizzleRecoveryRepository instance.
+        listOpenEvents: () => [],
+        getWaitingItems: () => [],
+      },
+      {
+        onReturning: () => {
+          getRecoveryManager()
+            .checkAndRetryWaiting()
+            .catch((err) => {
+              logger.error("Auto-retry after node re-registration failed", { err });
+            });
+        },
+        onRetryWaiting: (eventId: string) => {
+          getRecoveryManager()
+            .retryWaiting(eventId)
+            .catch((err) => {
+              logger.error("Auto-retry waiting after node registration failed", { err });
+            });
+        },
+      },
+    );
+  }
+  return _nodeRegistrar;
+}
+
+export function getBotProfileRepo(): IBotProfileRepository {
+  if (!_botProfileRepo) {
+    _botProfileRepo = new DrizzleBotProfileRepository(getDb());
+  }
+  return _botProfileRepo;
 }
 
 let _doClient: DOClient | null = null;

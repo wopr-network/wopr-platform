@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { nodeTransitions } from "../db/schema/node-transitions.js";
@@ -10,21 +10,19 @@ import {
   NodeNotFoundError,
   type NodeStatus,
 } from "./node-state-machine.js";
+import type { NodeRegistration, SelfHostedNodeRegistration } from "./repository-types.js";
 
 export type Node = typeof nodes.$inferSelect;
 export type NodeTransition = typeof nodeTransitions.$inferSelect;
 
-export interface NodeRegistration {
-  nodeId: string;
-  host: string;
-  capacityMb: number;
-  agentVersion: string;
-}
+export type { NodeRegistration, SelfHostedNodeRegistration };
 
 export interface INodeRepository {
   getById(id: string): Node | null;
+  getBySecret(secret: string): Node | null;
   list(statuses?: NodeStatus[]): Node[];
   register(data: NodeRegistration): Node;
+  registerSelfHosted(data: SelfHostedNodeRegistration): Node;
   transition(id: string, to: NodeStatus, reason: string, triggeredBy: string): Node;
   updateHeartbeat(id: string, usedMb: number): void;
   addCapacity(id: string, deltaMb: number): void;
@@ -37,6 +35,11 @@ export class DrizzleNodeRepository implements INodeRepository {
 
   getById(id: string): Node | null {
     return this.db.select().from(nodes).where(eq(nodes.id, id)).get() ?? null;
+  }
+
+  getBySecret(secret: string): Node | null {
+    const hash = createHash("sha256").update(secret).digest("hex");
+    return this.db.select().from(nodes).where(eq(nodes.nodeSecret, hash)).get() ?? null;
   }
 
   list(statuses?: NodeStatus[]): Node[] {
@@ -137,6 +140,31 @@ export class DrizzleNodeRepository implements INodeRepository {
       .where(eq(nodes.id, data.nodeId))
       .returning()
       .get();
+  }
+
+  registerSelfHosted(data: SelfHostedNodeRegistration): Node {
+    const now = Math.floor(Date.now() / 1000);
+    return this.db.transaction(() => {
+      this.db
+        .insert(nodes)
+        .values({
+          id: data.nodeId,
+          host: data.host,
+          capacityMb: data.capacityMb,
+          usedMb: 0,
+          agentVersion: data.agentVersion,
+          status: "provisioning",
+          lastHeartbeatAt: now,
+          registeredAt: now,
+          updatedAt: now,
+          ownerUserId: data.ownerUserId,
+          label: data.label,
+          nodeSecret: data.nodeSecretHash,
+        })
+        .run();
+
+      return this.transition(data.nodeId, "active", "first_registration", "node_agent");
+    });
   }
 
   updateHeartbeat(id: string, usedMb: number): void {
