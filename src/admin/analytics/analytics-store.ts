@@ -61,6 +61,14 @@ export interface TenantHealthSummary {
   atRisk: number; // low runway, no auto top-up (placeholder)
 }
 
+export interface AutoTopupMetrics {
+  totalEvents: number;
+  successCount: number;
+  failedCount: number;
+  revenueCents: number;
+  failureRate: number;
+}
+
 export interface TimeSeriesPoint {
   periodStart: number; // unix epoch ms
   periodEnd: number; // unix epoch ms
@@ -337,8 +345,18 @@ export class AnalyticsStore {
     const withBalance = withBalanceRow.with_balance;
     const dormant = totalTenants - activeTenants;
 
-    // TODO: Implement when credit_auto_topup table is added
-    const atRisk = 0;
+    const atRiskRow = this.db
+      .prepare(
+        `SELECT COUNT(*) as at_risk
+         FROM credit_balances
+         WHERE balance_cents > 0 AND balance_cents < 500
+           AND tenant_id NOT IN (
+             SELECT DISTINCT tenant_id FROM credit_auto_topup WHERE status = 'success'
+           )`,
+      )
+      .get() as { at_risk: number };
+
+    const atRisk = atRiskRow.at_risk;
 
     return {
       totalTenants,
@@ -346,6 +364,38 @@ export class AnalyticsStore {
       withBalance,
       dormant,
       atRisk,
+    };
+  }
+
+  getAutoTopupMetrics(range: DateRange): AutoTopupMetrics {
+    const iso = this.toIsoRange(range);
+
+    const row = this.db
+      .prepare(
+        `SELECT
+           COUNT(*) as total_events,
+           COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0) as success_count,
+           COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count,
+           COALESCE(SUM(CASE WHEN status = 'success' THEN amount_cents ELSE 0 END), 0) as revenue_cents
+         FROM credit_auto_topup
+         WHERE created_at >= ? AND created_at <= ?`,
+      )
+      .get(iso.from, iso.to) as {
+      total_events: number;
+      success_count: number;
+      failed_count: number;
+      revenue_cents: number;
+    };
+
+    const totalEvents = row.total_events;
+    const failureRate = totalEvents > 0 ? (row.failed_count / totalEvents) * 100 : 0;
+
+    return {
+      totalEvents,
+      successCount: row.success_count,
+      failedCount: row.failed_count,
+      revenueCents: row.revenue_cents,
+      failureRate,
     };
   }
 
@@ -469,6 +519,13 @@ export class AnalyticsStore {
         return this.toCsv(
           ["periodStart", "periodEnd", "creditsSoldCents", "revenueConsumedCents", "providerCostCents", "marginCents"],
           series as unknown as Record<string, unknown>[],
+        );
+      }
+      case "auto_topup": {
+        const metrics = this.getAutoTopupMetrics(range);
+        return this.toCsv(
+          ["totalEvents", "successCount", "failedCount", "revenueCents", "failureRate"],
+          [metrics as unknown as Record<string, unknown>],
         );
       }
       default:

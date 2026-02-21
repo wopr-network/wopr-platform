@@ -7,6 +7,7 @@ export default defineConfig({
     "./src/db/schema/audit.ts",
     "./src/db/schema/bot-instances.ts",
     "./src/db/schema/bot-profiles.ts",
+    "./src/db/schema/credit-auto-topup.ts",
     "./src/db/schema/credits.ts",
     "./src/db/schema/email-notifications.ts",
     "./src/db/schema/meter-events.ts",

@@ -120,6 +120,13 @@
       "when": 1771693897268,
       "tag": "0017_add_idx_nodes_node_secret",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1771700000000,
+      "tag": "0018_woozy_psynapse",
+      "breakpoints": true
     }
   ]
 }
