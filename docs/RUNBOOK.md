@@ -269,3 +269,90 @@ s3cmd --config=/path/to/s3cfg ls s3://wopr-backups/platform/20260214/
 ```
 
 Expected output lists all 7 database files (`auth-*.db`, `billing-*.db`, etc.) with non-zero sizes.
+
+---
+
+## On-Call Observability Runbook (WOP-825)
+
+### Quick Health Check
+
+```bash
+# Readiness probe (should return 200)
+curl -f http://localhost:3100/health/ready
+
+# Admin health dashboard (requires admin token)
+curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:3100/admin/health
+```
+
+The admin health dashboard returns:
+- `gateway.last5m` — request/error rates over the last 5 minutes
+- `gateway.last60m` — request/error rates over the last hour
+- `fleet.activeBots` — count of active bot instances
+- `billing.creditsConsumed24h` — total credits consumed in last 24h (cents)
+- `alerts` — current alert statuses
+
+### Alerts
+
+#### 1. gateway-error-rate
+
+**Trigger:** Gateway capability error rate exceeds 5% over a 5-minute window.
+
+**Symptoms:** Users report bot API calls failing. Sentry shows new error types.
+
+**Investigation steps:**
+1. Check `GET /admin/health` for the `byCapability` breakdown to identify which capability is failing.
+2. Check Sentry for the specific error messages and stack traces.
+3. Check upstream provider status pages (OpenRouter, Deepgram, ElevenLabs, Replicate, Twilio).
+4. Check `GET /health` for backend health status.
+
+**Resolution:**
+- If upstream provider is down: Wait for them to recover. Alert resolves automatically when error rate drops below 5%.
+- If platform code is throwing: Check Sentry for stack traces. Roll back recent deploy if needed.
+
+#### 2. credit-deduction-spike
+
+**Trigger:** More than 10 credit deduction failures in a 5-minute window.
+
+**Symptoms:** Billing errors in logs. Users may get API errors despite having credits.
+
+**Investigation steps:**
+1. Check logs for `Credit debit failed after proxy` messages.
+2. Check the billing database for lock contention or corruption.
+3. Check disk space on the billing DB volume.
+
+**Resolution:**
+- Billing DB lock: Restart platform API container (releases SQLite WAL locks).
+- Disk full: Free up space or expand volume.
+- Alert resolves automatically when failures drop below threshold.
+
+#### 3. fleet-unexpected-stop
+
+**Trigger:** Bot fleet stopped unexpectedly (event-driven, not polled).
+
+**Symptoms:** Users report bots are unresponsive. Fleet status shows all bots stopped.
+
+**Investigation steps:**
+1. Check `docker ps` on fleet nodes.
+2. Check node agent logs for crash reasons.
+3. Check `GET /internal/nodes` for node connection status.
+
+**Resolution:**
+- Restart fleet nodes via admin API.
+- If nodes are unreachable, provision replacement nodes.
+
+### Error Tracking (Sentry)
+
+Sentry is enabled when `SENTRY_DSN` environment variable is set. Without it, all `captureError`/`captureMessage` calls are no-ops.
+
+- Errors are tagged with `source` (unhandledRejection, uncaughtException)
+- Alert firings are sent as Sentry messages with level `warning`
+- Check Sentry for new error types, not every occurrence (deduplication is enabled)
+
+### Uptime Monitoring
+
+Configure an external uptime check on:
+- `GET /health` — general health check
+- `GET /health/ready` — readiness probe (returns `{"status":"ready","service":"wopr-platform"}`)
+
+Recommended services: Better Uptime, UptimeRobot, or Checkly (all have free tiers).
+Alert if either returns non-200 for more than 1 minute.

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // Uses a real in-memory SQLite database with Drizzle
 
 import Database from "better-sqlite3";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import * as schema from "../db/schema/index.js";
 import type { AdminNotifier } from "./admin-notifier.js";
@@ -91,7 +92,7 @@ function setupTestDb() {
   return { db, sqlite };
 }
 
-function createMockNodeConnections(sendCommandFn?: (...args: any[]) => any) {
+function createMockNodeConnections(sendCommandFn?: (...args: unknown[]) => unknown) {
   return {
     findBestTarget: vi.fn().mockReturnValue({
       id: "target-node-1",
@@ -133,7 +134,7 @@ describe("RecoveryManager", () => {
       });
       const nodeConnections = createMockNodeConnections(sendCommand);
       const notifier = createMockNotifier();
-      const manager = new RecoveryManager(db as any, nodeConnections, notifier);
+      const manager = new RecoveryManager(db as BetterSQLite3Database<typeof schema>, nodeConnections, notifier);
 
       // Insert a dead node
       sqlite.exec(`
@@ -162,10 +163,12 @@ describe("RecoveryManager", () => {
       await manager.triggerRecovery("dead-node", "heartbeat_timeout");
 
       // Find the bot.import call
-      const importCall = sendCommand.mock.calls.find((args: any[]) => args[1]?.type === "bot.import");
+      const importCall = sendCommand.mock.calls.find(
+        (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
+      );
       expect(importCall).toBeDefined();
 
-      const importCmd = importCall![1];
+      const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
       // Must use the profile's image, NOT the hardcoded default
       expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v2.0.0");
       expect(importCmd.payload.env).toEqual({ TOKEN: "secret-abc", LOG_LEVEL: "debug" });
@@ -184,7 +187,7 @@ describe("RecoveryManager", () => {
       });
       const nodeConnections = createMockNodeConnections(sendCommand);
       const notifier = createMockNotifier();
-      const manager = new RecoveryManager(db as any, nodeConnections, notifier);
+      const manager = new RecoveryManager(db as BetterSQLite3Database<typeof schema>, nodeConnections, notifier);
 
       // Insert dead node + bot instance but NO bot_profiles row
       sqlite.exec(`
@@ -203,10 +206,12 @@ describe("RecoveryManager", () => {
       await manager.triggerRecovery("dead-node", "manual");
 
       // Should fall back to default image and empty env
-      const importCall = sendCommand.mock.calls.find((args: any[]) => args[1]?.type === "bot.import");
+      const importCall = sendCommand.mock.calls.find(
+        (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
+      );
       expect(importCall).toBeDefined();
 
-      const importCmd = importCall![1];
+      const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
       expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:latest");
       expect(importCmd.payload.env).toEqual({});
     });
@@ -221,7 +226,7 @@ describe("RecoveryManager", () => {
       });
       const nodeConnections = createMockNodeConnections(sendCommand);
       const notifier = createMockNotifier();
-      const manager = new RecoveryManager(db as any, nodeConnections, notifier);
+      const manager = new RecoveryManager(db as BetterSQLite3Database<typeof schema>, nodeConnections, notifier);
 
       sqlite.exec(`
         INSERT INTO nodes (id, host, capacity_mb, used_mb, status, registered_at, updated_at)
@@ -243,10 +248,12 @@ describe("RecoveryManager", () => {
 
       await manager.triggerRecovery("dead-node", "manual");
 
-      const importCall = sendCommand.mock.calls.find((args: any[]) => args[1]?.type === "bot.import");
+      const importCall = sendCommand.mock.calls.find(
+        (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
+      );
       expect(importCall).toBeDefined();
 
-      const importCmd = importCall![1];
+      const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
       // Image should still come from profile
       expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v3.0.0");
       // Env should fall back to empty since JSON is corrupt

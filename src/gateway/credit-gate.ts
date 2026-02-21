@@ -20,6 +20,7 @@ export interface CreditGateDeps {
   graceBufferCents?: number;
   /** Called when a debit causes balance to cross the zero threshold. */
   onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
+  metrics?: import("../observability/metrics.js").MetricsCollector;
 }
 
 export interface CreditError {
@@ -129,6 +130,7 @@ export function debitCredits(
         capability,
         provider,
       });
+      deps.metrics?.recordCreditDeductionFailure();
     } else {
       logger.error("Credit debit failed after proxy", {
         tenantId,
@@ -137,6 +139,7 @@ export function debitCredits(
         provider,
         error,
       });
+      deps.metrics?.recordCreditDeductionFailure();
     }
   }
 }
