@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { getMigrationManager } from "../../fleet/services.js";
+import { getMigrationOrchestrator } from "../../fleet/services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
@@ -29,8 +29,7 @@ adminMigrationRoutes.post("/:botId", adminAuth, async (c) => {
   }
 
   try {
-    const migrationManager = getMigrationManager();
-    const result = await migrationManager.migrateTenant(botId, body.targetNodeId);
+    const result = await getMigrationOrchestrator().migrate(botId, body.targetNodeId);
 
     if (result.success) {
       return c.json({ success: true, result });

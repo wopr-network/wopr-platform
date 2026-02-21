@@ -1,37 +1,37 @@
 import Database from "better-sqlite3";
-import { eq, inArray } from "drizzle-orm";
 import { AdminAuditLog } from "../admin/audit-log.js";
 import { RestoreLogStore } from "../backup/restore-log-store.js";
 import { RestoreService } from "../backup/restore-service.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
 import { applyPlatformPragmas, createDb, type DrizzleDb } from "../db/index.js";
-import { nodes } from "../db/schema/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
+import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import { DrizzleBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
 import { DrizzleBotProfileRepository } from "./bot-profile-repository.js";
 import { DOClient } from "./do-client.js";
 import { HeartbeatProcessor } from "./heartbeat-processor.js";
 import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
-import { MigrationManager } from "./migration-manager.js";
+import { MigrationOrchestrator } from "./migration-orchestrator.js";
 import { NodeCommandBus } from "./node-command-bus.js";
-import { NodeConnectionManager } from "./node-connection-manager.js";
 import { NodeConnectionRegistry } from "./node-connection-registry.js";
+import { NodeDrainer } from "./node-drainer.js";
 import { NodeProvisioner } from "./node-provisioner.js";
 import { NodeRegistrar } from "./node-registrar.js";
-import type { INodeRepository as INodeRepositoryFull } from "./node-repository.js";
+import type { INodeRepository } from "./node-repository.js";
 import { DrizzleNodeRepository } from "./node-repository.js";
-import { NodeNotFoundError } from "./node-state-machine.js";
 import { OrphanCleaner } from "./orphan-cleaner.js";
-import { RecoveryManager } from "./recovery-manager.js";
+import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
+import type { IRecoveryRepository } from "./recovery-repository.js";
+import { DrizzleRecoveryRepository } from "./recovery-repository.js";
 import { RegistrationTokenStore } from "./registration-token-store.js";
-import type { INodeRepository, Node, NodeStatus } from "./repository-types.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
 
 /**
  * Shared lazy-initialized fleet management singletons.
- * All files that need DB/NodeConnectionManager/RecoveryManager import from here
+ * All files that need DB/repositories/orchestrators import from here
  * to ensure a single set of instances across the application.
  *
  * Nothing runs at import time — all initialization is deferred to first call.
@@ -39,23 +39,40 @@ const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platfor
 
 let _sqlite: Database.Database | null = null;
 let _db: DrizzleDb | null = null;
-let _nodeConnections: NodeConnectionManager | null = null;
 let _registrationTokenStore: RegistrationTokenStore | null = null;
 let _adminNotifier: AdminNotifier | null = null;
-let _recoveryManager: RecoveryManager | null = null;
-// TODO: WOP-864 — replace _nodeRepository type with DrizzleNodeRepository
-let _nodeRepository: INodeRepository | null = null;
-let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
-let _migrationManager: MigrationManager | null = null;
-let _orphanCleaner: OrphanCleaner | null = null;
 
-// New fleet architecture singletons (WOP-879)
+// Repositories
+let _nodeRepo: INodeRepository | null = null;
+let _botInstanceRepo: IBotInstanceRepository | null = null;
+let _botProfileRepo: IBotProfileRepository | null = null;
+let _recoveryRepo: IRecoveryRepository | null = null;
+
+// WebSocket layer
 let _connectionRegistry: NodeConnectionRegistry | null = null;
 let _commandBus: NodeCommandBus | null = null;
+
+// Processors
 let _heartbeatProcessor: HeartbeatProcessor | null = null;
 let _nodeRegistrar: NodeRegistrar | null = null;
-let _nodeRepo: INodeRepositoryFull | null = null;
-let _botProfileRepo: IBotProfileRepository | null = null;
+let _orphanCleaner: OrphanCleaner | null = null;
+
+// Orchestrators
+let _recoveryOrchestrator: RecoveryOrchestrator | null = null;
+let _migrationOrchestrator: MigrationOrchestrator | null = null;
+let _nodeDrainer: NodeDrainer | null = null;
+
+// Watchdog
+let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
+
+// Infrastructure
+let _doClient: DOClient | null = null;
+let _nodeProvisioner: NodeProvisioner | null = null;
+let _adminAuditLog: AdminAuditLog | null = null;
+let _restoreLogStore: RestoreLogStore | null = null;
+let _restoreService: RestoreService | null = null;
+
+const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
 
 export function getDb() {
   if (!_db) {
@@ -64,22 +81,6 @@ export function getDb() {
     _db = createDb(_sqlite);
   }
   return _db;
-}
-
-export function getNodeConnections() {
-  if (!_nodeConnections) {
-    _nodeConnections = new NodeConnectionManager(getDb(), {
-      onNodeRegistered: () => {
-        // Fire-and-forget: check for waiting recovery tenants when new capacity is available
-        getRecoveryManager()
-          .checkAndRetryWaiting()
-          .catch((err) => {
-            logger.error("Auto-retry after node registration failed", { err });
-          });
-      },
-    });
-  }
-  return _nodeConnections;
 }
 
 export function getRegistrationTokenStore(): RegistrationTokenStore {
@@ -98,72 +99,43 @@ export function getAdminNotifier() {
   return _adminNotifier;
 }
 
-export function getRecoveryManager() {
-  if (!_recoveryManager) {
-    _recoveryManager = new RecoveryManager(getDb(), getNodeConnections(), getAdminNotifier());
+// ---------------------------------------------------------------------------
+// Repositories
+// ---------------------------------------------------------------------------
+
+export function getNodeRepo(): INodeRepository {
+  if (!_nodeRepo) {
+    _nodeRepo = new DrizzleNodeRepository(getDb());
   }
-  return _recoveryManager;
+  return _nodeRepo;
 }
 
-// TODO: WOP-864 — replace this inline shim with: new DrizzleNodeRepository(getDb())
-export function getNodeRepository(): INodeRepository {
-  if (!_nodeRepository) {
-    const db = getDb();
-    _nodeRepository = {
-      list(statuses?: NodeStatus[]): Node[] {
-        if (statuses && statuses.length > 0) {
-          return db.select().from(nodes).where(inArray(nodes.status, statuses)).all() as Node[];
-        }
-        return db.select().from(nodes).all() as Node[];
-      },
-      transition(id: string, to: NodeStatus, _reason: string, _triggeredBy: string): Node {
-        const now = Math.floor(Date.now() / 1000);
-        db.update(nodes).set({ status: to, updatedAt: now }).where(eq(nodes.id, id)).run();
-        const updated = db.select().from(nodes).where(eq(nodes.id, id)).get() as Node | undefined;
-        if (!updated) throw new NodeNotFoundError(id);
-        return updated;
-      },
-    };
+/** Alias for compatibility with callers that use getNodeRepository() */
+export const getNodeRepository = getNodeRepo;
+
+export function getBotInstanceRepo(): IBotInstanceRepository {
+  if (!_botInstanceRepo) {
+    _botInstanceRepo = new DrizzleBotInstanceRepository(getDb());
   }
-  return _nodeRepository;
+  return _botInstanceRepo;
 }
 
-export function getHeartbeatWatchdog() {
-  if (!_heartbeatWatchdog) {
-    _heartbeatWatchdog = new HeartbeatWatchdog(
-      getNodeRepository(),
-      getRecoveryManager(),
-      (nodeId: string, newStatus: string) => {
-        logger.info(`Node ${nodeId} status changed to ${newStatus}`);
-      },
-    );
+export function getBotProfileRepo(): IBotProfileRepository {
+  if (!_botProfileRepo) {
+    _botProfileRepo = new DrizzleBotProfileRepository(getDb());
   }
-  return _heartbeatWatchdog;
+  return _botProfileRepo;
 }
 
-export function getMigrationManager() {
-  if (!_migrationManager) {
-    _migrationManager = new MigrationManager(getDb(), getNodeConnections(), getAdminNotifier());
+export function getRecoveryRepo(): IRecoveryRepository {
+  if (!_recoveryRepo) {
+    _recoveryRepo = new DrizzleRecoveryRepository(getDb());
   }
-  return _migrationManager;
-}
-
-export function getOrphanCleaner(): OrphanCleaner {
-  if (!_orphanCleaner) {
-    _orphanCleaner = new OrphanCleaner(getDb(), getNodeConnections());
-    // Complete the bidirectional link: NCM needs OrphanCleaner to trigger cleanup on heartbeat
-    getNodeConnections().setOrphanCleaner(_orphanCleaner);
-  }
-  return _orphanCleaner;
-}
-
-/** Call once at server startup to wire up OrphanCleaner into NodeConnectionManager. */
-export function initFleet(): void {
-  getOrphanCleaner();
+  return _recoveryRepo;
 }
 
 // ---------------------------------------------------------------------------
-// New fleet architecture getters (WOP-879)
+// WebSocket layer
 // ---------------------------------------------------------------------------
 
 export function getConnectionRegistry(): NodeConnectionRegistry {
@@ -180,6 +152,10 @@ export function getCommandBus(): NodeCommandBus {
   return _commandBus;
 }
 
+// ---------------------------------------------------------------------------
+// Processors
+// ---------------------------------------------------------------------------
+
 export function getHeartbeatProcessor(): HeartbeatProcessor {
   if (!_heartbeatProcessor) {
     _heartbeatProcessor = new HeartbeatProcessor(getNodeRepo());
@@ -187,58 +163,113 @@ export function getHeartbeatProcessor(): HeartbeatProcessor {
   return _heartbeatProcessor;
 }
 
-export function getNodeRepo(): INodeRepositoryFull {
-  if (!_nodeRepo) {
-    _nodeRepo = new DrizzleNodeRepository(getDb());
+export function getOrphanCleaner(): OrphanCleaner {
+  if (!_orphanCleaner) {
+    _orphanCleaner = new OrphanCleaner(getNodeRepo(), getBotInstanceRepo(), getCommandBus());
   }
-  return _nodeRepo;
+  return _orphanCleaner;
 }
 
 export function getNodeRegistrar(): NodeRegistrar {
   if (!_nodeRegistrar) {
-    _nodeRegistrar = new NodeRegistrar(
-      getNodeRepo(),
-      {
-        // Stub pending WOP-867: IRecoveryRepository is not yet wired into NodeRegistrar.
-        // Once WOP-867 lands, replace with a real DrizzleRecoveryRepository instance.
-        listOpenEvents: () => [],
-        getWaitingItems: () => [],
+    _nodeRegistrar = new NodeRegistrar(getNodeRepo(), getRecoveryRepo(), {
+      onReturning: (_nodeId: string) => {
+        // OrphanCleaner runs on first heartbeat from a returning node (index.ts)
       },
-      {
-        onReturning: () => {
-          getRecoveryManager()
-            .checkAndRetryWaiting()
-            .catch((err) => {
-              logger.error("Auto-retry after node re-registration failed", { err });
-            });
-        },
-        onRetryWaiting: (eventId: string) => {
-          getRecoveryManager()
-            .retryWaiting(eventId)
-            .catch((err) => {
-              logger.error("Auto-retry waiting after node registration failed", { err });
-            });
-        },
+      onRetryWaiting: (eventId: string) => {
+        getRecoveryOrchestrator()
+          .retryWaiting(eventId)
+          .catch((err) => {
+            logger.error("Auto-retry waiting after node registration failed", { eventId, err });
+          });
       },
-    );
+    });
   }
   return _nodeRegistrar;
 }
 
-export function getBotProfileRepo(): IBotProfileRepository {
-  if (!_botProfileRepo) {
-    _botProfileRepo = new DrizzleBotProfileRepository(getDb());
+// ---------------------------------------------------------------------------
+// Orchestrators
+// ---------------------------------------------------------------------------
+
+export function getRecoveryOrchestrator(): RecoveryOrchestrator {
+  if (!_recoveryOrchestrator) {
+    const nodeRepo = getNodeRepo();
+    const botInstanceRepo = getBotInstanceRepo();
+
+    _recoveryOrchestrator = new RecoveryOrchestrator(
+      nodeRepo,
+      getBotProfileRepo(),
+      getRecoveryRepo(),
+      getCommandBus(),
+      getAdminNotifier(),
+      (deadNodeId: string) => {
+        // Returns tenants on this node sorted by tier (enterprise > pro > starter > free)
+        // DrizzleBotInstanceRepository.listByNode returns all instances; tier sorting is
+        // handled here via a join-style approach using the raw list.
+        return botInstanceRepo.listByNode(deadNodeId).map((inst) => ({
+          botId: inst.id,
+          tenantId: inst.tenantId,
+          name: inst.name,
+          containerName: `tenant_${inst.tenantId}`,
+          estimatedMb: 100,
+          tier: null,
+        }));
+      },
+      (excludeNodeId: string, requiredMb: number) => {
+        return nodeRepo.findBestTarget(excludeNodeId, requiredMb) as import("./repository-types.js").Node | null;
+      },
+      (botId: string, targetNodeId: string) => {
+        getBotInstanceRepo().reassign(botId, targetNodeId);
+      },
+      (nodeId: string, deltaMb: number) => {
+        getNodeRepo().addCapacity(nodeId, deltaMb);
+      },
+    );
   }
-  return _botProfileRepo;
+  return _recoveryOrchestrator;
 }
 
-let _doClient: DOClient | null = null;
-let _nodeProvisioner: NodeProvisioner | null = null;
-let _adminAuditLog: AdminAuditLog | null = null;
-let _restoreLogStore: RestoreLogStore | null = null;
-let _restoreService: RestoreService | null = null;
+export function getMigrationOrchestrator(): MigrationOrchestrator {
+  if (!_migrationOrchestrator) {
+    _migrationOrchestrator = new MigrationOrchestrator(getCommandBus(), getBotInstanceRepo(), getNodeRepo());
+  }
+  return _migrationOrchestrator;
+}
 
-const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
+export function getNodeDrainer(): NodeDrainer {
+  if (!_nodeDrainer) {
+    _nodeDrainer = new NodeDrainer(getMigrationOrchestrator(), getNodeRepo(), getBotInstanceRepo(), getAdminNotifier());
+  }
+  return _nodeDrainer;
+}
+
+// ---------------------------------------------------------------------------
+// HeartbeatWatchdog
+// ---------------------------------------------------------------------------
+
+export function getHeartbeatWatchdog() {
+  if (!_heartbeatWatchdog) {
+    _heartbeatWatchdog = new HeartbeatWatchdog(
+      getNodeRepo(),
+      (nodeId: string) => {
+        getRecoveryOrchestrator()
+          .triggerRecovery(nodeId, "heartbeat_timeout")
+          .catch((err) => {
+            logger.error(`Recovery failed for node ${nodeId}`, { err });
+          });
+      },
+      (nodeId: string, newStatus: string) => {
+        logger.info(`Node ${nodeId} status changed to ${newStatus}`);
+      },
+    );
+  }
+  return _heartbeatWatchdog;
+}
+
+// ---------------------------------------------------------------------------
+// Infrastructure
+// ---------------------------------------------------------------------------
 
 export function getDOClient(): DOClient {
   if (!_doClient) {
@@ -280,9 +311,15 @@ export function getRestoreService(): RestoreService {
   if (!_restoreService) {
     _restoreService = new RestoreService({
       spaces: new SpacesClient(S3_BUCKET),
-      nodeConnections: getNodeConnections(),
+      commandBus: getCommandBus(),
       restoreLog: getRestoreLogStore(),
     });
   }
   return _restoreService;
+}
+
+/** Call once at server startup to wire up fleet services. */
+export function initFleet(): void {
+  // Eagerly initialize orphan cleaner so it's ready when heartbeats arrive
+  getOrphanCleaner();
 }

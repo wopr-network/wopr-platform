@@ -68,13 +68,13 @@ const mockDb = {
 };
 
 const mockNodeConnections = {
-  sendCommand: vi.fn(),
+  send: vi.fn(),
   isConnected: vi.fn(),
 };
 
 vi.mock("../../fleet/services.js", () => ({
   getDb: () => mockDb,
-  getNodeConnections: () => mockNodeConnections,
+  getCommandBus: () => mockNodeConnections,
 }));
 
 // Import AFTER mocks are set up
@@ -107,7 +107,7 @@ describe("bot-plugin routes", () => {
       name: "test-bot",
       nodeId: TEST_NODE_ID,
     });
-    mockNodeConnections.sendCommand.mockResolvedValue({ success: true });
+    mockNodeConnections.send.mockResolvedValue({ success: true });
     mockNodeConnections.isConnected.mockReturnValue(true);
     // Reset the chain mock
     mockDb.select.mockReturnValue(mockDbChain);
@@ -752,7 +752,7 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.dispatched).toBe(true);
-      expect(mockNodeConnections.sendCommand).toHaveBeenCalledWith(
+      expect(mockNodeConnections.send).toHaveBeenCalledWith(
         TEST_NODE_ID,
         expect.objectContaining({ type: "bot.update" }),
       );

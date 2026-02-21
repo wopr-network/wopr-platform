@@ -2,7 +2,9 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../../db/schema/index.js";
-import { NodeConnectionManager } from "../../fleet/node-connection-manager.js";
+import { DrizzleBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
+import { DrizzleNodeRepository } from "../../fleet/node-repository.js";
 import { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
 import { nodesRouter, setNodesRouterDeps } from "./nodes.js";
 
@@ -42,6 +44,15 @@ function makeDb() {
       node_secret TEXT,
       label TEXT
     );
+    CREATE TABLE IF NOT EXISTS node_transitions (
+      id TEXT PRIMARY KEY,
+      node_id TEXT NOT NULL,
+      from_status TEXT NOT NULL,
+      to_status TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      triggered_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
     CREATE TABLE IF NOT EXISTS bot_instances (
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,
@@ -64,23 +75,28 @@ function makeCtx(userId: string, roles: string[] = []) {
   };
 }
 
-// Helper to create a caller with context
 function makeCaller(ctx: ReturnType<typeof makeCtx>) {
   return nodesRouter.createCaller(ctx);
 }
 
 describe("nodesRouter", () => {
   let tokenStore: RegistrationTokenStore;
-  let nodeConnections: NodeConnectionManager;
+  let nodeRepo: DrizzleNodeRepository;
+  let registry: NodeConnectionRegistry;
+  let botInstanceRepo: DrizzleBotInstanceRepository;
 
   beforeEach(() => {
     const db = makeDb();
     tokenStore = new RegistrationTokenStore(db);
-    nodeConnections = new NodeConnectionManager(db);
+    nodeRepo = new DrizzleNodeRepository(db);
+    registry = new NodeConnectionRegistry();
+    botInstanceRepo = new DrizzleBotInstanceRepository(db);
 
     setNodesRouterDeps({
       getRegistrationTokenStore: () => tokenStore,
-      getNodeConnections: () => nodeConnections,
+      getNodeRepo: () => nodeRepo,
+      getConnectionRegistry: () => registry,
+      getBotInstanceRepo: () => botInstanceRepo,
     });
   });
 
@@ -113,21 +129,20 @@ describe("nodesRouter", () => {
     });
 
     it("returns only nodes owned by the current user (non-admin)", async () => {
-      // Register two nodes with different owners
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-aaa111",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-aaa111",
         host: "192.168.1.1",
-        capacity_mb: 8192,
-        agent_version: "1.0.0",
+        capacityMb: 8192,
+        agentVersion: "1.0.0",
         ownerUserId: "user-1",
         label: "Node A",
         nodeSecretHash: "hash-aaa",
       });
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-bbb222",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-bbb222",
         host: "192.168.1.2",
-        capacity_mb: 4096,
-        agent_version: "1.0.0",
+        capacityMb: 4096,
+        agentVersion: "1.0.0",
         ownerUserId: "user-2",
         label: "Node B",
         nodeSecretHash: "hash-bbb",
@@ -141,20 +156,20 @@ describe("nodesRouter", () => {
     });
 
     it("returns all nodes for platform_admin", async () => {
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-aaa111",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-aaa111",
         host: "192.168.1.1",
-        capacity_mb: 8192,
-        agent_version: "1.0.0",
+        capacityMb: 8192,
+        agentVersion: "1.0.0",
         ownerUserId: "user-1",
         label: "Node A",
         nodeSecretHash: "hash-aaa",
       });
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-bbb222",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-bbb222",
         host: "192.168.1.2",
-        capacity_mb: 4096,
-        agent_version: "1.0.0",
+        capacityMb: 4096,
+        agentVersion: "1.0.0",
         ownerUserId: "user-2",
         label: "Node B",
         nodeSecretHash: "hash-bbb",
@@ -167,11 +182,11 @@ describe("nodesRouter", () => {
     });
 
     it("includes connection status and required fields", async () => {
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-ccc333",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-ccc333",
         host: "10.0.0.1",
-        capacity_mb: 16384,
-        agent_version: "1.0.0",
+        capacityMb: 16384,
+        agentVersion: "1.0.0",
         ownerUserId: "user-1",
         label: "Home Server",
         nodeSecretHash: "hash-ccc",
@@ -193,11 +208,11 @@ describe("nodesRouter", () => {
 
   describe("get", () => {
     it("returns node detail for owner", async () => {
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-ddd444",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-ddd444",
         host: "192.168.1.5",
-        capacity_mb: 8192,
-        agent_version: "1.0.0",
+        capacityMb: 8192,
+        agentVersion: "1.0.0",
         ownerUserId: "user-1",
         label: "My Node",
         nodeSecretHash: "hash-ddd",
@@ -216,11 +231,11 @@ describe("nodesRouter", () => {
     });
 
     it("throws NOT_FOUND when accessing another user's node", async () => {
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-eee555",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-eee555",
         host: "192.168.1.6",
-        capacity_mb: 8192,
-        agent_version: "1.0.0",
+        capacityMb: 8192,
+        agentVersion: "1.0.0",
         ownerUserId: "user-2",
         label: "Not My Node",
         nodeSecretHash: "hash-eee",
@@ -233,11 +248,11 @@ describe("nodesRouter", () => {
 
   describe("remove", () => {
     it("removes a node successfully when no tenants", async () => {
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-fff666",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-fff666",
         host: "192.168.1.7",
-        capacity_mb: 8192,
-        agent_version: "1.0.0",
+        capacityMb: 8192,
+        agentVersion: "1.0.0",
         ownerUserId: "user-1",
         label: "Removable Node",
         nodeSecretHash: "hash-fff",
@@ -247,17 +262,17 @@ describe("nodesRouter", () => {
       const result = await caller.remove({ nodeId: "self-fff666" });
 
       expect(result.success).toBe(true);
-      // Node should no longer exist
-      const node = nodeConnections.getNode("self-fff666");
-      expect(node).toBeUndefined();
+      // Node should still exist in DB but connection closed
+      const node = nodeRepo.getById("self-fff666");
+      expect(node).not.toBeNull();
     });
 
     it("throws FORBIDDEN when removing another user's node", async () => {
-      nodeConnections.registerSelfHostedNode({
-        node_id: "self-ggg777",
+      nodeRepo.registerSelfHosted({
+        nodeId: "self-ggg777",
         host: "192.168.1.8",
-        capacity_mb: 8192,
-        agent_version: "1.0.0",
+        capacityMb: 8192,
+        agentVersion: "1.0.0",
         ownerUserId: "user-2",
         label: "Another's Node",
         nodeSecretHash: "hash-ggg",

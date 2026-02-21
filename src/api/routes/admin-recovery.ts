@@ -1,18 +1,17 @@
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { botInstances, nodes as nodesSchema } from "../../db/schema/index.js";
 import { checkCapacityAlerts } from "../../fleet/capacity-alerts.js";
 import {
   getAdminAuditLog,
-  getDb,
-  getMigrationManager,
-  getNodeConnections,
+  getBotInstanceRepo,
+  getNodeDrainer,
   getNodeProvisioner,
-  getRecoveryManager,
+  getNodeRepo,
+  getRecoveryOrchestrator,
+  getRecoveryRepo,
 } from "../../fleet/services.js";
 
 const metadataMap = buildTokenMetadataMap();
@@ -30,9 +29,9 @@ export const adminRecoveryRoutes = new Hono<AuthEnv>();
 adminRecoveryRoutes.get("/", adminAuth, (c) => {
   const rawLimit = Number.parseInt(c.req.query("limit") ?? "50", 10);
   const limit = Number.isNaN(rawLimit) || rawLimit < 1 ? 50 : Math.min(rawLimit, 500);
-  const recoveryManager = getRecoveryManager();
+  const recoveryRepo = getRecoveryRepo();
 
-  const events = recoveryManager.listEvents(limit);
+  const events = recoveryRepo.listOpenEvents().slice(0, limit);
 
   return c.json({
     success: true,
@@ -47,9 +46,9 @@ adminRecoveryRoutes.get("/", adminAuth, (c) => {
  */
 adminRecoveryRoutes.get("/:eventId", adminAuth, (c) => {
   const eventId = c.req.param("eventId");
-  const recoveryManager = getRecoveryManager();
+  const orchestrator = getRecoveryOrchestrator();
 
-  const { event, items } = recoveryManager.getEventDetails(eventId);
+  const { event, items } = orchestrator.getEventDetails(eventId);
 
   if (!event) {
     return c.json(
@@ -74,10 +73,10 @@ adminRecoveryRoutes.get("/:eventId", adminAuth, (c) => {
  */
 adminRecoveryRoutes.post("/:eventId/retry", adminAuth, async (c) => {
   const eventId = c.req.param("eventId");
-  const recoveryManager = getRecoveryManager();
+  const orchestrator = getRecoveryOrchestrator();
 
   try {
-    const report = await recoveryManager.retryWaiting(eventId);
+    const report = await orchestrator.retryWaiting(eventId);
 
     return c.json({
       success: true,
@@ -108,8 +107,7 @@ export const adminNodeRoutes = new Hono<AuthEnv>();
  * List all nodes with status and capacity alerts
  */
 adminNodeRoutes.get("/", adminAuth, (c) => {
-  const nodeConnections = getNodeConnections();
-  const nodes = nodeConnections.listNodes();
+  const nodes = getNodeRepo().list();
   const alerts = checkCapacityAlerts(nodes);
 
   return c.json({
@@ -193,8 +191,8 @@ adminNodeRoutes.post("/migrate", adminAuth, async (c) => {
       })
       .parse(body);
 
-    const db = getDb();
-    const bot = db.select().from(botInstances).where(eq(botInstances.id, parsed.botId)).get();
+    const botInstanceRepo = getBotInstanceRepo();
+    const bot = botInstanceRepo.getById(parsed.botId);
     if (!bot) {
       return c.json({ success: false, error: "Bot not found" }, 404);
     }
@@ -206,8 +204,9 @@ adminNodeRoutes.post("/migrate", adminAuth, async (c) => {
       return c.json({ success: false, error: "Source and target nodes are the same" }, 400);
     }
 
-    const migrationManager = getMigrationManager();
-    const result = await migrationManager.migrateTenant(parsed.botId, parsed.targetNodeId);
+    // Use the migration orchestrator directly for single-bot migrations
+    const { getMigrationOrchestrator } = await import("../../fleet/services.js");
+    const result = await getMigrationOrchestrator().migrate(parsed.botId, parsed.targetNodeId);
 
     if (!result.success) {
       return c.json({ success: false, error: result.error }, 500);
@@ -313,14 +312,14 @@ adminNodeRoutes.get("/sizes", adminAuth, async (c) => {
  */
 adminNodeRoutes.get("/:nodeId", adminAuth, (c) => {
   const nodeId = c.req.param("nodeId");
-  const nodeConnections = getNodeConnections();
+  const nodeRepo = getNodeRepo();
 
-  const node = nodeConnections.getNode(nodeId);
+  const node = nodeRepo.getById(nodeId);
   if (!node) {
     return c.json({ success: false, error: "Node not found" }, 404);
   }
 
-  const tenants = nodeConnections.getNodeTenants(nodeId);
+  const tenants = getBotInstanceRepo().listByNode(nodeId);
 
   return c.json({
     success: true,
@@ -368,9 +367,8 @@ adminNodeRoutes.delete("/:nodeId", adminAuth, async (c) => {
  */
 adminNodeRoutes.get("/:nodeId/tenants", adminAuth, (c) => {
   const nodeId = c.req.param("nodeId");
-  const nodeConnections = getNodeConnections();
 
-  const tenants = nodeConnections.getNodeTenants(nodeId);
+  const tenants = getBotInstanceRepo().listByNode(nodeId);
 
   return c.json({
     success: true,
@@ -387,8 +385,8 @@ adminNodeRoutes.get("/:nodeId/stats", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
 
   try {
-    const nodeConnections = getNodeConnections();
-    const result = await nodeConnections.sendCommand(nodeId, { type: "stats.get", payload: {} }, 15_000);
+    const { getCommandBus } = await import("../../fleet/services.js");
+    const result = await getCommandBus().send(nodeId, { type: "stats.get", payload: {} });
 
     return c.json({ success: true, stats: result.data });
   } catch (err) {
@@ -410,8 +408,7 @@ adminNodeRoutes.post("/:nodeId/drain", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
 
   try {
-    const migrationManager = getMigrationManager();
-    const result = await migrationManager.drainNode(nodeId);
+    const result = await getNodeDrainer().drain(nodeId);
 
     getAdminAuditLog().log({
       adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
@@ -438,18 +435,8 @@ adminNodeRoutes.post("/:nodeId/cancel-drain", adminAuth, (c) => {
   const nodeId = c.req.param("nodeId");
 
   try {
-    // Mark node back to active status and clear drain tracking
-    const db = getDb();
-    db.update(nodesSchema)
-      .set({
-        status: "active",
-        drainStatus: null,
-        drainMigrated: null,
-        drainTotal: null,
-        updatedAt: Math.floor(Date.now() / 1000),
-      })
-      .where(eq(nodesSchema.id, nodeId))
-      .run();
+    // Use the state machine transition to go back to active
+    getNodeRepo().transition(nodeId, "active", "drain_cancelled", "admin");
 
     getAdminAuditLog().log({
       adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
@@ -476,10 +463,10 @@ adminNodeRoutes.post("/:nodeId/cancel-drain", adminAuth, (c) => {
  */
 adminNodeRoutes.post("/:nodeId/recover", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
-  const recoveryManager = getRecoveryManager();
+  const orchestrator = getRecoveryOrchestrator();
 
   try {
-    const report = await recoveryManager.triggerRecovery(nodeId, "manual");
+    const report = await orchestrator.triggerRecovery(nodeId, "manual");
 
     return c.json({
       success: true,

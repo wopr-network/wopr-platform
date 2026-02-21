@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HeartbeatWatchdog, type WatchdogConfig } from "./heartbeat-watchdog.js";
-import type { RecoveryManager } from "./recovery-manager.js";
-import type { INodeRepository } from "./repository-types.js";
+import type { INodeRepository } from "./node-repository.js";
 
 // Minimal INodeRepository shape needed by HeartbeatWatchdog
 interface MockNodeRepo {
@@ -18,20 +17,9 @@ function createMockNodeRepo(
   };
 }
 
-function createMockRecoveryManager(): { triggerRecovery: ReturnType<typeof vi.fn> } {
-  return {
-    triggerRecovery: vi.fn().mockResolvedValue({
-      recovered: [],
-      failed: [],
-      skipped: [],
-      waiting: [],
-    }),
-  };
-}
-
 describe("HeartbeatWatchdog", () => {
   let nodeRepo: MockNodeRepo;
-  let recoveryManager: ReturnType<typeof createMockRecoveryManager>;
+  let onRecovery: ReturnType<typeof vi.fn>;
   let onStatusChange: (nodeId: string, newStatus: string) => void;
   let watchdog: HeartbeatWatchdog;
 
@@ -45,11 +33,11 @@ describe("HeartbeatWatchdog", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     nodeRepo = createMockNodeRepo();
-    recoveryManager = createMockRecoveryManager();
+    onRecovery = vi.fn();
     onStatusChange = vi.fn() as unknown as (nodeId: string, newStatus: string) => void;
     watchdog = new HeartbeatWatchdog(
       nodeRepo as unknown as INodeRepository,
-      recoveryManager as unknown as RecoveryManager,
+      onRecovery as unknown as (nodeId: string) => void,
       onStatusChange,
       config,
     );
@@ -77,7 +65,7 @@ describe("HeartbeatWatchdog", () => {
     expect(onStatusChange).toHaveBeenCalledWith("node-1", "unhealthy");
 
     // Should NOT have triggered recovery
-    expect(recoveryManager.triggerRecovery).not.toHaveBeenCalled();
+    expect(onRecovery).not.toHaveBeenCalled();
   });
 
   it("transitions unhealthy node to offline after 300s no heartbeat", () => {
@@ -95,8 +83,8 @@ describe("HeartbeatWatchdog", () => {
     // Should have called onNodeStatusChange callback
     expect(onStatusChange).toHaveBeenCalledWith("node-2", "offline");
 
-    // Should have triggered recovery
-    expect(recoveryManager.triggerRecovery).toHaveBeenCalledWith("node-2", "heartbeat_timeout");
+    // Should have triggered recovery via callback
+    expect(onRecovery).toHaveBeenCalledWith("node-2");
   });
 
   it("skips nodes that have never sent a heartbeat", () => {

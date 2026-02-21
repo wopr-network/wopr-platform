@@ -1,10 +1,7 @@
-import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import type * as schema from "../db/schema/index.js";
-import { botInstances, nodes, nodeTransitions } from "../db/schema/index.js";
-import type { NodeConnectionManager } from "./node-connection-manager.js";
+import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import type { INodeCommandBus } from "./node-command-bus.js";
+import type { INodeRepository } from "./node-repository.js";
 
 export interface OrphanCleanupRequest {
   nodeId: string;
@@ -25,8 +22,9 @@ export interface OrphanCleanupResult {
  */
 export class OrphanCleaner {
   constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>,
-    private readonly nodeConnections: NodeConnectionManager,
+    private readonly nodeRepo: INodeRepository,
+    private readonly botInstanceRepo: IBotInstanceRepository,
+    private readonly commandBus: INodeCommandBus,
   ) {}
 
   async clean(request: OrphanCleanupRequest): Promise<OrphanCleanupResult> {
@@ -37,8 +35,7 @@ export class OrphanCleaner {
     });
 
     // 1. Get all bot instances assigned to this node
-    const assigned = this.db.select().from(botInstances).where(eq(botInstances.nodeId, nodeId)).all();
-
+    const assigned = this.botInstanceRepo.listByNode(nodeId);
     const assignedTenantIds = new Set(assigned.map((b) => b.tenantId));
 
     const stopped: string[] = [];
@@ -60,7 +57,7 @@ export class OrphanCleaner {
 
       // Orphan: bot is no longer assigned to this node
       try {
-        const result = await this.nodeConnections.sendCommand(nodeId, {
+        const result = await this.commandBus.send(nodeId, {
           type: "bot.stop",
           payload: { name: containerName },
         });
@@ -83,30 +80,8 @@ export class OrphanCleaner {
       }
     }
 
-    // 3. Transition node to active regardless of stop results
-    const now = Math.floor(Date.now() / 1000);
-
-    // Query the current node status so the audit row reflects reality
-    const currentNode = this.db.select().from(nodes).where(eq(nodes.id, nodeId)).get();
-    const fromStatus = currentNode?.status ?? "unknown";
-
-    // Wrap status update and audit insert in a transaction to prevent partial writes
-    this.db.transaction((tx) => {
-      tx.update(nodes).set({ status: "active", updatedAt: now }).where(eq(nodes.id, nodeId)).run();
-
-      // 4. Record transition audit trail
-      tx.insert(nodeTransitions)
-        .values({
-          id: randomUUID(),
-          nodeId,
-          fromStatus,
-          toStatus: "active",
-          reason: "cleanup_complete",
-          triggeredBy: "orphan_cleaner",
-          createdAt: now,
-        })
-        .run();
-    });
+    // 3. Transition node to active via state machine
+    this.nodeRepo.transition(nodeId, "active", "cleanup_complete", "orphan_cleaner");
 
     logger.info(`OrphanCleaner: cleanup complete on node ${nodeId}`, {
       stopped: stopped.length,
