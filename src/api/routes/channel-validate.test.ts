@@ -174,7 +174,7 @@ describe("POST /:pluginId/test", () => {
   });
 
   it("handles fetch timeout gracefully", async () => {
-    const mockFetch = vi.fn().mockRejectedValue(new DOMException("The operation was aborted", "AbortError"));
+    const mockFetch = vi.fn().mockRejectedValue(new DOMException("The operation was aborted", "TimeoutError"));
     vi.stubGlobal("fetch", mockFetch);
 
     const app = authedApp();

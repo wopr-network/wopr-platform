@@ -165,7 +165,7 @@ async function validateSlack(credentials: Record<string, string>): Promise<Valid
 }
 
 function handleFetchError(err: unknown, provider: string): ValidationResult {
-  if (err instanceof DOMException && err.name === "AbortError") {
+  if (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError")) {
     return { success: false, error: `${provider} API request timed out. Please try again.` };
   }
   return { success: false, error: `Could not reach ${provider}. Check your connection.` };
