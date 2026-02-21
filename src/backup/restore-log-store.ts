@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../db/index.js";
 import { restoreLog } from "../db/schema/restore-log.js";
 
 export interface RestoreLogEntry {
@@ -14,9 +14,9 @@ export interface RestoreLogEntry {
 }
 
 export class RestoreLogStore {
-  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
+  private readonly db: DrizzleDb;
 
-  constructor(db: BetterSQLite3Database<Record<string, unknown>>) {
+  constructor(db: DrizzleDb) {
     this.db = db;
   }
 

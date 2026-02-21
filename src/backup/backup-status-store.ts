@@ -1,5 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../db/index.js";
 import { backupStatus } from "../db/schema/backup-status.js";
 
 export interface BackupStatusEntry {
@@ -20,9 +20,9 @@ export interface BackupStatusEntry {
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export class BackupStatusStore {
-  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
+  private readonly db: DrizzleDb;
 
-  constructor(db: BetterSQLite3Database<Record<string, unknown>>) {
+  constructor(db: DrizzleDb) {
     this.db = db;
   }
 
