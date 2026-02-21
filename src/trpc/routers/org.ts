@@ -1,8 +1,8 @@
 /**
  * tRPC org router -- organization settings, member management, OAuth connections.
  *
- * All procedures require authentication. Owner-only operations (transfer, remove)
- * enforce role checks. Stub implementations until org service layer is built.
+ * All procedures require authentication. Stub implementations until the org
+ * service layer is built — role/ownership enforcement is NOT yet wired.
  */
 
 import { TRPCError } from "@trpc/server";
@@ -17,6 +17,11 @@ export type OrgRouterDeps = object;
 
 let _deps: OrgRouterDeps | null = null;
 
+/**
+ * Wire org-router dependencies at application startup (e.g. in the server
+ * entry point before any request is served).  If this is not called before
+ * a procedure executes, every call will throw INTERNAL_SERVER_ERROR.
+ */
 export function setOrgRouterDeps(deps: OrgRouterDeps): void {
   _deps = deps;
 }
@@ -120,16 +125,22 @@ export const orgRouter = router({
 
   /** Remove a member from the organization. Owner only. */
   removeMember: protectedProcedure.input(z.object({ memberId: z.string().min(1) })).mutation(({ input }) => {
-    // TODO(WOP-815): wire to org service layer
-    // Should verify caller is owner and memberId !== caller
+    // TODO(WOP-815): role enforcement must be added when the org service layer is wired.
+    // Pattern to implement:
+    //   const org = await orgService.getOrg(ctx.user.id);
+    //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+    //   if (input.memberId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove yourself" });
     void deps();
     return { removed: true, memberId: input.memberId };
   }),
 
   /** Transfer organization ownership to another member. Owner only. */
   transferOwnership: protectedProcedure.input(z.object({ memberId: z.string().min(1) })).mutation(({ input }) => {
-    // TODO(WOP-815): wire to org service layer
-    // Should verify caller is owner and target is an existing member
+    // TODO(WOP-815): role enforcement must be added when the org service layer is wired.
+    // Pattern to implement:
+    //   const org = await orgService.getOrg(ctx.user.id);
+    //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+    //   await orgService.verifyMemberExists(org.id, input.memberId);
     void deps();
     return { transferred: true, newOwnerId: input.memberId };
   }),
