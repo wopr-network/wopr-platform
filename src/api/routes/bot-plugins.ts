@@ -2,10 +2,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
+import { BotNotFoundError } from "../../fleet/fleet-manager.js";
+import { fleet } from "./fleet.js";
 
-const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
-const store = new ProfileStore(DATA_DIR);
+const store = fleet.profiles;
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -90,9 +90,20 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     [configEnvKey]: JSON.stringify(parsed.data.config),
   };
 
-  // Save updated profile (env change triggers container recreation via fleet update)
-  const updated = { ...freshProfile, env: updatedEnv };
-  await store.save(updated);
+  // Apply env change to profile and running container
+  let applied = false;
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+    applied = true;
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    // fleet.update() rolls back the profile internally on container failure,
+    // so the profile is reverted to freshProfile's state.
+    logger.error(`Failed to apply plugin install to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
 
   logger.info(`Installed plugin ${pluginId} on bot ${botId}`, {
     botId,
@@ -106,6 +117,7 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
       botId,
       pluginId,
       installedPlugins: [...existingPlugins, pluginId],
+      applied,
     },
     200,
   );
@@ -202,8 +214,17 @@ botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => 
     ? { ...envWithoutDisabled, WOPR_PLUGINS_DISABLED: updatedDisabled.join(",") }
     : envWithoutDisabled;
 
-  const updated = { ...profile, env: updatedEnv };
-  await store.save(updated);
+  let applied = false;
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+    applied = true;
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    logger.error(`Failed to apply plugin toggle to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
 
   logger.info(`Toggled plugin ${pluginId} on bot ${botId}: enabled=${parsed.data.enabled}`, {
     botId,
@@ -217,5 +238,6 @@ botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => 
     botId,
     pluginId,
     enabled: parsed.data.enabled,
+    applied,
   });
 });
