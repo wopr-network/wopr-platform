@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4dba23ed-ac86-46ef-83bc-8dee61114615",
+  "id": "d61aad87-2540-4429-bb0c-307c8262e56d",
   "prevId": "31c2058d-1b8b-492d-a22f-d43f59ef80b8",
   "tables": {
     "admin_audit_log": {
@@ -2018,6 +2018,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "retry_count": {
+          "name": "retry_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "started_at": {
           "name": "started_at",
