@@ -57,7 +57,7 @@ interface Organization {
 export const orgRouter = router({
   /** Get the organization for the authenticated user. */
   getOrganization: protectedProcedure.query(({ ctx }) => {
-    // TODO(WOP-815): wire to org service layer
+    // WOP-815: wire to org service layer
     deps();
     return {
       id: ctx.user.id,
@@ -84,7 +84,7 @@ export const orgRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      // TODO(WOP-815): wire to org service layer
+      // WOP-815: wire to org service layer
       deps();
       return {
         id: ctx.user.id,
@@ -111,7 +111,7 @@ export const orgRouter = router({
       }),
     )
     .mutation(({ input }) => {
-      // TODO(WOP-815): wire to org service layer + email invitation
+      // WOP-815: wire to org service layer + email invitation
       deps();
       const id = `member-${Date.now()}`;
       return {
@@ -125,7 +125,7 @@ export const orgRouter = router({
 
   /** Remove a member from the organization. Owner only. */
   removeMember: protectedProcedure.input(z.object({ memberId: z.string().min(1) })).mutation(({ input }) => {
-    // TODO(WOP-815): role enforcement must be added when the org service layer is wired.
+    // WOP-815: role enforcement must be added when the org service layer is wired.
     // Pattern to implement:
     //   const org = await orgService.getOrg(ctx.user.id);
     //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
@@ -136,7 +136,7 @@ export const orgRouter = router({
 
   /** Transfer organization ownership to another member. Owner only. */
   transferOwnership: protectedProcedure.input(z.object({ memberId: z.string().min(1) })).mutation(({ input }) => {
-    // TODO(WOP-815): role enforcement must be added when the org service layer is wired.
+    // WOP-815: role enforcement must be added when the org service layer is wired.
     // Pattern to implement:
     //   const org = await orgService.getOrg(ctx.user.id);
     //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
@@ -149,7 +149,7 @@ export const orgRouter = router({
   connectOauthProvider: protectedProcedure
     .input(z.object({ provider: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
-      // TODO(WOP-815): wire to better-auth OAuth linking
+      // WOP-815: wire to better-auth OAuth linking
       deps();
       return { connected: true, provider: input.provider };
     }),
@@ -158,7 +158,7 @@ export const orgRouter = router({
   disconnectOauthProvider: protectedProcedure
     .input(z.object({ provider: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
-      // TODO(WOP-815): wire to better-auth OAuth unlinking
+      // WOP-815: wire to better-auth OAuth unlinking
       deps();
       return { disconnected: true, provider: input.provider };
     }),
