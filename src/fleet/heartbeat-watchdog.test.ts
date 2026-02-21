@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HeartbeatWatchdog, type WatchdogConfig } from "./heartbeat-watchdog.js";
 import type { RecoveryManager } from "./recovery-manager.js";
+import type { INodeRepository } from "./repository-types.js";
 
 // Minimal INodeRepository shape needed by HeartbeatWatchdog
 interface MockNodeRepo {
@@ -47,7 +48,7 @@ describe("HeartbeatWatchdog", () => {
     recoveryManager = createMockRecoveryManager();
     onStatusChange = vi.fn() as unknown as (nodeId: string, newStatus: string) => void;
     watchdog = new HeartbeatWatchdog(
-      nodeRepo as any,
+      nodeRepo as unknown as INodeRepository,
       recoveryManager as unknown as RecoveryManager,
       onStatusChange,
       config,
@@ -67,7 +68,7 @@ describe("HeartbeatWatchdog", () => {
     nodeRepo.list.mockReturnValue([{ id: "node-1", status: "active", lastHeartbeatAt: now - 100 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs!);
+    vi.advanceTimersByTime(config.checkIntervalMs as number);
 
     // Should have called transition to "unhealthy"
     expect(nodeRepo.transition).toHaveBeenCalledWith("node-1", "unhealthy", "heartbeat_timeout", "heartbeat_watchdog");
@@ -86,7 +87,7 @@ describe("HeartbeatWatchdog", () => {
     nodeRepo.list.mockReturnValue([{ id: "node-2", status: "unhealthy", lastHeartbeatAt: now - 350 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs!);
+    vi.advanceTimersByTime(config.checkIntervalMs as number);
 
     // Should have called transition to "offline"
     expect(nodeRepo.transition).toHaveBeenCalledWith("node-2", "offline", "heartbeat_timeout", "heartbeat_watchdog");
@@ -102,7 +103,7 @@ describe("HeartbeatWatchdog", () => {
     nodeRepo.list.mockReturnValue([{ id: "node-new", status: "active", lastHeartbeatAt: null }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs!);
+    vi.advanceTimersByTime(config.checkIntervalMs as number);
 
     expect(nodeRepo.transition).not.toHaveBeenCalled();
     expect(onStatusChange).not.toHaveBeenCalled();
@@ -115,7 +116,7 @@ describe("HeartbeatWatchdog", () => {
     nodeRepo.list.mockReturnValue([{ id: "node-1", status: "active", lastHeartbeatAt: now - 30 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs!);
+    vi.advanceTimersByTime(config.checkIntervalMs as number);
 
     expect(nodeRepo.transition).not.toHaveBeenCalled();
     expect(onStatusChange).not.toHaveBeenCalled();
@@ -128,7 +129,7 @@ describe("HeartbeatWatchdog", () => {
     nodeRepo.list.mockReturnValue([{ id: "node-1", status: "unhealthy", lastHeartbeatAt: now - 150 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs!);
+    vi.advanceTimersByTime(config.checkIntervalMs as number);
 
     // Should NOT transition (already unhealthy, not yet at 300s)
     expect(nodeRepo.transition).not.toHaveBeenCalled();
@@ -137,7 +138,7 @@ describe("HeartbeatWatchdog", () => {
 
   it("calls nodeRepo.list with ['active', 'unhealthy'] statuses", () => {
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs!);
+    vi.advanceTimersByTime(config.checkIntervalMs as number);
 
     expect(nodeRepo.list).toHaveBeenCalledWith(["active", "unhealthy"]);
   });

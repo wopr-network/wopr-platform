@@ -15,9 +15,10 @@ import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
 import { MigrationManager } from "./migration-manager.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
 import { NodeProvisioner } from "./node-provisioner.js";
+// TODO: WOP-864 — replace inline shim with: import { DrizzleNodeRepository } from "./node-repository.js";
+import { NodeNotFoundError } from "./node-state-machine.js";
 import { RecoveryManager } from "./recovery-manager.js";
 import { RegistrationTokenStore } from "./registration-token-store.js";
-// TODO: WOP-864 — replace inline shim with: import { DrizzleNodeRepository } from "./node-repository.js";
 import type { INodeRepository, Node, NodeStatus } from "./repository-types.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
@@ -94,7 +95,9 @@ export function getNodeRepository(): INodeRepository {
       transition(id: string, to: NodeStatus, _reason: string, _triggeredBy: string): Node {
         const now = Math.floor(Date.now() / 1000);
         db.update(nodes).set({ status: to, updatedAt: now }).where(eq(nodes.id, id)).run();
-        return db.select().from(nodes).where(eq(nodes.id, id)).get() as Node;
+        const updated = db.select().from(nodes).where(eq(nodes.id, id)).get() as Node | undefined;
+        if (!updated) throw new NodeNotFoundError(id);
+        return updated;
       },
     };
   }
