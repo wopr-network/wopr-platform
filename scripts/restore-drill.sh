@@ -65,7 +65,7 @@ echo "============================================================" | tee -a "$R
 
 # Find the latest backup date directory
 log "Finding latest backup date..."
-LATEST_DATE_LINE=$(s3cmd ls "${S3_BUCKET}/platform/" 2>/dev/null | grep -E '[0-9]{4}-[0-9]{2}-[0-9]{2}' | tail -1 || true)
+LATEST_DATE_LINE=$(s3cmd ls "${S3_BUCKET}/platform/" 2>/dev/null | grep -E '[0-9]{8}' | tail -1 || true)
 if [ -z "$LATEST_DATE_LINE" ]; then
   error_exit "No backups found in ${S3_BUCKET}/platform/"
 fi

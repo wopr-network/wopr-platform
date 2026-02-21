@@ -116,8 +116,7 @@ if ! docker load < "$BACKUP_LOCAL" 2>/dev/null; then
     error_exit "Could not load backup as Docker image via load or import"
   fi
 else
-  # docker load succeeded but may have used the original image tag; retag for cleanup
-  docker tag "$(docker load < /dev/null 2>/dev/null || true)" "$DRILL_IMAGE" 2>/dev/null || true
+  log "Image loaded successfully"
 fi
 
 # Verify image exists
