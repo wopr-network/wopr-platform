@@ -9,7 +9,4 @@ CREATE TABLE `node_transitions` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_node_transitions_node` ON `node_transitions` (`node_id`);--> statement-breakpoint
-CREATE INDEX `idx_node_transitions_created` ON `node_transitions` (`created_at`);--> statement-breakpoint
-ALTER TABLE `nodes` ADD `owner_user_id` text;--> statement-breakpoint
-ALTER TABLE `nodes` ADD `node_secret` text;--> statement-breakpoint
-ALTER TABLE `nodes` ADD `label` text;
+CREATE INDEX `idx_node_transitions_created` ON `node_transitions` (`created_at`);
