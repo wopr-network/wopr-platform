@@ -22,6 +22,11 @@ export interface NodeConnectionRegistry {
   getSocket(nodeId: string): { send(data: string): void; readyState: number } | null;
 }
 
+/** Interface for dependency injection — satisfied by NodeCommandBus */
+export interface INodeCommandBus {
+  send(nodeId: string, command: { type: string; payload: Record<string, unknown> }): Promise<CommandResult>;
+}
+
 /** Internal pending command state */
 interface PendingCommand {
   resolve: (result: CommandResult) => void;
