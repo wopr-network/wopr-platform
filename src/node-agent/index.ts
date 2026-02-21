@@ -49,13 +49,15 @@ export class NodeAgent {
     this.dockerManager = dockerManager ?? new DockerManager();
     this.backupManager = new BackupManager(this.dockerManager, config.backupDir, config.s3Bucket);
     this.hotBackupScheduler = new HotBackupScheduler(this.dockerManager, config.backupDir, config.s3Bucket);
-    this.healthMonitor = new HealthMonitor(this.dockerManager, config.nodeId, (event) => this.sendHealthEvent(event));
+    this.healthMonitor = new HealthMonitor(this.dockerManager, config.nodeId ?? "unknown", (event) =>
+      this.sendHealthEvent(event),
+    );
   }
 
   /** Boot the agent: register, connect WebSocket, start monitoring. */
   async start(): Promise<void> {
     this.stopped = false;
-    logger.info(`Node agent ${this.config.nodeId} starting (v${AGENT_VERSION})`);
+    logger.info(`Node agent ${this.config.nodeId ?? "(unregistered)"} starting (v${AGENT_VERSION})`);
 
     await this.register();
     this.connect();
@@ -84,15 +86,32 @@ export class NodeAgent {
 
   /** Register with the platform API via HTTP POST. */
   private async register(): Promise<void> {
+    // If we already have a persistent secret, use it
+    if (this.config.nodeSecret && this.config.nodeId) {
+      await this.registerWithSecret();
+      return;
+    }
+
+    // First-time registration with one-time token
+    if (this.config.registrationToken) {
+      await this.registerWithToken();
+      return;
+    }
+
+    throw new Error("No credentials available for registration");
+  }
+
+  /** Register using the persistent per-node secret (returning agent). */
+  private async registerWithSecret(): Promise<void> {
     const url = `${this.config.platformUrl}/internal/nodes/register`;
     const body: NodeRegistration = {
-      node_id: this.config.nodeId,
+      node_id: this.config.nodeId ?? "",
       host: getLocalIp(),
       capacity_mb: Math.round(totalmem() / 1024 / 1024),
       agent_version: AGENT_VERSION,
     };
 
-    logger.info(`Registering with platform: ${url}`);
+    logger.info(`Registering with platform (secret): ${url}`);
 
     const response = await fetch(url, {
       method: "POST",
@@ -111,11 +130,62 @@ export class NodeAgent {
     logger.info("Registered with platform");
   }
 
+  /** Register using a one-time token (first-time setup). */
+  private async registerWithToken(): Promise<void> {
+    const url = `${this.config.platformUrl}/internal/nodes/register`;
+    const body: NodeRegistration = {
+      node_id: hostname(), // temporary — platform assigns real ID
+      host: getLocalIp(),
+      capacity_mb: Math.round(totalmem() / 1024 / 1024),
+      agent_version: AGENT_VERSION,
+    };
+
+    logger.info(`Registering with platform (token): ${url}`);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.config.registrationToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Token registration failed (${response.status}): ${text}`);
+    }
+
+    const result = (await response.json()) as {
+      success: boolean;
+      node_id: string;
+      node_secret: string;
+    };
+
+    // Persist credentials to disk so agent survives restarts
+    this.config.nodeId = result.node_id;
+    this.config.nodeSecret = result.node_secret;
+    await this.saveCredentials(result.node_id, result.node_secret);
+
+    logger.info(`Registered as ${result.node_id}, credentials saved`);
+  }
+
+  /** Persist credentials to disk (mode 0o600). */
+  private async saveCredentials(nodeId: string, nodeSecret: string): Promise<void> {
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+
+    const credPath = this.config.credentialsPath ?? "/etc/wopr/credentials.json";
+    await mkdir(dirname(credPath), { recursive: true });
+    await writeFile(credPath, JSON.stringify({ nodeId, nodeSecret }, null, 2), { mode: 0o600 });
+    logger.info(`Credentials saved to ${credPath}`);
+  }
+
   /** Establish WebSocket connection with auto-reconnect. */
   private connect(): void {
     if (this.stopped) return;
 
-    const wsUrl = `${this.config.platformUrl.replace(/^http/, "ws")}/internal/nodes/${this.config.nodeId}/ws`;
+    const wsUrl = `${this.config.platformUrl.replace(/^http/, "ws")}/internal/nodes/${this.config.nodeId ?? ""}/ws`;
 
     logger.info(`Connecting WebSocket: ${wsUrl}`);
     this.ws = new WebSocket(wsUrl, {
@@ -160,7 +230,7 @@ export class NodeAgent {
 
     const sendHeartbeat = async () => {
       try {
-        const heartbeat = await collectHeartbeat(this.config.nodeId, this.dockerManager);
+        const heartbeat = await collectHeartbeat(this.config.nodeId ?? "unknown", this.dockerManager);
         this.send(heartbeat);
       } catch (err) {
         logger.error("Failed to send heartbeat", { err });
@@ -336,13 +406,25 @@ function getLocalIp(): string {
 const isMain = process.argv[1]?.endsWith("node-agent/index.js") || process.argv[1]?.endsWith("node-agent/index.ts");
 
 if (isMain) {
+  // Try to load saved credentials first (from previous token registration)
+  let savedCreds: { nodeId?: string; nodeSecret?: string } = {};
+  const credPath = process.env.CREDENTIALS_PATH ?? "/etc/wopr/credentials.json";
+  try {
+    const { readFileSync } = await import("node:fs");
+    savedCreds = JSON.parse(readFileSync(credPath, "utf-8")) as { nodeId?: string; nodeSecret?: string };
+  } catch {
+    // No saved credentials — first run via token
+  }
+
   const config = nodeAgentConfigSchema.parse({
     platformUrl: process.env.PLATFORM_URL,
-    nodeId: process.env.NODE_ID,
-    nodeSecret: process.env.NODE_SECRET,
+    nodeId: savedCreds.nodeId ?? process.env.NODE_ID,
+    nodeSecret: savedCreds.nodeSecret ?? process.env.NODE_SECRET,
+    registrationToken: process.env.REGISTRATION_TOKEN,
     heartbeatIntervalMs: process.env.HEARTBEAT_INTERVAL_MS,
     backupDir: process.env.BACKUP_DIR,
     s3Bucket: process.env.S3_BUCKET,
+    credentialsPath: credPath,
   });
 
   const agent = new NodeAgent(config);

@@ -29,7 +29,10 @@ function setupDb() {
       last_error TEXT,
       drain_status TEXT,
       drain_migrated INTEGER,
-      drain_total INTEGER
+      drain_total INTEGER,
+      owner_user_id TEXT,
+      node_secret TEXT,
+      label TEXT
     )
   `);
 

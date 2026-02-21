@@ -44,6 +44,12 @@ export const nodes = sqliteTable(
     drainMigrated: integer("drain_migrated"),
     /** Total tenants to migrate during current drain */
     drainTotal: integer("drain_total"),
+    /** User ID of the self-hosted node owner (null for platform-provisioned DO droplets) */
+    ownerUserId: text("owner_user_id"),
+    /** Per-node persistent API key hash (sha256 of the secret returned at registration) */
+    nodeSecret: text("node_secret"),
+    /** Human-friendly label from the registration token */
+    label: text("label"),
   },
   (table) => [index("idx_nodes_status").on(table.status), index("idx_nodes_droplet").on(table.dropletId)],
 );
