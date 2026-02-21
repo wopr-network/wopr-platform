@@ -83,9 +83,11 @@ export class NodeConnectionManager {
   private readonly pending = new Map<string, PendingCommand>();
   private orphanCleaner?: OrphanCleaner;
   private readonly cleanupInFlight = new Set<string>();
+  private readonly onNodeRegistered?: () => void;
 
-  constructor(db: BetterSQLite3Database<typeof schema>) {
+  constructor(db: BetterSQLite3Database<typeof schema>, options?: { onNodeRegistered?: () => void }) {
     this.db = db;
+    this.onNodeRegistered = options?.onNodeRegistered;
   }
 
   /** Inject OrphanCleaner after construction to break the circular dependency. */
@@ -153,6 +155,11 @@ export class NodeConnectionManager {
         .run();
 
       logger.info(`Node ${registration.node_id} registered`);
+    }
+
+    // Trigger auto-retry check for waiting recovery tenants
+    if (this.onNodeRegistered) {
+      this.onNodeRegistered();
     }
   }
 
@@ -418,6 +425,11 @@ export class NodeConnectionManager {
       .run();
 
     logger.info(`Self-hosted node ${registration.node_id} registered for user ${registration.ownerUserId}`);
+
+    // Trigger auto-retry check for waiting recovery tenants
+    if (this.onNodeRegistered) {
+      this.onNodeRegistered();
+    }
   }
 
   /**

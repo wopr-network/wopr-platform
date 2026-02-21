@@ -92,6 +92,30 @@ export class AdminNotifier {
   }
 
   /**
+   * Notify admin that waiting tenants have exceeded retry/time limits
+   */
+  async waitingTenantsExpired(eventId: string, failedCount: number, reason: string): Promise<void> {
+    const message = [
+      `Recovery Timeout`,
+      `Event: ${eventId}`,
+      `${failedCount} waiting tenant(s) marked as failed`,
+      `Reason: ${reason}`,
+      `Action required: investigate and manually recover if needed`,
+    ].join("\n");
+
+    logger.warn(message);
+
+    if (this.webhookUrl) {
+      await this.sendWebhook({
+        type: "waiting_tenants_expired",
+        event_id: eventId,
+        failed_count: failedCount,
+        reason,
+      });
+    }
+  }
+
+  /**
    * Send a webhook notification
    */
   private async sendWebhook(payload: Record<string, unknown>): Promise<void> {
