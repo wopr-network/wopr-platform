@@ -218,6 +218,9 @@ const BILLING_LIMIT: RateLimitConfig = { max: 10 };
 /** Secrets validation: 5 req/min */
 const SECRETS_VALIDATION_LIMIT: RateLimitConfig = { max: 5 };
 
+/** Channel credential validation: 10 req/min (WOP-719) */
+const CHANNEL_VALIDATE_LIMIT: RateLimitConfig = { max: 10 };
+
 /** Fleet create (POST /fleet/bots): 30 req/min */
 const FLEET_CREATE_LIMIT: RateLimitConfig = { max: 30 };
 
@@ -264,6 +267,9 @@ export const platformRateLimitRules: RateLimitRule[] = [
 
   // Secrets validation — most restrictive, check first
   { method: "POST", pathPrefix: "/api/validate-key", config: SECRETS_VALIDATION_LIMIT },
+
+  // Channel credential validation — 10 req/min (WOP-719)
+  { method: "POST", pathPrefix: "/api/channels", config: CHANNEL_VALIDATE_LIMIT },
 
   // Webhook: 30 req/min (WOP-477)
   { method: "POST", pathPrefix: "/api/billing/webhook", config: WEBHOOK_LIMIT },
