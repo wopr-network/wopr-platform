@@ -4,11 +4,31 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { botInstances } from "../../db/schema/index.js";
+import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
+import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
 import { getDb, getNodeConnections } from "../../fleet/services.js";
+import type { MeterEvent } from "../../monetization/metering/types.js";
+import type { DecryptedCredential } from "../../security/credential-vault/store.js";
+import { fleet } from "./fleet.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const store = new ProfileStore(DATA_DIR);
+
+// Dependencies injected for hosted credential resolution.
+// In production these are set by the app bootstrap; tests mock them.
+let credentialVault: {
+  getActiveForProvider(provider: string): Array<Pick<DecryptedCredential, "plaintextKey">>;
+} | null = null;
+let meterEmitter: { emit(event: MeterEvent): void } | null = null;
+
+export function setBotPluginDeps(deps: {
+  credentialVault: typeof credentialVault;
+  meterEmitter: typeof meterEmitter;
+}): void {
+  credentialVault = deps.credentialVault;
+  meterEmitter = deps.meterEmitter;
+}
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -126,25 +146,86 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
   // Add pluginId to WOPR_PLUGINS list
   const updatedPlugins = [...existingPlugins, pluginId].join(",");
 
+  // --- Resolve hosted provider choices BEFORE writing to profile ---
+  const hostedEnvVars: Record<string, string> = {};
+  const hostedKeyNames: string[] = [];
+
+  for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+    if (choice !== "hosted") continue; // byok = no-op
+
+    const capEntry = lookupCapabilityEnv(capability);
+    if (!capEntry) {
+      return c.json({ error: `Unknown capability: ${capability}` }, 400);
+    }
+
+    if (!credentialVault) {
+      return c.json({ error: "Credential vault not configured" }, 503);
+    }
+
+    const creds = credentialVault.getActiveForProvider(capEntry.vaultProvider);
+    if (creds.length === 0) {
+      return c.json({ error: `No platform credential available for hosted capability: ${capability}` }, 503);
+    }
+
+    hostedEnvVars[capEntry.envKey] = creds[0].plaintextKey;
+    hostedKeyNames.push(capEntry.envKey);
+  }
+
+  // Merge existing hosted keys with new ones (avoid clobbering keys from other plugins)
+  const existingHostedKeys = (freshProfile.env.WOPR_HOSTED_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allHostedKeys = [...new Set([...existingHostedKeys, ...hostedKeyNames])];
+
   // Merge plugin config into env as WOPR_PLUGIN_<UPPER_SNAKE>_CONFIG=<json>
   const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
-  const updatedEnv = {
+  const updatedEnv: Record<string, string> = {
     ...freshProfile.env,
     WOPR_PLUGINS: updatedPlugins,
     [configEnvKey]: JSON.stringify(parsed.data.config),
+    ...hostedEnvVars,
   };
 
-  const updated = { ...freshProfile, env: updatedEnv };
-  await store.save(updated);
+  // Only set WOPR_HOSTED_KEYS if there are hosted keys
+  if (allHostedKeys.length > 0) {
+    updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
+  }
 
-  // Dispatch env update to the correct node
-  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
+  // Apply env change to profile and running container
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    // fleet.update() rolls back the profile internally on container failure,
+    // so the profile is reverted to freshProfile's state.
+    logger.error(`Failed to apply plugin install to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
+
+  // Emit activation meter events for billing audit trail
+  if (meterEmitter && hostedKeyNames.length > 0) {
+    for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+      if (choice !== "hosted") continue;
+      const capEntry = lookupCapabilityEnv(capability);
+      if (!capEntry) continue;
+      meterEmitter.emit({
+        tenant: profile.tenantId,
+        cost: 0,
+        charge: 0,
+        capability: "hosted-activation",
+        provider: capEntry.vaultProvider,
+        timestamp: Date.now(),
+      });
+    }
+  }
 
   logger.info(`Installed plugin ${pluginId} on bot ${botId}`, {
     botId,
     pluginId,
     tenantId: profile.tenantId,
-    dispatched: dispatch.dispatched,
   });
 
   return c.json(
@@ -153,8 +234,6 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
       botId,
       pluginId,
       installedPlugins: [...existingPlugins, pluginId],
-      dispatched: dispatch.dispatched,
-      ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
     },
     200,
   );

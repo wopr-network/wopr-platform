@@ -31,6 +31,18 @@ const storeMock = {
   save: vi.fn(),
 };
 
+const fleetMock = {
+  update: vi.fn(),
+};
+
+const vaultMock = {
+  getActiveForProvider: vi.fn(),
+};
+
+const meterMock = {
+  emit: vi.fn(),
+};
+
 vi.mock("../../fleet/profile-store.js", () => {
   return {
     ProfileStore: class {
@@ -39,6 +51,10 @@ vi.mock("../../fleet/profile-store.js", () => {
     },
   };
 });
+
+vi.mock("./fleet.js", () => ({
+  fleet: fleetMock,
+}));
 
 // Mock fleet services (DB + NodeConnectionManager)
 const mockDbChain = {
@@ -62,7 +78,14 @@ vi.mock("../../fleet/services.js", () => ({
 }));
 
 // Import AFTER mocks are set up
-const { botPluginRoutes } = await import("./bot-plugins.js");
+const { botPluginRoutes, setBotPluginDeps } = await import("./bot-plugins.js");
+const { BotNotFoundError } = await import("../../fleet/fleet-manager.js");
+
+// Wire in mock deps
+setBotPluginDeps({
+  credentialVault: vaultMock,
+  meterEmitter: meterMock,
+});
 
 const app = new Hono();
 app.route("/fleet", botPluginRoutes);
@@ -75,6 +98,9 @@ describe("bot-plugin routes", () => {
       return Promise.resolve(null);
     });
     storeMock.save.mockResolvedValue(undefined);
+    fleetMock.update.mockResolvedValue(undefined);
+    vaultMock.getActiveForProvider.mockReturnValue([]);
+    meterMock.emit.mockReturnValue(undefined);
     // Default: bot is deployed to TEST_NODE_ID
     mockDbChain.get.mockReturnValue({
       id: TEST_BOT_ID,
@@ -91,7 +117,7 @@ describe("bot-plugin routes", () => {
   });
 
   describe("POST /fleet/bots/:botId/plugins/:pluginId", () => {
-    it("successfully installs a plugin and returns 200 with dispatched: true", async () => {
+    it("successfully installs a plugin and returns 200", async () => {
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
@@ -104,8 +130,8 @@ describe("bot-plugin routes", () => {
       expect(body.botId).toBe(TEST_BOT_ID);
       expect(body.pluginId).toBe("wopr-plugin-discord");
       expect(body.installedPlugins).toContain("wopr-plugin-discord");
-      expect(body.dispatched).toBe(true);
-      expect(storeMock.save).toHaveBeenCalledWith(
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
         expect.objectContaining({
           env: expect.objectContaining({ WOPR_PLUGINS: "wopr-plugin-discord" }),
         }),
@@ -185,6 +211,7 @@ describe("bot-plugin routes", () => {
 
     it("stores plugin config in env under WOPR_PLUGIN_<ID>_CONFIG key", async () => {
       const config = { token: "abc123", prefix: "!" };
+      fleetMock.update.mockResolvedValue({});
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
@@ -192,7 +219,8 @@ describe("bot-plugin routes", () => {
         body: JSON.stringify({ config, providerChoices: {} }),
       });
 
-      expect(storeMock.save).toHaveBeenCalledWith(
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
         expect.objectContaining({
           env: expect.objectContaining({
             WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify(config),
@@ -246,8 +274,9 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(200);
       // store.get must have been called twice (initial + re-fetch)
       expect(storeMock.get).toHaveBeenCalledTimes(2);
-      // store.save must be called with BOTH plugins
-      expect(storeMock.save).toHaveBeenCalledWith(
+      // fleet.update must be called with BOTH plugins
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
         expect.objectContaining({
           env: expect.objectContaining({
             WOPR_PLUGINS: "plugin-a,plugin-b",
@@ -278,7 +307,7 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(409);
-      expect(storeMock.save).not.toHaveBeenCalled();
+      expect(fleetMock.update).not.toHaveBeenCalled();
     });
 
     it("returns 404 if profile was deleted between reads", async () => {
@@ -300,65 +329,139 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(404);
-      expect(storeMock.save).not.toHaveBeenCalled();
+      expect(fleetMock.update).not.toHaveBeenCalled();
     });
 
-    it("dispatches bot.update to the correct node after install", async () => {
-      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+    it("injects hosted credential env var when providerChoices has hosted entry", async () => {
+      vaultMock.getActiveForProvider.mockImplementation((provider: string) => {
+        if (provider === "elevenlabs") {
+          return [
+            {
+              id: "cred-1",
+              provider: "elevenlabs",
+              keyName: "prod",
+              plaintextKey: "sk-eleven-test",
+              authType: "header",
+              authHeader: null,
+            },
+          ];
+        }
+        return [];
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "hosted" },
+        }),
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.dispatched).toBe(true);
-      expect(mockNodeConnections.sendCommand).toHaveBeenCalledWith(
-        TEST_NODE_ID,
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
         expect.objectContaining({
-          type: "bot.update",
-          payload: expect.objectContaining({
-            name: `tenant_${TEST_TENANT_ID}`,
+          env: expect.objectContaining({
+            ELEVENLABS_API_KEY: "sk-eleven-test",
+            WOPR_HOSTED_KEYS: "ELEVENLABS_API_KEY",
           }),
         }),
       );
     });
 
-    it("returns success with dispatched:false when node is offline", async () => {
-      mockNodeConnections.sendCommand.mockRejectedValue(new Error("Node node-1 is not connected"));
+    it("does not inject env var when providerChoices has byok entry", async () => {
+      fleetMock.update.mockResolvedValue({});
 
-      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "byok" },
+        }),
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.success).toBe(true);
-      expect(body.dispatched).toBe(false);
-      expect(body.dispatchError).toMatch(/not connected/);
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
+        expect.objectContaining({
+          env: expect.not.objectContaining({
+            ELEVENLABS_API_KEY: expect.anything(),
+          }),
+        }),
+      );
     });
 
-    it("skips dispatch when bot has no nodeId (not yet deployed)", async () => {
-      mockDbChain.get.mockReturnValue({
-        id: TEST_BOT_ID,
-        tenantId: TEST_TENANT_ID,
-        name: "test-bot",
-        nodeId: null,
-      });
-
-      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+    it("returns 400 for unknown capability in providerChoices", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { "unknown-capability": "hosted" },
+        }),
       });
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.success).toBe(true);
-      expect(body.dispatched).toBe(false);
-      expect(mockNodeConnections.sendCommand).not.toHaveBeenCalled();
+      expect(body.error).toMatch(/Unknown capability/);
+    });
+
+    it("returns 503 when no platform credential exists for hosted capability", async () => {
+      vaultMock.getActiveForProvider.mockReturnValue([]);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "hosted" },
+        }),
+      });
+
+      expect(res.status).toBe(503);
+      const body = await res.json();
+      expect(body.error).toMatch(/No platform credential/);
+    });
+
+    it("emits a meter event for each hosted activation", async () => {
+      vaultMock.getActiveForProvider.mockImplementation((provider: string) => {
+        if (provider === "elevenlabs") {
+          return [
+            {
+              id: "cred-1",
+              provider: "elevenlabs",
+              keyName: "prod",
+              plaintextKey: "sk-test",
+              authType: "header",
+              authHeader: null,
+            },
+          ];
+        }
+        return [];
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "hosted" },
+        }),
+      });
+
+      expect(meterMock.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenant: "user-123",
+          capability: "hosted-activation",
+          provider: "elevenlabs",
+          cost: 0,
+          charge: 0,
+        }),
+      );
     });
   });
 
