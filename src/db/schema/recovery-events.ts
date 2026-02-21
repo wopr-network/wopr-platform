@@ -56,6 +56,8 @@ export const recoveryItems = sqliteTable(
     status: text("status").notNull(),
     /** Failure or skip reason */
     reason: text("reason"),
+    /** Number of recovery retry attempts for this item */
+    retryCount: integer("retry_count").notNull().default(0),
     /** Unix epoch seconds when item recovery started */
     startedAt: integer("started_at"),
     /** Unix epoch seconds when item recovery completed */

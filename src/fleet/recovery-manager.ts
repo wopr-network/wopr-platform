@@ -38,6 +38,7 @@ export interface RecoveryItem {
   reason: string | null;
   startedAt: number | null;
   completedAt: number | null;
+  retryCount: number;
 }
 
 /**
@@ -288,6 +289,7 @@ export class RecoveryManager {
         backupKey,
         status,
         reason,
+        retryCount: 0,
         startedAt,
         completedAt: status !== "waiting" ? Math.floor(Date.now() / 1000) : null,
       })
@@ -347,7 +349,7 @@ export class RecoveryManager {
       // Mark waiting item as processed
       this.db
         .update(recoveryItems)
-        .set({ status: "retried", completedAt: Math.floor(Date.now() / 1000) })
+        .set({ status: "retried", retryCount: sql`retry_count + 1`, completedAt: Math.floor(Date.now() / 1000) })
         .where(eq(recoveryItems.id, item.id))
         .run();
     }
