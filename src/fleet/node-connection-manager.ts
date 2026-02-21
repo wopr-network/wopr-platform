@@ -4,7 +4,7 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { WebSocket } from "ws";
 import { logger } from "../config/logger.js";
 import type * as schema from "../db/schema/index.js";
-import { botInstances, nodes } from "../db/schema/index.js";
+import { botInstances, nodes, recoveryEvents } from "../db/schema/index.js";
 
 /** Node registration request body */
 export interface NodeRegistration {
@@ -89,20 +89,38 @@ export class NodeConnectionManager {
     const existing = this.db.select().from(nodes).where(eq(nodes.id, registration.node_id)).get();
 
     if (existing) {
+      // Dead states: node must go through returning -> cleanup -> active
+      const DEAD_STATUSES = new Set(["offline", "recovering", "failed"]);
+      const newStatus = DEAD_STATUSES.has(existing.status) ? "returning" : "active";
+
       this.db
         .update(nodes)
         .set({
           host: registration.host,
           capacityMb: registration.capacity_mb,
           agentVersion: registration.agent_version,
-          status: "active",
+          status: newStatus,
           lastHeartbeatAt: now,
           updatedAt: now,
         })
         .where(eq(nodes.id, registration.node_id))
         .run();
 
-      logger.info(`Node ${registration.node_id} re-registered`);
+      // If node was in a dead state, close any in-flight recovery events
+      if (newStatus === "returning") {
+        this.db
+          .update(recoveryEvents)
+          .set({
+            status: "completed",
+            completedAt: now,
+          })
+          .where(and(eq(recoveryEvents.nodeId, registration.node_id), eq(recoveryEvents.status, "in_progress")))
+          .run();
+
+        logger.info(`Node ${registration.node_id} re-registered as returning (prior: ${existing.status})`);
+      } else {
+        logger.info(`Node ${registration.node_id} re-registered`);
+      }
     } else {
       this.db
         .insert(nodes)
@@ -207,12 +225,18 @@ export class NodeConnectionManager {
     const containers = msg.containers as Array<{ name: string; memory_mb: number }> | undefined;
     const usedMb = containers?.reduce((sum, c) => sum + (c.memory_mb ?? 0), 0) ?? 0;
 
+    // Only transition to "active" if node is currently unhealthy or already active.
+    // Nodes in "returning" state must go through cleanup first (handled by OrphanCleaner).
+    const node = this.db.select({ status: nodes.status }).from(nodes).where(eq(nodes.id, nodeId)).get();
+    const HEARTBEAT_ACTIVATABLE = new Set(["active", "unhealthy"]);
+    const newStatus = node && HEARTBEAT_ACTIVATABLE.has(node.status) ? "active" : undefined;
+
     this.db
       .update(nodes)
       .set({
         lastHeartbeatAt: now,
         usedMb,
-        status: "active", // If node was unhealthy, mark active again
+        ...(newStatus ? { status: newStatus } : {}),
         updatedAt: now,
       })
       .where(eq(nodes.id, nodeId))
