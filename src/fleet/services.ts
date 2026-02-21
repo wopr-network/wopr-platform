@@ -14,6 +14,7 @@ import { MigrationManager } from "./migration-manager.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
 import { NodeProvisioner } from "./node-provisioner.js";
 import { RecoveryManager } from "./recovery-manager.js";
+import { RegistrationTokenStore } from "./registration-token-store.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
 
@@ -28,6 +29,7 @@ const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platfor
 let _sqlite: Database.Database | null = null;
 let _db: ReturnType<typeof drizzle<typeof dbSchema>> | null = null;
 let _nodeConnections: NodeConnectionManager | null = null;
+let _registrationTokenStore: RegistrationTokenStore | null = null;
 let _adminNotifier: AdminNotifier | null = null;
 let _recoveryManager: RecoveryManager | null = null;
 let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
@@ -47,6 +49,13 @@ export function getNodeConnections() {
     _nodeConnections = new NodeConnectionManager(getDb());
   }
   return _nodeConnections;
+}
+
+export function getRegistrationTokenStore(): RegistrationTokenStore {
+  if (!_registrationTokenStore) {
+    _registrationTokenStore = new RegistrationTokenStore(getDb());
+  }
+  return _registrationTokenStore;
 }
 
 export function getAdminNotifier() {

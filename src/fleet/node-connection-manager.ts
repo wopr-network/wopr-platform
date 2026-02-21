@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { WebSocket } from "ws";
@@ -24,6 +24,8 @@ export interface NodeInfo {
   agentVersion: string | null;
   lastHeartbeatAt: number | null;
   registeredAt: number;
+  ownerUserId?: string | null;
+  label?: string | null;
 }
 
 /** Tenant assignment to a specific node */
@@ -320,5 +322,58 @@ export class NodeConnectionManager {
   isConnected(nodeId: string): boolean {
     const ws = this.connections.get(nodeId);
     return ws != null && ws.readyState === 1;
+  }
+
+  /**
+   * Register a self-hosted node with owner and per-node secret hash.
+   */
+  registerSelfHostedNode(
+    registration: NodeRegistration & {
+      ownerUserId: string;
+      label: string | null;
+      nodeSecretHash: string;
+    },
+  ): void {
+    const now = Math.floor(Date.now() / 1000);
+    this.db
+      .insert(nodes)
+      .values({
+        id: registration.node_id,
+        host: registration.host,
+        capacityMb: registration.capacity_mb,
+        usedMb: 0,
+        agentVersion: registration.agent_version,
+        status: "active",
+        lastHeartbeatAt: now,
+        registeredAt: now,
+        updatedAt: now,
+        ownerUserId: registration.ownerUserId,
+        label: registration.label,
+        nodeSecret: registration.nodeSecretHash,
+      })
+      .run();
+
+    logger.info(`Self-hosted node ${registration.node_id} registered for user ${registration.ownerUserId}`);
+  }
+
+  /**
+   * Look up a node by its persistent secret (hashed). Returns node or undefined.
+   */
+  getNodeBySecret(secret: string): NodeInfo | undefined {
+    const hash = createHash("sha256").update(secret).digest("hex");
+    return this.db.select().from(nodes).where(eq(nodes.nodeSecret, hash)).get();
+  }
+
+  /**
+   * Remove a self-hosted node (deregister), closing any active WebSocket.
+   */
+  removeNode(nodeId: string): void {
+    const ws = this.connections.get(nodeId);
+    if (ws) {
+      ws.close();
+      this.connections.delete(nodeId);
+    }
+    this.db.delete(nodes).where(eq(nodes.id, nodeId)).run();
+    logger.info(`Node ${nodeId} removed`);
   }
 }

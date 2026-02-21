@@ -7,6 +7,7 @@ export * from "./bot-instances.js";
 export * from "./credits.js";
 export * from "./email-notifications.js";
 export * from "./meter-events.js";
+export * from "./node-registration-tokens.js";
 export * from "./nodes.js";
 export * from "./notification-preferences.js";
 export * from "./notification-queue.js";

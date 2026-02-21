@@ -10,7 +10,7 @@ import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { applyPlatformPragmas, createDb } from "./db/index.js";
 import { ProfileStore } from "./fleet/profile-store.js";
-import { getHeartbeatWatchdog, getNodeConnections } from "./fleet/services.js";
+import { getHeartbeatWatchdog, getNodeConnections, getRegistrationTokenStore } from "./fleet/services.js";
 import { mountGateway } from "./gateway/index.js";
 import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
@@ -18,6 +18,7 @@ import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
+import { setNodesRouterDeps } from "./trpc/index.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
@@ -139,6 +140,12 @@ if (process.env.NODE_ENV !== "test") {
   // are not lost on server restart.
   await hydrateProxyRoutes(new ProfileStore(DATA_DIR));
 
+  // Wire nodes tRPC router deps
+  setNodesRouterDeps({
+    getRegistrationTokenStore,
+    getNodeConnections,
+  });
+
   // Start heartbeat watchdog
   getHeartbeatWatchdog().start();
 
@@ -158,24 +165,36 @@ if (process.env.NODE_ENV !== "test") {
       if (match) {
         const nodeId = match[1];
         const authHeader = req.headers.authorization;
+        const bearer = authHeader?.replace(/^Bearer\s+/i, "");
 
-        const authResult = validateNodeAuth(authHeader);
-        if (authResult === null) {
-          // NODE_SECRET not configured — node management disabled
+        // Path 1: Static NODE_SECRET (backwards-compatible)
+        const staticAuthResult = validateNodeAuth(authHeader);
+        if (staticAuthResult === true) {
+          wss.handleUpgrade(req, socket, head, (ws) => {
+            getNodeConnections().handleWebSocket(nodeId, ws);
+          });
+          return;
+        }
+
+        // Path 2: Per-node persistent secret for self-hosted nodes
+        if (bearer) {
+          const nodeBySecret = getNodeConnections().getNodeBySecret(bearer);
+          if (nodeBySecret && nodeBySecret.id === nodeId) {
+            wss.handleUpgrade(req, socket, head, (ws) => {
+              getNodeConnections().handleWebSocket(nodeId, ws);
+            });
+            return;
+          }
+        }
+
+        // No valid auth found
+        if (staticAuthResult === null && !bearer) {
+          // NODE_SECRET not configured and no bearer provided
           socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
-          socket.destroy();
-          return;
-        }
-        if (!authResult) {
-          // Invalid secret
+        } else {
           socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-          socket.destroy();
-          return;
         }
-
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          getNodeConnections().handleWebSocket(nodeId, ws);
-        });
+        socket.destroy();
       } else {
         socket.destroy();
       }

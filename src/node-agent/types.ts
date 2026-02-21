@@ -10,20 +10,26 @@ export const TENANT_PREFIX = "tenant_";
 // Configuration
 // ---------------------------------------------------------------------------
 
-export const nodeAgentConfigSchema = z.object({
-  /** Platform API base URL (e.g. https://api.wopr.bot) */
-  platformUrl: z.string().url(),
-  /** Unique node identifier (e.g. node-2) */
-  nodeId: z.string().min(1),
-  /** Shared secret for authentication */
-  nodeSecret: z.string().min(1),
-  /** Heartbeat interval in milliseconds */
-  heartbeatIntervalMs: z.coerce.number().int().min(1000).default(30_000),
-  /** Backup directory path */
-  backupDir: z.string().default("/backups"),
-  /** S3 bucket for backups */
-  s3Bucket: z.string().default("wopr-backups"),
-});
+export const nodeAgentConfigSchema = z
+  .object({
+    /** Platform API base URL (e.g. https://api.wopr.bot) */
+    platformUrl: z.string().url(),
+    /** Unique node identifier — assigned by platform during token registration */
+    nodeId: z.string().min(1).optional(),
+    /** Persistent per-node secret for authentication (assigned after first registration) */
+    nodeSecret: z.string().optional(),
+    /** One-time registration token for first-time setup */
+    registrationToken: z.string().optional(),
+    /** Heartbeat interval in milliseconds */
+    heartbeatIntervalMs: z.coerce.number().int().min(1000).default(30_000),
+    /** Backup directory path */
+    backupDir: z.string().default("/backups"),
+    /** S3 bucket for backups */
+    s3Bucket: z.string().default("wopr-backups"),
+    /** Path to persist credentials after token registration */
+    credentialsPath: z.string().default("/etc/wopr/credentials.json"),
+  })
+  .refine((c) => c.nodeSecret || c.registrationToken, "Either nodeSecret or registrationToken is required");
 
 export type NodeAgentConfig = z.infer<typeof nodeAgentConfigSchema>;
 
