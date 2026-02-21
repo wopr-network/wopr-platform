@@ -23,6 +23,8 @@ export interface DeletionExecutorDeps {
   tenantStore?: { getByTenant: (tenant: string) => { stripe_customer_id: string } | null };
   /** Auth database handle — used to delete user from better-auth tables. */
   authDb?: import("better-sqlite3").Database;
+  /** S3-compatible client for deleting snapshot objects during GDPR purge. */
+  spaces?: { remove: (remotePath: string) => Promise<void> };
 }
 
 export interface DeletionResult {
@@ -52,12 +54,12 @@ export interface DeletionResult {
  * Stripe customer via API. If Stripe deletion fails (e.g., has invoices), we log
  * the error but continue. Stripe retains its own records for compliance.
  *
- * NOTE on S3 snapshots: The executor deletes snapshot DB rows but does NOT delete
- * the actual S3 objects. A follow-up task should add S3 object deletion via the
- * SnapshotManager.
+ * NOTE on S3 snapshots: The executor deletes S3 objects for all tenant snapshots
+ * before deleting the DB rows. S3 deletion failures are logged but do not abort
+ * the purge.
  */
 export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: string): Promise<DeletionResult> {
-  const { db, rawDb, stripe, tenantStore, authDb } = deps;
+  const { db, rawDb, stripe, tenantStore, authDb, spaces } = deps;
   const result: DeletionResult = {
     tenantId,
     deletedCounts: {},
@@ -155,7 +157,30 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
   // 7. Admin notes for this tenant
   deleteFromTable("admin_notes", () => db.delete(adminNotes).where(eq(adminNotes.tenantId, tenantId)).run());
 
-  // 8. Snapshots (DB rows only; S3 objects require separate cleanup)
+  // 8. Snapshots — delete S3 objects BEFORE deleting DB rows
+  if (spaces) {
+    // Enumerate all snapshot rows for the tenant to find S3 keys
+    const snapshotRows = db
+      .select({ id: snapshots.id, s3Key: snapshots.s3Key })
+      .from(snapshots)
+      .where(eq(snapshots.tenant, tenantId))
+      .all();
+
+    for (const row of snapshotRows) {
+      if (row.s3Key) {
+        try {
+          await spaces.remove(row.s3Key);
+          result.deletedCounts[`s3_object:${row.id}`] = 1;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          result.errors.push(`s3_snapshot(${row.id}): ${msg}`);
+          // Continue — log error but don't abort deletion
+        }
+      }
+    }
+  }
+
+  // Delete snapshot DB rows
   deleteFromTable("snapshots", () => db.delete(snapshots).where(eq(snapshots.tenant, tenantId)).run());
   // backup_status uses containerId (container name pattern "tenant_{id}")
   try {

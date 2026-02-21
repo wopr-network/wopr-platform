@@ -471,4 +471,102 @@ describe("executeDeletion", () => {
       expect(rawDb.prepare("SELECT COUNT(*) AS c FROM credit_adjustments").get()).toEqual({ c: 0 });
     });
   });
+
+  describe("S3 snapshot object deletion", () => {
+    it("deletes S3 objects for snapshots with s3_key before deleting DB rows", async () => {
+      const tenantId = "tenant-s3";
+      seedTenant(rawDb, tenantId);
+      // The seedTenant inserts a snapshot without s3_key. Add one with an s3_key.
+      rawDb.exec(`
+        INSERT INTO snapshots (id, tenant, instance_id, user_id, trigger, storage_path, s3_key)
+        VALUES ('snap-s3-1', '${tenantId}', 'inst-1', '${tenantId}', 'manual', '/data/snap', 'on-demand/${tenantId}/snap-s3-1.tar.gz')
+      `);
+
+      const mockSpaces = { remove: vi.fn().mockResolvedValue(undefined) };
+      const result = await executeDeletion({ ...deps, spaces: mockSpaces }, tenantId);
+
+      // Should have called remove for the snapshot with s3_key (snap-s3-1), not for snap-tenant-s3 (no s3_key)
+      expect(mockSpaces.remove).toHaveBeenCalledTimes(1);
+      expect(mockSpaces.remove).toHaveBeenCalledWith(`on-demand/${tenantId}/snap-s3-1.tar.gz`);
+      // DB rows should still be deleted
+      expect(rawDb.prepare("SELECT COUNT(*) AS c FROM snapshots WHERE tenant = ?").get(tenantId)).toEqual({ c: 0 });
+      expect(result.errors).toHaveLength(0);
+      expect(result.deletedCounts["s3_object:snap-s3-1"]).toBe(1);
+    });
+
+    it("handles multiple snapshots — some with s3_key, some without", async () => {
+      const tenantId = "tenant-multi-s3";
+      // Don't use seedTenant here — insert snapshots manually for precise control
+      rawDb.exec(`
+        INSERT INTO snapshots (id, tenant, instance_id, user_id, trigger, storage_path, s3_key)
+        VALUES
+          ('snap-a', '${tenantId}', 'inst-1', '${tenantId}', 'manual', '/data/a', 'on-demand/${tenantId}/a.tar.gz'),
+          ('snap-b', '${tenantId}', 'inst-1', '${tenantId}', 'manual', '/data/b', NULL),
+          ('snap-c', '${tenantId}', 'inst-2', '${tenantId}', 'scheduled', '/data/c', 'nightly/node1/${tenantId}/c.tar.gz')
+      `);
+
+      const mockSpaces = { remove: vi.fn().mockResolvedValue(undefined) };
+      const result = await executeDeletion({ ...deps, spaces: mockSpaces }, tenantId);
+
+      // Should call remove for snap-a and snap-c (both have s3_key), skip snap-b
+      expect(mockSpaces.remove).toHaveBeenCalledTimes(2);
+      expect(mockSpaces.remove).toHaveBeenCalledWith(`on-demand/${tenantId}/a.tar.gz`);
+      expect(mockSpaces.remove).toHaveBeenCalledWith(`nightly/node1/${tenantId}/c.tar.gz`);
+      expect(result.deletedCounts["s3_object:snap-a"]).toBe(1);
+      expect(result.deletedCounts["s3_object:snap-c"]).toBe(1);
+      // All DB rows deleted
+      expect(rawDb.prepare("SELECT COUNT(*) AS c FROM snapshots WHERE tenant = ?").get(tenantId)).toEqual({ c: 0 });
+    });
+
+    it("logs S3 deletion failure to errors but continues deletion", async () => {
+      const tenantId = "tenant-s3-fail";
+      rawDb.exec(`
+        INSERT INTO snapshots (id, tenant, instance_id, user_id, trigger, storage_path, s3_key)
+        VALUES
+          ('snap-fail', '${tenantId}', 'inst-1', '${tenantId}', 'manual', '/data/fail', 'on-demand/${tenantId}/fail.tar.gz'),
+          ('snap-ok', '${tenantId}', 'inst-1', '${tenantId}', 'manual', '/data/ok', 'on-demand/${tenantId}/ok.tar.gz')
+      `);
+
+      const mockSpaces = {
+        remove: vi.fn().mockRejectedValueOnce(new Error("S3 connection timeout")).mockResolvedValueOnce(undefined),
+      };
+      const result = await executeDeletion({ ...deps, spaces: mockSpaces }, tenantId);
+
+      // First call fails, second succeeds
+      expect(mockSpaces.remove).toHaveBeenCalledTimes(2);
+      // Error is logged for the failed one
+      expect(result.errors.some((e) => e.includes("s3_snapshot(snap-fail)"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("S3 connection timeout"))).toBe(true);
+      // Successful one is tracked
+      expect(result.deletedCounts["s3_object:snap-ok"]).toBe(1);
+      // DB rows are still deleted despite S3 failure
+      expect(rawDb.prepare("SELECT COUNT(*) AS c FROM snapshots WHERE tenant = ?").get(tenantId)).toEqual({ c: 0 });
+    });
+
+    it("skips S3 deletion when spaces dependency is not provided", async () => {
+      const tenantId = "tenant-no-spaces";
+      rawDb.exec(`
+        INSERT INTO snapshots (id, tenant, instance_id, user_id, trigger, storage_path, s3_key)
+        VALUES ('snap-nospaces', '${tenantId}', 'inst-1', '${tenantId}', 'manual', '/data/snap', 'on-demand/${tenantId}/snap.tar.gz')
+      `);
+
+      // No spaces in deps
+      const result = await executeDeletion(deps, tenantId);
+
+      // DB rows still deleted, no S3 errors
+      expect(rawDb.prepare("SELECT COUNT(*) AS c FROM snapshots WHERE tenant = ?").get(tenantId)).toEqual({ c: 0 });
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("handles tenant with no snapshots gracefully", async () => {
+      const tenantId = "tenant-no-snaps";
+      // No snapshots inserted for this tenant
+
+      const mockSpaces = { remove: vi.fn() };
+      const result = await executeDeletion({ ...deps, spaces: mockSpaces }, tenantId);
+
+      expect(mockSpaces.remove).not.toHaveBeenCalled();
+      expect(result.errors).toHaveLength(0);
+    });
+  });
 });
