@@ -53,7 +53,8 @@ let _nodeRepo: INodeRepository | null = null;
 let _botProfileRepo: IBotProfileRepository | null = null;
 let _botInstanceRepo: IBotInstanceRepository | null = null;
 // TODO: WOP-867 — add _recoveryRepo once DrizzleRecoveryRepository is available
-const _recoveryRepo: IRecoveryRepository | null = null;
+// biome-ignore lint/style/useConst: WOP-867 will assign this once DrizzleRecoveryRepository is available
+let _recoveryRepo: IRecoveryRepository | null = null;
 // --- WebSocket layer singletons ---
 let _connectionRegistry: NodeConnectionRegistry | null = null;
 let _commandBus: NodeCommandBus | null = null;
