@@ -96,6 +96,18 @@ export interface NewBotInstance {
 }
 
 // ---------------------------------------------------------------------------
+// INodeRepository
+// ---------------------------------------------------------------------------
+
+// TODO: WOP-864 will provide the full DrizzleNodeRepository implementation.
+// This minimal interface is defined here so HeartbeatWatchdog and other
+// consumers can be refactored without waiting for WOP-864 to merge.
+export interface INodeRepository {
+  list(statuses?: NodeStatus[]): Node[];
+  transition(id: string, to: NodeStatus, reason: string, triggeredBy: string): Node;
+}
+
+// ---------------------------------------------------------------------------
 // RecoveryEvent
 // ---------------------------------------------------------------------------
 
