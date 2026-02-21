@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { recoveryEvents, recoveryItems } from "../db/schema/index.js";
 import type { NewRecoveryEvent, NewRecoveryItem, RecoveryEvent, RecoveryItem } from "./repository-types.js";
@@ -69,13 +69,16 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
   }
 
   updateEvent(id: string, data: Partial<Omit<RecoveryEvent, "id" | "nodeId">>): RecoveryEvent {
-    this.db
+    const rows = this.db
       .update(recoveryEvents)
       .set(data as Record<string, unknown>)
       .where(eq(recoveryEvents.id, id))
-      .run();
-    // biome-ignore lint/style/noNonNullAssertion: row guaranteed to exist after successful insert
-    return this.getEvent(id)!;
+      .returning()
+      .all();
+    if (rows.length === 0) {
+      throw new Error(`RecoveryEvent not found: ${id}`);
+    }
+    return toEvent(rows[0]);
   }
 
   getEvent(id: string): RecoveryEvent | null {
@@ -103,14 +106,16 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
   }
 
   updateItem(id: string, data: Partial<Omit<RecoveryItem, "id">>): RecoveryItem {
-    this.db
+    const rows = this.db
       .update(recoveryItems)
       .set(data as Record<string, unknown>)
       .where(eq(recoveryItems.id, id))
-      .run();
-    // biome-ignore lint/style/noNonNullAssertion: row guaranteed to exist after successful insert
-    const row = this.db.select().from(recoveryItems).where(eq(recoveryItems.id, id)).get()!;
-    return toItem(row);
+      .returning()
+      .all();
+    if (rows.length === 0) {
+      throw new Error(`RecoveryItem not found: ${id}`);
+    }
+    return toItem(rows[0]);
   }
 
   listOpenEvents(): RecoveryEvent[] {
@@ -123,13 +128,11 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
   }
 
   getWaitingItems(eventId: string): RecoveryItem[] {
-    // Post-query filter matches existing RecoveryManager.retryWaiting() pattern (small result sets)
     return this.db
       .select()
       .from(recoveryItems)
-      .where(eq(recoveryItems.recoveryEventId, eventId))
+      .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")))
       .all()
-      .filter((r) => r.status === "waiting")
       .map(toItem);
   }
 
