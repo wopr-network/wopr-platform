@@ -10,7 +10,7 @@ import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import type { ProxyDeps } from "./proxy.js";
 import type { SellRateLookupFn } from "./rate-lookup.js";
-import { resolveTokenRates } from "./rate-lookup.js";
+import { DEFAULT_TOKEN_RATES, resolveTokenRates } from "./rate-lookup.js";
 import type { GatewayTenant } from "./types.js";
 
 /**
@@ -83,7 +83,9 @@ export function proxySSEStream(
                   outputTokens,
                 });
               }
-              const rates = resolveTokenRates(opts.rateLookupFn ?? (() => null), capability, opts.model);
+              const rates = opts.rateLookupFn
+                ? resolveTokenRates(opts.rateLookupFn, capability, opts.model)
+                : DEFAULT_TOKEN_RATES;
               accumulatedCost = (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
             }
           } catch (err) {
