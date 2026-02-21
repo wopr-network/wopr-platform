@@ -4,6 +4,7 @@ export * from "./admin-notes.js";
 export * from "./audit.js";
 export * from "./backup-status.js";
 export * from "./bot-instances.js";
+export * from "./bot-profiles.js";
 export * from "./credits.js";
 export * from "./email-notifications.js";
 export * from "./meter-events.js";
