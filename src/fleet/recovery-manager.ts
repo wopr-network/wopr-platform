@@ -38,6 +38,7 @@ export interface RecoveryItem {
   reason: string | null;
   startedAt: number | null;
   completedAt: number | null;
+  retryCount: number;
 }
 
 /**
@@ -194,6 +195,7 @@ export class RecoveryManager {
     deadNodeId: string,
     tenant: TenantAssignment,
     report: RecoveryReport,
+    retryCount = 0,
   ): Promise<void> {
     const itemId = randomUUID();
     const now = Math.floor(Date.now() / 1000);
@@ -206,7 +208,7 @@ export class RecoveryManager {
     if (!target) {
       logger.warn(`No capacity available for tenant ${tenant.name}`, { eventId, itemId });
       report.waiting.push({ tenant: tenant.id, reason: "no_capacity" });
-      this.recordItem(eventId, itemId, tenant, deadNodeId, null, "waiting", "no_capacity", now);
+      this.recordItem(eventId, itemId, tenant, deadNodeId, null, "waiting", "no_capacity", now, retryCount);
       return;
     }
 
@@ -253,12 +255,12 @@ export class RecoveryManager {
 
       logger.info(`Recovered tenant ${tenant.name} to node ${target.id}`, { eventId, itemId });
       report.recovered.push({ tenant: tenant.id, target: target.id });
-      this.recordItem(eventId, itemId, tenant, deadNodeId, target.id, "recovered", null, now);
+      this.recordItem(eventId, itemId, tenant, deadNodeId, target.id, "recovered", null, now, retryCount);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.error(`Failed to recover tenant ${tenant.name}`, { eventId, itemId, err: reason });
       report.failed.push({ tenant: tenant.id, reason });
-      this.recordItem(eventId, itemId, tenant, deadNodeId, target?.id, "failed", reason, now);
+      this.recordItem(eventId, itemId, tenant, deadNodeId, target?.id, "failed", reason, now, retryCount);
     }
   }
 
@@ -274,6 +276,7 @@ export class RecoveryManager {
     status: string,
     reason: string | null,
     startedAt: number,
+    retryCount = 0,
   ): void {
     const backupKey = `latest/${tenant.containerName}/latest.tar.gz`;
 
@@ -288,6 +291,7 @@ export class RecoveryManager {
         backupKey,
         status,
         reason,
+        retryCount,
         startedAt,
         completedAt: status !== "waiting" ? Math.floor(Date.now() / 1000) : null,
       })
@@ -342,12 +346,12 @@ export class RecoveryManager {
         estimatedMb: 100,
       };
 
-      await this.recoverTenant(recoveryEventId, event.nodeId, tenant, report);
+      await this.recoverTenant(recoveryEventId, event.nodeId, tenant, report, item.retryCount + 1);
 
       // Mark waiting item as processed
       this.db
         .update(recoveryItems)
-        .set({ status: "retried", completedAt: Math.floor(Date.now() / 1000) })
+        .set({ status: "retried", retryCount: sql`retry_count + 1`, completedAt: Math.floor(Date.now() / 1000) })
         .where(eq(recoveryItems.id, item.id))
         .run();
     }
