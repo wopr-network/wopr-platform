@@ -60,10 +60,18 @@ export class OrphanCleaner {
 
       // Orphan: bot is no longer assigned to this node
       try {
-        await this.nodeConnections.sendCommand(nodeId, {
+        const result = await this.nodeConnections.sendCommand(nodeId, {
           type: "bot.stop",
           payload: { name: containerName },
         });
+        if (!result.success) {
+          const message = result.error ?? "stop command returned success: false";
+          errors.push({ container: containerName, error: message });
+          logger.warn(`OrphanCleaner: stop command failed for ${containerName} on ${nodeId}`, {
+            error: message,
+          });
+          continue;
+        }
         stopped.push(containerName);
         logger.info(`OrphanCleaner: stopped orphan ${containerName} on ${nodeId}`);
       } catch (err) {

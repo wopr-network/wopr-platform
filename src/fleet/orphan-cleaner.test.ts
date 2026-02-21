@@ -137,6 +137,30 @@ describe("OrphanCleaner.clean", () => {
     expect(result.errors).toHaveLength(0);
   });
 
+  it("pushes to errors and not stopped when sendCommand returns success: false", async () => {
+    const db = makeDb([{ tenantId: "keep-me", nodeId: NODE_ID }]);
+    const sendCommand = vi.fn().mockResolvedValue({ success: false, error: "container not found" });
+    nodeConnections = makeNodeConnections({ sendCommand });
+
+    const cleaner = new OrphanCleaner(db as never, nodeConnections);
+
+    const result = await cleaner.clean({
+      nodeId: NODE_ID,
+      runningContainers: ["tenant_orphan"],
+    });
+
+    expect(sendCommand).toHaveBeenCalledWith(NODE_ID, {
+      type: "bot.stop",
+      payload: { name: "tenant_orphan" },
+    });
+    expect(result.stopped).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      container: "tenant_orphan",
+      error: "container not found",
+    });
+  });
+
   it("uses the node's current status as fromStatus in the audit row", async () => {
     const db = makeDb([], "recovering");
     const cleaner = new OrphanCleaner(db as never, nodeConnections);
