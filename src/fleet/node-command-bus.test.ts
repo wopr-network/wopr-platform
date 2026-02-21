@@ -55,6 +55,43 @@ describe("NodeCommandBus", () => {
     expect(resolved).toEqual(result);
   });
 
+  it("rejects with error when handleResult is called with success: false", async () => {
+    const ws = mockSocket();
+    const bus = new NodeCommandBus(mockRegistry({ "node-1": ws }));
+
+    const promise = bus.send("node-1", { type: "bot.start", payload: { tenantId: "t1" } });
+
+    const sent = JSON.parse(ws._spy.mock.calls[0][0] as string);
+    const result: CommandResult = {
+      id: sent.id,
+      type: "command_result",
+      command: "bot.start",
+      success: false,
+      error: "container failed to start",
+    };
+    bus.handleResult(result);
+
+    await expect(promise).rejects.toThrow("container failed to start");
+  });
+
+  it("rejects with generic message when handleResult has success: false and no error", async () => {
+    const ws = mockSocket();
+    const bus = new NodeCommandBus(mockRegistry({ "node-1": ws }));
+
+    const promise = bus.send("node-1", { type: "bot.start", payload: {} });
+
+    const sent = JSON.parse(ws._spy.mock.calls[0][0] as string);
+    const result: CommandResult = {
+      id: sent.id,
+      type: "command_result",
+      command: "bot.start",
+      success: false,
+    };
+    bus.handleResult(result);
+
+    await expect(promise).rejects.toThrow("command failed");
+  });
+
   it("rejects on timeout", async () => {
     vi.useFakeTimers();
     try {

@@ -72,7 +72,8 @@ export class NodeCommandBus {
 
   /**
    * Handle an inbound command result from the WebSocket message handler.
-   * Resolves the matching pending promise, or silently ignores unknown IDs.
+   * Resolves the matching pending promise on success, rejects on failure.
+   * Silently ignores unknown IDs.
    */
   handleResult(result: CommandResult): void {
     const pending = this.pending.get(result.id);
@@ -80,6 +81,11 @@ export class NodeCommandBus {
 
     clearTimeout(pending.timeout);
     this.pending.delete(result.id);
-    pending.resolve(result);
+
+    if (!result.success) {
+      pending.reject(new Error(result.error ?? "command failed"));
+    } else {
+      pending.resolve(result);
+    }
   }
 }
