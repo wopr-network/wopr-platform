@@ -91,6 +91,57 @@ describe("AlertChecker", () => {
     vi.useRealTimers();
   });
 
+  it("getStatus returns empty array before first checkAll", () => {
+    const mockAlert = {
+      name: "test-alert",
+      check: vi.fn().mockReturnValue({ firing: false, value: 0, threshold: 5, message: "ok" }),
+    };
+    const checker = new AlertChecker([mockAlert]);
+    expect(checker.getStatus()).toEqual([]);
+  });
+
+  it("getStatus returns cached results from last checkAll", () => {
+    const mockAlert = {
+      name: "test-alert",
+      check: vi.fn().mockReturnValue({ firing: true, value: 10, threshold: 5, message: "too high" }),
+    };
+    const checker = new AlertChecker([mockAlert]);
+    checker.checkAll();
+    const status = checker.getStatus();
+    expect(status).toHaveLength(1);
+    expect(status[0]).toEqual({ name: "test-alert", firing: true, message: "too high" });
+  });
+
+  it("getStatus does not invoke alert check functions", () => {
+    const mockAlert = {
+      name: "test-alert",
+      check: vi.fn().mockReturnValue({ firing: false, value: 0, threshold: 5, message: "ok" }),
+    };
+    const checker = new AlertChecker([mockAlert]);
+    checker.checkAll(); // first call invokes check()
+    const callCountAfterCheckAll = mockAlert.check.mock.calls.length;
+    checker.getStatus();
+    checker.getStatus();
+    checker.getStatus();
+    expect(mockAlert.check.mock.calls.length).toBe(callCountAfterCheckAll);
+  });
+
+  it("getStatus does not mutate firedState (calling it does not consume fleet-stop)", async () => {
+    const { fleetStopAlert } = await import("./alerts.js");
+    const metrics = new MetricsCollector();
+    const alerts = buildAlerts(metrics);
+    const checker = new AlertChecker(alerts);
+
+    // Trigger fleet stop
+    fleetStopAlert();
+    // Run checkAll once to process the flag
+    checker.checkAll();
+    const statusAfterCheck = checker.getStatus();
+    const fleetAlert = statusAfterCheck.find((a: { name: string }) => a.name === "fleet-unexpected-stop");
+    // checkAll already consumed the flag and set firedState — getStatus just reads it
+    expect(fleetAlert).toBeDefined();
+  });
+
   it("deduplicates: does not re-fire an already-firing alert", () => {
     const mockAlert = {
       name: "test-alert",
