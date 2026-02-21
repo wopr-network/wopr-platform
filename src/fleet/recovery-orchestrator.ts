@@ -376,15 +376,23 @@ export class RecoveryOrchestrator {
       }
 
       const recoveredBefore = report.recovered.length;
+      const failedBefore = report.failed.length;
       await this.recoverTenant(recoveryEventId, event.nodeId, tenant, report);
       const actuallyRecovered = report.recovered.length > recoveredBefore;
+      const actuallyFailed = report.failed.length > failedBefore;
 
-      // Only close the waiting item as "recovered" if recoverTenant actually
-      // succeeded. If it failed or the tenant is still waiting (no capacity),
-      // leave the item in its current state so the event record stays accurate.
+      // Close the waiting item as "recovered" if recoverTenant succeeded, or
+      // "failed" if recoverTenant put this tenant into report.failed. If the
+      // tenant is still waiting (no capacity again), leave the item as-is so
+      // it remains eligible for future retryWaiting calls.
       if (actuallyRecovered) {
         this.recoveryRepo.updateItem(item.id, {
           status: "recovered" as RecoveryItem["status"],
+          completedAt: Math.floor(Date.now() / 1000),
+        });
+      } else if (actuallyFailed) {
+        this.recoveryRepo.updateItem(item.id, {
+          status: "failed" as RecoveryItem["status"],
           completedAt: Math.floor(Date.now() / 1000),
         });
       }

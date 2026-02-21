@@ -397,6 +397,62 @@ describe("RecoveryOrchestrator", () => {
     expect(report.recovered[0].tenant).toBe("bot-1");
   });
 
+  it("retryWaiting marks waiting item as failed when recoverTenant fails", async () => {
+    const eventId = "event-1";
+
+    mocks.recoveryRepo.getEvent.mockReturnValue({
+      id: eventId,
+      nodeId: "dead-node",
+      trigger: "heartbeat_timeout",
+      status: "partial",
+      tenantsTotal: 1,
+      tenantsRecovered: 0,
+      tenantsFailed: 0,
+      tenantsWaiting: 1,
+      startedAt: Math.floor(Date.now() / 1000),
+      completedAt: null,
+      reportJson: null,
+    });
+
+    mocks.recoveryRepo.getWaitingItems.mockReturnValue([
+      {
+        id: "item-1",
+        recoveryEventId: eventId,
+        tenant: "tenant-1",
+        sourceNode: "dead-node",
+        targetNode: null,
+        backupKey: "latest/tenant_tenant-1/latest.tar.gz",
+        status: "waiting",
+        reason: "no_capacity",
+        startedAt: null,
+        completedAt: null,
+        retryCount: 1,
+      },
+    ]);
+
+    mocks.getTenants.mockReturnValue([
+      {
+        botId: "bot-1",
+        tenantId: "tenant-1",
+        name: "my-bot",
+        containerName: "tenant_tenant-1",
+        estimatedMb: 100,
+        tier: "pro",
+      },
+    ]);
+    mocks.profileRepo.get.mockReturnValue(null);
+    // Capacity available now, but the command fails
+    mocks.commandBus.send.mockRejectedValueOnce(new Error("connection refused"));
+
+    const report = await orchestrator.retryWaiting(eventId);
+
+    expect(report.failed).toHaveLength(1);
+    expect(report.failed[0].tenant).toBe("bot-1");
+
+    // Waiting item must be closed as "failed", not left stuck as "waiting"
+    expect(mocks.recoveryRepo.updateItem).toHaveBeenCalledWith("item-1", expect.objectContaining({ status: "failed" }));
+  });
+
   it("retryWaiting throws when event not found", async () => {
     mocks.recoveryRepo.getEvent.mockReturnValue(null);
 
