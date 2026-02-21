@@ -177,6 +177,90 @@ describe("bot-plugin routes", () => {
       const body = await res.json();
       expect(body.installedPlugins).toEqual(["existing-plugin", "new-plugin"]);
     });
+
+    it("re-fetches profile before save to avoid clobbering concurrent installs", async () => {
+      // First store.get() returns empty plugins (for auth/validation)
+      // Second store.get() returns a profile where plugin-a was installed concurrently
+      let callCount = 0;
+      storeMock.get.mockImplementation((id: string) => {
+        if (id !== TEST_BOT_ID) return Promise.resolve(null);
+        callCount++;
+        if (callCount <= 1) {
+          // First call: no plugins installed (used for validation)
+          return Promise.resolve({ ...mockProfile, env: { TOKEN: "abc" } });
+        }
+        // Second call (re-fetch): plugin-a was installed concurrently
+        return Promise.resolve({
+          ...mockProfile,
+          env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a" },
+        });
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-b`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(200);
+      // store.get must have been called twice (initial + re-fetch)
+      expect(storeMock.get).toHaveBeenCalledTimes(2);
+      // The saved profile must contain BOTH plugins
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGINS: "plugin-a,plugin-b",
+          }),
+        }),
+      );
+    });
+
+    it("returns 409 if plugin was installed concurrently between reads", async () => {
+      // First get: no plugins. Second get: plugin-b already installed by concurrent request.
+      let callCount = 0;
+      storeMock.get.mockImplementation((id: string) => {
+        if (id !== TEST_BOT_ID) return Promise.resolve(null);
+        callCount++;
+        if (callCount <= 1) {
+          return Promise.resolve({ ...mockProfile, env: { TOKEN: "abc" } });
+        }
+        return Promise.resolve({
+          ...mockProfile,
+          env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-b" },
+        });
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-b`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(409);
+      expect(storeMock.save).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 if profile was deleted between reads", async () => {
+      let callCount = 0;
+      storeMock.get.mockImplementation((id: string) => {
+        if (id !== TEST_BOT_ID) return Promise.resolve(null);
+        callCount++;
+        if (callCount <= 1) {
+          return Promise.resolve({ ...mockProfile });
+        }
+        // Profile deleted between first read and re-fetch
+        return Promise.resolve(null);
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-c`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(404);
+      expect(storeMock.save).not.toHaveBeenCalled();
+    });
   });
 
   describe("GET /fleet/bots/:botId/plugins", () => {
