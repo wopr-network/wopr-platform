@@ -5,6 +5,7 @@ import type { WebSocket } from "ws";
 import { logger } from "../config/logger.js";
 import type * as schema from "../db/schema/index.js";
 import { botInstances, nodes, recoveryEvents } from "../db/schema/index.js";
+import type { OrphanCleaner } from "./orphan-cleaner.js";
 
 /** Node registration request body */
 export interface NodeRegistration {
@@ -70,13 +71,26 @@ interface PendingCommand {
  * - Send commands to specific node agents and await results
  * - Track connection state per node
  */
+/** Statuses that indicate a node has crashed and been recovered by RecoveryManager */
+const CRASHED_STATUSES = new Set(["offline", "recovering", "failed"]);
+
+/** Statuses that a heartbeat can transition to active */
+const HEARTBEAT_ACTIVATABLE = new Set(["active", "unhealthy"]);
+
 export class NodeConnectionManager {
   private readonly db: BetterSQLite3Database<typeof schema>;
   private readonly connections = new Map<string, WebSocket>();
   private readonly pending = new Map<string, PendingCommand>();
+  private orphanCleaner?: OrphanCleaner;
+  private readonly cleanupInFlight = new Set<string>();
 
   constructor(db: BetterSQLite3Database<typeof schema>) {
     this.db = db;
+  }
+
+  /** Inject OrphanCleaner after construction to break the circular dependency. */
+  setOrphanCleaner(cleaner: OrphanCleaner): void {
+    this.orphanCleaner = cleaner;
   }
 
   /**
@@ -89,9 +103,10 @@ export class NodeConnectionManager {
     const existing = this.db.select().from(nodes).where(eq(nodes.id, registration.node_id)).get();
 
     if (existing) {
-      // Dead states: node must go through returning -> cleanup -> active
-      const DEAD_STATUSES = new Set(["offline", "recovering", "failed"]);
-      const newStatus = DEAD_STATUSES.has(existing.status) ? "returning" : "active";
+      // If the node was previously in a crashed state (offline/recovering/failed), it crashed and its
+      // tenants were migrated elsewhere. Set "returning" so the first heartbeat
+      // triggers OrphanCleaner to stop stale containers before going active.
+      const newStatus = CRASHED_STATUSES.has(existing.status) ? "returning" : "active";
 
       this.db
         .update(nodes)
@@ -218,28 +233,56 @@ export class NodeConnectionManager {
   }
 
   /**
-   * Process a heartbeat message and update nodes table
+   * Process a heartbeat message and update nodes table.
+   * For "returning" nodes, triggers OrphanCleaner (fire-and-forget) instead of
+   * immediately setting active — cleanup handles the transition.
    */
   private processHeartbeat(nodeId: string, msg: Record<string, unknown>): void {
     const now = Math.floor(Date.now() / 1000);
     const containers = msg.containers as Array<{ name: string; memory_mb: number }> | undefined;
     const usedMb = containers?.reduce((sum, c) => sum + (c.memory_mb ?? 0), 0) ?? 0;
 
-    // Only transition to "active" if node is currently unhealthy or already active.
-    // Nodes in "returning" state must go through cleanup first (handled by OrphanCleaner).
-    // Use a single conditional UPDATE to avoid an extra SELECT on every heartbeat.
+    // Check current node status to decide how to handle the heartbeat
+    const node = this.db.select({ status: nodes.status }).from(nodes).where(eq(nodes.id, nodeId)).get();
+
+    if (!node) {
+      logger.warn(`Heartbeat from unknown node ${nodeId}`);
+      return;
+    }
+
+    // For returning nodes: trigger orphan cleanup (it will transition to active).
+    // Use cleanupInFlight set to prevent double-invocation if two heartbeats race.
+    if (node.status === "returning" && this.orphanCleaner && !this.cleanupInFlight.has(nodeId)) {
+      this.cleanupInFlight.add(nodeId);
+      const containerNames = (containers ?? []).map((c) => c.name);
+
+      this.orphanCleaner
+        .clean({ nodeId, runningContainers: containerNames })
+        .catch((err) => {
+          logger.error(`Orphan cleanup failed for node ${nodeId}`, {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        })
+        .finally(() => {
+          this.cleanupInFlight.delete(nodeId);
+        });
+    }
+
+    // Only flip status to active for activatable states (not "returning" — cleanup owns that transition)
+    const newStatus = HEARTBEAT_ACTIVATABLE.has(node.status) ? "active" : undefined;
+
     this.db
       .update(nodes)
       .set({
         lastHeartbeatAt: now,
         usedMb,
-        status: sql`CASE WHEN ${nodes.status} IN ('active', 'unhealthy') THEN 'active' ELSE ${nodes.status} END`,
+        ...(newStatus ? { status: newStatus } : {}),
         updatedAt: now,
       })
       .where(eq(nodes.id, nodeId))
       .run();
 
-    logger.debug(`Heartbeat received from ${nodeId}`, { usedMb });
+    logger.debug(`Heartbeat received from ${nodeId}`, { usedMb, status: node.status });
   }
 
   /**
