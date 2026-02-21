@@ -67,6 +67,17 @@ describe("findPlacement", () => {
     expect(result).toBeNull();
   });
 
+  it("skips returning nodes", () => {
+    const nodeList: NodeInput[] = [
+      node({ id: "node-1", capacityMb: 2000, usedMb: 0, status: "returning" }),
+      node({ id: "node-2", host: "10.0.0.2", capacityMb: 1000, usedMb: 0, status: "active" }),
+    ];
+
+    const result = findPlacement(nodeList, 100);
+    expect(result).not.toBeNull();
+    expect(result?.nodeId).toBe("node-2");
+  });
+
   it("uses 100 MB as default requiredMb", () => {
     const nodes = [node({ id: "node-1", capacityMb: 1000, usedMb: 900 })];
 
@@ -121,6 +132,17 @@ describe("findPlacementExcluding", () => {
     const result = findPlacementExcluding(nodes, [], 100);
     expect(result).not.toBeNull();
     expect(result?.nodeId).toBe("node-1");
+  });
+
+  it("skips returning nodes", () => {
+    const nodeList: NodeInput[] = [
+      node({ id: "node-1", capacityMb: 2000, usedMb: 0, status: "returning" }),
+      node({ id: "node-2", host: "10.0.0.2", capacityMb: 1000, usedMb: 0, status: "active" }),
+    ];
+
+    const result = findPlacementExcluding(nodeList, ["node-3"], 100);
+    expect(result).not.toBeNull();
+    expect(result?.nodeId).toBe("node-2");
   });
 
   it("still picks most free capacity among non-excluded nodes", () => {
