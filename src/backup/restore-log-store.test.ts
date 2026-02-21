@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as schema from "../db/schema/index.js";
 import { RestoreLogStore } from "./restore-log-store.js";
 
 function createTestDb() {
@@ -18,7 +19,7 @@ function createTestDb() {
     CREATE INDEX idx_restore_log_tenant ON restore_log (tenant, restored_at);
     CREATE INDEX idx_restore_log_restored_by ON restore_log (restored_by);
   `);
-  const db = drizzle(sqlite);
+  const db = drizzle(sqlite, { schema });
   return { db, sqlite };
 }
 
