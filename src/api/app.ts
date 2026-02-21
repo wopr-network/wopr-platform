@@ -5,6 +5,7 @@ import { secureHeaders } from "hono/secure-headers";
 import type { AuthUser } from "../auth/index.js";
 import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
 import { logger } from "../config/logger.js";
+import { captureError } from "../observability/sentry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
@@ -171,6 +172,8 @@ export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
     path: c.req.path,
     method: c.req.method,
   });
+
+  captureError(err, { route: c.req.path });
 
   // Return a safe error response to the client
   return c.json(

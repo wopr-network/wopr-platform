@@ -11,6 +11,7 @@ import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import { InsufficientBalanceError } from "../monetization/credits/credit-ledger.js";
+import { getMetrics } from "../observability/singleton.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 
 export interface CreditGateDeps {
@@ -92,6 +93,7 @@ export function debitCredits(
         capability,
         provider,
       });
+      getMetrics().recordCreditDeductionFailure();
     } else {
       logger.error("Credit debit failed after proxy", {
         tenantId,
@@ -100,6 +102,7 @@ export function debitCredits(
         provider,
         error,
       });
+      getMetrics().recordCreditDeductionFailure();
     }
   }
 }

@@ -1,3 +1,7 @@
+import { initSentry } from "./observability/sentry.js";
+
+initSentry();
+
 import { serve } from "@hono/node-server";
 import Database from "better-sqlite3";
 import { WebSocketServer } from "ws";
@@ -17,6 +21,8 @@ import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
+import { AlertChecker, adminHealthHandler, buildAlerts, initMetrics } from "./observability/index.js";
+import { captureError } from "./observability/sentry.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
@@ -36,6 +42,7 @@ export const unhandledRejectionHandler = (reason: unknown, promise: Promise<unkn
     stack: reason instanceof Error ? reason.stack : undefined,
     promise: String(promise),
   });
+  captureError(reason instanceof Error ? reason : new Error(String(reason)));
   // Don't exit — log and continue serving other tenants
 };
 
@@ -46,6 +53,7 @@ export const uncaughtExceptionHandler = (err: Error, origin: string) => {
     stack: err.stack,
     origin,
   });
+  captureError(err, { extra: { origin } });
   // Uncaught exceptions leave the process in an undefined state.
   // Exit immediately after logging (Winston Console transport is synchronous).
   process.exit(1);
@@ -133,6 +141,33 @@ if (process.env.NODE_ENV !== "test") {
     });
 
     logger.info("Gateway mounted at /v1");
+
+    // ── Observability ─────────────────────────────────────────────────────────
+    const metrics = initMetrics(60);
+
+    const alerts = buildAlerts(metrics, {
+      capabilityErrorRateThreshold: Number(process.env.ALERT_ERROR_RATE_THRESHOLD ?? 5),
+      errorRateWindowMinutes: Number(process.env.ALERT_ERROR_RATE_WINDOW ?? 5),
+      creditFailureSpikeThreshold: Number(process.env.ALERT_CREDIT_FAILURE_THRESHOLD ?? 10),
+      webhookUrl: process.env.ALERT_WEBHOOK_URL,
+    });
+
+    const alertChecker = new AlertChecker(alerts, (name, message) => {
+      logger.error(`ALERT FIRED [${name}]: ${message}`);
+      // Future: send to webhook, PagerDuty, Slack
+    });
+    alertChecker.start();
+
+    app.get(
+      "/admin/health",
+      adminHealthHandler({
+        metrics,
+        alerts,
+        billingDb: billingDb,
+      }),
+    );
+
+    logger.info("Observability: Sentry, metrics, and alerts initialized");
   }
 
   // Hydrate proxy route table from persisted profiles so tenant subdomains

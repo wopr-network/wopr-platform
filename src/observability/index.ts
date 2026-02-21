@@ -1,11 +1,8 @@
-/**
- * Observability — health checks, metrics, and structured logging.
- *
- * Will host extracted observability code from core (WOP-297):
- * - health: platform health endpoints
- * - metrics: instance and fleet metrics collection
- * - logging: structured logging configuration
- *
- * Currently, health routes live in api/routes/health.ts
- * and logging lives in config/logger.ts.
- */
+export type { AlertConfig, AlertDefinition } from "./alerts.js";
+export { AlertChecker, buildAlerts, fleetStopAlert } from "./alerts.js";
+export type { HealthDashboardDeps } from "./health-dashboard.js";
+export { adminHealthHandler } from "./health-dashboard.js";
+export type { MetricsBucket } from "./metrics.js";
+export { MetricsCollector } from "./metrics.js";
+export { captureError, initSentry, tagSentryContext } from "./sentry.js";
+export { getMetrics, initMetrics } from "./singleton.js";
