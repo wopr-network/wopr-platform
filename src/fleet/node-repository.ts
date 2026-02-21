@@ -10,22 +10,12 @@ import {
   NodeNotFoundError,
   type NodeStatus,
 } from "./node-state-machine.js";
+import type { NodeRegistration, SelfHostedNodeRegistration } from "./repository-types.js";
 
 export type Node = typeof nodes.$inferSelect;
 export type NodeTransition = typeof nodeTransitions.$inferSelect;
 
-export interface NodeRegistration {
-  nodeId: string;
-  host: string;
-  capacityMb: number;
-  agentVersion: string;
-}
-
-export interface SelfHostedNodeRegistration extends NodeRegistration {
-  ownerUserId: string;
-  label: string | null;
-  nodeSecretHash: string;
-}
+export type { NodeRegistration, SelfHostedNodeRegistration };
 
 export interface INodeRepository {
   getById(id: string): Node | null;

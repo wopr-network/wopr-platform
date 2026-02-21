@@ -1,13 +1,11 @@
 import Database from "better-sqlite3";
 import { eq, inArray } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { AdminAuditLog } from "../admin/audit-log.js";
 import { RestoreLogStore } from "../backup/restore-log-store.js";
 import { RestoreService } from "../backup/restore-service.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
-import { applyPlatformPragmas } from "../db/pragmas.js";
-import * as dbSchema from "../db/schema/index.js";
+import { applyPlatformPragmas, createDb, type DrizzleDb } from "../db/index.js";
 import { nodes } from "../db/schema/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
@@ -40,7 +38,7 @@ const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platfor
  */
 
 let _sqlite: Database.Database | null = null;
-let _db: ReturnType<typeof drizzle<typeof dbSchema>> | null = null;
+let _db: DrizzleDb | null = null;
 let _nodeConnections: NodeConnectionManager | null = null;
 let _registrationTokenStore: RegistrationTokenStore | null = null;
 let _adminNotifier: AdminNotifier | null = null;
@@ -63,7 +61,7 @@ export function getDb() {
   if (!_db) {
     _sqlite = new Database(PLATFORM_DB_PATH);
     applyPlatformPragmas(_sqlite);
-    _db = drizzle(_sqlite, { schema: dbSchema });
+    _db = createDb(_sqlite);
   }
   return _db;
 }
@@ -228,8 +226,7 @@ export function getNodeRegistrar(): NodeRegistrar {
 
 export function getBotProfileRepo(): IBotProfileRepository {
   if (!_botProfileRepo) {
-    // DrizzleBotProfileRepository accepts BetterSQLite3Database which is the return type of drizzle()
-    _botProfileRepo = new DrizzleBotProfileRepository(getDb() as never);
+    _botProfileRepo = new DrizzleBotProfileRepository(getDb());
   }
   return _botProfileRepo;
 }

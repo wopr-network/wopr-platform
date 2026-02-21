@@ -117,6 +117,16 @@ function acceptAndWireWebSocket(nodeId: string, ws: WebSocket): void {
       logger.debug(`Unknown message type from ${nodeId}`, { msg });
     }
   });
+
+  ws.on("close", () => {
+    logger.info(`Node ${nodeId} disconnected`);
+    getConnectionRegistry().close(nodeId);
+  });
+
+  ws.on("error", (err: Error) => {
+    logger.warn(`WebSocket error from node ${nodeId}`, { err });
+    getConnectionRegistry().close(nodeId);
+  });
 }
 
 // Only start the server if not imported by tests
