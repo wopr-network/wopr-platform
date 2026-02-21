@@ -361,6 +361,7 @@ describe("ALLOWED_COMMANDS", () => {
       "bot.start",
       "bot.stop",
       "bot.restart",
+      "bot.update",
       "bot.export",
       "bot.import",
       "bot.remove",
@@ -375,7 +376,48 @@ describe("ALLOWED_COMMANDS", () => {
     }
   });
 
-  it("has exactly 12 commands", () => {
-    expect(ALLOWED_COMMANDS).toHaveLength(12);
+  it("has exactly 13 commands", () => {
+    expect(ALLOWED_COMMANDS).toHaveLength(13);
+  });
+});
+
+describe("DockerManager.updateBotEnv", () => {
+  it("stops, removes, and recreates container with new env", async () => {
+    const { docker } = mockDockerode();
+    // Override inspect to return full config
+    docker.getContainer.mockReturnValue({
+      ...mockDockerode().container,
+      inspect: vi.fn().mockResolvedValue({
+        Config: { Image: "ghcr.io/wopr-network/wopr:stable" },
+        HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+      }),
+      stop: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const dm = new DockerManager(docker as never);
+    const result = await dm.updateBotEnv("tenant_user-123", { TOKEN: "new" });
+
+    expect(docker.getContainer).toHaveBeenCalledWith("tenant_user-123");
+    // startBot pulls image and creates new container
+    expect(docker.pull).toHaveBeenCalled();
+    expect(result).toBe("abc123");
+  });
+
+  it("handles already-stopped container gracefully during update", async () => {
+    const { docker } = mockDockerode();
+    docker.getContainer.mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        Config: { Image: "ghcr.io/wopr-network/wopr:stable" },
+        HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+      }),
+      stop: vi.fn().mockRejectedValue(new Error("container already stopped")),
+      remove: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const dm = new DockerManager(docker as never);
+    // Should not throw despite stop() failing
+    const result = await dm.updateBotEnv("tenant_user-123", { TOKEN: "new" });
+    expect(result).toBe("abc123");
   });
 });

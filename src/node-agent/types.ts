@@ -75,6 +75,7 @@ export const ALLOWED_COMMANDS = [
   "bot.start",
   "bot.stop",
   "bot.restart",
+  "bot.update",
   "bot.export",
   "bot.import",
   "bot.remove",

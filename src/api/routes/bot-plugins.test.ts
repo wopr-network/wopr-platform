@@ -11,10 +11,12 @@ const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
 const TEST_BOT_ID = "00000000-0000-4000-8000-000000000002";
 /** A valid UUID for a bot that does not exist. */
 const MISSING_BOT_ID = "ffffffff-ffff-4fff-bfff-ffffffffffff";
+const TEST_NODE_ID = "node-1";
+const TEST_TENANT_ID = "user-123";
 
 const mockProfile = {
   id: TEST_BOT_ID,
-  tenantId: "user-123",
+  tenantId: TEST_TENANT_ID,
   name: "test-bot",
   description: "A test bot",
   image: "ghcr.io/wopr-network/wopr:stable",
@@ -29,34 +31,38 @@ const storeMock = {
   save: vi.fn(),
 };
 
-const fleetMock = {
-  update: vi.fn(),
-  profiles: {
-    get: storeMock.get,
-    save: storeMock.save,
-  },
-};
-
-vi.mock("./fleet.js", () => {
+vi.mock("../../fleet/profile-store.js", () => {
   return {
-    fleet: fleetMock,
-  };
-});
-
-vi.mock("../../fleet/fleet-manager.js", () => {
-  return {
-    BotNotFoundError: class extends Error {
-      constructor(id: string) {
-        super(`Bot not found: ${id}`);
-        this.name = "BotNotFoundError";
-      }
+    ProfileStore: class {
+      get = storeMock.get;
+      save = storeMock.save;
     },
   };
 });
 
+// Mock fleet services (DB + NodeConnectionManager)
+const mockDbChain = {
+  from: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+  get: vi.fn(),
+};
+
+const mockDb = {
+  select: vi.fn().mockReturnValue(mockDbChain),
+};
+
+const mockNodeConnections = {
+  sendCommand: vi.fn(),
+  isConnected: vi.fn(),
+};
+
+vi.mock("../../fleet/services.js", () => ({
+  getDb: () => mockDb,
+  getNodeConnections: () => mockNodeConnections,
+}));
+
 // Import AFTER mocks are set up
 const { botPluginRoutes } = await import("./bot-plugins.js");
-const { BotNotFoundError } = await import("../../fleet/fleet-manager.js");
 
 const app = new Hono();
 app.route("/fleet", botPluginRoutes);
@@ -69,16 +75,23 @@ describe("bot-plugin routes", () => {
       return Promise.resolve(null);
     });
     storeMock.save.mockResolvedValue(undefined);
-    fleetMock.update.mockResolvedValue(undefined);
+    // Default: bot is deployed to TEST_NODE_ID
+    mockDbChain.get.mockReturnValue({
+      id: TEST_BOT_ID,
+      tenantId: TEST_TENANT_ID,
+      name: "test-bot",
+      nodeId: TEST_NODE_ID,
+    });
+    mockNodeConnections.sendCommand.mockResolvedValue({ success: true });
+    mockNodeConnections.isConnected.mockReturnValue(true);
+    // Reset the chain mock
+    mockDb.select.mockReturnValue(mockDbChain);
+    mockDbChain.from.mockReturnThis();
+    mockDbChain.where.mockReturnThis();
   });
 
   describe("POST /fleet/bots/:botId/plugins/:pluginId", () => {
-    it("successfully installs a plugin and returns 200 with applied: true", async () => {
-      fleetMock.update.mockResolvedValue({
-        ...mockProfile,
-        env: { TOKEN: "abc", WOPR_PLUGINS: "wopr-plugin-discord" },
-      });
-
+    it("successfully installs a plugin and returns 200 with dispatched: true", async () => {
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
@@ -91,10 +104,12 @@ describe("bot-plugin routes", () => {
       expect(body.botId).toBe(TEST_BOT_ID);
       expect(body.pluginId).toBe("wopr-plugin-discord");
       expect(body.installedPlugins).toContain("wopr-plugin-discord");
-      expect(body.applied).toBe(true);
-      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
-        env: expect.objectContaining({ WOPR_PLUGINS: "wopr-plugin-discord" }),
-      });
+      expect(body.dispatched).toBe(true);
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({ WOPR_PLUGINS: "wopr-plugin-discord" }),
+        }),
+      );
     });
 
     it("returns 400 for invalid botId (not a UUID)", async () => {
@@ -170,7 +185,6 @@ describe("bot-plugin routes", () => {
 
     it("stores plugin config in env under WOPR_PLUGIN_<ID>_CONFIG key", async () => {
       const config = { token: "abc123", prefix: "!" };
-      fleetMock.update.mockResolvedValue({});
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
@@ -178,12 +192,14 @@ describe("bot-plugin routes", () => {
         body: JSON.stringify({ config, providerChoices: {} }),
       });
 
-      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
-        env: expect.objectContaining({
-          WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify(config),
-          WOPR_PLUGINS: "my-plugin",
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify(config),
+            WOPR_PLUGINS: "my-plugin",
+          }),
         }),
-      });
+      );
     });
 
     it("appends to existing WOPR_PLUGINS list", async () => {
@@ -191,7 +207,6 @@ describe("bot-plugin routes", () => {
         ...mockProfile,
         env: { TOKEN: "abc", WOPR_PLUGINS: "existing-plugin" },
       });
-      fleetMock.update.mockResolvedValue({});
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/new-plugin`, {
         method: "POST",
@@ -221,7 +236,6 @@ describe("bot-plugin routes", () => {
           env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a" },
         });
       });
-      fleetMock.update.mockResolvedValue({});
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-b`, {
         method: "POST",
@@ -232,12 +246,14 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(200);
       // store.get must have been called twice (initial + re-fetch)
       expect(storeMock.get).toHaveBeenCalledTimes(2);
-      // fleet.update must be called with BOTH plugins
-      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
-        env: expect.objectContaining({
-          WOPR_PLUGINS: "plugin-a,plugin-b",
+      // store.save must be called with BOTH plugins
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGINS: "plugin-a,plugin-b",
+          }),
         }),
-      });
+      );
     });
 
     it("returns 409 if plugin was installed concurrently between reads", async () => {
@@ -262,7 +278,7 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(409);
-      expect(fleetMock.update).not.toHaveBeenCalled();
+      expect(storeMock.save).not.toHaveBeenCalled();
     });
 
     it("returns 404 if profile was deleted between reads", async () => {
@@ -284,11 +300,32 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(404);
-      expect(fleetMock.update).not.toHaveBeenCalled();
+      expect(storeMock.save).not.toHaveBeenCalled();
     });
 
-    it("returns 500 when fleet.update fails (container recreation error)", async () => {
-      fleetMock.update.mockRejectedValue(new Error("Docker container creation failed"));
+    it("dispatches bot.update to the correct node after install", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.dispatched).toBe(true);
+      expect(mockNodeConnections.sendCommand).toHaveBeenCalledWith(
+        TEST_NODE_ID,
+        expect.objectContaining({
+          type: "bot.update",
+          payload: expect.objectContaining({
+            name: `tenant_${TEST_TENANT_ID}`,
+          }),
+        }),
+      );
+    });
+
+    it("returns success with dispatched:false when node is offline", async () => {
+      mockNodeConnections.sendCommand.mockRejectedValue(new Error("Node node-1 is not connected"));
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
         method: "POST",
@@ -296,13 +333,20 @@ describe("bot-plugin routes", () => {
         body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
       });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.error).toMatch(/Failed to apply/);
+      expect(body.success).toBe(true);
+      expect(body.dispatched).toBe(false);
+      expect(body.dispatchError).toMatch(/not connected/);
     });
 
-    it("returns 404 when fleet.update throws BotNotFoundError", async () => {
-      fleetMock.update.mockRejectedValue(new BotNotFoundError(TEST_BOT_ID));
+    it("skips dispatch when bot has no nodeId (not yet deployed)", async () => {
+      mockDbChain.get.mockReturnValue({
+        id: TEST_BOT_ID,
+        tenantId: TEST_TENANT_ID,
+        name: "test-bot",
+        nodeId: null,
+      });
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
         method: "POST",
@@ -310,9 +354,11 @@ describe("bot-plugin routes", () => {
         body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
       });
 
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.error).toMatch(/Bot not found/);
+      expect(body.success).toBe(true);
+      expect(body.dispatched).toBe(false);
+      expect(mockNodeConnections.sendCommand).not.toHaveBeenCalled();
     });
   });
 
@@ -388,7 +434,6 @@ describe("bot-plugin routes", () => {
         ...mockProfile,
         env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a,plugin-b" },
       });
-      fleetMock.update.mockResolvedValue({});
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
         method: "PATCH",
@@ -400,12 +445,14 @@ describe("bot-plugin routes", () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.enabled).toBe(false);
-      expect(body.applied).toBe(true);
-      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
-        env: expect.objectContaining({
-          WOPR_PLUGINS_DISABLED: "plugin-a",
+      expect(body.dispatched).toBe(true);
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGINS_DISABLED: "plugin-a",
+          }),
         }),
-      });
+      );
     });
 
     it("re-enables a disabled plugin", async () => {
@@ -413,7 +460,6 @@ describe("bot-plugin routes", () => {
         ...mockProfile,
         env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a", WOPR_PLUGINS_DISABLED: "plugin-a" },
       });
-      fleetMock.update.mockResolvedValue({});
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
         method: "PATCH",
@@ -425,13 +471,15 @@ describe("bot-plugin routes", () => {
       const body = await res.json();
       expect(body.success).toBe(true);
       expect(body.enabled).toBe(true);
-      expect(body.applied).toBe(true);
+      expect(body.dispatched).toBe(true);
       // WOPR_PLUGINS_DISABLED should be removed when empty
-      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
-        env: expect.not.objectContaining({
-          WOPR_PLUGINS_DISABLED: expect.anything(),
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.not.objectContaining({
+            WOPR_PLUGINS_DISABLED: expect.anything(),
+          }),
         }),
-      });
+      );
     });
 
     it("returns 404 for plugin not installed on bot", async () => {
@@ -469,12 +517,11 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("returns 500 when fleet.update fails on toggle", async () => {
+    it("dispatches bot.update when toggling plugin state", async () => {
       storeMock.get.mockResolvedValue({
         ...mockProfile,
-        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a" },
+        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a,plugin-b" },
       });
-      fleetMock.update.mockRejectedValue(new Error("Docker error"));
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
         method: "PATCH",
@@ -482,27 +529,13 @@ describe("bot-plugin routes", () => {
         body: JSON.stringify({ enabled: false }),
       });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.error).toMatch(/Failed to apply/);
-    });
-
-    it("returns 404 when fleet.update throws BotNotFoundError on toggle", async () => {
-      storeMock.get.mockResolvedValue({
-        ...mockProfile,
-        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a" },
-      });
-      fleetMock.update.mockRejectedValue(new BotNotFoundError(TEST_BOT_ID));
-
-      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ enabled: false }),
-      });
-
-      expect(res.status).toBe(404);
-      const body = await res.json();
-      expect(body.error).toMatch(/Bot not found/);
+      expect(body.dispatched).toBe(true);
+      expect(mockNodeConnections.sendCommand).toHaveBeenCalledWith(
+        TEST_NODE_ID,
+        expect.objectContaining({ type: "bot.update" }),
+      );
     });
   });
 });

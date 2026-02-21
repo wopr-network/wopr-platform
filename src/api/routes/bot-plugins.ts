@@ -1,11 +1,14 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { BotNotFoundError } from "../../fleet/fleet-manager.js";
-import { fleet } from "./fleet.js";
+import { botInstances } from "../../db/schema/index.js";
+import { ProfileStore } from "../../fleet/profile-store.js";
+import { getDb, getNodeConnections } from "../../fleet/services.js";
 
-const store = fleet.profiles;
+const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
+const store = new ProfileStore(DATA_DIR);
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -29,6 +32,41 @@ const installPluginSchema = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
   providerChoices: z.record(z.string(), z.enum(["byok", "hosted"])).default({}),
 });
+
+/**
+ * Dispatch a bot.update command to the node running this bot.
+ * Returns { dispatched: true } on success, { dispatched: false, dispatchError } on failure.
+ * Never throws -- dispatch failure is non-fatal (DB is source of truth).
+ */
+async function dispatchEnvUpdate(
+  botId: string,
+  tenantId: string,
+  env: Record<string, string>,
+): Promise<{ dispatched: boolean; dispatchError?: string }> {
+  try {
+    const db = getDb();
+    const instance = db.select().from(botInstances).where(eq(botInstances.id, botId)).get();
+
+    if (!instance?.nodeId) {
+      return { dispatched: false, dispatchError: "bot_not_deployed" };
+    }
+
+    const nodeConnections = getNodeConnections();
+    await nodeConnections.sendCommand(instance.nodeId, {
+      type: "bot.update",
+      payload: {
+        name: `tenant_${tenantId}`,
+        env,
+      },
+    });
+
+    return { dispatched: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(`Failed to dispatch bot.update for ${botId}: ${message}`);
+    return { dispatched: false, dispatchError: message };
+  }
+}
 
 /** POST /fleet/bots/:botId/plugins/:pluginId — Install a plugin on a bot */
 botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
@@ -69,6 +107,12 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     return c.json({ error: `Bot not found: ${botId}` }, 404);
   }
 
+  // Re-validate ownership on the fresh profile — tenantId may have changed between fetches
+  const freshOwnershipError = validateTenantOwnership(c, freshProfile, freshProfile.tenantId);
+  if (freshOwnershipError) {
+    return freshOwnershipError;
+  }
+
   // Read existing WOPR_PLUGINS env var (comma-separated plugin IDs)
   const existingPlugins = (freshProfile.env.WOPR_PLUGINS || "")
     .split(",")
@@ -90,25 +134,17 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     [configEnvKey]: JSON.stringify(parsed.data.config),
   };
 
-  // Apply env change to profile and running container
-  let applied = false;
-  try {
-    await fleet.update(botId, { env: updatedEnv });
-    applied = true;
-  } catch (err) {
-    if (err instanceof BotNotFoundError) {
-      return c.json({ error: `Bot not found: ${botId}` }, 404);
-    }
-    // fleet.update() rolls back the profile internally on container failure,
-    // so the profile is reverted to freshProfile's state.
-    logger.error(`Failed to apply plugin install to container for bot ${botId}`, { err });
-    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
-  }
+  const updated = { ...freshProfile, env: updatedEnv };
+  await store.save(updated);
+
+  // Dispatch env update to the correct node
+  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
 
   logger.info(`Installed plugin ${pluginId} on bot ${botId}`, {
     botId,
     pluginId,
     tenantId: profile.tenantId,
+    dispatched: dispatch.dispatched,
   });
 
   return c.json(
@@ -117,7 +153,8 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
       botId,
       pluginId,
       installedPlugins: [...existingPlugins, pluginId],
-      applied,
+      dispatched: dispatch.dispatched,
+      ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
     },
     200,
   );
@@ -214,23 +251,18 @@ botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => 
     ? { ...envWithoutDisabled, WOPR_PLUGINS_DISABLED: updatedDisabled.join(",") }
     : envWithoutDisabled;
 
-  let applied = false;
-  try {
-    await fleet.update(botId, { env: updatedEnv });
-    applied = true;
-  } catch (err) {
-    if (err instanceof BotNotFoundError) {
-      return c.json({ error: `Bot not found: ${botId}` }, 404);
-    }
-    logger.error(`Failed to apply plugin toggle to container for bot ${botId}`, { err });
-    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
-  }
+  const updated = { ...profile, env: updatedEnv };
+  await store.save(updated);
+
+  // Dispatch env update to the correct node
+  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
 
   logger.info(`Toggled plugin ${pluginId} on bot ${botId}: enabled=${parsed.data.enabled}`, {
     botId,
     pluginId,
     enabled: parsed.data.enabled,
     tenantId: profile.tenantId,
+    dispatched: dispatch.dispatched,
   });
 
   return c.json({
@@ -238,6 +270,7 @@ botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => 
     botId,
     pluginId,
     enabled: parsed.data.enabled,
-    applied,
+    dispatched: dispatch.dispatched,
+    ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
   });
 });
