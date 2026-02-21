@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema/index.js";
 import { botProfiles } from "../db/schema/index.js";
@@ -56,6 +56,7 @@ export class DrizzleBotProfileRepository implements IBotProfileRepository {
           description: profile.description ?? "",
           releaseChannel: profile.releaseChannel ?? "stable",
           discoveryJson: profile.discovery ? JSON.stringify(profile.discovery) : null,
+          updatedAt: sql`(datetime('now'))`,
         },
       })
       .run();
@@ -80,12 +81,25 @@ function toProfile(row: typeof botProfiles.$inferSelect): BotProfile {
     tenantId: row.tenantId,
     name: row.name,
     image: row.image,
-    env: JSON.parse(row.env) as Record<string, string>,
+    env: (() => {
+      try {
+        return JSON.parse(row.env) as Record<string, string>;
+      } catch {
+        return {};
+      }
+    })(),
     restartPolicy: row.restartPolicy as BotProfile["restartPolicy"],
     updatePolicy: row.updatePolicy as BotProfile["updatePolicy"],
     volumeName: row.volumeName ?? undefined,
     description: row.description,
     releaseChannel: (row.releaseChannel ?? "stable") as BotProfile["releaseChannel"],
-    discovery: row.discoveryJson ? JSON.parse(row.discoveryJson) : undefined,
+    discovery: (() => {
+      if (!row.discoveryJson) return undefined;
+      try {
+        return JSON.parse(row.discoveryJson);
+      } catch {
+        return null;
+      }
+    })(),
   };
 }
