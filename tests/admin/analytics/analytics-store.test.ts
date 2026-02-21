@@ -22,11 +22,43 @@ function initTenantStatusSchema(db: TestDb): void {
   `);
 }
 
+function initAutoTopupSchema(db: TestDb): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS credit_auto_topup (
+      id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      failure_reason TEXT,
+      payment_reference TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_tenant ON credit_auto_topup(tenant_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_status ON credit_auto_topup(status)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_created ON credit_auto_topup(created_at)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_tenant_created ON credit_auto_topup(tenant_id, created_at)");
+}
+
+function seedAutoTopup(
+  db: TestDb,
+  tenantId: string,
+  amountCents: number,
+  status: "success" | "failed",
+  createdAt: string,
+  failureReason?: string,
+): void {
+  db.prepare(
+    "INSERT INTO credit_auto_topup (id, tenant_id, amount_cents, status, failure_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run(crypto.randomUUID(), tenantId, amountCents, status, failureReason ?? null, createdAt);
+}
+
 function createTestDb(): TestDb {
   const db = new BetterSqlite3(":memory:");
   initCreditSchema(db);
   initMeterSchema(db);
   initTenantStatusSchema(db);
+  initAutoTopupSchema(db);
   return db;
 }
 
@@ -528,5 +560,129 @@ describe("AnalyticsStore — exportCsv", () => {
     const csv = store.exportCsv(range, "nonexistent_section");
 
     expect(csv).toBe("");
+  });
+
+  it("exports auto_topup as CSV with correct headers", () => {
+    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
+    const csv = store.exportCsv(range, "auto_topup");
+    const lines = csv.split("\n");
+
+    expect(lines[0]).toContain("totalEvents");
+    expect(lines[0]).toContain("revenueCents");
+    expect(lines[0]).toContain("failureRate");
+    expect(lines.length).toBe(2); // header + 1 data row
+  });
+});
+
+describe("AnalyticsStore — getAutoTopupMetrics", () => {
+  let db: TestDb;
+  let store: AnalyticsStore;
+
+  beforeEach(() => {
+    db = createTestDb();
+    store = new AnalyticsStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("returns all zeros for an empty database", () => {
+    const range = { from: THIRTY_DAYS_AGO, to: NOW };
+    const result = store.getAutoTopupMetrics(range);
+
+    expect(result.totalEvents).toBe(0);
+    expect(result.successCount).toBe(0);
+    expect(result.failedCount).toBe(0);
+    expect(result.revenueCents).toBe(0);
+    expect(result.failureRate).toBe(0);
+  });
+
+  it("calculates success/failure counts and revenue correctly", () => {
+    const range = { from: THIRTY_DAYS_AGO, to: NOW };
+
+    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
+    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
+    seedAutoTopup(db, "tenant-2", 3000, "success", NOW_ISO);
+    seedAutoTopup(db, "tenant-3", 5000, "failed", NOW_ISO, "card_declined");
+
+    const result = store.getAutoTopupMetrics(range);
+
+    expect(result.totalEvents).toBe(4);
+    expect(result.successCount).toBe(3);
+    expect(result.failedCount).toBe(1);
+    expect(result.revenueCents).toBe(13000); // 5000 + 5000 + 3000
+    expect(result.failureRate).toBeCloseTo(25, 1); // 1/4 = 25%
+  });
+
+  it("excludes data outside the date range", () => {
+    const range = { from: THIRTY_DAYS_AGO, to: NOW };
+
+    // Old data outside range
+    seedAutoTopup(db, "tenant-1", 5000, "success", SIXTY_DAYS_AGO_ISO);
+    // Recent data within range
+    seedAutoTopup(db, "tenant-1", 3000, "success", NOW_ISO);
+
+    const result = store.getAutoTopupMetrics(range);
+
+    expect(result.totalEvents).toBe(1);
+    expect(result.revenueCents).toBe(3000);
+  });
+
+  it("returns 0% failure rate when all events are successes", () => {
+    const range = { from: THIRTY_DAYS_AGO, to: NOW };
+
+    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
+    seedAutoTopup(db, "tenant-2", 3000, "success", NOW_ISO);
+
+    const result = store.getAutoTopupMetrics(range);
+
+    expect(result.failureRate).toBe(0);
+  });
+});
+
+describe("AnalyticsStore — getTenantHealth (atRisk with auto-topup)", () => {
+  let db: TestDb;
+  let store: AnalyticsStore;
+
+  beforeEach(() => {
+    db = createTestDb();
+    store = new AnalyticsStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("counts tenants with low balance and no auto-topup as at-risk", () => {
+    // tenant-a: low balance, NO auto-topup history -> at risk
+    seedBalance(db, "tenant-a", 200);
+    // tenant-b: low balance, HAS auto-topup history -> NOT at risk
+    seedBalance(db, "tenant-b", 200);
+    seedAutoTopup(db, "tenant-b", 5000, "success", NOW_ISO);
+    // tenant-c: high balance, no auto-topup -> NOT at risk
+    seedBalance(db, "tenant-c", 10000);
+
+    const result = store.getTenantHealth();
+
+    expect(result.atRisk).toBe(1); // only tenant-a
+  });
+
+  it("returns 0 at-risk when all low-balance tenants have auto-topup", () => {
+    seedBalance(db, "tenant-a", 200);
+    seedAutoTopup(db, "tenant-a", 5000, "success", NOW_ISO);
+
+    const result = store.getTenantHealth();
+
+    expect(result.atRisk).toBe(0);
+  });
+
+  it("returns 0 at-risk when no tenants have low balance", () => {
+    seedBalance(db, "tenant-a", 10000);
+    seedBalance(db, "tenant-b", 5000);
+
+    const result = store.getTenantHealth();
+
+    expect(result.atRisk).toBe(0);
   });
 });

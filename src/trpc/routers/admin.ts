@@ -81,6 +81,7 @@ const VALID_CSV_SECTIONS = [
   "provider_spend",
   "tenant_health",
   "time_series",
+  "auto_topup",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -680,6 +681,16 @@ export const adminRouter = router({
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
     }
     return getAnalyticsStore().getTenantHealth();
+  }),
+
+  /** Auto-topup metrics: event counts, revenue, failure rate. */
+  analyticsAutoTopup: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const { getAnalyticsStore } = deps();
+    if (!getAnalyticsStore) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
+    }
+    return getAnalyticsStore().getAutoTopupMetrics(resolveRange(input));
   }),
 
   /** Time series data for charts. */

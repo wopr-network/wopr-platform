@@ -1,4 +1,5 @@
 export type {
+  AutoTopupMetrics,
   DateRange,
   FloatMetrics,
   MarginByCapability,
