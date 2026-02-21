@@ -104,6 +104,7 @@ beforeEach(() => {
   setFleetRouterDeps({
     getFleetManager: () => fleetMock as unknown as FleetManager,
     getTemplates: () => mockTemplates,
+    getCreditLedger: () => null,
   });
 });
 

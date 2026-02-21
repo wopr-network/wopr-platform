@@ -5,9 +5,6 @@
  * Follows the dependency injection pattern established by billing.ts, account.ts, and capabilities.ts.
  *
  * Known gaps (deferred to follow-up stories):
- * - Credit/quota checks (present in REST routes) are NOT included here. The FleetManager's
- *   create() and start() methods do not include credit checks — those live in the REST handler.
- *   TODO: extract credit/quota checks to a shared service layer.
  * - Proxy registration (getProxyManager().addRoute()) and health update side-effects from
  *   the REST create/start/stop handlers are NOT replicated here.
  *   TODO: extract these side effects into FleetManager or a shared service layer.
@@ -19,6 +16,8 @@ import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { createBotSchema } from "../../fleet/types.js";
+import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { protectedProcedure, router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -38,6 +37,7 @@ const tailSchema = z.number().int().min(1).max(10_000).default(100);
 export interface FleetRouterDeps {
   getFleetManager: () => FleetManager;
   getTemplates: () => ProfileTemplate[];
+  getCreditLedger: () => CreditLedger | null;
 }
 
 let _deps: FleetRouterDeps | null = null;
@@ -84,11 +84,44 @@ export const fleetRouter = router({
 
   /** Create a new bot instance. Uses the existing createBotSchema from fleet/types.ts. */
   createInstance: tenantProcedure.input(createBotSchema.omit({ tenantId: true })).mutation(async ({ input, ctx }) => {
-    const fleet = deps().getFleetManager();
+    const { getFleetManager, getCreditLedger } = deps();
+    const fleet = getFleetManager();
+
+    // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
+    try {
+      const ledger = getCreditLedger();
+      if (ledger) {
+        const balance = ledger.balance(ctx.tenantId);
+        if (balance < 17) {
+          throw new TRPCError({
+            code: "PAYMENT_REQUIRED",
+            message: "Insufficient credits",
+            cause: { balance, required: 17, buyUrl: "/dashboard/credits" },
+          });
+        }
+
+        // Quota check: count active instances for this tenant
+        const allProfiles = await fleet.profiles.list();
+        const activeInstances = allProfiles.filter((p) => p.tenantId === ctx.tenantId).length;
+        const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
+        if (!quotaResult.allowed) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: quotaResult.reason ?? "Instance quota exceeded",
+            cause: { currentInstances: quotaResult.currentInstances, maxInstances: quotaResult.maxInstances },
+          });
+        }
+      }
+    } catch (err) {
+      if (err instanceof TRPCError) throw err;
+      // Billing DB unavailable (e.g., in tests) — skip quota enforcement
+    }
+
     try {
       const profile = await fleet.create({ ...input, tenantId: ctx.tenantId });
       return profile;
     } catch (err) {
+      if (err instanceof TRPCError) throw err;
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message: err instanceof Error ? err.message : "Failed to create bot",
@@ -100,11 +133,31 @@ export const fleetRouter = router({
   controlInstance: tenantProcedure
     .input(z.object({ id: uuidSchema, action: controlActionSchema }))
     .mutation(async ({ input, ctx }) => {
-      const fleet = deps().getFleetManager();
+      const { getFleetManager, getCreditLedger } = deps();
+      const fleet = getFleetManager();
       // Verify tenant ownership
       const profile = await fleet.profiles.get(input.id);
       if (!profile || profile.tenantId !== ctx.tenantId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+      }
+      // Payment gate (WOP-380): require minimum 17 cents to start a bot
+      if (input.action === "start") {
+        try {
+          const ledger = getCreditLedger();
+          if (ledger) {
+            const balance = ledger.balance(ctx.tenantId);
+            if (balance < 17) {
+              throw new TRPCError({
+                code: "PAYMENT_REQUIRED",
+                message: "Insufficient credits",
+                cause: { balance, required: 17, buyUrl: "/dashboard/credits" },
+              });
+            }
+          }
+        } catch (err) {
+          if (err instanceof TRPCError) throw err;
+          // Billing DB unavailable — skip credit check
+        }
       }
       try {
         switch (input.action) {
