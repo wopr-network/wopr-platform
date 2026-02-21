@@ -20,31 +20,48 @@ function makeNodeConnections(overrides: Partial<NodeConnectionManager> = {}): No
 
 /**
  * Build a mock db where select().from(botInstances).where(...).all()
- * returns the given instances, and update/insert chains work.
+ * returns the given instances, .get() returns a node status row,
+ * update/insert chains work, and transaction() invokes the callback
+ * with a tx object that has the same update/insert interface.
  */
-function makeDb(instances: Array<{ tenantId: string; nodeId: string | null }>) {
+function makeDb(instances: Array<{ tenantId: string; nodeId: string | null }>, nodeStatus = "returning") {
   const runFn = vi.fn();
-  return {
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          all: vi.fn().mockReturnValue(instances),
-        }),
-      }),
-    }),
-    update: vi.fn().mockReturnValue({
+
+  const makeUpdateChain = () =>
+    vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
           run: runFn,
         }),
       }),
-    }),
-    insert: vi.fn().mockReturnValue({
+    });
+
+  const makeInsertChain = () =>
+    vi.fn().mockReturnValue({
       values: vi.fn().mockReturnValue({
         run: vi.fn(),
       }),
+    });
+
+  const tx = {
+    update: makeUpdateChain(),
+    insert: makeInsertChain(),
+  };
+
+  return {
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          all: vi.fn().mockReturnValue(instances),
+          get: vi.fn().mockReturnValue({ status: nodeStatus }),
+        }),
+      }),
     }),
+    update: makeUpdateChain(),
+    insert: makeInsertChain(),
+    transaction: vi.fn().mockImplementation((fn: (tx: unknown) => void) => fn(tx)),
     _runFn: runFn,
+    _tx: tx,
   };
 }
 
@@ -106,12 +123,11 @@ describe("OrphanCleaner.clean", () => {
       runningContainers: [],
     });
 
-    // Node should be updated to "active"
-    const updateMock = db.update;
-    expect(updateMock).toHaveBeenCalled();
+    // Status update and audit insert must run inside a transaction
+    expect(db.transaction).toHaveBeenCalled();
 
-    // Check that set was called with status: "active"
-    const setCalls = (db.update().set as ReturnType<typeof vi.fn>).mock.calls;
+    // Check that set was called with status: "active" on the tx object
+    const setCalls = (db._tx.update().set as ReturnType<typeof vi.fn>).mock.calls;
     const activeCall = setCalls.find((call: unknown[]) => (call[0] as Record<string, unknown>)?.status === "active");
     expect(activeCall).toBeDefined();
 
@@ -119,5 +135,18 @@ describe("OrphanCleaner.clean", () => {
     expect(result.stopped).toHaveLength(0);
     expect(result.kept).toHaveLength(0);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it("uses the node's current status as fromStatus in the audit row", async () => {
+    const db = makeDb([], "recovering");
+    const cleaner = new OrphanCleaner(db as never, nodeConnections);
+
+    await cleaner.clean({ nodeId: NODE_ID, runningContainers: [] });
+
+    const insertValues = (db._tx.insert().values as ReturnType<typeof vi.fn>).mock.calls;
+    const auditCall = insertValues.find(
+      (call: unknown[]) => (call[0] as Record<string, unknown>)?.fromStatus === "recovering",
+    );
+    expect(auditCall).toBeDefined();
   });
 });

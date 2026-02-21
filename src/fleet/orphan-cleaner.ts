@@ -78,21 +78,27 @@ export class OrphanCleaner {
     // 3. Transition node to active regardless of stop results
     const now = Math.floor(Date.now() / 1000);
 
-    this.db.update(nodes).set({ status: "active", updatedAt: now }).where(eq(nodes.id, nodeId)).run();
+    // Query the current node status so the audit row reflects reality
+    const currentNode = this.db.select().from(nodes).where(eq(nodes.id, nodeId)).get();
+    const fromStatus = currentNode?.status ?? "unknown";
 
-    // 4. Record transition audit trail
-    this.db
-      .insert(nodeTransitions)
-      .values({
-        id: randomUUID(),
-        nodeId,
-        fromStatus: "returning",
-        toStatus: "active",
-        reason: "cleanup_complete",
-        triggeredBy: "orphan_cleaner",
-        createdAt: now,
-      })
-      .run();
+    // Wrap status update and audit insert in a transaction to prevent partial writes
+    this.db.transaction((tx) => {
+      tx.update(nodes).set({ status: "active", updatedAt: now }).where(eq(nodes.id, nodeId)).run();
+
+      // 4. Record transition audit trail
+      tx.insert(nodeTransitions)
+        .values({
+          id: randomUUID(),
+          nodeId,
+          fromStatus,
+          toStatus: "active",
+          reason: "cleanup_complete",
+          triggeredBy: "orphan_cleaner",
+          createdAt: now,
+        })
+        .run();
+    });
 
     logger.info(`OrphanCleaner: cleanup complete on node ${nodeId}`, {
       stopped: stopped.length,
