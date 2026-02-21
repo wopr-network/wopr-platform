@@ -31,6 +31,10 @@ const storeKeySchema = z.object({
 // Route setup
 // ---------------------------------------------------------------------------
 
+// BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
+// The tRPC capabilities router already provides listKeys, getKey, storeKey, deleteKey.
+// Once the UI switches to tRPC capabilities.*, this REST route can be removed.
+// Blocker: UI still calls REST /api/tenant-keys via bearer token.
 export const tenantKeyRoutes = new Hono();
 
 const tokenMetadataMap = buildTokenMetadataMap();

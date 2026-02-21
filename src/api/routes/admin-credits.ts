@@ -36,6 +36,10 @@ function parseIntParam(value: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// BOUNDARY(WOP-805): Admin credit REST routes have a tRPC mirror at
+// src/trpc/routers/admin.ts (creditsBalance, creditsGrant, creditsRefund,
+// creditsCorrection, creditsTransactions, creditsTransactionsExport).
+// Keep REST for backwards compatibility until admin UI fully migrates to tRPC.
 /**
  * Create admin credit API routes with an explicit database.
  * Used in tests to inject an in-memory database.

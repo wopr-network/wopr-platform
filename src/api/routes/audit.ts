@@ -108,6 +108,10 @@ export function createAdminAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
   return routes;
 }
 
+// BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
+// The UI calls GET /api/audit via session cookie for user audit log.
+// The admin version (adminAuditRoutes) already has a tRPC mirror at admin.auditLog.
+// Blocker: need to add a user-scoped tRPC audit procedure (admin.auditLog is admin-only).
 /** Pre-built audit routes with lazy DB initialization. */
 export const auditRoutes = new Hono<AuditEnv>();
 auditRoutes.get("/", (c) => handleUserAudit(c, getAuditDb()));

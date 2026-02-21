@@ -55,6 +55,9 @@ export interface VerifyEmailRouteDeps {
   creditsDb: DatabaseType.Database;
 }
 
+// BOUNDARY(WOP-805): REST is the correct layer for email verification.
+// Users click a link in their email → GET /auth/verify?token=xxx → redirect.
+// This is a browser redirect flow, not a JSON RPC call.
 /**
  * Create verify-email routes with explicit database dependencies (for testing).
  */

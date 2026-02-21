@@ -114,6 +114,10 @@ const initiateSchema = z.object({
 // Route factory
 // ---------------------------------------------------------------------------
 
+// BOUNDARY(WOP-805): REST is the correct layer for OAuth redirect flows.
+// OAuth initiate sends an HTTP redirect to the provider's authorize URL.
+// OAuth callback receives a redirect with code/state query params.
+// This cannot be expressed as tRPC (which returns JSON, not redirects).
 export const channelOAuthRoutes = new Hono<AuthEnv>();
 
 /**

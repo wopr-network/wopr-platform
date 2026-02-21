@@ -35,6 +35,61 @@ import { tenantKeyRoutes } from "./routes/tenant-keys.js";
 import { tenantProxyMiddleware } from "./routes/tenant-proxy.js";
 import { verifyEmailRoutes } from "./routes/verify-email.js";
 
+// =============================================================================
+// REST vs tRPC Boundary Policy (WOP-805)
+// =============================================================================
+//
+// This file mounts BOTH REST (Hono) routes and the tRPC handler. The boundary
+// between them is determined by WHO calls the endpoint and WHAT transport
+// constraints apply.
+//
+// REST is the correct layer for:
+//   - Webhooks from external services (Stripe, PayRam, Twilio) — raw HTTP sigs
+//   - Public unauthenticated endpoints (health, pricing, email verification)
+//   - OAuth redirect flows (channel-oauth initiate/callback)
+//   - Internal machine-to-machine APIs (node agent registration, static bearer)
+//   - Service-key gateway (/v1/* bot-facing API)
+//   - better-auth handler (/api/auth/*)
+//   - Tenant subdomain proxy (*.wopr.bot)
+//   - Binary/streaming responses (container logs as text/plain)
+//
+// tRPC is the correct layer for:
+//   - All dashboard UI calls (wopr-platform-ui uses trpcFetch/trpcMutate)
+//   - All admin panel calls (admin dashboard)
+//   - Any typed mutation with Zod validation consumed by the UI
+//   - Session-cookie-authenticated browser requests
+//
+// Migration candidates (REST routes that SHOULD move to tRPC):
+//   - /api/activity → tRPC activity.feed (session-authed, UI calls it)
+//   - /api/fleet/resources → tRPC fleet.resources (session-authed, UI calls it)
+//   - /api/marketplace/* → tRPC marketplace.* (session-authed, UI calls it)
+//   - /fleet/bots/* → already has tRPC mirror (fleet router); UI needs to switch
+//   - /api/audit → tRPC audit.query (session-authed; admin version in tRPC admin)
+//   - /api/quota → tRPC usage router already exists; REST is legacy
+//   - /api/tenant-keys → tRPC capabilities router already covers this
+//
+// REST routes that must STAY as REST (see blockers):
+//   - /api/billing/webhook — Stripe signature verification (cannot be tRPC)
+//   - /api/billing/crypto/* — PayRam webhook + checkout (external service)
+//   - /api/billing/setup-intent — returns clientSecret for Stripe.js (REST is simpler)
+//   - /api/billing/payment-methods/:id DELETE — Stripe detach (REST for now, low priority)
+//   - /api/billing/credits/checkout — has tRPC mirror, keep REST until UI fully migrates
+//   - /api/billing/portal — has tRPC mirror, keep REST until UI fully migrates
+//   - /api/channel-oauth/* — OAuth redirect flow (HTTP redirects, not JSON RPC)
+//   - /api/secrets/* — bearer-token-scoped, consumed by fleet manager (not UI)
+//   - /api/instances/:id/friends — proxy to instance (not a platform concern)
+//   - /api/instances/:id/snapshots — bearer-token-scoped
+//   - /api/bots/:id/snapshots — bearer-token-scoped
+//   - /api/admin/* REST — all have tRPC mirrors, keep REST until admin UI migrates
+//   - /fleet/bots/* REST — has tRPC mirror, keep REST for CLI/SDK consumers
+//   - /internal/nodes/* — machine-to-machine, static bearer
+//   - /health — public, no auth
+//   - /api/v1/pricing — public, no auth
+//   - /auth/verify — public link click, redirects to UI
+//   - /v1/* gateway — service key auth, bot-facing
+//
+// =============================================================================
+
 export const app = new Hono();
 
 // Tenant subdomain proxy — catch-all for *.wopr.bot requests.

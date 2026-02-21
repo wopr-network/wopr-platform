@@ -21,6 +21,10 @@ export function validateNodeAuth(authHeader: string | undefined): boolean | null
   return timingSafeEqual(a, b);
 }
 
+// BOUNDARY(WOP-805): REST is the correct layer for internal node APIs.
+// Node agents authenticate with static NODE_SECRET or per-node persistent
+// secrets — not session cookies. This is machine-to-machine communication
+// that does not go through the dashboard UI.
 /**
  * Internal API routes for node agent communication.
  */

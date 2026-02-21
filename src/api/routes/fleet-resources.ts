@@ -25,6 +25,10 @@ export function setFleetManager(fm: FleetManager | null): void {
   _fleet = fm;
 }
 
+// BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
+// The UI calls GET /api/fleet/resources via session cookie. Should become
+// a tRPC procedure (e.g., fleet.resources) for type safety.
+// Blocker: none — straightforward migration.
 export const fleetResourceRoutes = new Hono<AuditEnv>();
 
 /**
