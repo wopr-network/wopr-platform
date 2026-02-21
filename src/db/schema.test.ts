@@ -669,8 +669,143 @@ describe("cross-schema composition", () => {
     expect(tables).toContain("audit_log");
     expect(tables).toContain("meter_events");
     expect(tables).toContain("snapshots");
+    expect(tables).toContain("bot_profiles");
     expect(tables).toContain("tenant_customers");
     expect(tables).toContain("stripe_usage_reports");
     sqlite.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bot_profiles schema (via Drizzle migration)
+// ---------------------------------------------------------------------------
+
+describe("bot_profiles schema (via Drizzle migration)", () => {
+  let db: BetterSqlite3.Database;
+
+  beforeEach(() => {
+    const testDb = createTestDb();
+    db = testDb.sqlite;
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it("creates the bot_profiles table", () => {
+    expect(tableNames(db)).toContain("bot_profiles");
+  });
+
+  it("creates expected indexes", () => {
+    const idxs = indexNames(db, "idx_bot_profiles_");
+    expect(idxs).toContain("idx_bot_profiles_tenant");
+    expect(idxs).toContain("idx_bot_profiles_name");
+    expect(idxs).toContain("idx_bot_profiles_release_channel");
+  });
+
+  it("enforces NOT NULL on tenant_id", () => {
+    expect(() =>
+      db
+        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
+        .run("bp1", null, "my-bot", "ghcr.io/wopr-network/wopr:latest"),
+    ).toThrow();
+  });
+
+  it("enforces NOT NULL on name", () => {
+    expect(() =>
+      db
+        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
+        .run("bp1", "t1", null, "ghcr.io/wopr-network/wopr:latest"),
+    ).toThrow();
+  });
+
+  it("enforces NOT NULL on image", () => {
+    expect(() =>
+      db
+        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
+        .run("bp1", "t1", "my-bot", null),
+    ).toThrow();
+  });
+
+  it("enforces PRIMARY KEY uniqueness on id", () => {
+    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)").run(
+      "dup-id",
+      "t1",
+      "bot-a",
+      "ghcr.io/wopr-network/wopr:latest",
+    );
+
+    expect(() =>
+      db
+        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
+        .run("dup-id", "t2", "bot-b", "ghcr.io/wopr-network/wopr:latest"),
+    ).toThrow();
+  });
+
+  it("provides correct defaults for optional/defaulted columns", () => {
+    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)").run(
+      "bp-defaults",
+      "t1",
+      "my-bot",
+      "ghcr.io/wopr-network/wopr:latest",
+    );
+
+    const row = db
+      .prepare(
+        "SELECT env, restart_policy, update_policy, release_channel, description, volume_name, discovery_json, created_at, updated_at FROM bot_profiles WHERE id = ?",
+      )
+      .get("bp-defaults") as Record<string, unknown>;
+
+    expect(row.env).toBe("{}");
+    expect(row.restart_policy).toBe("unless-stopped");
+    expect(row.update_policy).toBe("on-push");
+    expect(row.release_channel).toBe("stable");
+    expect(row.description).toBe("");
+    expect(row.volume_name).toBeNull();
+    expect(row.discovery_json).toBeNull();
+    expect(row.created_at).toBeTruthy();
+    expect(row.updated_at).toBeTruthy();
+  });
+
+  it("allows NULL for optional columns (volume_name, discovery_json)", () => {
+    db.prepare(
+      "INSERT INTO bot_profiles (id, tenant_id, name, image, volume_name, discovery_json) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run("bp-null", "t1", "my-bot", "ghcr.io/wopr-network/wopr:latest", null, null);
+
+    const row = db
+      .prepare("SELECT volume_name, discovery_json FROM bot_profiles WHERE id = ?")
+      .get("bp-null") as Record<string, unknown>;
+    expect(row.volume_name).toBeNull();
+    expect(row.discovery_json).toBeNull();
+  });
+
+  it("stores and retrieves JSON env blob", () => {
+    const envJson = JSON.stringify({ TOKEN: "abc", DEBUG: "1" });
+    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image, env) VALUES (?, ?, ?, ?, ?)").run(
+      "bp-env",
+      "t1",
+      "my-bot",
+      "ghcr.io/wopr-network/wopr:latest",
+      envJson,
+    );
+
+    const row = db.prepare("SELECT env FROM bot_profiles WHERE id = ?").get("bp-env") as { env: string };
+    expect(JSON.parse(row.env)).toEqual({ TOKEN: "abc", DEBUG: "1" });
+  });
+
+  it("stores and retrieves JSON discovery blob", () => {
+    const discoveryJson = JSON.stringify({ enabled: true, topics: ["wopr-org-acme"] });
+    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image, discovery_json) VALUES (?, ?, ?, ?, ?)").run(
+      "bp-disc",
+      "t1",
+      "my-bot",
+      "ghcr.io/wopr-network/wopr:latest",
+      discoveryJson,
+    );
+
+    const row = db.prepare("SELECT discovery_json FROM bot_profiles WHERE id = ?").get("bp-disc") as {
+      discovery_json: string;
+    };
+    expect(JSON.parse(row.discovery_json)).toEqual({ enabled: true, topics: ["wopr-org-acme"] });
   });
 });
