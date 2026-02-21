@@ -3,7 +3,14 @@ import { and, eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
 import type * as schema from "../db/schema/index.js";
-import { botInstances, nodes, recoveryEvents, recoveryItems, tenantCustomers } from "../db/schema/index.js";
+import {
+  botInstances,
+  botProfiles,
+  nodes,
+  recoveryEvents,
+  recoveryItems,
+  tenantCustomers,
+} from "../db/schema/index.js";
 import type { AdminNotifier, RecoveryReport } from "./admin-notifier.js";
 import type { NodeConnectionManager, TenantAssignment } from "./node-connection-manager.js";
 
@@ -222,13 +229,28 @@ export class RecoveryManager {
         payload: { filename: backupKey },
       });
 
-      // c. Import and start on target node
+      // c. Import and start on target node — read image/env from bot profile
       logger.debug(`Importing ${tenant.name} on node ${target.id}`);
 
-      // TODO: Retrieve image/env from bot profile metadata instead of hardcoding
-      // Should query fleet profile store or bot_instances metadata when available
-      const image = "ghcr.io/wopr-network/wopr:latest";
-      const env = {};
+      let image = "ghcr.io/wopr-network/wopr:latest";
+      let env: Record<string, string> = {};
+
+      const profile = this.db
+        .select({ image: botProfiles.image, env: botProfiles.env })
+        .from(botProfiles)
+        .where(eq(botProfiles.id, tenant.id))
+        .get();
+
+      if (profile) {
+        image = profile.image;
+        try {
+          env = JSON.parse(profile.env);
+        } catch {
+          logger.warn(`Corrupt env JSON for bot ${tenant.id}, using empty env`, { eventId, itemId });
+        }
+      } else {
+        logger.warn(`No profile found for bot ${tenant.id} — using default image and empty env`, { eventId, itemId });
+      }
 
       await this.nodeConnections.sendCommand(target.id, {
         type: "bot.import",
