@@ -204,7 +204,7 @@ export const fleetRouter = router({
     }
   }),
 
-  /** Get container logs for a bot instance. */
+  /** Get container logs for a bot instance. Returns lines as string array. */
   getInstanceLogs: tenantProcedure
     .input(z.object({ id: uuidSchema, tail: tailSchema.optional() }))
     .query(async ({ input, ctx }) => {
@@ -214,7 +214,8 @@ export const fleetRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
       }
       try {
-        const logs = await fleet.logs(input.id, input.tail ?? 100);
+        const raw = await fleet.logs(input.id, input.tail ?? 100);
+        const logs = raw.split("\n").filter((line) => line.length > 0);
         return { logs };
       } catch (err) {
         if (err instanceof BotNotFoundError) {

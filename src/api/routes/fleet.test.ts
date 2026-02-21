@@ -655,13 +655,46 @@ describe("fleet routes", () => {
   });
 
   describe("GET /fleet/bots/:id/logs", () => {
-    it("returns container logs", async () => {
-      fleetMock.logs.mockResolvedValue("2026-01-01 log line");
+    it("returns structured JSON log entries", async () => {
+      fleetMock.logs.mockResolvedValue(
+        "2026-01-01T00:00:00.000Z [INFO] Bot started\n2026-01-01T00:00:01.000Z [ERROR] Connection failed",
+      );
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/logs`, { headers: authHeader });
       expect(res.status).toBe(200);
-      const text = await res.text();
-      expect(text).toContain("log line");
+      const body = (await res.json()) as {
+        id: string;
+        timestamp: string;
+        level: string;
+        source: string;
+        message: string;
+      }[];
+      expect(body).toHaveLength(2);
+      expect(body[0]).toEqual({
+        id: "log-0",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        level: "info",
+        source: "container",
+        message: "Bot started",
+      });
+      expect(body[1]).toEqual({
+        id: "log-1",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        level: "error",
+        source: "container",
+        message: "Connection failed",
+      });
+    });
+
+    it("handles plain log lines without structured format", async () => {
+      fleetMock.logs.mockResolvedValue("plain log line\nanother line");
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/logs`, { headers: authHeader });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { id: string; level: string; message: string }[];
+      expect(body).toHaveLength(2);
+      expect(body[0].level).toBe("info");
+      expect(body[0].message).toBe("plain log line");
     });
 
     it("passes tail parameter", async () => {
@@ -696,6 +729,81 @@ describe("fleet routes", () => {
       fleetMock.logs.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
 
       const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/logs`, { headers: authHeader });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("GET /fleet/bots/:id/health", () => {
+    it("returns health data for a running bot", async () => {
+      fleetMock.status.mockResolvedValue({
+        ...mockStatus,
+        stats: { cpuPercent: 5.2, memoryUsageMb: 128, memoryLimitMb: 512, memoryPercent: 25.0 },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/health`, { headers: authHeader });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        id: string;
+        state: string;
+        health: string;
+        uptime: string | null;
+        stats: { cpuPercent: number; memoryUsageMb: number; memoryLimitMb: number; memoryPercent: number } | null;
+      };
+      expect(body.id).toBe(TEST_BOT_ID);
+      expect(body.state).toBe("running");
+      expect(body.health).toBe("healthy");
+      expect(body.uptime).toBe("2026-01-01T00:00:00Z");
+      expect(body.stats).toEqual({
+        cpuPercent: expect.any(Number),
+        memoryUsageMb: expect.any(Number),
+        memoryLimitMb: expect.any(Number),
+        memoryPercent: expect.any(Number),
+      });
+    });
+
+    it("returns 404 for missing bot", async () => {
+      fleetMock.status.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
+
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/health`, { headers: authHeader });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("GET /fleet/bots/:id/metrics", () => {
+    it("returns metrics for a running bot", async () => {
+      fleetMock.status.mockResolvedValue({
+        ...mockStatus,
+        stats: { cpuPercent: 5.2, memoryUsageMb: 128, memoryLimitMb: 512, memoryPercent: 25.0 },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/metrics`, { headers: authHeader });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        id: string;
+        stats: { cpuPercent: number; memoryUsageMb: number; memoryLimitMb: number; memoryPercent: number } | null;
+      };
+      expect(body.id).toBe(TEST_BOT_ID);
+      expect(body.stats).toEqual({
+        cpuPercent: expect.any(Number),
+        memoryUsageMb: expect.any(Number),
+        memoryLimitMb: expect.any(Number),
+        memoryPercent: expect.any(Number),
+      });
+    });
+
+    it("returns null stats for a stopped bot", async () => {
+      fleetMock.status.mockResolvedValue({ ...mockStatus, state: "stopped", stats: null });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/metrics`, { headers: authHeader });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { id: string; stats: null };
+      expect(body.stats).toBeNull();
+    });
+
+    it("returns 404 for missing bot", async () => {
+      fleetMock.status.mockRejectedValue(new MockBotNotFoundError(MISSING_BOT_ID));
+
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/metrics`, { headers: authHeader });
       expect(res.status).toBe(404);
     });
   });
