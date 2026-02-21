@@ -42,6 +42,7 @@ export interface Node {
 // NodeTransition
 // ---------------------------------------------------------------------------
 
+// node_transitions table is created by WOP-859 (src/db/schema/node-transitions.ts)
 /** Audit record for a single node status transition — mirrors `node_transitions` table. */
 export interface NodeTransition {
   id: string;
