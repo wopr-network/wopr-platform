@@ -98,6 +98,7 @@ async function testDiscord(credentials: Record<string, string>): Promise<TestRes
   // Call Discord GET /users/@me to validate bot token
   const res = await fetch("https://discord.com/api/v10/users/@me", {
     headers: { Authorization: `Bot ${token}` },
+    signal: AbortSignal.timeout(5000),
   });
 
   if (res.ok) {
@@ -124,6 +125,7 @@ async function testSlack(credentials: Record<string, string>): Promise<TestResul
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    signal: AbortSignal.timeout(5000),
   });
 
   if (!res.ok) {
@@ -145,7 +147,9 @@ async function testTelegram(credentials: Record<string, string>): Promise<TestRe
   }
 
   // Call Telegram getMe to validate bot token
-  const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+  const res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`, {
+    signal: AbortSignal.timeout(5000),
+  });
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 404) {
