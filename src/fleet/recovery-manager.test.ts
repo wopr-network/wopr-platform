@@ -230,7 +230,12 @@ describe("RecoveryManager", () => {
         command: "test",
         success: true,
       });
-      const nodeConnections = createMockNodeConnections(sendCommand);
+      const nodeConnections = createMockNodeConnections({
+        sendCommand,
+        findBestTarget: vi
+          .fn()
+          .mockReturnValue({ id: "target-node-1", host: "10.0.0.2", status: "active", capacityMb: 4096, usedMb: 512 }),
+      });
       const notifier = createMockNotifier();
       const manager = new RecoveryManager(db as BetterSQLite3Database<typeof schema>, nodeConnections, notifier);
 
@@ -283,7 +288,12 @@ describe("RecoveryManager", () => {
         command: "test",
         success: true,
       });
-      const nodeConnections = createMockNodeConnections(sendCommand);
+      const nodeConnections = createMockNodeConnections({
+        sendCommand,
+        findBestTarget: vi
+          .fn()
+          .mockReturnValue({ id: "target-node-1", host: "10.0.0.2", status: "active", capacityMb: 4096, usedMb: 512 }),
+      });
       const notifier = createMockNotifier();
       const manager = new RecoveryManager(db as BetterSQLite3Database<typeof schema>, nodeConnections, notifier);
 
@@ -322,7 +332,12 @@ describe("RecoveryManager", () => {
         command: "test",
         success: true,
       });
-      const nodeConnections = createMockNodeConnections(sendCommand);
+      const nodeConnections = createMockNodeConnections({
+        sendCommand,
+        findBestTarget: vi
+          .fn()
+          .mockReturnValue({ id: "target-node-1", host: "10.0.0.2", status: "active", capacityMb: 4096, usedMb: 512 }),
+      });
       const notifier = createMockNotifier();
       const manager = new RecoveryManager(db as BetterSQLite3Database<typeof schema>, nodeConnections, notifier);
 
