@@ -112,10 +112,11 @@ export function debitCredits(
       true,
     );
 
-    // Check if this debit crossed the zero threshold and fire callback
+    // Only fire on first zero-crossing (balance was positive before, now ≤ 0)
     if (deps.onBalanceExhausted) {
       const newBalance = deps.creditLedger.balance(tenantId);
-      if (newBalance <= 0) {
+      const balanceBefore = newBalance + chargeCents;
+      if (balanceBefore > 0 && newBalance <= 0) {
         deps.onBalanceExhausted(tenantId, newBalance);
       }
     }
