@@ -94,6 +94,7 @@ export class AlertChecker {
   private readonly intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly firedState: Map<string, boolean> = new Map();
+  private lastResults: Array<{ name: string; firing: boolean; message: string }> = [];
 
   constructor(alerts: AlertDefinition[], opts?: { intervalMs?: number }) {
     this.alerts = alerts;
@@ -143,6 +144,16 @@ export class AlertChecker {
       clearFleetStopAlert();
     }
 
+    this.lastResults = results;
     return results;
+  }
+
+  /**
+   * Return the last-computed alert statuses. Read-only — does not invoke
+   * alert check functions, mutate deduplication state, or clear event flags.
+   * Returns an empty array if checkAll() has never been called.
+   */
+  getStatus(): Array<{ name: string; firing: boolean; message: string }> {
+    return this.lastResults;
   }
 }

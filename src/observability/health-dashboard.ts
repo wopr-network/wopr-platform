@@ -38,8 +38,8 @@ export function createAdminHealthHandler(deps: AdminHealthDeps): Hono {
       // DB unavailable — return null
     }
 
-    // Get current alert statuses
-    const alertStatuses = deps.alertChecker.checkAll();
+    // Read last-computed alert statuses (read-only — no state mutation)
+    const alertStatuses = deps.alertChecker.getStatus();
 
     return c.json({
       timestamp: Date.now(),

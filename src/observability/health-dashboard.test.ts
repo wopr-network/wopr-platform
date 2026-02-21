@@ -18,6 +18,9 @@ describe("admin health dashboard", () => {
     const alerts = buildAlerts(metrics);
     const checker = new AlertChecker(alerts);
 
+    // Simulate the periodic timer having run at least once
+    checker.checkAll();
+
     const handler = createAdminHealthHandler({
       metrics,
       alertChecker: checker,
@@ -72,6 +75,9 @@ describe("admin health dashboard", () => {
     const alerts = buildAlerts(metrics);
     const checker = new AlertChecker(alerts);
 
+    // Simulate the periodic timer having run at least once
+    checker.checkAll();
+
     const handler = createAdminHealthHandler({
       metrics,
       alertChecker: checker,
@@ -83,5 +89,30 @@ describe("admin health dashboard", () => {
     const body = await res.json();
     const gatewayAlert = body.alerts.find((a: { name: string }) => a.name === "gateway-error-rate");
     expect(gatewayAlert.firing).toBe(true);
+  });
+
+  it("does not call checkAll — uses getStatus (read-only)", async () => {
+    const metrics = new MetricsCollector();
+    const alerts = buildAlerts(metrics);
+    const checker = new AlertChecker(alerts);
+
+    // Spy on checkAll and getStatus
+    const checkAllSpy = vi.spyOn(checker, "checkAll");
+    const getStatusSpy = vi.spyOn(checker, "getStatus");
+
+    const handler = createAdminHealthHandler({
+      metrics,
+      alertChecker: checker,
+      queryActiveBots: () => 3,
+      queryCreditsConsumed24h: () => 100,
+    });
+
+    // Make 3 rapid requests (simulating uptime checker polling)
+    await handler.request("/");
+    await handler.request("/");
+    await handler.request("/");
+
+    expect(checkAllSpy).not.toHaveBeenCalled();
+    expect(getStatusSpy).toHaveBeenCalledTimes(3);
   });
 });
