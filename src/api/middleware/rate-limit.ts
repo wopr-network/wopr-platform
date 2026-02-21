@@ -269,7 +269,7 @@ export const platformRateLimitRules: RateLimitRule[] = [
   { method: "POST", pathPrefix: "/api/validate-key", config: SECRETS_VALIDATION_LIMIT },
 
   // Channel credential validation — 10 req/min (WOP-719)
-  { method: "POST", pathPrefix: "/api/channels/", config: CHANNEL_VALIDATE_LIMIT },
+  { method: "POST", pathPrefix: "/api/channels", config: CHANNEL_VALIDATE_LIMIT },
 
   // Webhook: 30 req/min (WOP-477)
   { method: "POST", pathPrefix: "/api/billing/webhook", config: WEBHOOK_LIMIT },
