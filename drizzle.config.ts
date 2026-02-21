@@ -11,6 +11,7 @@ export default defineConfig({
     "./src/db/schema/email-notifications.ts",
     "./src/db/schema/meter-events.ts",
     "./src/db/schema/node-registration-tokens.ts",
+    "./src/db/schema/node-transitions.ts",
     "./src/db/schema/nodes.ts",
     "./src/db/schema/notification-queue.ts",
     "./src/db/schema/provider-credentials.ts",
