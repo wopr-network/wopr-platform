@@ -47,12 +47,15 @@ export function adminHealthHandler(deps: HealthDashboardDeps) {
     }
 
     // Alert statuses
-    const alertStatuses = deps.alerts.map((alert) => ({
-      name: alert.name,
-      description: alert.description,
-      status: alert.check() ?? "ok",
-      triggered: alert.check() !== null,
-    }));
+    const alertStatuses = deps.alerts.map((alert) => {
+      const result = alert.check();
+      return {
+        name: alert.name,
+        description: alert.description,
+        status: result ?? "ok",
+        triggered: result !== null,
+      };
+    });
 
     const response = {
       timestamp: Date.now(),
