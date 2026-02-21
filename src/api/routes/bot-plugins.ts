@@ -4,11 +4,31 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { botInstances } from "../../db/schema/index.js";
+import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
+import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
 import { getDb, getNodeConnections } from "../../fleet/services.js";
+import type { MeterEvent } from "../../monetization/metering/types.js";
+import type { DecryptedCredential } from "../../security/credential-vault/store.js";
+import { fleet } from "./fleet.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const store = new ProfileStore(DATA_DIR);
+
+// Dependencies injected for hosted credential resolution.
+// In production these are set by the app bootstrap; tests mock them.
+let credentialVault: {
+  getActiveForProvider(provider: string): Array<Pick<DecryptedCredential, "plaintextKey">>;
+} | null = null;
+let meterEmitter: { emit(event: MeterEvent): void } | null = null;
+
+export function setBotPluginDeps(deps: {
+  credentialVault: typeof credentialVault;
+  meterEmitter: typeof meterEmitter;
+}): void {
+  credentialVault = deps.credentialVault;
+  meterEmitter = deps.meterEmitter;
+}
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
@@ -126,25 +146,88 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
   // Add pluginId to WOPR_PLUGINS list
   const updatedPlugins = [...existingPlugins, pluginId].join(",");
 
+  // --- Resolve hosted provider choices BEFORE writing to profile ---
+  const hostedEnvVars: Record<string, string> = {};
+  const hostedKeyNames: string[] = [];
+
+  for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+    if (choice !== "hosted") continue; // byok = no-op
+
+    const capEntry = lookupCapabilityEnv(capability);
+    if (!capEntry) {
+      return c.json({ error: `Unknown capability: ${capability}` }, 400);
+    }
+
+    if (!credentialVault) {
+      return c.json({ error: "Credential vault not configured" }, 503);
+    }
+
+    const creds = credentialVault.getActiveForProvider(capEntry.vaultProvider);
+    if (creds.length === 0) {
+      return c.json({ error: `No platform credential available for hosted capability: ${capability}` }, 503);
+    }
+
+    hostedEnvVars[capEntry.envKey] = creds[0].plaintextKey;
+    hostedKeyNames.push(capEntry.envKey);
+  }
+
+  // Re-read WOPR_HOSTED_KEYS from freshProfile immediately before write to avoid clobbering
+  // hosted key tracking from concurrent plugin installs (same pattern used for WOPR_PLUGINS above).
+  const existingHostedKeys = (freshProfile.env.WOPR_HOSTED_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allHostedKeys = [...new Set([...existingHostedKeys, ...hostedKeyNames])];
+
   // Merge plugin config into env as WOPR_PLUGIN_<UPPER_SNAKE>_CONFIG=<json>
+  // Store both config and providerChoices so DELETE can selectively clean up hosted keys.
   const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
-  const updatedEnv = {
+  const updatedEnv: Record<string, string> = {
     ...freshProfile.env,
     WOPR_PLUGINS: updatedPlugins,
-    [configEnvKey]: JSON.stringify(parsed.data.config),
+    [configEnvKey]: JSON.stringify({ config: parsed.data.config, providerChoices: parsed.data.providerChoices }),
+    ...hostedEnvVars,
   };
 
-  const updated = { ...freshProfile, env: updatedEnv };
-  await store.save(updated);
+  // Only set WOPR_HOSTED_KEYS if there are hosted keys
+  if (allHostedKeys.length > 0) {
+    updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
+  }
 
-  // Dispatch env update to the correct node
-  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
+  // Apply env change to profile and running container
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    // fleet.update() rolls back the profile internally on container failure,
+    // so the profile is reverted to freshProfile's state.
+    logger.error(`Failed to apply plugin install to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
+
+  // Emit activation meter events for billing audit trail
+  if (meterEmitter && hostedKeyNames.length > 0) {
+    for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+      if (choice !== "hosted") continue;
+      const capEntry = lookupCapabilityEnv(capability);
+      if (!capEntry) continue;
+      meterEmitter.emit({
+        tenant: profile.tenantId,
+        cost: 0,
+        charge: 0,
+        capability: "hosted-activation",
+        provider: capEntry.vaultProvider,
+        timestamp: Date.now(),
+      });
+    }
+  }
 
   logger.info(`Installed plugin ${pluginId} on bot ${botId}`, {
     botId,
     pluginId,
     tenantId: profile.tenantId,
-    dispatched: dispatch.dispatched,
   });
 
   return c.json(
@@ -153,8 +236,6 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
       botId,
       pluginId,
       installedPlugins: [...existingPlugins, pluginId],
-      dispatched: dispatch.dispatched,
-      ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
     },
     200,
   );
@@ -272,5 +353,133 @@ botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => 
     enabled: parsed.data.enabled,
     dispatched: dispatch.dispatched,
     ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
+  });
+});
+
+/** DELETE /fleet/bots/:botId/plugins/:pluginId — Uninstall a plugin from a bot */
+botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
+  const botId = c.req.param("botId");
+  const pluginId = c.req.param("pluginId");
+
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
+    return c.json({ error: "Invalid plugin ID format" }, 400);
+  }
+
+  const profile = await store.get(botId);
+  if (!profile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  const ownershipError = validateTenantOwnership(c, profile, profile.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  const installedPlugins = (profile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!installedPlugins.includes(pluginId)) {
+    return c.json({ error: "Plugin not installed", pluginId }, 404);
+  }
+
+  // Remove plugin from WOPR_PLUGINS list
+  const remainingPlugins = installedPlugins.filter((id) => id !== pluginId);
+
+  // Read the plugin config env var BEFORE removing it to extract providerChoices,
+  // which tells us which hosted keys this specific plugin installed.
+  const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
+  const pluginConfigRaw = profile.env[configEnvKey];
+  const deletedPluginHostedKeyNames: string[] = [];
+  if (pluginConfigRaw) {
+    try {
+      const pluginConfigData = JSON.parse(pluginConfigRaw) as { providerChoices?: Record<string, string> };
+      if (pluginConfigData.providerChoices) {
+        for (const [capability, choice] of Object.entries(pluginConfigData.providerChoices)) {
+          if (choice === "hosted") {
+            const capEntry = lookupCapabilityEnv(capability);
+            if (capEntry) {
+              deletedPluginHostedKeyNames.push(capEntry.envKey);
+            }
+          }
+        }
+      }
+    } catch {
+      // Malformed config — can't determine which keys to remove; leave them
+    }
+  }
+
+  const { [configEnvKey]: _removedConfig, ...envWithoutConfig } = profile.env;
+
+  // Determine which hosted keys should be removed: only those contributed by the deleted plugin.
+  // We must not remove keys that other remaining plugins may still need.
+  // Strategy: remove keys contributed by the deleted plugin from the env AND from WOPR_HOSTED_KEYS.
+  const currentHostedKeys = (envWithoutConfig.WOPR_HOSTED_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const deletedKeySet = new Set(deletedPluginHostedKeyNames);
+  const remainingHostedKeys = currentHostedKeys.filter((k) => !deletedKeySet.has(k));
+
+  const updatedEnv: Record<string, string> = { ...envWithoutConfig };
+
+  // Remove the specific env vars that belonged to the deleted plugin
+  for (const key of deletedPluginHostedKeyNames) {
+    delete updatedEnv[key];
+  }
+
+  // Update or remove WOPR_HOSTED_KEYS tracking list
+  if (remainingHostedKeys.length > 0) {
+    updatedEnv.WOPR_HOSTED_KEYS = remainingHostedKeys.join(",");
+  } else {
+    delete updatedEnv.WOPR_HOSTED_KEYS;
+  }
+
+  // Update or remove WOPR_PLUGINS
+  if (remainingPlugins.length === 0) {
+    delete updatedEnv.WOPR_PLUGINS;
+  } else {
+    updatedEnv.WOPR_PLUGINS = remainingPlugins.join(",");
+  }
+
+  // Clean up WOPR_PLUGINS_DISABLED for this plugin
+  const disabledPlugins = (updatedEnv.WOPR_PLUGINS_DISABLED || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((id) => id !== pluginId);
+
+  if (disabledPlugins.length > 0) {
+    updatedEnv.WOPR_PLUGINS_DISABLED = disabledPlugins.join(",");
+  } else {
+    delete updatedEnv.WOPR_PLUGINS_DISABLED;
+  }
+
+  let applied = false;
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+    applied = true;
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    logger.error(`Failed to apply plugin uninstall to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
+
+  logger.info(`Uninstalled plugin ${pluginId} from bot ${botId}`, {
+    botId,
+    pluginId,
+    tenantId: profile.tenantId,
+  });
+
+  return c.json({
+    success: true,
+    botId,
+    pluginId,
+    installedPlugins: remainingPlugins,
+    applied,
   });
 });

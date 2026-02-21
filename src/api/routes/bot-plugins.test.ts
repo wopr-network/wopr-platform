@@ -31,6 +31,18 @@ const storeMock = {
   save: vi.fn(),
 };
 
+const fleetMock = {
+  update: vi.fn(),
+};
+
+const vaultMock = {
+  getActiveForProvider: vi.fn(),
+};
+
+const meterMock = {
+  emit: vi.fn(),
+};
+
 vi.mock("../../fleet/profile-store.js", () => {
   return {
     ProfileStore: class {
@@ -39,6 +51,10 @@ vi.mock("../../fleet/profile-store.js", () => {
     },
   };
 });
+
+vi.mock("./fleet.js", () => ({
+  fleet: fleetMock,
+}));
 
 // Mock fleet services (DB + NodeConnectionManager)
 const mockDbChain = {
@@ -62,7 +78,13 @@ vi.mock("../../fleet/services.js", () => ({
 }));
 
 // Import AFTER mocks are set up
-const { botPluginRoutes } = await import("./bot-plugins.js");
+const { botPluginRoutes, setBotPluginDeps } = await import("./bot-plugins.js");
+
+// Wire in mock deps
+setBotPluginDeps({
+  credentialVault: vaultMock,
+  meterEmitter: meterMock,
+});
 
 const app = new Hono();
 app.route("/fleet", botPluginRoutes);
@@ -75,6 +97,9 @@ describe("bot-plugin routes", () => {
       return Promise.resolve(null);
     });
     storeMock.save.mockResolvedValue(undefined);
+    fleetMock.update.mockResolvedValue(undefined);
+    vaultMock.getActiveForProvider.mockReturnValue([]);
+    meterMock.emit.mockReturnValue(undefined);
     // Default: bot is deployed to TEST_NODE_ID
     mockDbChain.get.mockReturnValue({
       id: TEST_BOT_ID,
@@ -91,7 +116,7 @@ describe("bot-plugin routes", () => {
   });
 
   describe("POST /fleet/bots/:botId/plugins/:pluginId", () => {
-    it("successfully installs a plugin and returns 200 with dispatched: true", async () => {
+    it("successfully installs a plugin and returns 200", async () => {
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
@@ -104,8 +129,8 @@ describe("bot-plugin routes", () => {
       expect(body.botId).toBe(TEST_BOT_ID);
       expect(body.pluginId).toBe("wopr-plugin-discord");
       expect(body.installedPlugins).toContain("wopr-plugin-discord");
-      expect(body.dispatched).toBe(true);
-      expect(storeMock.save).toHaveBeenCalledWith(
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
         expect.objectContaining({
           env: expect.objectContaining({ WOPR_PLUGINS: "wopr-plugin-discord" }),
         }),
@@ -185,21 +210,21 @@ describe("bot-plugin routes", () => {
 
     it("stores plugin config in env under WOPR_PLUGIN_<ID>_CONFIG key", async () => {
       const config = { token: "abc123", prefix: "!" };
+      const providerChoices = {};
+      fleetMock.update.mockResolvedValue({});
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config, providerChoices: {} }),
+        body: JSON.stringify({ config, providerChoices }),
       });
 
-      expect(storeMock.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          env: expect.objectContaining({
-            WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify(config),
-            WOPR_PLUGINS: "my-plugin",
-          }),
+      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
+        env: expect.objectContaining({
+          WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify({ config, providerChoices }),
+          WOPR_PLUGINS: "my-plugin",
         }),
-      );
+      });
     });
 
     it("appends to existing WOPR_PLUGINS list", async () => {
@@ -246,8 +271,9 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(200);
       // store.get must have been called twice (initial + re-fetch)
       expect(storeMock.get).toHaveBeenCalledTimes(2);
-      // store.save must be called with BOTH plugins
-      expect(storeMock.save).toHaveBeenCalledWith(
+      // fleet.update must be called with BOTH plugins
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
         expect.objectContaining({
           env: expect.objectContaining({
             WOPR_PLUGINS: "plugin-a,plugin-b",
@@ -278,7 +304,7 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(409);
-      expect(storeMock.save).not.toHaveBeenCalled();
+      expect(fleetMock.update).not.toHaveBeenCalled();
     });
 
     it("returns 404 if profile was deleted between reads", async () => {
@@ -300,65 +326,259 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(404);
-      expect(storeMock.save).not.toHaveBeenCalled();
+      expect(fleetMock.update).not.toHaveBeenCalled();
     });
 
-    it("dispatches bot.update to the correct node after install", async () => {
-      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+    it("injects hosted credential env var when providerChoices has hosted entry", async () => {
+      vaultMock.getActiveForProvider.mockImplementation((provider: string) => {
+        if (provider === "elevenlabs") {
+          return [
+            {
+              id: "cred-1",
+              provider: "elevenlabs",
+              keyName: "prod",
+              plaintextKey: "sk-eleven-test",
+              authType: "header",
+              authHeader: null,
+            },
+          ];
+        }
+        return [];
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "hosted" },
+        }),
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.dispatched).toBe(true);
-      expect(mockNodeConnections.sendCommand).toHaveBeenCalledWith(
-        TEST_NODE_ID,
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
         expect.objectContaining({
-          type: "bot.update",
-          payload: expect.objectContaining({
-            name: `tenant_${TEST_TENANT_ID}`,
+          env: expect.objectContaining({
+            ELEVENLABS_API_KEY: "sk-eleven-test",
+            WOPR_HOSTED_KEYS: "ELEVENLABS_API_KEY",
           }),
         }),
       );
     });
 
-    it("returns success with dispatched:false when node is offline", async () => {
-      mockNodeConnections.sendCommand.mockRejectedValue(new Error("Node node-1 is not connected"));
+    it("does not inject env var when providerChoices has byok entry", async () => {
+      fleetMock.update.mockResolvedValue({});
 
-      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "byok" },
+        }),
       });
 
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.success).toBe(true);
-      expect(body.dispatched).toBe(false);
-      expect(body.dispatchError).toMatch(/not connected/);
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
+        expect.objectContaining({
+          env: expect.not.objectContaining({
+            ELEVENLABS_API_KEY: expect.anything(),
+          }),
+        }),
+      );
     });
 
-    it("skips dispatch when bot has no nodeId (not yet deployed)", async () => {
-      mockDbChain.get.mockReturnValue({
-        id: TEST_BOT_ID,
-        tenantId: TEST_TENANT_ID,
-        name: "test-bot",
-        nodeId: null,
-      });
-
-      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+    it("returns 400 for unknown capability in providerChoices", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { "unknown-capability": "hosted" },
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/Unknown capability/);
+    });
+
+    it("returns 503 when no platform credential exists for hosted capability", async () => {
+      vaultMock.getActiveForProvider.mockReturnValue([]);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "hosted" },
+        }),
+      });
+
+      expect(res.status).toBe(503);
+      const body = await res.json();
+      expect(body.error).toMatch(/No platform credential/);
+    });
+
+    it("emits a meter event for each hosted activation", async () => {
+      vaultMock.getActiveForProvider.mockImplementation((provider: string) => {
+        if (provider === "elevenlabs") {
+          return [
+            {
+              id: "cred-1",
+              provider: "elevenlabs",
+              keyName: "prod",
+              plaintextKey: "sk-test",
+              authType: "header",
+              authHeader: null,
+            },
+          ];
+        }
+        return [];
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          config: {},
+          providerChoices: { tts: "hosted" },
+        }),
+      });
+
+      expect(meterMock.emit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenant: "user-123",
+          capability: "hosted-activation",
+          provider: "elevenlabs",
+          cost: 0,
+          charge: 0,
+        }),
+      );
+    });
+  });
+
+  describe("DELETE /fleet/bots/:botId/plugins/:pluginId", () => {
+    it("removes a plugin and its config env var", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "plugin-a,plugin-b",
+          WOPR_PLUGIN_PLUGIN_A_CONFIG: '{"foo":"bar"}',
+        },
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "DELETE",
+        headers: authHeader,
       });
 
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
-      expect(body.dispatched).toBe(false);
-      expect(mockNodeConnections.sendCommand).not.toHaveBeenCalled();
+      expect(body.pluginId).toBe("plugin-a");
+
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGINS: "plugin-b",
+          }),
+        }),
+      );
+      // Config key should be removed
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      expect(savedEnv).not.toHaveProperty("WOPR_PLUGIN_PLUGIN_A_CONFIG");
+    });
+
+    it("removes hosted env keys when last plugin is uninstalled", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "my-tts-plugin",
+          WOPR_PLUGIN_MY_TTS_PLUGIN_CONFIG: JSON.stringify({ config: {}, providerChoices: { tts: "hosted" } }),
+          ELEVENLABS_API_KEY: "sk-test",
+          WOPR_HOSTED_KEYS: "ELEVENLABS_API_KEY",
+        },
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      expect(savedEnv).not.toHaveProperty("ELEVENLABS_API_KEY");
+      expect(savedEnv).not.toHaveProperty("WOPR_HOSTED_KEYS");
+    });
+
+    it("removes only the deleted plugin's hosted keys when other plugins remain", async () => {
+      // plugin-tts (tts: hosted → ELEVENLABS_API_KEY) and plugin-llm (llm: hosted → OPENROUTER_API_KEY) are both installed.
+      // Deleting plugin-tts should remove ELEVENLABS_API_KEY but keep OPENROUTER_API_KEY.
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "plugin-tts,plugin-llm",
+          WOPR_PLUGIN_PLUGIN_TTS_CONFIG: JSON.stringify({ config: {}, providerChoices: { tts: "hosted" } }),
+          WOPR_PLUGIN_PLUGIN_LLM_CONFIG: JSON.stringify({ config: {}, providerChoices: { llm: "hosted" } }),
+          ELEVENLABS_API_KEY: "sk-eleven-test",
+          OPENROUTER_API_KEY: "sk-openrouter-test",
+          WOPR_HOSTED_KEYS: "ELEVENLABS_API_KEY,OPENROUTER_API_KEY",
+        },
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-tts`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      // TTS plugin's key should be gone
+      expect(savedEnv).not.toHaveProperty("ELEVENLABS_API_KEY");
+      // LLM plugin's key must remain
+      expect(savedEnv).toHaveProperty("OPENROUTER_API_KEY", "sk-openrouter-test");
+      // WOPR_HOSTED_KEYS should reflect only the remaining key
+      expect(savedEnv.WOPR_HOSTED_KEYS).toBe("OPENROUTER_API_KEY");
+      // plugin-llm must still be in WOPR_PLUGINS
+      expect(savedEnv.WOPR_PLUGINS).toBe("plugin-llm");
+    });
+
+    it("returns 404 when plugin is not installed", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/not-installed`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for non-existent bot", async () => {
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/plugins/some-plugin`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 401 without auth token", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/some-plugin`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(401);
     });
   });
 
