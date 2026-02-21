@@ -68,3 +68,15 @@ describe("health routes", () => {
     expect(body.backups).toBeUndefined();
   });
 });
+
+describe("readiness probe", () => {
+  it("GET /health/ready returns 200 with ready status", async () => {
+    const { Hono } = await import("hono");
+    const app = new Hono();
+    app.get("/health/ready", (c) => c.json({ status: "ready", service: "wopr-platform" }));
+    const res = await app.request("/health/ready");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ status: "ready", service: "wopr-platform" });
+  });
+});

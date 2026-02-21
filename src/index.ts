@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import Database from "better-sqlite3";
+import { eq, gte } from "drizzle-orm";
 import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
 import { initRateSchema } from "./admin/rates/schema.js";
@@ -9,6 +10,7 @@ import { buildTokenMetadataMap } from "./auth/index.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { applyPlatformPragmas, createDb } from "./db/index.js";
+import * as schema from "./db/schema/index.js";
 import { ProfileStore } from "./fleet/profile-store.js";
 import { getHeartbeatWatchdog, getNodeConnections, getRegistrationTokenStore } from "./fleet/services.js";
 import { mountGateway } from "./gateway/index.js";
@@ -17,6 +19,14 @@ import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
+import {
+  AlertChecker,
+  buildAlerts,
+  captureError,
+  createAdminHealthHandler,
+  initSentry,
+  MetricsCollector,
+} from "./observability/index.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { setNodesRouterDeps } from "./trpc/index.js";
 
@@ -37,6 +47,7 @@ export const unhandledRejectionHandler = (reason: unknown, promise: Promise<unkn
     stack: reason instanceof Error ? reason.stack : undefined,
     promise: String(promise),
   });
+  captureError(reason instanceof Error ? reason : new Error(String(reason)), { source: "unhandledRejection" });
   // Don't exit — log and continue serving other tenants
 };
 
@@ -47,6 +58,7 @@ export const uncaughtExceptionHandler = (err: Error, origin: string) => {
     stack: err.stack,
     origin,
   });
+  captureError(err, { source: "uncaughtException", origin });
   // Uncaught exceptions leave the process in an undefined state.
   // Exit immediately after logging (Winston Console transport is synchronous).
   process.exit(1);
@@ -54,6 +66,9 @@ export const uncaughtExceptionHandler = (err: Error, origin: string) => {
 
 process.on("unhandledRejection", unhandledRejectionHandler);
 process.on("uncaughtException", uncaughtExceptionHandler);
+
+// Initialize Sentry error tracking (no-op when SENTRY_DSN absent)
+initSentry(process.env.SENTRY_DSN);
 
 // Only start the server if not imported by tests
 if (process.env.NODE_ENV !== "test") {
@@ -67,6 +82,12 @@ if (process.env.NODE_ENV !== "test") {
     const billingDb = new Database(BILLING_DB_PATH);
     applyPlatformPragmas(billingDb);
     const billingDrizzle = createDb(billingDb);
+
+    // ── Observability ──────────────────────────────────────────────────────────
+    const metrics = new MetricsCollector();
+    const alerts = buildAlerts(metrics);
+    const alertChecker = new AlertChecker(alerts);
+    alertChecker.start();
 
     const ratesDb = new Database(RATES_DB_PATH);
     applyPlatformPragmas(ratesDb);
@@ -96,6 +117,7 @@ if (process.env.NODE_ENV !== "test") {
       budgetChecker,
       creditLedger,
       billingDb: billingDrizzle,
+      metrics,
       providers: {
         openrouter: process.env.OPENROUTER_API_KEY ? { apiKey: process.env.OPENROUTER_API_KEY } : undefined,
         deepgram: process.env.DEEPGRAM_API_KEY ? { apiKey: process.env.DEEPGRAM_API_KEY } : undefined,
@@ -134,6 +156,33 @@ if (process.env.NODE_ENV !== "test") {
     });
 
     logger.info("Gateway mounted at /v1");
+
+    // Mount readiness probe
+    app.get("/health/ready", (c) => c.json({ status: "ready", service: "wopr-platform" }));
+
+    // Mount admin health dashboard
+    const adminHealth = createAdminHealthHandler({
+      metrics,
+      alertChecker,
+      queryActiveBots: () => {
+        const rows = billingDrizzle
+          .select({ id: schema.botInstances.id })
+          .from(schema.botInstances)
+          .where(eq(schema.botInstances.billingState, "active"))
+          .all();
+        return rows.length;
+      },
+      queryCreditsConsumed24h: () => {
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        const rows = billingDrizzle
+          .select({ charge: schema.meterEvents.charge })
+          .from(schema.meterEvents)
+          .where(gte(schema.meterEvents.timestamp, cutoff))
+          .all();
+        return Math.round(rows.reduce((sum, r) => sum + r.charge, 0) * 100);
+      },
+    });
+    app.route("/admin/health", adminHealth);
   }
 
   // Hydrate proxy route table from persisted profiles so tenant subdomains

@@ -69,6 +69,7 @@ export interface ProxyDeps {
   fetchFn: FetchFn;
   arbitrageRouter?: import("../monetization/arbitrage/router.js").ArbitrageRouter;
   rateLookupFn?: SellRateLookupFn;
+  metrics?: import("../observability/metrics.js").MetricsCollector;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -83,6 +84,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     fetchFn: config.fetchFn ?? fetch,
     arbitrageRouter: config.arbitrageRouter,
     rateLookupFn: config.rateLookupFn,
+    metrics: config.metrics,
   };
 }
 
@@ -165,6 +167,7 @@ export function chatCompletions(deps: ProxyDeps) {
     }
 
     try {
+      deps.metrics?.recordGatewayRequest("chat-completions");
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
@@ -245,6 +248,7 @@ export function chatCompletions(deps: ProxyDeps) {
         headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("chat-completions");
       logger.error("Gateway proxy error: chat/completions", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "openrouter");
       return c.json(mapped.body, mapped.status as 502);
@@ -283,6 +287,7 @@ export function textCompletions(deps: ProxyDeps) {
     }
 
     try {
+      deps.metrics?.recordGatewayRequest("text-completions");
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
@@ -343,6 +348,7 @@ export function textCompletions(deps: ProxyDeps) {
         headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("text-completions");
       logger.error("Gateway proxy error: completions", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "openrouter");
       return c.json(mapped.body, mapped.status as 502);
@@ -381,6 +387,7 @@ export function embeddings(deps: ProxyDeps) {
     }
 
     try {
+      deps.metrics?.recordGatewayRequest("embeddings");
       const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
@@ -429,6 +436,7 @@ export function embeddings(deps: ProxyDeps) {
         headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("embeddings");
       logger.error("Gateway proxy error: embeddings", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "openrouter");
       return c.json(mapped.body, mapped.status as 502);
@@ -467,6 +475,7 @@ export function audioTranscriptions(deps: ProxyDeps) {
     }
 
     try {
+      deps.metrics?.recordGatewayRequest("transcription");
       const audioBody = await c.req.arrayBuffer();
       const contentType = c.req.header("Content-Type") ?? "application/octet-stream";
       const model = c.req.query("model") ?? "nova-2";
@@ -524,6 +533,7 @@ export function audioTranscriptions(deps: ProxyDeps) {
         headers: { "Content-Type": "application/json" },
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("transcription");
       logger.error("Gateway proxy error: audio/transcriptions", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "deepgram");
       return c.json(mapped.body, mapped.status as 502);
@@ -568,6 +578,8 @@ export function audioSpeech(deps: ProxyDeps) {
         400,
       );
     }
+
+    deps.metrics?.recordGatewayRequest("tts");
 
     // WOP-463: If arbitrage router is available, delegate routing to it (non-streaming only)
     if (deps.arbitrageRouter) {
@@ -619,6 +631,7 @@ export function audioSpeech(deps: ProxyDeps) {
         });
       } catch (error) {
         if (error instanceof NoProviderAvailableError) {
+          deps.metrics?.recordGatewayError("tts");
           return c.json(
             {
               error: {
@@ -630,6 +643,7 @@ export function audioSpeech(deps: ProxyDeps) {
             503,
           );
         }
+        deps.metrics?.recordGatewayError("tts");
         logger.error("Gateway proxy error: audio/speech (arbitrage)", { tenant: tenant.id, error });
         const mapped = mapProviderError(error, "arbitrage");
         return c.json(mapped.body, mapped.status as 502);
@@ -703,6 +717,7 @@ export function audioSpeech(deps: ProxyDeps) {
         headers: { "Content-Type": contentType },
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("tts");
       logger.error("Gateway proxy error: audio/speech", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "elevenlabs");
       return c.json(mapped.body, mapped.status as 502);
@@ -741,6 +756,7 @@ export function imageGenerations(deps: ProxyDeps) {
     }
 
     try {
+      deps.metrics?.recordGatewayRequest("image-generation");
       const body = await c.req.json<{ prompt?: string; n?: number; size?: string }>();
       const baseUrl = providerCfg.baseUrl ?? "https://api.replicate.com";
 
@@ -802,6 +818,7 @@ export function imageGenerations(deps: ProxyDeps) {
         data: images.map((url) => ({ url })),
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("image-generation");
       logger.error("Gateway proxy error: images/generations", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "replicate");
       return c.json(mapped.body, mapped.status as 502);
@@ -840,6 +857,7 @@ export function videoGenerations(deps: ProxyDeps) {
     }
 
     try {
+      deps.metrics?.recordGatewayRequest("video-generation");
       const body = await c.req.json<{ prompt?: string; duration?: number }>();
       const baseUrl = providerCfg.baseUrl ?? "https://api.replicate.com";
 
@@ -886,6 +904,7 @@ export function videoGenerations(deps: ProxyDeps) {
         data: [{ url: prediction.output ?? "" }],
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("video-generation");
       logger.error("Gateway proxy error: video/generations", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "replicate");
       return c.json(mapped.body, mapped.status as 502);
@@ -943,6 +962,7 @@ export function phoneInbound(deps: ProxyDeps) {
     const providerName = deps.providers.twilio ? "twilio" : "telnyx";
 
     try {
+      deps.metrics?.recordGatewayRequest("phone-inbound");
       // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
       // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
       const rawBody = c.get("webhookBody") ?? (await c.req.json());
@@ -985,6 +1005,7 @@ export function phoneInbound(deps: ProxyDeps) {
 
       return c.json({ status: "metered", duration_minutes: durationMinutes });
     } catch (error) {
+      deps.metrics?.recordGatewayError("phone-inbound");
       logger.error("Gateway proxy error: phone/inbound", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, providerName);
       return c.json(mapped.body, mapped.status as 502);
@@ -1031,6 +1052,7 @@ export function smsOutbound(deps: ProxyDeps) {
     }
 
     try {
+      deps.metrics?.recordGatewayRequest("sms-outbound");
       const body = await c.req.json<{
         to: string;
         body: string;
@@ -1121,6 +1143,7 @@ export function smsOutbound(deps: ProxyDeps) {
         capability,
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("sms-outbound");
       logger.error("Gateway proxy error: messages/sms", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "twilio");
       return c.json(mapped.body, mapped.status as 502);
@@ -1141,6 +1164,7 @@ export function smsInbound(deps: ProxyDeps) {
     const tenant = c.get("gatewayTenant");
 
     try {
+      deps.metrics?.recordGatewayRequest("sms-inbound");
       // Prefer body parsed by webhook-auth middleware (avoids re-reading the consumed stream).
       // Fall back to c.req.json() only when called without the auth middleware (e.g., tests).
       const rawBody = c.get("webhookBody") ?? (await c.req.json());
@@ -1187,6 +1211,7 @@ export function smsInbound(deps: ProxyDeps) {
         message_sid: body.message_sid ?? null,
       });
     } catch (error) {
+      deps.metrics?.recordGatewayError("sms-inbound");
       logger.error("Gateway proxy error: messages/sms/inbound", { tenant: tenant.id, error });
       const mapped = mapProviderError(error, "twilio");
       return c.json(mapped.body, mapped.status as 502);

@@ -134,6 +134,8 @@ export interface GatewayConfig {
   billingDb?: import("../db/index.js").DrizzleDb;
   /** Callback when circuit breaker trips (for notifications/logging). */
   onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
+  /** Optional MetricsCollector for observability (WOP-825) */
+  metrics?: import("../observability/metrics.js").MetricsCollector;
 }
 
 /** Standard gateway error response. */
