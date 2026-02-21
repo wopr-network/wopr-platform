@@ -326,6 +326,9 @@ export class NodeAgent {
       case "bot.restart":
         return this.dockerManager.restartBot(String(p.name));
 
+      case "bot.update":
+        return this.dockerManager.updateBotEnv(String(p.name), NodeAgent.parseJsonOrObject(p.env) ?? {});
+
       case "bot.export":
         return this.dockerManager.exportBot(String(p.name), this.config.backupDir);
 

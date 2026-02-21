@@ -66,6 +66,30 @@ export class DockerManager {
     await container.restart();
   }
 
+  /**
+   * Update a bot's environment variables by recreating its container.
+   * Docker does not support modifying env on a running container,
+   * so we: inspect -> stop -> remove -> create+start with new env.
+   */
+  async updateBotEnv(name: string, env: Record<string, string>): Promise<string> {
+    const container = this.docker.getContainer(name);
+    const info = await container.inspect();
+
+    const image = info.Config.Image;
+    const restartPolicy = info.HostConfig?.RestartPolicy?.Name ?? "unless-stopped";
+
+    // Stop and remove old container
+    try {
+      await container.stop();
+    } catch {
+      // may already be stopped
+    }
+    await container.remove();
+
+    // Recreate with new env
+    return this.startBot({ name, image, env, restart: restartPolicy });
+  }
+
   /** Remove a tenant container by name. */
   async removeBot(name: string): Promise<void> {
     const container = this.docker.getContainer(name);
