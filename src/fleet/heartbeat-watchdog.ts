@@ -1,9 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import type * as schema from "../db/schema/index.js";
-import { nodes } from "../db/schema/index.js";
 import type { RecoveryManager } from "./recovery-manager.js";
+import type { INodeRepository } from "./repository-types.js";
 
 /** Heartbeat watchdog configuration */
 export interface WatchdogConfig {
@@ -23,7 +20,7 @@ export interface WatchdogConfig {
  * - T+300s: 5 minutes → mark node as "offline" and trigger auto-recovery
  */
 export class HeartbeatWatchdog {
-  private readonly db: BetterSQLite3Database<typeof schema>;
+  private readonly nodeRepo: INodeRepository;
   private readonly recoveryManager: RecoveryManager;
   private readonly onNodeStatusChange: (nodeId: string, newStatus: string) => void;
 
@@ -34,12 +31,12 @@ export class HeartbeatWatchdog {
   private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    db: BetterSQLite3Database<typeof schema>,
+    nodeRepo: INodeRepository,
     recoveryManager: RecoveryManager,
     onNodeStatusChange: (nodeId: string, newStatus: string) => void,
     config: WatchdogConfig = {},
   ) {
-    this.db = db;
+    this.nodeRepo = nodeRepo;
     this.recoveryManager = recoveryManager;
     this.onNodeStatusChange = onNodeStatusChange;
 
@@ -84,11 +81,7 @@ export class HeartbeatWatchdog {
    */
   private check(): void {
     const now = Math.floor(Date.now() / 1000);
-    const activeNodes = this.db
-      .select()
-      .from(nodes)
-      .where(inArray(nodes.status, ["active", "unhealthy"]))
-      .all();
+    const activeNodes = this.nodeRepo.list(["active", "unhealthy"]);
 
     for (const node of activeNodes) {
       // Skip nodes that have never sent a heartbeat (just registered)
@@ -96,14 +89,15 @@ export class HeartbeatWatchdog {
       const elapsed = now - node.lastHeartbeatAt;
 
       // Node has been offline for 5 minutes → trigger recovery
-      if (elapsed >= this.OFFLINE_THRESHOLD_S && node.status !== "offline") {
+      // Only transition unhealthy -> offline (valid state machine transition)
+      if (elapsed >= this.OFFLINE_THRESHOLD_S && node.status === "unhealthy") {
         logger.error(`Node ${node.id} offline (no heartbeat for ${elapsed}s)`, {
           nodeId: node.id,
           lastHeartbeat: node.lastHeartbeatAt,
           elapsed,
         });
 
-        this.db.update(nodes).set({ status: "offline", updatedAt: now }).where(eq(nodes.id, node.id)).run();
+        this.nodeRepo.transition(node.id, "offline", "heartbeat_timeout", "heartbeat_watchdog");
 
         this.onNodeStatusChange(node.id, "offline");
 
@@ -113,6 +107,7 @@ export class HeartbeatWatchdog {
         });
       }
       // Node has missed 3 heartbeats → mark unhealthy
+      // Only transition active -> unhealthy (valid state machine transition)
       else if (elapsed >= this.UNHEALTHY_THRESHOLD_S && node.status === "active") {
         logger.warn(`Node ${node.id} unhealthy (no heartbeat for ${elapsed}s)`, {
           nodeId: node.id,
@@ -120,7 +115,7 @@ export class HeartbeatWatchdog {
           elapsed,
         });
 
-        this.db.update(nodes).set({ status: "unhealthy", updatedAt: now }).where(eq(nodes.id, node.id)).run();
+        this.nodeRepo.transition(node.id, "unhealthy", "heartbeat_timeout", "heartbeat_watchdog");
 
         this.onNodeStatusChange(node.id, "unhealthy");
       }
