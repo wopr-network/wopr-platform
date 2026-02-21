@@ -1,7 +1,10 @@
-import { and, desc, eq, sql } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import type * as schema from "../db/schema/index.js";
-import { nodes } from "../db/schema/index.js";
+export interface NodeInput {
+  id: string;
+  host: string;
+  status: string;
+  capacityMb: number;
+  usedMb: number;
+}
 
 export interface PlacementResult {
   nodeId: string;
@@ -10,61 +13,41 @@ export interface PlacementResult {
 }
 
 /**
- * Bin-packing placement: find the active node with the MOST free capacity
- * that can fit the requested memory. This is a "first-fit decreasing"
- * approach — simple, effective, avoids overloading small nodes.
+ * Pure bin-packing placement: find the active node with the MOST free capacity.
+ * Operates on an in-memory node list — no DB access.
  *
- * @param db - Drizzle database instance
+ * @param nodes - In-memory list of nodes to search
  * @param requiredMb - Memory the new bot needs (default: 100 MB)
  * @returns The best node, or null if no node has capacity
  */
-export function findPlacement(db: BetterSQLite3Database<typeof schema>, requiredMb = 100): PlacementResult | null {
-  const result = db
-    .select({
-      nodeId: nodes.id,
-      host: nodes.host,
-      availableMb: sql<number>`(${nodes.capacityMb} - ${nodes.usedMb})`,
-    })
-    .from(nodes)
-    .where(and(eq(nodes.status, "active"), sql`(${nodes.capacityMb} - ${nodes.usedMb}) >= ${requiredMb}`))
-    .orderBy(desc(sql`${nodes.capacityMb} - ${nodes.usedMb}`))
-    .limit(1)
-    .get();
+export function findPlacement(nodes: NodeInput[], requiredMb = 100): PlacementResult | null {
+  const best = nodes
+    .filter((n) => n.status === "active" && n.capacityMb - n.usedMb >= requiredMb)
+    .sort((a, b) => b.capacityMb - b.usedMb - (a.capacityMb - a.usedMb))[0];
 
-  return result ?? null;
+  if (!best) return null;
+
+  return {
+    nodeId: best.id,
+    host: best.host,
+    availableMb: best.capacityMb - best.usedMb,
+  };
 }
 
 /**
- * Variant: find placement excluding specific node(s).
+ * Pure variant: find placement excluding specific node(s).
  * Used during migration to avoid placing back on source node.
  */
 export function findPlacementExcluding(
-  db: BetterSQLite3Database<typeof schema>,
+  nodes: NodeInput[],
   excludeNodeIds: string[],
   requiredMb = 100,
 ): PlacementResult | null {
-  if (excludeNodeIds.length === 0) return findPlacement(db, requiredMb);
+  if (excludeNodeIds.length === 0) return findPlacement(nodes, requiredMb);
 
-  const result = db
-    .select({
-      nodeId: nodes.id,
-      host: nodes.host,
-      availableMb: sql<number>`(${nodes.capacityMb} - ${nodes.usedMb})`,
-    })
-    .from(nodes)
-    .where(
-      and(
-        eq(nodes.status, "active"),
-        sql`(${nodes.capacityMb} - ${nodes.usedMb}) >= ${requiredMb}`,
-        sql`${nodes.id} NOT IN (${sql.join(
-          excludeNodeIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`,
-      ),
-    )
-    .orderBy(desc(sql`${nodes.capacityMb} - ${nodes.usedMb}`))
-    .limit(1)
-    .get();
-
-  return result ?? null;
+  const excludeSet = new Set(excludeNodeIds);
+  return findPlacement(
+    nodes.filter((n) => !excludeSet.has(n.id)),
+    requiredMb,
+  );
 }

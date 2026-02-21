@@ -82,7 +82,8 @@ export class MigrationManager {
     // 2. Determine target node
     let resolvedTarget = targetNodeId;
     if (!resolvedTarget) {
-      const placement = findPlacementExcluding(this.db, [sourceNodeId]);
+      const allNodes = this.db.select().from(nodes).all();
+      const placement = findPlacementExcluding(allNodes, [sourceNodeId], estimatedMb);
       if (!placement) {
         return {
           success: false,
