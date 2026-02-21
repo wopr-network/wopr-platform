@@ -274,6 +274,7 @@ describe("MigrationManager.migrateTenant", () => {
     let callCount = 0;
     selectMock.mockImplementation(() => ({
       from: vi.fn().mockReturnValue({
+        all: vi.fn().mockReturnValue([]), // nodes query: returns empty list (no placement possible)
         where: vi.fn().mockReturnValue({
           get: vi.fn().mockImplementation(() => {
             callCount++;
