@@ -1,5 +1,5 @@
 import { logger } from "../config/logger.js";
-import type { ProfileStore } from "../fleet/profile-store.js";
+import type { IBotProfileRepository } from "../fleet/bot-profile-repository.js";
 import type { BotProfile } from "../fleet/types.js";
 import { ProxyManager } from "./manager.js";
 
@@ -18,12 +18,14 @@ export function getProxyManager(): ProxyManager {
  * Hydrate proxy routes from persisted profiles on startup.
  * Without this, every server restart empties the in-memory route table and
  * all tenant subdomains return 404 until bots are re-created or restarted.
+ *
+ * Accepts IBotProfileRepository (DB-backed) replacing the old YAML ProfileStore.
  */
-export async function hydrateProxyRoutes(store: ProfileStore): Promise<void> {
+export async function hydrateProxyRoutes(repo: IBotProfileRepository): Promise<void> {
   const pm = getProxyManager();
-  let profiles: BotProfile[] | undefined;
+  let profiles: BotProfile[];
   try {
-    profiles = await store.list();
+    profiles = repo.list();
   } catch (err) {
     logger.warn("Proxy hydration skipped: could not list profiles", { err });
     return;
@@ -42,5 +44,5 @@ export async function hydrateProxyRoutes(store: ProfileStore): Promise<void> {
       logger.warn(`Proxy hydration: skipped route for profile ${profile.id}`, { err });
     }
   }
-  logger.info(`Proxy hydrated ${profiles.length} route(s) from persisted profiles`);
+  logger.info(`Proxy hydrated ${profiles.length} route(s) from bot_profiles DB`);
 }

@@ -66,6 +66,13 @@ export interface NodeRegistration {
   agentVersion: string;
 }
 
+/** Payload for registering a new self-hosted node with persistent secret. */
+export interface SelfHostedNodeRegistration extends NodeRegistration {
+  ownerUserId: string;
+  label: string | null;
+  nodeSecretHash: string;
+}
+
 // ---------------------------------------------------------------------------
 // BotInstance
 // ---------------------------------------------------------------------------
