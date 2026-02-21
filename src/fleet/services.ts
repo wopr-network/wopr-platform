@@ -197,9 +197,10 @@ export function getNodeRepo(): INodeRepositoryFull {
 export function getNodeRegistrar(): NodeRegistrar {
   if (!_nodeRegistrar) {
     _nodeRegistrar = new NodeRegistrar(
-      // DrizzleNodeRepository satisfies NodeRegistrarNodeRepo structurally; cast for type compatibility
-      getNodeRepo() as never,
+      getNodeRepo(),
       {
+        // Stub pending WOP-867: IRecoveryRepository is not yet wired into NodeRegistrar.
+        // Once WOP-867 lands, replace with a real DrizzleRecoveryRepository instance.
         listOpenEvents: () => [],
         getWaitingItems: () => [],
       },

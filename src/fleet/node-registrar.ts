@@ -1,15 +1,10 @@
-import type {
-  Node,
-  NodeRegistration,
-  RecoveryEvent,
-  RecoveryItem,
-  SelfHostedNodeRegistration,
-} from "./repository-types.js";
+import type { Node as DrizzleNode } from "./node-repository.js";
+import type { NodeRegistration, RecoveryEvent, RecoveryItem, SelfHostedNodeRegistration } from "./repository-types.js";
 
 /** Subset of INodeRepository used by NodeRegistrar. */
 export interface NodeRegistrarNodeRepo {
-  register(data: NodeRegistration): Node;
-  registerSelfHosted(data: SelfHostedNodeRegistration): Node;
+  register(data: NodeRegistration): DrizzleNode;
+  registerSelfHosted(data: SelfHostedNodeRegistration): DrizzleNode;
 }
 
 export type { SelfHostedNodeRegistration };
@@ -42,7 +37,7 @@ export class NodeRegistrar {
     this.onRetryWaiting = options?.onRetryWaiting;
   }
 
-  register(data: NodeRegistration): Node {
+  register(data: NodeRegistration): DrizzleNode {
     const node = this.nodeRepo.register(data);
 
     if (node.status === "returning" && this.onReturning) {
@@ -62,7 +57,7 @@ export class NodeRegistrar {
     return node;
   }
 
-  registerSelfHosted(data: SelfHostedNodeRegistration): Node {
+  registerSelfHosted(data: SelfHostedNodeRegistration): DrizzleNode {
     const node = this.nodeRepo.registerSelfHosted(data);
 
     if (this.onRetryWaiting) {
