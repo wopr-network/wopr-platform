@@ -83,6 +83,10 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
     } else if (state === "active") {
       updates.suspendedAt = null;
       updates.destroyAfter = null;
+    } else if (state === "destroyed") {
+      // Clear suspension timestamps — they are no longer meaningful once destroyed.
+      updates.suspendedAt = null;
+      updates.destroyAfter = null;
     }
 
     const result = this.db.update(botInstances).set(updates).where(eq(botInstances.id, id)).run();
