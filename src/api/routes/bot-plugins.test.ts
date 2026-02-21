@@ -277,7 +277,32 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.botId).toBe(TEST_BOT_ID);
-      expect(body.plugins).toEqual(["plugin-a", "plugin-b"]);
+      expect(body.plugins).toEqual([
+        { pluginId: "plugin-a", enabled: true },
+        { pluginId: "plugin-b", enabled: true },
+      ]);
+    });
+
+    it("returns disabled plugins with enabled: false", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "plugin-a,plugin-b",
+          WOPR_PLUGINS_DISABLED: "plugin-a",
+        },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins`, {
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.plugins).toEqual([
+        { pluginId: "plugin-a", enabled: false },
+        { pluginId: "plugin-b", enabled: true },
+      ]);
     });
 
     it("returns empty list when no plugins installed", async () => {
@@ -300,6 +325,94 @@ describe("bot-plugin routes", () => {
 
     it("returns 401 without auth token", async () => {
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins`);
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("PATCH /fleet/bots/:botId/plugins/:pluginId", () => {
+    it("disables an installed plugin", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a,plugin-b" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ enabled: false }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.enabled).toBe(false);
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGINS_DISABLED: "plugin-a",
+          }),
+        }),
+      );
+    });
+
+    it("re-enables a disabled plugin", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a", WOPR_PLUGINS_DISABLED: "plugin-a" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ enabled: true }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.enabled).toBe(true);
+      // WOPR_PLUGINS_DISABLED should be removed when empty
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.not.objectContaining({
+            WOPR_PLUGINS_DISABLED: expect.anything(),
+          }),
+        }),
+      );
+    });
+
+    it("returns 404 for plugin not installed on bot", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/not-installed`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ enabled: false }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 400 for invalid body (missing enabled)", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 401 without auth token", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      });
+
       expect(res.status).toBe(401);
     });
   });

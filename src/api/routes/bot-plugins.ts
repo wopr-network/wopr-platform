@@ -125,10 +125,97 @@ botPluginRoutes.get("/bots/:botId/plugins", readAuth, async (c) => {
     return ownershipError;
   }
 
-  const plugins = (profile.env.WOPR_PLUGINS || "")
+  const pluginIds = (profile.env.WOPR_PLUGINS || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 
+  const disabledSet = new Set(
+    (profile.env.WOPR_PLUGINS_DISABLED || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+  const plugins = pluginIds.map((id) => ({
+    pluginId: id,
+    enabled: !disabledSet.has(id),
+  }));
+
   return c.json({ botId, plugins });
+});
+
+/** PATCH /fleet/bots/:botId/plugins/:pluginId — Toggle plugin enabled state */
+botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
+  const botId = c.req.param("botId");
+  const pluginId = c.req.param("pluginId");
+
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
+    return c.json({ error: "Invalid plugin ID format" }, 400);
+  }
+
+  const profile = await store.get(botId);
+  if (!profile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  const ownershipError = validateTenantOwnership(c, profile, profile.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  const installedPlugins = (profile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!installedPlugins.includes(pluginId)) {
+    return c.json({ error: "Plugin not installed", pluginId }, 404);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = z.object({ enabled: z.boolean() }).safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+  }
+
+  const disabledPlugins = (profile.env.WOPR_PLUGINS_DISABLED || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  let updatedDisabled: string[];
+  if (parsed.data.enabled) {
+    updatedDisabled = disabledPlugins.filter((id) => id !== pluginId);
+  } else {
+    updatedDisabled = disabledPlugins.includes(pluginId) ? disabledPlugins : [...disabledPlugins, pluginId];
+  }
+
+  const { WOPR_PLUGINS_DISABLED: _removed, ...envWithoutDisabled } = profile.env;
+  const updatedEnv = updatedDisabled.length
+    ? { ...envWithoutDisabled, WOPR_PLUGINS_DISABLED: updatedDisabled.join(",") }
+    : envWithoutDisabled;
+
+  const updated = { ...profile, env: updatedEnv };
+  await store.save(updated);
+
+  logger.info(`Toggled plugin ${pluginId} on bot ${botId}: enabled=${parsed.data.enabled}`, {
+    botId,
+    pluginId,
+    enabled: parsed.data.enabled,
+    tenantId: profile.tenantId,
+  });
+
+  return c.json({
+    success: true,
+    botId,
+    pluginId,
+    enabled: parsed.data.enabled,
+  });
 });
