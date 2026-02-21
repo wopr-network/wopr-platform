@@ -56,6 +56,7 @@ vi.mock("../../fleet/fleet-manager.js", () => {
 
 // Import AFTER mocks are set up
 const { botPluginRoutes } = await import("./bot-plugins.js");
+const { BotNotFoundError } = await import("../../fleet/fleet-manager.js");
 
 const app = new Hono();
 app.route("/fleet", botPluginRoutes);
@@ -299,6 +300,20 @@ describe("bot-plugin routes", () => {
       const body = await res.json();
       expect(body.error).toMatch(/Failed to apply/);
     });
+
+    it("returns 404 when fleet.update throws BotNotFoundError", async () => {
+      fleetMock.update.mockRejectedValue(new BotNotFoundError(TEST_BOT_ID));
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/wopr-plugin-discord`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: { token: "abc" }, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toMatch(/Bot not found/);
+    });
   });
 
   describe("GET /fleet/bots/:botId/plugins", () => {
@@ -470,6 +485,24 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.error).toMatch(/Failed to apply/);
+    });
+
+    it("returns 404 when fleet.update throws BotNotFoundError on toggle", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a" },
+      });
+      fleetMock.update.mockRejectedValue(new BotNotFoundError(TEST_BOT_ID));
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ enabled: false }),
+      });
+
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toMatch(/Bot not found/);
     });
   });
 });
