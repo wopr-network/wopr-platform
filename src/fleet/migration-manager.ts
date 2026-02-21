@@ -1,3 +1,7 @@
+/**
+ * @deprecated Use MigrationOrchestrator + NodeDrainer instead.
+ * This file will be deleted once callers are updated (WOP-879, WOP-880).
+ */
 import { eq } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
