@@ -13,7 +13,7 @@ import { protectedProcedure, router } from "../init.js";
 // Deps
 // ---------------------------------------------------------------------------
 
-export type OrgRouterDeps = object;
+export type OrgRouterDeps = Record<never, never>;
 
 let _deps: OrgRouterDeps | null = null;
 
@@ -58,7 +58,7 @@ export const orgRouter = router({
   /** Get the organization for the authenticated user. */
   getOrganization: protectedProcedure.query(({ ctx }) => {
     // TODO(WOP-815): wire to org service layer
-    void deps();
+    deps();
     return {
       id: ctx.user.id,
       name: "My Organization",
@@ -85,7 +85,7 @@ export const orgRouter = router({
     )
     .mutation(({ input, ctx }) => {
       // TODO(WOP-815): wire to org service layer
-      void deps();
+      deps();
       return {
         id: ctx.user.id,
         name: input.name ?? "My Organization",
@@ -112,7 +112,7 @@ export const orgRouter = router({
     )
     .mutation(({ input }) => {
       // TODO(WOP-815): wire to org service layer + email invitation
-      void deps();
+      deps();
       const id = `member-${Date.now()}`;
       return {
         id,
@@ -130,7 +130,7 @@ export const orgRouter = router({
     //   const org = await orgService.getOrg(ctx.user.id);
     //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
     //   if (input.memberId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove yourself" });
-    void deps();
+    deps();
     return { removed: true, memberId: input.memberId };
   }),
 
@@ -141,7 +141,7 @@ export const orgRouter = router({
     //   const org = await orgService.getOrg(ctx.user.id);
     //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
     //   await orgService.verifyMemberExists(org.id, input.memberId);
-    void deps();
+    deps();
     return { transferred: true, newOwnerId: input.memberId };
   }),
 
@@ -150,7 +150,7 @@ export const orgRouter = router({
     .input(z.object({ provider: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
       // TODO(WOP-815): wire to better-auth OAuth linking
-      void deps();
+      deps();
       return { connected: true, provider: input.provider };
     }),
 
@@ -159,7 +159,7 @@ export const orgRouter = router({
     .input(z.object({ provider: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
       // TODO(WOP-815): wire to better-auth OAuth unlinking
-      void deps();
+      deps();
       return { disconnected: true, provider: input.provider };
     }),
 });
