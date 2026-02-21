@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
 import { initRateSchema } from "./admin/rates/schema.js";
 import { app } from "./api/app.js";
+import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
@@ -28,6 +29,7 @@ import {
   MetricsCollector,
 } from "./observability/index.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
+import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
 import { setNodesRouterDeps } from "./trpc/index.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
@@ -111,6 +113,11 @@ if (process.env.NODE_ENV !== "test") {
         spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null },
       };
     };
+
+    // Wire hosted credential injection for plugin install route
+    const vaultKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
+    const credentialVault = new CredentialVaultStore(billingDrizzle, vaultKey);
+    setBotPluginDeps({ credentialVault, meterEmitter: meter });
 
     mountGateway(app, {
       meter,
