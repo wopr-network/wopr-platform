@@ -115,24 +115,38 @@ export class RecoveryOrchestrator {
 
     logger.info(`Starting recovery for node ${deadNodeId}`, { eventId, trigger });
 
-    // 1. WOP-856: Transition dead node to "recovering" via state machine
-    this.nodeRepo.transition(
-      deadNodeId,
-      "recovering",
-      trigger === "heartbeat_timeout" ? "heartbeat_timeout" : "manual_recovery",
-      "recovery_orchestrator",
-    );
+    // 1. WOP-856: Transition dead node to "recovering" via state machine.
+    //    A heartbeat-timed-out node is in "unhealthy" state. The state machine
+    //    only permits unhealthy→offline and offline→recovering, so we must
+    //    make two hops. If the node is already offline (e.g. manual trigger),
+    //    the first transition will throw InvalidTransitionError — callers are
+    //    expected to ensure the node is in the correct state before triggering.
+    const transitionReason = trigger === "heartbeat_timeout" ? "heartbeat_timeout" : "manual_recovery";
+    this.nodeRepo.transition(deadNodeId, "offline", transitionReason, "recovery_orchestrator");
+    this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_orchestrator");
 
-    // 2. Get all tenants assigned to this node (pre-sorted by tier priority)
-    const tenants = this.getTenants(deadNodeId);
+    // 2. Get all tenants and create the recovery event. If either throws, roll
+    //    back the node to "offline" so it does not get stuck in "recovering"
+    //    with no event record and no path forward.
+    let tenants: TenantRecoveryInfo[];
+    try {
+      tenants = this.getTenants(deadNodeId);
 
-    // 3. Create recovery event via repository
-    this.recoveryRepo.createEvent({
-      id: eventId,
-      nodeId: deadNodeId,
-      trigger,
-      tenantsTotal: tenants.length,
-    });
+      // 3. Create recovery event via repository
+      this.recoveryRepo.createEvent({
+        id: eventId,
+        nodeId: deadNodeId,
+        trigger,
+        tenantsTotal: tenants.length,
+      });
+    } catch (setupErr) {
+      logger.error(`Recovery setup failed for node ${deadNodeId} — rolling back to offline`, {
+        eventId,
+        err: setupErr instanceof Error ? setupErr.message : String(setupErr),
+      });
+      this.nodeRepo.transition(deadNodeId, "offline", "recovery_setup_failed", "recovery_orchestrator");
+      throw setupErr;
+    }
 
     // 4. Attempt recovery for each tenant
     const report: RecoveryReport = {
@@ -149,8 +163,16 @@ export class RecoveryOrchestrator {
     // 5. WOP-856: Transition node from "recovering" to "offline"
     this.nodeRepo.transition(deadNodeId, "offline", "recovery_complete", "recovery_orchestrator");
 
-    // 6. Finalize recovery event
-    const finalStatus = report.waiting.length > 0 ? "partial" : "completed";
+    // 6. Finalize recovery event.
+    //    "partial"   — some tenants are still waiting for capacity
+    //    "failed"    — every tenant failed outright (no successful recoveries, none waiting)
+    //    "completed" — all tenants accounted for with at least some recovered or skipped
+    const finalStatus =
+      report.waiting.length > 0
+        ? "partial"
+        : report.recovered.length === 0 && report.failed.length > 0
+          ? "failed"
+          : "completed";
     this.recoveryRepo.updateEvent(eventId, {
       status: finalStatus as RecoveryEvent["status"],
       tenantsRecovered: report.recovered.length,
@@ -216,6 +238,7 @@ export class RecoveryOrchestrator {
       return;
     }
 
+    let imported = false;
     try {
       // b. Download hot backup on target node
       logger.debug(`Downloading backup for ${tenant.name} to node ${target.id}`, { backupKey });
@@ -250,6 +273,7 @@ export class RecoveryOrchestrator {
           env,
         },
       });
+      imported = true;
 
       // e. Verify running
       logger.debug(`Verifying ${tenant.name} is running on node ${target.id}`);
@@ -283,6 +307,25 @@ export class RecoveryOrchestrator {
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.error(`Failed to recover tenant ${tenant.name}`, { eventId, itemId, err: reason });
+
+      // Compensate: if bot.import succeeded but a later step failed, remove the
+      // container from the target node to avoid an orphaned running container
+      // whose DB record still points to the dead node.
+      if (imported) {
+        try {
+          await this.commandBus.send(target.id, {
+            type: "bot.remove",
+            payload: { name: tenant.containerName },
+          });
+        } catch (removeErr) {
+          logger.error(`Failed to remove orphaned container ${tenant.containerName} from node ${target.id}`, {
+            eventId,
+            itemId,
+            err: removeErr instanceof Error ? removeErr.message : String(removeErr),
+          });
+        }
+      }
+
       report.failed.push({ tenant: tenant.botId, reason });
 
       this.recoveryRepo.createItem({
@@ -293,7 +336,7 @@ export class RecoveryOrchestrator {
         backupKey,
       });
       this.recoveryRepo.updateItem(itemId, {
-        targetNode: target?.id ?? null,
+        targetNode: target ? target.id : null,
         status: "failed",
         reason,
         startedAt: now,
@@ -332,13 +375,19 @@ export class RecoveryOrchestrator {
         continue;
       }
 
+      const recoveredBefore = report.recovered.length;
       await this.recoverTenant(recoveryEventId, event.nodeId, tenant, report);
+      const actuallyRecovered = report.recovered.length > recoveredBefore;
 
-      // Mark old waiting item as retried
-      this.recoveryRepo.updateItem(item.id, {
-        status: "recovered" as RecoveryItem["status"],
-        completedAt: Math.floor(Date.now() / 1000),
-      });
+      // Only close the waiting item as "recovered" if recoverTenant actually
+      // succeeded. If it failed or the tenant is still waiting (no capacity),
+      // leave the item in its current state so the event record stays accurate.
+      if (actuallyRecovered) {
+        this.recoveryRepo.updateItem(item.id, {
+          status: "recovered" as RecoveryItem["status"],
+          completedAt: Math.floor(Date.now() / 1000),
+        });
+      }
       this.recoveryRepo.incrementRetryCount(item.id);
     }
 

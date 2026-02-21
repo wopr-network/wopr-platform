@@ -152,7 +152,7 @@ describe("RecoveryOrchestrator", () => {
     expect(importCmd.payload.image).not.toBe("ghcr.io/wopr-network/wopr:latest");
   });
 
-  it("transitions dead node to recovering, then offline when done", async () => {
+  it("transitions dead node unhealthy→offline→recovering, then offline when done", async () => {
     // Arrange: one tenant to recover
     mocks.getTenants.mockReturnValue([
       {
@@ -169,20 +169,26 @@ describe("RecoveryOrchestrator", () => {
     // Act
     await orchestrator.triggerRecovery("dead-node", "heartbeat_timeout");
 
-    // Assert: transition was called twice
-    expect(mocks.nodeRepo.transition).toHaveBeenCalledTimes(2);
+    // Assert: three transitions total (unhealthy→offline, offline→recovering, recovering→offline)
+    expect(mocks.nodeRepo.transition).toHaveBeenCalledTimes(3);
 
-    // Assert: first transition is to "recovering"
+    // Assert: first transition is to "offline" (unhealthy→offline)
     const firstCall = mocks.nodeRepo.transition.mock.calls[0];
     expect(firstCall[0]).toBe("dead-node");
-    expect(firstCall[1]).toBe("recovering");
+    expect(firstCall[1]).toBe("offline");
     expect(firstCall[3]).toBe("recovery_orchestrator");
 
-    // Assert: second transition is to "offline"
+    // Assert: second transition is to "recovering" (offline→recovering)
     const secondCall = mocks.nodeRepo.transition.mock.calls[1];
     expect(secondCall[0]).toBe("dead-node");
-    expect(secondCall[1]).toBe("offline");
+    expect(secondCall[1]).toBe("recovering");
     expect(secondCall[3]).toBe("recovery_orchestrator");
+
+    // Assert: third transition is back to "offline" (recovering→offline)
+    const thirdCall = mocks.nodeRepo.transition.mock.calls[2];
+    expect(thirdCall[0]).toBe("dead-node");
+    expect(thirdCall[1]).toBe("offline");
+    expect(thirdCall[3]).toBe("recovery_orchestrator");
   });
 
   it("falls back to default image when no profile found", async () => {
