@@ -87,6 +87,48 @@ imagePoller.onUpdateAvailable = async (botId: string) => {
 /** UUID v4 format (lowercase hex with dashes). */
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
+/** Parse Docker log output into structured LogEntry objects. */
+function parseLogLines(
+  raw: string,
+): { id: string; timestamp: string; level: string; source: string; message: string }[] {
+  return raw
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line, i) => {
+      // Try structured format: "2026-01-01T00:00:00Z [LEVEL] message"
+      const match = line.match(/^(\S+)\s+\[(\w+)]\s+(.*)$/);
+      if (match) {
+        const level = match[2].toLowerCase();
+        return {
+          id: `log-${i}`,
+          timestamp: match[1],
+          level: ["debug", "info", "warn", "error"].includes(level) ? level : "info",
+          source: "container",
+          message: match[3],
+        };
+      }
+      // Try Docker timestamp prefix: "2026-01-01T00:00:00.000Z some message"
+      const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\S+)\s+(.*)$/);
+      if (tsMatch) {
+        return {
+          id: `log-${i}`,
+          timestamp: tsMatch[1],
+          level: "info",
+          source: "container",
+          message: tsMatch[2],
+        };
+      }
+      // Plain line
+      return {
+        id: `log-${i}`,
+        timestamp: new Date().toISOString(),
+        level: "info",
+        source: "container",
+        message: line,
+      };
+    });
+}
+
 // BOUNDARY(WOP-805): REST fleet routes have a tRPC mirror at src/trpc/routers/fleet.ts.
 // The tRPC fleet router covers: listInstances, getInstance, createInstance,
 // controlInstance, getInstanceHealth, getInstanceLogs, getInstanceMetrics, listTemplates.
@@ -397,7 +439,52 @@ fleetRoutes.post("/bots/:id/restart", writeAuth, async (c) => {
   }
 });
 
-/** GET /fleet/bots/:id/logs — Tail bot container logs */
+/** GET /fleet/bots/:id/health — Per-bot health (state, uptime, CPU, memory) */
+fleetRoutes.get("/bots/:id/health", readAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  try {
+    const status = await fleet.status(botId);
+    return c.json({
+      id: status.id,
+      state: status.state,
+      health: status.health,
+      uptime: status.uptime,
+      stats: status.stats,
+    });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
+  }
+});
+
+/** GET /fleet/bots/:id/metrics — Per-bot resource metrics (CPU, memory) */
+fleetRoutes.get("/bots/:id/metrics", readAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  try {
+    const status = await fleet.status(botId);
+    return c.json({
+      id: status.id,
+      stats: status.stats,
+    });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
+  }
+});
+
+/** GET /fleet/bots/:id/logs — Tail bot container logs (returns structured JSON) */
 fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
   const botId = c.req.param("id");
   const profile = await fleet.profiles.get(botId);
@@ -411,7 +498,7 @@ fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
   const tail = Number.isNaN(parsed) || parsed < 1 ? 100 : Math.min(parsed, 10_000);
   try {
     const logs = await fleet.logs(botId, tail);
-    return c.text(logs);
+    return c.json(parseLogLines(logs));
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
     throw err;
