@@ -32,6 +32,7 @@ import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
+import type { HeartbeatMessage } from "./node-agent/types.js";
 import {
   AlertChecker,
   buildAlerts,
@@ -82,6 +83,15 @@ process.on("uncaughtException", uncaughtExceptionHandler);
 // Initialize Sentry error tracking (no-op when SENTRY_DSN absent)
 initSentry(process.env.SENTRY_DSN);
 
+function isHeartbeatMessage(msg: unknown): msg is HeartbeatMessage {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    (msg as Record<string, unknown>).type === "heartbeat" &&
+    typeof (msg as Record<string, unknown>).node_id === "string"
+  );
+}
+
 /**
  * Accept a WebSocket connection for a node agent and wire up message routing
  * to the new fleet processors (ConnectionRegistry, HeartbeatProcessor, CommandBus, NodeRegistrar).
@@ -101,7 +111,11 @@ function acceptAndWireWebSocket(nodeId: string, ws: WebSocket): void {
     const msg = parsed as Record<string, unknown>;
 
     if (msg.type === "heartbeat") {
-      getHeartbeatProcessor().process(nodeId, msg as never);
+      if (!isHeartbeatMessage(msg)) {
+        logger.warn(`Malformed heartbeat message from ${nodeId}`);
+        return;
+      }
+      getHeartbeatProcessor().process(nodeId, msg);
     } else if (msg.type === "command_result") {
       getCommandBus().handleResult(msg as unknown as CommandResult);
     } else if (msg.type === "register") {

@@ -673,12 +673,12 @@ describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () =>
 
     // 2. Node-1 should now be "active"
     const node1 = db.select().from(nodes).where(eq(nodes.id, "node-1")).get();
-    expect(node1!.status).toBe("active");
+    expect(node1?.status).toBe("active");
 
     // 3. Bot instances should still be assigned to node-2 (unchanged)
     const bot1 = db.select().from(botInstances).where(eq(botInstances.id, "bot-1")).get();
     const bot2 = db.select().from(botInstances).where(eq(botInstances.id, "bot-2")).get();
-    expect(bot1!.nodeId).toBe("node-2");
-    expect(bot2!.nodeId).toBe("node-2");
+    expect(bot1?.nodeId).toBe("node-2");
+    expect(bot2?.nodeId).toBe("node-2");
   });
 });

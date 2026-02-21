@@ -190,7 +190,7 @@ function createTestDb() {
 }
 
 function createMockNodeConnections(
-  sendCommandOrOverrides?: ((...args: any[]) => any) | Partial<NodeConnectionManager>,
+  sendCommandOrOverrides?: NodeConnectionManager["sendCommand"] | Partial<NodeConnectionManager>,
 ): NodeConnectionManager {
   const overrides =
     typeof sendCommandOrOverrides === "function"
