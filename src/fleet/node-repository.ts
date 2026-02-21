@@ -89,37 +89,41 @@ export class DrizzleNodeRepository implements INodeRepository {
     const existing = this.getById(data.nodeId);
 
     if (!existing) {
-      this.db
-        .insert(nodes)
-        .values({
-          id: data.nodeId,
-          host: data.host,
-          capacityMb: data.capacityMb,
-          usedMb: 0,
-          agentVersion: data.agentVersion,
-          status: "provisioning",
-          lastHeartbeatAt: now,
-          registeredAt: now,
-          updatedAt: now,
-        })
-        .run();
+      return this.db.transaction(() => {
+        this.db
+          .insert(nodes)
+          .values({
+            id: data.nodeId,
+            host: data.host,
+            capacityMb: data.capacityMb,
+            usedMb: 0,
+            agentVersion: data.agentVersion,
+            status: "provisioning",
+            lastHeartbeatAt: now,
+            registeredAt: now,
+            updatedAt: now,
+          })
+          .run();
 
-      return this.transition(data.nodeId, "active", "first_registration", "node_agent");
+        return this.transition(data.nodeId, "active", "first_registration", "node_agent");
+      });
     }
 
     const deadStates: NodeStatus[] = ["offline", "recovering", "failed"];
     if (deadStates.includes(existing.status as NodeStatus)) {
-      this.db
-        .update(nodes)
-        .set({
-          host: data.host,
-          agentVersion: data.agentVersion,
-          updatedAt: now,
-        })
-        .where(eq(nodes.id, data.nodeId))
-        .run();
+      return this.db.transaction(() => {
+        this.db
+          .update(nodes)
+          .set({
+            host: data.host,
+            agentVersion: data.agentVersion,
+            updatedAt: now,
+          })
+          .where(eq(nodes.id, data.nodeId))
+          .run();
 
-      return this.transition(data.nodeId, "returning", "re_registration", "node_agent");
+        return this.transition(data.nodeId, "returning", "re_registration", "node_agent");
+      });
     }
 
     // Healthy node re-registering — metadata update only, no transition
@@ -137,15 +141,21 @@ export class DrizzleNodeRepository implements INodeRepository {
 
   updateHeartbeat(id: string, usedMb: number): void {
     const now = Math.floor(Date.now() / 1000);
-    this.db.update(nodes).set({ lastHeartbeatAt: now, usedMb, updatedAt: now }).where(eq(nodes.id, id)).run();
+    const result = this.db
+      .update(nodes)
+      .set({ lastHeartbeatAt: now, usedMb, updatedAt: now })
+      .where(eq(nodes.id, id))
+      .run();
+    if (result.changes === 0) throw new NodeNotFoundError(id);
   }
 
   addCapacity(id: string, deltaMb: number): void {
-    this.db
+    const result = this.db
       .update(nodes)
-      .set({ usedMb: sql`${nodes.usedMb} + ${deltaMb}` })
+      .set({ usedMb: sql`MAX(0, ${nodes.usedMb} + ${deltaMb})` })
       .where(eq(nodes.id, id))
       .run();
+    if (result.changes === 0) throw new NodeNotFoundError(id);
   }
 
   findBestTarget(excludeId: string, requiredMb: number): Node | null {
