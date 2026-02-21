@@ -227,16 +227,13 @@ export class NodeConnectionManager {
 
     // Only transition to "active" if node is currently unhealthy or already active.
     // Nodes in "returning" state must go through cleanup first (handled by OrphanCleaner).
-    const node = this.db.select({ status: nodes.status }).from(nodes).where(eq(nodes.id, nodeId)).get();
-    const HEARTBEAT_ACTIVATABLE = new Set(["active", "unhealthy"]);
-    const newStatus = node && HEARTBEAT_ACTIVATABLE.has(node.status) ? "active" : undefined;
-
+    // Use a single conditional UPDATE to avoid an extra SELECT on every heartbeat.
     this.db
       .update(nodes)
       .set({
         lastHeartbeatAt: now,
         usedMb,
-        ...(newStatus ? { status: newStatus } : {}),
+        status: sql`CASE WHEN ${nodes.status} IN ('active', 'unhealthy') THEN 'active' ELSE ${nodes.status} END`,
         updatedAt: now,
       })
       .where(eq(nodes.id, nodeId))

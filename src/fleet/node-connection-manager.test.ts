@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
@@ -302,24 +303,15 @@ describe("NodeConnectionManager.processHeartbeat — returning status preservati
       })
       .run();
 
-    // Connect ws and send a heartbeat
-    ncm.registerNode({
-      node_id: "node-2", // different node to prime the manager
-      host: "10.0.0.2",
-      capacity_mb: 1024,
-      agent_version: "1.0.0",
-    });
+    // Wire a fake WebSocket for node-1 so handleWebSocket registers message handler
+    const fakeWs = Object.assign(new EventEmitter(), { readyState: 1 });
+    ncm.handleWebSocket("node-1", fakeWs as unknown as import("ws").WebSocket);
 
-    // Directly test the heartbeat path by calling handleWebSocket with a fake ws
-    // that sends a heartbeat. Instead, we test through the DB update path
-    // by verifying processHeartbeat logic via a public method that exposes it.
-    // Since processHeartbeat is private, we can test via handleWebSocket mock,
-    // but it's cleaner to verify the DB after re-registration preserves the state.
+    // Emit a heartbeat message — this calls handleMessage → processHeartbeat
+    const heartbeat = Buffer.from(JSON.stringify({ type: "heartbeat", containers: [] }));
+    fakeWs.emit("message", heartbeat);
 
-    // The test here proves: after registerNode sets "returning", a subsequent
-    // heartbeat (which calls processHeartbeat) should NOT flip it to "active".
-    // We test this indirectly by simulating what processHeartbeat does.
-    // Since processHeartbeat is private, we verify the fix via integration.
+    // processHeartbeat must NOT flip "returning" to "active"
     const node = db.select().from(nodes).where(eq(nodes.id, "node-1")).get();
     expect(node?.status).toBe("returning");
   });
