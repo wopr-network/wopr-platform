@@ -107,6 +107,12 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     return c.json({ error: `Bot not found: ${botId}` }, 404);
   }
 
+  // Re-validate ownership on the fresh profile — tenantId may have changed between fetches
+  const freshOwnershipError = validateTenantOwnership(c, freshProfile, freshProfile.tenantId);
+  if (freshOwnershipError) {
+    return freshOwnershipError;
+  }
+
   // Read existing WOPR_PLUGINS env var (comma-separated plugin IDs)
   const existingPlugins = (freshProfile.env.WOPR_PLUGINS || "")
     .split(",")
