@@ -81,8 +81,10 @@ export class DockerManager {
     // Stop and remove old container
     try {
       await container.stop();
-    } catch {
-      // may already be stopped
+    } catch (err) {
+      // Docker 304: container already stopped — not an error
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("container already stopped")) throw err;
     }
     await container.remove();
 
@@ -90,13 +92,78 @@ export class DockerManager {
     return this.startBot({ name, image, env, restart: restartPolicy });
   }
 
+  /**
+   * Update a running bot's environment by replacing its container.
+   * Steps: inspect old -> stop old -> remove old -> create new -> start new.
+   * On failure after removal, attempt to recreate the old container.
+   * No image pull — uses the image already cached on the node.
+   */
+  async updateBot(payload: { name: string; env: Record<string, string> }): Promise<{ containerId: string }> {
+    const name = payload.name.startsWith(TENANT_PREFIX) ? payload.name : `${TENANT_PREFIX}${payload.name}`;
+
+    const container = this.docker.getContainer(name);
+
+    // Inspect old container to capture image + config for rollback
+    const info = await container.inspect();
+    const image = info.Config.Image;
+    const oldEnv = info.Config.Env ?? [];
+    const restartPolicy = info.HostConfig?.RestartPolicy?.Name ?? "unless-stopped";
+
+    // Stop the old container (ignore error if already stopped)
+    try {
+      await container.stop();
+    } catch (err) {
+      // Docker 304: container already stopped — not an error
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("container already stopped")) throw err;
+    }
+
+    // Remove the old container
+    await container.remove();
+
+    // Create new container with updated env
+    const envArr = Object.entries(payload.env).map(([k, v]) => `${k}=${v}`);
+
+    try {
+      const newContainer = await this.docker.createContainer({
+        Image: image,
+        name,
+        Env: envArr,
+        HostConfig: {
+          RestartPolicy: { Name: restartPolicy },
+        },
+      });
+
+      await newContainer.start();
+      return { containerId: newContainer.id };
+    } catch (err) {
+      // Rollback: recreate old container with original env and start it
+      try {
+        const rollback = await this.docker.createContainer({
+          Image: image,
+          name,
+          Env: oldEnv,
+          HostConfig: {
+            RestartPolicy: { Name: restartPolicy },
+          },
+        });
+        await rollback.start();
+      } catch {
+        // Rollback failed — container is gone. Caller handles.
+      }
+      throw err;
+    }
+  }
+
   /** Remove a tenant container by name. */
   async removeBot(name: string): Promise<void> {
     const container = this.docker.getContainer(name);
     try {
       await container.stop();
-    } catch {
-      // may already be stopped
+    } catch (err) {
+      // Docker 304: container already stopped — not an error
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("container already stopped")) throw err;
     }
     await container.remove();
   }
