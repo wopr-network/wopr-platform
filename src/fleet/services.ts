@@ -53,7 +53,16 @@ export function getDb() {
 
 export function getNodeConnections() {
   if (!_nodeConnections) {
-    _nodeConnections = new NodeConnectionManager(getDb());
+    _nodeConnections = new NodeConnectionManager(getDb(), {
+      onNodeRegistered: () => {
+        // Fire-and-forget: check for waiting recovery tenants when new capacity is available
+        getRecoveryManager()
+          .checkAndRetryWaiting()
+          .catch((err) => {
+            logger.error("Auto-retry after node registration failed", { err });
+          });
+      },
+    });
   }
   return _nodeConnections;
 }

@@ -74,9 +74,11 @@ export class NodeConnectionManager {
   private readonly db: BetterSQLite3Database<typeof schema>;
   private readonly connections = new Map<string, WebSocket>();
   private readonly pending = new Map<string, PendingCommand>();
+  private readonly onNodeRegistered?: () => void;
 
-  constructor(db: BetterSQLite3Database<typeof schema>) {
+  constructor(db: BetterSQLite3Database<typeof schema>, options?: { onNodeRegistered?: () => void }) {
     this.db = db;
+    this.onNodeRegistered = options?.onNodeRegistered;
   }
 
   /**
@@ -120,6 +122,11 @@ export class NodeConnectionManager {
         .run();
 
       logger.info(`Node ${registration.node_id} registered`);
+    }
+
+    // Trigger auto-retry check for waiting recovery tenants
+    if (this.onNodeRegistered) {
+      this.onNodeRegistered();
     }
   }
 
@@ -354,6 +361,11 @@ export class NodeConnectionManager {
       .run();
 
     logger.info(`Self-hosted node ${registration.node_id} registered for user ${registration.ownerUserId}`);
+
+    // Trigger auto-retry check for waiting recovery tenants
+    if (this.onNodeRegistered) {
+      this.onNodeRegistered();
+    }
   }
 
   /**

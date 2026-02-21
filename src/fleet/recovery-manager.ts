@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
 import type * as schema from "../db/schema/index.js";
 import { botInstances, nodes, recoveryEvents, recoveryItems, tenantCustomers } from "../db/schema/index.js";
 import type { AdminNotifier, RecoveryReport } from "./admin-notifier.js";
 import type { NodeConnectionManager, TenantAssignment } from "./node-connection-manager.js";
+
+/** Max retry attempts per recovery item before marking as failed. */
+const MAX_RETRY_ATTEMPTS = 5;
+
+/** Max time (seconds) a recovery event can have waiting items before they're failed. 24h. */
+const MAX_WAITING_DURATION_S = 24 * 60 * 60;
 
 /**
  * Recovery event record
@@ -370,6 +376,137 @@ export class RecoveryManager {
       .run();
 
     return report;
+  }
+
+  /**
+   * Check all open recovery events for waiting items and either retry them
+   * or mark them as failed if they've exceeded the retry/time cap.
+   *
+   * Called automatically when capacity may have changed (node registered, bot destroyed).
+   */
+  async checkAndRetryWaiting(): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+
+    // Find all events with status "in_progress" or "partial"
+    const openEvents = this.db
+      .select()
+      .from(recoveryEvents)
+      .where(inArray(recoveryEvents.status, ["in_progress", "partial"]))
+      .all();
+
+    for (const event of openEvents) {
+      try {
+        // Get waiting items for this event
+        const waitingItems = this.db
+          .select()
+          .from(recoveryItems)
+          .where(and(eq(recoveryItems.recoveryEventId, event.id), eq(recoveryItems.status, "waiting")))
+          .all();
+
+        if (waitingItems.length === 0) continue;
+
+        // Check time cap: if event started > 24h ago, fail all waiting items
+        const eventAge = now - event.startedAt;
+        if (eventAge >= MAX_WAITING_DURATION_S) {
+          await this.failExpiredWaitingItems(event.id, waitingItems, "max_wait_time_exceeded");
+          continue;
+        }
+
+        // Check per-item retry cap: fail items that have hit MAX_RETRY_ATTEMPTS
+        const expiredItems = waitingItems.filter((item) => item.retryCount >= MAX_RETRY_ATTEMPTS);
+        const retryableItems = waitingItems.filter((item) => item.retryCount < MAX_RETRY_ATTEMPTS);
+
+        if (expiredItems.length > 0) {
+          await this.failExpiredWaitingItems(event.id, expiredItems, "max_retries_exceeded");
+        }
+
+        // If there are still retryable items, call retryWaiting
+        if (retryableItems.length > 0) {
+          await this.retryWaiting(event.id);
+        }
+
+        // After retry, check if event is now fully resolved
+        this.finalizeEventIfComplete(event.id);
+      } catch (err) {
+        logger.error(`Auto-retry check failed for event ${event.id}`, {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  /**
+   * Mark waiting items as "failed" and notify admin.
+   */
+  private async failExpiredWaitingItems(
+    eventId: string,
+    items: Array<{ id: string; tenant: string; retryCount: number }>,
+    reason: string,
+  ): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+
+    for (const item of items) {
+      this.db
+        .update(recoveryItems)
+        .set({
+          status: "failed",
+          reason,
+          completedAt: now,
+        })
+        .where(eq(recoveryItems.id, item.id))
+        .run();
+    }
+
+    // Update event failed count and recalculate waiting count
+    const event = this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId)).get();
+    if (event) {
+      const remainingWaiting = this.db
+        .select()
+        .from(recoveryItems)
+        .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")))
+        .all();
+
+      this.db
+        .update(recoveryEvents)
+        .set({
+          tenantsFailed: (event.tenantsFailed ?? 0) + items.length,
+          tenantsWaiting: remainingWaiting.length,
+          status: remainingWaiting.length > 0 ? "partial" : "completed",
+          completedAt: remainingWaiting.length === 0 ? now : event.completedAt,
+        })
+        .where(eq(recoveryEvents.id, eventId))
+        .run();
+    }
+
+    await this.notifier.waitingTenantsExpired(eventId, items.length, reason);
+
+    logger.warn(`Marked ${items.length} waiting items as failed for event ${eventId}`, { reason });
+  }
+
+  /**
+   * Check if all items in an event are resolved and mark event as "completed" if so.
+   */
+  private finalizeEventIfComplete(eventId: string): void {
+    const remainingWaiting = this.db
+      .select()
+      .from(recoveryItems)
+      .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")))
+      .all();
+
+    if (remainingWaiting.length === 0) {
+      const event = this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId)).get();
+      if (event && event.status !== "completed") {
+        this.db
+          .update(recoveryEvents)
+          .set({
+            status: "completed",
+            tenantsWaiting: 0,
+            completedAt: Math.floor(Date.now() / 1000),
+          })
+          .where(eq(recoveryEvents.id, eventId))
+          .run();
+      }
+    }
   }
 
   /**
