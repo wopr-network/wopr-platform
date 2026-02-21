@@ -260,14 +260,32 @@ describe("fleet.getInstanceHealth", () => {
 // ---------------------------------------------------------------------------
 
 describe("fleet.getInstanceLogs", () => {
-  it("returns logs string wrapped in object; default tail=100", async () => {
+  it("returns logs split into string array; default tail=100", async () => {
+    fleetMock.logs.mockResolvedValue("2026-01-01T00:00:00Z log line 1\n2026-01-01T00:00:01Z log line 2");
     const caller = createCaller(authedContext());
     const result = await caller.fleet.getInstanceLogs({ id: TEST_BOT_ID });
-    expect(result).toEqual({ logs: "2026-01-01T00:00:00Z log line 1\n" });
+    expect(result).toEqual({
+      logs: ["2026-01-01T00:00:00Z log line 1", "2026-01-01T00:00:01Z log line 2"],
+    });
     expect(fleetMock.logs).toHaveBeenCalledWith(TEST_BOT_ID, 100);
   });
 
+  it("filters out empty lines from split", async () => {
+    fleetMock.logs.mockResolvedValue("line1\n\nline2\n");
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getInstanceLogs({ id: TEST_BOT_ID });
+    expect(result).toEqual({ logs: ["line1", "line2"] });
+  });
+
+  it("returns empty array when logs are empty string", async () => {
+    fleetMock.logs.mockResolvedValue("");
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getInstanceLogs({ id: TEST_BOT_ID });
+    expect(result).toEqual({ logs: [] });
+  });
+
   it("respects custom tail parameter", async () => {
+    fleetMock.logs.mockResolvedValue("line");
     const caller = createCaller(authedContext());
     await caller.fleet.getInstanceLogs({ id: TEST_BOT_ID, tail: 50 });
     expect(fleetMock.logs).toHaveBeenCalledWith(TEST_BOT_ID, 50);
