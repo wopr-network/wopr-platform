@@ -7,8 +7,12 @@ import type { WebSocket } from "ws";
 export class NodeConnectionRegistry {
   private readonly connections = new Map<string, WebSocket>();
 
-  /** Store a WebSocket for a node, replacing any existing one. */
+  /** Store a WebSocket for a node, closing any existing one first. */
   accept(nodeId: string, ws: WebSocket): void {
+    const existing = this.connections.get(nodeId);
+    if (existing) {
+      existing.close();
+    }
     this.connections.set(nodeId, ws);
   }
 

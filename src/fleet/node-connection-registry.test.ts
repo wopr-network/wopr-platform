@@ -34,6 +34,18 @@ describe("NodeConnectionRegistry", () => {
     expect(reg.getSocket("node-unknown")).toBeNull();
   });
 
+  it("accept closes existing socket before replacing it", () => {
+    const reg = new NodeConnectionRegistry();
+    const ws1 = mockWs();
+    const ws2 = mockWs();
+
+    reg.accept("node-1", ws1);
+    reg.accept("node-1", ws2);
+
+    expect(ws1.close).toHaveBeenCalled();
+    expect(reg.getSocket("node-1")).toBe(ws2);
+  });
+
   it("listConnected returns only OPEN (readyState === 1) connections", () => {
     const reg = new NodeConnectionRegistry();
     reg.accept("node-open", mockWs(1));
