@@ -257,10 +257,10 @@ describe("collectHeartbeat", () => {
     const heartbeat = await collectHeartbeat("node-test", manager);
 
     // Should include tenant_bot1 and tenant_bot2 from mock
-    expect(heartbeat.containers.length).toBeGreaterThanOrEqual(2);
-    expect(heartbeat.containers[0].name).toBe("tenant_bot1");
-    expect(heartbeat.containers[0].status).toBe("running");
-    expect(typeof heartbeat.containers[0].memory_mb).toBe("number");
+    expect(heartbeat.containers?.length).toBeGreaterThanOrEqual(2);
+    expect(heartbeat.containers?.[0].name).toBe("tenant_bot1");
+    expect(heartbeat.containers?.[0].status).toBe("running");
+    expect(typeof heartbeat.containers?.[0].memory_mb).toBe("number");
   });
 
   it("returns empty containers and logs error when listTenantContainers throws", async () => {

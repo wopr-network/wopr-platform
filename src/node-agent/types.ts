@@ -63,7 +63,7 @@ export interface HeartbeatMessage {
   memory_used_mb: number;
   disk_total_gb: number;
   disk_used_gb: number;
-  containers: ContainerMetric[];
+  containers?: ContainerMetric[];
 }
 
 // ---------------------------------------------------------------------------
