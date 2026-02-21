@@ -1,12 +1,16 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import type { NodeConnectionManager } from "../../fleet/node-connection-manager.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import type { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
+import type { INodeRepository } from "../../fleet/node-repository.js";
 import type { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
 import { protectedProcedure, router } from "../init.js";
 
 export interface NodesRouterDeps {
   getRegistrationTokenStore: () => RegistrationTokenStore;
-  getNodeConnections: () => NodeConnectionManager;
+  getNodeRepo: () => INodeRepository;
+  getConnectionRegistry: () => NodeConnectionRegistry;
+  getBotInstanceRepo: () => IBotInstanceRepository;
 }
 
 let _deps: NodesRouterDeps | null = null;
@@ -42,8 +46,9 @@ export const nodesRouter = router({
 
   /** List nodes owned by the current user with live connection status. */
   list: protectedProcedure.query(({ ctx }) => {
-    const nodeConnections = deps().getNodeConnections();
-    const allNodes = nodeConnections.listNodes();
+    const nodeRepo = deps().getNodeRepo();
+    const registry = deps().getConnectionRegistry();
+    const allNodes = nodeRepo.list();
 
     const isAdmin = ctx.user.roles.includes("platform_admin");
     const userNodes = isAdmin ? allNodes : allNodes.filter((n) => n.ownerUserId === ctx.user.id);
@@ -53,7 +58,7 @@ export const nodesRouter = router({
       label: node.label ?? node.id,
       host: node.host,
       status: node.status,
-      isConnected: nodeConnections.isConnected(node.id),
+      isConnected: registry.isConnected(node.id),
       capacityMb: node.capacityMb,
       usedMb: node.usedMb,
       agentVersion: node.agentVersion,
@@ -64,8 +69,10 @@ export const nodesRouter = router({
 
   /** Get detailed status of a specific node. */
   get: protectedProcedure.input(z.object({ nodeId: z.string().min(1) })).query(({ input, ctx }) => {
-    const nodeConnections = deps().getNodeConnections();
-    const node = nodeConnections.getNode(input.nodeId);
+    const nodeRepo = deps().getNodeRepo();
+    const registry = deps().getConnectionRegistry();
+    const botInstanceRepo = deps().getBotInstanceRepo();
+    const node = nodeRepo.getById(input.nodeId);
 
     if (!node) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
@@ -81,16 +88,18 @@ export const nodesRouter = router({
 
     return {
       ...node,
-      isConnected: nodeConnections.isConnected(input.nodeId),
+      isConnected: registry.isConnected(input.nodeId),
       lastSeenAgoS: lastSeenAgo,
-      tenants: nodeConnections.getNodeTenants(input.nodeId),
+      tenants: botInstanceRepo.listByNode(input.nodeId),
     };
   }),
 
   /** Remove a self-hosted node (deregister). */
   remove: protectedProcedure.input(z.object({ nodeId: z.string().min(1) })).mutation(({ input, ctx }) => {
-    const nodeConnections = deps().getNodeConnections();
-    const node = nodeConnections.getNode(input.nodeId);
+    const nodeRepo = deps().getNodeRepo();
+    const registry = deps().getConnectionRegistry();
+    const botInstanceRepo = deps().getBotInstanceRepo();
+    const node = nodeRepo.getById(input.nodeId);
 
     if (!node) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
@@ -100,7 +109,7 @@ export const nodesRouter = router({
       throw new TRPCError({ code: "FORBIDDEN", message: "Not your node" });
     }
 
-    const tenants = nodeConnections.getNodeTenants(input.nodeId);
+    const tenants = botInstanceRepo.listByNode(input.nodeId);
     if (tenants.length > 0) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
@@ -108,7 +117,7 @@ export const nodesRouter = router({
       });
     }
 
-    nodeConnections.removeNode(input.nodeId);
+    registry.close(input.nodeId);
     return { success: true };
   }),
 

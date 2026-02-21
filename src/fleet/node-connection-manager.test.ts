@@ -627,7 +627,19 @@ describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () =>
       }) as never;
 
     const { OrphanCleaner } = await import("./orphan-cleaner.js");
-    const orphanCleaner = new OrphanCleaner(db, ncm);
+    const { DrizzleNodeRepository } = await import("./node-repository.js");
+    const { DrizzleBotInstanceRepository } = await import("./bot-instance-repository.js");
+    const mockCommandBus = {
+      send: vi.fn().mockImplementation(async (_nodeId: string, cmd: { type: string; payload: { name: string } }) => {
+        sentCommands.push({ nodeId: _nodeId, type: cmd.type, name: cmd.payload.name });
+        return { id: "cmd-1", type: "command_result", command: cmd.type, success: true };
+      }),
+    };
+    const orphanCleaner = new OrphanCleaner(
+      new DrizzleNodeRepository(db),
+      new DrizzleBotInstanceRepository(db),
+      mockCommandBus,
+    );
     ncm.setOrphanCleaner(orphanCleaner);
 
     // === Act: simulate first heartbeat from rebooted node-1 ===

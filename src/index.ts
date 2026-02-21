@@ -15,12 +15,12 @@ import { applyPlatformPragmas, createDb } from "./db/index.js";
 import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
+  getBotInstanceRepo,
   getBotProfileRepo,
   getCommandBus,
   getConnectionRegistry,
   getHeartbeatProcessor,
   getHeartbeatWatchdog,
-  getNodeConnections,
   getNodeRegistrar,
   getNodeRepo,
   getRegistrationTokenStore,
@@ -286,7 +286,9 @@ if (process.env.NODE_ENV !== "test") {
   // Wire nodes tRPC router deps
   setNodesRouterDeps({
     getRegistrationTokenStore,
-    getNodeConnections,
+    getNodeRepo,
+    getConnectionRegistry,
+    getBotInstanceRepo,
   });
 
   // Wire OrphanCleaner into NodeConnectionManager for stale container cleanup on node reboot

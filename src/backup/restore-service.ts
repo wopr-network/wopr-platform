@@ -1,5 +1,5 @@
 import { logger } from "../config/logger.js";
-import type { NodeConnectionManager } from "../fleet/node-connection-manager.js";
+import type { INodeCommandBus } from "../fleet/node-command-bus.js";
 import type { RestoreLogStore } from "./restore-log-store.js";
 import type { SpacesClient } from "./spaces-client.js";
 
@@ -14,16 +14,16 @@ export interface RestoreResult {
 
 export class RestoreService {
   private readonly spaces: SpacesClient;
-  private readonly nodeConnections: NodeConnectionManager;
+  private readonly commandBus: INodeCommandBus;
   private readonly restoreLog: RestoreLogStore;
 
   constructor(opts: {
     spaces: SpacesClient;
-    nodeConnections: NodeConnectionManager;
+    commandBus: INodeCommandBus;
     restoreLog: RestoreLogStore;
   }) {
     this.spaces = opts.spaces;
-    this.nodeConnections = opts.nodeConnections;
+    this.commandBus = opts.commandBus;
     this.restoreLog = opts.restoreLog;
   }
 
@@ -91,28 +91,28 @@ export class RestoreService {
     try {
       // 1. Take pre-restore safety snapshot (export current container)
       logger.info(`Taking pre-restore snapshot of ${containerName}`);
-      await this.nodeConnections.sendCommand(params.nodeId, {
+      await this.commandBus.send(params.nodeId, {
         type: "bot.export",
         payload: { name: containerName },
       });
 
       // 2. Upload pre-restore snapshot to DO Spaces
       logger.info(`Uploading pre-restore snapshot to ${preRestoreKey}`);
-      await this.nodeConnections.sendCommand(params.nodeId, {
+      await this.commandBus.send(params.nodeId, {
         type: "backup.upload",
         payload: { filename: `${containerName}.tar.gz`, destination: preRestoreKey },
       });
 
       // 3. Stop current container
       logger.info(`Stopping container ${containerName}`);
-      await this.nodeConnections.sendCommand(params.nodeId, {
+      await this.commandBus.send(params.nodeId, {
         type: "bot.stop",
         payload: { name: containerName },
       });
 
       // 4. Remove current container — point of no return
       logger.info(`Removing container ${containerName}`);
-      await this.nodeConnections.sendCommand(params.nodeId, {
+      await this.commandBus.send(params.nodeId, {
         type: "bot.remove",
         payload: { name: containerName },
       });
@@ -120,14 +120,14 @@ export class RestoreService {
 
       // 5. Download backup snapshot from DO Spaces to node
       logger.info(`Downloading snapshot ${params.snapshotKey} to node ${params.nodeId}`);
-      await this.nodeConnections.sendCommand(params.nodeId, {
+      await this.commandBus.send(params.nodeId, {
         type: "backup.download",
         payload: { filename: params.snapshotKey },
       });
 
       // 6. Import snapshot and start new container
       logger.info(`Importing snapshot and starting ${containerName}`);
-      await this.nodeConnections.sendCommand(params.nodeId, {
+      await this.commandBus.send(params.nodeId, {
         type: "bot.import",
         payload: {
           name: containerName,
@@ -138,7 +138,7 @@ export class RestoreService {
 
       // 7. Verify container is running
       logger.info(`Verifying ${containerName} is running`);
-      await this.nodeConnections.sendCommand(params.nodeId, {
+      await this.commandBus.send(params.nodeId, {
         type: "bot.inspect",
         payload: { name: containerName },
       });
@@ -176,11 +176,11 @@ export class RestoreService {
           `Container ${containerName} was removed before failure — attempting recovery from ${preRestoreKey}`,
         );
         try {
-          await this.nodeConnections.sendCommand(params.nodeId, {
+          await this.commandBus.send(params.nodeId, {
             type: "backup.download",
             payload: { filename: preRestoreKey },
           });
-          await this.nodeConnections.sendCommand(params.nodeId, {
+          await this.commandBus.send(params.nodeId, {
             type: "bot.import",
             payload: {
               name: containerName,

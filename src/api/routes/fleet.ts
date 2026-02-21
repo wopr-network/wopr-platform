@@ -11,7 +11,7 @@ import { ImagePoller } from "../../fleet/image-poller.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
-import { getRecoveryManager } from "../../fleet/services.js";
+import { getRecoveryOrchestrator } from "../../fleet/services.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
@@ -303,7 +303,13 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
 
     // Capacity freed -- check if any waiting recovery tenants can now be placed
     Promise.resolve()
-      .then(() => getRecoveryManager().checkAndRetryWaiting())
+      .then(() => {
+        // Retry any waiting recovery items now that capacity freed up
+        const repo = getRecoveryOrchestrator();
+        return repo
+          .listEvents()
+          .reduce((p, e) => p.then(() => repo.retryWaiting(e.id)), Promise.resolve(undefined as unknown));
+      })
       .catch((err) => {
         logger.error("Auto-retry after bot removal failed", { err });
       });

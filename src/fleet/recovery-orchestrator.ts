@@ -1,50 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { logger } from "../config/logger.js";
 import type { AdminNotifier, RecoveryReport } from "./admin-notifier.js";
-import type { CommandResult } from "./node-connection-manager.js";
-import type { NodeStatus } from "./node-state-machine.js";
-import type { NewRecoveryEvent, NewRecoveryItem, Node, RecoveryEvent, RecoveryItem } from "./repository-types.js";
-import type { BotProfile } from "./types.js";
-
-// ---------------------------------------------------------------------------
-// Interface stubs for sibling PRs not yet merged
-// TODO: Replace with imports once these PRs merge:
-//   WOP-864: import type { INodeRepository } from "./node-repository.js"
-//   WOP-865: import type { IBotProfileRepository } from "./bot-profile-repository.js"
-//   WOP-867: import type { IRecoveryRepository } from "./recovery-repository.js"
-//   WOP-869: import type { INodeCommandBus } from "./node-command-bus.js"
-// ---------------------------------------------------------------------------
-
-export interface INodeRepository {
-  getById(id: string): Node | null;
-  /**
-   * Validates the transition via the node state machine and writes an audit
-   * log entry atomically. Throws InvalidTransitionError if the transition is
-   * not permitted.
-   */
-  transition(id: string, to: NodeStatus, reason: string, triggeredBy: string): Node;
-  list(statuses?: NodeStatus[]): Node[];
-}
-
-export interface IBotProfileRepository {
-  /** Synchronous — DrizzleBotProfileRepository uses synchronous SQLite queries. */
-  get(id: string): BotProfile | null;
-}
-
-export interface IRecoveryRepository {
-  createEvent(data: NewRecoveryEvent): RecoveryEvent;
-  updateEvent(id: string, data: Partial<RecoveryEvent>): RecoveryEvent;
-  getEvent(id: string): RecoveryEvent | null;
-  createItem(data: NewRecoveryItem): RecoveryItem;
-  updateItem(id: string, data: Partial<RecoveryItem>): RecoveryItem;
-  listOpenEvents(): RecoveryEvent[];
-  getWaitingItems(eventId: string): RecoveryItem[];
-  incrementRetryCount(itemId: string): void;
-}
-
-export interface INodeCommandBus {
-  send(nodeId: string, command: Omit<{ type: string; payload: Record<string, unknown> }, "id">): Promise<CommandResult>;
-}
+import type { IBotProfileRepository } from "./bot-profile-repository.js";
+import type { INodeCommandBus } from "./node-command-bus.js";
+import type { INodeRepository } from "./node-repository.js";
+import type { IRecoveryRepository } from "./recovery-repository.js";
+import type { Node, RecoveryEvent, RecoveryItem } from "./repository-types.js";
 
 // ---------------------------------------------------------------------------
 // Domain types

@@ -7,7 +7,7 @@ import { botInstances } from "../../db/schema/index.js";
 import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
-import { getDb, getNodeConnections } from "../../fleet/services.js";
+import { getCommandBus, getDb } from "../../fleet/services.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
@@ -71,8 +71,7 @@ async function dispatchEnvUpdate(
       return { dispatched: false, dispatchError: "bot_not_deployed" };
     }
 
-    const nodeConnections = getNodeConnections();
-    await nodeConnections.sendCommand(instance.nodeId, {
+    await getCommandBus().send(instance.nodeId, {
       type: "bot.update",
       payload: {
         name: `tenant_${tenantId}`,

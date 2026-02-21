@@ -1,6 +1,5 @@
 import { logger } from "../config/logger.js";
-import type { RecoveryManager } from "./recovery-manager.js";
-import type { INodeRepository } from "./repository-types.js";
+import type { INodeRepository } from "./node-repository.js";
 
 /** Heartbeat watchdog configuration */
 export interface WatchdogConfig {
@@ -21,7 +20,7 @@ export interface WatchdogConfig {
  */
 export class HeartbeatWatchdog {
   private readonly nodeRepo: INodeRepository;
-  private readonly recoveryManager: RecoveryManager;
+  private readonly onRecovery: (nodeId: string) => void;
   private readonly onNodeStatusChange: (nodeId: string, newStatus: string) => void;
 
   private readonly UNHEALTHY_THRESHOLD_S: number;
@@ -32,12 +31,12 @@ export class HeartbeatWatchdog {
 
   constructor(
     nodeRepo: INodeRepository,
-    recoveryManager: RecoveryManager,
+    onRecovery: (nodeId: string) => void,
     onNodeStatusChange: (nodeId: string, newStatus: string) => void,
     config: WatchdogConfig = {},
   ) {
     this.nodeRepo = nodeRepo;
-    this.recoveryManager = recoveryManager;
+    this.onRecovery = onRecovery;
     this.onNodeStatusChange = onNodeStatusChange;
 
     this.UNHEALTHY_THRESHOLD_S = config.unhealthyThresholdS ?? 90;
@@ -101,10 +100,8 @@ export class HeartbeatWatchdog {
 
         this.onNodeStatusChange(node.id, "offline");
 
-        // Trigger recovery (async, don't wait)
-        this.recoveryManager.triggerRecovery(node.id, "heartbeat_timeout").catch((err) => {
-          logger.error(`Recovery failed for node ${node.id}`, { err });
-        });
+        // Trigger recovery (fire-and-forget via callback)
+        this.onRecovery(node.id);
       }
       // Node has missed 3 heartbeats → mark unhealthy
       // Only transition active -> unhealthy (valid state machine transition)

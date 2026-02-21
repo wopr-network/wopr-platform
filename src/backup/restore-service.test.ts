@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../config/logger.js";
-import type { NodeConnectionManager } from "../fleet/node-connection-manager.js";
+import type { INodeCommandBus } from "../fleet/node-command-bus.js";
 import type { RestoreLogStore } from "./restore-log-store.js";
 import { RestoreService } from "./restore-service.js";
 import type { SpacesClient } from "./spaces-client.js";
@@ -15,12 +15,10 @@ function createMockSpaces(): SpacesClient {
   } as unknown as SpacesClient;
 }
 
-function createMockNodeConnections(): NodeConnectionManager {
+function createMockCommandBus(): INodeCommandBus {
   return {
-    sendCommand: vi
-      .fn()
-      .mockResolvedValue({ id: "cmd-1", type: "command_result", command: "bot.inspect", success: true }),
-  } as unknown as NodeConnectionManager;
+    send: vi.fn().mockResolvedValue({ id: "cmd-1", type: "command_result", command: "bot.inspect", success: true }),
+  } as unknown as INodeCommandBus;
 }
 
 function createMockRestoreLog(): RestoreLogStore {
@@ -42,17 +40,17 @@ function createMockRestoreLog(): RestoreLogStore {
 describe("RestoreService", () => {
   let service: RestoreService;
   let mockSpaces: ReturnType<typeof createMockSpaces>;
-  let mockNodeConns: ReturnType<typeof createMockNodeConnections>;
+  let mockCommandBus: ReturnType<typeof createMockCommandBus>;
   let mockRestoreLog: ReturnType<typeof createMockRestoreLog>;
 
   beforeEach(() => {
     mockSpaces = createMockSpaces();
-    mockNodeConns = createMockNodeConnections();
+    mockCommandBus = createMockCommandBus();
     mockRestoreLog = createMockRestoreLog();
 
     service = new RestoreService({
       spaces: mockSpaces,
-      nodeConnections: mockNodeConns,
+      commandBus: mockCommandBus,
       restoreLog: mockRestoreLog,
     });
   });
@@ -106,7 +104,7 @@ describe("RestoreService", () => {
       expect(result.downtimeMs).toBeGreaterThanOrEqual(0);
 
       // Verify the command sequence: 7 calls total
-      const calls = vi.mocked(mockNodeConns.sendCommand).mock.calls;
+      const calls = vi.mocked(mockCommandBus.send).mock.calls;
       expect(calls).toHaveLength(7);
       expect(calls[0][1].type).toBe("bot.export");
       expect(calls[1][1].type).toBe("backup.upload");
@@ -128,7 +126,7 @@ describe("RestoreService", () => {
     });
 
     it("logs failure and returns error on command failure", async () => {
-      vi.mocked(mockNodeConns.sendCommand).mockRejectedValueOnce(new Error("Container export failed"));
+      vi.mocked(mockCommandBus.send).mockRejectedValueOnce(new Error("Container export failed"));
 
       const result = await service.restore({
         tenantId: "abc",
@@ -150,7 +148,7 @@ describe("RestoreService", () => {
     it("attempts recovery from pre-restore snapshot when bot.import fails after container removal", async () => {
       // First 4 calls succeed (export, upload, stop, remove), 5th (download target) succeeds,
       // 6th (bot.import) fails — container is already gone.
-      vi.mocked(mockNodeConns.sendCommand)
+      vi.mocked(mockCommandBus.send)
         .mockResolvedValueOnce({ id: "cmd-1", type: "command_result", command: "bot.export", success: true }) // 1. export
         .mockResolvedValueOnce({ id: "cmd-2", type: "command_result", command: "backup.upload", success: true }) // 2. upload
         .mockResolvedValueOnce({ id: "cmd-3", type: "command_result", command: "bot.stop", success: true }) // 3. stop
@@ -171,7 +169,7 @@ describe("RestoreService", () => {
       expect(result.error).toBe("Import failed");
 
       // Should have attempted recovery: backup.download + bot.import from pre-restore key
-      const calls = vi.mocked(mockNodeConns.sendCommand).mock.calls;
+      const calls = vi.mocked(mockCommandBus.send).mock.calls;
       expect(calls).toHaveLength(8);
       expect(calls[6][1].type).toBe("backup.download"); // recovery download
       expect(calls[7][1].type).toBe("bot.import"); // recovery import
@@ -180,7 +178,7 @@ describe("RestoreService", () => {
     it("logs CRITICAL alert when recovery from pre-restore snapshot also fails", async () => {
       const errorSpy = vi.spyOn(logger, "error");
 
-      vi.mocked(mockNodeConns.sendCommand)
+      vi.mocked(mockCommandBus.send)
         .mockResolvedValueOnce({ id: "cmd-1", type: "command_result", command: "bot.export", success: true })
         .mockResolvedValueOnce({ id: "cmd-2", type: "command_result", command: "backup.upload", success: true })
         .mockResolvedValueOnce({ id: "cmd-3", type: "command_result", command: "bot.stop", success: true })
