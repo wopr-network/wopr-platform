@@ -171,7 +171,8 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     hostedKeyNames.push(capEntry.envKey);
   }
 
-  // Merge existing hosted keys with new ones (avoid clobbering keys from other plugins)
+  // Re-read WOPR_HOSTED_KEYS from freshProfile immediately before write to avoid clobbering
+  // hosted key tracking from concurrent plugin installs (same pattern used for WOPR_PLUGINS above).
   const existingHostedKeys = (freshProfile.env.WOPR_HOSTED_KEYS || "")
     .split(",")
     .map((s) => s.trim())
@@ -179,11 +180,12 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
   const allHostedKeys = [...new Set([...existingHostedKeys, ...hostedKeyNames])];
 
   // Merge plugin config into env as WOPR_PLUGIN_<UPPER_SNAKE>_CONFIG=<json>
+  // Store both config and providerChoices so DELETE can selectively clean up hosted keys.
   const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
   const updatedEnv: Record<string, string> = {
     ...freshProfile.env,
     WOPR_PLUGINS: updatedPlugins,
-    [configEnvKey]: JSON.stringify(parsed.data.config),
+    [configEnvKey]: JSON.stringify({ config: parsed.data.config, providerChoices: parsed.data.providerChoices }),
     ...hostedEnvVars,
   };
 
@@ -385,25 +387,58 @@ botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) =>
   // Remove plugin from WOPR_PLUGINS list
   const remainingPlugins = installedPlugins.filter((id) => id !== pluginId);
 
-  // Remove plugin config env var
+  // Read the plugin config env var BEFORE removing it to extract providerChoices,
+  // which tells us which hosted keys this specific plugin installed.
   const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
+  const pluginConfigRaw = profile.env[configEnvKey];
+  const deletedPluginHostedKeyNames: string[] = [];
+  if (pluginConfigRaw) {
+    try {
+      const pluginConfigData = JSON.parse(pluginConfigRaw) as { providerChoices?: Record<string, string> };
+      if (pluginConfigData.providerChoices) {
+        for (const [capability, choice] of Object.entries(pluginConfigData.providerChoices)) {
+          if (choice === "hosted") {
+            const capEntry = lookupCapabilityEnv(capability);
+            if (capEntry) {
+              deletedPluginHostedKeyNames.push(capEntry.envKey);
+            }
+          }
+        }
+      }
+    } catch {
+      // Malformed config — can't determine which keys to remove; leave them
+    }
+  }
+
   const { [configEnvKey]: _removedConfig, ...envWithoutConfig } = profile.env;
 
-  // Clean up hosted keys tracked in WOPR_HOSTED_KEYS when the last plugin is removed.
-  // If other plugins need the same hosted key, the next plugin install will re-inject it.
-  const hostedKeys = (envWithoutConfig.WOPR_HOSTED_KEYS || "")
+  // Determine which hosted keys should be removed: only those contributed by the deleted plugin.
+  // We must not remove keys that other remaining plugins may still need.
+  // Strategy: remove keys contributed by the deleted plugin from the env AND from WOPR_HOSTED_KEYS.
+  const currentHostedKeys = (envWithoutConfig.WOPR_HOSTED_KEYS || "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
 
+  const deletedKeySet = new Set(deletedPluginHostedKeyNames);
+  const remainingHostedKeys = currentHostedKeys.filter((k) => !deletedKeySet.has(k));
+
   const updatedEnv: Record<string, string> = { ...envWithoutConfig };
 
-  // If no more plugins remain, remove all hosted keys
-  if (remainingPlugins.length === 0) {
-    for (const key of hostedKeys) {
-      delete updatedEnv[key];
-    }
+  // Remove the specific env vars that belonged to the deleted plugin
+  for (const key of deletedPluginHostedKeyNames) {
+    delete updatedEnv[key];
+  }
+
+  // Update or remove WOPR_HOSTED_KEYS tracking list
+  if (remainingHostedKeys.length > 0) {
+    updatedEnv.WOPR_HOSTED_KEYS = remainingHostedKeys.join(",");
+  } else {
     delete updatedEnv.WOPR_HOSTED_KEYS;
+  }
+
+  // Update or remove WOPR_PLUGINS
+  if (remainingPlugins.length === 0) {
     delete updatedEnv.WOPR_PLUGINS;
   } else {
     updatedEnv.WOPR_PLUGINS = remainingPlugins.join(",");

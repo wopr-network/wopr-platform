@@ -211,23 +211,21 @@ describe("bot-plugin routes", () => {
 
     it("stores plugin config in env under WOPR_PLUGIN_<ID>_CONFIG key", async () => {
       const config = { token: "abc123", prefix: "!" };
+      const providerChoices = {};
       fleetMock.update.mockResolvedValue({});
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ config, providerChoices: {} }),
+        body: JSON.stringify({ config, providerChoices }),
       });
 
-      expect(fleetMock.update).toHaveBeenCalledWith(
-        TEST_BOT_ID,
-        expect.objectContaining({
-          env: expect.objectContaining({
-            WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify(config),
-            WOPR_PLUGINS: "my-plugin",
-          }),
+      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
+        env: expect.objectContaining({
+          WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify({ config, providerChoices }),
+          WOPR_PLUGINS: "my-plugin",
         }),
-      );
+      });
     });
 
     it("appends to existing WOPR_PLUGINS list", async () => {
@@ -506,7 +504,7 @@ describe("bot-plugin routes", () => {
         env: {
           TOKEN: "abc",
           WOPR_PLUGINS: "my-tts-plugin",
-          WOPR_PLUGIN_MY_TTS_PLUGIN_CONFIG: "{}",
+          WOPR_PLUGIN_MY_TTS_PLUGIN_CONFIG: JSON.stringify({ config: {}, providerChoices: { tts: "hosted" } }),
           ELEVENLABS_API_KEY: "sk-test",
           WOPR_HOSTED_KEYS: "ELEVENLABS_API_KEY",
         },
@@ -522,6 +520,40 @@ describe("bot-plugin routes", () => {
       const savedEnv = fleetMock.update.mock.calls[0][1].env;
       expect(savedEnv).not.toHaveProperty("ELEVENLABS_API_KEY");
       expect(savedEnv).not.toHaveProperty("WOPR_HOSTED_KEYS");
+    });
+
+    it("removes only the deleted plugin's hosted keys when other plugins remain", async () => {
+      // plugin-tts (tts: hosted → ELEVENLABS_API_KEY) and plugin-llm (llm: hosted → OPENROUTER_API_KEY) are both installed.
+      // Deleting plugin-tts should remove ELEVENLABS_API_KEY but keep OPENROUTER_API_KEY.
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "plugin-tts,plugin-llm",
+          WOPR_PLUGIN_PLUGIN_TTS_CONFIG: JSON.stringify({ config: {}, providerChoices: { tts: "hosted" } }),
+          WOPR_PLUGIN_PLUGIN_LLM_CONFIG: JSON.stringify({ config: {}, providerChoices: { llm: "hosted" } }),
+          ELEVENLABS_API_KEY: "sk-eleven-test",
+          OPENROUTER_API_KEY: "sk-openrouter-test",
+          WOPR_HOSTED_KEYS: "ELEVENLABS_API_KEY,OPENROUTER_API_KEY",
+        },
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-tts`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      // TTS plugin's key should be gone
+      expect(savedEnv).not.toHaveProperty("ELEVENLABS_API_KEY");
+      // LLM plugin's key must remain
+      expect(savedEnv).toHaveProperty("OPENROUTER_API_KEY", "sk-openrouter-test");
+      // WOPR_HOSTED_KEYS should reflect only the remaining key
+      expect(savedEnv.WOPR_HOSTED_KEYS).toBe("OPENROUTER_API_KEY");
+      // plugin-llm must still be in WOPR_PLUGINS
+      expect(savedEnv.WOPR_PLUGINS).toBe("plugin-llm");
     });
 
     it("returns 404 when plugin is not installed", async () => {
