@@ -2,10 +2,11 @@ import { EventEmitter } from "node:events";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "../db/schema/index.js";
-import { nodes, recoveryEvents } from "../db/schema/index.js";
+import { botInstances, nodes, recoveryEvents } from "../db/schema/index.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
+import type { OrphanCleaner } from "./orphan-cleaner.js";
 import { findPlacement } from "./placement.js";
 
 function setupDb() {
@@ -36,10 +37,7 @@ function setupDb() {
       owner_user_id TEXT,
       node_secret TEXT,
       label TEXT
-    )
-  `);
-
-  sqlite.exec(`
+    );
     CREATE TABLE node_transitions (
       id TEXT PRIMARY KEY,
       node_id TEXT NOT NULL,
@@ -48,10 +46,7 @@ function setupDb() {
       reason TEXT NOT NULL,
       triggered_by TEXT NOT NULL,
       created_at INTEGER NOT NULL
-    )
-  `);
-
-  sqlite.exec(`
+    );
     CREATE TABLE recovery_events (
       id TEXT PRIMARY KEY,
       node_id TEXT NOT NULL,
@@ -64,10 +59,7 @@ function setupDb() {
       started_at INTEGER NOT NULL,
       completed_at INTEGER,
       report_json TEXT
-    )
-  `);
-
-  sqlite.exec(`
+    );
     CREATE TABLE bot_instances (
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,
@@ -78,10 +70,22 @@ function setupDb() {
       destroy_after TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
+    );
   `);
 
   return { db, sqlite };
+}
+
+function makeOrphanCleaner(overrides: Partial<OrphanCleaner> = {}): OrphanCleaner {
+  return {
+    clean: vi.fn().mockResolvedValue({
+      nodeId: "node-1",
+      stopped: [],
+      kept: [],
+      errors: [],
+    }),
+    ...overrides,
+  } as unknown as OrphanCleaner;
 }
 
 describe("NodeConnectionManager.registerNode", () => {
@@ -317,6 +321,166 @@ describe("NodeConnectionManager.processHeartbeat — returning status preservati
   });
 });
 
+describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning nodes", () => {
+  let db: ReturnType<typeof setupDb>["db"];
+  let sqlite: Database.Database;
+  let ncm: NodeConnectionManager;
+  let orphanCleaner: OrphanCleaner;
+
+  beforeEach(() => {
+    ({ db, sqlite } = setupDb());
+    orphanCleaner = makeOrphanCleaner();
+    ncm = new NodeConnectionManager(db);
+    ncm.setOrphanCleaner(orphanCleaner);
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  it("triggers OrphanCleaner.clean on first heartbeat from a returning node", async () => {
+    // Seed node in "returning" state
+    db.insert(nodes)
+      .values({
+        id: "node-1",
+        host: "10.0.0.1",
+        capacityMb: 8192,
+        usedMb: 0,
+        status: "returning",
+        registeredAt: 1000,
+        updatedAt: 1000,
+      })
+      .run();
+
+    // Simulate heartbeat message
+    const heartbeatMsg = Buffer.from(
+      JSON.stringify({
+        type: "heartbeat",
+        containers: [
+          { name: "tenant_orphan", memory_mb: 100 },
+          { name: "tenant_legit", memory_mb: 200 },
+        ],
+      }),
+    );
+
+    const mockWs = {
+      readyState: 1,
+      on: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    ncm.handleWebSocket("node-1", mockWs as never);
+
+    // Get the "message" handler that was registered
+    const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === "message",
+    )?.[1];
+
+    expect(messageHandler).toBeDefined();
+
+    // Fire the heartbeat
+    messageHandler(heartbeatMsg);
+
+    // Give the async cleanup a tick to fire
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(orphanCleaner.clean).toHaveBeenCalledWith({
+      nodeId: "node-1",
+      runningContainers: ["tenant_orphan", "tenant_legit"],
+    });
+  });
+
+  it("does NOT trigger OrphanCleaner for active nodes", async () => {
+    db.insert(nodes)
+      .values({
+        id: "node-1",
+        host: "10.0.0.1",
+        capacityMb: 8192,
+        usedMb: 0,
+        status: "active",
+        registeredAt: 1000,
+        updatedAt: 1000,
+      })
+      .run();
+
+    const heartbeatMsg = Buffer.from(
+      JSON.stringify({
+        type: "heartbeat",
+        containers: [{ name: "tenant_abc", memory_mb: 100 }],
+      }),
+    );
+
+    const mockWs = {
+      readyState: 1,
+      on: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    ncm.handleWebSocket("node-1", mockWs as never);
+
+    const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === "message",
+    )?.[1];
+
+    messageHandler(heartbeatMsg);
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(orphanCleaner.clean).not.toHaveBeenCalled();
+  });
+
+  it("does NOT trigger OrphanCleaner twice for same returning episode", async () => {
+    db.insert(nodes)
+      .values({
+        id: "node-1",
+        host: "10.0.0.1",
+        capacityMb: 8192,
+        usedMb: 0,
+        status: "returning",
+        registeredAt: 1000,
+        updatedAt: 1000,
+      })
+      .run();
+
+    // Make the first clean() call transition the node to active (simulating real behavior)
+    const cleanMock = vi.fn().mockImplementation(async () => {
+      db.update(nodes).set({ status: "active" }).where(eq(nodes.id, "node-1")).run();
+      return { nodeId: "node-1", stopped: [], kept: [], errors: [] };
+    });
+    orphanCleaner = makeOrphanCleaner({ clean: cleanMock });
+    ncm = new NodeConnectionManager(db);
+    ncm.setOrphanCleaner(orphanCleaner);
+
+    const mockWs = {
+      readyState: 1,
+      on: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    ncm.handleWebSocket("node-1", mockWs as never);
+
+    const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === "message",
+    )?.[1];
+
+    // First heartbeat
+    messageHandler(Buffer.from(JSON.stringify({ type: "heartbeat", containers: [] })));
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Second heartbeat — node is now "active" because clean() transitioned it
+    messageHandler(Buffer.from(JSON.stringify({ type: "heartbeat", containers: [] })));
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // clean() should have been called exactly once
+    expect(cleanMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("re-registration + placement integration", () => {
   let db: ReturnType<typeof setupDb>["db"];
   let sqlite: Database.Database;
@@ -395,5 +559,126 @@ describe("re-registration + placement integration", () => {
     const evt = db.select().from(recoveryEvents).where(eq(recoveryEvents.id, "evt-1")).get();
     expect(evt?.status).toBe("completed");
     expect(evt?.completedAt).not.toBeNull();
+  });
+});
+
+describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () => {
+  let db: ReturnType<typeof setupDb>["db"];
+  let sqlite: Database.Database;
+  let ncm: NodeConnectionManager;
+
+  beforeEach(() => {
+    ({ db, sqlite } = setupDb());
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  it("full cycle: orphaned containers are stopped, node becomes active", async () => {
+    // === Setup: node-1 has 2 tenants, goes offline, tenants recovered to node-2 ===
+
+    // Node-1: was offline, now rebooting
+    db.insert(nodes)
+      .values({
+        id: "node-1",
+        host: "10.0.0.1",
+        capacityMb: 8192,
+        usedMb: 0,
+        status: "returning",
+        registeredAt: 1000,
+        updatedAt: 1000,
+      })
+      .run();
+
+    // Node-2: active, where tenants were migrated to
+    db.insert(nodes)
+      .values({
+        id: "node-2",
+        host: "10.0.0.2",
+        capacityMb: 8192,
+        usedMb: 200,
+        status: "active",
+        registeredAt: 1000,
+        updatedAt: 1000,
+      })
+      .run();
+
+    // Bot instances: both now assigned to node-2 (recovery already happened)
+    db.insert(botInstances)
+      .values([
+        { id: "bot-1", tenantId: "tenant-aaa", name: "Bot A", nodeId: "node-2" },
+        { id: "bot-2", tenantId: "tenant-bbb", name: "Bot B", nodeId: "node-2" },
+      ])
+      .run();
+
+    // Track what commands were sent
+    const sentCommands: Array<{ nodeId: string; type: string; name: string }> = [];
+
+    // Create NCM
+    ncm = new NodeConnectionManager(db);
+
+    // Monkey-patch sendCommand for the test
+    ncm.sendCommand = vi
+      .fn()
+      .mockImplementation(async (nodeId: string, cmd: { type: string; payload: { name: string } }) => {
+        sentCommands.push({ nodeId, type: cmd.type, name: cmd.payload.name });
+        return { id: "cmd-1", type: "command_result", command: cmd.type, success: true };
+      }) as never;
+
+    const { OrphanCleaner } = await import("./orphan-cleaner.js");
+    const orphanCleaner = new OrphanCleaner(db, ncm);
+    ncm.setOrphanCleaner(orphanCleaner);
+
+    // === Act: simulate first heartbeat from rebooted node-1 ===
+    // Node-1 reports containers for tenant_aaa and tenant_bbb (Docker restarted them)
+    const mockWs = {
+      readyState: 1,
+      on: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    ncm.handleWebSocket("node-1", mockWs as never);
+
+    const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === "message",
+    )?.[1];
+
+    messageHandler(
+      Buffer.from(
+        JSON.stringify({
+          type: "heartbeat",
+          containers: [
+            { name: "tenant_tenant-aaa", memory_mb: 100 },
+            { name: "tenant_tenant-bbb", memory_mb: 100 },
+          ],
+        }),
+      ),
+    );
+
+    // Wait for async cleanup to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // === Assert ===
+
+    // 1. Both orphan containers should have been stopped
+    expect(sentCommands).toHaveLength(2);
+    expect(sentCommands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: "node-1", type: "bot.stop", name: "tenant_tenant-aaa" }),
+        expect.objectContaining({ nodeId: "node-1", type: "bot.stop", name: "tenant_tenant-bbb" }),
+      ]),
+    );
+
+    // 2. Node-1 should now be "active"
+    const node1 = db.select().from(nodes).where(eq(nodes.id, "node-1")).get();
+    expect(node1!.status).toBe("active");
+
+    // 3. Bot instances should still be assigned to node-2 (unchanged)
+    const bot1 = db.select().from(botInstances).where(eq(botInstances.id, "bot-1")).get();
+    const bot2 = db.select().from(botInstances).where(eq(botInstances.id, "bot-2")).get();
+    expect(bot1!.nodeId).toBe("node-2");
+    expect(bot2!.nodeId).toBe("node-2");
   });
 });

@@ -10,7 +10,7 @@ import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { applyPlatformPragmas, createDb } from "./db/index.js";
 import { ProfileStore } from "./fleet/profile-store.js";
-import { getHeartbeatWatchdog, getNodeConnections, getRegistrationTokenStore } from "./fleet/services.js";
+import { getHeartbeatWatchdog, getNodeConnections, getRegistrationTokenStore, initFleet } from "./fleet/services.js";
 import { mountGateway } from "./gateway/index.js";
 import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
@@ -145,6 +145,9 @@ if (process.env.NODE_ENV !== "test") {
     getRegistrationTokenStore,
     getNodeConnections,
   });
+
+  // Wire OrphanCleaner into NodeConnectionManager for stale container cleanup on node reboot
+  initFleet();
 
   // Start heartbeat watchdog
   getHeartbeatWatchdog().start();

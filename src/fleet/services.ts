@@ -17,6 +17,7 @@ import { NodeConnectionManager } from "./node-connection-manager.js";
 import { NodeProvisioner } from "./node-provisioner.js";
 // TODO: WOP-864 — replace inline shim with: import { DrizzleNodeRepository } from "./node-repository.js";
 import { NodeNotFoundError } from "./node-state-machine.js";
+import { OrphanCleaner } from "./orphan-cleaner.js";
 import { RecoveryManager } from "./recovery-manager.js";
 import { RegistrationTokenStore } from "./registration-token-store.js";
 import type { INodeRepository, Node, NodeStatus } from "./repository-types.js";
@@ -41,6 +42,7 @@ let _recoveryManager: RecoveryManager | null = null;
 let _nodeRepository: INodeRepository | null = null;
 let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
 let _migrationManager: MigrationManager | null = null;
+let _orphanCleaner: OrphanCleaner | null = null;
 
 export function getDb() {
   if (!_db) {
@@ -122,6 +124,20 @@ export function getMigrationManager() {
     _migrationManager = new MigrationManager(getDb(), getNodeConnections(), getAdminNotifier());
   }
   return _migrationManager;
+}
+
+export function getOrphanCleaner(): OrphanCleaner {
+  if (!_orphanCleaner) {
+    _orphanCleaner = new OrphanCleaner(getDb(), getNodeConnections());
+    // Complete the bidirectional link: NCM needs OrphanCleaner to trigger cleanup on heartbeat
+    getNodeConnections().setOrphanCleaner(_orphanCleaner);
+  }
+  return _orphanCleaner;
+}
+
+/** Call once at server startup to wire up OrphanCleaner into NodeConnectionManager. */
+export function initFleet(): void {
+  getOrphanCleaner();
 }
 
 let _doClient: DOClient | null = null;
