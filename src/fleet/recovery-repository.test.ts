@@ -93,8 +93,8 @@ describe("DrizzleRecoveryRepository", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 2 });
       const evt = repo.getEvent("evt-1");
       expect(evt).not.toBeNull();
-      expect(evt!.id).toBe("evt-1");
-      expect(evt!.tenantsTotal).toBe(2);
+      expect(evt?.id).toBe("evt-1");
+      expect(evt?.tenantsTotal).toBe(2);
     });
   });
 
@@ -114,10 +114,10 @@ describe("DrizzleRecoveryRepository", () => {
     it("partial update does not reset other fields", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "heartbeat_timeout", tenantsTotal: 5 });
       repo.updateEvent("evt-1", { tenantsRecovered: 2 });
-      const evt = repo.getEvent("evt-1")!;
-      expect(evt.tenantsTotal).toBe(5);
-      expect(evt.tenantsRecovered).toBe(2);
-      expect(evt.status).toBe("in_progress");
+      const evt = repo.getEvent("evt-1");
+      expect(evt?.tenantsTotal).toBe(5);
+      expect(evt?.tenantsRecovered).toBe(2);
+      expect(evt?.status).toBe("in_progress");
     });
   });
 
@@ -271,10 +271,10 @@ describe("DrizzleRecoveryRepository", () => {
       repo.incrementRetryCount("item-1");
       repo.incrementRetryCount("item-1");
       const items = repo.getWaitingItems("evt-1");
-      const item1 = items.find((i) => i.id === "item-1")!;
-      const item2 = items.find((i) => i.id === "item-2")!;
-      expect(item1.retryCount).toBe(3);
-      expect(item2.retryCount).toBe(0);
+      const item1 = items.find((i) => i.id === "item-1");
+      const item2 = items.find((i) => i.id === "item-2");
+      expect(item1?.retryCount).toBe(3);
+      expect(item2?.retryCount).toBe(0);
     });
   });
 });
