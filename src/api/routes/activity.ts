@@ -51,7 +51,7 @@ activityRoutes.get("/", (c) => {
 
   const events = rows.map((row) => ({
     id: row.id,
-    timestamp: new Date(row.timestamp * 1000).toISOString(),
+    timestamp: new Date(row.timestamp).toISOString(),
     actor: row.userId,
     action: formatAction(row.action),
     target: row.resourceId ?? row.resourceType,

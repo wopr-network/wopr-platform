@@ -57,7 +57,7 @@ describe("GET /api/activity", () => {
   });
 
   it("returns formatted activity events from audit_log", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const mockDb = makeMockDb([
       {
         id: "evt-1",
@@ -164,7 +164,7 @@ describe("GET /api/activity", () => {
 
 describe("formatAction helper", () => {
   it("formats instance.start as Started instance", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const mockDb = makeMockDb([
       {
         id: "1",
@@ -188,7 +188,7 @@ describe("formatAction helper", () => {
   });
 
   it("formats key.create as Created key", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const mockDb = makeMockDb([
       {
         id: "2",
@@ -214,7 +214,7 @@ describe("formatAction helper", () => {
 
 describe("buildTargetHref helper", () => {
   it("routes instance resource to /instances/:id", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const mockDb = makeMockDb([
       {
         id: "3",
@@ -238,7 +238,7 @@ describe("buildTargetHref helper", () => {
   });
 
   it("routes key resource to /settings", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const mockDb = makeMockDb([
       {
         id: "4",
@@ -262,7 +262,7 @@ describe("buildTargetHref helper", () => {
   });
 
   it("falls back to /dashboard for unknown resource types", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const mockDb = makeMockDb([
       {
         id: "5",
