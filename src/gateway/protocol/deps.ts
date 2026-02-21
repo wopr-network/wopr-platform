@@ -18,6 +18,7 @@ export interface ProtocolDeps {
   budgetChecker: BudgetChecker;
   creditLedger?: CreditLedger;
   topUpUrl: string;
+  graceBufferCents?: number;
   providers: ProviderConfig;
   defaultMargin: number;
   fetchFn: FetchFn;

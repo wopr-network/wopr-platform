@@ -128,7 +128,8 @@ export class CreditLedger {
 
   /**
    * Deduct credits from a tenant's balance.
-   * Throws InsufficientBalanceError if balance would go negative.
+   * Throws InsufficientBalanceError if balance would go negative (unless allowNegative is true).
+   * @param allowNegative - If true, allow balance to go negative (for grace buffer debits). Default: false.
    * @returns The created transaction record.
    */
   debit(
@@ -137,6 +138,7 @@ export class CreditLedger {
     type: DebitType,
     description?: string,
     referenceId?: string,
+    allowNegative?: boolean,
   ): CreditTransaction {
     if (amountCents <= 0) {
       throw new Error("amountCents must be positive for debits");
@@ -151,21 +153,30 @@ export class CreditLedger {
 
       const currentBalance = existing?.balanceCents ?? 0;
 
-      if (currentBalance < amountCents) {
+      if (!allowNegative && currentBalance < amountCents) {
         throw new InsufficientBalanceError(currentBalance, amountCents);
       }
 
       const newBalance = currentBalance - amountCents;
 
-      // `existing` is guaranteed non-null here: if it were null, currentBalance
-      // would be 0 and the InsufficientBalanceError above would have thrown.
-      tx.update(creditBalances)
-        .set({
-          balanceCents: newBalance,
-          lastUpdated: sql`(datetime('now'))`,
-        })
-        .where(eq(creditBalances.tenantId, tenantId))
-        .run();
+      if (existing) {
+        tx.update(creditBalances)
+          .set({
+            balanceCents: newBalance,
+            lastUpdated: sql`(datetime('now'))`,
+          })
+          .where(eq(creditBalances.tenantId, tenantId))
+          .run();
+      } else {
+        // allowNegative=true with no existing row — insert negative balance row
+        tx.insert(creditBalances)
+          .values({
+            tenantId,
+            balanceCents: newBalance,
+            lastUpdated: sql`(datetime('now'))`,
+          })
+          .run();
+      }
 
       const id = crypto.randomUUID();
       const txn: typeof creditTransactions.$inferInsert = {

@@ -202,4 +202,56 @@ describe("runRuntimeDeductions", () => {
     expect(result.suspended).toContain("tenant-2");
     expect(result.suspended).not.toContain("tenant-1");
   });
+
+  // WOP-821: onLowBalance and onCreditsExhausted callback tests
+
+  it("fires onLowBalance when balance drops below 100 cents threshold", async () => {
+    // tenant starts at 110 cents; 1 bot costs 17/day → new balance = 93 (below 100 threshold)
+    ledger.credit("tenant-1", 110, "purchase", "top-up");
+    const onLowBalance = vi.fn();
+    await runRuntimeDeductions({
+      ledger,
+      getActiveBotCount: () => 1,
+      onLowBalance,
+    });
+    expect(onLowBalance).toHaveBeenCalledWith("tenant-1", 93);
+  });
+
+  it("does NOT fire onLowBalance when balance was already below threshold before deduction", async () => {
+    // tenant starts at 90 (already below 100); drops to 73 after deduction
+    ledger.credit("tenant-1", 90, "purchase", "top-up");
+    const onLowBalance = vi.fn();
+    await runRuntimeDeductions({
+      ledger,
+      getActiveBotCount: () => 1,
+      onLowBalance,
+    });
+    expect(onLowBalance).not.toHaveBeenCalled();
+  });
+
+  it("fires onCreditsExhausted when full deduction causes balance to drop to 0", async () => {
+    // tenant starts at 17 (exactly 1 bot cost) → balance hits 0
+    ledger.credit("tenant-1", 17, "purchase", "top-up");
+    const onCreditsExhausted = vi.fn();
+    await runRuntimeDeductions({
+      ledger,
+      getActiveBotCount: () => 1,
+      onCreditsExhausted,
+    });
+    expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
+    expect(ledger.balance("tenant-1")).toBe(0);
+  });
+
+  it("fires onCreditsExhausted on partial deduction when balance hits 0", async () => {
+    // tenant starts at 10 cents; 1 bot costs 17 → partial debit of 10, balance hits 0
+    ledger.credit("tenant-1", 10, "purchase", "top-up");
+    const onCreditsExhausted = vi.fn();
+    await runRuntimeDeductions({
+      ledger,
+      getActiveBotCount: () => 1,
+      onCreditsExhausted,
+    });
+    expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
+    expect(ledger.balance("tenant-1")).toBe(0);
+  });
 });
