@@ -51,5 +51,9 @@ export const nodes = sqliteTable(
     /** Human-friendly label from the registration token */
     label: text("label"),
   },
-  (table) => [index("idx_nodes_status").on(table.status), index("idx_nodes_droplet").on(table.dropletId)],
+  (table) => [
+    index("idx_nodes_status").on(table.status),
+    index("idx_nodes_droplet").on(table.dropletId),
+    index("idx_nodes_node_secret").on(table.nodeSecret),
+  ],
 );

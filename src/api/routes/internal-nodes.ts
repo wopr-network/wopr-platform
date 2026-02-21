@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
 import type { NodeRegistration } from "../../fleet/repository-types.js";
@@ -15,7 +15,10 @@ export function validateNodeAuth(authHeader: string | undefined): boolean | null
   if (!nodeSecret) return null; // Not configured
   if (!authHeader) return false;
   const token = authHeader.replace(/^Bearer\s+/i, "");
-  return token === nodeSecret;
+  const a = Buffer.from(token);
+  const b = Buffer.from(nodeSecret);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 /**
@@ -40,12 +43,31 @@ internalNodeRoutes.post("/register", async (c) => {
     return c.json({ success: false, error: "Unauthorized" }, 401);
   }
 
-  let body: { node_id: string; host: string; capacity_mb: number; agent_version: string };
+  let rawBody: unknown;
   try {
-    body = await c.req.json();
+    rawBody = await c.req.json();
   } catch {
     return c.json({ success: false, error: "Invalid registration data" }, 400);
   }
+
+  // Runtime validation of required fields
+  if (
+    typeof rawBody !== "object" ||
+    rawBody === null ||
+    typeof (rawBody as Record<string, unknown>).node_id !== "string" ||
+    typeof (rawBody as Record<string, unknown>).host !== "string" ||
+    typeof (rawBody as Record<string, unknown>).capacity_mb !== "number" ||
+    typeof (rawBody as Record<string, unknown>).agent_version !== "string"
+  ) {
+    return c.json({ success: false, error: "Invalid registration data" }, 400);
+  }
+
+  const body = rawBody as {
+    node_id: string;
+    host: string;
+    capacity_mb: number;
+    agent_version: string;
+  };
 
   const registrar = getNodeRegistrar();
   const nodeRepo = getNodeRepo();
@@ -60,10 +82,14 @@ internalNodeRoutes.post("/register", async (c) => {
 
   // Path 1: Static NODE_SECRET (backwards-compatible)
   const staticSecret = process.env.NODE_SECRET;
-  if (staticSecret && bearer === staticSecret) {
-    registrar.register(registration);
-    logger.info(`Node registered via static secret: ${registration.nodeId}`);
-    return c.json({ success: true });
+  const bearerBuf = Buffer.from(bearer);
+  if (staticSecret) {
+    const secretBuf = Buffer.from(staticSecret);
+    if (bearerBuf.length === secretBuf.length && timingSafeEqual(bearerBuf, secretBuf)) {
+      registrar.register(registration);
+      logger.info(`Node registered via static secret: ${registration.nodeId}`);
+      return c.json({ success: true });
+    }
   }
 
   // Path 2: Per-node persistent secret (returning agent)

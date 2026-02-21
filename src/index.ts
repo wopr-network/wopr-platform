@@ -92,6 +92,17 @@ function isHeartbeatMessage(msg: unknown): msg is HeartbeatMessage {
   );
 }
 
+function isCommandResult(msg: unknown): msg is CommandResult {
+  if (typeof msg !== "object" || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return (
+    typeof m.id === "string" &&
+    m.type === "command_result" &&
+    typeof m.command === "string" &&
+    typeof m.success === "boolean"
+  );
+}
+
 /**
  * Accept a WebSocket connection for a node agent and wire up message routing
  * to the new fleet processors (ConnectionRegistry, HeartbeatProcessor, CommandBus, NodeRegistrar).
@@ -117,7 +128,11 @@ function acceptAndWireWebSocket(nodeId: string, ws: WebSocket): void {
       }
       getHeartbeatProcessor().process(nodeId, msg);
     } else if (msg.type === "command_result") {
-      getCommandBus().handleResult(msg as unknown as CommandResult);
+      if (!isCommandResult(msg)) {
+        logger.warn(`Malformed command_result message from ${nodeId}`);
+        return;
+      }
+      getCommandBus().handleResult(msg);
     } else if (msg.type === "register") {
       getNodeRegistrar().register({
         nodeId,
