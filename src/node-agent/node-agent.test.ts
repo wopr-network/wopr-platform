@@ -381,6 +381,105 @@ describe("ALLOWED_COMMANDS", () => {
   });
 });
 
+describe("DockerManager.updateBot", () => {
+  it("replaces container with new env vars without pulling image", async () => {
+    const { docker, container } = mockDockerode();
+    container.inspect.mockResolvedValue({
+      Config: { Image: "ghcr.io/wopr-network/wopr:latest", Env: ["OLD_KEY=old"] },
+      HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+      State: { Status: "running", Running: true, StartedAt: "2026-01-01T00:00:00Z" },
+    });
+    const manager = new DockerManager(docker as never);
+
+    const result = await manager.updateBot({
+      name: "tenant_abc",
+      env: { NEW_KEY: "new_value" },
+    });
+
+    expect(container.stop).toHaveBeenCalled();
+    expect(container.remove).toHaveBeenCalled();
+    expect(docker.pull).not.toHaveBeenCalled();
+    expect(docker.createContainer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Image: "ghcr.io/wopr-network/wopr:latest",
+        name: "tenant_abc",
+        Env: ["NEW_KEY=new_value"],
+        HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+      }),
+    );
+    expect(container.start).toHaveBeenCalled();
+    expect(result.containerId).toBe("abc123");
+  });
+
+  it("prefixes tenant_ to bare names", async () => {
+    const { docker, container } = mockDockerode();
+    container.inspect.mockResolvedValue({
+      Config: { Image: "img:latest", Env: [] },
+      HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+      State: { Status: "running", Running: true, StartedAt: "2026-01-01T00:00:00Z" },
+    });
+    const manager = new DockerManager(docker as never);
+
+    await manager.updateBot({ name: "mybot", env: { A: "1" } });
+
+    expect(docker.getContainer).toHaveBeenCalledWith("tenant_mybot");
+    expect(docker.createContainer).toHaveBeenCalledWith(expect.objectContaining({ name: "tenant_mybot" }));
+  });
+
+  it("rolls back on create failure", async () => {
+    const { docker, container } = mockDockerode();
+    container.inspect.mockResolvedValue({
+      Config: { Image: "img:latest", Env: ["OLD=val"] },
+      HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+      State: { Status: "running", Running: true, StartedAt: "2026-01-01T00:00:00Z" },
+    });
+    docker.createContainer.mockRejectedValueOnce(new Error("create failed")).mockResolvedValueOnce(container);
+
+    const manager = new DockerManager(docker as never);
+
+    await expect(manager.updateBot({ name: "tenant_abc", env: { BAD: "env" } })).rejects.toThrow("create failed");
+
+    expect(docker.createContainer).toHaveBeenCalledTimes(2);
+    expect(docker.createContainer).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        Env: ["OLD=val"],
+        name: "tenant_abc",
+      }),
+    );
+  });
+
+  it("handles already-stopped container gracefully", async () => {
+    const { docker, container } = mockDockerode();
+    container.inspect.mockResolvedValue({
+      Config: { Image: "img:latest", Env: [] },
+      HostConfig: { RestartPolicy: { Name: "no" } },
+      State: { Status: "exited", Running: false },
+    });
+    container.stop.mockRejectedValue(new Error("container already stopped"));
+    const manager = new DockerManager(docker as never);
+
+    const result = await manager.updateBot({ name: "tenant_abc", env: { A: "1" } });
+
+    expect(container.remove).toHaveBeenCalled();
+    expect(docker.createContainer).toHaveBeenCalled();
+    expect(result.containerId).toBe("abc123");
+  });
+});
+
+describe("commandSchema", () => {
+  it("parses bot.update command", () => {
+    const cmd = commandSchema.parse({
+      id: "cmd-update",
+      type: "bot.update",
+      payload: {
+        name: "tenant_abc123",
+        env: { WOPR_PLUGINS: "wopr-plugin-discord" },
+      },
+    });
+    expect(cmd.type).toBe("bot.update");
+  });
+});
+
 describe("DockerManager.updateBotEnv", () => {
   it("stops, removes, and recreates container with new env", async () => {
     const { docker } = mockDockerode();
