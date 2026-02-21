@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import Database from "better-sqlite3";
 import { eq, gte } from "drizzle-orm";
+import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
 import { initRateSchema } from "./admin/rates/schema.js";
@@ -12,14 +13,26 @@ import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { applyPlatformPragmas, createDb } from "./db/index.js";
 import * as schema from "./db/schema/index.js";
-import { ProfileStore } from "./fleet/profile-store.js";
-import { getHeartbeatWatchdog, getNodeConnections, getRegistrationTokenStore, initFleet } from "./fleet/services.js";
+import type { CommandResult } from "./fleet/node-command-bus.js";
+import {
+  getBotProfileRepo,
+  getCommandBus,
+  getConnectionRegistry,
+  getHeartbeatProcessor,
+  getHeartbeatWatchdog,
+  getNodeConnections,
+  getNodeRegistrar,
+  getNodeRepo,
+  getRegistrationTokenStore,
+  initFleet,
+} from "./fleet/services.js";
 import { mountGateway } from "./gateway/index.js";
 import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
+import type { HeartbeatMessage } from "./node-agent/types.js";
 import {
   AlertChecker,
   buildAlerts,
@@ -34,8 +47,6 @@ import { setNodesRouterDeps } from "./trpc/index.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
-
-const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
 const port = config.port;
 
@@ -71,6 +82,81 @@ process.on("uncaughtException", uncaughtExceptionHandler);
 
 // Initialize Sentry error tracking (no-op when SENTRY_DSN absent)
 initSentry(process.env.SENTRY_DSN);
+
+function isHeartbeatMessage(msg: unknown): msg is HeartbeatMessage {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    (msg as Record<string, unknown>).type === "heartbeat" &&
+    typeof (msg as Record<string, unknown>).node_id === "string"
+  );
+}
+
+function isCommandResult(msg: unknown): msg is CommandResult {
+  if (typeof msg !== "object" || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return (
+    typeof m.id === "string" &&
+    m.type === "command_result" &&
+    typeof m.command === "string" &&
+    typeof m.success === "boolean"
+  );
+}
+
+/**
+ * Accept a WebSocket connection for a node agent and wire up message routing
+ * to the new fleet processors (ConnectionRegistry, HeartbeatProcessor, CommandBus, NodeRegistrar).
+ */
+function acceptAndWireWebSocket(nodeId: string, ws: WebSocket): void {
+  getConnectionRegistry().accept(nodeId, ws);
+
+  ws.on("message", (data: Buffer) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data.toString());
+    } catch {
+      logger.warn(`Received non-JSON message from ${nodeId}`);
+      return;
+    }
+
+    const msg = parsed as Record<string, unknown>;
+
+    if (msg.type === "heartbeat") {
+      if (!isHeartbeatMessage(msg)) {
+        logger.warn(`Malformed heartbeat message from ${nodeId}`);
+        return;
+      }
+      getHeartbeatProcessor().process(nodeId, msg);
+    } else if (msg.type === "command_result") {
+      if (!isCommandResult(msg)) {
+        logger.warn(`Malformed command_result message from ${nodeId}`);
+        return;
+      }
+      getCommandBus().handleResult(msg);
+    } else if (msg.type === "register") {
+      getNodeRegistrar().register({
+        nodeId,
+        host: (msg.host as string) ?? "",
+        capacityMb: (msg.capacity_mb as number) ?? 0,
+        agentVersion: (msg.agent_version as string) ?? "",
+      });
+    } else if (msg.type === "health_event") {
+      logger.warn(`Health event from ${nodeId}`, { event: msg });
+    } else {
+      logger.debug(`Unknown message type from ${nodeId}`, { msg });
+    }
+  });
+
+  ws.on("close", () => {
+    logger.info(`Node ${nodeId} disconnected`);
+    getConnectionRegistry().close(nodeId);
+  });
+
+  ws.on("error", (err: Error) => {
+    logger.warn(`WebSocket error from node ${nodeId}`, { err });
+    getConnectionRegistry().close(nodeId);
+  });
+}
 
 // Only start the server if not imported by tests
 if (process.env.NODE_ENV !== "test") {
@@ -195,7 +281,7 @@ if (process.env.NODE_ENV !== "test") {
 
   // Hydrate proxy route table from persisted profiles so tenant subdomains
   // are not lost on server restart.
-  await hydrateProxyRoutes(new ProfileStore(DATA_DIR));
+  await hydrateProxyRoutes(getBotProfileRepo());
 
   // Wire nodes tRPC router deps
   setNodesRouterDeps({
@@ -231,17 +317,17 @@ if (process.env.NODE_ENV !== "test") {
         const staticAuthResult = validateNodeAuth(authHeader);
         if (staticAuthResult === true) {
           wss.handleUpgrade(req, socket, head, (ws) => {
-            getNodeConnections().handleWebSocket(nodeId, ws);
+            acceptAndWireWebSocket(nodeId, ws);
           });
           return;
         }
 
         // Path 2: Per-node persistent secret for self-hosted nodes
         if (bearer) {
-          const nodeBySecret = getNodeConnections().getNodeBySecret(bearer);
+          const nodeBySecret = getNodeRepo().getBySecret(bearer);
           if (nodeBySecret && nodeBySecret.id === nodeId) {
             wss.handleUpgrade(req, socket, head, (ws) => {
-              getNodeConnections().handleWebSocket(nodeId, ws);
+              acceptAndWireWebSocket(nodeId, ws);
             });
             return;
           }

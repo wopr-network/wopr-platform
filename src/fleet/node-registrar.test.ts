@@ -62,6 +62,7 @@ describe("NodeRegistrar", () => {
     const node = makeNode({ id: "node-1", status: "active" });
     const nodeRepo: NodeRegistrarNodeRepo = {
       register: vi.fn().mockReturnValue(node),
+      registerSelfHosted: vi.fn().mockReturnValue(node),
     };
     const recoveryRepo: NodeRegistrarRecoveryRepo = {
       listOpenEvents: vi.fn().mockReturnValue([]),
@@ -80,6 +81,7 @@ describe("NodeRegistrar", () => {
     const node = makeNode({ id: "node-1", status: "returning" });
     const nodeRepo: NodeRegistrarNodeRepo = {
       register: vi.fn().mockReturnValue(node),
+      registerSelfHosted: vi.fn().mockReturnValue(node),
     };
     const recoveryRepo: NodeRegistrarRecoveryRepo = {
       listOpenEvents: vi.fn().mockReturnValue([]),
@@ -111,6 +113,7 @@ describe("NodeRegistrar", () => {
 
     const nodeRepo: NodeRegistrarNodeRepo = {
       register: vi.fn().mockReturnValue(node),
+      registerSelfHosted: vi.fn().mockReturnValue(node),
     };
     const recoveryRepo: NodeRegistrarRecoveryRepo = {
       listOpenEvents: vi.fn().mockReturnValue([event]),
