@@ -19,7 +19,13 @@ export {
   getCircuitStates,
 } from "./circuit-breaker.js";
 export { type CreditGateDeps, creditBalanceCheck, debitCredits } from "./credit-gate.js";
-export { mapBudgetError, mapCircuitBreakerError, mapProviderError, mapSpendingCapError } from "./error-mapping.js";
+export {
+  mapBudgetError,
+  mapCircuitBreakerError,
+  mapCreditsExhaustedError,
+  mapProviderError,
+  mapSpendingCapError,
+} from "./error-mapping.js";
 export { gatewayHealthHandler } from "./health.js";
 export { modelsHandler } from "./models.js";
 export {

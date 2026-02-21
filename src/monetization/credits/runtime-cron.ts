@@ -14,10 +14,17 @@ export type OnSuspend = (tenantId: string) => void | Promise<void>;
 /** Resolve the number of active bots for a given tenant. */
 export type GetActiveBotCount = (tenantId: string) => number | Promise<number>;
 
+/** Low balance threshold in cents (20% of signup grant = $1.00). */
+export const LOW_BALANCE_THRESHOLD_CENTS = 100;
+
 export interface RuntimeCronConfig {
   ledger: CreditLedger;
   getActiveBotCount: GetActiveBotCount;
   onSuspend?: OnSuspend;
+  /** Called when balance drops below LOW_BALANCE_THRESHOLD_CENTS ($1.00). */
+  onLowBalance?: (tenantId: string, balanceCents: number) => void | Promise<void>;
+  /** Called when balance hits exactly 0 or goes negative. */
+  onCreditsExhausted?: (tenantId: string) => void | Promise<void>;
 }
 
 export interface RuntimeCronResult {
@@ -58,6 +65,23 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           "bot_runtime",
           `Daily runtime: ${botCount} bot(s) x $${(DAILY_BOT_COST_CENTS / 100).toFixed(2)}`,
         );
+
+        const newBalance = cfg.ledger.balance(tenantId);
+
+        // Fire onLowBalance if balance crossed below threshold from above
+        if (
+          newBalance > 0 &&
+          newBalance <= LOW_BALANCE_THRESHOLD_CENTS &&
+          balanceCents > LOW_BALANCE_THRESHOLD_CENTS &&
+          cfg.onLowBalance
+        ) {
+          await cfg.onLowBalance(tenantId, newBalance);
+        }
+
+        // Fire onCreditsExhausted if balance just hit 0
+        if (newBalance <= 0 && balanceCents > 0 && cfg.onCreditsExhausted) {
+          await cfg.onCreditsExhausted(tenantId);
+        }
       } else {
         // Partial deduction — debit remaining balance, then suspend
         if (balanceCents > 0) {
@@ -67,6 +91,10 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
             "bot_runtime",
             `Partial daily runtime (balance exhausted): ${botCount} bot(s)`,
           );
+        }
+
+        if (cfg.onCreditsExhausted) {
+          await cfg.onCreditsExhausted(tenantId);
         }
 
         result.suspended.push(tenantId);

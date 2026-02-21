@@ -24,6 +24,25 @@ export function mapCircuitBreakerError(
   };
 }
 
+/** Map a credits-exhausted state to a gateway error response. */
+export function mapCreditsExhaustedError(
+  _currentBalanceCents: number,
+  topUpUrl: string,
+): { status: number; body: GatewayErrorResponse & { needsCredits: boolean; topUpUrl: string } } {
+  return {
+    status: 402,
+    body: {
+      error: {
+        message: "Your credits are exhausted. Add credits to continue using your bot.",
+        type: "billing_error",
+        code: "credits_exhausted",
+      },
+      needsCredits: true,
+      topUpUrl,
+    },
+  };
+}
+
 /** Map a spending cap exceeded to a gateway error response. */
 export function mapSpendingCapError(
   capType: string,

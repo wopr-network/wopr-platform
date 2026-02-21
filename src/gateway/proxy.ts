@@ -63,6 +63,7 @@ export interface ProxyDeps {
   budgetChecker: BudgetChecker;
   creditLedger?: CreditLedger;
   topUpUrl: string;
+  graceBufferCents?: number;
   providers: ProviderConfig;
   defaultMargin: number;
   fetchFn: FetchFn;
@@ -76,6 +77,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     budgetChecker: config.budgetChecker,
     creditLedger: config.creditLedger,
     topUpUrl: config.topUpUrl ?? "/dashboard/credits",
+    graceBufferCents: config.graceBufferCents,
     providers: config.providers,
     defaultMargin: config.defaultMargin ?? DEFAULT_MARGIN,
     fetchFn: config.fetchFn ?? fetch,

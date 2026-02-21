@@ -16,6 +16,10 @@ import type { GatewayAuthEnv } from "./service-key-auth.js";
 export interface CreditGateDeps {
   creditLedger?: CreditLedger;
   topUpUrl: string;
+  /** Maximum negative balance allowed before hard-stop, in cents. Default: 50 (-$0.50). */
+  graceBufferCents?: number;
+  /** Called when a debit causes balance to cross the zero threshold. */
+  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
 }
 
 export interface CreditError {
@@ -47,8 +51,23 @@ export function creditBalanceCheck(
   const tenant = c.get("gatewayTenant");
   const balance = deps.creditLedger.balance(tenant.id);
   const required = Math.max(0, estimatedCostCents);
+  const graceBuffer = deps.graceBufferCents ?? 50; // default -$0.50
 
-  if (balance < required) {
+  // Hard stop: balance has exceeded the grace buffer
+  if (balance <= -graceBuffer) {
+    return {
+      message: "Your credits are exhausted. Add credits to continue using your bot.",
+      type: "billing_error",
+      code: "credits_exhausted",
+      needsCredits: true,
+      topUpUrl: deps.topUpUrl,
+      currentBalanceCents: balance,
+      requiredCents: required,
+    };
+  }
+
+  // Soft check: balance is positive but below estimated cost (no grace buffer needed yet)
+  if (balance >= 0 && balance < required) {
     return {
       message: "Insufficient credits. Please add credits to continue.",
       type: "billing_error",
@@ -60,6 +79,8 @@ export function creditBalanceCheck(
     };
   }
 
+  // Balance is negative but within grace buffer — allow through (auto-topup window)
+  // Balance is positive and >= required — allow through
   return null;
 }
 
@@ -82,7 +103,22 @@ export function debitCredits(
   if (chargeCents <= 0) return;
 
   try {
-    deps.creditLedger.debit(tenantId, chargeCents, "adapter_usage", `Gateway ${capability} via ${provider}`);
+    deps.creditLedger.debit(
+      tenantId,
+      chargeCents,
+      "adapter_usage",
+      `Gateway ${capability} via ${provider}`,
+      undefined,
+      true,
+    );
+
+    // Check if this debit crossed the zero threshold and fire callback
+    if (deps.onBalanceExhausted) {
+      const newBalance = deps.creditLedger.balance(tenantId);
+      if (newBalance <= 0) {
+        deps.onBalanceExhausted(tenantId, newBalance);
+      }
+    }
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
       logger.warn("Credit debit failed after proxy (insufficient balance)", {
