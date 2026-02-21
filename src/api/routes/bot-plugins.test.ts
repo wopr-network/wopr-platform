@@ -465,6 +465,92 @@ describe("bot-plugin routes", () => {
     });
   });
 
+  describe("DELETE /fleet/bots/:botId/plugins/:pluginId", () => {
+    it("removes a plugin and its config env var", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "plugin-a,plugin-b",
+          WOPR_PLUGIN_PLUGIN_A_CONFIG: '{"foo":"bar"}',
+        },
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.pluginId).toBe("plugin-a");
+
+      expect(fleetMock.update).toHaveBeenCalledWith(
+        TEST_BOT_ID,
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGINS: "plugin-b",
+          }),
+        }),
+      );
+      // Config key should be removed
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      expect(savedEnv).not.toHaveProperty("WOPR_PLUGIN_PLUGIN_A_CONFIG");
+    });
+
+    it("removes hosted env keys when last plugin is uninstalled", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "my-tts-plugin",
+          WOPR_PLUGIN_MY_TTS_PLUGIN_CONFIG: "{}",
+          ELEVENLABS_API_KEY: "sk-test",
+          WOPR_HOSTED_KEYS: "ELEVENLABS_API_KEY",
+        },
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      expect(savedEnv).not.toHaveProperty("ELEVENLABS_API_KEY");
+      expect(savedEnv).not.toHaveProperty("WOPR_HOSTED_KEYS");
+    });
+
+    it("returns 404 when plugin is not installed", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/not-installed`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for non-existent bot", async () => {
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/plugins/some-plugin`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 401 without auth token", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/some-plugin`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe("GET /fleet/bots/:botId/plugins", () => {
     it("returns list of installed plugins", async () => {
       storeMock.get.mockResolvedValue({

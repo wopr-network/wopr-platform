@@ -353,3 +353,98 @@ botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => 
     ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
   });
 });
+
+/** DELETE /fleet/bots/:botId/plugins/:pluginId — Uninstall a plugin from a bot */
+botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
+  const botId = c.req.param("botId");
+  const pluginId = c.req.param("pluginId");
+
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
+    return c.json({ error: "Invalid plugin ID format" }, 400);
+  }
+
+  const profile = await store.get(botId);
+  if (!profile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  const ownershipError = validateTenantOwnership(c, profile, profile.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  const installedPlugins = (profile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!installedPlugins.includes(pluginId)) {
+    return c.json({ error: "Plugin not installed", pluginId }, 404);
+  }
+
+  // Remove plugin from WOPR_PLUGINS list
+  const remainingPlugins = installedPlugins.filter((id) => id !== pluginId);
+
+  // Remove plugin config env var
+  const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
+  const { [configEnvKey]: _removedConfig, ...envWithoutConfig } = profile.env;
+
+  // Clean up hosted keys tracked in WOPR_HOSTED_KEYS when the last plugin is removed.
+  // If other plugins need the same hosted key, the next plugin install will re-inject it.
+  const hostedKeys = (envWithoutConfig.WOPR_HOSTED_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const updatedEnv: Record<string, string> = { ...envWithoutConfig };
+
+  // If no more plugins remain, remove all hosted keys
+  if (remainingPlugins.length === 0) {
+    for (const key of hostedKeys) {
+      delete updatedEnv[key];
+    }
+    delete updatedEnv.WOPR_HOSTED_KEYS;
+    delete updatedEnv.WOPR_PLUGINS;
+  } else {
+    updatedEnv.WOPR_PLUGINS = remainingPlugins.join(",");
+  }
+
+  // Clean up WOPR_PLUGINS_DISABLED for this plugin
+  const disabledPlugins = (updatedEnv.WOPR_PLUGINS_DISABLED || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((id) => id !== pluginId);
+
+  if (disabledPlugins.length > 0) {
+    updatedEnv.WOPR_PLUGINS_DISABLED = disabledPlugins.join(",");
+  } else {
+    delete updatedEnv.WOPR_PLUGINS_DISABLED;
+  }
+
+  let applied = false;
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+    applied = true;
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    logger.error(`Failed to apply plugin uninstall to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
+
+  logger.info(`Uninstalled plugin ${pluginId} from bot ${botId}`, {
+    botId,
+    pluginId,
+    tenantId: profile.tenantId,
+  });
+
+  return c.json({
+    success: true,
+    botId,
+    pluginId,
+    installedPlugins: remainingPlugins,
+    applied,
+  });
+});
