@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
-import { DrizzleBotProfileRepository } from "./bot-profile-repository.js";
+import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
 import type { BotProfile } from "./types.js";
 
 function makeDb() {
@@ -145,7 +145,11 @@ describe("DrizzleBotProfileRepository", () => {
 
     it("returns all saved profiles", () => {
       const p1 = makeProfile({ id: "aaaaaaaa-1111-1111-1111-111111111111", name: "bot-1" });
-      const p2 = makeProfile({ id: "bbbbbbbb-2222-2222-2222-222222222222", name: "bot-2", tenantId: "tenant-2" });
+      const p2 = makeProfile({
+        id: "bbbbbbbb-2222-2222-2222-222222222222",
+        name: "bot-2",
+        tenantId: "tenant-2",
+      });
       repo.save(p1);
       repo.save(p2);
 

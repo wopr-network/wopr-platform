@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
-import { DrizzleRecoveryRepository } from "./recovery-repository.js";
+import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
 
 function makeDb() {
   const sqlite = new Database(":memory:");
@@ -112,7 +112,12 @@ describe("DrizzleRecoveryRepository", () => {
     });
 
     it("partial update does not reset other fields", () => {
-      repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "heartbeat_timeout", tenantsTotal: 5 });
+      repo.createEvent({
+        id: "evt-1",
+        nodeId: "node-1",
+        trigger: "heartbeat_timeout",
+        tenantsTotal: 5,
+      });
       repo.updateEvent("evt-1", { tenantsRecovered: 2 });
       const evt = repo.getEvent("evt-1");
       expect(evt?.tenantsTotal).toBe(5);
@@ -201,14 +206,22 @@ describe("DrizzleRecoveryRepository", () => {
 
     it("does NOT return completed events", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
-      repo.updateEvent("evt-1", { status: "completed", completedAt: Math.floor(Date.now() / 1000) });
+      repo.updateEvent("evt-1", {
+        status: "completed",
+        completedAt: Math.floor(Date.now() / 1000),
+      });
       const open = repo.listOpenEvents();
       expect(open).toHaveLength(0);
     });
 
     it("returns multiple open events from different nodes", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
-      repo.createEvent({ id: "evt-2", nodeId: "node-2", trigger: "heartbeat_timeout", tenantsTotal: 2 });
+      repo.createEvent({
+        id: "evt-2",
+        nodeId: "node-2",
+        trigger: "heartbeat_timeout",
+        tenantsTotal: 2,
+      });
       repo.createEvent({ id: "evt-3", nodeId: "node-3", trigger: "manual", tenantsTotal: 1 });
       repo.updateEvent("evt-3", { status: "completed" });
       const open = repo.listOpenEvents();
@@ -225,9 +238,27 @@ describe("DrizzleRecoveryRepository", () => {
   describe("getWaitingItems", () => {
     it("returns only items with waiting status for given event", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 3 });
-      repo.createItem({ id: "item-1", recoveryEventId: "evt-1", tenant: "t-a", sourceNode: "node-1", backupKey: "k1" });
-      repo.createItem({ id: "item-2", recoveryEventId: "evt-1", tenant: "t-b", sourceNode: "node-1", backupKey: "k2" });
-      repo.createItem({ id: "item-3", recoveryEventId: "evt-1", tenant: "t-c", sourceNode: "node-1", backupKey: "k3" });
+      repo.createItem({
+        id: "item-1",
+        recoveryEventId: "evt-1",
+        tenant: "t-a",
+        sourceNode: "node-1",
+        backupKey: "k1",
+      });
+      repo.createItem({
+        id: "item-2",
+        recoveryEventId: "evt-1",
+        tenant: "t-b",
+        sourceNode: "node-1",
+        backupKey: "k2",
+      });
+      repo.createItem({
+        id: "item-3",
+        recoveryEventId: "evt-1",
+        tenant: "t-c",
+        sourceNode: "node-1",
+        backupKey: "k3",
+      });
       repo.updateItem("item-1", { status: "recovered", targetNode: "node-2" });
       const waiting = repo.getWaitingItems("evt-1");
       expect(waiting).toHaveLength(2);
@@ -236,7 +267,13 @@ describe("DrizzleRecoveryRepository", () => {
 
     it("returns empty array when no waiting items", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
-      repo.createItem({ id: "item-1", recoveryEventId: "evt-1", tenant: "t-a", sourceNode: "node-1", backupKey: "k1" });
+      repo.createItem({
+        id: "item-1",
+        recoveryEventId: "evt-1",
+        tenant: "t-a",
+        sourceNode: "node-1",
+        backupKey: "k1",
+      });
       repo.updateItem("item-1", { status: "recovered", targetNode: "node-2" });
       expect(repo.getWaitingItems("evt-1")).toEqual([]);
     });
@@ -244,8 +281,20 @@ describe("DrizzleRecoveryRepository", () => {
     it("does not return items from a different event", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
       repo.createEvent({ id: "evt-2", nodeId: "node-2", trigger: "manual", tenantsTotal: 1 });
-      repo.createItem({ id: "item-1", recoveryEventId: "evt-1", tenant: "t-a", sourceNode: "node-1", backupKey: "k1" });
-      repo.createItem({ id: "item-2", recoveryEventId: "evt-2", tenant: "t-b", sourceNode: "node-2", backupKey: "k2" });
+      repo.createItem({
+        id: "item-1",
+        recoveryEventId: "evt-1",
+        tenant: "t-a",
+        sourceNode: "node-1",
+        backupKey: "k1",
+      });
+      repo.createItem({
+        id: "item-2",
+        recoveryEventId: "evt-2",
+        tenant: "t-b",
+        sourceNode: "node-2",
+        backupKey: "k2",
+      });
       const waiting = repo.getWaitingItems("evt-1");
       expect(waiting).toHaveLength(1);
       expect(waiting[0].tenant).toBe("t-a");
@@ -255,7 +304,13 @@ describe("DrizzleRecoveryRepository", () => {
   describe("incrementRetryCount", () => {
     it("increments retryCount atomically by 1", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
-      repo.createItem({ id: "item-1", recoveryEventId: "evt-1", tenant: "t-a", sourceNode: "node-1", backupKey: "k1" });
+      repo.createItem({
+        id: "item-1",
+        recoveryEventId: "evt-1",
+        tenant: "t-a",
+        sourceNode: "node-1",
+        backupKey: "k1",
+      });
       expect(repo.getWaitingItems("evt-1")[0].retryCount).toBe(0);
       repo.incrementRetryCount("item-1");
       expect(repo.getWaitingItems("evt-1")[0].retryCount).toBe(1);
@@ -265,8 +320,20 @@ describe("DrizzleRecoveryRepository", () => {
 
     it("only increments the targeted item", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 2 });
-      repo.createItem({ id: "item-1", recoveryEventId: "evt-1", tenant: "t-a", sourceNode: "node-1", backupKey: "k1" });
-      repo.createItem({ id: "item-2", recoveryEventId: "evt-1", tenant: "t-b", sourceNode: "node-1", backupKey: "k2" });
+      repo.createItem({
+        id: "item-1",
+        recoveryEventId: "evt-1",
+        tenant: "t-a",
+        sourceNode: "node-1",
+        backupKey: "k1",
+      });
+      repo.createItem({
+        id: "item-2",
+        recoveryEventId: "evt-1",
+        tenant: "t-b",
+        sourceNode: "node-1",
+        backupKey: "k2",
+      });
       repo.incrementRetryCount("item-1");
       repo.incrementRetryCount("item-1");
       repo.incrementRetryCount("item-1");

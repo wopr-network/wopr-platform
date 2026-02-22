@@ -627,8 +627,8 @@ describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () =>
       }) as never;
 
     const { OrphanCleaner } = await import("./orphan-cleaner.js");
-    const { DrizzleNodeRepository } = await import("./node-repository.js");
-    const { DrizzleBotInstanceRepository } = await import("./bot-instance-repository.js");
+    const { DrizzleNodeRepository } = await import("./drizzle-node-repository.js");
+    const { DrizzleBotInstanceRepository } = await import("./drizzle-bot-instance-repository.js");
     const mockCommandBus = {
       send: vi.fn().mockImplementation(async (_nodeId: string, cmd: { type: string; payload: { name: string } }) => {
         sentCommands.push({ nodeId: _nodeId, type: cmd.type, name: cmd.payload.name });

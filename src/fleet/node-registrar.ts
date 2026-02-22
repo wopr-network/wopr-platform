@@ -1,5 +1,10 @@
-import type { Node as DrizzleNode } from "./node-repository.js";
-import type { NodeRegistration, RecoveryEvent, RecoveryItem, SelfHostedNodeRegistration } from "./repository-types.js";
+import type {
+  Node as DrizzleNode,
+  NodeRegistration,
+  RecoveryEvent,
+  RecoveryItem,
+  SelfHostedNodeRegistration,
+} from "./repository-types.js";
 
 /** Subset of INodeRepository used by NodeRegistrar. */
 export interface NodeRegistrarNodeRepo {
