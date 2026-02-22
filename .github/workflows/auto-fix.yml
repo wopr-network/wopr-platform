@@ -186,7 +186,7 @@ jobs:
             Focus on the "${{ steps.ctx.outputs.failed_check }}" failure. Fix the root cause.
 
       - name: Remove auto-fixing label (cleanup)
-        if: always() && steps.label-check.outputs.skip == 'false'
+        if: always()
         uses: actions/github-script@v7
         with:
           script: |
