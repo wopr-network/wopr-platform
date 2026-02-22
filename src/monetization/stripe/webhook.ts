@@ -1,7 +1,7 @@
-import { LRUCache } from "lru-cache";
 import type Stripe from "stripe";
 import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditLedger } from "../credits/credit-ledger.js";
+import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
 import type { CreditPriceMap } from "./credit-prices.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
 
@@ -21,28 +21,6 @@ export interface WebhookResult {
 }
 
 /**
- * In-memory guard that rejects duplicate Stripe event IDs within a TTL window.
- * Uses LRU cache so memory stays bounded even under high throughput.
- */
-export class WebhookReplayGuard {
-  private readonly seen: LRUCache<string, true>;
-
-  constructor(ttlMs = 5 * 60 * 1000, maxEntries = 10_000) {
-    this.seen = new LRUCache<string, true>({ max: maxEntries, ttl: ttlMs });
-  }
-
-  /** Returns true if this event ID was already seen (replay). */
-  isDuplicate(eventId: string): boolean {
-    return this.seen.has(eventId);
-  }
-
-  /** Mark an event ID as processed. */
-  markSeen(eventId: string): void {
-    this.seen.set(eventId, true);
-  }
-}
-
-/**
  * Dependencies required by the webhook handler.
  */
 export interface WebhookDeps {
@@ -53,7 +31,7 @@ export interface WebhookDeps {
   /** Bot billing manager for reactivation after credit purchase (WOP-447). */
   botBilling?: BotBilling;
   /** Replay attack guard — rejects duplicate event IDs within TTL window. */
-  replayGuard?: WebhookReplayGuard;
+  replayGuard?: IWebhookSeenRepository;
 }
 
 /**
@@ -67,7 +45,7 @@ export interface WebhookDeps {
  */
 export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): WebhookResult {
   // Replay guard: reject duplicate event IDs within the TTL window.
-  if (deps.replayGuard?.isDuplicate(event.id)) {
+  if (deps.replayGuard?.isDuplicate(event.id, "stripe")) {
     return { handled: true, event_type: event.type, duplicate: true };
   }
 
@@ -153,7 +131,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
   // Mark event as seen AFTER processing (success or failure) to prevent infinite retries.
   // This ensures that if processing throws an exception, the event can be retried,
   // but if processing completes (even with handled:false), duplicates are blocked.
-  deps.replayGuard?.markSeen(event.id);
+  deps.replayGuard?.markSeen(event.id, "stripe");
 
   return result;
 }

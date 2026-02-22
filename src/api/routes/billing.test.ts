@@ -7,10 +7,12 @@ import { createDb, type DrizzleDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
+import { DrizzleWebhookSeenRepository } from "../../monetization/drizzle-webhook-seen-repository.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initPayRamSchema } from "../../monetization/payram/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+import type { IWebhookSeenRepository } from "../../monetization/webhook-seen-repository.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
@@ -42,6 +44,18 @@ function createTestSigPenaltyRepo(): ISigPenaltyRepository {
     );
   `);
   return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
+}
+
+function createTestReplayGuardRepo(): IWebhookSeenRepository {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS webhook_seen_events (
+      event_id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      seen_at INTEGER NOT NULL
+    );
+  `);
+  return new DrizzleWebhookSeenRepository(drizzle(sqlite, { schema }));
 }
 
 function createBillingTestDb() {
@@ -540,6 +554,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        replayGuard: createTestReplayGuardRepo(),
       });
 
       // First request — should process normally

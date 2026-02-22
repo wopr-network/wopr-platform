@@ -5,14 +5,29 @@
  * no-op status, idempotency, replay guard, and bot reactivation.
  */
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/index.js";
+import * as schema from "../../db/schema/index.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { initCreditSchema } from "../credits/schema.js";
+import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
 import { PayRamChargeStore } from "./charge-store.js";
 import type { PayRamWebhookDeps, PayRamWebhookPayload } from "./index.js";
 import { initPayRamSchema } from "./schema.js";
-import { handlePayRamWebhook, PayRamReplayGuard } from "./webhook.js";
+import { handlePayRamWebhook } from "./webhook.js";
+
+function makeReplayGuard() {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE webhook_seen_events (
+      event_id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      seen_at INTEGER NOT NULL
+    )
+  `);
+  return new DrizzleWebhookSeenRepository(drizzle(sqlite, { schema }));
+}
 
 function makePayload(overrides: Partial<PayRamWebhookPayload> = {}): PayRamWebhookPayload {
   return {
@@ -220,7 +235,7 @@ describe("handlePayRamWebhook", () => {
 
   describe("replay guard", () => {
     it("blocks duplicate reference_id + status combos", () => {
-      const replayGuard = new PayRamReplayGuard();
+      const replayGuard = makeReplayGuard();
       const depsWithGuard: PayRamWebhookDeps = { ...deps, replayGuard };
 
       const first = handlePayRamWebhook(depsWithGuard, makePayload({ status: "FILLED" }));
@@ -238,7 +253,7 @@ describe("handlePayRamWebhook", () => {
     });
 
     it("same reference_id with different status is not blocked by replay guard", () => {
-      const replayGuard = new PayRamReplayGuard();
+      const replayGuard = makeReplayGuard();
       const depsWithGuard: PayRamWebhookDeps = { ...deps, replayGuard };
 
       handlePayRamWebhook(depsWithGuard, makePayload({ status: "VERIFYING" }));
@@ -292,27 +307,27 @@ describe("handlePayRamWebhook", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PayRamReplayGuard unit tests
+// DrizzleWebhookSeenRepository unit tests (replaces PayRamReplayGuard)
 // ---------------------------------------------------------------------------
 
-describe("PayRamReplayGuard", () => {
+describe("DrizzleWebhookSeenRepository (payram replay guard)", () => {
   it("reports unseen keys as not duplicate", () => {
-    const guard = new PayRamReplayGuard();
-    expect(guard.isDuplicate("ref-001:FILLED")).toBe(false);
+    const guard = makeReplayGuard();
+    expect(guard.isDuplicate("ref-001:FILLED", "payram")).toBe(false);
   });
 
   it("reports seen keys as duplicate", () => {
-    const guard = new PayRamReplayGuard();
-    guard.markSeen("ref-001:FILLED");
-    expect(guard.isDuplicate("ref-001:FILLED")).toBe(true);
+    const guard = makeReplayGuard();
+    guard.markSeen("ref-001:FILLED", "payram");
+    expect(guard.isDuplicate("ref-001:FILLED", "payram")).toBe(true);
   });
 
-  it("expires entries after TTL", async () => {
-    const guard = new PayRamReplayGuard(50);
-    guard.markSeen("ref-expire:FILLED");
-    expect(guard.isDuplicate("ref-expire:FILLED")).toBe(true);
-
-    await new Promise((r) => setTimeout(r, 100));
-    expect(guard.isDuplicate("ref-expire:FILLED")).toBe(false);
+  it("purges expired entries via purgeExpired", () => {
+    const guard = makeReplayGuard();
+    guard.markSeen("ref-expire:FILLED", "payram");
+    expect(guard.isDuplicate("ref-expire:FILLED", "payram")).toBe(true);
+    // Negative TTL pushes cutoff into the future — entry is expired
+    guard.purgeExpired(-24 * 60 * 60 * 1000);
+    expect(guard.isDuplicate("ref-expire:FILLED", "payram")).toBe(false);
   });
 });

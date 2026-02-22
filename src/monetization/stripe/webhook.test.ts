@@ -5,15 +5,30 @@
  * bonus tier application, edge cases, and unknown events.
  */
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb } from "../../db/index.js";
+import * as schema from "../../db/schema/index.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
+import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
 import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 import type { WebhookDeps } from "./webhook.js";
-import { handleWebhookEvent, WebhookReplayGuard } from "./webhook.js";
+import { handleWebhookEvent } from "./webhook.js";
+
+function makeReplayGuard() {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE webhook_seen_events (
+      event_id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      seen_at INTEGER NOT NULL
+    )
+  `);
+  return new DrizzleWebhookSeenRepository(drizzle(sqlite, { schema }));
+}
 
 /** Initialize credit tables in the test DB. */
 function initCreditSchema(sqlite: BetterSqlite3.Database): void {
@@ -248,10 +263,10 @@ describe("handleWebhookEvent (credit model)", () => {
   // ---------------------------------------------------------------------------
 
   describe("replay attack prevention", () => {
-    let replayGuard: WebhookReplayGuard;
+    let replayGuard: DrizzleWebhookSeenRepository;
 
     beforeEach(() => {
-      replayGuard = new WebhookReplayGuard();
+      replayGuard = makeReplayGuard();
     });
 
     function createCheckoutEventWithId(eventId: string, overrides?: Partial<Stripe.Checkout.Session>): Stripe.Event {
@@ -347,29 +362,28 @@ describe("handleWebhookEvent (credit model)", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // WebhookReplayGuard unit tests
+  // DrizzleWebhookSeenRepository unit tests (replaces WebhookReplayGuard)
   // ---------------------------------------------------------------------------
 
-  describe("WebhookReplayGuard", () => {
+  describe("DrizzleWebhookSeenRepository (stripe replay guard)", () => {
     it("reports unseen event IDs as not duplicate", () => {
-      const guard = new WebhookReplayGuard();
-      expect(guard.isDuplicate("evt_new")).toBe(false);
+      const guard = makeReplayGuard();
+      expect(guard.isDuplicate("evt_new", "stripe")).toBe(false);
     });
 
     it("reports seen event IDs as duplicate", () => {
-      const guard = new WebhookReplayGuard();
-      guard.markSeen("evt_seen");
-      expect(guard.isDuplicate("evt_seen")).toBe(true);
+      const guard = makeReplayGuard();
+      guard.markSeen("evt_seen", "stripe");
+      expect(guard.isDuplicate("evt_seen", "stripe")).toBe(true);
     });
 
-    it("expires entries after TTL", async () => {
-      // Use a very short TTL for testing
-      const guard = new WebhookReplayGuard(50);
-      guard.markSeen("evt_expire");
-      expect(guard.isDuplicate("evt_expire")).toBe(true);
-
-      await new Promise((r) => setTimeout(r, 100));
-      expect(guard.isDuplicate("evt_expire")).toBe(false);
+    it("purges expired entries via purgeExpired", () => {
+      const guard = makeReplayGuard();
+      guard.markSeen("evt_expire", "stripe");
+      expect(guard.isDuplicate("evt_expire", "stripe")).toBe(true);
+      // Negative TTL pushes cutoff into the future — entry is expired
+      guard.purgeExpired(-24 * 60 * 60 * 1000);
+      expect(guard.isDuplicate("evt_expire", "stripe")).toBe(false);
     });
   });
 

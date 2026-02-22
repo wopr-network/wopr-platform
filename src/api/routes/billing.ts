@@ -12,7 +12,7 @@ import { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
 import { createPayRamClient, loadPayRamConfig } from "../../monetization/payram/client.js";
 import type { PayRamWebhookPayload } from "../../monetization/payram/types.js";
-import { handlePayRamWebhook, PayRamReplayGuard } from "../../monetization/payram/webhook.js";
+import { handlePayRamWebhook } from "../../monetization/payram/webhook.js";
 import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
@@ -21,7 +21,8 @@ import { createPortalSession } from "../../monetization/stripe/portal.js";
 import { createSetupIntent } from "../../monetization/stripe/setup-intent.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
-import { handleWebhookEvent, WebhookReplayGuard } from "../../monetization/stripe/webhook.js";
+import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
+import type { IWebhookSeenRepository } from "../../monetization/webhook-seen-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
 export interface BillingRouteDeps {
@@ -29,6 +30,10 @@ export interface BillingRouteDeps {
   db: DrizzleDb;
   webhookSecret: string;
   sigPenaltyRepo: ISigPenaltyRepository;
+  /** Replay guard for Stripe webhook deduplication. */
+  replayGuard?: IWebhookSeenRepository;
+  /** Replay guard for PayRam webhook deduplication. */
+  payramReplayGuard?: IWebhookSeenRepository;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -120,11 +125,9 @@ let priceMap: CreditPriceMap | null = null;
 
 /** Reject webhook events with timestamps older than 5 minutes (in seconds). */
 const WEBHOOK_TIMESTAMP_TOLERANCE = 300;
-let replayGuard: WebhookReplayGuard | undefined;
 
 let payramClient: import("payram").Payram | null = null;
 let payramChargeStore: PayRamChargeStore | null = null;
-let payramReplayGuard: PayRamReplayGuard | undefined;
 
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
@@ -134,18 +137,15 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
-  replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
 
   // PayRam initialization (optional — only if env vars are set)
   const payramConfig = loadPayRamConfig();
   if (payramConfig) {
     payramClient = createPayRamClient(payramConfig);
     payramChargeStore = new PayRamChargeStore(d.db);
-    payramReplayGuard = new PayRamReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
   } else {
     payramClient = null;
     payramChargeStore = null;
-    payramReplayGuard = undefined;
   }
 }
 
@@ -399,7 +399,7 @@ billingRoutes.post("/webhook", async (c) => {
   const store = getTenantStore();
   const ledger = getCreditLedger();
   const result = handleWebhookEvent(
-    { tenantStore: store, creditLedger: ledger, priceMap: priceMap ?? undefined, replayGuard },
+    { tenantStore: store, creditLedger: ledger, priceMap: priceMap ?? undefined, replayGuard: getDeps().replayGuard },
     event,
   );
 
@@ -491,7 +491,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     {
       chargeStore: payramChargeStore,
       creditLedger: ledger,
-      replayGuard: payramReplayGuard,
+      replayGuard: getDeps().payramReplayGuard,
     },
     parsed.data as PayRamWebhookPayload,
   );
