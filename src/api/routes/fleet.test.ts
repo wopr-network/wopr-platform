@@ -872,6 +872,70 @@ describe("fleet routes", () => {
       expect(body).toHaveProperty("error");
     });
   });
+
+  describe("GET /fleet/bots/:id/settings", () => {
+    it("returns 200 with bot settings", async () => {
+      fleetMock.status.mockResolvedValue(mockStatus);
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/settings`, {
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.id).toBe(TEST_BOT_ID);
+      expect(data.identity.name).toBe("test-bot");
+    });
+
+    it("returns 404 for missing bot", async () => {
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/settings`, {
+        headers: authHeader,
+      });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe("PUT /fleet/bots/:id/identity", () => {
+    it("returns 200 with updated identity", async () => {
+      fleetMock.update.mockResolvedValue({ ...mockProfile, name: "new-name" });
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/identity`, {
+        method: "PUT",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "new-name", avatar: "", personality: "Be cool" }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.name).toBe("new-name");
+    });
+
+    it("returns 400 for invalid body", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/identity`, {
+        method: "PUT",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: "not json",
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /fleet/bots/:id/capabilities/:capabilityId/activate", () => {
+    it("returns 200 with success", async () => {
+      fleetMock.update.mockResolvedValue(mockProfile);
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/capabilities/tts/activate`, {
+        method: "POST",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.success).toBe(true);
+    });
+
+    it("returns 400 for unknown capability", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/capabilities/unknown-cap/activate`, {
+        method: "POST",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(400);
+    });
+  });
 });
 
 describe("seedBots", () => {

@@ -1,11 +1,13 @@
 import Database from "better-sqlite3";
 import Docker from "dockerode";
 import { Hono } from "hono";
+import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
 import { createDb } from "../../db/index.js";
 import { requireEmailVerified } from "../../email/require-verified.js";
+import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
@@ -575,6 +577,173 @@ fleetRoutes.post("/seed", writeAuth, async (c) => {
   const existingNames = new Set(profiles.map((p) => p.name));
   const result = seedBots(templates, existingNames);
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Capability / identity helpers (shared between REST routes below)
+// ---------------------------------------------------------------------------
+
+/** GET /fleet/bots/:id/settings — Full bot settings (identity + capabilities + plugins + status) */
+fleetRoutes.get("/bots/:id/settings", readAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) return ownershipError;
+  if (!profile) return c.json({ error: "Bot not found" }, 404);
+
+  // Get live status
+  let botState: "running" | "stopped" | "archived" = "stopped";
+  try {
+    const status = await fleet.status(botId);
+    botState = status.state === "running" ? "running" : "stopped";
+  } catch (err) {
+    if (!(err instanceof BotNotFoundError)) throw err;
+  }
+
+  const pluginIds = (profile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const disabledSet = new Set(
+    (profile.env.WOPR_PLUGINS_DISABLED || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const hostedKeys = new Set(
+    (profile.env.WOPR_HOSTED_KEYS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+  const activeSuperpowers: Array<Record<string, unknown>> = [];
+  const activeCapabilityIds = new Set<string>();
+
+  for (const [capId, entry] of Object.entries(CAPABILITY_ENV_MAP)) {
+    if (profile.env[entry.envKey]) {
+      activeCapabilityIds.add(capId);
+      activeSuperpowers.push({
+        id: capId,
+        name: capId,
+        icon: "zap",
+        mode: hostedKeys.has(entry.envKey) ? "hosted" : "byok",
+        provider: entry.vaultProvider,
+        model: "",
+        usageCount: 0,
+        usageLabel: "0 calls",
+        spend: 0,
+      });
+    }
+  }
+
+  return c.json({
+    id: profile.id,
+    identity: { name: profile.name, avatar: "", personality: "" },
+    brain: {
+      provider: profile.env.WOPR_LLM_PROVIDER || "none",
+      model: profile.env.WOPR_LLM_MODEL || "none",
+      mode: hostedKeys.has("OPENROUTER_API_KEY") ? "hosted" : "byok",
+      costPerMessage: "~$0.001",
+      description: "",
+    },
+    channels: [],
+    availableChannels: [],
+    activeSuperpowers,
+    availableSuperpowers: Object.keys(CAPABILITY_ENV_MAP)
+      .filter((id) => !activeCapabilityIds.has(id))
+      .map((id) => ({
+        id,
+        name: id,
+        icon: "zap",
+        description: `Add ${id} capability to your bot`,
+        pricing: "Usage-based",
+      })),
+    installedPlugins: pluginIds.map((id) => ({
+      id,
+      name: id,
+      description: "",
+      icon: "",
+      status: disabledSet.has(id) ? "disabled" : "active",
+      capabilities: [],
+    })),
+    discoverPlugins: [],
+    usage: { totalSpend: 0, creditBalance: 0, capabilities: [], trend: [] },
+    status: botState,
+  });
+});
+
+/** PUT /fleet/bots/:id/identity — Update bot name/avatar/personality */
+fleetRoutes.put("/bots/:id/identity", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) return ownershipError;
+  if (!profile) return c.json({ error: "Bot not found" }, 404);
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = z
+    .object({
+      name: z.string().min(1).max(63),
+      avatar: z.string().max(2048).default(""),
+      personality: z.string().max(4096).default(""),
+    })
+    .safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+  }
+
+  try {
+    const updated = await fleet.update(botId, {
+      name: parsed.data.name,
+      description: parsed.data.personality,
+    });
+    return c.json({ name: updated.name, avatar: parsed.data.avatar, personality: updated.description });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
+  }
+});
+
+/** POST /fleet/bots/:id/capabilities/:capabilityId/activate — Activate a superpower */
+fleetRoutes.post("/bots/:id/capabilities/:capabilityId/activate", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+  const capabilityId = c.req.param("capabilityId");
+
+  const capEntry = CAPABILITY_ENV_MAP[capabilityId];
+  if (!capEntry) {
+    return c.json({ error: `Unknown capability: ${capabilityId}` }, 400);
+  }
+
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) return ownershipError;
+  if (!profile) return c.json({ error: "Bot not found" }, 404);
+
+  const activeKey = `WOPR_CAP_${capabilityId.toUpperCase().replace(/-/g, "_")}_ACTIVE`;
+  if (profile.env[activeKey]) {
+    return c.json({ success: true, capabilityId, alreadyActive: true });
+  }
+
+  try {
+    await fleet.update(botId, {
+      env: {
+        ...profile.env,
+        [activeKey]: "1",
+      },
+    });
+    return c.json({ success: true, capabilityId, alreadyActive: false });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
+    throw err;
+  }
 });
 
 /** Export fleet manager and related modules for testing */
