@@ -107,6 +107,10 @@ describe("isValidTransition — allowed transitions", () => {
     expect(isValidTransition("draining", "offline")).toBe(true);
   });
 
+  it("allows draining → active (cancel-drain)", () => {
+    expect(isValidTransition("draining", "active")).toBe(true);
+  });
+
   it("allows failed → returning (node re-registers)", () => {
     expect(isValidTransition("failed", "returning")).toBe(true);
   });
@@ -137,10 +141,6 @@ describe("isValidTransition — blocked transitions", () => {
 
   it("blocks provisioning → unhealthy", () => {
     expect(isValidTransition("provisioning", "unhealthy")).toBe(false);
-  });
-
-  it("blocks draining → active", () => {
-    expect(isValidTransition("draining", "active")).toBe(false);
   });
 });
 

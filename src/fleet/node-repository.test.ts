@@ -144,6 +144,48 @@ describe("DrizzleNodeRepository — transition()", () => {
     const transitions = repo.listTransitions("node-1");
     expect(transitions).toHaveLength(0);
   });
+
+  it("clears drainStatus, drainMigrated, drainTotal when transitioning draining → active (cancel-drain)", () => {
+    insertNode(db, {
+      id: "node-1",
+      status: "draining",
+      drainStatus: "draining",
+      drainMigrated: 3,
+      drainTotal: 10,
+    });
+
+    const result = repo.transition("node-1", "active", "drain_cancelled", "admin");
+
+    expect(result.status).toBe("active");
+    expect(result.drainStatus).toBeNull();
+    expect(result.drainMigrated).toBeNull();
+    expect(result.drainTotal).toBeNull();
+
+    // Verify persisted to DB
+    const persisted = repo.getById("node-1");
+    expect(persisted?.drainStatus).toBeNull();
+    expect(persisted?.drainMigrated).toBeNull();
+    expect(persisted?.drainTotal).toBeNull();
+  });
+
+  it("does not clear drain metadata on other transitions", () => {
+    insertNode(db, {
+      id: "node-1",
+      status: "active",
+      drainStatus: "drained",
+      drainMigrated: 5,
+      drainTotal: 5,
+    });
+
+    const result = repo.transition("node-1", "unhealthy", "heartbeat_timeout", "heartbeat_watchdog");
+
+    // Drain metadata should be untouched on non-cancel-drain transitions
+    expect(result.status).toBe("unhealthy");
+    const persisted = repo.getById("node-1");
+    expect(persisted?.drainStatus).toBe("drained");
+    expect(persisted?.drainMigrated).toBe(5);
+    expect(persisted?.drainTotal).toBe(5);
+  });
 });
 
 describe("DrizzleNodeRepository — register()", () => {
