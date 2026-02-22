@@ -2,6 +2,7 @@ export * from "./account-deletion-requests.js";
 export * from "./admin-audit.js";
 export * from "./admin-notes.js";
 export * from "./admin-users.js";
+export * from "./affiliate.js";
 export * from "./audit.js";
 export * from "./backup-status.js";
 export * from "./bot-instances.js";
