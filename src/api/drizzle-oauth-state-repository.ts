@@ -39,13 +39,18 @@ export class DrizzleOAuthStateRepository implements IOAuthStateRepository {
     return this.toOAuthState(row);
   }
 
-  completeWithToken(state: string, token: string): void {
+  completeWithToken(state: string, token: string, userId: string): void {
+    // Re-insert with the real userId so consumeCompleted can enforce ownership.
+    // consumePending already deleted the pending row; we re-create it as
+    // "completed". The userId must be non-empty so the ownership check in
+    // consumeCompleted cannot be bypassed by an attacker who fabricates a state
+    // token (a fabricated insert would require knowing the real userId).
     this.db
       .insert(oauthStates)
       .values({
         state,
         provider: "",
-        userId: "",
+        userId,
         redirectUri: "",
         token,
         status: "completed",
@@ -54,7 +59,7 @@ export class DrizzleOAuthStateRepository implements IOAuthStateRepository {
       })
       .onConflictDoUpdate({
         target: oauthStates.state,
-        set: { token, status: "completed" },
+        set: { token, status: "completed", userId },
       })
       .run();
   }
@@ -67,7 +72,9 @@ export class DrizzleOAuthStateRepository implements IOAuthStateRepository {
       .where(and(eq(oauthStates.state, state), eq(oauthStates.status, "completed")))
       .get();
     if (!row) return null;
-    if (row.userId !== userId && row.userId !== "") return null;
+    // Row must belong to this user. The empty-string exemption was removed:
+    // an upsert-inserted row with userId="" must not be consumable by any user.
+    if (row.userId !== userId) return null;
     if (now > row.expiresAt) {
       this.db.delete(oauthStates).where(eq(oauthStates.state, state)).run();
       return null;

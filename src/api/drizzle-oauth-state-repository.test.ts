@@ -57,7 +57,7 @@ describe("DrizzleOAuthStateRepository", () => {
       expiresAt: Date.now() + 600_000,
     });
 
-    repo.completeWithToken("s1", "tok_abc");
+    repo.completeWithToken("s1", "tok_abc", "user-1");
 
     const result = repo.consumeCompleted("s1", "user-1");
     expect(result).not.toBeNull();

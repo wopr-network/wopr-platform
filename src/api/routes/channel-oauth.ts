@@ -174,6 +174,12 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       return c.html(callbackHtml("error", "Invalid or expired OAuth state"));
     }
 
+    // Probabilistic cleanup: ~1% of requests purge expired rows so the table
+    // doesn't grow unbounded (replaces the old in-memory size-based purge).
+    if (Math.random() < 0.01) {
+      void oauthRepo.purgeExpired();
+    }
+
     const config = getProviderConfig(pending.provider);
     if (!config) {
       return c.html(callbackHtml("error", "Provider configuration not found"));
@@ -218,7 +224,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       }
 
       // Store the completed token keyed by state for frontend polling
-      oauthRepo.completeWithToken(state, accessToken);
+      oauthRepo.completeWithToken(state, accessToken, pending.userId);
 
       return c.html(callbackHtml("success", state));
     } catch (err) {
@@ -278,7 +284,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
 export const channelOAuthRoutes = createChannelOAuthRoutes({
   create: (data) => getOAuthRepo().create(data),
   consumePending: (state) => getOAuthRepo().consumePending(state),
-  completeWithToken: (state, token) => getOAuthRepo().completeWithToken(state, token),
+  completeWithToken: (state, token, userId) => getOAuthRepo().completeWithToken(state, token, userId),
   consumeCompleted: (state, userId) => getOAuthRepo().consumeCompleted(state, userId),
   purgeExpired: () => getOAuthRepo().purgeExpired(),
 });
@@ -313,10 +319,14 @@ function htmlEscape(str: string): string {
  * Then closes the popup.
  */
 function callbackHtml(status: "success" | "error", payload: string): string {
+  // JSON.stringify does not escape </script>, which would allow XSS if payload
+  // contains that substring. Replace it so the string cannot break out of the
+  // script block regardless of what the OAuth provider returns.
+  const safeJson = (v: string) => JSON.stringify(v).replace(/<\/script>/gi, "<\\/script>");
   const message =
     status === "success"
-      ? `{ type: "wopr-oauth-callback", status: "success", state: ${JSON.stringify(payload)} }`
-      : `{ type: "wopr-oauth-callback", status: "error", error: ${JSON.stringify(payload)} }`;
+      ? `{ type: "wopr-oauth-callback", status: "success", state: ${safeJson(payload)} }`
+      : `{ type: "wopr-oauth-callback", status: "error", error: ${safeJson(payload)} }`;
 
   return `<!DOCTYPE html>
 <html>

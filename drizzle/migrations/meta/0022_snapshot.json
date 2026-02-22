@@ -3254,7 +3254,7 @@
         "ip": {
           "name": "ip",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -3299,7 +3299,15 @@
         }
       },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "webhook_sig_penalties_ip_source_pk": {
+          "columns": [
+            "ip",
+            "source"
+          ],
+          "name": "webhook_sig_penalties_ip_source_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
@@ -3309,7 +3317,7 @@
         "event_id": {
           "name": "event_id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -3338,7 +3346,15 @@
         }
       },
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "compositePrimaryKeys": {
+        "webhook_seen_events_event_id_source_pk": {
+          "columns": [
+            "event_id",
+            "source"
+          ],
+          "name": "webhook_seen_events_event_id_source_pk"
+        }
+      },
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
