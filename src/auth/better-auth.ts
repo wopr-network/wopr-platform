@@ -45,6 +45,7 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
     account: {
       accountLinking: {
         enabled: true,
+        trustedProviders: ["github", "google"],
       },
     },
     emailAndPassword: {
@@ -70,6 +71,7 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
       user: {
         create: {
           after: async (user) => {
+            if (user.emailVerified) return;
             // Send verification email after signup
             try {
               const authDb = database as Database.Database;
