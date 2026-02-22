@@ -1,23 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
-import type { DrizzleDb } from "../db/index.js";
-import { restoreLog } from "../db/schema/restore-log.js";
+import type { IRestoreLogRepository, RestoreLogEntry } from "./repository-types.js";
 
-export interface RestoreLogEntry {
-  id: string;
-  tenant: string;
-  snapshotKey: string;
-  preRestoreKey: string | null;
-  restoredAt: number;
-  restoredBy: string;
-  reason: string | null;
-}
+export type { RestoreLogEntry };
 
 export class RestoreLogStore {
-  private readonly db: DrizzleDb;
+  private readonly repo: IRestoreLogRepository;
 
-  constructor(db: DrizzleDb) {
-    this.db = db;
+  constructor(repo: IRestoreLogRepository) {
+    this.repo = repo;
   }
 
   /** Record a restore event. Returns the created entry. */
@@ -38,24 +28,17 @@ export class RestoreLogStore {
       reason: params.reason ?? null,
     };
 
-    this.db.insert(restoreLog).values(entry).run();
-
+    this.repo.insert(entry);
     return entry;
   }
 
   /** List restore events for a tenant, newest first. */
   listForTenant(tenant: string, limit = 50): RestoreLogEntry[] {
-    return this.db
-      .select()
-      .from(restoreLog)
-      .where(eq(restoreLog.tenant, tenant))
-      .orderBy(desc(restoreLog.restoredAt))
-      .limit(limit)
-      .all();
+    return this.repo.listByTenant(tenant, limit);
   }
 
   /** Get a single restore event by ID. */
   get(id: string): RestoreLogEntry | null {
-    return this.db.select().from(restoreLog).where(eq(restoreLog.id, id)).get() ?? null;
+    return this.repo.getById(id);
   }
 }

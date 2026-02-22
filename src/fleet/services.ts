@@ -10,8 +10,13 @@ import type { IAdminNotesRepository } from "../admin/notes/admin-notes-repositor
 import { AdminNotesStore } from "../admin/notes/store.js";
 import type { ITenantStatusRepository } from "../admin/tenant-status/tenant-status-repository.js";
 import { TenantStatusStore } from "../admin/tenant-status/tenant-status-store.js";
+import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
+import { BackupStatusStore } from "../backup/backup-status-store.js";
+import { DrizzleRestoreLogRepository } from "../backup/restore-log-repository.js";
 import { RestoreLogStore } from "../backup/restore-log-store.js";
 import { RestoreService } from "../backup/restore-service.js";
+import { SnapshotManager } from "../backup/snapshot-manager.js";
+import { DrizzleSnapshotRepository } from "../backup/snapshot-repository.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
 import { applyPlatformPragmas, createDb, type DrizzleDb } from "../db/index.js";
@@ -61,6 +66,9 @@ import { DrizzleSpendingCapStore } from "./spending-cap-repository.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
+const BACKUP_DB_PATH = process.env.BACKUP_DB_PATH || "/data/platform/backup-status.db";
+const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
+const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 
 /**
  * Shared lazy-initialized fleet management singletons.
@@ -113,6 +121,12 @@ let _nodeProvisioner: NodeProvisioner | null = null;
 let _adminAuditLog: AdminAuditLog | null = null;
 let _restoreLogStore: RestoreLogStore | null = null;
 let _restoreService: RestoreService | null = null;
+let _backupStatusStore: BackupStatusStore | null = null;
+let _snapshotManager: SnapshotManager | null = null;
+
+// Separate DB instances for backup/snapshot (different files from platform DB)
+let _backupSqlite: Database.Database | null = null;
+let _snapshotSqlite: Database.Database | null = null;
 
 const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
 
@@ -393,9 +407,36 @@ export function getAdminAuditLog(): AdminAuditLog {
 
 export function getRestoreLogStore(): RestoreLogStore {
   if (!_restoreLogStore) {
-    _restoreLogStore = new RestoreLogStore(getDb());
+    const repo = new DrizzleRestoreLogRepository(getDb());
+    _restoreLogStore = new RestoreLogStore(repo);
   }
   return _restoreLogStore;
+}
+
+export function getBackupStatusStore(): BackupStatusStore {
+  if (!_backupStatusStore) {
+    _backupSqlite = new Database(BACKUP_DB_PATH);
+    applyPlatformPragmas(_backupSqlite);
+    const db = createDb(_backupSqlite);
+    const repo = new DrizzleBackupStatusRepository(db);
+    _backupStatusStore = new BackupStatusStore(repo);
+  }
+  return _backupStatusStore;
+}
+
+export function getSnapshotManager(): SnapshotManager {
+  if (!_snapshotManager) {
+    _snapshotSqlite = new Database(SNAPSHOT_DB_PATH);
+    applyPlatformPragmas(_snapshotSqlite);
+    const db = createDb(_snapshotSqlite);
+    const repo = new DrizzleSnapshotRepository(db);
+    _snapshotManager = new SnapshotManager({
+      snapshotDir: SNAPSHOT_DIR,
+      repo,
+      spaces: process.env.S3_BUCKET ? new SpacesClient(process.env.S3_BUCKET) : undefined,
+    });
+  }
+  return _snapshotManager;
 }
 
 export function getRestoreService(): RestoreService {

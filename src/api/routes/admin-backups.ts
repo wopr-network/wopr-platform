@@ -1,46 +1,18 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
-import { BackupStatusStore } from "../../backup/backup-status-store.js";
+import type { BackupStatusStore } from "../../backup/backup-status-store.js";
 import { SpacesClient } from "../../backup/spaces-client.js";
 import { logger } from "../../config/logger.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
-import * as dbSchema from "../../db/schema/index.js";
+import { getBackupStatusStore } from "../../fleet/services.js";
 
-const BACKUP_DB_PATH = process.env.BACKUP_DB_PATH || "/data/platform/backup-status.db";
 const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 
-/** Lazy-initialized backup status store */
-let _store: BackupStatusStore | null = null;
 function getStore(): BackupStatusStore {
-  if (!_store) {
-    const sqlite = new Database(BACKUP_DB_PATH);
-    applyPlatformPragmas(sqlite);
-    sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS backup_status (
-        container_id TEXT PRIMARY KEY,
-        node_id TEXT NOT NULL,
-        last_backup_at TEXT,
-        last_backup_size_mb REAL,
-        last_backup_path TEXT,
-        last_backup_success INTEGER NOT NULL DEFAULT 0,
-        last_backup_error TEXT,
-        total_backups INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_backup_status_node ON backup_status (node_id);
-      CREATE INDEX IF NOT EXISTS idx_backup_status_last_backup ON backup_status (last_backup_at);
-    `);
-    const db = drizzle(sqlite, { schema: dbSchema });
-    _store = new BackupStatusStore(db);
-  }
-  return _store;
+  return getBackupStatusStore();
 }
 
 /** Lazy-initialized Spaces client */

@@ -28,6 +28,7 @@ set -euo pipefail
 APPROVED_PATTERNS=(
   "src/db/"
   "src/fleet/[^/]*-repository\.ts"
+  "src/backup/[^/]*-repository\.ts"
   "src/fleet/registration-token-store\.ts"
   "src/fleet/services\.ts"
   "src/account/[^/]*-repository\.ts"

@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
+import { DrizzleBackupStatusRepository } from "./backup-status-repository.js";
 import { BackupStatusStore } from "./backup-status-store.js";
 
 const TEST_DIR = join(import.meta.dirname, "../../.test-backup-status");
@@ -42,7 +43,8 @@ describe("BackupStatusStore", () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const testDb = createTestDb(DB_PATH);
     sqlite = testDb.sqlite;
-    store = new BackupStatusStore(testDb.db);
+    const repo = new DrizzleBackupStatusRepository(testDb.db);
+    store = new BackupStatusStore(repo);
   });
 
   afterEach(async () => {

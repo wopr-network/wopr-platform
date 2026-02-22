@@ -1,16 +1,11 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { enforceRetention } from "../../backup/retention.js";
-import { SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
+import { type SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
-import * as dbSchema from "../../db/schema/index.js";
+import { getSnapshotManager } from "../../fleet/services.js";
 
-const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
-const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
 const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const tokenMetadataMap = buildTokenMetadataMap();
@@ -18,16 +13,8 @@ const tokenMetadataMap = buildTokenMetadataMap();
 /** Validates that an instance/snapshot ID contains only safe characters (no path traversal). */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
-/** Lazy-initialized snapshot manager (avoids opening DB at module load time) */
-let _manager: SnapshotManager | null = null;
 function getManager(): SnapshotManager {
-  if (!_manager) {
-    const sqlite = new Database(SNAPSHOT_DB_PATH);
-    applyPlatformPragmas(sqlite);
-    const db = drizzle(sqlite, { schema: dbSchema });
-    _manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db });
-  }
-  return _manager;
+  return getSnapshotManager();
 }
 
 export const snapshotRoutes = new Hono<{ Bindings: Record<string, never> }>();

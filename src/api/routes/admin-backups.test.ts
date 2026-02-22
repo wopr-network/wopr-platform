@@ -4,6 +4,7 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DrizzleBackupStatusRepository } from "../../backup/backup-status-repository.js";
 import { BackupStatusStore } from "../../backup/backup-status-store.js";
 import * as schema from "../../db/schema/index.js";
 import { createAdminBackupRoutes, isRemotePathOwnedBy } from "./admin-backups.js";
@@ -44,7 +45,8 @@ describe("admin-backups routes", () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const testDb = createTestDb(DB_PATH);
     sqlite = testDb.sqlite;
-    store = new BackupStatusStore(testDb.db);
+    const repo = new DrizzleBackupStatusRepository(testDb.db);
+    store = new BackupStatusStore(repo);
     app = createAdminBackupRoutes(store);
   });
 
