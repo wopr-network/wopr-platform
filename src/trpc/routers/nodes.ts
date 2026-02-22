@@ -118,6 +118,7 @@ export const nodesRouter = router({
     }
 
     registry.close(input.nodeId);
+    nodeRepo.delete(input.nodeId);
     return { success: true };
   }),
 
