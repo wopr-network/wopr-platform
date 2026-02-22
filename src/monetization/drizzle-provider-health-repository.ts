@@ -1,4 +1,4 @@
-import { lt, sql } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { providerHealthOverrides } from "../db/schema/index.js";
 import type { IProviderHealthRepository } from "./provider-health-repository.js";
@@ -11,7 +11,7 @@ export class DrizzleProviderHealthRepository implements IProviderHealthRepositor
     const row = this.db
       .select()
       .from(providerHealthOverrides)
-      .where(sql`${providerHealthOverrides.adapter} = ${adapter}`)
+      .where(eq(providerHealthOverrides.adapter, adapter))
       .get();
     if (!row) return null;
     return { adapter: row.adapter, healthy: row.healthy === 1, markedAt: row.markedAt };
@@ -37,7 +37,7 @@ export class DrizzleProviderHealthRepository implements IProviderHealthRepositor
   }
 
   markHealthy(adapter: string): void {
-    this.db.delete(providerHealthOverrides).where(sql`${providerHealthOverrides.adapter} = ${adapter}`).run();
+    this.db.delete(providerHealthOverrides).where(eq(providerHealthOverrides.adapter, adapter)).run();
   }
 
   purgeExpired(unhealthyTtlMs: number): number {

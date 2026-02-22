@@ -8,9 +8,10 @@ function makeRepo() {
   const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE webhook_seen_events (
-      event_id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
       source TEXT NOT NULL,
-      seen_at INTEGER NOT NULL
+      seen_at INTEGER NOT NULL,
+      PRIMARY KEY (event_id, source)
     )
   `);
   const db = drizzle(sqlite, { schema });

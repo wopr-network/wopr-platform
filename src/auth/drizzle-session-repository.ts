@@ -1,4 +1,4 @@
-import { eq, lt } from "drizzle-orm";
+import { eq, lt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { sessions } from "../db/schema/index.js";
 import type { SessionRecord } from "./repository-types.js";
@@ -50,7 +50,6 @@ export class DrizzleSessionRepository implements ISessionRepository {
   }
 
   get size(): number {
-    const row = this.db.select().from(sessions).all();
-    return row.length;
+    return this.db.select({ count: sql<number>`count(*)` }).from(sessions).get()?.count ?? 0;
   }
 }

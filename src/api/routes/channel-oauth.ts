@@ -190,6 +190,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       const tokenResponse = await fetch(config.tokenUrl, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        signal: AbortSignal.timeout(10_000),
         body: new URLSearchParams({
           client_id: config.clientId,
           client_secret: config.clientSecret,
