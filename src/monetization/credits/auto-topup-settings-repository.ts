@@ -76,6 +76,10 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
       values.scheduleIntervalHours = settings.scheduleIntervalHours;
       updateSet.scheduleIntervalHours = settings.scheduleIntervalHours;
     }
+    if (settings.scheduleNextAt !== undefined) {
+      values.scheduleNextAt = settings.scheduleNextAt;
+      updateSet.scheduleNextAt = settings.scheduleNextAt;
+    }
 
     this.db
       .insert(creditAutoTopupSettings)
@@ -194,3 +198,44 @@ function mapRow(row: typeof creditAutoTopupSettings.$inferSelect): AutoTopupSett
 
 // Backward-compat alias
 export { DrizzleAutoTopupSettingsRepository as AutoTopupSettingsRepository };
+
+// ---------------------------------------------------------------------------
+// Constants for tRPC validation
+// ---------------------------------------------------------------------------
+
+export const ALLOWED_TOPUP_AMOUNTS_CENTS = [500, 1000, 2000, 5000, 10000, 20000, 50000] as const;
+export const ALLOWED_THRESHOLD_CENTS = [200, 500, 1000] as const;
+export const ALLOWED_SCHEDULE_INTERVALS = ["daily", "weekly", "monthly"] as const;
+
+// ---------------------------------------------------------------------------
+// Schedule helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the next schedule_next_at timestamp based on the interval.
+ * Always returns the next occurrence at 00:00 UTC.
+ */
+export function computeNextScheduleAt(
+  interval: "daily" | "weekly" | "monthly" | null,
+  now: Date = new Date(),
+): string | null {
+  if (!interval) return null;
+
+  switch (interval) {
+    case "daily": {
+      const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+      return next.toISOString();
+    }
+    case "weekly": {
+      // Next Monday
+      const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon, ...
+      const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
+      const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMonday));
+      return next.toISOString();
+    }
+    case "monthly": {
+      const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      return next.toISOString();
+    }
+  }
+}

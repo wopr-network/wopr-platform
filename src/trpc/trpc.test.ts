@@ -592,6 +592,7 @@ describe("tRPC appRouter", () => {
             getHistory: () => [],
             getLifetimeTotalCents: () => 0,
           },
+          spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
         });
         const result = await caller.billing.autoTopupSettings();
         expect(result.payment_method_last4).toBe("4242");
@@ -664,6 +665,7 @@ describe("tRPC appRouter", () => {
             getHistory: () => [],
             getLifetimeTotalCents: () => 0,
           },
+          spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
         });
 
         const result = await caller.billing.updateAutoTopupSettings({
@@ -723,6 +725,7 @@ describe("tRPC appRouter", () => {
             getHistory: () => [],
             getLifetimeTotalCents: () => 0,
           },
+          spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
         });
 
         const result = await caller.billing.updateAutoTopupSettings({
