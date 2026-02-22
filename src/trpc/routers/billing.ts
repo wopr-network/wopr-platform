@@ -5,9 +5,17 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type Stripe from "stripe";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { IAutoTopupSettingsRepository } from "../../monetization/credits/auto-topup-settings-repository.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
+import {
+  ALLOWED_SCHEDULE_INTERVALS,
+  ALLOWED_THRESHOLD_CENTS,
+  ALLOWED_TOPUP_AMOUNTS_CENTS,
+  computeNextScheduleAt,
+} from "../../monetization/credits/auto-topup-settings-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
@@ -144,6 +152,9 @@ export interface BillingRouterDeps {
   meterAggregator: MeterAggregator;
   usageReporter: StripeUsageReporter;
   priceMap: CreditPriceMap | undefined;
+  autoTopupSettingsStore: IAutoTopupSettingsRepository;
+  /** Stripe client for payment method lookups. */
+  stripeClient: Stripe;
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
 }
@@ -646,6 +657,126 @@ export const billingRouter = router({
           message: err instanceof Error ? err.message : "Failed to remove payment method",
         });
       }
+    }),
+
+  /** Get auto-topup settings for the authenticated tenant. */
+  autoTopupSettings: protectedProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { autoTopupSettingsStore, tenantStore, stripeClient } = deps();
+
+    const settings = autoTopupSettingsStore.getByTenant(tenant);
+
+    // Look up payment method last4
+    let paymentMethodLast4: string | null = null;
+    const mapping = tenantStore.getByTenant(tenant);
+    if (mapping) {
+      try {
+        const methods = await stripeClient.customers.listPaymentMethods(mapping.stripe_customer_id, { limit: 1 });
+        if (methods.data.length > 0 && methods.data[0].card) {
+          paymentMethodLast4 = methods.data[0].card.last4;
+        }
+      } catch {
+        // Stripe call failed — return null for last4, don't block the response
+      }
+    }
+
+    return {
+      usage_enabled: settings?.usageEnabled ?? false,
+      usage_threshold_cents: settings?.usageThresholdCents ?? 500,
+      usage_topup_cents: settings?.usageTopupCents ?? 2000,
+      schedule_enabled: settings?.scheduleEnabled ?? false,
+      schedule_amount_cents: settings?.scheduleAmountCents ?? null,
+      schedule_next_at: settings?.scheduleNextAt ?? null,
+      payment_method_last4: paymentMethodLast4,
+    };
+  }),
+
+  /** Update auto-topup settings. Validates amounts against allowed tiers. */
+  updateAutoTopupSettings: protectedProcedure
+    .input(
+      z.object({
+        usage_enabled: z.boolean().optional(),
+        usage_threshold_cents: z
+          .number()
+          .int()
+          .refine((v) => (ALLOWED_THRESHOLD_CENTS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_THRESHOLD_CENTS.join(", ")}`,
+          })
+          .optional(),
+        usage_topup_cents: z
+          .number()
+          .int()
+          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CENTS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CENTS.join(", ")}`,
+          })
+          .optional(),
+        schedule_enabled: z.boolean().optional(),
+        schedule_interval: z.enum(ALLOWED_SCHEDULE_INTERVALS).nullable().optional(),
+        schedule_amount_cents: z
+          .number()
+          .int()
+          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CENTS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CENTS.join(", ")}`,
+          })
+          .nullable()
+          .optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { autoTopupSettingsStore, tenantStore, stripeClient } = deps();
+
+      // If enabling either mode, verify payment method exists
+      const enablingUsage = input.usage_enabled === true;
+      const enablingSchedule = input.schedule_enabled === true;
+
+      if (enablingUsage || enablingSchedule) {
+        const mapping = tenantStore.getByTenant(tenant);
+        if (!mapping) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "No payment method on file. Please add a payment method first.",
+          });
+        }
+
+        const methods = await stripeClient.customers.listPaymentMethods(mapping.stripe_customer_id, { limit: 1 });
+        if (methods.data.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "No payment method on file. Please add a payment method first.",
+          });
+        }
+      }
+
+      // Compute schedule_next_at if schedule is being enabled/changed
+      let scheduleNextAt: string | null | undefined;
+      if (input.schedule_enabled === true && input.schedule_interval) {
+        scheduleNextAt = computeNextScheduleAt(input.schedule_interval);
+      } else if (input.schedule_interval === null) {
+        scheduleNextAt = null; // Clear next-at when interval is removed
+      } else if (input.schedule_enabled === false) {
+        scheduleNextAt = null; // Clear next-at when disabling
+      }
+
+      autoTopupSettingsStore.upsert(tenant, {
+        usageEnabled: input.usage_enabled,
+        usageThresholdCents: input.usage_threshold_cents,
+        usageTopupCents: input.usage_topup_cents,
+        scheduleEnabled: input.schedule_enabled,
+        scheduleAmountCents: input.schedule_amount_cents ?? undefined,
+        scheduleNextAt: scheduleNextAt,
+      });
+
+      const updated = autoTopupSettingsStore.getByTenant(tenant);
+      return {
+        usage_enabled: updated?.usageEnabled ?? false,
+        usage_threshold_cents: updated?.usageThresholdCents ?? 500,
+        usage_topup_cents: updated?.usageTopupCents ?? 2000,
+        schedule_enabled: updated?.scheduleEnabled ?? false,
+        schedule_amount_cents: updated?.scheduleAmountCents ?? null,
+        schedule_next_at: updated?.scheduleNextAt ?? null,
+        payment_method_last4: null,
+      };
     }),
 
   /** Get current dividend pool stats and user eligibility. */
