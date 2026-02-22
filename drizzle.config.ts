@@ -27,6 +27,7 @@ export default defineConfig({
     "./src/db/schema/stripe.ts",
     "./src/db/schema/tenant-status.ts",
     "./src/db/schema/user-roles.ts",
+    "./src/db/schema/dividend-distributions.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "sqlite",

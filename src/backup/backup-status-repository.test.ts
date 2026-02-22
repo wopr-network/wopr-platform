@@ -34,23 +34,23 @@ describe("DrizzleBackupStatusRepository", () => {
     repo.upsertSuccess("c1", "n1", 100.5, "/path/1");
     let row = repo.getByContainerId("c1");
     expect(row).not.toBeNull();
-    expect(row!.lastBackupSizeMb).toBe(100.5);
-    expect(row!.lastBackupSuccess).toBe(true);
-    expect(row!.totalBackups).toBe(1);
+    expect(row?.lastBackupSizeMb).toBe(100.5);
+    expect(row?.lastBackupSuccess).toBe(true);
+    expect(row?.totalBackups).toBe(1);
 
     repo.upsertSuccess("c1", "n1", 200, "/path/2");
     row = repo.getByContainerId("c1");
-    expect(row!.totalBackups).toBe(2);
-    expect(row!.lastBackupSizeMb).toBe(200);
+    expect(row?.totalBackups).toBe(2);
+    expect(row?.lastBackupSizeMb).toBe(200);
   });
 
   it("upsertFailure records error without changing totalBackups", () => {
     repo.upsertSuccess("c1", "n1", 100, "/p");
     repo.upsertFailure("c1", "n1", "disk full");
     const row = repo.getByContainerId("c1");
-    expect(row!.lastBackupSuccess).toBe(false);
-    expect(row!.lastBackupError).toBe("disk full");
-    expect(row!.totalBackups).toBe(1);
+    expect(row?.lastBackupSuccess).toBe(false);
+    expect(row?.lastBackupError).toBe("disk full");
+    expect(row?.totalBackups).toBe(1);
   });
 
   it("getByContainerId returns null for unknown id", () => {

@@ -87,6 +87,11 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
       meterAggregator,
       usageReporter,
       priceMap: undefined,
+      dividendRepo: {
+        getStats: () => ({ poolCents: 0, activeUsers: 0, perUserCents: 0, nextDistributionAt: new Date().toISOString(), userEligible: false, userLastPurchaseAt: null, userWindowExpiresAt: null }),
+        getHistory: () => [],
+        getLifetimeTotalCents: () => 0,
+      },
     });
   });
 

@@ -69,9 +69,9 @@ describe("DrizzleSnapshotRepository", () => {
     repo.insert(makeRow());
     const found = repo.getById("snap-1");
     expect(found).not.toBeNull();
-    expect(found!.id).toBe("snap-1");
-    expect(found!.instanceId).toBe("inst-1");
-    expect(found!.plugins).toEqual([]);
+    expect(found?.id).toBe("snap-1");
+    expect(found?.instanceId).toBe("inst-1");
+    expect(found?.plugins).toEqual([]);
   });
 
   it("getById returns null for unknown id", () => {
@@ -91,7 +91,7 @@ describe("DrizzleSnapshotRepository", () => {
     repo.softDelete("s1");
     expect(repo.list("inst-1")).toHaveLength(0);
     const found = repo.getById("s1");
-    expect(found!.deletedAt).not.toBeNull();
+    expect(found?.deletedAt).not.toBeNull();
   });
 
   it("hardDelete removes from DB entirely", () => {
