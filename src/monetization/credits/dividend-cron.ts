@@ -1,11 +1,9 @@
-import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { logger } from "../../config/logger.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { creditTransactions } from "../../db/schema/credits.js";
 import type { CreditLedger } from "./credit-ledger.js";
+import type { ICreditTransactionRepository } from "./credit-transaction-repository.js";
 
 export interface DividendCronConfig {
-  db: DrizzleDb;
+  creditTransactionRepo: ICreditTransactionRepository;
   ledger: CreditLedger;
   /** Fraction of daily purchases matched as dividend pool. Default 1.0 (100%). */
   matchRate: number;
@@ -44,12 +42,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   // Idempotency: check if any per-tenant dividend was already distributed for this date.
   // We look for any referenceId matching "dividend:YYYY-MM-DD:*".
   const sentinelPrefix = `dividend:${cfg.targetDate}:`;
-  const alreadyRan = cfg.db
-    .select({ id: creditTransactions.id })
-    .from(creditTransactions)
-    .where(sql`${creditTransactions.referenceId} LIKE ${`${sentinelPrefix}%`}`)
-    .limit(1)
-    .get();
+  const alreadyRan = cfg.creditTransactionRepo.existsByReferenceIdLike(`${sentinelPrefix}%`);
 
   if (alreadyRan) {
     result.skippedAlreadyRun = true;
@@ -61,21 +54,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   const dayStart = `${cfg.targetDate} 00:00:00`;
   const dayEnd = `${cfg.targetDate} 24:00:00`;
 
-  const purchaseSumRow = cfg.db
-    .select({
-      total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)`,
-    })
-    .from(creditTransactions)
-    .where(
-      and(
-        eq(creditTransactions.type, "purchase"),
-        gte(creditTransactions.createdAt, dayStart),
-        lt(creditTransactions.createdAt, dayEnd),
-      ),
-    )
-    .get();
-
-  const dailyPurchaseTotal = purchaseSumRow?.total ?? 0;
+  const dailyPurchaseTotal = cfg.creditTransactionRepo.sumPurchasesForPeriod(dayStart, dayEnd);
   result.poolCents = Math.floor(dailyPurchaseTotal * cfg.matchRate);
 
   // Step 2: Find all active tenants (purchased in last 7 days from target date).
@@ -84,21 +63,8 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   const windowStart = subtractDays(cfg.targetDate, 6);
   const windowStartTs = `${windowStart} 00:00:00`;
 
-  const activeTenants = cfg.db
-    .selectDistinct({
-      tenantId: creditTransactions.tenantId,
-    })
-    .from(creditTransactions)
-    .where(
-      and(
-        eq(creditTransactions.type, "purchase"),
-        gte(creditTransactions.createdAt, windowStartTs),
-        lt(creditTransactions.createdAt, dayEnd),
-      ),
-    )
-    .all();
-
-  result.activeCount = activeTenants.length;
+  const activeTenantIds = cfg.creditTransactionRepo.getActiveTenantIdsInWindow(windowStartTs, dayEnd);
+  result.activeCount = activeTenantIds.length;
 
   // Step 3: Compute per-user share.
   if (result.poolCents <= 0 || result.activeCount <= 0) {
@@ -122,7 +88,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   }
 
   // Step 4: Distribute to each active tenant.
-  for (const { tenantId } of activeTenants) {
+  for (const tenantId of activeTenantIds) {
     const perUserRef = `dividend:${cfg.targetDate}:${tenantId}`;
     try {
       cfg.ledger.credit(

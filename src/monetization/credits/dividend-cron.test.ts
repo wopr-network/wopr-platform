@@ -1,7 +1,8 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDb, type DrizzleDb } from "../../db/index.js";
+import { createDb } from "../../db/index.js";
 import { CreditLedger } from "./credit-ledger.js";
+import { DrizzleCreditTransactionRepository } from "./credit-transaction-repository.js";
 import { type DividendCronConfig, runDividendCron } from "./dividend-cron.js";
 
 function initTestSchema(sqlite: BetterSqlite3.Database): void {
@@ -56,14 +57,15 @@ function insertPurchase(
 
 describe("runDividendCron", () => {
   let sqlite: BetterSqlite3.Database;
-  let db: DrizzleDb;
   let ledger: CreditLedger;
+  let creditTransactionRepo: DrizzleCreditTransactionRepository;
 
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
     initTestSchema(sqlite);
-    db = createDb(sqlite);
+    const db = createDb(sqlite);
     ledger = new CreditLedger(db);
+    creditTransactionRepo = new DrizzleCreditTransactionRepository(db);
   });
 
   afterEach(() => {
@@ -72,7 +74,7 @@ describe("runDividendCron", () => {
 
   function makeConfig(overrides?: Partial<DividendCronConfig>): DividendCronConfig {
     return {
-      db,
+      creditTransactionRepo,
       ledger,
       matchRate: 1.0,
       targetDate: "2026-02-20",
