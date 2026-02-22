@@ -174,3 +174,34 @@ export interface NewRecoveryItem {
   sourceNode: string;
   backupKey: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// GpuNode
+// ---------------------------------------------------------------------------
+
+/** Lifecycle states for a GPU compute node. */
+export type GpuNodeStatus = "provisioning" | "bootstrapping" | "active" | "degraded" | "failed" | "destroying";
+
+/** Plain domain object representing a GPU node — mirrors `gpu_nodes` table columns. */
+export interface GpuNode {
+  id: string;
+  dropletId: string | null;
+  host: string | null;
+  region: string;
+  size: string;
+  status: GpuNodeStatus;
+  provisionStage: string;
+  serviceHealth: Record<string, "ok" | "down"> | null;
+  monthlyCostCents: number | null;
+  lastHealthAt: number | null;
+  lastError: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Create payload for a new GPU node. */
+export interface NewGpuNode {
+  id: string;
+  region: string;
+  size: string;
+}

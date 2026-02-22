@@ -38,6 +38,3 @@ export const gpuNodes = sqliteTable(
   },
   (table) => [index("idx_gpu_nodes_status").on(table.status), index("idx_gpu_nodes_region").on(table.region)],
 );
-
-export type GpuNode = typeof gpuNodes.$inferSelect;
-export type NewGpuNode = typeof gpuNodes.$inferInsert;
