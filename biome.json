@@ -26,7 +26,29 @@
       },
       "style": {
         "noNonNullAssertion": "warn",
-        "useConst": "error"
+        "useConst": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "drizzle-orm": {
+                "message": "drizzle-orm must only be used in repository implementations (src/fleet/*-repository.ts), src/db/, src/fleet/services.ts, or src/test/. See CLAUDE.md Architectural Patterns."
+              },
+              "drizzle-orm/better-sqlite3": {
+                "message": "drizzle-orm/better-sqlite3 must only be used in repository implementations, src/db/, src/fleet/services.ts, or src/test/. See CLAUDE.md Architectural Patterns."
+              },
+              "drizzle-orm/sqlite-core": {
+                "message": "drizzle-orm/sqlite-core must only be used in src/db/schema/. See CLAUDE.md Architectural Patterns."
+              },
+              "drizzle-orm/better-sqlite3/migrator": {
+                "message": "drizzle-orm migrator must only be used in src/test/ or migration scripts. See CLAUDE.md Architectural Patterns."
+              },
+              "better-sqlite3": {
+                "message": "better-sqlite3 must only be used in repository implementations, src/db/, src/fleet/services.ts, or src/test/. See CLAUDE.md Architectural Patterns."
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -44,5 +66,126 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/db/**/*.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/fleet/*-repository.ts",
+        "src/fleet/registration-token-store.ts",
+        "src/fleet/services.ts",
+        "src/fleet/node-provisioner.ts",
+        "src/fleet/node-connection-manager.ts",
+        "src/fleet/recovery-manager.ts",
+        "src/fleet/migration-manager.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/test/**/*.ts",
+        "src/**/*.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/index.ts",
+        "src/auth/better-auth.ts",
+        "src/audit/query.ts",
+        "src/audit/retention.ts",
+        "src/admin/audit-log.ts",
+        "src/email/notification-queue-store.ts",
+        "src/email/billing-emails.ts",
+        "src/email/notification-preferences-store.ts",
+        "src/email/verification.ts",
+        "src/email/require-verified.ts",
+        "src/account/deletion-executor.ts",
+        "src/account/deletion-store.ts",
+        "src/api/routes/activity.ts",
+        "src/api/routes/admin-backups.ts",
+        "src/api/routes/bot-plugins.ts",
+        "src/api/routes/health.ts",
+        "src/api/routes/snapshots.ts",
+        "src/api/routes/fleet.ts",
+        "src/api/routes/quota.ts",
+        "src/api/routes/tenant-keys.ts",
+        "src/api/routes/admin-credits.ts",
+        "src/api/routes/admin-rates.ts",
+        "src/api/routes/admin-roles.ts",
+        "src/api/routes/admin-users.ts",
+        "src/api/routes/audit.ts",
+        "src/api/routes/public-pricing.ts",
+        "src/api/routes/verify-email.ts",
+        "src/backup/backup-status-store.ts",
+        "src/backup/restore-log-store.ts",
+        "src/backup/snapshot-manager.ts",
+        "src/monetization/credits/credit-ledger.ts",
+        "src/monetization/credits/bot-billing.ts",
+        "src/monetization/credits/schema.ts",
+        "src/monetization/budget/budget-checker.ts",
+        "src/monetization/metering/aggregator.ts",
+        "src/monetization/metering/emitter.ts",
+        "src/monetization/metering/usage-aggregation-worker.ts",
+        "src/monetization/metering/schema.ts",
+        "src/monetization/payram/charge-store.ts",
+        "src/monetization/payram/schema.ts",
+        "src/monetization/stripe/tenant-store.ts",
+        "src/monetization/stripe/usage-reporter.ts",
+        "src/monetization/stripe/schema.ts",
+        "src/security/credential-vault/store.ts",
+        "src/security/credential-vault/key-rotation.ts",
+        "src/security/credential-vault/migrate-plaintext.ts",
+        "src/security/credential-vault/migration-check.ts",
+        "src/security/tenant-keys/key-resolution.ts",
+        "src/security/tenant-keys/schema.ts",
+        "src/admin/notifications/store.ts",
+        "src/admin/notes/store.ts",
+        "src/admin/notes/notes-store.ts",
+        "src/admin/notes/schema.ts",
+        "src/admin/tenant-status/tenant-status-store.ts",
+        "src/admin/credits/adjustment-store.ts",
+        "src/admin/credits/schema.ts",
+        "src/admin/rates/rate-store.ts",
+        "src/admin/rates/schema.ts",
+        "src/admin/roles/role-store.ts",
+        "src/admin/roles/schema.ts",
+        "src/admin/users/user-store.ts",
+        "src/admin/users/schema.ts",
+        "src/admin/bulk/bulk-operations-store.ts",
+        "src/admin/bulk/schema.ts",
+        "src/admin/analytics/analytics-store.ts",
+        "src/gateway/spending-cap.ts",
+        "src/trpc/routers/two-factor.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    }
+  ]
 }

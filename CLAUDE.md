@@ -73,3 +73,31 @@ All issues in **Linear** (team: WOPR). Issue descriptions start with `**Repo:** 
 At the start of every WOPR session, **read `~/.wopr-memory.md` if it exists.** It contains recent session context: which repos were active, what branches are in flight, and how many uncommitted changes exist. Use it to orient quickly without re-investigating.
 
 The `Stop` hook writes to this file automatically at session end. Only non-main branches are recorded — if everything is on `main`, nothing is written for that repo.
+
+## Architectural Patterns
+
+### Repository Pattern (Mandatory)
+
+All database access MUST go through repository interfaces. Direct Drizzle ORM or better-sqlite3 usage is forbidden outside approved files.
+
+**Approved files:**
+- `src/db/**` — schema definitions, Drizzle client, pragmas
+- `src/fleet/*-repository.ts` — DrizzleXxxRepository implementations
+- `src/fleet/registration-token-store.ts` — Drizzle-based token store
+- `src/fleet/services.ts` — singleton wiring, creates DB and repos
+- `src/test/**` — test helpers
+- `**/*.test.ts` — test files
+
+**Enforcement (run `npm run check` to invoke all gates):**
+
+**Gate 1 — Import Restriction (Biome `noRestrictedImports`):** `drizzle-orm` and `better-sqlite3` imports are banned outside the approved files above. Any violation fails `pnpm lint`. The error message references this section.
+
+**Gate 2 — Raw SQL Pattern Ban (`scripts/check-raw-sql.sh`):** `.prepare()` and `.exec()` calls are banned outside approved files. Even inside repository files, prefer Drizzle query builders (`db.select()`, `db.insert()`, `db.update()`, `db.delete()`). Raw `.prepare()` is a last resort and requires a comment: `// raw SQL: Drizzle cannot express <reason>`.
+
+**Temporary exemptions:** Both gates have temporary exemptions for existing violations. These are tracked in:
+- `biome.json` `overrides` array (last entry, marked TEMPORARY)
+- `scripts/check-raw-sql.sh` `TEMP_EXCLUDED_PATTERNS` array
+
+As each domain remediation story (WOP-899 through WOP-906) merges, the corresponding files MUST be removed from both exemption lists in the same PR.
+
+**Adding a new repository:** Create `src/<domain>/drizzle-<name>-repository.ts` implementing `I<Name>Repository`. Add it to the biome.json overrides approved section. Wire it in `src/fleet/services.ts`.
