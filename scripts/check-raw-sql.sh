@@ -27,13 +27,9 @@ set -euo pipefail
 # Permanently approved file patterns (these MAY use raw SQL)
 APPROVED_PATTERNS=(
   "src/db/"
-  "src/fleet/.*-repository\.ts"
+  "src/fleet/[^/]*-repository\.ts"
   "src/fleet/registration-token-store\.ts"
   "src/fleet/services\.ts"
-  "src/fleet/node-provisioner\.ts"
-  "src/fleet/node-connection-manager\.ts"
-  "src/fleet/recovery-manager\.ts"
-  "src/fleet/migration-manager\.ts"
   "src/test/"
   "\.test\.ts"
 )
@@ -56,6 +52,11 @@ TEMP_EXCLUDED_PATTERNS=(
   "src/security/credential-vault/migrate-plaintext\.ts"
   "src/security/credential-vault/migration-check\.ts"
   "src/security/tenant-keys/schema\.ts"
+  # WOP-899: fleet managers (temporary - WOP-899-906)
+  "src/fleet/node-provisioner\.ts"
+  "src/fleet/node-connection-manager\.ts"
+  "src/fleet/recovery-manager\.ts"
+  "src/fleet/migration-manager\.ts"
   # WOP-901: account
   "src/account/deletion-executor\.ts"
   # WOP-906: admin
@@ -91,7 +92,7 @@ EXCLUDE=$(build_exclude_pattern)
 
 VIOLATIONS=$(grep -rn --include="*.ts" \
   -E '\.(prepare|exec)\(' src/ \
-  | grep -Ev "(${EXCLUDE})" \
+  | awk -F: -v excl="(${EXCLUDE})" '$1 !~ excl' \
   || true)
 
 if [ -n "$VIOLATIONS" ]; then
