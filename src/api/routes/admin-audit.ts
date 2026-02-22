@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
@@ -15,7 +16,7 @@ let _auditLog: AdminAuditLog | null = null;
 
 /** Set dependencies for admin audit routes. */
 export function setAdminAuditDeps(deps: AdminAuditRouteDeps): void {
-  _auditLog = new AdminAuditLog(deps.db);
+  _auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(deps.db));
 }
 
 function getAuditLog(): AdminAuditLog {
@@ -36,7 +37,7 @@ function parseIntParam(value: string | undefined): number | undefined {
  * Used in tests to inject an in-memory database.
  */
 export function createAdminAuditApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
-  const auditLog = new AdminAuditLog(db);
+  const auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   const routes = new Hono<AuthEnv>();
 
   routes.get("/", (c) => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { createTestDb } from "../test/db.js";
+import { DrizzleAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { queryAuditLog } from "./query.js";
 
@@ -12,7 +13,8 @@ describe("AuditLogger", () => {
   });
 
   it("creates an entry with all fields", () => {
-    const logger = new AuditLogger(db);
+    const repo = new DrizzleAuditLogRepository(db);
+    const logger = new AuditLogger(repo);
     const entry = logger.log({
       userId: "user-1",
       authMethod: "session",
@@ -37,7 +39,8 @@ describe("AuditLogger", () => {
   });
 
   it("creates an entry with minimal fields (nulls for optional)", () => {
-    const logger = new AuditLogger(db);
+    const repo = new DrizzleAuditLogRepository(db);
+    const logger = new AuditLogger(repo);
     const entry = logger.log({
       userId: "user-2",
       authMethod: "api_key",
@@ -52,7 +55,8 @@ describe("AuditLogger", () => {
   });
 
   it("generates unique IDs for each entry", () => {
-    const logger = new AuditLogger(db);
+    const repo = new DrizzleAuditLogRepository(db);
+    const logger = new AuditLogger(repo);
     const e1 = logger.log({
       userId: "u1",
       authMethod: "session",
@@ -70,7 +74,8 @@ describe("AuditLogger", () => {
   });
 
   it("persists entries to the database", () => {
-    const logger = new AuditLogger(db);
+    const repo = new DrizzleAuditLogRepository(db);
+    const logger = new AuditLogger(repo);
     logger.log({
       userId: "u1",
       authMethod: "session",
@@ -80,7 +85,7 @@ describe("AuditLogger", () => {
     });
 
     // Query using the audit query module to verify persistence
-    const rows = queryAuditLog(db, { userId: "u1" });
+    const rows = queryAuditLog(repo, { userId: "u1" });
     expect(rows).toHaveLength(1);
     expect(rows[0].user_id).toBe("u1");
     expect(rows[0].action).toBe("instance.create");

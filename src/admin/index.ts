@@ -1,3 +1,5 @@
+export type { IAdminAuditLogRepository } from "./admin-audit-log-repository.js";
+export { DrizzleAdminAuditLogRepository } from "./admin-audit-log-repository.js";
 export type {
   DateRange,
   FloatMetrics,

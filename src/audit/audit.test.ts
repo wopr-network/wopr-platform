@@ -5,6 +5,7 @@ import { createAdminAuditRoutes, createAuditRoutes } from "../api/routes/audit.j
 import type { DrizzleDb } from "../db/index.js";
 import { auditLog } from "../db/schema/index.js";
 import { createTestDb } from "../test/db.js";
+import { DrizzleAuditLogRepository, type IAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { auditLog as auditLogMiddleware, extractResourceType } from "./middleware.js";
 import { countAuditLog, queryAuditLog } from "./query.js";
@@ -28,13 +29,15 @@ function makeInput(overrides: Partial<AuditEntryInput> = {}): AuditEntryInput {
 describe("AuditLogger", () => {
   let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
+  let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    logger = new AuditLogger(db);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
@@ -76,13 +79,15 @@ describe("AuditLogger", () => {
 describe("queryAuditLog", () => {
   let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
+  let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    logger = new AuditLogger(db);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
@@ -93,7 +98,7 @@ describe("queryAuditLog", () => {
     logger.log(makeInput());
     logger.log(makeInput({ action: "instance.destroy" }));
 
-    const results = queryAuditLog(db, {});
+    const results = queryAuditLog(repo, {});
     expect(results).toHaveLength(2);
   });
 
@@ -101,7 +106,7 @@ describe("queryAuditLog", () => {
     logger.log(makeInput({ userId: "user-1" }));
     logger.log(makeInput({ userId: "user-2" }));
 
-    const results = queryAuditLog(db, { userId: "user-1" });
+    const results = queryAuditLog(repo, { userId: "user-1" });
     expect(results).toHaveLength(1);
     expect(results[0].user_id).toBe("user-1");
   });
@@ -111,7 +116,7 @@ describe("queryAuditLog", () => {
     logger.log(makeInput({ action: "instance.destroy" }));
     logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
 
-    const results = queryAuditLog(db, { action: "instance.create" });
+    const results = queryAuditLog(repo, { action: "instance.create" });
     expect(results).toHaveLength(1);
   });
 
@@ -120,7 +125,7 @@ describe("queryAuditLog", () => {
     logger.log(makeInput({ action: "instance.destroy" }));
     logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
 
-    const results = queryAuditLog(db, { action: "instance.*" });
+    const results = queryAuditLog(repo, { action: "instance.*" });
     expect(results).toHaveLength(2);
   });
 
@@ -128,7 +133,7 @@ describe("queryAuditLog", () => {
     logger.log(makeInput({ resourceType: "instance" }));
     logger.log(makeInput({ resourceType: "plugin", action: "plugin.install" }));
 
-    const results = queryAuditLog(db, { resourceType: "instance" });
+    const results = queryAuditLog(repo, { resourceType: "instance" });
     expect(results).toHaveLength(1);
   });
 
@@ -136,7 +141,7 @@ describe("queryAuditLog", () => {
     logger.log(makeInput({ resourceId: "inst-1" }));
     logger.log(makeInput({ resourceId: "inst-2" }));
 
-    const results = queryAuditLog(db, { resourceId: "inst-1" });
+    const results = queryAuditLog(repo, { resourceId: "inst-1" });
     expect(results).toHaveLength(1);
   });
 
@@ -163,7 +168,7 @@ describe("queryAuditLog", () => {
       })
       .run();
 
-    const results = queryAuditLog(db, { since: now - 5000 });
+    const results = queryAuditLog(repo, { since: now - 5000 });
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("new");
   });
@@ -191,7 +196,7 @@ describe("queryAuditLog", () => {
       })
       .run();
 
-    const results = queryAuditLog(db, { until: now - 5000 });
+    const results = queryAuditLog(repo, { until: now - 5000 });
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("old");
   });
@@ -201,14 +206,14 @@ describe("queryAuditLog", () => {
     logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
     logger.log(makeInput({ userId: "user-2", action: "instance.create", resourceType: "instance" }));
 
-    const results = queryAuditLog(db, { userId: "user-1", resourceType: "instance" });
+    const results = queryAuditLog(repo, { userId: "user-1", resourceType: "instance" });
     expect(results).toHaveLength(1);
     expect(results[0].action).toBe("instance.create");
     expect(results[0].user_id).toBe("user-1");
   });
 
   it("returns empty array when no entries match", () => {
-    const results = queryAuditLog(db, { userId: "nonexistent" });
+    const results = queryAuditLog(repo, { userId: "nonexistent" });
     expect(results).toHaveLength(0);
   });
 
@@ -216,7 +221,7 @@ describe("queryAuditLog", () => {
     logger.log(makeInput());
     logger.log(makeInput());
 
-    const results = queryAuditLog(db, { limit: 0 });
+    const results = queryAuditLog(repo, { limit: 0 });
     expect(results).toHaveLength(1);
   });
 
@@ -225,7 +230,7 @@ describe("queryAuditLog", () => {
       logger.log(makeInput());
     }
 
-    const results = queryAuditLog(db, { limit: 3 });
+    const results = queryAuditLog(repo, { limit: 3 });
     expect(results).toHaveLength(3);
   });
 
@@ -234,8 +239,8 @@ describe("queryAuditLog", () => {
       logger.log(makeInput());
     }
 
-    const all = queryAuditLog(db, {});
-    const offset = queryAuditLog(db, { offset: 2 });
+    const all = queryAuditLog(repo, {});
+    const offset = queryAuditLog(repo, { offset: 2 });
     expect(offset).toHaveLength(3);
     expect(offset[0].id).toBe(all[2].id);
   });
@@ -263,7 +268,7 @@ describe("queryAuditLog", () => {
       })
       .run();
 
-    const results = queryAuditLog(db, {});
+    const results = queryAuditLog(repo, {});
     expect(results[0].id).toBe("second");
     expect(results[1].id).toBe("first");
   });
@@ -273,7 +278,7 @@ describe("queryAuditLog", () => {
       logger.log(makeInput());
     }
 
-    const results = queryAuditLog(db, { limit: 999 });
+    const results = queryAuditLog(repo, { limit: 999 });
     expect(results).toHaveLength(5);
   });
 });
@@ -281,13 +286,15 @@ describe("queryAuditLog", () => {
 describe("countAuditLog", () => {
   let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
+  let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    logger = new AuditLogger(db);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
@@ -297,20 +304,20 @@ describe("countAuditLog", () => {
   it("counts all entries", () => {
     logger.log(makeInput());
     logger.log(makeInput());
-    expect(countAuditLog(db, {})).toBe(2);
+    expect(countAuditLog(repo, {})).toBe(2);
   });
 
   it("counts with filters", () => {
     logger.log(makeInput({ userId: "user-1" }));
     logger.log(makeInput({ userId: "user-2" }));
-    expect(countAuditLog(db, { userId: "user-1" })).toBe(1);
+    expect(countAuditLog(repo, { userId: "user-1" })).toBe(1);
   });
 
   it("counts with wildcard action filter", () => {
     logger.log(makeInput({ action: "instance.create" }));
     logger.log(makeInput({ action: "instance.destroy" }));
     logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
-    expect(countAuditLog(db, { action: "instance.*" })).toBe(2);
+    expect(countAuditLog(repo, { action: "instance.*" })).toBe(2);
   });
 
   it("counts with time range filter", () => {
@@ -336,9 +343,9 @@ describe("countAuditLog", () => {
       })
       .run();
 
-    expect(countAuditLog(db, { since: now - 5000 })).toBe(1);
-    expect(countAuditLog(db, { until: now - 5000 })).toBe(1);
-    expect(countAuditLog(db, { since: now - 15000, until: now + 1000 })).toBe(2);
+    expect(countAuditLog(repo, { since: now - 5000 })).toBe(1);
+    expect(countAuditLog(repo, { until: now - 5000 })).toBe(1);
+    expect(countAuditLog(repo, { since: now - 15000, until: now + 1000 })).toBe(2);
   });
 
   it("counts with resourceType and resourceId filters", () => {
@@ -346,25 +353,27 @@ describe("countAuditLog", () => {
     logger.log(makeInput({ resourceType: "instance", resourceId: "inst-2" }));
     logger.log(makeInput({ resourceType: "plugin", resourceId: "plug-1", action: "plugin.install" }));
 
-    expect(countAuditLog(db, { resourceType: "instance" })).toBe(2);
-    expect(countAuditLog(db, { resourceId: "inst-1" })).toBe(1);
-    expect(countAuditLog(db, { resourceType: "plugin", resourceId: "plug-1" })).toBe(1);
+    expect(countAuditLog(repo, { resourceType: "instance" })).toBe(2);
+    expect(countAuditLog(repo, { resourceId: "inst-1" })).toBe(1);
+    expect(countAuditLog(repo, { resourceType: "plugin", resourceId: "plug-1" })).toBe(1);
   });
 
   it("returns zero for no matches", () => {
-    expect(countAuditLog(db, {})).toBe(0);
-    expect(countAuditLog(db, { userId: "nonexistent" })).toBe(0);
+    expect(countAuditLog(repo, {})).toBe(0);
+    expect(countAuditLog(repo, { userId: "nonexistent" })).toBe(0);
   });
 });
 
 describe("retention", () => {
   let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
+  let repo: IAuditLogRepository;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
+    repo = new DrizzleAuditLogRepository(db);
   });
 
   afterEach(() => {
@@ -401,7 +410,7 @@ describe("retention", () => {
       })
       .run();
 
-    const deleted = purgeExpiredEntries(db);
+    const deleted = purgeExpiredEntries(repo);
     expect(deleted).toBe(1);
 
     const remaining = db.select().from(auditLog).all();
@@ -410,10 +419,10 @@ describe("retention", () => {
   });
 
   it("does not purge recent entries", () => {
-    const logger = new AuditLogger(db);
+    const logger = new AuditLogger(repo);
     logger.log(makeInput());
 
-    const deleted = purgeExpiredEntries(db);
+    const deleted = purgeExpiredEntries(repo);
     expect(deleted).toBe(0);
   });
 
@@ -442,7 +451,7 @@ describe("retention", () => {
       })
       .run();
 
-    const deleted = purgeExpiredEntriesForUser(db, "user-1");
+    const deleted = purgeExpiredEntriesForUser(repo, "user-1");
     expect(deleted).toBe(1);
 
     const remaining = db.select().from(auditLog).all();
@@ -465,7 +474,7 @@ describe("retention", () => {
       })
       .run();
 
-    const deleted = purgeExpiredEntries(db);
+    const deleted = purgeExpiredEntries(repo);
     expect(deleted).toBe(0);
   });
 
@@ -494,7 +503,7 @@ describe("retention", () => {
       })
       .run();
 
-    const deleted = purgeExpiredEntriesForUser(db, "user-1");
+    const deleted = purgeExpiredEntriesForUser(repo, "user-1");
     expect(deleted).toBe(0);
 
     const remaining = db.select().from(auditLog).all();
@@ -535,13 +544,15 @@ describe("extractResourceType", () => {
 describe("auditLog middleware", () => {
   let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
+  let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    logger = new AuditLogger(db);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
@@ -563,7 +574,7 @@ describe("auditLog middleware", () => {
       headers: { "x-forwarded-for": "10.0.0.1", "user-agent": "TestClient/1.0" },
     });
 
-    const entries = queryAuditLog(db, {});
+    const entries = queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].user_id).toBe("user-1");
     expect(entries[0].action).toBe("instance.create");
@@ -584,7 +595,7 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(db, {});
+    const entries = queryAuditLog(repo, {});
     expect(entries).toHaveLength(0);
   });
 
@@ -595,7 +606,7 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(db, {});
+    const entries = queryAuditLog(repo, {});
     expect(entries).toHaveLength(0);
   });
 
@@ -611,7 +622,7 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(db, {});
+    const entries = queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].auth_method).toBe("api_key");
   });
@@ -631,7 +642,7 @@ describe("auditLog middleware", () => {
       headers: { "x-forwarded-for": "10.0.0.1, 192.168.1.1, 172.16.0.1" },
     });
 
-    const entries = queryAuditLog(db, {});
+    const entries = queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].ip_address).toBe("10.0.0.1");
   });
@@ -648,7 +659,7 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(db, {});
+    const entries = queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].ip_address).toBeNull();
     expect(entries[0].user_agent).toBeNull();
@@ -657,7 +668,7 @@ describe("auditLog middleware", () => {
   it("does not break the request on logging error", async () => {
     const badSqlite = new BetterSqlite3(":memory:");
     const badTestDb = createTestDb();
-    const badLogger = new AuditLogger(badTestDb.db);
+    const badLogger = new AuditLogger(new DrizzleAuditLogRepository(badTestDb.db));
     badTestDb.sqlite.close();
 
     const app = new Hono<AuditEnv>();
@@ -678,13 +689,15 @@ describe("auditLog middleware", () => {
 describe("audit API routes", () => {
   let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
+  let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
   beforeEach(() => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    logger = new AuditLogger(db);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   afterEach(() => {

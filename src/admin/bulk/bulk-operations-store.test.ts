@@ -1,5 +1,6 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
 import { AdminAuditLog } from "../audit-log.js";
@@ -26,7 +27,7 @@ describe("BulkOperationsStore", () => {
 
     creditStore = new CreditAdjustmentStore(sqlite);
     tenantStatusStore = new TenantStatusStore(db);
-    auditLog = new AdminAuditLog(db);
+    auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     const bulkRepo = new DrizzleBulkOperationsRepository(db, sqlite);
     store = new BulkOperationsStore(bulkRepo, creditStore, tenantStatusStore, auditLog);
 
