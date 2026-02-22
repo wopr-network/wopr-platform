@@ -10,6 +10,10 @@ export interface SetupIntentOpts {
  *
  * Requires an existing Stripe customer (created during credit checkout).
  * Returns the client_secret for use with Stripe Elements on the frontend.
+ *
+ * Note: payment_method_types is omitted to allow dynamic payment methods
+ * configured in the Stripe Dashboard. This enables the best payment options
+ * for each user's location and preferences.
  */
 export async function createSetupIntent(
   stripe: Stripe,
@@ -23,7 +27,6 @@ export async function createSetupIntent(
 
   return stripe.setupIntents.create({
     customer: mapping.stripe_customer_id,
-    payment_method_types: ["card"],
     metadata: {
       wopr_tenant: opts.tenant,
     },
