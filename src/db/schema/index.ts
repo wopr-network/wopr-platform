@@ -10,6 +10,7 @@ export * from "./bulk-undo-grants.js";
 export * from "./credit-auto-topup.js";
 export * from "./credits.js";
 export * from "./email-notifications.js";
+export * from "./gpu-nodes.js";
 export * from "./meter-events.js";
 export * from "./node-registration-tokens.js";
 export * from "./node-transitions.js";
