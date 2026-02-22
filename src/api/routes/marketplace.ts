@@ -1,5 +1,6 @@
 // src/api/routes/marketplace.ts
 import { Hono } from "hono";
+import { z } from "zod";
 import type { AuditEnv } from "../../audit/types.js";
 import { logger } from "../../config/logger.js";
 import { pluginRegistry } from "./marketplace-registry.js";
@@ -58,11 +59,18 @@ marketplaceRoutes.get("/plugins/:id", (c) => {
   return c.json(plugin);
 });
 
+const installSchema = z.object({
+  botId: z.string().uuid("botId must be a valid UUID"),
+  config: z.record(z.string(), z.unknown()).default({}),
+  providerChoices: z.record(z.string(), z.enum(["byok", "hosted"])).default({}),
+});
+
 /**
  * POST /api/marketplace/plugins/:id/install
  *
- * Trigger a plugin install. Records the intent and returns success.
- * Full install workflow is handled by WOP-682.
+ * Validate a plugin install intent. Requires a botId in the request body.
+ * Full server-side install orchestration is handled by WOP-682.
+ * The UI calls POST /fleet/bots/:botId/plugins/:pluginId to complete the install.
  */
 marketplaceRoutes.post("/plugins/:id/install", async (c) => {
   const user = c.get("user");
@@ -72,20 +80,32 @@ marketplaceRoutes.post("/plugins/:id/install", async (c) => {
   const plugin = pluginRegistry.find((p) => p.id === id);
   if (!plugin) return c.json({ error: "Plugin not found" }, 404);
 
-  let config: Record<string, unknown> = {};
+  let body: unknown;
   try {
-    config = (await c.req.json()) as Record<string, unknown>;
+    body = await c.req.json();
   } catch {
-    // No body is fine for a basic install trigger
+    return c.json({ error: "Invalid JSON body or botId is required" }, 400);
+  }
+
+  const parsed = installSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Validation failed: botId must be a valid UUID", details: parsed.error.flatten() }, 400);
   }
 
   logger.info("Plugin install requested", {
     pluginId: id,
     userId: user.id,
-    config: Object.keys(config),
+    botId: parsed.data.botId,
+    config: Object.keys(parsed.data.config),
   });
 
-  // TODO (WOP-682): Wire to fleet manager to actually configure
-  // the plugin on the target bot instance.
-  return c.json({ success: true });
+  // BOUNDARY(WOP-682): Full server-side install orchestration pending.
+  // The marketplace install validates the request and confirms the plugin exists.
+  // The UI calls POST /fleet/bots/:botId/plugins/:pluginId to complete the install.
+  return c.json({
+    success: true,
+    pluginId: id,
+    botId: parsed.data.botId,
+    message: "Install validated. Call POST /fleet/bots/:botId/plugins/:pluginId to complete.",
+  });
 });

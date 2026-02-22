@@ -648,6 +648,54 @@ describe("bot-plugin routes", () => {
     });
   });
 
+  describe("PUT /fleet/bots/:botId/plugins/:pluginId (alias for PATCH)", () => {
+    it("disables an installed plugin via PUT", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a,plugin-b" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ enabled: false }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.enabled).toBe(false);
+    });
+
+    it("re-enables a disabled plugin via PUT", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "plugin-a", WOPR_PLUGINS_DISABLED: "plugin-a" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ enabled: true }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.enabled).toBe(true);
+    });
+
+    it("returns 401 without auth token (PUT)", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/plugin-a`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      });
+
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe("PATCH /fleet/bots/:botId/plugins/:pluginId", () => {
     it("disables an installed plugin", async () => {
       storeMock.get.mockResolvedValue({
@@ -756,6 +804,195 @@ describe("bot-plugin routes", () => {
         TEST_NODE_ID,
         expect.objectContaining({ type: "bot.update" }),
       );
+    });
+  });
+
+  describe("GET /fleet/bots/:botId/channels", () => {
+    it("returns only channel-category plugins", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "discord-channel,semantic-memory" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels`, {
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.botId).toBe(TEST_BOT_ID);
+      // discord-channel is category "channel", semantic-memory is "memory"
+      expect(body.channels).toEqual([{ pluginId: "discord-channel", enabled: true }]);
+    });
+
+    it("returns empty array when no channel plugins installed", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "semantic-memory" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels`, {
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.channels).toEqual([]);
+    });
+
+    it("returns empty array when no plugins installed", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels`, {
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.channels).toEqual([]);
+    });
+
+    it("returns 404 for non-existent bot", async () => {
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/channels`, {
+        headers: authHeader,
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels`);
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for invalid botId on channel routes", async () => {
+      const res = await app.request("/fleet/bots/not-a-uuid/channels", {
+        headers: authHeader,
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("Invalid bot ID");
+    });
+  });
+
+  describe("POST /fleet/bots/:botId/channels/:pluginId", () => {
+    it("installs a channel plugin", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/discord-channel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: { botToken: "abc" }, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.pluginId).toBe("discord-channel");
+    });
+
+    it("returns 409 when channel plugin already installed", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "discord-channel" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/discord-channel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: {}, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 400 for non-channel plugin", async () => {
+      // semantic-memory is category "memory", not "channel"
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/semantic-memory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: {}, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/not a channel/i);
+    });
+
+    it("returns 400 for unknown plugin (not in registry)", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/unknown-plugin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: {}, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/not a channel/i);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/discord-channel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe("DELETE /fleet/bots/:botId/channels/:pluginId", () => {
+    it("disconnects a channel plugin", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "discord-channel" },
+      });
+      fleetMock.update.mockResolvedValue({});
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/discord-channel`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.pluginId).toBe("discord-channel");
+    });
+
+    it("returns 400 for non-channel plugin", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "semantic-memory" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/semantic-memory`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/not a channel/i);
+    });
+
+    it("returns 404 when channel plugin not installed on bot", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/discord-channel`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for non-existent bot", async () => {
+      const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/channels/discord-channel`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/channels/discord-channel`, {
+        method: "DELETE",
+      });
+      expect(res.status).toBe(401);
     });
   });
 });
