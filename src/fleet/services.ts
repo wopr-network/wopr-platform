@@ -44,6 +44,7 @@ import { DrizzleRecoveryRepository } from "./recovery-repository.js";
 import { RegistrationTokenStore } from "./registration-token-store.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
+const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
 
 /**
  * Shared lazy-initialized fleet management singletons.
@@ -55,6 +56,8 @@ const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platfor
 
 let _sqlite: Database.Database | null = null;
 let _db: DrizzleDb | null = null;
+let _auditSqlite: Database.Database | null = null;
+let _auditDb: DrizzleDb | null = null;
 let _registrationTokenStore: RegistrationTokenStore | null = null;
 let _adminNotifier: AdminNotifier | null = null;
 
@@ -97,6 +100,16 @@ export function getDb() {
     _db = createDb(_sqlite);
   }
   return _db;
+}
+
+/** Lazy-initialized audit database singleton. */
+export function getAuditDb(): DrizzleDb {
+  if (!_auditDb) {
+    _auditSqlite = new Database(AUDIT_DB_PATH);
+    applyPlatformPragmas(_auditSqlite);
+    _auditDb = createDb(_auditSqlite);
+  }
+  return _auditDb;
 }
 
 export function getRegistrationTokenStore(): RegistrationTokenStore {
