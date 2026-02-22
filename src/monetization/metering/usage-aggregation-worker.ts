@@ -41,6 +41,22 @@ export interface UsageAggregationWorkerOpts {
   lateArrivalGraceMs?: number;
 }
 
+export interface IUsageAggregationWorker {
+  getBillingPeriod(timestamp: number): BillingPeriod;
+  aggregate(now?: number): number;
+  start(intervalMs?: number): void;
+  stop(): void;
+  querySummaries(tenant: string, opts?: { since?: number; until?: number; limit?: number }): BillingPeriodSummary[];
+  toStripeMeterRecords(
+    tenant: string,
+    opts?: { since?: number; until?: number; customerIdMap?: Record<string, string> },
+  ): StripeMeterRecord[];
+  getTenantPeriodTotal(
+    tenant: string,
+    since: number,
+  ): { totalCost: number; totalCharge: number; eventCount: number; totalDuration: number };
+}
+
 /**
  * Background worker that rolls up raw meter_events into per-tenant
  * billing-period summaries and produces Stripe-compatible meter records.
@@ -54,7 +70,7 @@ export interface UsageAggregationWorkerOpts {
  *   from raw events on every pass
  * - Produces StripeMeterRecord[] that Stripe billing integration can POST
  */
-export class UsageAggregationWorker {
+export class DrizzleUsageAggregationWorker implements IUsageAggregationWorker {
   private readonly periodMs: number;
   private readonly intervalMs: number;
   private readonly meterEventNames: MeterEventNameMap;
@@ -341,3 +357,6 @@ export class UsageAggregationWorker {
     };
   }
 }
+
+// Backward-compat alias.
+export { DrizzleUsageAggregationWorker as UsageAggregationWorker };

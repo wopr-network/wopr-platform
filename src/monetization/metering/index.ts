@@ -1,5 +1,7 @@
-export { MeterAggregator } from "./aggregator.js";
-export { MeterEmitter } from "./emitter.js";
+export type { IMeterAggregator } from "./aggregator.js";
+export { DrizzleMeterAggregator, MeterAggregator } from "./aggregator.js";
+export type { IMeterEmitter } from "./emitter.js";
+export { DrizzleMeterEmitter, MeterEmitter } from "./emitter.js";
 export type {
   BillingPeriod,
   BillingPeriodSummary,
@@ -8,5 +10,12 @@ export type {
   StripeMeterRecord,
   UsageSummary,
 } from "./types.js";
-export type { MeterEventNameMap, UsageAggregationWorkerOpts } from "./usage-aggregation-worker.js";
-export { UsageAggregationWorker } from "./usage-aggregation-worker.js";
+export type {
+  IUsageAggregationWorker,
+  MeterEventNameMap,
+  UsageAggregationWorkerOpts,
+} from "./usage-aggregation-worker.js";
+export {
+  DrizzleUsageAggregationWorker,
+  UsageAggregationWorker,
+} from "./usage-aggregation-worker.js";

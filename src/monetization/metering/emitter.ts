@@ -9,6 +9,14 @@ const DEFAULT_WAL_PATH = process.env.METER_WAL_PATH ?? "./data/meter-wal.jsonl";
 const DEFAULT_DLQ_PATH = process.env.METER_DLQ_PATH ?? "./data/meter-dlq.jsonl";
 const DEFAULT_MAX_RETRIES = Number.parseInt(process.env.METER_MAX_RETRIES ?? "3", 10);
 
+export interface IMeterEmitter {
+  emit(event: MeterEvent): void;
+  flush(): number;
+  readonly pending: number;
+  close(): void;
+  queryEvents(tenant: string, limit?: number): MeterEventRow[];
+}
+
 /**
  * Fire-and-forget meter event emitter with fail-closed durability.
  *
@@ -21,7 +29,7 @@ const DEFAULT_MAX_RETRIES = Number.parseInt(process.env.METER_MAX_RETRIES ?? "3"
  * - After MAX_RETRIES, events move to DLQ (dead-letter queue) for manual recovery
  * - On startup, unflushed WAL events are replayed idempotently
  */
-export class MeterEmitter {
+export class DrizzleMeterEmitter implements IMeterEmitter {
   private buffer: Array<MeterEvent & { id: string }> = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private readonly flushIntervalMs: number;
@@ -218,3 +226,6 @@ export class MeterEmitter {
     }));
   }
 }
+
+// Backward-compat alias.
+export { DrizzleMeterEmitter as MeterEmitter };
