@@ -833,6 +833,37 @@ describe("fleet routes", () => {
       expect(Array.isArray(body.created)).toBe(true);
     });
 
+    it("is idempotent — seeding twice does not duplicate bots", async () => {
+      process.env.FLEET_TEMPLATES_DIR = path.resolve(import.meta.dirname, "..", "..", "..", "templates");
+
+      // First seed — fleet has no profiles yet
+      fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
+      const res1 = await app.request("/fleet/seed", { method: "POST", headers: authHeader });
+      expect(res1.status).toBe(200);
+      const body1 = await res1.json();
+      expect(body1.created.length).toBeGreaterThan(0);
+
+      // Second seed — fleet now reports the same names as existing profiles
+      const fakeProfiles = body1.created.map((name: string) => ({
+        id: "00000000-0000-4000-8000-000000000099",
+        tenantId: "seed",
+        name,
+        description: "",
+        image: "ghcr.io/wopr-network/wopr:stable",
+        env: {},
+        restartPolicy: "unless-stopped",
+        releaseChannel: "stable",
+        updatePolicy: "manual",
+      }));
+      fleetMock.profiles.list = vi.fn().mockResolvedValue(fakeProfiles);
+
+      const res2 = await app.request("/fleet/seed", { method: "POST", headers: authHeader });
+      expect(res2.status).toBe(200);
+      const body2 = await res2.json();
+      expect(body2.created).toEqual([]);
+      expect(body2.skipped).toEqual(expect.arrayContaining(body1.created));
+    });
+
     it("returns 404 when templates directory is empty", async () => {
       process.env.FLEET_TEMPLATES_DIR = path.resolve(import.meta.dirname);
       const res = await app.request("/fleet/seed", { method: "POST", headers: authHeader });
