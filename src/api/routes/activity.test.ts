@@ -16,7 +16,7 @@ function makeApp(user: { id: string; roles: string[] } | null = { id: "user-123"
   return app;
 }
 
-// Mock DB factory
+// Mock DB factory — mimics the Drizzle chain that queryAuditLog() calls internally
 function makeMockDb(rows: Record<string, unknown>[]) {
   return {
     select: vi.fn().mockReturnValue({
@@ -24,7 +24,9 @@ function makeMockDb(rows: Record<string, unknown>[]) {
         where: vi.fn().mockReturnValue({
           orderBy: vi.fn().mockReturnValue({
             limit: vi.fn().mockReturnValue({
-              all: vi.fn().mockReturnValue(rows),
+              offset: vi.fn().mockReturnValue({
+                all: vi.fn().mockReturnValue(rows),
+              }),
             }),
           }),
         }),
@@ -34,8 +36,7 @@ function makeMockDb(rows: Record<string, unknown>[]) {
 }
 
 beforeEach(() => {
-  // Reset the injected DB before each test
-  setActivityDb(null as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+  setActivityDb(null);
 });
 
 describe("GET /api/activity", () => {
@@ -97,7 +98,9 @@ describe("GET /api/activity", () => {
 
   it("respects ?limit= query param", async () => {
     const limitSpy = vi.fn().mockReturnValue({
-      all: vi.fn().mockReturnValue([]),
+      offset: vi.fn().mockReturnValue({
+        all: vi.fn().mockReturnValue([]),
+      }),
     });
     const mockDb = {
       select: vi.fn().mockReturnValue({
@@ -119,7 +122,9 @@ describe("GET /api/activity", () => {
 
   it("clamps limit to 100 maximum", async () => {
     const limitSpy = vi.fn().mockReturnValue({
-      all: vi.fn().mockReturnValue([]),
+      offset: vi.fn().mockReturnValue({
+        all: vi.fn().mockReturnValue([]),
+      }),
     });
     const mockDb = {
       select: vi.fn().mockReturnValue({
@@ -141,7 +146,9 @@ describe("GET /api/activity", () => {
 
   it("defaults limit to 20 when not specified", async () => {
     const limitSpy = vi.fn().mockReturnValue({
-      all: vi.fn().mockReturnValue([]),
+      offset: vi.fn().mockReturnValue({
+        all: vi.fn().mockReturnValue([]),
+      }),
     });
     const mockDb = {
       select: vi.fn().mockReturnValue({
