@@ -30,6 +30,8 @@ import { DrizzleNotificationQueueStore } from "../email/notification-queue-store
 import type { ICircuitBreakerRepository } from "../gateway/circuit-breaker-repository.js";
 import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-breaker-repository.js";
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
+import type { IAffiliateRepository } from "../monetization/affiliate/affiliate-repository.js";
+import { DrizzleAffiliateRepository } from "../monetization/affiliate/affiliate-repository.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
 import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
 import type { IAutoTopupEventLogRepository } from "../monetization/credits/auto-topup-event-log-repository.js";
@@ -584,6 +586,7 @@ let _dividendRepo: IDividendRepository | null = null;
 let _autoTopupSettingsRepo: IAutoTopupSettingsRepository | null = null;
 let _autoTopupEventLogRepo: IAutoTopupEventLogRepository | null = null;
 let _phoneNumberRepo: IPhoneNumberRepository | null = null;
+let _affiliateRepo: IAffiliateRepository | null = null;
 
 export function getCreditLedger(): ICreditLedger {
   if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
@@ -643,6 +646,11 @@ export function getAutoTopupEventLogRepo(): IAutoTopupEventLogRepository {
 export function getPhoneNumberRepo(): IPhoneNumberRepository {
   if (!_phoneNumberRepo) _phoneNumberRepo = new DrizzlePhoneNumberRepository(getDb());
   return _phoneNumberRepo;
+}
+
+export function getAffiliateRepo(): IAffiliateRepository {
+  if (!_affiliateRepo) _affiliateRepo = new DrizzleAffiliateRepository(getDb());
+  return _affiliateRepo;
 }
 
 // ---------------------------------------------------------------------------
