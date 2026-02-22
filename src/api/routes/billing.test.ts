@@ -121,7 +121,7 @@ describe("billing routes", () => {
         method: "POST",
         body: JSON.stringify({
           tenant: "t-1",
-          priceId: "price_credit_5",
+          priceId: "price_test_credit_5",
           successUrl: "https://example.com/s",
           cancelUrl: "https://example.com/c",
         }),
@@ -144,7 +144,7 @@ describe("billing routes", () => {
         method: "POST",
         body: JSON.stringify({
           tenant: "t-1",
-          priceId: "price_credit_5",
+          priceId: "price_test_credit_5",
           successUrl: "https://example.com/s",
           cancelUrl: "https://example.com/c",
         }),
@@ -175,7 +175,7 @@ describe("billing routes", () => {
         method: "POST",
         body: JSON.stringify({
           tenant: "t-1",
-          priceId: "price_credit_25",
+          priceId: "price_test_credit_25",
           successUrl: "https://example.com/success",
           cancelUrl: "https://example.com/cancel",
         }),
@@ -220,7 +220,7 @@ describe("billing routes", () => {
       const res = await billingRoutes.request("/credits/checkout", {
         method: "POST",
         body: JSON.stringify({
-          priceId: "price_credit_5",
+          priceId: "price_test_credit_5",
           successUrl: "https://example.com/success",
           cancelUrl: "https://example.com/cancel",
         }),
@@ -237,7 +237,7 @@ describe("billing routes", () => {
         method: "POST",
         body: JSON.stringify({
           tenant: "t-1; DROP TABLE",
-          priceId: "price_credit_5",
+          priceId: "price_test_credit_5",
           successUrl: "https://example.com/success",
           cancelUrl: "https://example.com/cancel",
         }),
@@ -254,7 +254,7 @@ describe("billing routes", () => {
         method: "POST",
         body: JSON.stringify({
           tenant: "t-1",
-          priceId: "price_credit_5",
+          priceId: "price_test_credit_5",
           successUrl: "not-a-url",
           cancelUrl: "https://example.com/cancel",
         }),
@@ -273,7 +273,7 @@ describe("billing routes", () => {
         method: "POST",
         body: JSON.stringify({
           tenant: "t-1",
-          priceId: "price_credit_5",
+          priceId: "price_test_credit_5",
           successUrl: "https://example.com/success",
           cancelUrl: "https://example.com/cancel",
         }),

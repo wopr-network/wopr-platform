@@ -11,7 +11,7 @@ import type { MeterAggregator } from "../../monetization/metering/aggregator.js"
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import type { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
-import { protectedProcedure, router } from "../init.js";
+import { protectedProcedure, publicProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -93,6 +93,31 @@ export const billingRouter = router({
       const { tenant: _t, ...filters } = { ...input, tenant };
       return creditStore.listTransactions(tenant, filters);
     }),
+
+  /** Get available credit purchase tiers with real Stripe price IDs. */
+  creditOptions: publicProcedure.query(() => {
+    const { priceMap } = deps();
+    if (!priceMap || priceMap.size === 0) return [];
+    const options: Array<{
+      priceId: string;
+      label: string;
+      amountCents: number;
+      creditCents: number;
+      bonusPercent: number;
+    }> = [];
+    for (const [priceId, point] of priceMap) {
+      options.push({
+        priceId,
+        label: point.label,
+        amountCents: point.amountCents,
+        creditCents: point.creditCents,
+        bonusPercent: point.bonusPercent,
+      });
+    }
+    // Sort by amountCents ascending for consistent ordering
+    options.sort((a, b) => a.amountCents - b.amountCents);
+    return options;
+  }),
 
   /** Create a Stripe Checkout session for credit purchase. Tenant defaults to ctx.tenantId when omitted. */
   creditsCheckout: protectedProcedure

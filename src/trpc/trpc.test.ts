@@ -420,4 +420,128 @@ describe("tRPC appRouter", () => {
       expect(result).toHaveProperty("Memory");
     });
   });
+  // ---- creditOptions (WOP-916) ----
+
+  describe("creditOptions", () => {
+    it("returns configured credit tiers sorted by amountCents", async () => {
+      vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_test_5");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_test_10");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_test_25");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_test_50");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_test_100");
+
+      const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
+      const creditStore = new CreditAdjustmentStore(sqlite);
+      const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+      const meterAggregator = new MeterAggregator(db);
+      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
+      const tenantStore = new TenantCustomerStore(db);
+      const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
+      const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
+      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+
+      setBillingRouterDeps({
+        stripe: {
+          checkout: { sessions: { create: vi.fn() } },
+          billingPortal: { sessions: { create: vi.fn() } },
+        } as never,
+        tenantStore,
+        creditStore,
+        meterAggregator,
+        usageReporter,
+        priceMap: loadCreditPriceMap(),
+      });
+
+      const caller = createCaller(authedContext());
+      const options = await caller.billing.creditOptions();
+
+      expect(options).toHaveLength(5);
+      expect(options[0]).toEqual({
+        priceId: "price_test_5",
+        label: "$5",
+        amountCents: 500,
+        creditCents: 500,
+        bonusPercent: 0,
+      });
+      expect(options[2]).toEqual({
+        priceId: "price_test_25",
+        label: "$25",
+        amountCents: 2500,
+        creditCents: 2550,
+        bonusPercent: 2,
+      });
+      expect(options[4]).toEqual({
+        priceId: "price_test_100",
+        label: "$100",
+        amountCents: 10000,
+        creditCents: 11000,
+        bonusPercent: 10,
+      });
+
+      vi.unstubAllEnvs();
+    });
+
+    it("returns empty array when no prices configured", async () => {
+      vi.stubEnv("STRIPE_CREDIT_PRICE_5", "");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_10", "");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_25", "");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_50", "");
+      vi.stubEnv("STRIPE_CREDIT_PRICE_100", "");
+
+      const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
+      const creditStore = new CreditAdjustmentStore(sqlite);
+      const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+      const meterAggregator = new MeterAggregator(db);
+      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
+      const tenantStore = new TenantCustomerStore(db);
+      const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
+      const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
+      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+
+      setBillingRouterDeps({
+        stripe: {
+          checkout: { sessions: { create: vi.fn() } },
+          billingPortal: { sessions: { create: vi.fn() } },
+        } as never,
+        tenantStore,
+        creditStore,
+        meterAggregator,
+        usageReporter,
+        priceMap: loadCreditPriceMap(),
+      });
+
+      const caller = createCaller(authedContext());
+      const options = await caller.billing.creditOptions();
+      expect(options).toEqual([]);
+
+      vi.unstubAllEnvs();
+    });
+
+    it("returns empty array when priceMap is undefined", async () => {
+      const creditStore = new CreditAdjustmentStore(sqlite);
+      const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+      const meterAggregator = new MeterAggregator(db);
+      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
+      const tenantStore = new TenantCustomerStore(db);
+      const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
+      const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
+      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+
+      setBillingRouterDeps({
+        stripe: {
+          checkout: { sessions: { create: vi.fn() } },
+          billingPortal: { sessions: { create: vi.fn() } },
+        } as never,
+        tenantStore,
+        creditStore,
+        meterAggregator,
+        usageReporter,
+        priceMap: undefined,
+      });
+
+      const caller = createCaller(authedContext());
+      const options = await caller.billing.creditOptions();
+      expect(options).toEqual([]);
+    });
+  });
 });

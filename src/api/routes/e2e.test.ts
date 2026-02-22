@@ -552,7 +552,7 @@ describe("E2E: Billing flow (credit model)", () => {
       headers: jsonAuth,
       body: JSON.stringify({
         tenant: tenantId,
-        priceId: "price_credit_25",
+        priceId: "price_test_credit_25",
         successUrl: "https://app.wopr.bot/billing/success",
         cancelUrl: "https://app.wopr.bot/billing/cancel",
       }),
