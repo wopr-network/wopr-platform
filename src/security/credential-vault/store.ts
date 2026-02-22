@@ -1,10 +1,8 @@
 import { createHmac, randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { providerCredentials } from "../../db/schema/index.js";
 import { decrypt, encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload } from "../types.js";
+import type { ICredentialRepository } from "./credential-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,12 +69,12 @@ export interface DecryptedCredential {
  * - All mutations are audit-logged.
  */
 export class CredentialVaultStore {
-  private readonly db: DrizzleDb;
+  private readonly repo: ICredentialRepository;
   private readonly encryptionKey: Buffer;
   private readonly auditLog: AdminAuditLog | null;
 
-  constructor(db: DrizzleDb, encryptionKey: Buffer, auditLog?: AdminAuditLog) {
-    this.db = db;
+  constructor(repo: ICredentialRepository, encryptionKey: Buffer, auditLog?: AdminAuditLog) {
+    this.repo = repo;
     this.encryptionKey = encryptionKey;
     this.auditLog = auditLog ?? null;
   }
@@ -87,19 +85,15 @@ export class CredentialVaultStore {
     const encrypted = encrypt(input.plaintextKey, this.encryptionKey);
     const serialized = JSON.stringify(encrypted);
 
-    this.db
-      .insert(providerCredentials)
-      .values({
-        id,
-        provider: input.provider,
-        keyName: input.keyName,
-        encryptedValue: serialized,
-        authType: input.authType,
-        authHeader: input.authHeader ?? null,
-        isActive: 1,
-        createdBy: input.createdBy,
-      })
-      .run();
+    this.repo.insert({
+      id,
+      provider: input.provider,
+      keyName: input.keyName,
+      encryptedValue: serialized,
+      authType: input.authType,
+      authHeader: input.authHeader ?? null,
+      createdBy: input.createdBy,
+    });
 
     this.audit(input.createdBy, "credential.create", {
       credentialId: id,
@@ -112,53 +106,13 @@ export class CredentialVaultStore {
 
   /** List all credentials for a provider (or all providers). Never returns encrypted values. */
   list(provider?: string): CredentialSummary[] {
-    const where = provider ? eq(providerCredentials.provider, provider) : undefined;
-
-    const rows = this.db
-      .select({
-        id: providerCredentials.id,
-        provider: providerCredentials.provider,
-        keyName: providerCredentials.keyName,
-        authType: providerCredentials.authType,
-        authHeader: providerCredentials.authHeader,
-        isActive: providerCredentials.isActive,
-        lastValidated: providerCredentials.lastValidated,
-        createdAt: providerCredentials.createdAt,
-        rotatedAt: providerCredentials.rotatedAt,
-        createdBy: providerCredentials.createdBy,
-      })
-      .from(providerCredentials)
-      .where(where)
-      .orderBy(desc(providerCredentials.createdAt))
-      .all();
-
-    return rows.map((r) => ({
-      ...r,
-      isActive: r.isActive === 1,
-    }));
+    return this.repo.list(provider).map((r) => ({ ...r, isActive: r.isActive === 1 }));
   }
 
   /** Get a single credential summary by ID. */
   getById(id: string): CredentialSummary | null {
-    const row = this.db
-      .select({
-        id: providerCredentials.id,
-        provider: providerCredentials.provider,
-        keyName: providerCredentials.keyName,
-        authType: providerCredentials.authType,
-        authHeader: providerCredentials.authHeader,
-        isActive: providerCredentials.isActive,
-        lastValidated: providerCredentials.lastValidated,
-        createdAt: providerCredentials.createdAt,
-        rotatedAt: providerCredentials.rotatedAt,
-        createdBy: providerCredentials.createdBy,
-      })
-      .from(providerCredentials)
-      .where(eq(providerCredentials.id, id))
-      .get();
-
+    const row = this.repo.getSummaryById(id);
     if (!row) return null;
-
     return { ...row, isActive: row.isActive === 1 };
   }
 
@@ -168,8 +122,7 @@ export class CredentialVaultStore {
    * SECURITY: The returned plaintext key MUST be discarded after use.
    */
   decrypt(id: string): DecryptedCredential | null {
-    const row = this.db.select().from(providerCredentials).where(eq(providerCredentials.id, id)).get();
-
+    const row = this.repo.getFullById(id);
     if (!row) return null;
 
     const payload: EncryptedPayload = JSON.parse(row.encryptedValue);
@@ -192,13 +145,7 @@ export class CredentialVaultStore {
    * SECURITY: Returned keys MUST be discarded after use.
    */
   getActiveForProvider(provider: string): DecryptedCredential[] {
-    const rows = this.db
-      .select()
-      .from(providerCredentials)
-      .where(and(eq(providerCredentials.provider, provider), eq(providerCredentials.isActive, 1)))
-      .all();
-
-    return rows.map((row) => {
+    return this.repo.listActiveForProvider(provider).map((row) => {
       const payload: EncryptedPayload = JSON.parse(row.encryptedValue);
       const plaintextKey = decrypt(payload, this.encryptionKey);
       return {
@@ -214,25 +161,12 @@ export class CredentialVaultStore {
 
   /** Rotate a credential's key. Encrypts the new key and records the rotation timestamp. */
   rotate(input: RotateCredentialInput): boolean {
-    const existing = this.db
-      .select({ id: providerCredentials.id, provider: providerCredentials.provider })
-      .from(providerCredentials)
-      .where(eq(providerCredentials.id, input.id))
-      .get();
-
+    const existing = this.repo.getSummaryById(input.id);
     if (!existing) return false;
 
     const encrypted = encrypt(input.plaintextKey, this.encryptionKey);
     const serialized = JSON.stringify(encrypted);
-
-    this.db
-      .update(providerCredentials)
-      .set({
-        encryptedValue: serialized,
-        rotatedAt: new Date().toISOString(),
-      })
-      .where(eq(providerCredentials.id, input.id))
-      .run();
+    this.repo.updateEncryptedValue(input.id, serialized);
 
     this.audit(input.rotatedBy, "credential.rotate", {
       credentialId: input.id,
@@ -244,19 +178,10 @@ export class CredentialVaultStore {
 
   /** Mark a credential as active or inactive. */
   setActive(id: string, isActive: boolean, changedBy: string): boolean {
-    const existing = this.db
-      .select({ id: providerCredentials.id, provider: providerCredentials.provider })
-      .from(providerCredentials)
-      .where(eq(providerCredentials.id, id))
-      .get();
-
+    const existing = this.repo.getSummaryById(id);
     if (!existing) return false;
 
-    this.db
-      .update(providerCredentials)
-      .set({ isActive: isActive ? 1 : 0 })
-      .where(eq(providerCredentials.id, id))
-      .run();
+    this.repo.setActive(id, isActive);
 
     this.audit(changedBy, isActive ? "credential.activate" : "credential.deactivate", {
       credentialId: id,
@@ -268,30 +193,15 @@ export class CredentialVaultStore {
 
   /** Record a successful validation timestamp. */
   markValidated(id: string): boolean {
-    const result = this.db
-      .update(providerCredentials)
-      .set({ lastValidated: new Date().toISOString() })
-      .where(eq(providerCredentials.id, id))
-      .run();
-
-    return result.changes > 0;
+    return this.repo.markValidated(id);
   }
 
   /** Permanently delete a credential. */
   delete(id: string, deletedBy: string): boolean {
-    const existing = this.db
-      .select({
-        id: providerCredentials.id,
-        provider: providerCredentials.provider,
-        keyName: providerCredentials.keyName,
-      })
-      .from(providerCredentials)
-      .where(eq(providerCredentials.id, id))
-      .get();
-
+    const existing = this.repo.getSummaryById(id);
     if (!existing) return false;
 
-    this.db.delete(providerCredentials).where(eq(providerCredentials.id, id)).run();
+    this.repo.deleteById(id);
 
     this.audit(deletedBy, "credential.delete", {
       credentialId: id,

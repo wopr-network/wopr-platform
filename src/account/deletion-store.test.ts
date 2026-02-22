@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createDb, type DrizzleDb } from "../db/index.js";
+import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore, DELETION_GRACE_DAYS } from "./deletion-store.js";
 
 function setupDb(): { db: DrizzleDb; sqlite: Database.Database } {
@@ -33,7 +34,8 @@ describe("AccountDeletionStore", () => {
 
   beforeEach(() => {
     ({ db, sqlite } = setupDb());
-    store = new AccountDeletionStore(db);
+    const repo = new DrizzleDeletionRepository(db);
+    store = new AccountDeletionStore(repo);
   });
 
   describe("create()", () => {
@@ -128,7 +130,10 @@ describe("AccountDeletionStore", () => {
       const updated = store.getById(req.id);
       expect(updated?.status).toBe("completed");
       expect(updated?.completedAt).toBeTruthy();
-      expect(JSON.parse(updated?.deletionSummary ?? "null")).toEqual({ bot_instances: 3, credit_transactions: 10 });
+      expect(JSON.parse(updated?.deletionSummary ?? "null")).toEqual({
+        bot_instances: 3,
+        credit_transactions: 10,
+      });
     });
   });
 

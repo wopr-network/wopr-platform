@@ -1,3 +1,9 @@
+export type {
+  CredentialRow,
+  CredentialSummaryRow,
+  ICredentialRepository,
+} from "./credential-repository.js";
+export { DrizzleCredentialRepository } from "./credential-repository.js";
 export type { RotationResult } from "./key-rotation.js";
 export { reEncryptAllCredentials } from "./key-rotation.js";
 export type { MigrationResult } from "./migrate-plaintext.js";

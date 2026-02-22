@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type DrizzleDb } from "../db/index.js";
 import { type DeletionExecutorDeps, executeDeletion } from "./deletion-executor.js";
+import { DrizzleDeletionExecutorRepository } from "./deletion-executor-repository.js";
 
 function setupDbs(): { db: DrizzleDb; rawDb: Database.Database; authDb: Database.Database } {
   const rawDb = new Database(":memory:");
@@ -289,7 +290,8 @@ describe("executeDeletion", () => {
 
   beforeEach(() => {
     ({ db, rawDb, authDb } = setupDbs());
-    deps = { db, rawDb, authDb };
+    const repo = new DrizzleDeletionExecutorRepository(db, rawDb, authDb);
+    deps = { repo };
   });
 
   describe("full purge", () => {
@@ -391,9 +393,13 @@ describe("executeDeletion", () => {
       seedTenant(rawDb, tenantId);
 
       const mockStripe = {
-        customers: { del: vi.fn().mockRejectedValue(new Error("Stripe error: customer has open invoices")) },
+        customers: {
+          del: vi.fn().mockRejectedValue(new Error("Stripe error: customer has open invoices")),
+        },
       };
-      const mockTenantStore = { getByTenant: vi.fn().mockReturnValue({ stripe_customer_id: "cus_fail" }) };
+      const mockTenantStore = {
+        getByTenant: vi.fn().mockReturnValue({ stripe_customer_id: "cus_fail" }),
+      };
 
       const result = await executeDeletion(
         { ...deps, stripe: mockStripe as never, tenantStore: mockTenantStore as never },
@@ -418,7 +424,9 @@ describe("executeDeletion", () => {
       const result = await executeDeletion(deps, tenantId);
 
       expect(result.authUserDeleted).toBe(true);
-      expect(authDb.prepare("SELECT COUNT(*) AS c FROM user WHERE id = ?").get(tenantId)).toEqual({ c: 0 });
+      expect(authDb.prepare("SELECT COUNT(*) AS c FROM user WHERE id = ?").get(tenantId)).toEqual({
+        c: 0,
+      });
       expect(authDb.prepare("SELECT COUNT(*) AS c FROM session WHERE user_id = ?").get(tenantId)).toEqual({ c: 0 });
       expect(authDb.prepare("SELECT COUNT(*) AS c FROM account WHERE user_id = ?").get(tenantId)).toEqual({ c: 0 });
       expect(
@@ -430,7 +438,8 @@ describe("executeDeletion", () => {
       const tenantId = "tenant-no-auth";
       seedTenant(rawDb, tenantId);
 
-      const result = await executeDeletion({ db, rawDb }, tenantId);
+      const repoNoAuth = new DrizzleDeletionExecutorRepository(db, rawDb);
+      const result = await executeDeletion({ repo: repoNoAuth }, tenantId);
 
       expect(result.authUserDeleted).toBe(false);
       expect(result.errors).toHaveLength(0);

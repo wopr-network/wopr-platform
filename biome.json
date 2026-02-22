@@ -94,7 +94,10 @@
         "src/monetization/metering/emitter.ts",
         "src/monetization/metering/usage-aggregation-worker.ts",
         "src/monetization/payram/charge-store.ts",
-        "src/monetization/stripe/tenant-store.ts"
+        "src/monetization/stripe/tenant-store.ts",
+        "src/account/deletion-repository.ts",
+        "src/account/deletion-executor-repository.ts",
+        "src/security/credential-vault/credential-repository.ts"
       ],
       "linter": {
         "rules": {
@@ -129,8 +132,6 @@
         "src/email/notification-preferences-store.ts",
         "src/email/verification.ts",
         "src/email/require-verified.ts",
-        "src/account/deletion-executor.ts",
-        "src/account/deletion-store.ts",
         "src/api/routes/activity.ts",
         "src/api/routes/admin-backups.ts",
         "src/api/routes/bot-plugins.ts",
@@ -154,7 +155,6 @@
         "src/monetization/payram/schema.ts",
         "src/monetization/stripe/usage-reporter.ts",
         "src/monetization/stripe/schema.ts",
-        "src/security/credential-vault/store.ts",
         "src/security/credential-vault/key-rotation.ts",
         "src/security/credential-vault/migrate-plaintext.ts",
         "src/security/credential-vault/migration-check.ts",

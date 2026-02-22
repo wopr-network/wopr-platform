@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../db/index.js";
 import { runDeletionCron } from "./deletion-cron.js";
 import type { DeletionExecutorDeps } from "./deletion-executor.js";
+import { DrizzleDeletionExecutorRepository } from "./deletion-executor-repository.js";
+import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore } from "./deletion-store.js";
 
 function setupStore(): { store: AccountDeletionStore; sqlite: Database.Database } {
@@ -40,7 +42,8 @@ function setupStore(): { store: AccountDeletionStore; sqlite: Database.Database 
     CREATE TABLE user_roles (user_id TEXT NOT NULL, tenant_id TEXT NOT NULL, role TEXT NOT NULL, granted_by TEXT, granted_at INTEGER NOT NULL, PRIMARY KEY (user_id, tenant_id));
   `);
   const db = createDb(sqlite);
-  const store = new AccountDeletionStore(db);
+  const repo = new DrizzleDeletionRepository(db);
+  const store = new AccountDeletionStore(repo);
   return { store, sqlite };
 }
 
@@ -51,7 +54,9 @@ describe("runDeletionCron", () => {
 
   beforeEach(() => {
     ({ store, sqlite } = setupStore());
-    executorDeps = { db: createDb(sqlite), rawDb: sqlite };
+    const db = createDb(sqlite);
+    const repo = new DrizzleDeletionExecutorRepository(db, sqlite);
+    executorDeps = { repo };
   });
 
   it("processes expired requests and marks them completed", async () => {
