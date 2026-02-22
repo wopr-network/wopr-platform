@@ -1,6 +1,3 @@
-import { mkdirSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,13 +5,8 @@ import * as schema from "../db/schema/index.js";
 import { DrizzleBackupStatusRepository } from "./backup-status-repository.js";
 import { BackupStatusStore } from "./backup-status-store.js";
 
-const TEST_DIR = join(import.meta.dirname, "../../.test-backup-status");
-const DB_PATH = join(TEST_DIR, "backup-status.db");
-
-function createTestDb(path: string) {
-  mkdirSync(TEST_DIR, { recursive: true });
-
-  const sqlite = new Database(path);
+function createTestDb() {
+  const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS backup_status (
       container_id TEXT PRIMARY KEY,
@@ -40,16 +32,14 @@ describe("BackupStatusStore", () => {
   let store: BackupStatusStore;
 
   beforeEach(() => {
-    mkdirSync(TEST_DIR, { recursive: true });
-    const testDb = createTestDb(DB_PATH);
+    const testDb = createTestDb();
     sqlite = testDb.sqlite;
     const repo = new DrizzleBackupStatusRepository(testDb.db);
     store = new BackupStatusStore(repo);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     sqlite.close();
-    await rm(TEST_DIR, { recursive: true, force: true });
   });
 
   describe("recordSuccess", () => {

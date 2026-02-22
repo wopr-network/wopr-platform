@@ -1,6 +1,3 @@
-import { mkdirSync } from "node:fs";
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,13 +6,8 @@ import { BackupStatusStore } from "../../backup/backup-status-store.js";
 import * as schema from "../../db/schema/index.js";
 import { createAdminBackupRoutes, isRemotePathOwnedBy } from "./admin-backups.js";
 
-const TEST_DIR = join(import.meta.dirname, "../../../.test-admin-backups");
-const DB_PATH = join(TEST_DIR, "backup-status.db");
-
-function createTestDb(path: string) {
-  mkdirSync(TEST_DIR, { recursive: true });
-
-  const sqlite = new Database(path);
+function createTestDb() {
+  const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS backup_status (
       container_id TEXT PRIMARY KEY,
@@ -42,17 +34,15 @@ describe("admin-backups routes", () => {
   let app: ReturnType<typeof createAdminBackupRoutes>;
 
   beforeEach(() => {
-    mkdirSync(TEST_DIR, { recursive: true });
-    const testDb = createTestDb(DB_PATH);
+    const testDb = createTestDb();
     sqlite = testDb.sqlite;
     const repo = new DrizzleBackupStatusRepository(testDb.db);
     store = new BackupStatusStore(repo);
     app = createAdminBackupRoutes(store);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     sqlite.close();
-    await rm(TEST_DIR, { recursive: true, force: true });
   });
 
   describe("GET /", () => {

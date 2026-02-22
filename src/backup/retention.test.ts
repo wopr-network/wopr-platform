@@ -11,11 +11,10 @@ import { DrizzleSnapshotRepository } from "./snapshot-repository.js";
 const TEST_DIR = join(import.meta.dirname, "../../.test-retention");
 const SNAPSHOT_DIR = join(TEST_DIR, "snapshots");
 const INSTANCES_DIR = join(TEST_DIR, "instances");
-const DB_PATH = join(TEST_DIR, "test.db");
 
-/** Create a file-based Drizzle DB with the snapshots table. */
-function createFileDb(path: string) {
-  const sqlite = new Database(path);
+/** Create an in-memory Drizzle DB with the snapshots table. */
+function createMemoryDb() {
+  const sqlite = new Database(":memory:");
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS snapshots (
       id TEXT PRIMARY KEY,
@@ -55,7 +54,7 @@ describe("enforceRetention", () => {
     await rm(TEST_DIR, { recursive: true, force: true });
     await mkdir(TEST_DIR, { recursive: true });
 
-    const testDb = createFileDb(DB_PATH);
+    const testDb = createMemoryDb();
     sqlite = testDb.sqlite;
     const repo = new DrizzleSnapshotRepository(testDb.db);
     manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, repo });
