@@ -40,6 +40,8 @@ import { DrizzleBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
 import { DrizzleBotProfileRepository } from "./bot-profile-repository.js";
 import { DOClient } from "./do-client.js";
+import type { IGpuNodeRepository } from "./gpu-node-repository.js";
+import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
 import { HeartbeatProcessor } from "./heartbeat-processor.js";
 import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
 import { MigrationOrchestrator } from "./migration-orchestrator.js";
@@ -81,6 +83,7 @@ let _botInstanceRepo: IBotInstanceRepository | null = null;
 let _botProfileRepo: IBotProfileRepository | null = null;
 let _recoveryRepo: IRecoveryRepository | null = null;
 let _spendingCapStore: ISpendingCapStore | null = null;
+let _gpuNodeRepo: IGpuNodeRepository | null = null;
 
 // Admin repositories
 let _adminNotesRepo: IAdminNotesRepository | null = null;
@@ -189,6 +192,16 @@ export function getSpendingCapStore(): ISpendingCapStore {
   }
   return _spendingCapStore;
 }
+
+export function getGpuNodeRepo(): IGpuNodeRepository {
+  if (!_gpuNodeRepo) {
+    _gpuNodeRepo = new DrizzleGpuNodeRepository(getDb());
+  }
+  return _gpuNodeRepo;
+}
+
+/** Alias for compatibility with callers that use getGpuNodeRepository() */
+export const getGpuNodeRepository = getGpuNodeRepo;
 
 export function getAdminNotesRepo(): IAdminNotesRepository {
   if (!_adminNotesRepo) {
