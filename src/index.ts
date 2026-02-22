@@ -6,7 +6,11 @@ import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
 import { initRateSchema } from "./admin/rates/schema.js";
 import { app } from "./api/app.js";
+import { DrizzleOAuthStateRepository } from "./api/drizzle-oauth-state-repository.js";
+import { DrizzleSigPenaltyRepository } from "./api/drizzle-sig-penalty-repository.js";
+import { setBillingDeps } from "./api/routes/billing.js";
 import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
+import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
@@ -17,13 +21,17 @@ import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
   getBotInstanceRepo,
   getBotProfileRepo,
+  getCircuitBreakerRepo,
   getCommandBus,
   getConnectionRegistry,
+  getDb,
   getDividendRepo,
+  getFleetEventRepo,
   getHeartbeatProcessor,
   getHeartbeatWatchdog,
   getNodeRegistrar,
   getNodeRepo,
+  getRateLimitRepo,
   getRegistrationTokenStore,
   initFleet,
 } from "./fleet/services.js";
@@ -35,6 +43,7 @@ import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
 import type { HeartbeatMessage } from "./node-agent/types.js";
+import { DrizzleMetricsRepository } from "./observability/drizzle-metrics-repository.js";
 import {
   AlertChecker,
   buildAlerts,
@@ -177,9 +186,11 @@ if (process.env.NODE_ENV !== "test") {
     const billingDrizzle = createDb(billingDb);
 
     // ── Observability ──────────────────────────────────────────────────────────
-    const metrics = new MetricsCollector();
-    const alerts = buildAlerts(metrics);
-    const alertChecker = new AlertChecker(alerts);
+    const metricsRepo = new DrizzleMetricsRepository(billingDrizzle);
+    const metrics = new MetricsCollector(metricsRepo);
+    const fleetEventRepo = getFleetEventRepo();
+    const alerts = buildAlerts(metrics, fleetEventRepo);
+    const alertChecker = new AlertChecker(alerts, { fleetEventRepo });
     alertChecker.start();
 
     const ratesDb = new Database(RATES_DB_PATH);
@@ -244,6 +255,8 @@ if (process.env.NODE_ENV !== "test") {
         windowMs: Number(process.env.GATEWAY_CIRCUIT_BREAKER_WINDOW_MS ?? 10_000),
         pauseDurationMs: Number(process.env.GATEWAY_CIRCUIT_BREAKER_PAUSE_MS ?? 300_000),
       },
+      rateLimitRepo: getRateLimitRepo(),
+      circuitBreakerRepo: getCircuitBreakerRepo(),
       onCircuitBreakerTrip: (tenantId, instanceId, requestCount) => {
         logger.warn("Circuit breaker tripped", { tenantId, instanceId, requestCount });
         meter.emit({
@@ -334,10 +347,24 @@ if (process.env.NODE_ENV !== "test") {
         dividendRepo: getDividendRepo(),
       });
       logger.info("tRPC billing router initialized");
+
+      // Wire REST billing routes (Stripe webhooks, checkout, portal).
+      // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).
+      setBillingDeps({
+        stripe: stripe as never,
+        db: billingDrizzle2,
+        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+        sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
+      });
+      logger.info("REST billing routes initialized");
     } else {
       logger.warn("STRIPE_SECRET_KEY not set — tRPC billing router not initialized");
     }
   }
+
+  // Wire channel OAuth repository (used by /api/channel-oauth/* REST routes).
+  // Uses the platform DB (oauth_states table is in platform migrations).
+  setChannelOAuthRepo(new DrizzleOAuthStateRepository(getDb()));
 
   // Wire OrphanCleaner into NodeConnectionManager for stale container cleanup on node reboot
   initFleet();

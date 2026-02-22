@@ -1,13 +1,41 @@
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthEnv, AuthUser } from "../../auth/index.js";
-import { channelOAuthRoutes, resetChannelOAuthState } from "./channel-oauth.js";
+import * as schema from "../../db/schema/index.js";
+import { DrizzleOAuthStateRepository } from "../drizzle-oauth-state-repository.js";
+import { createChannelOAuthRoutes } from "./channel-oauth.js";
 
 // ---------------------------------------------------------------------------
-// Test app — wraps channelOAuthRoutes with controllable session injection
+// Test DB factory — creates a fresh in-memory DB with the oauth_states table
+// ---------------------------------------------------------------------------
+
+function makeDb() {
+  const sqlite = new Database(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS oauth_states (
+      state TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      token TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states (expires_at);
+  `);
+  return drizzle(sqlite, { schema });
+}
+
+// ---------------------------------------------------------------------------
+// Test app — wraps createChannelOAuthRoutes with controllable session injection
 // ---------------------------------------------------------------------------
 
 function createTestApp(user?: AuthUser) {
+  const repo = new DrizzleOAuthStateRepository(makeDb());
+  const routes = createChannelOAuthRoutes(repo);
   const app = new Hono<AuthEnv>();
 
   // Inject user if provided (simulates resolveSessionUser middleware)
@@ -19,7 +47,27 @@ function createTestApp(user?: AuthUser) {
     return next();
   });
 
-  app.route("/", channelOAuthRoutes);
+  app.route("/", routes);
+  return app;
+}
+
+// ---------------------------------------------------------------------------
+// Shared repo for tests that need to share state (e.g. initiate then poll)
+// ---------------------------------------------------------------------------
+
+function createSharedApp(user?: AuthUser) {
+  const repo = new DrizzleOAuthStateRepository(makeDb());
+  const routes = createChannelOAuthRoutes(repo);
+
+  const app = new Hono<AuthEnv>();
+  app.use("/*", async (c, next) => {
+    if (user) {
+      c.set("user", user);
+      c.set("authMethod", "session");
+    }
+    return next();
+  });
+  app.route("/", routes);
   return app;
 }
 
@@ -30,12 +78,7 @@ const unauthedApp = () => createTestApp();
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
-beforeEach(() => {
-  resetChannelOAuthState();
-});
-
 afterEach(() => {
-  resetChannelOAuthState();
   vi.clearAllMocks();
 });
 
@@ -162,9 +205,9 @@ describe("GET /callback", () => {
     process.env.SLACK_CLIENT_ID = "test-client-id";
     process.env.SLACK_CLIENT_SECRET = "test-client-secret";
 
-    // Create a pending state via /initiate
-    const authed = authedApp();
-    const initiateRes = await authed.request("/initiate", {
+    // Use shared app so initiate and callback share the same repo
+    const app = createSharedApp({ id: "test-user-id", roles: ["user"] });
+    const initiateRes = await app.request("/initiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: "slack" }),
@@ -183,7 +226,6 @@ describe("GET /callback", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     try {
-      const app = unauthedApp();
       const res = await app.request(`/callback?code=auth-code-123&state=${state}`);
       expect(res.status).toBe(200);
       const html = await res.text();
@@ -229,7 +271,7 @@ describe("GET /poll", () => {
     process.env.SLACK_CLIENT_ID = "test-client-id";
     process.env.SLACK_CLIENT_SECRET = "test-client-secret";
 
-    const app = authedApp();
+    const app = createSharedApp({ id: "test-user-id", roles: ["user"] });
 
     // Create pending state
     const initiateRes = await app.request("/initiate", {
@@ -271,26 +313,25 @@ describe("GET /poll", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resetChannelOAuthState
+// State isolation test (replaces resetChannelOAuthState test)
 // ---------------------------------------------------------------------------
 
-describe("resetChannelOAuthState", () => {
-  it("clears all pending and completed state", async () => {
+describe("state isolation", () => {
+  it("state from one app does not leak to another (each has its own in-memory DB)", async () => {
     process.env.SLACK_CLIENT_ID = "id";
     process.env.SLACK_CLIENT_SECRET = "secret";
-    const app = authedApp();
+    const app1 = createSharedApp({ id: "test-user-id", roles: ["user"] });
 
-    // Create some state
-    await app.request("/initiate", {
+    // Create some state in app1
+    await app1.request("/initiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: "slack" }),
     });
 
-    resetChannelOAuthState();
-
-    // After reset, poll for any state should return pending
-    const res = await app.request("/poll?state=00000000-0000-0000-0000-000000000000");
+    // app2 has a fresh DB — polling for any state returns pending
+    const app2 = createSharedApp({ id: "test-user-id", roles: ["user"] });
+    const res = await app2.request("/poll?state=00000000-0000-0000-0000-000000000000");
     const body = await res.json();
     expect(body).toMatchObject({ status: "pending" });
 

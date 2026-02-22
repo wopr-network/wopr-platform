@@ -9,6 +9,7 @@
  */
 
 import type { Context, Next } from "hono";
+import type { ISigPenaltyRepository } from "../api/sig-penalty-repository.js";
 import { logger } from "../config/logger.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 import { validateTwilioSignature } from "./twilio-signature.js";
@@ -21,15 +22,9 @@ export interface TwilioWebhookAuthConfig {
   webhookBaseUrl: string;
   /** Resolve tenant from a webhook request context */
   resolveTenantFromWebhook: (c: Context) => GatewayTenant | null;
+  /** Repository for tracking per-IP signature failure penalties */
+  sigPenaltyRepo: ISigPenaltyRepository;
 }
-
-interface PenaltyEntry {
-  failures: number;
-  blockedUntil: number;
-}
-
-const MAX_BACKOFF_MS = 15 * 60 * 1000; // 15 minutes
-const PENALTY_DECAY_MS = 60 * 60 * 1000; // 1 hour
 
 function getClientIp(c: Context): string {
   const xff = c.req.header("x-forwarded-for");
@@ -49,21 +44,12 @@ function getClientIp(c: Context): string {
  * On failure, applies exponential IP-based backoff to deter brute-force attacks.
  */
 export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
-  const sigFailurePenalties = new Map<string, PenaltyEntry>();
-
   return async (c: Context<GatewayAuthEnv>, next: Next) => {
     const ip = getClientIp(c);
     const now = Date.now();
 
-    // Prune stale penalty entries (lazy cleanup)
-    if (sigFailurePenalties.size > 1000) {
-      for (const [k, v] of sigFailurePenalties) {
-        if (now - v.blockedUntil > PENALTY_DECAY_MS) sigFailurePenalties.delete(k);
-      }
-    }
-
     // Check if this IP is currently in penalty backoff
-    const penalty = sigFailurePenalties.get(ip);
+    const penalty = config.sigPenaltyRepo.get(ip, "twilio");
     if (penalty && now < penalty.blockedUntil) {
       const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
       c.header("Retry-After", String(retryAfterSec));
@@ -133,22 +119,18 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
 
     if (!valid) {
       // Track signature failure for exponential backoff
-      const existing = sigFailurePenalties.get(ip) ?? { failures: 0, blockedUntil: 0 };
-      existing.failures++;
-      const backoffMs = Math.min(1000 * 2 ** existing.failures, MAX_BACKOFF_MS);
-      existing.blockedUntil = now + backoffMs;
-      sigFailurePenalties.set(ip, existing);
+      const updated = config.sigPenaltyRepo.recordFailure(ip, "twilio");
 
       logger.error("Twilio webhook signature verification failed", {
         ip,
-        consecutiveFailures: existing.failures,
+        consecutiveFailures: updated.failures,
         url: fullUrl,
       });
       return c.json({ error: "Invalid webhook signature" }, 400);
     }
 
     // Clear any stale penalties on successful verification
-    sigFailurePenalties.delete(ip);
+    config.sigPenaltyRepo.clear(ip, "twilio");
 
     // Resolve tenant from webhook context
     const tenant = config.resolveTenantFromWebhook(c);

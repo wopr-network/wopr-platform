@@ -6,10 +6,11 @@
  * middleware responds with 429 Too Many Requests and a `Retry-After` header
  * indicating how many seconds remain in the current window.
  *
- * Stale entries are lazily pruned on every request to bound memory growth.
+ * State is persisted via IRateLimitRepository (DB-backed in production).
  */
 
 import type { Context, MiddlewareHandler, Next } from "hono";
+import type { IRateLimitRepository } from "../rate-limit-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,12 +25,10 @@ export interface RateLimitConfig {
   keyGenerator?: (c: Context) => string;
   /** Custom message returned in the 429 body (default provided). */
   message?: string;
-}
-
-interface WindowEntry {
-  count: number;
-  /** Timestamp (ms) when the current window started. */
-  windowStart: number;
+  /** Repository for persisting rate-limit state. Required when rate limiting is active. */
+  repo?: IRateLimitRepository;
+  /** Scope identifier for this limiter (used as the DB scope key). */
+  scope?: string;
 }
 
 export interface RateLimitRule {
@@ -38,7 +37,9 @@ export interface RateLimitRule {
   /** Path prefix to match (matched with `startsWith`). */
   pathPrefix: string;
   /** Rate-limit configuration for matching requests. */
-  config: RateLimitConfig;
+  config: Omit<RateLimitConfig, "repo" | "scope">;
+  /** Scope override (defaults to pathPrefix). */
+  scope?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -76,51 +77,41 @@ const DEFAULT_WINDOW_MS = 60_000; // 1 minute
  * Create a rate-limiting middleware for a single configuration.
  *
  * ```ts
- * app.use("/api/billing/*", rateLimit({ max: 10 }));
+ * app.use("/api/billing/*", rateLimit({ max: 10, repo, scope: "billing" }));
  * ```
  */
 export function rateLimit(cfg: RateLimitConfig): MiddlewareHandler {
   const windowMs = cfg.windowMs ?? DEFAULT_WINDOW_MS;
   const keyGen = cfg.keyGenerator ?? defaultKeyGenerator;
-  const store = new Map<string, WindowEntry>();
+  const scope = cfg.scope ?? "default";
 
   return async (c: Context, next: Next) => {
+    // No repo — rate limiting disabled (e.g., test environments)
+    if (!cfg.repo) return next();
+
     const now = Date.now();
     const key = keyGen(c);
 
-    let entry = store.get(key);
-    if (!entry || now - entry.windowStart >= windowMs) {
-      // New window
-      entry = { count: 0, windowStart: now };
-      store.set(key, entry);
-    }
+    const entry = cfg.repo.increment(key, scope, windowMs);
+    const windowStart = entry.windowStart;
+    const count = entry.count;
 
-    // Prune stale keys every time (cheap for typical request volumes)
-    if (store.size > 1000) {
-      for (const [k, v] of store) {
-        if (now - v.windowStart >= windowMs) store.delete(k);
-      }
-    }
+    // Check limit BEFORE this request counted — increment already happened
+    const retryAfterSec = Math.ceil((windowStart + windowMs - now) / 1000);
 
-    // Check limit BEFORE incrementing so that `max` requests are allowed, not `max + 1`
-    const retryAfterSec = Math.ceil((entry.windowStart + windowMs - now) / 1000);
-
-    if (entry.count >= cfg.max) {
+    if (count > cfg.max) {
       c.header("X-RateLimit-Limit", String(cfg.max));
       c.header("X-RateLimit-Remaining", "0");
-      c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
+      c.header("X-RateLimit-Reset", String(Math.ceil((windowStart + windowMs) / 1000)));
       c.header("Retry-After", String(retryAfterSec));
       return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
     }
 
-    entry.count++;
-
-    // Set rate-limit headers (draft standard)
-    const remaining = Math.max(0, cfg.max - entry.count);
+    const remaining = Math.max(0, cfg.max - count);
 
     c.header("X-RateLimit-Limit", String(cfg.max));
     c.header("X-RateLimit-Remaining", String(remaining));
-    c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
+    c.header("X-RateLimit-Reset", String(Math.ceil((windowStart + windowMs) / 1000)));
 
     return next();
   };
@@ -138,29 +129,26 @@ export function rateLimit(cfg: RateLimitConfig): MiddlewareHandler {
  * rule matches, the `defaultConfig` is used.
  *
  * ```ts
- * app.use("*", rateLimitByRoute(rules, { max: 60 }));
+ * app.use("*", rateLimitByRoute(rules, { max: 60 }, repo));
  * ```
  */
-export function rateLimitByRoute(rules: RateLimitRule[], defaultConfig: RateLimitConfig): MiddlewareHandler {
-  // Each rule gets its own independent store keyed by index so that two rules
-  // sharing the same config object (e.g. billing checkout & portal both using
-  // BILLING_LIMIT) still maintain separate counters.
-  const stores: Map<string, WindowEntry>[] = rules.map(() => new Map());
-  const defaultStore = new Map<string, WindowEntry>();
-
+export function rateLimitByRoute(
+  rules: RateLimitRule[],
+  defaultConfig: Omit<RateLimitConfig, "repo" | "scope">,
+  repo: IRateLimitRepository,
+): MiddlewareHandler {
   return async (c: Context, next: Next) => {
     const method = c.req.method.toUpperCase();
     const path = c.req.path;
 
     // Find matching rule
-    let cfg = defaultConfig;
-    let store = defaultStore;
-    for (let i = 0; i < rules.length; i++) {
-      const rule = rules[i];
+    let cfg: Omit<RateLimitConfig, "repo" | "scope"> = defaultConfig;
+    let scope = "default";
+    for (const rule of rules) {
       const methodMatch = rule.method === "*" || rule.method.toUpperCase() === method;
       if (methodMatch && path.startsWith(rule.pathPrefix)) {
         cfg = rule.config;
-        store = stores[i];
+        scope = rule.scope ?? rule.pathPrefix;
         break;
       }
     }
@@ -170,36 +158,25 @@ export function rateLimitByRoute(rules: RateLimitRule[], defaultConfig: RateLimi
     const now = Date.now();
     const key = keyGen(c);
 
-    let entry = store.get(key);
-    if (!entry || now - entry.windowStart >= windowMs) {
-      entry = { count: 0, windowStart: now };
-      store.set(key, entry);
-    }
+    const entry = repo.increment(key, scope, windowMs);
+    const windowStart = entry.windowStart;
+    const count = entry.count;
 
-    if (store.size > 1000) {
-      for (const [k, v] of store) {
-        if (now - v.windowStart >= windowMs) store.delete(k);
-      }
-    }
+    const retryAfterSec = Math.ceil((windowStart + windowMs - now) / 1000);
 
-    // Check limit BEFORE incrementing so that `max` requests are allowed, not `max + 1`
-    const retryAfterSec = Math.ceil((entry.windowStart + windowMs - now) / 1000);
-
-    if (entry.count >= cfg.max) {
+    if (count > cfg.max) {
       c.header("X-RateLimit-Limit", String(cfg.max));
       c.header("X-RateLimit-Remaining", "0");
-      c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
+      c.header("X-RateLimit-Reset", String(Math.ceil((windowStart + windowMs) / 1000)));
       c.header("Retry-After", String(retryAfterSec));
       return c.json({ error: cfg.message ?? "Too many requests, please try again later" }, 429);
     }
 
-    entry.count++;
-
-    const remaining = Math.max(0, cfg.max - entry.count);
+    const remaining = Math.max(0, cfg.max - count);
 
     c.header("X-RateLimit-Limit", String(cfg.max));
     c.header("X-RateLimit-Remaining", String(remaining));
-    c.header("X-RateLimit-Reset", String(Math.ceil((entry.windowStart + windowMs) / 1000)));
+    c.header("X-RateLimit-Reset", String(Math.ceil((windowStart + windowMs) / 1000)));
 
     return next();
   };
@@ -210,42 +187,42 @@ export function rateLimitByRoute(rules: RateLimitRule[], defaultConfig: RateLimi
 // ---------------------------------------------------------------------------
 
 /** Webhook: 30 req/min (WOP-477) */
-const WEBHOOK_LIMIT: RateLimitConfig = { max: 30 };
+const WEBHOOK_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 30 };
 
 /** Billing checkout/portal: 10 req/min */
-const BILLING_LIMIT: RateLimitConfig = { max: 10 };
+const BILLING_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 10 };
 
 /** Secrets validation: 5 req/min */
-const SECRETS_VALIDATION_LIMIT: RateLimitConfig = { max: 5 };
+const SECRETS_VALIDATION_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 5 };
 
 /** Channel credential validation: 10 req/min (WOP-719) */
-const CHANNEL_VALIDATE_LIMIT: RateLimitConfig = { max: 10 };
+const CHANNEL_VALIDATE_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 10 };
 
 /** Fleet create (POST /fleet/bots): 30 req/min */
-const FLEET_CREATE_LIMIT: RateLimitConfig = { max: 30 };
+const FLEET_CREATE_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 30 };
 
 /** Fleet read operations (GET /fleet/*): 120 req/min */
-const FLEET_READ_LIMIT: RateLimitConfig = { max: 120 };
+const FLEET_READ_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 120 };
 
 /** Default for everything else: 60 req/min */
-const DEFAULT_LIMIT: RateLimitConfig = { max: 60 };
+const DEFAULT_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 60 };
 
 /** Auth login: 5 failed attempts per 15 minutes (WOP-839) */
-const AUTH_LOGIN_LIMIT: RateLimitConfig = {
+const AUTH_LOGIN_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = {
   max: 5,
   windowMs: 15 * 60 * 1000, // 15 minutes
   message: "Too many login attempts. Please try again in 15 minutes.",
 };
 
 /** Auth signup: 10 per hour per IP (WOP-839) */
-const AUTH_SIGNUP_LIMIT: RateLimitConfig = {
+const AUTH_SIGNUP_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = {
   max: 10,
   windowMs: 60 * 60 * 1000, // 1 hour
   message: "Too many sign-up attempts. Please try again later.",
 };
 
 /** Auth password reset: 3 per hour per IP (WOP-839) */
-const AUTH_RESET_LIMIT: RateLimitConfig = {
+const AUTH_RESET_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = {
   max: 3,
   windowMs: 60 * 60 * 1000, // 1 hour
   message: "Too many password reset requests. Please try again later.",
@@ -257,32 +234,37 @@ const AUTH_RESET_LIMIT: RateLimitConfig = {
  */
 export const platformRateLimitRules: RateLimitRule[] = [
   // Auth: brute force prevention — 5 req/15min for login (WOP-839)
-  { method: "POST", pathPrefix: "/api/auth/sign-in", config: AUTH_LOGIN_LIMIT },
+  { method: "POST", pathPrefix: "/api/auth/sign-in", config: AUTH_LOGIN_LIMIT, scope: "auth:login" },
 
   // Auth: signup abuse prevention — 10 req/hr per IP (WOP-839)
-  { method: "POST", pathPrefix: "/api/auth/sign-up", config: AUTH_SIGNUP_LIMIT },
+  { method: "POST", pathPrefix: "/api/auth/sign-up", config: AUTH_SIGNUP_LIMIT, scope: "auth:signup" },
 
   // Auth: password reset abuse prevention — 3 req/hr per IP (WOP-839)
-  { method: "POST", pathPrefix: "/api/auth/request-password-reset", config: AUTH_RESET_LIMIT },
+  {
+    method: "POST",
+    pathPrefix: "/api/auth/request-password-reset",
+    config: AUTH_RESET_LIMIT,
+    scope: "auth:reset",
+  },
 
   // Secrets validation — most restrictive, check first
-  { method: "POST", pathPrefix: "/api/validate-key", config: SECRETS_VALIDATION_LIMIT },
+  { method: "POST", pathPrefix: "/api/validate-key", config: SECRETS_VALIDATION_LIMIT, scope: "api:validate-key" },
 
   // Channel credential validation — 10 req/min (WOP-719)
-  { method: "POST", pathPrefix: "/api/channels", config: CHANNEL_VALIDATE_LIMIT },
+  { method: "POST", pathPrefix: "/api/channels", config: CHANNEL_VALIDATE_LIMIT, scope: "api:channels" },
 
   // Webhook: 30 req/min (WOP-477)
-  { method: "POST", pathPrefix: "/api/billing/webhook", config: WEBHOOK_LIMIT },
+  { method: "POST", pathPrefix: "/api/billing/webhook", config: WEBHOOK_LIMIT, scope: "api:billing-webhook" },
 
   // Billing checkout & portal
-  { method: "POST", pathPrefix: "/api/billing/checkout", config: BILLING_LIMIT },
-  { method: "POST", pathPrefix: "/api/billing/portal", config: BILLING_LIMIT },
+  { method: "POST", pathPrefix: "/api/billing/checkout", config: BILLING_LIMIT, scope: "api:billing-checkout" },
+  { method: "POST", pathPrefix: "/api/billing/portal", config: BILLING_LIMIT, scope: "api:billing-portal" },
 
   // Fleet create
-  { method: "POST", pathPrefix: "/fleet/bots", config: FLEET_CREATE_LIMIT },
+  { method: "POST", pathPrefix: "/fleet/bots", config: FLEET_CREATE_LIMIT, scope: "fleet:create" },
 
   // Fleet read operations (GET)
-  { method: "GET", pathPrefix: "/fleet/", config: FLEET_READ_LIMIT },
+  { method: "GET", pathPrefix: "/fleet/", config: FLEET_READ_LIMIT, scope: "fleet:read" },
 ];
 
 export const platformDefaultLimit = DEFAULT_LIMIT;

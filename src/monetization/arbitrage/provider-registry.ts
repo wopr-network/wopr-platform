@@ -6,6 +6,7 @@
  */
 
 import type { ProviderCost, RateStore } from "../../admin/rates/rate-store.js";
+import type { IProviderHealthRepository } from "../provider-health-repository.js";
 import type { ModelProviderEntry } from "./types.js";
 
 /** Known self-hosted GPU adapter names (from margin-config.ts) */
@@ -17,15 +18,11 @@ const GPU_ADAPTER_NAMES = new Set([
   "self-hosted-sdxl",
 ]);
 
-/** Unhealthy health override entry with timestamp for auto-recovery */
-interface HealthOverride {
-  healthy: boolean;
-  markedAt: number;
-}
-
 export interface ProviderRegistryConfig {
   /** RateStore instance for reading provider_costs */
   rateStore: RateStore;
+  /** Repository for persisting provider health overrides */
+  healthRepo: IProviderHealthRepository;
   /** Cache TTL in ms (default: 30000 — 30 seconds) */
   cacheTtlMs?: number;
   /** How long an unhealthy provider stays unhealthy before auto-recovery (default: 60000 — 60 seconds) */
@@ -35,13 +32,14 @@ export interface ProviderRegistryConfig {
 export class ProviderRegistry {
   private cache: Map<string, ModelProviderEntry[]> = new Map();
   private lastRefresh = 0;
-  private healthOverrides: Map<string, HealthOverride> = new Map();
   private readonly rateStore: RateStore;
+  private readonly healthRepo: IProviderHealthRepository;
   private readonly cacheTtlMs: number;
   private readonly unhealthyTtlMs: number;
 
   constructor(config: ProviderRegistryConfig) {
     this.rateStore = config.rateStore;
+    this.healthRepo = config.healthRepo;
     this.cacheTtlMs = config.cacheTtlMs ?? 30_000;
     this.unhealthyTtlMs = config.unhealthyTtlMs ?? 60_000;
   }
@@ -55,12 +53,12 @@ export class ProviderRegistry {
     const entries = this.cache.get(capability) ?? [];
 
     return entries.map((entry) => {
-      const override = this.healthOverrides.get(entry.adapter);
+      const override = this.healthRepo.get(entry.adapter);
       if (!override) return entry;
 
       // Auto-recovery: if unhealthy TTL has elapsed, clear the override
       if (!override.healthy && Date.now() - override.markedAt > this.unhealthyTtlMs) {
-        this.healthOverrides.delete(entry.adapter);
+        this.healthRepo.markHealthy(entry.adapter);
         return entry;
       }
 
@@ -70,12 +68,12 @@ export class ProviderRegistry {
 
   /** Mark a provider as unhealthy (called on 5xx errors). */
   markUnhealthy(adapter: string): void {
-    this.healthOverrides.set(adapter, { healthy: false, markedAt: Date.now() });
+    this.healthRepo.markUnhealthy(adapter);
   }
 
   /** Mark a provider as healthy (called on successful responses or health probes). */
   markHealthy(adapter: string): void {
-    this.healthOverrides.delete(adapter);
+    this.healthRepo.markHealthy(adapter);
   }
 
   /** Force-refresh the cache from DB. */

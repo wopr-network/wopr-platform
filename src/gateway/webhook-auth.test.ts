@@ -3,10 +3,30 @@
  */
 
 import crypto from "node:crypto";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
+import { DrizzleSigPenaltyRepository } from "../api/drizzle-sig-penalty-repository.js";
+import * as schema from "../db/schema/index.js";
 import type { GatewayTenant } from "./types.js";
 import { createTwilioWebhookAuth } from "./webhook-auth.js";
+
+function makeTestSigPenaltyRepo() {
+  const sqlite = new Database(":memory:");
+  sqlite.exec(`
+    CREATE TABLE webhook_sig_penalties (
+      ip TEXT NOT NULL,
+      source TEXT NOT NULL,
+      failures INTEGER NOT NULL DEFAULT 0,
+      blocked_until INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (ip, source)
+    )
+  `);
+  const db = drizzle(sqlite, { schema });
+  return new DrizzleSigPenaltyRepository(db);
+}
 
 const TEST_AUTH_TOKEN = "test-auth-token-12345";
 const TEST_WEBHOOK_BASE_URL = "https://api.wopr.network/v1";
@@ -30,6 +50,7 @@ function buildTestApp(resolveTenant: (c: import("hono").Context) => GatewayTenan
     twilioAuthToken: TEST_AUTH_TOKEN,
     webhookBaseUrl: TEST_WEBHOOK_BASE_URL,
     resolveTenantFromWebhook: resolveTenant,
+    sigPenaltyRepo: makeTestSigPenaltyRepo(),
   });
 
   app.post("/v1/phone/inbound/:tenantId", webhookAuth, (c) => {

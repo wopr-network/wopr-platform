@@ -1,34 +1,14 @@
-import { LRUCache } from "lru-cache";
 import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditLedger } from "../credits/credit-ledger.js";
+import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
 import type { PayRamChargeStore } from "./charge-store.js";
 import type { PayRamWebhookPayload, PayRamWebhookResult } from "./types.js";
-
-/**
- * In-memory guard that rejects duplicate PayRam webhook deliveries.
- * Uses LRU cache so memory stays bounded.
- */
-export class PayRamReplayGuard {
-  private readonly seen: LRUCache<string, true>;
-
-  constructor(ttlMs = 5 * 60 * 1000, maxEntries = 10_000) {
-    this.seen = new LRUCache<string, true>({ max: maxEntries, ttl: ttlMs });
-  }
-
-  isDuplicate(key: string): boolean {
-    return this.seen.has(key);
-  }
-
-  markSeen(key: string): void {
-    this.seen.set(key, true);
-  }
-}
 
 export interface PayRamWebhookDeps {
   chargeStore: PayRamChargeStore;
   creditLedger: CreditLedger;
   botBilling?: BotBilling;
-  replayGuard?: PayRamReplayGuard;
+  replayGuard?: IWebhookSeenRepository;
 }
 
 /**
@@ -43,7 +23,7 @@ export function handlePayRamWebhook(deps: PayRamWebhookDeps, payload: PayRamWebh
 
   // Replay guard: deduplicate by reference_id + status combination.
   const dedupeKey = `${payload.reference_id}:${payload.status}`;
-  if (deps.replayGuard?.isDuplicate(dedupeKey)) {
+  if (deps.replayGuard?.isDuplicate(dedupeKey, "payram")) {
     return { handled: true, status: payload.status, duplicate: true };
   }
 
@@ -108,6 +88,6 @@ export function handlePayRamWebhook(deps: PayRamWebhookDeps, payload: PayRamWebh
     };
   }
 
-  deps.replayGuard?.markSeen(dedupeKey);
+  deps.replayGuard?.markSeen(dedupeKey, "payram");
   return result;
 }

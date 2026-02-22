@@ -11,6 +11,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Context, Next } from "hono";
+import type { ISessionRepository } from "./session-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,16 +42,18 @@ export interface AuthConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * In-memory session store.
+ * DB-backed session store.
  *
- * Production deployments should back this with Redis or a database.
- * This implementation is suitable for single-process deployments and testing.
+ * Delegates all persistence to the injected ISessionRepository.
+ * Maintains the same public API as the old in-memory SessionStore
+ * so existing consumers don't need updating.
  */
 export class SessionStore {
-  private readonly sessions = new Map<string, Session>();
+  private readonly repo: ISessionRepository;
   private readonly ttlMs: number;
 
-  constructor(ttlMs = 3_600_000) {
+  constructor(repo: ISessionRepository, ttlMs = 3_600_000) {
+    this.repo = repo;
     this.ttlMs = ttlMs;
   }
 
@@ -64,7 +67,7 @@ export class SessionStore {
       createdAt: now,
       expiresAt: now + this.ttlMs,
     };
-    this.sessions.set(session.id, session);
+    this.repo.create(session);
     return session;
   }
 
@@ -73,38 +76,24 @@ export class SessionStore {
    * Returns the session if valid and not expired, or `null` otherwise.
    */
   validate(sessionId: string): Session | null {
-    const session = this.sessions.get(sessionId);
-    if (!session) return null;
-
-    if (Date.now() > session.expiresAt) {
-      this.sessions.delete(sessionId);
-      return null;
-    }
-
-    return session;
+    const record = this.repo.validate(sessionId);
+    if (!record) return null;
+    return record;
   }
 
   /** Revoke (delete) a session. */
   revoke(sessionId: string): boolean {
-    return this.sessions.delete(sessionId);
+    return this.repo.revoke(sessionId);
   }
 
   /** Remove all expired sessions. Returns the number removed. */
   purgeExpired(): number {
-    const now = Date.now();
-    let removed = 0;
-    for (const [id, session] of this.sessions) {
-      if (now > session.expiresAt) {
-        this.sessions.delete(id);
-        removed++;
-      }
-    }
-    return removed;
+    return this.repo.purgeExpired();
   }
 
   /** Return the number of active (non-expired) sessions. */
   get size(): number {
-    return this.sessions.size;
+    return this.repo.size;
   }
 }
 

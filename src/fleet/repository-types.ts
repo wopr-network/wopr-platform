@@ -193,3 +193,17 @@ export interface NewGpuNode {
   region: string;
   size: string;
 }
+
+// ---------------------------------------------------------------------------
+// FleetEvent
+// ---------------------------------------------------------------------------
+
+export type FleetEventType = "unexpected_stop";
+
+export interface FleetEvent {
+  id: number;
+  eventType: FleetEventType;
+  fired: boolean;
+  createdAt: number;
+  clearedAt: number | null;
+}

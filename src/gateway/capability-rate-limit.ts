@@ -5,11 +5,11 @@
  * (determined by route path). Each capability category gets its own
  * independent fixed-window counter per tenant.
  *
- * In-memory state is lost on server restart — acceptable for the current
- * single-server architecture.
+ * State is persisted via IRateLimitRepository (DB-backed in production).
  */
 
 import type { Context, MiddlewareHandler, Next } from "hono";
+import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import type { GatewayTenant } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -33,11 +33,6 @@ export const DEFAULT_CAPABILITY_LIMITS: CapabilityRateLimitConfig = {
   audioSpeech: 30,
   telephony: 100,
 };
-
-interface WindowEntry {
-  count: number;
-  windowStart: number;
-}
 
 const DEFAULT_WINDOW_MS = 60_000; // 1 minute
 
@@ -73,25 +68,23 @@ export function resolveCapabilityCategory(path: string): keyof CapabilityRateLim
 /**
  * Create per-capability rate limiting middleware.
  *
- * Keys by tenant ID within each capability-specific store so each org
+ * Keys by tenant ID within each capability-specific scope so each org
  * gets independent limits per capability. Returns 429 with Retry-After
  * header when exceeded.
  */
-export function capabilityRateLimit(config?: Partial<CapabilityRateLimitConfig>): MiddlewareHandler {
+export function capabilityRateLimit(
+  config: Partial<CapabilityRateLimitConfig> | undefined,
+  repo: IRateLimitRepository | undefined,
+): MiddlewareHandler {
   const limits: CapabilityRateLimitConfig = {
     ...DEFAULT_CAPABILITY_LIMITS,
     ...config,
   };
 
-  // One store per capability category
-  const stores: Record<keyof CapabilityRateLimitConfig, Map<string, WindowEntry>> = {
-    llm: new Map(),
-    imageGen: new Map(),
-    audioSpeech: new Map(),
-    telephony: new Map(),
-  };
-
   return async (c: Context, next: Next) => {
+    // No repo — rate limiting disabled (e.g., test environments)
+    if (!repo) return next();
+
     const path = c.req.path;
     const category = resolveCapabilityCategory(path);
 
@@ -103,26 +96,17 @@ export function capabilityRateLimit(config?: Partial<CapabilityRateLimitConfig>)
     const tenant = c.get("gatewayTenant") as GatewayTenant | undefined;
     const tenantId = tenant?.id ?? "unknown";
     const max = limits[category];
-    const store = stores[category];
+    const scope = `cap:${category}`;
     const now = Date.now();
 
-    let entry = store.get(tenantId);
-    if (!entry || now - entry.windowStart >= DEFAULT_WINDOW_MS) {
-      entry = { count: 0, windowStart: now };
-      store.set(tenantId, entry);
-    }
+    const entry = repo.increment(tenantId, scope, DEFAULT_WINDOW_MS);
+    const windowStart = entry.windowStart;
+    const count = entry.count;
 
-    // Prune stale entries to bound memory growth
-    if (store.size > 1000) {
-      for (const [k, v] of store) {
-        if (now - v.windowStart >= DEFAULT_WINDOW_MS) store.delete(k);
-      }
-    }
+    const resetAt = Math.ceil((windowStart + DEFAULT_WINDOW_MS) / 1000);
+    const retryAfterSec = Math.ceil((windowStart + DEFAULT_WINDOW_MS - now) / 1000);
 
-    const resetAt = Math.ceil((entry.windowStart + DEFAULT_WINDOW_MS) / 1000);
-    const retryAfterSec = Math.ceil((entry.windowStart + DEFAULT_WINDOW_MS - now) / 1000);
-
-    if (entry.count >= max) {
+    if (count > max) {
       c.header("X-RateLimit-Limit", String(max));
       c.header("X-RateLimit-Remaining", "0");
       c.header("X-RateLimit-Reset", String(resetAt));
@@ -139,9 +123,7 @@ export function capabilityRateLimit(config?: Partial<CapabilityRateLimitConfig>)
       );
     }
 
-    entry.count++;
-
-    const remaining = Math.max(0, max - entry.count);
+    const remaining = Math.max(0, max - count);
     c.header("X-RateLimit-Limit", String(max));
     c.header("X-RateLimit-Remaining", String(remaining));
     c.header("X-RateLimit-Reset", String(resetAt));

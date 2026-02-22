@@ -12,4 +12,4 @@ export type {
   PayRamWebhookResult,
 } from "./types.js";
 export type { PayRamWebhookDeps } from "./webhook.js";
-export { handlePayRamWebhook, PayRamReplayGuard } from "./webhook.js";
+export { handlePayRamWebhook } from "./webhook.js";

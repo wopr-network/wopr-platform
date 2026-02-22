@@ -27,3 +27,15 @@ export interface DividendHistoryEntry {
   poolCents: number;
   activeUsers: number;
 }
+
+export interface WebhookSeenEvent {
+  eventId: string;
+  source: string;
+  seenAt: number;
+}
+
+export interface ProviderHealthOverride {
+  adapter: string;
+  healthy: boolean;
+  markedAt: number;
+}

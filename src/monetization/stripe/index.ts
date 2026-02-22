@@ -28,4 +28,4 @@ export type {
 export type { UsageReporterOpts } from "./usage-reporter.js";
 export { StripeUsageReporter } from "./usage-reporter.js";
 export type { WebhookDeps, WebhookResult } from "./webhook.js";
-export { handleWebhookEvent, WebhookReplayGuard } from "./webhook.js";
+export { handleWebhookEvent } from "./webhook.js";

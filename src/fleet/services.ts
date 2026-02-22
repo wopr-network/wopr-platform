@@ -11,6 +11,8 @@ import type { IAdminNotesRepository } from "../admin/notes/admin-notes-repositor
 import { AdminNotesStore } from "../admin/notes/store.js";
 import type { ITenantStatusRepository } from "../admin/tenant-status/tenant-status-repository.js";
 import { TenantStatusStore } from "../admin/tenant-status/tenant-status-store.js";
+import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
+import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
 import { BackupStatusStore } from "../backup/backup-status-store.js";
 import { DrizzleRestoreLogRepository } from "../backup/restore-log-repository.js";
@@ -25,6 +27,8 @@ import type { INotificationPreferencesStore } from "../email/notification-prefer
 import { DrizzleNotificationPreferencesStore } from "../email/notification-preferences-store.js";
 import type { INotificationQueueStore } from "../email/notification-queue-store.js";
 import { DrizzleNotificationQueueStore } from "../email/notification-queue-store.js";
+import type { ICircuitBreakerRepository } from "../gateway/circuit-breaker-repository.js";
+import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-breaker-repository.js";
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
 import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
@@ -48,7 +52,6 @@ import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js"
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
 import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
-import { fleetStopAlert } from "../observability/alerts.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
@@ -57,8 +60,10 @@ import type { IBotProfileRepository } from "./bot-profile-repository.js";
 import { DOClient } from "./do-client.js";
 import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
 import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
+import { DrizzleFleetEventRepository } from "./drizzle-fleet-event-repository.js";
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
+import type { IFleetEventRepository } from "./fleet-event-repository.js";
 import type { IGpuNodeRepository } from "./gpu-node-repository.js";
 import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
 import { HeartbeatProcessor } from "./heartbeat-processor.js";
@@ -130,6 +135,15 @@ let _nodeDrainer: NodeDrainer | null = null;
 
 // Watchdog
 let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
+
+// Fleet event repository
+let _fleetEventRepo: IFleetEventRepository | null = null;
+
+// Rate limit repository
+let _rateLimitRepo: IRateLimitRepository | null = null;
+
+// Circuit breaker repository
+let _circuitBreakerRepo: ICircuitBreakerRepository | null = null;
 
 // Infrastructure
 let _doClient: DOClient | null = null;
@@ -389,6 +403,31 @@ export function getNodeDrainer(): NodeDrainer {
 }
 
 // ---------------------------------------------------------------------------
+// FleetEventRepository
+// ---------------------------------------------------------------------------
+
+export function getFleetEventRepo(): IFleetEventRepository {
+  if (!_fleetEventRepo) {
+    _fleetEventRepo = new DrizzleFleetEventRepository(getDb());
+  }
+  return _fleetEventRepo;
+}
+
+export function getRateLimitRepo(): IRateLimitRepository {
+  if (!_rateLimitRepo) {
+    _rateLimitRepo = new DrizzleRateLimitRepository(getDb());
+  }
+  return _rateLimitRepo;
+}
+
+export function getCircuitBreakerRepo(): ICircuitBreakerRepository {
+  if (!_circuitBreakerRepo) {
+    _circuitBreakerRepo = new DrizzleCircuitBreakerRepository(getDb());
+  }
+  return _circuitBreakerRepo;
+}
+
+// ---------------------------------------------------------------------------
 // HeartbeatWatchdog
 // ---------------------------------------------------------------------------
 
@@ -399,7 +438,7 @@ export function getHeartbeatWatchdog() {
       (nodeId: string) => {
         // Signal the fleet-unexpected-stop alert: this fires only for
         // heartbeat timeouts (crash/OOM), never for user-initiated stops.
-        fleetStopAlert();
+        getFleetEventRepo().fireFleetStop();
         getRecoveryOrchestrator()
           .triggerRecovery(nodeId, "heartbeat_timeout")
           .catch((err) => {
@@ -496,6 +535,35 @@ export function getRestoreService(): RestoreService {
 export function initFleet(): void {
   // Eagerly initialize orphan cleaner so it's ready when heartbeats arrive
   getOrphanCleaner();
+
+  // Periodic cleanup: purge stale rate-limit rows every 5 minutes.
+  // Uses the longest platform rate-limit window (1 hour) as the TTL so that
+  // no active window is ever removed prematurely.
+  const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour — matches the longest window in platformRateLimitRules
+  setInterval(
+    () => {
+      try {
+        const removed = getRateLimitRepo().purgeStale(RATE_LIMIT_WINDOW_MS);
+        if (removed > 0) logger.debug("Purged stale rate-limit rows", { removed });
+      } catch (err) {
+        logger.warn("Rate-limit purge failed", { err });
+      }
+    },
+    5 * 60 * 1000,
+  ).unref();
+
+  // Periodic cleanup: purge stale circuit-breaker rows every minute.
+  // Only non-tripped entries older than 1 minute are removed; tripped circuits
+  // stay until they self-reset after pauseDurationMs.
+  const CIRCUIT_BREAKER_STALE_MS = 60 * 1000; // 1 minute
+  setInterval(() => {
+    try {
+      const removed = getCircuitBreakerRepo().purgeStale(CIRCUIT_BREAKER_STALE_MS);
+      if (removed > 0) logger.debug("Purged stale circuit-breaker rows", { removed });
+    } catch (err) {
+      logger.warn("Circuit-breaker purge failed", { err });
+    }
+  }, 60 * 1000).unref();
 }
 
 // ---------------------------------------------------------------------------

@@ -2,14 +2,33 @@
  * Tests for per-capability rate limiting middleware.
  */
 
+import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
+import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
+import * as schema from "../db/schema/index.js";
 import { capabilityRateLimit, resolveCapabilityCategory } from "./capability-rate-limit.js";
 import type { GatewayTenant } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function makeRateLimitRepo(): { repo: IRateLimitRepository; sqlite: BetterSqlite3.Database } {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limit_entries (
+      key TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      window_start INTEGER NOT NULL,
+      PRIMARY KEY (key, scope)
+    );
+  `);
+  return { repo: new DrizzleRateLimitRepository(drizzle(sqlite, { schema })), sqlite };
+}
 
 function makeTenant(id: string): GatewayTenant {
   return { id, spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null } };
@@ -19,7 +38,7 @@ function makeTenant(id: string): GatewayTenant {
  * Build a minimal Hono app with the capability rate limiter applied,
  * returning 200 OK for all routes.
  */
-function makeApp(config?: Parameters<typeof capabilityRateLimit>[0]) {
+function makeApp(config: Parameters<typeof capabilityRateLimit>[0], repo: IRateLimitRepository) {
   const app = new Hono<{ Variables: { gatewayTenant: GatewayTenant } }>();
   app.use("/*", (c, next) => {
     // Inject tenant from X-Tenant-Id header (test convenience)
@@ -27,7 +46,7 @@ function makeApp(config?: Parameters<typeof capabilityRateLimit>[0]) {
     c.set("gatewayTenant", makeTenant(tenantId));
     return next();
   });
-  app.use("/*", capabilityRateLimit(config));
+  app.use("/*", capabilityRateLimit(config, repo));
   app.all("/*", (c) => c.json({ ok: true }, 200));
   return app;
 }
@@ -98,14 +117,29 @@ describe("resolveCapabilityCategory", () => {
 // ---------------------------------------------------------------------------
 
 describe("capabilityRateLimit", () => {
+  let repo: IRateLimitRepository;
+  let sqlite: BetterSqlite3.Database;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const r = makeRateLimitRepo();
+    repo = r.repo;
+    sqlite = r.sqlite;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    sqlite.close();
+  });
+
   it("allows requests under the llm limit", async () => {
-    const app = makeApp({ llm: 5 });
+    const app = makeApp({ llm: 5 }, repo);
     const results = await sendRequests(app, "/chat/completions", 5);
     expect(results.every((r) => r.status === 200)).toBe(true);
   });
 
   it("returns 429 when llm limit exceeded", async () => {
-    const app = makeApp({ llm: 3 });
+    const app = makeApp({ llm: 3 }, repo);
     const results = await sendRequests(app, "/chat/completions", 4);
     const statuses = results.map((r) => r.status);
     // First 3 pass, 4th is 429
@@ -114,7 +148,7 @@ describe("capabilityRateLimit", () => {
   });
 
   it("returns 429 with Retry-After header when llm limit exceeded", async () => {
-    const app = makeApp({ llm: 2 });
+    const app = makeApp({ llm: 2 }, repo);
     const results = await sendRequests(app, "/chat/completions", 3);
     const last = results[2];
     expect(last.status).toBe(429);
@@ -122,20 +156,20 @@ describe("capabilityRateLimit", () => {
   });
 
   it("returns 429 when imageGen limit exceeded", async () => {
-    const app = makeApp({ imageGen: 2 });
+    const app = makeApp({ imageGen: 2 }, repo);
     const results = await sendRequests(app, "/images/generations", 3);
     expect(results[2].status).toBe(429);
   });
 
   it("returns 429 when audioSpeech limit exceeded", async () => {
-    const app = makeApp({ audioSpeech: 2 });
+    const app = makeApp({ audioSpeech: 2 }, repo);
     const results = await sendRequests(app, "/audio/speech", 3);
     expect(results[2].status).toBe(429);
   });
 
   it("different capabilities have independent counters", async () => {
     // Max out LLM, image requests should still pass
-    const app = makeApp({ llm: 2, imageGen: 10 });
+    const app = makeApp({ llm: 2, imageGen: 10 }, repo);
     await sendRequests(app, "/chat/completions", 2); // exhaust LLM
     const imageResp = await app.request("/images/generations", {
       method: "POST",
@@ -145,7 +179,7 @@ describe("capabilityRateLimit", () => {
   });
 
   it("different tenants have independent counters", async () => {
-    const app = makeApp({ llm: 2 });
+    const app = makeApp({ llm: 2 }, repo);
     // Exhaust tenant-a
     await sendRequests(app, "/chat/completions", 2, "tenant-a");
     // tenant-b should still pass
@@ -157,7 +191,7 @@ describe("capabilityRateLimit", () => {
   });
 
   it("sets rate limit headers on successful responses", async () => {
-    const app = makeApp({ llm: 10 });
+    const app = makeApp({ llm: 10 }, repo);
     const resp = await app.request("/chat/completions", {
       method: "POST",
       headers: { "x-tenant-id": "tenant-a" },
@@ -169,7 +203,7 @@ describe("capabilityRateLimit", () => {
   });
 
   it("sets rate limit headers on 429 responses", async () => {
-    const app = makeApp({ llm: 1 });
+    const app = makeApp({ llm: 1 }, repo);
     await sendRequests(app, "/chat/completions", 1);
     const resp = await app.request("/chat/completions", {
       method: "POST",
@@ -181,7 +215,7 @@ describe("capabilityRateLimit", () => {
   });
 
   it("does not rate-limit unknown paths", async () => {
-    const app = makeApp({ llm: 1 });
+    const app = makeApp({ llm: 1 }, repo);
     // /models is not a known capability path, should never get 429
     const results = await Promise.all(
       Array.from({ length: 5 }, () =>
@@ -195,7 +229,7 @@ describe("capabilityRateLimit", () => {
   });
 
   it("respects custom config overrides", async () => {
-    const app = makeApp({ llm: 5 });
+    const app = makeApp({ llm: 5 }, repo);
     // Should allow exactly 5 requests before blocking
     const results = await sendRequests(app, "/chat/completions", 6);
     expect(results[4].status).toBe(200);
@@ -204,7 +238,7 @@ describe("capabilityRateLimit", () => {
 
   it("window resets after windowMs", async () => {
     vi.useFakeTimers();
-    const app = makeApp({ llm: 2 });
+    const app = makeApp({ llm: 2 }, repo);
 
     // Exhaust the limit
     await sendRequests(app, "/chat/completions", 2);

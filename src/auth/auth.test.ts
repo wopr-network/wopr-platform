@@ -1,5 +1,9 @@
+import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as schema from "../db/schema/index.js";
+import { DrizzleSessionRepository } from "./drizzle-session-repository.js";
 import {
   type AuthEnv,
   type AuthUser,
@@ -9,6 +13,23 @@ import {
   SessionStore,
   verifyBearerToken,
 } from "./index.js";
+import type { ISessionRepository } from "./session-repository.js";
+
+function makeTestSessionRepo(): ISessionRepository {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      roles TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+  `);
+  return new DrizzleSessionRepository(drizzle(sqlite, { schema }));
+}
 
 // ---------------------------------------------------------------------------
 // SessionStore
@@ -18,7 +39,7 @@ describe("SessionStore", () => {
   let store: SessionStore;
 
   beforeEach(() => {
-    store = new SessionStore(60_000); // 60s TTL
+    store = new SessionStore(makeTestSessionRepo(), 60_000); // 60s TTL
   });
 
   describe("create", () => {
@@ -182,7 +203,7 @@ describe("SessionStore", () => {
 
   describe("default TTL", () => {
     it("uses 1 hour default when no TTL provided", () => {
-      const defaultStore = new SessionStore();
+      const defaultStore = new SessionStore(makeTestSessionRepo());
       const user: AuthUser = { id: "u1", roles: [] };
       const session = defaultStore.create(user);
 
@@ -245,7 +266,7 @@ describe("verifyBearerToken", () => {
   let apiTokens: Map<string, AuthUser>;
 
   beforeEach(() => {
-    store = new SessionStore(60_000);
+    store = new SessionStore(makeTestSessionRepo(), 60_000);
     apiTokens = new Map([
       ["api-key-admin", { id: "admin-1", roles: ["admin"] }],
       ["api-key-user", { id: "user-1", roles: ["user"] }],
@@ -313,7 +334,7 @@ describe("requireAuth middleware", () => {
   let app: Hono<AuthEnv>;
 
   beforeEach(() => {
-    store = new SessionStore(60_000);
+    store = new SessionStore(makeTestSessionRepo(), 60_000);
     apiTokens = new Map([["api-key-admin", { id: "admin-1", roles: ["admin"] }]]);
 
     app = new Hono<AuthEnv>();
@@ -449,7 +470,7 @@ describe("requireRole middleware", () => {
   let app: Hono<AuthEnv>;
 
   beforeEach(() => {
-    store = new SessionStore(60_000);
+    store = new SessionStore(makeTestSessionRepo(), 60_000);
 
     app = new Hono<AuthEnv>();
     app.use("/*", requireAuth(store));
@@ -530,7 +551,7 @@ describe("requireRole middleware", () => {
 
 describe("full auth flow", () => {
   it("session create -> authenticate -> role check -> revoke", async () => {
-    const store = new SessionStore(60_000);
+    const store = new SessionStore(makeTestSessionRepo(), 60_000);
     const app = new Hono<AuthEnv>();
     app.use("/api/*", requireAuth(store));
     app.get("/api/admin", requireRole("admin"), (c) => c.json({ ok: true }));
@@ -564,7 +585,7 @@ describe("full auth flow", () => {
   });
 
   it("API token auth with role check", async () => {
-    const store = new SessionStore();
+    const store = new SessionStore(makeTestSessionRepo());
     const apiTokens = new Map<string, AuthUser>([
       ["fleet-token-xyz", { id: "fleet-service", roles: ["service", "admin"] }],
     ]);
@@ -584,7 +605,7 @@ describe("full auth flow", () => {
   });
 
   it("mixed auth: API key user lacks role that session user has", async () => {
-    const store = new SessionStore();
+    const store = new SessionStore(makeTestSessionRepo());
     const apiTokens = new Map<string, AuthUser>([["readonly-key", { id: "readonly", roles: ["viewer"] }]]);
 
     const app = new Hono<AuthEnv>();
@@ -617,7 +638,7 @@ describe("edge cases", () => {
 
   it("session with zero TTL expires immediately", () => {
     vi.useFakeTimers();
-    const store = new SessionStore(0);
+    const store = new SessionStore(makeTestSessionRepo(), 0);
     const session = store.create({ id: "u1", roles: [] });
 
     // Advance even 1ms
@@ -626,7 +647,7 @@ describe("edge cases", () => {
   });
 
   it("concurrent sessions for same user are independent", () => {
-    const store = new SessionStore(60_000);
+    const store = new SessionStore(makeTestSessionRepo(), 60_000);
     const user: AuthUser = { id: "u1", roles: ["user"] };
 
     const s1 = store.create(user);
@@ -638,13 +659,13 @@ describe("edge cases", () => {
   });
 
   it("very long token string is handled gracefully", () => {
-    const store = new SessionStore();
+    const store = new SessionStore(makeTestSessionRepo());
     const longToken = "x".repeat(10_000);
     expect(verifyBearerToken(longToken, store)).toBeNull();
   });
 
   it("token with special characters is handled", () => {
-    const store = new SessionStore();
+    const store = new SessionStore(makeTestSessionRepo());
     expect(verifyBearerToken("token\nwith\nnewlines", store)).toBeNull();
     expect(verifyBearerToken("token\twith\ttabs", store)).toBeNull();
     expect(verifyBearerToken("token with spaces", store)).toBeNull();
@@ -652,7 +673,7 @@ describe("edge cases", () => {
 
   it("multiple purge calls are idempotent", () => {
     vi.useFakeTimers();
-    const store = new SessionStore(1000);
+    const store = new SessionStore(makeTestSessionRepo(), 1000);
     store.create({ id: "u1", roles: [] });
 
     vi.advanceTimersByTime(2000);

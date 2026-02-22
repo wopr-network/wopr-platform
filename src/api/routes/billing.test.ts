@@ -1,14 +1,20 @@
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
+import * as schema from "../../db/schema/index.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
+import { DrizzleWebhookSeenRepository } from "../../monetization/drizzle-webhook-seen-repository.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initPayRamSchema } from "../../monetization/payram/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+import type { IWebhookSeenRepository } from "../../monetization/webhook-seen-repository.js";
+import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
+import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
 // Set env vars BEFORE importing billing routes so bearer auth uses these tokens
 const TEST_TOKEN = "test-billing-token";
@@ -23,7 +29,34 @@ const tenantT1AuthHeader = { Authorization: `Bearer ${TEST_TENANT_TOKEN}` };
 const tenantUnknownAuthHeader = { Authorization: `Bearer ${TEST_TENANT_UNKNOWN_TOKEN}` };
 
 // Import AFTER env stub
-const { billingRoutes, setBillingDeps, resetSignatureFailurePenalties } = await import("./billing.js");
+const { billingRoutes, setBillingDeps } = await import("./billing.js");
+
+function createTestSigPenaltyRepo(): ISigPenaltyRepository {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS webhook_sig_penalties (
+      ip TEXT NOT NULL,
+      source TEXT NOT NULL,
+      failures INTEGER NOT NULL DEFAULT 0,
+      blocked_until INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (ip, source)
+    );
+  `);
+  return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
+}
+
+function createTestReplayGuardRepo(): IWebhookSeenRepository {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS webhook_seen_events (
+      event_id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      seen_at INTEGER NOT NULL
+    );
+  `);
+  return new DrizzleWebhookSeenRepository(drizzle(sqlite, { schema }));
+}
 
 function createBillingTestDb() {
   const sqlite = new BetterSqlite3(":memory:");
@@ -94,6 +127,7 @@ describe("billing routes", () => {
   let db: DrizzleDb;
   let stripe: Stripe;
   let tenantStore: TenantCustomerStore;
+  let sigPenaltyRepo: ISigPenaltyRepository;
 
   beforeEach(() => {
     const testDb = createBillingTestDb();
@@ -101,12 +135,13 @@ describe("billing routes", () => {
     db = testDb.db;
     stripe = createMockStripe();
     tenantStore = new TenantCustomerStore(db);
+    sigPenaltyRepo = createTestSigPenaltyRepo();
     setBillingDeps({
       stripe,
       db,
       webhookSecret: "whsec_test_secret",
+      sigPenaltyRepo,
     });
-    resetSignatureFailurePenalties();
   });
 
   afterEach(() => {
@@ -267,7 +302,12 @@ describe("billing routes", () => {
     it("returns 500 when Stripe API fails", async () => {
       const checkoutCreate = vi.fn().mockRejectedValue(new Error("Stripe is down"));
       const mockStripe = createMockStripe({ checkoutCreate });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/credits/checkout", {
         method: "POST",
@@ -294,7 +334,12 @@ describe("billing routes", () => {
 
       const portalCreate = vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_123" });
       const mockStripe = createMockStripe({ portalCreate });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/portal", {
         method: "POST",
@@ -354,7 +399,12 @@ describe("billing routes", () => {
 
       const portalCreate = vi.fn().mockRejectedValue(new Error("Portal unavailable"));
       const mockStripe = createMockStripe({ portalCreate });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/portal", {
         method: "POST",
@@ -390,7 +440,12 @@ describe("billing routes", () => {
         throw new Error("Webhook signature verification failed");
       });
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/webhook", {
         method: "POST",
@@ -420,7 +475,12 @@ describe("billing routes", () => {
 
       const constructEvent = vi.fn().mockReturnValue(checkoutEvent);
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/webhook", {
         method: "POST",
@@ -453,7 +513,12 @@ describe("billing routes", () => {
 
       const constructEvent = vi.fn().mockReturnValue(subEvent);
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/webhook", {
         method: "POST",
@@ -484,7 +549,13 @@ describe("billing routes", () => {
 
       const constructEvent = vi.fn().mockReturnValue(checkoutEvent);
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        replayGuard: createTestReplayGuardRepo(),
+      });
 
       // First request — should process normally
       const res1 = await billingRoutes.request("/webhook", {
@@ -517,7 +588,12 @@ describe("billing routes", () => {
         data: { object: {} },
       });
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       await billingRoutes.request("/webhook", {
         method: "POST",
@@ -538,7 +614,12 @@ describe("billing routes", () => {
 
       const constructEvent = vi.fn().mockReturnValue(unknownEvent);
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/webhook", {
         method: "POST",
@@ -557,7 +638,12 @@ describe("billing routes", () => {
         throw new Error("Webhook signature verification failed");
       });
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       // First failure: 400 (not yet blocked)
       const res1 = await billingRoutes.request("/webhook", {
@@ -582,7 +668,12 @@ describe("billing routes", () => {
         throw new Error("sig fail");
       });
       const mockStripe = createMockStripe({ constructEvent });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       // Fail from IP-A
       await billingRoutes.request("/webhook", {
@@ -933,7 +1024,7 @@ describe("billing routes", () => {
       // Configure PayRam so that the JSON parsing path is reached
       vi.stubEnv("PAYRAM_API_KEY", "test-key");
       vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
-      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret" });
+      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret", sigPenaltyRepo: createTestSigPenaltyRepo() });
 
       const res = await billingRoutes.request("/crypto/checkout", {
         method: "POST",
@@ -942,7 +1033,7 @@ describe("billing routes", () => {
       });
 
       vi.unstubAllEnvs();
-      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret" });
+      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret", sigPenaltyRepo: createTestSigPenaltyRepo() });
 
       expect(res.status).toBe(400);
     });
@@ -991,7 +1082,12 @@ describe("billing routes", () => {
         client_secret: "seti_test_123_secret_abc",
       });
       const mockStripe = createMockStripe({ setupIntentCreate });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       // tenant is resolved from auth context (tokenTenantId), not from request body
       const res = await billingRoutes.request("/setup-intent", {
@@ -1056,7 +1152,12 @@ describe("billing routes", () => {
 
       const setupIntentCreate = vi.fn().mockRejectedValue(new Error("Stripe is down"));
       const mockStripe = createMockStripe({ setupIntentCreate });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       // tenant is resolved from auth context (tokenTenantId)
       const res = await billingRoutes.request("/setup-intent", {
@@ -1082,7 +1183,12 @@ describe("billing routes", () => {
       });
       const paymentMethodDetach = vi.fn().mockResolvedValue({ id: "pm_test_123" });
       const mockStripe = createMockStripe({ paymentMethodRetrieve, paymentMethodDetach });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
         method: "DELETE",
@@ -1121,7 +1227,12 @@ describe("billing routes", () => {
         customer: "cus_other_customer",
       });
       const mockStripe = createMockStripe({ paymentMethodRetrieve });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
         method: "DELETE",
@@ -1138,7 +1249,12 @@ describe("billing routes", () => {
 
       const paymentMethodRetrieve = vi.fn().mockRejectedValue(new Error("Stripe error"));
       const mockStripe = createMockStripe({ paymentMethodRetrieve });
-      setBillingDeps({ stripe: mockStripe, db, webhookSecret: "whsec_test" });
+      setBillingDeps({
+        stripe: mockStripe,
+        db,
+        webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+      });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
         method: "DELETE",

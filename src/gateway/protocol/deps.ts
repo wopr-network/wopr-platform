@@ -5,11 +5,13 @@
  * budget checking, metering, provider configs, fetch, and service key resolution.
  */
 
+import type { IRateLimitRepository } from "../../api/rate-limit-repository.js";
 import type { BudgetChecker } from "../../monetization/budget/budget-checker.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../../monetization/metering/emitter.js";
 import type { CapabilityRateLimitConfig } from "../capability-rate-limit.js";
 import type { CircuitBreakerConfig } from "../circuit-breaker.js";
+import type { ICircuitBreakerRepository } from "../circuit-breaker-repository.js";
 import type { SellRateLookupFn } from "../rate-lookup.js";
 import type { FetchFn, GatewayTenant, ProviderConfig } from "../types.js";
 
@@ -32,4 +34,8 @@ export interface ProtocolDeps {
   circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
   /** Callback when circuit breaker trips. */
   onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
+  /** Repository for per-capability rate limit counters. Required when rate limiting is active. */
+  rateLimitRepo?: IRateLimitRepository;
+  /** Repository for circuit breaker state. Required when circuit breaker is active. */
+  circuitBreakerRepo?: ICircuitBreakerRepository;
 }
