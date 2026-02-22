@@ -107,7 +107,10 @@ export const fleetRouter = router({
           throw new TRPCError({
             code: "FORBIDDEN",
             message: quotaResult.reason ?? "Instance quota exceeded",
-            cause: { currentInstances: quotaResult.currentInstances, maxInstances: quotaResult.maxInstances },
+            cause: {
+              currentInstances: quotaResult.currentInstances,
+              maxInstances: quotaResult.maxInstances,
+            },
           });
         }
       }
@@ -300,22 +303,6 @@ export const fleetRouter = router({
         .filter(Boolean),
     );
 
-    const CAPABILITY_NAMES: Record<string, string> = {
-      tts: "Text to Speech",
-      stt: "Speech to Text",
-      llm: "Language Model",
-      "image-gen": "Image Generation",
-      embeddings: "Embeddings",
-    };
-
-    const CAPABILITY_ICONS: Record<string, string> = {
-      tts: "volume-2",
-      stt: "mic",
-      llm: "brain",
-      "image-gen": "image",
-      embeddings: "database",
-    };
-
     const activeSuperpowers: Array<{
       id: string;
       name: string;
@@ -334,8 +321,8 @@ export const fleetRouter = router({
         activeCapabilityIds.add(capId);
         activeSuperpowers.push({
           id: capId,
-          name: CAPABILITY_NAMES[capId] || capId,
-          icon: CAPABILITY_ICONS[capId] || "zap",
+          name: capId,
+          icon: "zap",
           mode: hostedKeys.has(entry.envKey) ? "hosted" : "byok",
           provider: entry.vaultProvider,
           model: "",
@@ -346,13 +333,13 @@ export const fleetRouter = router({
       }
     }
 
-    const availableSuperpowers = Object.entries(CAPABILITY_NAMES)
-      .filter(([id]) => !activeCapabilityIds.has(id))
-      .map(([id, name]) => ({
+    const availableSuperpowers = Object.keys(CAPABILITY_ENV_MAP)
+      .filter((id) => !activeCapabilityIds.has(id))
+      .map((id) => ({
         id,
-        name,
-        icon: CAPABILITY_ICONS[id] || "zap",
-        description: `Add ${name} capability to your bot`,
+        name: id,
+        icon: "zap",
+        description: `Add ${id} capability to your bot`,
         pricing: "Usage-based",
       }));
 
@@ -377,11 +364,7 @@ export const fleetRouter = router({
         status: "connected" | "disconnected" | "always-on";
         stats: string;
       }>,
-      availableChannels: [
-        { type: "discord", label: "Discord" },
-        { type: "slack", label: "Slack" },
-        { type: "telegram", label: "Telegram" },
-      ],
+      availableChannels: [],
       activeSuperpowers,
       availableSuperpowers,
       installedPlugins,
@@ -455,7 +438,8 @@ export const fleetRouter = router({
       }
 
       // If capability is already active, return early
-      if (profile.env[capEntry.envKey]) {
+      const activeKey = `WOPR_CAP_${input.capabilityId.toUpperCase().replace(/-/g, "_")}_ACTIVE`;
+      if (profile.env[activeKey]) {
         return { success: true, capabilityId: input.capabilityId, alreadyActive: true };
       }
 

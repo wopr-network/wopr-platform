@@ -583,22 +583,6 @@ fleetRoutes.post("/seed", writeAuth, async (c) => {
 // Capability / identity helpers (shared between REST routes below)
 // ---------------------------------------------------------------------------
 
-const CAPABILITY_NAMES: Record<string, string> = {
-  tts: "Text to Speech",
-  stt: "Speech to Text",
-  llm: "Language Model",
-  "image-gen": "Image Generation",
-  embeddings: "Embeddings",
-};
-
-const CAPABILITY_ICONS: Record<string, string> = {
-  tts: "volume-2",
-  stt: "mic",
-  llm: "brain",
-  "image-gen": "image",
-  embeddings: "database",
-};
-
 /** GET /fleet/bots/:id/settings — Full bot settings (identity + capabilities + plugins + status) */
 fleetRoutes.get("/bots/:id/settings", readAuth, async (c) => {
   const botId = c.req.param("id");
@@ -641,8 +625,8 @@ fleetRoutes.get("/bots/:id/settings", readAuth, async (c) => {
       activeCapabilityIds.add(capId);
       activeSuperpowers.push({
         id: capId,
-        name: CAPABILITY_NAMES[capId] || capId,
-        icon: CAPABILITY_ICONS[capId] || "zap",
+        name: capId,
+        icon: "zap",
         mode: hostedKeys.has(entry.envKey) ? "hosted" : "byok",
         provider: entry.vaultProvider,
         model: "",
@@ -664,19 +648,15 @@ fleetRoutes.get("/bots/:id/settings", readAuth, async (c) => {
       description: "",
     },
     channels: [],
-    availableChannels: [
-      { type: "discord", label: "Discord" },
-      { type: "slack", label: "Slack" },
-      { type: "telegram", label: "Telegram" },
-    ],
+    availableChannels: [],
     activeSuperpowers,
-    availableSuperpowers: Object.entries(CAPABILITY_NAMES)
-      .filter(([id]) => !activeCapabilityIds.has(id))
-      .map(([id, name]) => ({
+    availableSuperpowers: Object.keys(CAPABILITY_ENV_MAP)
+      .filter((id) => !activeCapabilityIds.has(id))
+      .map((id) => ({
         id,
-        name,
-        icon: CAPABILITY_ICONS[id] || "zap",
-        description: `Add ${name} capability to your bot`,
+        name: id,
+        icon: "zap",
+        description: `Add ${id} capability to your bot`,
         pricing: "Usage-based",
       })),
     installedPlugins: pluginIds.map((id) => ({
@@ -747,7 +727,8 @@ fleetRoutes.post("/bots/:id/capabilities/:capabilityId/activate", writeAuth, asy
   if (ownershipError) return ownershipError;
   if (!profile) return c.json({ error: "Bot not found" }, 404);
 
-  if (profile.env[capEntry.envKey]) {
+  const activeKey = `WOPR_CAP_${capabilityId.toUpperCase().replace(/-/g, "_")}_ACTIVE`;
+  if (profile.env[activeKey]) {
     return c.json({ success: true, capabilityId, alreadyActive: true });
   }
 
@@ -755,7 +736,7 @@ fleetRoutes.post("/bots/:id/capabilities/:capabilityId/activate", writeAuth, asy
     await fleet.update(botId, {
       env: {
         ...profile.env,
-        [`WOPR_CAP_${capabilityId.toUpperCase().replace(/-/g, "_")}_ACTIVE`]: "1",
+        [activeKey]: "1",
       },
     });
     return c.json({ success: true, capabilityId, alreadyActive: false });
