@@ -32,6 +32,7 @@ import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js"
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
 import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
+import { fleetStopAlert } from "../observability/alerts.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
@@ -344,6 +345,9 @@ export function getHeartbeatWatchdog() {
     _heartbeatWatchdog = new HeartbeatWatchdog(
       getNodeRepo(),
       (nodeId: string) => {
+        // Signal the fleet-unexpected-stop alert: this fires only for
+        // heartbeat timeouts (crash/OOM), never for user-initiated stops.
+        fleetStopAlert();
         getRecoveryOrchestrator()
           .triggerRecovery(nodeId, "heartbeat_timeout")
           .catch((err) => {
