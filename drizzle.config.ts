@@ -12,6 +12,7 @@ export default defineConfig({
     "./src/db/schema/credit-auto-topup.ts",
     "./src/db/schema/credits.ts",
     "./src/db/schema/email-notifications.ts",
+    "./src/db/schema/gpu-nodes.ts",
     "./src/db/schema/meter-events.ts",
     "./src/db/schema/node-registration-tokens.ts",
     "./src/db/schema/node-transitions.ts",
