@@ -1,7 +1,7 @@
 import { and, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
-import type { CreditLedger } from "./credit-ledger.js";
+import type { ICreditLedger } from "./credit-ledger.js";
 
 /** Billing state literals */
 export type BillingState = "active" | "suspended" | "destroyed";
@@ -9,13 +9,26 @@ export type BillingState = "active" | "suspended" | "destroyed";
 /** Number of days before a suspended bot is destroyed. */
 export const SUSPENSION_GRACE_DAYS = 30;
 
+export interface IBotBilling {
+  getActiveBotCount(tenantId: string): number;
+  suspendBot(botId: string): void;
+  suspendAllForTenant(tenantId: string): string[];
+  reactivateBot(botId: string): void;
+  checkReactivation(tenantId: string, ledger: ICreditLedger): string[];
+  destroyBot(botId: string): void;
+  destroyExpiredBots(): string[];
+  getBotBilling(botId: string): unknown;
+  listForTenant(tenantId: string): unknown[];
+  registerBot(botId: string, tenantId: string, name: string): void;
+}
+
 /**
  * Bot billing lifecycle manager.
  *
  * Handles suspend/reactivate/destroy transitions and provides
  * active-bot-count queries for the daily runtime cron.
  */
-export class BotBilling {
+export class DrizzleBotBilling implements IBotBilling {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Count active bots for a tenant (used by runtime cron). */
@@ -87,7 +100,7 @@ export class BotBilling {
    *
    * @returns IDs of reactivated bots.
    */
-  checkReactivation(tenantId: string, ledger: CreditLedger): string[] {
+  checkReactivation(tenantId: string, ledger: ICreditLedger): string[] {
     const balance = ledger.balance(tenantId);
     if (balance <= 0) return [];
 
@@ -160,3 +173,6 @@ export class BotBilling {
       .run();
   }
 }
+
+// Backward-compat alias.
+export { DrizzleBotBilling as BotBilling };

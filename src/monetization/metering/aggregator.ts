@@ -4,6 +4,14 @@ import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import type { UsageSummary } from "./types.js";
 
+export interface IMeterAggregator {
+  aggregate(now?: number): number;
+  start(intervalMs?: number): void;
+  stop(): void;
+  querySummaries(tenant: string, opts?: { since?: number; until?: number; limit?: number }): UsageSummary[];
+  getTenantTotal(tenant: string, since: number): { totalCost: number; totalCharge: number; eventCount: number };
+}
+
 /**
  * Background aggregator that rolls up raw meter events into per-tenant
  * usage summaries over fixed time windows.
@@ -11,7 +19,7 @@ import type { UsageSummary } from "./types.js";
  * Designed to run periodically (e.g., every minute). Each run aggregates
  * events from a completed window that haven't been summarized yet.
  */
-export class MeterAggregator {
+export class DrizzleMeterAggregator implements IMeterAggregator {
   private readonly windowMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -216,3 +224,6 @@ export class MeterAggregator {
     };
   }
 }
+
+// Backward-compat alias.
+export { DrizzleMeterAggregator as MeterAggregator };

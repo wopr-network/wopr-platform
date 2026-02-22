@@ -5,6 +5,22 @@ import { RestoreService } from "../backup/restore-service.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
 import { applyPlatformPragmas, createDb, type DrizzleDb } from "../db/index.js";
+import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
+import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
+import type { IBotBilling } from "../monetization/credits/bot-billing.js";
+import { DrizzleBotBilling } from "../monetization/credits/bot-billing.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
+import { DrizzleCreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
+import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
+import type { IMeterEmitter } from "../monetization/metering/emitter.js";
+import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
+import type { IUsageAggregationWorker } from "../monetization/metering/usage-aggregation-worker.js";
+import { DrizzleUsageAggregationWorker } from "../monetization/metering/usage-aggregation-worker.js";
+import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js";
+import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
+import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
+import { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import { DrizzleBotInstanceRepository } from "./bot-instance-repository.js";
@@ -322,4 +338,57 @@ export function getRestoreService(): RestoreService {
 export function initFleet(): void {
   // Eagerly initialize orphan cleaner so it's ready when heartbeats arrive
   getOrphanCleaner();
+}
+
+// ---------------------------------------------------------------------------
+// Monetization singletons (WOP-899)
+// ---------------------------------------------------------------------------
+
+let _creditLedger: ICreditLedger | null = null;
+let _botBilling: IBotBilling | null = null;
+let _meterEmitter: IMeterEmitter | null = null;
+let _meterAggregator: IMeterAggregator | null = null;
+let _usageAggregationWorker: IUsageAggregationWorker | null = null;
+let _budgetChecker: IBudgetChecker | null = null;
+let _tenantCustomerStore: ITenantCustomerStore | null = null;
+let _payramChargeStore: IPayRamChargeStore | null = null;
+
+export function getCreditLedger(): ICreditLedger {
+  if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
+  return _creditLedger;
+}
+
+export function getBotBilling(): IBotBilling {
+  if (!_botBilling) _botBilling = new DrizzleBotBilling(getDb());
+  return _botBilling;
+}
+
+export function getMeterEmitter(): IMeterEmitter {
+  if (!_meterEmitter) _meterEmitter = new DrizzleMeterEmitter(getDb());
+  return _meterEmitter;
+}
+
+export function getMeterAggregator(): IMeterAggregator {
+  if (!_meterAggregator) _meterAggregator = new DrizzleMeterAggregator(getDb());
+  return _meterAggregator;
+}
+
+export function getUsageAggregationWorker(): IUsageAggregationWorker {
+  if (!_usageAggregationWorker) _usageAggregationWorker = new DrizzleUsageAggregationWorker(getDb());
+  return _usageAggregationWorker;
+}
+
+export function getBudgetChecker(): IBudgetChecker {
+  if (!_budgetChecker) _budgetChecker = new DrizzleBudgetChecker(getDb());
+  return _budgetChecker;
+}
+
+export function getTenantCustomerStore(): ITenantCustomerStore {
+  if (!_tenantCustomerStore) _tenantCustomerStore = new DrizzleTenantCustomerStore(getDb());
+  return _tenantCustomerStore;
+}
+
+export function getPayRamChargeStore(): IPayRamChargeStore {
+  if (!_payramChargeStore) _payramChargeStore = new DrizzlePayRamChargeStore(getDb());
+  return _payramChargeStore;
 }

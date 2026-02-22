@@ -72,7 +72,7 @@ export {
   type RoutingDecision,
 } from "./arbitrage/index.js";
 export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budget/index.js";
-export { BudgetChecker } from "./budget/index.js";
+export { BudgetChecker, DrizzleBudgetChecker } from "./budget/index.js";
 // Credit ledger (WOP-384)
 export type {
   BillingState,
@@ -90,6 +90,8 @@ export {
   BotBilling,
   CreditLedger,
   DAILY_BOT_COST_CENTS,
+  DrizzleBotBilling,
+  DrizzleCreditLedger,
   grantSignupCredits,
   InsufficientBalanceError,
   runRuntimeDeductions,
@@ -116,7 +118,14 @@ export type {
   UsageAggregationWorkerOpts,
   UsageSummary,
 } from "./metering/index.js";
-export { MeterAggregator, MeterEmitter, UsageAggregationWorker } from "./metering/index.js";
+export {
+  DrizzleMeterAggregator,
+  DrizzleMeterEmitter,
+  DrizzleUsageAggregationWorker,
+  MeterAggregator,
+  MeterEmitter,
+  UsageAggregationWorker,
+} from "./metering/index.js";
 // PayRam crypto payments (WOP-407)
 export type {
   PayRamBillingConfig,
@@ -130,6 +139,7 @@ export type {
 export {
   createPayRamCheckout,
   createPayRamClient,
+  DrizzlePayRamChargeStore,
   handlePayRamWebhook,
   initPayRamSchema,
   loadPayRamConfig,
@@ -149,6 +159,18 @@ export {
   DEFAULT_RESOURCE_CONFIG,
   type ResourceConfig,
 } from "./quotas/resource-limits.js";
+// Repository interfaces (WOP-899)
+export type {
+  IBotBilling,
+  IBudgetChecker,
+  ICreditLedger,
+  IMeterAggregator,
+  IMeterEmitter,
+  IPayRamChargeStore,
+  ITenantCustomerStore,
+  IUsageAggregationWorker,
+  PayRamChargeRecord,
+} from "./repository-types.js";
 // Socket layer — adapter orchestrator (WOP-376)
 export { AdapterSocket, type SocketConfig, type SocketRequest } from "./socket/socket.js";
 // Stripe credit purchases (WOP-406)
@@ -172,6 +194,7 @@ export {
   createCreditCheckoutSession,
   createPortalSession,
   createStripeClient,
+  DrizzleTenantCustomerStore,
   getConfiguredPriceIds,
   getCreditAmountForPurchase,
   handleWebhookEvent,

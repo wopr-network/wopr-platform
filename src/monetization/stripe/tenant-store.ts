@@ -3,6 +3,17 @@ import type { DrizzleDb } from "../../db/index.js";
 import { tenantCustomers } from "../../db/schema/stripe.js";
 import type { TenantCustomerRow } from "./types.js";
 
+export interface ITenantCustomerStore {
+  getByTenant(tenant: string): TenantCustomerRow | null;
+  getByStripeCustomerId(stripeCustomerId: string): TenantCustomerRow | null;
+  upsert(row: { tenant: string; stripeCustomerId: string; tier?: string }): void;
+  setTier(tenant: string, tier: string): void;
+  setBillingHold(tenant: string, hold: boolean): void;
+  hasBillingHold(tenant: string): boolean;
+  list(): TenantCustomerRow[];
+  buildCustomerIdMap(): Record<string, string>;
+}
+
 /**
  * Manages tenant-to-Stripe customer mappings in SQLite.
  *
@@ -12,7 +23,7 @@ import type { TenantCustomerRow } from "./types.js";
  * Note: No subscription tracking — WOPR uses credits, not subscriptions.
  * Credit balances are managed by CreditAdjustmentStore.
  */
-export class TenantCustomerStore {
+export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get a tenant's Stripe mapping. */
@@ -117,3 +128,6 @@ function mapRow(row: typeof tenantCustomers.$inferSelect): TenantCustomerRow {
     updated_at: row.updatedAt,
   };
 }
+
+// Backward-compat alias.
+export { DrizzleTenantCustomerStore as TenantCustomerStore };

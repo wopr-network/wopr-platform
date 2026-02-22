@@ -42,6 +42,31 @@ export class InsufficientBalanceError extends Error {
   }
 }
 
+export interface ICreditLedger {
+  credit(
+    tenantId: string,
+    amountCents: number,
+    type: CreditType,
+    description?: string,
+    referenceId?: string,
+    fundingSource?: string,
+  ): CreditTransaction;
+
+  debit(
+    tenantId: string,
+    amountCents: number,
+    type: DebitType,
+    description?: string,
+    referenceId?: string,
+    allowNegative?: boolean,
+  ): CreditTransaction;
+
+  balance(tenantId: string): number;
+  hasReferenceId(referenceId: string): boolean;
+  history(tenantId: string, opts?: HistoryOptions): CreditTransaction[];
+  tenantsWithBalance(): Array<{ tenantId: string; balanceCents: number }>;
+}
+
 /**
  * Credit ledger — the single source of truth for credit balances.
  *
@@ -49,7 +74,7 @@ export class InsufficientBalanceError extends Error {
  * creditBalances row is always consistent with the sum of creditTransactions.
  * Zero raw SQL in application code.
  */
-export class CreditLedger {
+export class DrizzleCreditLedger implements ICreditLedger {
   constructor(private readonly db: DrizzleDb) {}
 
   /**
@@ -261,3 +286,6 @@ export class CreditLedger {
       .all();
   }
 }
+
+// Backward-compat alias — callers using 'new CreditLedger(db)' continue to work.
+export { DrizzleCreditLedger as CreditLedger };
