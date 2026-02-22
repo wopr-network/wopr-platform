@@ -32,7 +32,7 @@ export type NodeStatus = (typeof NODE_STATUSES)[number];
  * offline      → recovering, returning
  * recovering   → offline, returning
  * returning    → active, failed
- * draining     → offline
+ * draining     → offline, active (cancel-drain)
  * failed       → returning
  * ```
  */
@@ -43,7 +43,7 @@ export const VALID_TRANSITIONS: Record<NodeStatus, readonly NodeStatus[]> = {
   offline: ["recovering", "returning"],
   recovering: ["offline", "returning"],
   returning: ["active", "failed"],
-  draining: ["offline"],
+  draining: ["offline", "active"],
   failed: ["returning"],
 };
 

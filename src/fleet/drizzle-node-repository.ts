@@ -56,9 +56,15 @@ export class DrizzleNodeRepository implements INodeRepository {
         throw new InvalidTransitionError(node.status, to);
       }
 
+      // When cancelling a drain (draining → active), clear drain tracking metadata
+      const extraFields =
+        node.status === "draining" && to === "active"
+          ? { drainStatus: null, drainMigrated: null, drainTotal: null }
+          : {};
+
       const result = this.db
         .update(nodes)
-        .set({ status: to, updatedAt: now })
+        .set({ status: to, updatedAt: now, ...extraFields })
         .where(and(eq(nodes.id, id), eq(nodes.status, node.status)))
         .run();
 
@@ -79,7 +85,7 @@ export class DrizzleNodeRepository implements INodeRepository {
         })
         .run();
 
-      return { ...node, status: to, updatedAt: now };
+      return { ...node, status: to, updatedAt: now, ...extraFields };
     });
   }
 
