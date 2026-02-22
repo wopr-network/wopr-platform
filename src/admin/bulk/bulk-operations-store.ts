@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
 import type { AdminAuditLog } from "../audit-log.js";
 import type { CreditAdjustmentStore } from "../credits/adjustment-store.js";
-import type { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
+import type { ITenantStatusRepository } from "../tenant-status/tenant-status-repository.js";
+import type { IBulkOperationsRepository } from "./bulk-operations-repository.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -65,26 +65,15 @@ export interface BulkExportInput {
   fields: ExportField[];
 }
 
-// Internal type for the DB row
-interface UndoableGrantRow {
-  operation_id: string;
-  tenant_ids: string;
-  amount_cents: number;
-  admin_user: string;
-  created_at: number;
-  undo_deadline: number;
-  undone: number;
-}
-
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
 
 export class BulkOperationsStore {
   constructor(
-    private readonly db: Database.Database,
+    private readonly repo: IBulkOperationsRepository,
     private readonly creditStore: CreditAdjustmentStore,
-    private readonly tenantStatusStore: TenantStatusStore,
+    private readonly tenantStatusStore: ITenantStatusRepository,
     private readonly auditLog: AdminAuditLog,
   ) {}
 
@@ -103,11 +92,7 @@ export class BulkOperationsStore {
 
   dryRun(tenantIds: string[]): Array<{ tenantId: string; name: string | null; email: string; status: string }> {
     this.validateTenantIds(tenantIds);
-    const placeholders = tenantIds.map(() => "?").join(",");
-    const rows = this.db
-      .prepare(`SELECT tenant_id, name, email, status FROM admin_users WHERE tenant_id IN (${placeholders})`)
-      .all(...tenantIds) as Array<{ tenant_id: string; name: string | null; email: string; status: string }>;
-    return rows.map((r) => ({ tenantId: r.tenant_id, name: r.name, email: r.email, status: r.status }));
+    return this.repo.lookupTenants(tenantIds);
   }
 
   // --- Mass Grant ---
@@ -122,7 +107,7 @@ export class BulkOperationsStore {
 
     // Wrapped in a transaction for batch performance — individual errors are
     // caught so partial success is expected (this is NOT all-or-nothing).
-    this.db.transaction(() => {
+    this.repo.transaction(() => {
       for (const tenantId of input.tenantIds) {
         try {
           this.creditStore.grant(tenantId, input.amountCents, input.reason, adminUser);
@@ -132,17 +117,20 @@ export class BulkOperationsStore {
           errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
         }
       }
-    })();
+    });
 
     const now = Date.now();
     const undoDeadline = now + UNDO_WINDOW_MS;
 
-    this.db
-      .prepare(
-        `INSERT INTO bulk_undo_grants (operation_id, tenant_ids, amount_cents, admin_user, created_at, undo_deadline, undone)
-         VALUES (?, ?, ?, ?, ?, ?, 0)`,
-      )
-      .run(operationId, JSON.stringify(succeededIds), input.amountCents, adminUser, now, undoDeadline);
+    this.repo.insertUndoableGrant({
+      operationId,
+      tenantIds: JSON.stringify(succeededIds),
+      amountCents: input.amountCents,
+      adminUser,
+      createdAt: now,
+      undoDeadline,
+      undone: false,
+    });
 
     this.auditLog.log({
       adminUser,
@@ -175,31 +163,29 @@ export class BulkOperationsStore {
   // --- Undo Grant ---
 
   undoGrant(operationId: string, adminUser: string): BulkResult {
-    const row = this.db.prepare("SELECT * FROM bulk_undo_grants WHERE operation_id = ?").get(operationId) as
-      | UndoableGrantRow
-      | undefined;
+    const grant = this.repo.getUndoableGrant(operationId);
 
-    if (!row) throw new Error("Grant operation not found");
-    if (row.undone) throw new Error("Grant operation has already been undone");
-    if (Date.now() > row.undo_deadline) throw new Error("Undo window has expired (5 minutes)");
+    if (!grant) throw new Error("Grant operation not found");
+    if (grant.undone) throw new Error("Grant operation has already been undone");
+    if (Date.now() > grant.undoDeadline) throw new Error("Undo window has expired (5 minutes)");
 
-    const tenantIds: string[] = JSON.parse(row.tenant_ids);
+    const tenantIds: string[] = JSON.parse(grant.tenantIds);
     const errors: Array<{ tenantId: string; error: string }> = [];
     let succeeded = 0;
 
-    this.db.transaction(() => {
+    this.repo.transaction(() => {
       for (const tenantId of tenantIds) {
         try {
-          this.creditStore.correction(tenantId, -row.amount_cents, `Undo bulk grant ${operationId}`, adminUser);
+          this.creditStore.correction(tenantId, -grant.amountCents, `Undo bulk grant ${operationId}`, adminUser);
           succeeded++;
         } catch (err) {
           errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
         }
       }
       if (errors.length === 0) {
-        this.db.prepare("UPDATE bulk_undo_grants SET undone = 1 WHERE operation_id = ?").run(operationId);
+        this.repo.markGrantUndone(operationId);
       }
-    })();
+    });
 
     this.auditLog.log({
       adminUser,
@@ -208,7 +194,7 @@ export class BulkOperationsStore {
       details: {
         operationId,
         tenantIds,
-        amountCents: row.amount_cents,
+        amountCents: grant.amountCents,
         succeeded,
         failed: errors.length,
       },
@@ -331,10 +317,7 @@ export class BulkOperationsStore {
     const operationId = crypto.randomUUID();
 
     const enabledKeys = new Set(input.fields.filter((f) => f.enabled).map((f) => f.key));
-    const placeholders = input.tenantIds.map(() => "?").join(",");
-    const rows = this.db
-      .prepare(`SELECT * FROM admin_users WHERE tenant_id IN (${placeholders}) ORDER BY created_at DESC`)
-      .all(...input.tenantIds) as Array<Record<string, unknown>>;
+    const rows = this.repo.lookupTenantsForExport(input.tenantIds);
 
     const headers: string[] = ["tenant_id"];
     if (enabledKeys.has("account_info")) headers.push("name", "email", "status", "role");
@@ -345,7 +328,7 @@ export class BulkOperationsStore {
 
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const lines = rows.map((r) => {
-      const fields: string[] = [csvEscape(String(r.tenant_id ?? ""))];
+      const fields: string[] = [csvEscape(String(r.tenantId ?? ""))];
       if (enabledKeys.has("account_info")) {
         fields.push(
           csvEscape(String(r.name ?? "")),
@@ -354,13 +337,13 @@ export class BulkOperationsStore {
           csvEscape(String(r.role ?? "")),
         );
       }
-      if (enabledKeys.has("credit_balance")) fields.push(String(r.credit_balance_cents ?? 0));
-      if (enabledKeys.has("monthly_products")) fields.push(String(r.agent_count ?? 0));
+      if (enabledKeys.has("credit_balance")) fields.push(String(r.creditBalanceCents ?? 0));
+      if (enabledKeys.has("monthly_products")) fields.push(String(r.agentCount ?? 0));
       if (enabledKeys.has("lifetime_spend")) {
-        const spend = this.creditStore.getBalance(String(r.tenant_id));
+        const spend = this.creditStore.getBalance(String(r.tenantId));
         fields.push(String(spend));
       }
-      if (enabledKeys.has("last_seen")) fields.push(String(r.last_seen ?? ""));
+      if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));
       return fields.join(",");
     });
 
@@ -390,30 +373,6 @@ export class BulkOperationsStore {
     hasCredits?: boolean;
     lowBalance?: boolean;
   }): string[] {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-
-    if (filters.search) {
-      const pattern = `%${filters.search.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`;
-      conditions.push("(name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR tenant_id LIKE ? ESCAPE '\\')");
-      params.push(pattern, pattern, pattern);
-    }
-    if (filters.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
-    }
-    if (filters.role) {
-      conditions.push("role = ?");
-      params.push(filters.role);
-    }
-    if (filters.hasCredits === true) conditions.push("credit_balance_cents > 0");
-    else if (filters.hasCredits === false) conditions.push("credit_balance_cents = 0");
-    if (filters.lowBalance === true) conditions.push("credit_balance_cents < 500");
-
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = this.db.prepare(`SELECT tenant_id FROM admin_users ${where}`).all(...params) as Array<{
-      tenant_id: string;
-    }>;
-    return rows.map((r) => r.tenant_id);
+    return this.repo.listMatchingTenantIds(filters);
   }
 }

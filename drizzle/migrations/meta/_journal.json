@@ -127,6 +127,13 @@
       "when": 1771700000000,
       "tag": "0018_woozy_psynapse",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1771729482639,
+      "tag": "0019_unusual_famine",
+      "breakpoints": true
     }
   ]
 }

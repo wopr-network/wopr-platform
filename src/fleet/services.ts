@@ -1,5 +1,11 @@
 import Database from "better-sqlite3";
 import { AdminAuditLog } from "../admin/audit-log.js";
+import type { IBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
+import { DrizzleBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
+import type { IAdminNotesRepository } from "../admin/notes/admin-notes-repository.js";
+import { AdminNotesStore } from "../admin/notes/store.js";
+import type { ITenantStatusRepository } from "../admin/tenant-status/tenant-status-repository.js";
+import { TenantStatusStore } from "../admin/tenant-status/tenant-status-store.js";
 import { RestoreLogStore } from "../backup/restore-log-store.js";
 import { RestoreService } from "../backup/restore-service.js";
 import { SpacesClient } from "../backup/spaces-client.js";
@@ -69,6 +75,11 @@ let _botInstanceRepo: IBotInstanceRepository | null = null;
 let _botProfileRepo: IBotProfileRepository | null = null;
 let _recoveryRepo: IRecoveryRepository | null = null;
 let _spendingCapStore: ISpendingCapStore | null = null;
+
+// Admin repositories
+let _adminNotesRepo: IAdminNotesRepository | null = null;
+let _tenantStatusRepo: ITenantStatusRepository | null = null;
+let _bulkOpsRepo: IBulkOperationsRepository | null = null;
 
 // WebSocket layer
 let _connectionRegistry: NodeConnectionRegistry | null = null;
@@ -171,6 +182,28 @@ export function getSpendingCapStore(): ISpendingCapStore {
     _spendingCapStore = new DrizzleSpendingCapStore(getDb());
   }
   return _spendingCapStore;
+}
+
+export function getAdminNotesRepo(): IAdminNotesRepository {
+  if (!_adminNotesRepo) {
+    _adminNotesRepo = new AdminNotesStore(getDb());
+  }
+  return _adminNotesRepo;
+}
+
+export function getTenantStatusRepo(): ITenantStatusRepository {
+  if (!_tenantStatusRepo) {
+    _tenantStatusRepo = new TenantStatusStore(getDb());
+  }
+  return _tenantStatusRepo;
+}
+
+export function getBulkOpsRepo(): IBulkOperationsRepository {
+  if (!_bulkOpsRepo) {
+    if (!_sqlite) throw new Error("SQLite not initialized");
+    _bulkOpsRepo = new DrizzleBulkOperationsRepository(getDb(), _sqlite);
+  }
+  return _bulkOpsRepo;
 }
 
 // ---------------------------------------------------------------------------

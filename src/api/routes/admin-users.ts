@@ -1,6 +1,5 @@
 import type Database from "better-sqlite3";
 import { Hono } from "hono";
-import { initAdminUsersSchema } from "../../admin/users/schema.js";
 import type { AdminUserFilters } from "../../admin/users/user-store.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import type { AuthEnv } from "../../auth/index.js";
@@ -21,7 +20,6 @@ let _userStore: AdminUserStore | null = null;
 
 /** Set dependencies for admin user routes. */
 export function setAdminUsersDeps(deps: AdminUsersRouteDeps): void {
-  initAdminUsersSchema(deps.db);
   _userStore = new AdminUserStore(deps.db);
 }
 

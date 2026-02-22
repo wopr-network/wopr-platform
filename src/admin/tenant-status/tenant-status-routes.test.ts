@@ -13,7 +13,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
-import { initAdminUsersSchema } from "../../admin/users/schema.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
@@ -47,7 +46,20 @@ function initSchemas(sqlite: BetterSqlite3.Database): void {
   initCreditAdjustmentSchema(sqlite);
 
   // Admin users
-  initAdminUsersSchema(sqlite);
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      name TEXT,
+      tenant_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','grace_period','dormant','banned')),
+      role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('platform_admin','tenant_admin','user')),
+      credit_balance_cents INTEGER NOT NULL DEFAULT 0,
+      agent_count INTEGER NOT NULL DEFAULT 0,
+      last_seen INTEGER,
+      created_at INTEGER NOT NULL
+    )
+  `);
 
   // Tenant status
   sqlite.exec(`

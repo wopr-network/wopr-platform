@@ -1,8 +1,8 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminUsersApiRoutes } from "../../api/routes/admin-users.js";
-import { initAdminUsersSchema } from "./schema.js";
+import { createTestDb as createMigratedTestDb } from "../../test/db.js";
 import { AdminUserStore } from "./user-store.js";
 
 // ---------------------------------------------------------------------------
@@ -10,9 +10,8 @@ import { AdminUserStore } from "./user-store.js";
 // ---------------------------------------------------------------------------
 
 function createTestDb(): BetterSqlite3.Database {
-  const db = new BetterSqlite3(":memory:");
-  initAdminUsersSchema(db);
-  return db;
+  const { sqlite } = createMigratedTestDb();
+  return sqlite;
 }
 
 function insertUser(
@@ -64,7 +63,7 @@ function insertUser(
 // Schema tests
 // ---------------------------------------------------------------------------
 
-describe("initAdminUsersSchema", () => {
+describe("admin_users schema (via Drizzle migration)", () => {
   it("creates admin_users table", () => {
     const db = createTestDb();
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_users'").all() as {
@@ -80,17 +79,6 @@ describe("initAdminUsersSchema", () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_admin_users_%'")
       .all() as { name: string }[];
     expect(indexes.length).toBeGreaterThanOrEqual(6);
-    db.close();
-  });
-
-  it("is idempotent", () => {
-    const db = createTestDb();
-    initAdminUsersSchema(db);
-    initAdminUsersSchema(db);
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_users'").all() as {
-      name: string;
-    }[];
-    expect(tables).toHaveLength(1);
     db.close();
   });
 

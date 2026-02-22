@@ -1,31 +1,16 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreditAdjustmentStore } from "../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
-import { initAdminUsersSchema } from "../admin/users/schema.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
-import { createDb, type DrizzleDb } from "../db/index.js";
+import type { DrizzleDb } from "../db/index.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
+import { createTestDb } from "../test/db.js";
 import { appRouter } from "./index.js";
 import type { TRPCContext } from "./init.js";
 import { setAdminRouterDeps } from "./routers/admin.js";
 import { setBillingRouterDeps } from "./routers/billing.js";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function createTestDb() {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  initMeterSchema(sqlite);
-  initStripeSchema(sqlite);
-  initCreditAdjustmentSchema(sqlite);
-  initAdminUsersSchema(sqlite);
-  const db = createDb(sqlite);
-  return { sqlite, db };
-}
 
 function authedContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
   return {
@@ -56,6 +41,9 @@ describe("tRPC appRouter", () => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
     db = testDb.db;
+    initMeterSchema(sqlite);
+    initStripeSchema(sqlite);
+    initCreditAdjustmentSchema(sqlite);
   });
 
   afterEach(() => {

@@ -6,9 +6,8 @@ import { AdminAuditLog } from "../audit-log.js";
 import { CreditAdjustmentStore } from "../credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../credits/schema.js";
 import { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
-import { initAdminUsersSchema } from "../users/schema.js";
+import { DrizzleBulkOperationsRepository } from "./bulk-operations-repository.js";
 import { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk-operations-store.js";
-import { initBulkOperationsSchema } from "./schema.js";
 
 describe("BulkOperationsStore", () => {
   let sqlite: BetterSqlite3.Database;
@@ -24,15 +23,14 @@ describe("BulkOperationsStore", () => {
     sqlite = t.sqlite;
 
     initCreditAdjustmentSchema(sqlite);
-    initAdminUsersSchema(sqlite);
-    initBulkOperationsSchema(sqlite);
 
     creditStore = new CreditAdjustmentStore(sqlite);
     tenantStatusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(db);
-    store = new BulkOperationsStore(sqlite, creditStore, tenantStatusStore, auditLog);
+    const bulkRepo = new DrizzleBulkOperationsRepository(db, sqlite);
+    store = new BulkOperationsStore(bulkRepo, creditStore, tenantStatusStore, auditLog);
 
-    // Seed test data
+    // Seed test data using raw sqlite (admin_users table created by Drizzle migration)
     const insertUser = sqlite.prepare(
       `INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
