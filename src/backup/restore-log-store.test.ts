@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
+import { DrizzleRestoreLogRepository } from "./restore-log-repository.js";
 import { RestoreLogStore } from "./restore-log-store.js";
 
 function createTestDb() {
@@ -30,7 +31,8 @@ describe("RestoreLogStore", () => {
   beforeEach(() => {
     const testDb = createTestDb();
     sqlite = testDb.sqlite;
-    store = new RestoreLogStore(testDb.db);
+    const repo = new DrizzleRestoreLogRepository(testDb.db);
+    store = new RestoreLogStore(repo);
   });
 
   afterEach(() => {

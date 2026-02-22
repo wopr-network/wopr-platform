@@ -3,13 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { and, asc, count, desc, eq, isNull, lt } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import { snapshots } from "../db/schema/snapshots.js";
+import type { ISnapshotRepository, NewSnapshotRow } from "./repository-types.js";
 import type { SpacesClient } from "./spaces-client.js";
 import type { Snapshot, SnapshotTrigger } from "./types.js";
-import { rowToSnapshot } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,20 +16,20 @@ const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 export interface SnapshotManagerOptions {
   /** Directory where snapshot tar files are stored */
   snapshotDir: string;
-  /** Drizzle database instance */
-  db: BetterSQLite3Database<Record<string, unknown>>;
+  /** Snapshot repository */
+  repo: ISnapshotRepository;
   /** Optional DO Spaces client for remote upload */
   spaces?: SpacesClient;
 }
 
 export class SnapshotManager {
   private readonly snapshotDir: string;
-  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
+  private readonly repo: ISnapshotRepository;
   private readonly spaces?: SpacesClient;
 
   constructor(opts: SnapshotManagerOptions) {
     this.snapshotDir = opts.snapshotDir;
-    this.db = opts.db;
+    this.repo = opts.repo;
     this.spaces = opts.spaces;
   }
 
@@ -119,30 +116,29 @@ export class SnapshotManager {
       }
     }
 
-    // Store metadata in SQLite -- clean up tar if insert fails
+    // Store metadata in DB -- clean up tar if insert fails
+    const row: NewSnapshotRow = {
+      id,
+      tenant,
+      instanceId: params.instanceId,
+      userId: params.userId,
+      name: params.name ?? null,
+      type: snapshotType,
+      s3Key,
+      sizeMb,
+      sizeBytes,
+      nodeId: params.nodeId ?? null,
+      trigger: params.trigger,
+      plugins: JSON.stringify(plugins),
+      configHash,
+      storagePath: tarPath,
+      createdAt,
+      expiresAt: params.expiresAt ?? null,
+      deletedAt: null,
+    };
+
     try {
-      this.db
-        .insert(snapshots)
-        .values({
-          id,
-          tenant,
-          instanceId: params.instanceId,
-          userId: params.userId,
-          name: params.name ?? null,
-          type: snapshotType,
-          s3Key,
-          sizeMb,
-          sizeBytes,
-          nodeId: params.nodeId ?? null,
-          trigger: params.trigger,
-          plugins: JSON.stringify(plugins),
-          configHash,
-          storagePath: tarPath,
-          createdAt,
-          expiresAt: params.expiresAt ?? null,
-          deletedAt: null,
-        })
-        .run();
+      this.repo.insert(row);
     } catch (err) {
       await rm(tarPath, { force: true });
       // Clean up orphaned S3 object if upload succeeded but DB insert failed
@@ -227,66 +223,32 @@ export class SnapshotManager {
 
   /** Get a single snapshot by ID */
   get(id: string): Snapshot | null {
-    const row = this.db.select().from(snapshots).where(eq(snapshots.id, id)).get();
-    return row ? rowToSnapshot(mapDrizzleRow(row)) : null;
+    return this.repo.getById(id);
   }
 
   /** List all non-deleted snapshots for an instance, newest first */
   list(instanceId: string, type?: string): Snapshot[] {
-    const conditions = type
-      ? and(
-          eq(snapshots.instanceId, instanceId),
-          isNull(snapshots.deletedAt),
-          eq(snapshots.type, type as "nightly" | "on-demand" | "pre-restore"),
-        )
-      : and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt));
-
-    const rows = this.db.select().from(snapshots).where(conditions).orderBy(desc(snapshots.createdAt)).all();
-    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+    return this.repo.list(instanceId, type);
   }
 
   /** List all non-deleted snapshots for a tenant */
   listByTenant(tenant: string, type?: string): Snapshot[] {
-    const conditions = type
-      ? and(
-          eq(snapshots.tenant, tenant),
-          isNull(snapshots.deletedAt),
-          eq(snapshots.type, type as "nightly" | "on-demand" | "pre-restore"),
-        )
-      : and(eq(snapshots.tenant, tenant), isNull(snapshots.deletedAt));
-
-    const rows = this.db.select().from(snapshots).where(conditions).orderBy(desc(snapshots.createdAt)).all();
-    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+    return this.repo.listByTenant(tenant, type);
   }
 
   /** Count on-demand snapshots for a tenant (non-deleted only) */
   countByTenant(tenant: string, type: "on-demand"): number {
-    const row = this.db
-      .select({ cnt: count() })
-      .from(snapshots)
-      .where(and(eq(snapshots.tenant, tenant), eq(snapshots.type, type), isNull(snapshots.deletedAt)))
-      .get();
-    return row?.cnt ?? 0;
+    return this.repo.countByTenant(tenant, type);
   }
 
   /** List all active (non-deleted) snapshots of a given type across all tenants */
   listAllActive(type: "on-demand"): Snapshot[] {
-    const rows = this.db
-      .select()
-      .from(snapshots)
-      .where(and(eq(snapshots.type, type), isNull(snapshots.deletedAt)))
-      .all();
-    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+    return this.repo.listAllActive(type);
   }
 
   /** List snapshots that have passed their expiresAt time */
   listExpired(now: number): Snapshot[] {
-    const rows = this.db
-      .select()
-      .from(snapshots)
-      .where(and(isNull(snapshots.deletedAt), lt(snapshots.expiresAt, now)))
-      .all();
-    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+    return this.repo.listExpired(now);
   }
 
   /**
@@ -314,9 +276,9 @@ export class SnapshotManager {
       }
     }
 
-    // Soft-delete in SQLite
+    // Soft-delete in DB
     try {
-      this.db.update(snapshots).set({ deletedAt: Date.now() }).where(eq(snapshots.id, id)).run();
+      this.repo.softDelete(id);
     } catch (err) {
       if (spacesRemoved && snapshot.s3Key) {
         // S3 object is already deleted but DB record is still active — log for manual reconciliation
@@ -351,8 +313,8 @@ export class SnapshotManager {
       }
     }
 
-    // Hard-delete from SQLite
-    this.db.delete(snapshots).where(eq(snapshots.id, id)).run();
+    // Hard-delete from DB
+    this.repo.hardDelete(id);
 
     logger.info(`Hard-deleted snapshot ${id}`);
     return true;
@@ -360,48 +322,13 @@ export class SnapshotManager {
 
   /** Count non-deleted snapshots for an instance */
   count(instanceId: string): number {
-    const row = this.db
-      .select({ cnt: count() })
-      .from(snapshots)
-      .where(and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt)))
-      .get();
-    return row?.cnt ?? 0;
+    return this.repo.count(instanceId);
   }
 
   /** Get oldest non-deleted snapshots for an instance (for retention cleanup) */
   getOldest(instanceId: string, limit: number): Snapshot[] {
-    const rows = this.db
-      .select()
-      .from(snapshots)
-      .where(and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt)))
-      .orderBy(asc(snapshots.createdAt))
-      .limit(limit)
-      .all();
-    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
+    return this.repo.getOldest(instanceId, limit);
   }
-}
-
-/** Map Drizzle camelCase row to the SnapshotRow interface (snake_case). */
-function mapDrizzleRow(row: typeof snapshots.$inferSelect) {
-  return {
-    id: row.id,
-    tenant: row.tenant,
-    instance_id: row.instanceId,
-    user_id: row.userId,
-    name: row.name ?? null,
-    type: row.type,
-    s3_key: row.s3Key ?? null,
-    size_mb: row.sizeMb,
-    size_bytes: row.sizeBytes ?? null,
-    node_id: row.nodeId ?? null,
-    trigger: row.trigger,
-    plugins: row.plugins,
-    config_hash: row.configHash,
-    storage_path: row.storagePath,
-    created_at: row.createdAt,
-    expires_at: row.expiresAt ?? null,
-    deleted_at: row.deletedAt ?? null,
-  };
 }
 
 /** Extract the last path segment (works with or without trailing slash) */

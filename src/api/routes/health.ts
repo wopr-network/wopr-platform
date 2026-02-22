@@ -1,23 +1,10 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
-import { BackupStatusStore } from "../../backup/backup-status-store.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
-import * as dbSchema from "../../db/schema/index.js";
+import type { BackupStatusStore } from "../../backup/backup-status-store.js";
+import { getBackupStatusStore } from "../../fleet/services.js";
 
-const BACKUP_DB_PATH = process.env.BACKUP_DB_PATH || "/data/platform/backup-status.db";
-
-/** Lazy-initialized backup status store for health checks */
-let _healthStore: BackupStatusStore | null = null;
 function getHealthStore(): BackupStatusStore | null {
-  if (_healthStore) return _healthStore;
   try {
-    const sqlite = new Database(BACKUP_DB_PATH);
-    applyPlatformPragmas(sqlite);
-    // Don't CREATE TABLE here — only read. If the DB doesn't exist yet, return null.
-    const db = drizzle(sqlite, { schema: dbSchema });
-    _healthStore = new BackupStatusStore(db);
-    return _healthStore;
+    return getBackupStatusStore();
   } catch {
     // Backup DB not initialized yet — that's fine for fresh deployments
     return null;

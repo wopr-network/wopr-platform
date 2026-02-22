@@ -100,7 +100,8 @@
         "src/monetization/stripe/tenant-store.ts",
         "src/account/deletion-repository.ts",
         "src/account/deletion-executor-repository.ts",
-        "src/security/credential-vault/credential-repository.ts"
+        "src/security/credential-vault/credential-repository.ts",
+        "src/backup/*-repository.ts"
       ],
       "linter": {
         "rules": {
@@ -136,10 +137,7 @@
         "src/email/verification.ts",
         "src/email/require-verified.ts",
         "src/api/routes/activity.ts",
-        "src/api/routes/admin-backups.ts",
         "src/api/routes/bot-plugins.ts",
-        "src/api/routes/health.ts",
-        "src/api/routes/snapshots.ts",
         "src/api/routes/fleet.ts",
         "src/api/routes/quota.ts",
         "src/api/routes/tenant-keys.ts",
@@ -153,6 +151,8 @@
         "src/backup/backup-status-store.ts",
         "src/backup/restore-log-store.ts",
         "src/backup/snapshot-manager.ts",
+        "src/monetization/credits/credit-ledger.ts",
+        "src/monetization/credits/bot-billing.ts",
         "src/monetization/credits/schema.ts",
         "src/monetization/metering/schema.ts",
         "src/monetization/payram/schema.ts",

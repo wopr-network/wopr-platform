@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
 import { SnapshotManager, SnapshotNotFoundError } from "./snapshot-manager.js";
+import { DrizzleSnapshotRepository } from "./snapshot-repository.js";
 
 const TEST_DIR = join(import.meta.dirname, "../../.test-snapshots");
 const SNAPSHOT_DIR = join(TEST_DIR, "snapshots");
@@ -55,7 +56,8 @@ describe("SnapshotManager", () => {
 
     const testDb = createFileDb(DB_PATH);
     sqlite = testDb.sqlite;
-    manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db: testDb.db });
+    const repo = new DrizzleSnapshotRepository(testDb.db);
+    manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, repo });
 
     // Create a fake WOPR_HOME with some files
     woprHomePath = join(INSTANCES_DIR, "inst-1");

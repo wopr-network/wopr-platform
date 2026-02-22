@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
 import { enforceRetention } from "./retention.js";
 import { SnapshotManager } from "./snapshot-manager.js";
+import { DrizzleSnapshotRepository } from "./snapshot-repository.js";
 
 const TEST_DIR = join(import.meta.dirname, "../../.test-retention");
 const SNAPSHOT_DIR = join(TEST_DIR, "snapshots");
@@ -56,7 +57,8 @@ describe("enforceRetention", () => {
 
     const testDb = createFileDb(DB_PATH);
     sqlite = testDb.sqlite;
-    manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, db: testDb.db });
+    const repo = new DrizzleSnapshotRepository(testDb.db);
+    manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, repo });
 
     woprHomePath = join(INSTANCES_DIR, "inst-1");
     await mkdir(woprHomePath, { recursive: true });
