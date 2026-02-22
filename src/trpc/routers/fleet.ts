@@ -4,10 +4,8 @@
  * Delegates to the existing FleetManager service layer — no business logic is duplicated.
  * Follows the dependency injection pattern established by billing.ts, account.ts, and capabilities.ts.
  *
- * Known gaps (deferred to follow-up stories):
- * - Proxy registration (getProxyManager().addRoute()) and health update side-effects from
- *   the REST create/start/stop handlers are NOT replicated here.
- *   TODO: extract these side effects into FleetManager or a shared service layer.
+ * Proxy side-effects (addRoute, removeRoute, updateHealth) are handled inside FleetManager
+ * so both REST and tRPC paths get subdomain routing automatically.
  */
 
 import { TRPCError } from "@trpc/server";

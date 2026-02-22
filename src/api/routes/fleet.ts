@@ -39,7 +39,7 @@ const emailVerified = requireEmailVerified(getAuthDb);
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
 const networkPolicy = new NetworkPolicy(docker);
-const fleet = new FleetManager(docker, store, config.discovery, networkPolicy);
+const fleet = new FleetManager(docker, store, config.discovery, networkPolicy, getProxyManager());
 const imagePoller = new ImagePoller(docker, store);
 const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
 
@@ -139,13 +139,11 @@ function parseLogLines(
 //   - POST /fleet/bots/:id/update (image update) — tRPC fleet router does NOT have this
 //   - GET /fleet/bots/:id/image-status — tRPC fleet router does NOT have this
 //   - POST /fleet/seed — tRPC fleet router does NOT have seed
-//   - Proxy registration side effects (getProxyManager().addRoute/updateHealth/removeRoute)
-//     are in REST handlers but NOT replicated in tRPC fleet router
+//   - Proxy registration side effects are now centralized in FleetManager (WOP-917)
 //
 // Keep REST fleet routes for:
 //   1. CLI/SDK consumers that use bearer token auth (not session cookies)
 //   2. The additional operations not yet in tRPC (update, remove, image-update, seed)
-//   3. Proxy side effects that need to be extracted to FleetManager first
 //
 // UI migration: once wopr-platform-ui switches from fleetFetch() to tRPC fleet.*,
 // REST fleet routes become SDK-only. The missing tRPC procedures (update, remove,
@@ -250,20 +248,6 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
       logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
     }
 
-    // Register proxy route for tenant subdomain routing
-    try {
-      const pm = getProxyManager();
-      await pm.addRoute({
-        instanceId: profile.id,
-        subdomain: profile.name.toLowerCase().replace(/_/g, "-"),
-        upstreamHost: `wopr-${profile.name.toLowerCase().replace(/_/g, "-")}`,
-        upstreamPort: 7437,
-        healthy: true,
-      });
-    } catch (proxyErr) {
-      logger.warn("Proxy route registration failed (non-fatal)", { botId: profile.id, err: proxyErr });
-    }
-
     return c.json(profile, 201);
   } catch (err) {
     logger.error("Failed to create bot", { err });
@@ -341,7 +325,6 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
 
   try {
     await fleet.remove(botId, c.req.query("removeVolumes") === "true");
-    getProxyManager().removeRoute(botId);
 
     // Capacity freed -- check if any waiting recovery tenants can now be placed
     Promise.resolve()
@@ -394,7 +377,6 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
 
   try {
     await fleet.start(botId);
-    getProxyManager().updateHealth(botId, true);
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -413,7 +395,6 @@ fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
 
   try {
     await fleet.stop(botId);
-    getProxyManager().updateHealth(botId, false);
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);

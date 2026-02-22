@@ -310,6 +310,92 @@ describe("FleetManager", () => {
     });
   });
 
+  describe("proxy integration", () => {
+    let proxyManager: {
+      addRoute: ReturnType<typeof vi.fn>;
+      removeRoute: ReturnType<typeof vi.fn>;
+      updateHealth: ReturnType<typeof vi.fn>;
+      getRoutes: ReturnType<typeof vi.fn>;
+      start: ReturnType<typeof vi.fn>;
+      stop: ReturnType<typeof vi.fn>;
+      reload: ReturnType<typeof vi.fn>;
+    };
+    let proxyFleet: FleetManager;
+
+    beforeEach(() => {
+      proxyManager = {
+        addRoute: vi.fn().mockResolvedValue(undefined),
+        removeRoute: vi.fn(),
+        updateHealth: vi.fn(),
+        getRoutes: vi.fn().mockReturnValue([]),
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        reload: vi.fn().mockResolvedValue(undefined),
+      };
+      proxyFleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined, // platformDiscovery
+        undefined, // networkPolicy
+        proxyManager as unknown as import("../proxy/types.js").ProxyManagerInterface,
+      );
+    });
+
+    it("calls addRoute on create with correct subdomain and upstream", async () => {
+      const profile = await proxyFleet.create(PROFILE_PARAMS);
+      expect(proxyManager.addRoute).toHaveBeenCalledWith({
+        instanceId: profile.id,
+        subdomain: "test-bot",
+        upstreamHost: "wopr-test-bot",
+        upstreamPort: 7437,
+        healthy: true,
+      });
+    });
+
+    it("still returns profile when addRoute fails (non-fatal)", async () => {
+      proxyManager.addRoute.mockRejectedValueOnce(new Error("DNS fail"));
+      const profile = await proxyFleet.create(PROFILE_PARAMS);
+      expect(profile.id).toBeDefined();
+      expect(profile.name).toBe("test-bot");
+    });
+
+    it("calls removeRoute on remove", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+      await proxyFleet.remove("bot-id");
+      expect(proxyManager.removeRoute).toHaveBeenCalledWith("bot-id");
+    });
+
+    it("calls updateHealth(true) on start", async () => {
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+      await proxyFleet.start("bot-id");
+      expect(proxyManager.updateHealth).toHaveBeenCalledWith("bot-id", true);
+    });
+
+    it("calls updateHealth(false) on stop", async () => {
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+      await proxyFleet.stop("bot-id");
+      expect(proxyManager.updateHealth).toHaveBeenCalledWith("bot-id", false);
+    });
+
+    it("does not call proxy methods when no proxyManager is provided", async () => {
+      // `fleet` from the outer beforeEach has no proxyManager
+      const profile = await fleet.create(PROFILE_PARAMS);
+      expect(proxyManager.addRoute).not.toHaveBeenCalled();
+      expect(profile.id).toBeDefined();
+    });
+
+    it("normalizes underscores to hyphens in subdomain", async () => {
+      await proxyFleet.create({ ...PROFILE_PARAMS, name: "my_cool_bot" });
+      expect(proxyManager.addRoute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subdomain: "my-cool-bot",
+          upstreamHost: "wopr-my-cool-bot",
+        }),
+      );
+    });
+  });
+
   describe("network isolation", () => {
     let netPolicy: ReturnType<typeof mockNetworkPolicy>;
     let isolatedFleet: FleetManager;
