@@ -141,6 +141,13 @@
       "when": 1771731189446,
       "tag": "0020_amused_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1771744576529,
+      "tag": "0021_cold_vance_astro",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ export * from "./bot-instances.js";
 export * from "./bot-profiles.js";
 export * from "./bulk-undo-grants.js";
 export * from "./credit-auto-topup.js";
+export * from "./credit-auto-topup-settings.js";
 export * from "./credits.js";
 export * from "./dividend-distributions.js";
 export * from "./email-notifications.js";

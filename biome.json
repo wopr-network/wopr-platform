@@ -94,6 +94,8 @@
         "src/admin/bulk/bulk-operations-repository.ts",
         "src/admin/notes/admin-notes-repository.ts",
         "src/admin/tenant-status/tenant-status-repository.ts",
+        "src/monetization/credits/auto-topup-settings-repository.ts",
+        "src/monetization/credits/auto-topup-event-log-repository.ts",
         "src/monetization/credits/credit-ledger.ts",
         "src/monetization/credits/dividend-repository.ts",
         "src/monetization/credits/bot-billing.ts",

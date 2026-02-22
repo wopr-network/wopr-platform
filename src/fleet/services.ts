@@ -28,6 +28,10 @@ import { DrizzleNotificationQueueStore } from "../email/notification-queue-store
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
 import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
+import type { IAutoTopupEventLogRepository } from "../monetization/credits/auto-topup-event-log-repository.js";
+import { DrizzleAutoTopupEventLogRepository } from "../monetization/credits/auto-topup-event-log-repository.js";
+import type { IAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
+import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import type { IBotBilling } from "../monetization/credits/bot-billing.js";
 import { DrizzleBotBilling } from "../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
@@ -507,6 +511,8 @@ let _budgetChecker: IBudgetChecker | null = null;
 let _tenantCustomerStore: ITenantCustomerStore | null = null;
 let _payramChargeStore: IPayRamChargeStore | null = null;
 let _dividendRepo: IDividendRepository | null = null;
+let _autoTopupSettingsRepo: IAutoTopupSettingsRepository | null = null;
+let _autoTopupEventLogRepo: IAutoTopupEventLogRepository | null = null;
 
 export function getCreditLedger(): ICreditLedger {
   if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
@@ -551,6 +557,16 @@ export function getPayRamChargeStore(): IPayRamChargeStore {
 export function getDividendRepo(): IDividendRepository {
   if (!_dividendRepo) _dividendRepo = new DrizzleDividendRepository(getDb());
   return _dividendRepo;
+}
+
+export function getAutoTopupSettingsRepo(): IAutoTopupSettingsRepository {
+  if (!_autoTopupSettingsRepo) _autoTopupSettingsRepo = new DrizzleAutoTopupSettingsRepository(getDb());
+  return _autoTopupSettingsRepo;
+}
+
+export function getAutoTopupEventLogRepo(): IAutoTopupEventLogRepository {
+  if (!_autoTopupEventLogRepo) _autoTopupEventLogRepo = new DrizzleAutoTopupEventLogRepository(getDb());
+  return _autoTopupEventLogRepo;
 }
 
 // ---------------------------------------------------------------------------

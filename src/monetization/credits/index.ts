@@ -1,3 +1,11 @@
+export type { AutoTopupChargeDeps, AutoTopupChargeResult } from "./auto-topup-charge.js";
+export { chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
+export type { ScheduleTopupDeps, ScheduleTopupResult } from "./auto-topup-schedule.js";
+export { runScheduledTopups } from "./auto-topup-schedule.js";
+export type { AutoTopupSettings, IAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
+export { AutoTopupSettingsRepository, DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
+export type { UsageTopupDeps } from "./auto-topup-usage.js";
+export { maybeTriggerUsageTopup } from "./auto-topup-usage.js";
 export type { BillingState, IBotBilling } from "./bot-billing.js";
 export { BotBilling, DrizzleBotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
 export type {
