@@ -90,6 +90,7 @@ function createFleetMock() {
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
     restart: vi.fn().mockResolvedValue(undefined),
+    remove: vi.fn().mockResolvedValue(undefined),
     logs: vi.fn().mockResolvedValue("2026-01-01T00:00:00Z log line 1\n"),
     profiles: {
       get: vi.fn().mockResolvedValue(mockProfile),
@@ -226,6 +227,13 @@ describe("fleet.controlInstance", () => {
     await expect(caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "start" })).rejects.toMatchObject({
       message: "Bot not found",
     });
+  });
+
+  it("calls fleet.remove after verifying ownership (destroy)", async () => {
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "destroy" });
+    expect(result).toEqual({ ok: true });
+    expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID);
   });
 });
 
