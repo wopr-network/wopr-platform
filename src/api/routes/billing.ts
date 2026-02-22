@@ -6,7 +6,8 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { AffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
+import type { IAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
+import { DrizzleAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
@@ -123,7 +124,7 @@ let creditLedger: CreditLedger | null = null;
 let meterAggregator: MeterAggregator | null = null;
 let usageReporter: StripeUsageReporter | null = null;
 let priceMap: CreditPriceMap | null = null;
-let affiliateRepo: AffiliateRepository | null = null;
+let affiliateRepo: IAffiliateRepository | null = null;
 
 /** Reject webhook events with timestamps older than 5 minutes (in seconds). */
 const WEBHOOK_TIMESTAMP_TOLERANCE = 300;
@@ -140,7 +141,7 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
   replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
-  affiliateRepo = new AffiliateRepository(d.db);
+  affiliateRepo = new DrizzleAffiliateRepository(d.db);
 
   // PayRam initialization (optional — only if env vars are set)
   const payramConfig = loadPayRamConfig();
@@ -153,7 +154,7 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   }
 }
 
-function getAffiliateRepo(): AffiliateRepository {
+function getAffiliateRepo(): IAffiliateRepository {
   if (!affiliateRepo) {
     throw new Error("Billing routes not initialized — call setBillingDeps() first");
   }
