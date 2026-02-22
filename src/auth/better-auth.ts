@@ -31,6 +31,23 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
     secret: BETTER_AUTH_SECRET,
     baseURL: BETTER_AUTH_URL,
     basePath: "/api/auth",
+    socialProviders: {
+      ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+        ? { github: { clientId: process.env.GITHUB_CLIENT_ID, clientSecret: process.env.GITHUB_CLIENT_SECRET } }
+        : {}),
+      ...(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET
+        ? { discord: { clientId: process.env.DISCORD_CLIENT_ID, clientSecret: process.env.DISCORD_CLIENT_SECRET } }
+        : {}),
+      ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+        ? { google: { clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET } }
+        : {}),
+    },
+    account: {
+      accountLinking: {
+        enabled: true,
+        trustedProviders: ["github", "google"],
+      },
+    },
     emailAndPassword: {
       enabled: true,
       sendResetPassword: async ({ user, url }) => {
@@ -54,6 +71,7 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
       user: {
         create: {
           after: async (user) => {
+            if (user.emailVerified) return;
             // Send verification email after signup
             try {
               const authDb = database as Database.Database;
