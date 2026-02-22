@@ -43,6 +43,7 @@ import {
   MetricsCollector,
 } from "./observability/index.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
+import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
 import { setNodesRouterDeps } from "./trpc/index.js";
 
@@ -61,7 +62,9 @@ export const unhandledRejectionHandler = (reason: unknown, promise: Promise<unkn
     stack: reason instanceof Error ? reason.stack : undefined,
     promise: String(promise),
   });
-  captureError(reason instanceof Error ? reason : new Error(String(reason)), { source: "unhandledRejection" });
+  captureError(reason instanceof Error ? reason : new Error(String(reason)), {
+    source: "unhandledRejection",
+  });
   // Don't exit — log and continue serving other tenants
 };
 
@@ -203,7 +206,8 @@ if (process.env.NODE_ENV !== "test") {
 
     // Wire hosted credential injection for plugin install route
     const vaultKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
-    const credentialVault = new CredentialVaultStore(billingDrizzle, vaultKey);
+    const credentialRepo = new DrizzleCredentialRepository(billingDrizzle);
+    const credentialVault = new CredentialVaultStore(credentialRepo, vaultKey);
     setBotPluginDeps({ credentialVault, meterEmitter: meter });
 
     mountGateway(app, {
@@ -219,7 +223,10 @@ if (process.env.NODE_ENV !== "test") {
         replicate: process.env.REPLICATE_API_TOKEN ? { apiToken: process.env.REPLICATE_API_TOKEN } : undefined,
         twilio:
           process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
-            ? { accountSid: process.env.TWILIO_ACCOUNT_SID, authToken: process.env.TWILIO_AUTH_TOKEN }
+            ? {
+                accountSid: process.env.TWILIO_ACCOUNT_SID,
+                authToken: process.env.TWILIO_AUTH_TOKEN,
+              }
             : undefined,
         telnyx: process.env.TELNYX_API_KEY ? { apiKey: process.env.TELNYX_API_KEY } : undefined,
       },

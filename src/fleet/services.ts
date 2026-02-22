@@ -1,4 +1,8 @@
 import Database from "better-sqlite3";
+import type { IDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
+import { DrizzleDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
+import type { IDeletionRepository } from "../account/deletion-repository.js";
+import { DrizzleDeletionRepository } from "../account/deletion-repository.js";
 import { AdminAuditLog } from "../admin/audit-log.js";
 import type { IBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
 import { DrizzleBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
@@ -28,6 +32,8 @@ import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js"
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
 import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
+import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
+import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import { DrizzleBotInstanceRepository } from "./bot-instance-repository.js";
@@ -447,4 +453,35 @@ export function getTenantCustomerStore(): ITenantCustomerStore {
 export function getPayRamChargeStore(): IPayRamChargeStore {
   if (!_payramChargeStore) _payramChargeStore = new DrizzlePayRamChargeStore(getDb());
   return _payramChargeStore;
+}
+
+// ---------------------------------------------------------------------------
+// Account / Security repository singletons (WOP-904)
+// ---------------------------------------------------------------------------
+
+let _deletionRepo: IDeletionRepository | null = null;
+let _deletionExecutorRepo: IDeletionExecutorRepository | null = null;
+let _credentialRepo: ICredentialRepository | null = null;
+
+export function getDeletionRepo(): IDeletionRepository {
+  if (!_deletionRepo) {
+    _deletionRepo = new DrizzleDeletionRepository(getDb());
+  }
+  return _deletionRepo;
+}
+
+export function getDeletionExecutorRepo(): IDeletionExecutorRepository {
+  if (!_deletionExecutorRepo) {
+    const db = getDb(); // ensures _sqlite is initialized
+    if (!_sqlite) throw new Error("SQLite connection not initialized");
+    _deletionExecutorRepo = new DrizzleDeletionExecutorRepository(db, _sqlite);
+  }
+  return _deletionExecutorRepo;
+}
+
+export function getCredentialRepo(): ICredentialRepository {
+  if (!_credentialRepo) {
+    _credentialRepo = new DrizzleCredentialRepository(getDb());
+  }
+  return _credentialRepo;
 }

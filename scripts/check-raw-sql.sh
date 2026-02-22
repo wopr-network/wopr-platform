@@ -30,6 +30,8 @@ APPROVED_PATTERNS=(
   "src/fleet/[^/]*-repository\.ts"
   "src/fleet/registration-token-store\.ts"
   "src/fleet/services\.ts"
+  "src/account/[^/]*-repository\.ts"
+  "src/security/credential-vault/credential-repository\.ts"
   "src/test/"
   "\.test\.ts"
 )
@@ -57,8 +59,6 @@ TEMP_EXCLUDED_PATTERNS=(
   "src/fleet/node-connection-manager\.ts"
   "src/fleet/recovery-manager\.ts"
   "src/fleet/migration-manager\.ts"
-  # WOP-901: account
-  "src/account/deletion-executor\.ts"
   # WOP-906: admin
   "src/admin/analytics/analytics-store\.ts"
   "src/admin/notes/notes-store\.ts"

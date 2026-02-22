@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { createTestDb } from "../../test/db.js";
 import { generateInstanceKey } from "../encryption.js";
+import { DrizzleCredentialRepository } from "./credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
 
 // ---------------------------------------------------------------------------
@@ -13,7 +14,8 @@ function setup() {
   const { db, sqlite } = createTestDb();
   const encryptionKey = generateInstanceKey();
   const auditLog = new AdminAuditLog(db);
-  const store = new CredentialVaultStore(db, encryptionKey, auditLog);
+  const repo = new DrizzleCredentialRepository(db);
+  const store = new CredentialVaultStore(repo, encryptionKey, auditLog);
   return { sqlite, store, encryptionKey, auditLog };
 }
 
@@ -426,7 +428,8 @@ describe("CredentialVaultStore", () => {
     it("works without an audit log instance", () => {
       const { db: db2, sqlite: sqlite2 } = createTestDb();
       const encryptionKey = generateInstanceKey();
-      const storeNoAudit = new CredentialVaultStore(db2, encryptionKey);
+      const repo2 = new DrizzleCredentialRepository(db2);
+      const storeNoAudit = new CredentialVaultStore(repo2, encryptionKey);
 
       const id = storeNoAudit.create({
         provider: "anthropic",
