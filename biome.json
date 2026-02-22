@@ -5,7 +5,9 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**/*.ts"]
+    "includes": [
+      "src/**/*.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -69,7 +71,9 @@
   },
   "overrides": [
     {
-      "includes": ["src/db/**/*.ts"],
+      "includes": [
+        "src/db/**/*.ts"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -101,7 +105,9 @@
         "src/account/deletion-repository.ts",
         "src/account/deletion-executor-repository.ts",
         "src/security/credential-vault/credential-repository.ts",
-        "src/backup/*-repository.ts"
+        "src/backup/*-repository.ts",
+        "src/audit/audit-log-repository.ts",
+        "src/admin/admin-audit-log-repository.ts"
       ],
       "linter": {
         "rules": {
@@ -128,9 +134,6 @@
       "includes": [
         "src/index.ts",
         "src/auth/better-auth.ts",
-        "src/audit/query.ts",
-        "src/audit/retention.ts",
-        "src/admin/audit-log.ts",
         "src/email/notification-queue-store.ts",
         "src/email/billing-emails.ts",
         "src/email/notification-preferences-store.ts",

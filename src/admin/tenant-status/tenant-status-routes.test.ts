@@ -10,6 +10,7 @@
 
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
@@ -128,7 +129,7 @@ describe("admin tenant status tRPC routes", () => {
     initSchemas(sqlite);
     db = createDb(sqlite);
     statusStore = new TenantStatusStore(db);
-    auditLog = new AdminAuditLog(db);
+    auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     creditStore = new CreditAdjustmentStore(sqlite);
     botBilling = new BotBilling(db);
 

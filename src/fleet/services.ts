@@ -3,6 +3,7 @@ import type { IDeletionExecutorRepository } from "../account/deletion-executor-r
 import { DrizzleDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
 import type { IDeletionRepository } from "../account/deletion-repository.js";
 import { DrizzleDeletionRepository } from "../account/deletion-repository.js";
+import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../admin/audit-log.js";
 import type { IBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
 import { DrizzleBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
@@ -430,7 +431,7 @@ export function getNodeProvisioner(): NodeProvisioner {
 
 export function getAdminAuditLog(): AdminAuditLog {
   if (!_adminAuditLog) {
-    _adminAuditLog = new AdminAuditLog(getDb());
+    _adminAuditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb()));
   }
   return _adminAuditLog;
 }

@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { createTestDb } from "../../test/db.js";
 import { generateInstanceKey } from "../encryption.js";
@@ -13,7 +14,7 @@ import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
 function setup() {
   const { db, sqlite } = createTestDb();
   const encryptionKey = generateInstanceKey();
-  const auditLog = new AdminAuditLog(db);
+  const auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   const repo = new DrizzleCredentialRepository(db);
   const store = new CredentialVaultStore(repo, encryptionKey, auditLog);
   return { sqlite, store, encryptionKey, auditLog };

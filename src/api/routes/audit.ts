@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { DrizzleAuditLogRepository, type IAuditLogRepository } from "../../audit/audit-log-repository.js";
 import { countAuditLog, queryAuditLog } from "../../audit/query.js";
 import { purgeExpiredEntriesForUser } from "../../audit/retention.js";
 import type { AuditEnv } from "../../audit/types.js";
@@ -10,27 +11,27 @@ import { applyPlatformPragmas } from "../../db/pragmas.js";
 
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
 
-/** Lazy-initialized audit database (avoids opening DB at module load time). */
-let _auditDb: DrizzleDb | null = null;
-function getAuditDb(): DrizzleDb {
-  if (!_auditDb) {
+/** Lazy-initialized audit repository (avoids opening DB at module load time). */
+let _auditRepo: IAuditLogRepository | null = null;
+function getAuditRepo(): IAuditLogRepository {
+  if (!_auditRepo) {
     const sqlite = new Database(AUDIT_DB_PATH);
     applyPlatformPragmas(sqlite);
-    _auditDb = createDb(sqlite);
+    _auditRepo = new DrizzleAuditLogRepository(createDb(sqlite));
   }
-  return _auditDb;
+  return _auditRepo;
 }
 
-/** Inject an audit database for testing. */
+/** Inject an audit repository for testing. */
 export function setAuditDb(db: DrizzleDb): void {
-  _auditDb = db;
+  _auditRepo = new DrizzleAuditLogRepository(db);
 }
 
-function handleUserAudit(c: Context<AuditEnv>, db: DrizzleDb) {
+function handleUserAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  purgeExpiredEntriesForUser(db, user.id);
+  purgeExpiredEntriesForUser(repo, user.id);
 
   const sinceRaw = c.req.query("since") ? Number(c.req.query("since")) : undefined;
   const untilRaw = c.req.query("until") ? Number(c.req.query("until")) : undefined;
@@ -49,15 +50,15 @@ function handleUserAudit(c: Context<AuditEnv>, db: DrizzleDb) {
   };
 
   try {
-    const entries = queryAuditLog(db, filters);
-    const total = countAuditLog(db, filters);
+    const entries = queryAuditLog(repo, filters);
+    const total = countAuditLog(repo, filters);
     return c.json({ entries, total });
   } catch {
     return c.json({ error: "Internal server error" }, 500);
   }
 }
 
-function handleAdminAudit(c: Context<AuditEnv>, db: DrizzleDb) {
+function handleAdminAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
   const user = c.get("user");
   if (!user?.isAdmin) return c.json({ error: "Forbidden" }, 403);
 
@@ -78,8 +79,8 @@ function handleAdminAudit(c: Context<AuditEnv>, db: DrizzleDb) {
   };
 
   try {
-    const entries = queryAuditLog(db, filters);
-    const total = countAuditLog(db, filters);
+    const entries = queryAuditLog(repo, filters);
+    const total = countAuditLog(repo, filters);
     return c.json({ entries, total });
   } catch {
     return c.json({ error: "Internal server error" }, 500);
@@ -92,8 +93,9 @@ function handleAdminAudit(c: Context<AuditEnv>, db: DrizzleDb) {
  * Expects `c.get("user")` to provide `{ id: string }`.
  */
 export function createAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
+  const repo = new DrizzleAuditLogRepository(db);
   const routes = new Hono<AuditEnv>();
-  routes.get("/", (c) => handleUserAudit(c, db));
+  routes.get("/", (c) => handleUserAudit(c, repo));
   return routes;
 }
 
@@ -103,8 +105,9 @@ export function createAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
  * Expects `c.get("user")` to provide `{ id: string, isAdmin: boolean }`.
  */
 export function createAdminAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
+  const repo = new DrizzleAuditLogRepository(db);
   const routes = new Hono<AuditEnv>();
-  routes.get("/", (c) => handleAdminAudit(c, db));
+  routes.get("/", (c) => handleAdminAudit(c, repo));
   return routes;
 }
 
@@ -114,8 +117,8 @@ export function createAdminAuditRoutes(db: DrizzleDb): Hono<AuditEnv> {
 // Blocker: need to add a user-scoped tRPC audit procedure (admin.auditLog is admin-only).
 /** Pre-built audit routes with lazy DB initialization. */
 export const auditRoutes = new Hono<AuditEnv>();
-auditRoutes.get("/", (c) => handleUserAudit(c, getAuditDb()));
+auditRoutes.get("/", (c) => handleUserAudit(c, getAuditRepo()));
 
 /** Pre-built admin audit routes with lazy DB initialization. */
 export const adminAuditRoutes = new Hono<AuditEnv>();
-adminAuditRoutes.get("/", (c) => handleAdminAudit(c, getAuditDb()));
+adminAuditRoutes.get("/", (c) => handleAdminAudit(c, getAuditRepo()));

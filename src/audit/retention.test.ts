@@ -1,18 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { createTestDb } from "../test/db.js";
+import { DrizzleAuditLogRepository, type IAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { queryAuditLog } from "./query.js";
 import { getRetentionDays, purgeExpiredEntries, purgeExpiredEntriesForUser } from "./retention.js";
 
 describe("audit retention", () => {
   let db: DrizzleDb;
+  let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
   beforeEach(() => {
     vi.useFakeTimers();
     ({ db } = createTestDb());
-    logger = new AuditLogger(db);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
@@ -37,22 +40,22 @@ describe("audit retention", () => {
 
       // Advance to day 31 — first entry is now >30 days old
       vi.setSystemTime(new Date("2026-02-01T00:00:00Z"));
-      const deleted = purgeExpiredEntries(db);
+      const deleted = purgeExpiredEntries(repo);
 
       expect(deleted).toBe(1);
-      const remaining = queryAuditLog(db, {});
+      const remaining = queryAuditLog(repo, {});
       expect(remaining).toHaveLength(1);
       expect(remaining[0].action).toBe("instance.stop");
     });
 
     it("returns 0 when no entries are expired", () => {
       logger.log({ userId: "u1", authMethod: "session", action: "auth.login", resourceType: "user" });
-      const deleted = purgeExpiredEntries(db);
+      const deleted = purgeExpiredEntries(repo);
       expect(deleted).toBe(0);
     });
 
     it("returns 0 for empty database", () => {
-      const deleted = purgeExpiredEntries(db);
+      const deleted = purgeExpiredEntries(repo);
       expect(deleted).toBe(0);
     });
   });
@@ -71,27 +74,27 @@ describe("audit retention", () => {
       // Advance past 30 days from the old entries
       vi.setSystemTime(new Date("2026-02-02T00:00:00Z"));
 
-      const deleted = purgeExpiredEntriesForUser(db, "u1");
+      const deleted = purgeExpiredEntriesForUser(repo, "u1");
       expect(deleted).toBe(1);
 
       // u2's old entry should still exist
-      const u2Entries = queryAuditLog(db, { userId: "u2" });
+      const u2Entries = queryAuditLog(repo, { userId: "u2" });
       expect(u2Entries).toHaveLength(1);
 
       // u1's recent entry should still exist
-      const u1Entries = queryAuditLog(db, { userId: "u1" });
+      const u1Entries = queryAuditLog(repo, { userId: "u1" });
       expect(u1Entries).toHaveLength(1);
       expect(u1Entries[0].action).toBe("instance.stop");
     });
 
     it("returns 0 when user has no expired entries", () => {
       logger.log({ userId: "u1", authMethod: "session", action: "auth.login", resourceType: "user" });
-      const deleted = purgeExpiredEntriesForUser(db, "u1");
+      const deleted = purgeExpiredEntriesForUser(repo, "u1");
       expect(deleted).toBe(0);
     });
 
     it("returns 0 for non-existent user", () => {
-      const deleted = purgeExpiredEntriesForUser(db, "nonexistent");
+      const deleted = purgeExpiredEntriesForUser(repo, "nonexistent");
       expect(deleted).toBe(0);
     });
   });

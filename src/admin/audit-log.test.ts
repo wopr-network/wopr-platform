@@ -1,6 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { createAdminAuditApiRoutes } from "../api/routes/admin-audit.js";
 import type { DrizzleDb } from "../db/index.js";
 import { adminAuditLog } from "../db/schema/index.js";
@@ -31,7 +32,7 @@ describe("AdminAuditLog.log", () => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    auditLogInstance = new AdminAuditLog(db);
+    auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 
   afterEach(() => {
@@ -86,7 +87,7 @@ describe("AdminAuditLog.query", () => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    auditLogInstance = new AdminAuditLog(db);
+    auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 
   afterEach(() => {
@@ -225,7 +226,7 @@ describe("AdminAuditLog.exportCsv", () => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    auditLogInstance = new AdminAuditLog(db);
+    auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 
   afterEach(() => {
@@ -294,7 +295,7 @@ describe("AdminAuditLog.exportCsv", () => {
 describe("entries are immutable", () => {
   it("entries are immutable - no update or delete API", () => {
     const t = createTestDb();
-    const auditLogInstance = new AdminAuditLog(t.db);
+    const auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(t.db));
     const row = auditLogInstance.log(makeEntry());
 
     // Verify the class has no update or delete methods
@@ -319,7 +320,7 @@ describe("admin audit API routes", () => {
     const t = createTestDb();
     db = t.db;
     sqlite = t.sqlite;
-    auditLogInstance = new AdminAuditLog(db);
+    auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 
   afterEach(() => {
