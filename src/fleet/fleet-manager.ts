@@ -5,6 +5,7 @@ import { buildDiscoveryEnv } from "../discovery/discovery-config.js";
 import type { PlatformDiscoveryConfig } from "../discovery/types.js";
 import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
 import type { NetworkPolicy } from "../network/network-policy.js";
+import type { ProxyManagerInterface } from "../proxy/types.js";
 import type { ProfileStore } from "./profile-store.js";
 import type { BotProfile, BotStatus, ContainerStats } from "./types.js";
 
@@ -16,17 +17,20 @@ export class FleetManager {
   private readonly store: ProfileStore;
   private readonly platformDiscovery: PlatformDiscoveryConfig | undefined;
   private readonly networkPolicy: NetworkPolicy | undefined;
+  private readonly proxyManager: ProxyManagerInterface | undefined;
 
   constructor(
     docker: Docker,
     store: ProfileStore,
     platformDiscovery?: PlatformDiscoveryConfig,
     networkPolicy?: NetworkPolicy,
+    proxyManager?: ProxyManagerInterface,
   ) {
     this.docker = docker;
     this.store = store;
     this.platformDiscovery = platformDiscovery;
     this.networkPolicy = networkPolicy;
+    this.proxyManager = proxyManager;
   }
 
   /**
@@ -50,6 +54,22 @@ export class FleetManager {
       throw err;
     }
 
+    // Register proxy route for tenant subdomain routing (non-fatal)
+    if (this.proxyManager) {
+      try {
+        const subdomain = profile.name.toLowerCase().replace(/_/g, "-");
+        await this.proxyManager.addRoute({
+          instanceId: profile.id,
+          subdomain,
+          upstreamHost: `wopr-${subdomain}`,
+          upstreamPort: 7437,
+          healthy: true,
+        });
+      } catch (err) {
+        logger.warn("Proxy route registration failed (non-fatal)", { botId: profile.id, err });
+      }
+    }
+
     return profile;
   }
 
@@ -60,6 +80,9 @@ export class FleetManager {
     const container = await this.findContainer(id);
     if (!container) throw new BotNotFoundError(id);
     await container.start();
+    if (this.proxyManager) {
+      this.proxyManager.updateHealth(id, true);
+    }
     logger.info(`Started bot ${id}`);
   }
 
@@ -70,6 +93,9 @@ export class FleetManager {
     const container = await this.findContainer(id);
     if (!container) throw new BotNotFoundError(id);
     await container.stop();
+    if (this.proxyManager) {
+      this.proxyManager.updateHealth(id, false);
+    }
     logger.info(`Stopped bot ${id}`);
   }
 
@@ -111,6 +137,9 @@ export class FleetManager {
     }
 
     await this.store.delete(id);
+    if (this.proxyManager) {
+      this.proxyManager.removeRoute(id);
+    }
     logger.info(`Removed bot ${id}`);
   }
 
