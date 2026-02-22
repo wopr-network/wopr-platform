@@ -19,6 +19,7 @@ import {
   getBotProfileRepo,
   getCommandBus,
   getConnectionRegistry,
+  getDividendRepo,
   getHeartbeatProcessor,
   getHeartbeatWatchdog,
   getNodeRegistrar,
@@ -322,9 +323,6 @@ if (process.env.NODE_ENV !== "test") {
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     const stripe = stripeKey ? new Stripe(stripeKey) : undefined;
     const usageReporter = new StripeUsageReporter(billingDrizzle2, stripe as never, tenantStore);
-    const { DrizzleDividendRepository } = await import("./monetization/credits/dividend-repository.js");
-    const dividendRepo = new DrizzleDividendRepository(billingDrizzle2);
-
     if (stripe) {
       setBillingRouterDeps({
         stripe: stripe as never,
@@ -333,7 +331,7 @@ if (process.env.NODE_ENV !== "test") {
         meterAggregator,
         usageReporter,
         priceMap: loadCreditPriceMap(),
-        dividendRepo,
+        dividendRepo: getDividendRepo(),
       });
       logger.info("tRPC billing router initialized");
     } else {

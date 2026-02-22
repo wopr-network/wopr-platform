@@ -2,23 +2,9 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditTransactions } from "../../db/schema/credits.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
+import type { DividendHistoryEntry, DividendStats } from "../repository-types.js";
 
-export interface DividendStats {
-  poolCents: number;
-  activeUsers: number;
-  perUserCents: number;
-  nextDistributionAt: string;
-  userEligible: boolean;
-  userLastPurchaseAt: string | null;
-  userWindowExpiresAt: string | null;
-}
-
-export interface DividendHistoryEntry {
-  date: string;
-  amountCents: number;
-  poolCents: number;
-  activeUsers: number;
-}
+export type { DividendHistoryEntry, DividendStats };
 
 export interface IDividendRepository {
   getStats(tenantId: string): DividendStats;
