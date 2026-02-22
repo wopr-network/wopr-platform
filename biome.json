@@ -115,6 +115,7 @@
         "src/admin/admin-audit-log-repository.ts",
         "src/api/drizzle-oauth-state-repository.ts",
         "src/api/drizzle-sig-penalty-repository.ts",
+        "src/auth/drizzle-session-repository.ts",
         "src/monetization/drizzle-webhook-seen-repository.ts"
       ],
       "linter": {
