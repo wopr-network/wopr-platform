@@ -6,11 +6,13 @@
  * budget-checks, proxies to upstream providers, meters usage, and responds.
  */
 
+import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import type { BudgetChecker, SpendLimits } from "../monetization/budget/budget-checker.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { CapabilityRateLimitConfig } from "./capability-rate-limit.js";
 import type { CircuitBreakerConfig } from "./circuit-breaker.js";
+import type { ICircuitBreakerRepository } from "./circuit-breaker-repository.js";
 import type { SpendingCapConfig, SpendingCaps } from "./spending-cap.js";
 
 /** Billing unit determines how a capability is metered. */
@@ -138,6 +140,10 @@ export interface GatewayConfig {
   metrics?: import("../observability/metrics.js").MetricsCollector;
   /** Repository for tracking per-IP webhook signature failure penalties. Required when Twilio webhook routes are enabled. */
   sigPenaltyRepo?: import("../api/sig-penalty-repository.js").ISigPenaltyRepository;
+  /** Repository for per-capability and per-route rate limit counters. Required when rate limiting is active. */
+  rateLimitRepo?: IRateLimitRepository;
+  /** Repository for circuit breaker state. Required when circuit breaker is active. */
+  circuitBreakerRepo?: ICircuitBreakerRepository;
 }
 
 /** Standard gateway error response. */

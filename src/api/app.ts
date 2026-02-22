@@ -1,4 +1,5 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
@@ -111,7 +112,21 @@ app.use(
   }),
 );
 app.use("/*", secureHeaders());
-app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
+// Rate limiting via DB-backed repo. Lazily initialized on first request to
+// avoid opening platform.db at module load time (tests import app.ts too).
+let _rateLimitMiddleware: MiddlewareHandler | null = null;
+app.use("*", async (c, next) => {
+  if (!_rateLimitMiddleware) {
+    try {
+      const { getRateLimitRepo } = await import("../fleet/services.js");
+      _rateLimitMiddleware = rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, getRateLimitRepo());
+    } catch {
+      // DB unavailable (e.g., test environment) — skip rate limiting for this request
+      return next();
+    }
+  }
+  return _rateLimitMiddleware(c, next);
+});
 
 // better-auth handler — serves /api/auth/* (signup, login, session, etc.)
 // Lazily initialized to avoid opening DB at import time.

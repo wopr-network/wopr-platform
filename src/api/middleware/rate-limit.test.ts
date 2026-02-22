@@ -1,5 +1,10 @@
+import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as schema from "../../db/schema/index.js";
+import { DrizzleRateLimitRepository } from "../drizzle-rate-limit-repository.js";
+import type { IRateLimitRepository } from "../rate-limit-repository.js";
 import {
   platformDefaultLimit,
   platformRateLimitRules,
@@ -13,10 +18,24 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function makeRateLimitRepo(): { repo: IRateLimitRepository; sqlite: BetterSqlite3.Database } {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limit_entries (
+      key TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      window_start INTEGER NOT NULL,
+      PRIMARY KEY (key, scope)
+    );
+  `);
+  return { repo: new DrizzleRateLimitRepository(drizzle(sqlite, { schema })), sqlite };
+}
+
 /** Build a Hono app with a single rate-limited GET /test route. */
-function buildApp(cfg: RateLimitConfig) {
+function buildApp(cfg: Omit<RateLimitConfig, "repo" | "scope">, repo: IRateLimitRepository) {
   const app = new Hono();
-  app.use("/test", rateLimit(cfg));
+  app.use("/test", rateLimit({ ...cfg, repo, scope: "test" }));
   app.get("/test", (c) => c.json({ ok: true }));
   return app;
 }
@@ -39,15 +58,22 @@ function postReq(path: string, ip = "127.0.0.1") {
 // ---------------------------------------------------------------------------
 
 describe("rateLimit", () => {
+  let repo: IRateLimitRepository;
+  let sqlite: BetterSqlite3.Database;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    const r = makeRateLimitRepo();
+    repo = r.repo;
+    sqlite = r.sqlite;
   });
   afterEach(() => {
     vi.useRealTimers();
+    sqlite.close();
   });
 
   it("allows requests within the limit", async () => {
-    const app = buildApp({ max: 3 });
+    const app = buildApp({ max: 3 }, repo);
 
     for (let i = 0; i < 3; i++) {
       const res = await app.request(req());
@@ -56,7 +82,7 @@ describe("rateLimit", () => {
   });
 
   it("returns 429 when limit is exceeded", async () => {
-    const app = buildApp({ max: 2 });
+    const app = buildApp({ max: 2 }, repo);
 
     await app.request(req());
     await app.request(req());
@@ -68,7 +94,7 @@ describe("rateLimit", () => {
   });
 
   it("sets X-RateLimit-* headers on every response", async () => {
-    const app = buildApp({ max: 5 });
+    const app = buildApp({ max: 5 }, repo);
     const res = await app.request(req());
 
     expect(res.headers.get("X-RateLimit-Limit")).toBe("5");
@@ -77,7 +103,7 @@ describe("rateLimit", () => {
   });
 
   it("sets Retry-After header on 429", async () => {
-    const app = buildApp({ max: 1 });
+    const app = buildApp({ max: 1 }, repo);
 
     await app.request(req());
     const res = await app.request(req());
@@ -89,7 +115,7 @@ describe("rateLimit", () => {
   });
 
   it("resets the window after windowMs elapses", async () => {
-    const app = buildApp({ max: 1, windowMs: 10_000 });
+    const app = buildApp({ max: 1, windowMs: 10_000 }, repo);
 
     const res1 = await app.request(req());
     expect(res1.status).toBe(200);
@@ -105,7 +131,7 @@ describe("rateLimit", () => {
   });
 
   it("tracks different IPs independently", async () => {
-    const app = buildApp({ max: 1 });
+    const app = buildApp({ max: 1 }, repo);
 
     const res1 = await app.request(req("/test", "10.0.0.1"));
     expect(res1.status).toBe(200);
@@ -119,7 +145,7 @@ describe("rateLimit", () => {
   });
 
   it("uses a custom message when provided", async () => {
-    const app = buildApp({ max: 1, message: "Slow down" });
+    const app = buildApp({ max: 1, message: "Slow down" }, repo);
 
     await app.request(req());
     const res = await app.request(req());
@@ -131,7 +157,10 @@ describe("rateLimit", () => {
 
   it("supports custom key generator", async () => {
     const app = new Hono();
-    app.use("/test", rateLimit({ max: 1, keyGenerator: (c) => c.req.header("x-api-key") ?? "anon" }));
+    app.use(
+      "/test",
+      rateLimit({ max: 1, repo, scope: "api-key", keyGenerator: (c) => c.req.header("x-api-key") ?? "anon" }),
+    );
     app.get("/test", (c) => c.json({ ok: true }));
 
     const r1 = new Request("http://localhost/test", { headers: { "x-api-key": "key-a" } });
@@ -149,17 +178,24 @@ describe("rateLimit", () => {
 // ---------------------------------------------------------------------------
 
 describe("rateLimitByRoute", () => {
+  let repo: IRateLimitRepository;
+  let sqlite: BetterSqlite3.Database;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    const r = makeRateLimitRepo();
+    repo = r.repo;
+    sqlite = r.sqlite;
   });
   afterEach(() => {
     vi.useRealTimers();
+    sqlite.close();
   });
 
   it("applies rule-specific limits based on path prefix", async () => {
-    const rules: RateLimitRule[] = [{ method: "POST", pathPrefix: "/strict", config: { max: 1 } }];
+    const rules: RateLimitRule[] = [{ method: "POST", pathPrefix: "/strict", config: { max: 1 }, scope: "strict" }];
     const app = new Hono();
-    app.use("*", rateLimitByRoute(rules, { max: 100 }));
+    app.use("*", rateLimitByRoute(rules, { max: 100 }, repo));
     app.post("/strict", (c) => c.json({ ok: true }));
     app.get("/lenient", (c) => c.json({ ok: true }));
 
@@ -167,14 +203,14 @@ describe("rateLimitByRoute", () => {
     expect((await app.request(postReq("/strict"))).status).toBe(200);
     expect((await app.request(postReq("/strict"))).status).toBe(429);
 
-    // Lenient route: still allowed (separate store)
+    // Lenient route: still allowed (separate scope)
     expect((await app.request(req("/lenient"))).status).toBe(200);
   });
 
   it("falls back to default config when no rule matches", async () => {
-    const rules: RateLimitRule[] = [{ method: "POST", pathPrefix: "/special", config: { max: 1 } }];
+    const rules: RateLimitRule[] = [{ method: "POST", pathPrefix: "/special", config: { max: 1 }, scope: "special" }];
     const app = new Hono();
-    app.use("*", rateLimitByRoute(rules, { max: 2 }));
+    app.use("*", rateLimitByRoute(rules, { max: 2 }, repo));
     app.get("/other", (c) => c.json({ ok: true }));
 
     expect((await app.request(req("/other"))).status).toBe(200);
@@ -184,17 +220,17 @@ describe("rateLimitByRoute", () => {
 
   it("matches method correctly (wildcard vs specific)", async () => {
     const rules: RateLimitRule[] = [
-      { method: "*", pathPrefix: "/any-method", config: { max: 1 } },
-      { method: "GET", pathPrefix: "/get-only", config: { max: 1 } },
+      { method: "*", pathPrefix: "/any-method", config: { max: 1 }, scope: "any-method" },
+      { method: "GET", pathPrefix: "/get-only", config: { max: 1 }, scope: "get-only" },
     ];
     const app = new Hono();
-    app.use("*", rateLimitByRoute(rules, { max: 100 }));
+    app.use("*", rateLimitByRoute(rules, { max: 100 }, repo));
     app.get("/any-method", (c) => c.json({ ok: true }));
     app.post("/any-method", (c) => c.json({ ok: true }));
     app.get("/get-only", (c) => c.json({ ok: true }));
     app.post("/get-only", (c) => c.json({ ok: true }));
 
-    // Wildcard matches both GET and POST
+    // Wildcard matches both GET and POST — shared scope means same counter
     expect((await app.request(req("/any-method"))).status).toBe(200);
     expect((await app.request(postReq("/any-method"))).status).toBe(429);
 
@@ -208,11 +244,11 @@ describe("rateLimitByRoute", () => {
 
   it("first matching rule wins", async () => {
     const rules: RateLimitRule[] = [
-      { method: "POST", pathPrefix: "/api/billing/checkout", config: { max: 2 } },
-      { method: "POST", pathPrefix: "/api/billing", config: { max: 100 } },
+      { method: "POST", pathPrefix: "/api/billing/checkout", config: { max: 2 }, scope: "billing:checkout" },
+      { method: "POST", pathPrefix: "/api/billing", config: { max: 100 }, scope: "billing" },
     ];
     const app = new Hono();
-    app.use("*", rateLimitByRoute(rules, { max: 100 }));
+    app.use("*", rateLimitByRoute(rules, { max: 100 }, repo));
     app.post("/api/billing/checkout", (c) => c.json({ ok: true }));
 
     expect((await app.request(postReq("/api/billing/checkout"))).status).toBe(200);
@@ -226,16 +262,23 @@ describe("rateLimitByRoute", () => {
 // ---------------------------------------------------------------------------
 
 describe("platform rate limit rules", () => {
+  let repo: IRateLimitRepository;
+  let sqlite: BetterSqlite3.Database;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    const r = makeRateLimitRepo();
+    repo = r.repo;
+    sqlite = r.sqlite;
   });
   afterEach(() => {
     vi.useRealTimers();
+    sqlite.close();
   });
 
   function buildPlatformApp() {
     const app = new Hono();
-    app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
+    app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
     // Register routes that match the platform layout
     app.post("/api/validate-key", (c) => c.json({ ok: true }));
     app.post("/api/billing/checkout", (c) => c.json({ ok: true }));
@@ -323,16 +366,23 @@ describe("platform rate limit rules", () => {
 // ---------------------------------------------------------------------------
 
 describe("auth endpoint rate limits (WOP-839)", () => {
+  let repo: IRateLimitRepository;
+  let sqlite: BetterSqlite3.Database;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    const r = makeRateLimitRepo();
+    repo = r.repo;
+    sqlite = r.sqlite;
   });
   afterEach(() => {
     vi.useRealTimers();
+    sqlite.close();
   });
 
   function buildPlatformApp() {
     const app = new Hono();
-    app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit));
+    app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
     // Auth routes
     app.post("/api/auth/sign-in/email", (c) => c.json({ ok: true }));
     app.post("/api/auth/sign-up/email", (c) => c.json({ ok: true }));

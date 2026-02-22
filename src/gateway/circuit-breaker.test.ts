@@ -2,20 +2,43 @@
  * Tests for per-instance circuit breaker middleware.
  */
 
+import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as schema from "../db/schema/index.js";
 import { circuitBreaker, getCircuitStates } from "./circuit-breaker.js";
+import type { ICircuitBreakerRepository } from "./circuit-breaker-repository.js";
+import { DrizzleCircuitBreakerRepository } from "./drizzle-circuit-breaker-repository.js";
 import type { GatewayTenant } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
+function makeCircuitBreakerRepo(): { repo: ICircuitBreakerRepository; sqlite: BetterSqlite3.Database } {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS circuit_breaker_states (
+      instance_id TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 0,
+      window_start INTEGER NOT NULL,
+      tripped_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_circuit_window ON circuit_breaker_states(window_start);
+  `);
+  return { repo: new DrizzleCircuitBreakerRepository(drizzle(sqlite, { schema })), sqlite };
+}
+
 function makeTenant(id: string, instanceId?: string): GatewayTenant {
   return { id, spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null }, instanceId };
 }
 
-function makeApp(config?: Parameters<typeof circuitBreaker>[0], instanceId?: string) {
+function makeApp(
+  config: Omit<Parameters<typeof circuitBreaker>[0], "repo">,
+  repo: ICircuitBreakerRepository,
+  instanceId?: string,
+) {
   const app = new Hono<{ Variables: { gatewayTenant: GatewayTenant } }>();
   app.use("/*", (c, next) => {
     const tenantId = c.req.header("x-tenant-id") ?? "tenant-a";
@@ -23,7 +46,7 @@ function makeApp(config?: Parameters<typeof circuitBreaker>[0], instanceId?: str
     c.set("gatewayTenant", makeTenant(tenantId, instId));
     return next();
   });
-  app.use("/*", circuitBreaker(config));
+  app.use("/*", circuitBreaker({ ...config, repo }));
   app.all("/*", (c) => c.json({ ok: true }, 200));
   return app;
 }
@@ -48,14 +71,30 @@ async function sendRequests(app: TestApp, count: number, tenantId = "tenant-a", 
 // ---------------------------------------------------------------------------
 
 describe("circuitBreaker", () => {
+  let repo: ICircuitBreakerRepository;
+  let sqlite: BetterSqlite3.Database;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
+    const r = makeCircuitBreakerRepo();
+    repo = r.repo;
+    sqlite = r.sqlite;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    sqlite.close();
+  });
+
   it("stays closed (allows requests) under threshold", async () => {
-    const app = makeApp({ maxRequestsPerWindow: 5, windowMs: 10_000 });
+    const app = makeApp({ maxRequestsPerWindow: 5, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     const results = await sendRequests(app, 4);
     expect(results.every((r) => r.status === 200)).toBe(true);
   });
 
   it("trips the circuit at threshold and returns 429", async () => {
-    const app = makeApp({ maxRequestsPerWindow: 3, windowMs: 10_000, pauseDurationMs: 300_000 });
+    const app = makeApp({ maxRequestsPerWindow: 3, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     const results = await sendRequests(app, 4);
     // First 3 allowed, 4th triggers trip
     expect(results[0].status).toBe(200);
@@ -65,7 +104,7 @@ describe("circuitBreaker", () => {
   });
 
   it("returns circuit_breaker_tripped error code when tripped", async () => {
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     await sendRequests(app, 2);
     const resp = await app.request("/chat/completions", {
       method: "POST",
@@ -77,7 +116,7 @@ describe("circuitBreaker", () => {
   });
 
   it("tripped circuit rejects all subsequent requests", async () => {
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     await sendRequests(app, 2); // reach threshold
 
     const results = await sendRequests(app, 3); // all should be 429
@@ -85,8 +124,7 @@ describe("circuitBreaker", () => {
   });
 
   it("circuit auto-resets after pauseDurationMs", async () => {
-    vi.useFakeTimers();
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     await sendRequests(app, 2);
     // Trip the circuit
     let resp = await app.request("/chat/completions", {
@@ -104,13 +142,11 @@ describe("circuitBreaker", () => {
       headers: { "x-tenant-id": "tenant-a", "x-instance-id": "inst-a" },
     });
     expect(resp.status).toBe(200);
-
-    vi.useRealTimers();
   });
 
   it("onTrip callback fires exactly once per trip", async () => {
     const onTrip = vi.fn();
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000, onTrip });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000, onTrip }, repo);
     await sendRequests(app, 2); // reach threshold
 
     // Trip + several more requests
@@ -121,7 +157,7 @@ describe("circuitBreaker", () => {
   });
 
   it("different instances have independent circuits", async () => {
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     // Trip instance A
     await sendRequests(app, 3, "tenant-a", "inst-a");
 
@@ -136,7 +172,7 @@ describe("circuitBreaker", () => {
   it("falls back to tenantId when instanceId is absent", async () => {
     const onTrip = vi.fn();
     // No instanceId header, no instanceId in tenant
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000, onTrip });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000, onTrip }, repo);
 
     for (let i = 0; i < 3; i++) {
       await app.request("/chat/completions", {
@@ -152,7 +188,7 @@ describe("circuitBreaker", () => {
   });
 
   it("includes Retry-After header in 429 response", async () => {
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     await sendRequests(app, 2);
     const resp = await app.request("/chat/completions", {
       method: "POST",
@@ -165,10 +201,10 @@ describe("circuitBreaker", () => {
   });
 
   it("getCircuitStates returns state after circuit trips", async () => {
-    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 });
+    const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     await sendRequests(app, 3, "tenant-states", "inst-states");
 
-    const states = getCircuitStates();
+    const states = getCircuitStates(repo);
     const entry = states.get("inst-states");
     expect(entry).toBeDefined();
     expect(entry?.trippedAt).not.toBeNull();

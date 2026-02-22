@@ -11,6 +11,8 @@ import type { IAdminNotesRepository } from "../admin/notes/admin-notes-repositor
 import { AdminNotesStore } from "../admin/notes/store.js";
 import type { ITenantStatusRepository } from "../admin/tenant-status/tenant-status-repository.js";
 import { TenantStatusStore } from "../admin/tenant-status/tenant-status-store.js";
+import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
+import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
 import { BackupStatusStore } from "../backup/backup-status-store.js";
 import { DrizzleRestoreLogRepository } from "../backup/restore-log-repository.js";
@@ -25,6 +27,8 @@ import type { INotificationPreferencesStore } from "../email/notification-prefer
 import { DrizzleNotificationPreferencesStore } from "../email/notification-preferences-store.js";
 import type { INotificationQueueStore } from "../email/notification-queue-store.js";
 import { DrizzleNotificationQueueStore } from "../email/notification-queue-store.js";
+import type { ICircuitBreakerRepository } from "../gateway/circuit-breaker-repository.js";
+import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-breaker-repository.js";
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
 import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
@@ -134,6 +138,12 @@ let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
 
 // Fleet event repository
 let _fleetEventRepo: IFleetEventRepository | null = null;
+
+// Rate limit repository
+let _rateLimitRepo: IRateLimitRepository | null = null;
+
+// Circuit breaker repository
+let _circuitBreakerRepo: ICircuitBreakerRepository | null = null;
 
 // Infrastructure
 let _doClient: DOClient | null = null;
@@ -401,6 +411,20 @@ export function getFleetEventRepo(): IFleetEventRepository {
     _fleetEventRepo = new DrizzleFleetEventRepository(getDb());
   }
   return _fleetEventRepo;
+}
+
+export function getRateLimitRepo(): IRateLimitRepository {
+  if (!_rateLimitRepo) {
+    _rateLimitRepo = new DrizzleRateLimitRepository(getDb());
+  }
+  return _rateLimitRepo;
+}
+
+export function getCircuitBreakerRepo(): ICircuitBreakerRepository {
+  if (!_circuitBreakerRepo) {
+    _circuitBreakerRepo = new DrizzleCircuitBreakerRepository(getDb());
+  }
+  return _circuitBreakerRepo;
 }
 
 // ---------------------------------------------------------------------------

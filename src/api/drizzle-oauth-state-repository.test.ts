@@ -41,7 +41,7 @@ describe("DrizzleOAuthStateRepository", () => {
 
     const consumed = repo.consumePending("test-uuid");
     expect(consumed).not.toBeNull();
-    expect(consumed!.provider).toBe("slack");
+    expect(consumed?.provider).toBe("slack");
 
     const again = repo.consumePending("test-uuid");
     expect(again).toBeNull();
@@ -61,7 +61,7 @@ describe("DrizzleOAuthStateRepository", () => {
 
     const result = repo.consumeCompleted("s1", "user-1");
     expect(result).not.toBeNull();
-    expect(result!.token).toBe("tok_abc");
+    expect(result?.token).toBe("tok_abc");
 
     const again = repo.consumeCompleted("s1", "user-1");
     expect(again).toBeNull();

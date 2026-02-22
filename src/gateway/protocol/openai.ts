@@ -13,7 +13,7 @@ import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
 import { capabilityRateLimit } from "../capability-rate-limit.js";
-import { circuitBreaker } from "../circuit-breaker.js";
+import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "../circuit-breaker.js";
 import { creditBalanceCheck, debitCredits } from "../credit-gate.js";
 import { resolveTokenRates } from "../rate-lookup.js";
 import type { GatewayAuthEnv } from "../service-key-auth.js";
@@ -114,11 +114,13 @@ export function createOpenAIRoutes(deps: ProtocolDeps): Hono<GatewayAuthEnv> {
   app.use("/*", openaiAuth(deps.resolveServiceKey));
 
   // Rate limiting for protocol routes (these bypass the main gateway rate limiters)
-  app.use("/*", capabilityRateLimit(deps.capabilityRateLimitConfig));
+  app.use("/*", capabilityRateLimit(deps.capabilityRateLimitConfig, deps.rateLimitRepo));
   app.use(
     "/*",
     circuitBreaker({
+      ...DEFAULT_CIRCUIT_BREAKER_CONFIG,
       ...deps.circuitBreakerConfig,
+      repo: deps.circuitBreakerRepo,
       onTrip: deps.onCircuitBreakerTrip,
     }),
   );

@@ -115,10 +115,12 @@
         "src/admin/admin-audit-log-repository.ts",
         "src/api/drizzle-oauth-state-repository.ts",
         "src/api/drizzle-sig-penalty-repository.ts",
+        "src/api/drizzle-rate-limit-repository.ts",
         "src/auth/drizzle-session-repository.ts",
         "src/monetization/drizzle-webhook-seen-repository.ts",
         "src/monetization/drizzle-provider-health-repository.ts",
         "src/fleet/drizzle-fleet-event-repository.ts",
+        "src/gateway/drizzle-circuit-breaker-repository.ts",
         "src/observability/drizzle-metrics-repository.ts"
       ],
       "linter": {

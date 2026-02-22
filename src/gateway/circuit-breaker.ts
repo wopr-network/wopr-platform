@@ -8,11 +8,11 @@
  * - The circuit auto-resets after pauseDurationMs.
  * - The onTrip callback fires once per trip (for notifications/logging).
  *
- * In-memory state is lost on server restart — acceptable for the current
- * single-server architecture.
+ * State is persisted via ICircuitBreakerRepository (DB-backed in production).
  */
 
 import type { Context, MiddlewareHandler, Next } from "hono";
+import type { ICircuitBreakerRepository } from "./circuit-breaker-repository.js";
 import type { GatewayTenant } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -26,30 +26,17 @@ export interface CircuitBreakerConfig {
   windowMs: number;
   /** How long to keep the circuit open (paused) in milliseconds. Default 300_000 (5 minutes). */
   pauseDurationMs: number;
+  /** Repository for persisting circuit state. Required when circuit breaker is active. */
+  repo?: ICircuitBreakerRepository;
   /** Optional callback when circuit trips — use for notifications/logging. */
   onTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
 }
 
-export const DEFAULT_CIRCUIT_BREAKER_CONFIG: CircuitBreakerConfig = {
+export const DEFAULT_CIRCUIT_BREAKER_CONFIG: Omit<CircuitBreakerConfig, "repo" | "onTrip"> = {
   maxRequestsPerWindow: 100,
   windowMs: 10_000,
   pauseDurationMs: 300_000,
 };
-
-interface CircuitState {
-  /** Request count in current window */
-  count: number;
-  /** Window start timestamp */
-  windowStart: number;
-  /** If tripped: timestamp when the circuit opened (null = closed/healthy) */
-  trippedAt: number | null;
-}
-
-// ---------------------------------------------------------------------------
-// Module-level registry for observability (last created middleware's store)
-// ---------------------------------------------------------------------------
-
-let _lastStore: Map<string, CircuitState> = new Map();
 
 // ---------------------------------------------------------------------------
 // Middleware factory
@@ -63,41 +50,27 @@ let _lastStore: Map<string, CircuitState> = new Map();
  * windowMs, the circuit trips and returns 429 until pauseDurationMs has
  * elapsed.
  */
-export function circuitBreaker(config?: Partial<CircuitBreakerConfig>): MiddlewareHandler {
-  const cfg: CircuitBreakerConfig = {
-    ...DEFAULT_CIRCUIT_BREAKER_CONFIG,
-    ...config,
-  };
-
-  // Each middleware instance gets its own isolated store
-  const store = new Map<string, CircuitState>();
-
-  // Register as the "current" store for observability
-  _lastStore = store;
+export function circuitBreaker(config: CircuitBreakerConfig): MiddlewareHandler {
+  const cfg = { ...DEFAULT_CIRCUIT_BREAKER_CONFIG, ...config };
 
   return async (c: Context, next: Next) => {
+    // No repo — circuit breaker disabled (e.g., test environments)
+    if (!cfg.repo) return next();
+
     const tenant = c.get("gatewayTenant") as GatewayTenant | undefined;
     const tenantId = tenant?.id ?? "unknown";
     // Fall back to tenantId when instanceId is absent
     const instanceId = tenant?.instanceId ?? tenantId;
 
     const now = Date.now();
-    let state = store.get(instanceId);
-
-    // Initialize fresh state for new instance
-    if (!state) {
-      state = { count: 0, windowStart: now, trippedAt: null };
-      store.set(instanceId, state);
-    }
+    const state = cfg.repo.get(instanceId);
 
     // Check if circuit is currently tripped
-    if (state.trippedAt !== null) {
+    if (state?.trippedAt !== null && state?.trippedAt !== undefined) {
       const elapsed = now - state.trippedAt;
       if (elapsed >= cfg.pauseDurationMs) {
         // Auto-reset: circuit closes, start fresh window
-        state.count = 0;
-        state.windowStart = now;
-        state.trippedAt = null;
+        cfg.repo.reset(instanceId);
       } else {
         // Still paused — reject request
         const remainingMs = cfg.pauseDurationMs - elapsed;
@@ -118,32 +91,17 @@ export function circuitBreaker(config?: Partial<CircuitBreakerConfig>): Middlewa
       }
     }
 
-    // Reset window if expired
-    if (now - state.windowStart >= cfg.windowMs) {
-      state.count = 0;
-      state.windowStart = now;
-    }
-
-    // Increment count
-    state.count++;
+    // Increment count (resets if window expired)
+    const updated = cfg.repo.incrementOrReset(instanceId, cfg.windowMs);
 
     // Check if we've exceeded the threshold → trip the circuit.
     // We allow exactly maxRequestsPerWindow requests per window;
     // the (maxRequestsPerWindow + 1)th request triggers the trip.
-    if (state.count > cfg.maxRequestsPerWindow) {
-      state.trippedAt = now;
+    if (updated.count > cfg.maxRequestsPerWindow) {
+      cfg.repo.trip(instanceId);
 
       // Fire onTrip callback exactly once per trip
-      cfg.onTrip?.(tenantId, instanceId, state.count);
-
-      // Prune stale entries if store is too large
-      if (store.size > 5000) {
-        for (const [k, v] of store) {
-          if (v.trippedAt === null && now - v.windowStart >= cfg.windowMs) {
-            store.delete(k);
-          }
-        }
-      }
+      cfg.onTrip?.(tenantId, instanceId, updated.count);
 
       const pausedUntilSec = Math.ceil((now + cfg.pauseDurationMs) / 1000);
       c.header("Retry-After", String(Math.ceil(cfg.pauseDurationMs / 1000)));
@@ -169,22 +127,21 @@ export function circuitBreaker(config?: Partial<CircuitBreakerConfig>): Middlewa
 // ---------------------------------------------------------------------------
 
 /**
- * Get the current state of all circuits (from the most recently created
- * circuitBreaker() middleware instance).
+ * Get the current state of all circuits from the repository.
  *
  * Returns a Map of instanceId -> { count, trippedAt, remainingPauseMs }.
  */
-export function getCircuitStates(): Map<string, { count: number; trippedAt: number | null; remainingPauseMs: number }> {
+export function getCircuitStates(
+  repo: ICircuitBreakerRepository,
+  pauseDurationMs = DEFAULT_CIRCUIT_BREAKER_CONFIG.pauseDurationMs,
+): Map<string, { count: number; trippedAt: number | null; remainingPauseMs: number }> {
   const now = Date.now();
   const result = new Map<string, { count: number; trippedAt: number | null; remainingPauseMs: number }>();
-  for (const [instanceId, state] of _lastStore) {
-    const remainingPauseMs =
-      state.trippedAt !== null
-        ? Math.max(0, DEFAULT_CIRCUIT_BREAKER_CONFIG.pauseDurationMs - (now - state.trippedAt))
-        : 0;
-    result.set(instanceId, {
-      count: state.count,
-      trippedAt: state.trippedAt,
+  for (const entry of repo.getAll()) {
+    const remainingPauseMs = entry.trippedAt !== null ? Math.max(0, pauseDurationMs - (now - entry.trippedAt)) : 0;
+    result.set(entry.instanceId, {
+      count: entry.count,
+      trippedAt: entry.trippedAt,
       remainingPauseMs,
     });
   }

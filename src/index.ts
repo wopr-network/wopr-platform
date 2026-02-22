@@ -17,6 +17,7 @@ import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
   getBotInstanceRepo,
   getBotProfileRepo,
+  getCircuitBreakerRepo,
   getCommandBus,
   getConnectionRegistry,
   getDividendRepo,
@@ -25,6 +26,7 @@ import {
   getHeartbeatWatchdog,
   getNodeRegistrar,
   getNodeRepo,
+  getRateLimitRepo,
   getRegistrationTokenStore,
   initFleet,
 } from "./fleet/services.js";
@@ -248,6 +250,8 @@ if (process.env.NODE_ENV !== "test") {
         windowMs: Number(process.env.GATEWAY_CIRCUIT_BREAKER_WINDOW_MS ?? 10_000),
         pauseDurationMs: Number(process.env.GATEWAY_CIRCUIT_BREAKER_PAUSE_MS ?? 300_000),
       },
+      rateLimitRepo: getRateLimitRepo(),
+      circuitBreakerRepo: getCircuitBreakerRepo(),
       onCircuitBreakerTrip: (tenantId, instanceId, requestCount) => {
         logger.warn("Circuit breaker tripped", { tenantId, instanceId, requestCount });
         meter.emit({

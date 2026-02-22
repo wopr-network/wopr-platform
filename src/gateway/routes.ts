@@ -11,7 +11,7 @@ import { rateLimit } from "../api/middleware/rate-limit.js";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { capabilityRateLimit } from "./capability-rate-limit.js";
-import { circuitBreaker } from "./circuit-breaker.js";
+import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "./circuit-breaker.js";
 import { modelsHandler } from "./models.js";
 import { createAnthropicRoutes } from "./protocol/anthropic.js";
 import type { ProtocolDeps } from "./protocol/deps.js";
@@ -65,6 +65,8 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
     capabilityRateLimitConfig: config.capabilityRateLimitConfig,
     circuitBreakerConfig: config.circuitBreakerConfig,
     onCircuitBreakerTrip: config.onCircuitBreakerTrip,
+    rateLimitRepo: config.rateLimitRepo,
+    circuitBreakerRepo: config.circuitBreakerRepo,
   };
 
   gateway.route("/anthropic", createAnthropicRoutes(protocolDeps));
@@ -109,13 +111,15 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   }
 
   // 2. Per-capability rate limiting (replaces flat tenantLimit)
-  gateway.use("/*", capabilityRateLimit(config.capabilityRateLimitConfig));
+  gateway.use("/*", capabilityRateLimit(config.capabilityRateLimitConfig, config.rateLimitRepo));
 
   // 3. Circuit breaker for runaway instances
   gateway.use(
     "/*",
     circuitBreaker({
+      ...DEFAULT_CIRCUIT_BREAKER_CONFIG,
       ...config.circuitBreakerConfig,
+      repo: config.circuitBreakerRepo,
       onTrip: config.onCircuitBreakerTrip,
     }),
   );
@@ -150,6 +154,8 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
       return tenant?.id ?? "unknown";
     },
     message: "SMS rate limit exceeded. Please slow down.",
+    repo: config.rateLimitRepo,
+    scope: "gateway:sms",
   });
 
   gateway.post("/messages/sms", smsRateLimit, smsOutbound(deps));
