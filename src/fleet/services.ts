@@ -535,6 +535,35 @@ export function getRestoreService(): RestoreService {
 export function initFleet(): void {
   // Eagerly initialize orphan cleaner so it's ready when heartbeats arrive
   getOrphanCleaner();
+
+  // Periodic cleanup: purge stale rate-limit rows every 5 minutes.
+  // Uses the longest platform rate-limit window (1 hour) as the TTL so that
+  // no active window is ever removed prematurely.
+  const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour — matches the longest window in platformRateLimitRules
+  setInterval(
+    () => {
+      try {
+        const removed = getRateLimitRepo().purgeStale(RATE_LIMIT_WINDOW_MS);
+        if (removed > 0) logger.debug("Purged stale rate-limit rows", { removed });
+      } catch (err) {
+        logger.warn("Rate-limit purge failed", { err });
+      }
+    },
+    5 * 60 * 1000,
+  ).unref();
+
+  // Periodic cleanup: purge stale circuit-breaker rows every minute.
+  // Only non-tripped entries older than 1 minute are removed; tripped circuits
+  // stay until they self-reset after pauseDurationMs.
+  const CIRCUIT_BREAKER_STALE_MS = 60 * 1000; // 1 minute
+  setInterval(() => {
+    try {
+      const removed = getCircuitBreakerRepo().purgeStale(CIRCUIT_BREAKER_STALE_MS);
+      if (removed > 0) logger.debug("Purged stale circuit-breaker rows", { removed });
+    } catch (err) {
+      logger.warn("Circuit-breaker purge failed", { err });
+    }
+  }, 60 * 1000).unref();
 }
 
 // ---------------------------------------------------------------------------
