@@ -5,6 +5,7 @@ import { RestoreService } from "../backup/restore-service.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
 import { applyPlatformPragmas, createDb, type DrizzleDb } from "../db/index.js";
+import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
 import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
 import type { IBotBilling } from "../monetization/credits/bot-billing.js";
@@ -42,6 +43,7 @@ import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
 import { DrizzleRecoveryRepository } from "./recovery-repository.js";
 import { RegistrationTokenStore } from "./registration-token-store.js";
+import { DrizzleSpendingCapStore } from "./spending-cap-repository.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
@@ -66,6 +68,7 @@ let _nodeRepo: INodeRepository | null = null;
 let _botInstanceRepo: IBotInstanceRepository | null = null;
 let _botProfileRepo: IBotProfileRepository | null = null;
 let _recoveryRepo: IRecoveryRepository | null = null;
+let _spendingCapStore: ISpendingCapStore | null = null;
 
 // WebSocket layer
 let _connectionRegistry: NodeConnectionRegistry | null = null;
@@ -161,6 +164,13 @@ export function getRecoveryRepo(): IRecoveryRepository {
     _recoveryRepo = new DrizzleRecoveryRepository(getDb());
   }
   return _recoveryRepo;
+}
+
+export function getSpendingCapStore(): ISpendingCapStore {
+  if (!_spendingCapStore) {
+    _spendingCapStore = new DrizzleSpendingCapStore(getDb());
+  }
+  return _spendingCapStore;
 }
 
 // ---------------------------------------------------------------------------

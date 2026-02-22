@@ -5,6 +5,7 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { meterEvents } from "../db/schema/meter-events.js";
+import { DrizzleSpendingCapStore } from "../fleet/spending-cap-repository.js";
 import { createTestDb } from "../test/db.js";
 import { type SpendingCaps, spendingCapCheck } from "./spending-cap.js";
 import type { GatewayTenant } from "./types.js";
@@ -27,12 +28,13 @@ function makeApp(
   caps?: SpendingCaps,
   config?: { cacheTtlMs?: number },
 ) {
+  const store = new DrizzleSpendingCapStore(db);
   const app = new Hono<{ Variables: { gatewayTenant: GatewayTenant } }>();
   app.use("/*", (c, next) => {
     c.set("gatewayTenant", makeTenant(tenantId, caps));
     return next();
   });
-  app.use("/*", spendingCapCheck(db, config));
+  app.use("/*", spendingCapCheck(store, config));
   app.all("/*", (c) => c.json({ ok: true }, 200));
   return app;
 }

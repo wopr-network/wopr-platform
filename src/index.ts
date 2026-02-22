@@ -26,6 +26,7 @@ import {
   getRegistrationTokenStore,
   initFleet,
 } from "./fleet/services.js";
+import { DrizzleSpendingCapStore } from "./fleet/spending-cap-repository.js";
 import { mountGateway } from "./gateway/index.js";
 import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
@@ -209,7 +210,7 @@ if (process.env.NODE_ENV !== "test") {
       meter,
       budgetChecker,
       creditLedger,
-      billingDb: billingDrizzle,
+      spendingCapStore: new DrizzleSpendingCapStore(billingDrizzle),
       metrics,
       providers: {
         openrouter: process.env.OPENROUTER_API_KEY ? { apiKey: process.env.OPENROUTER_API_KEY } : undefined,
