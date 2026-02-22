@@ -1,5 +1,6 @@
 // src/api/routes/activity.ts
 import { Hono } from "hono";
+import { DrizzleAuditLogRepository } from "../../audit/audit-log-repository.js";
 import { queryAuditLog } from "../../audit/query.js";
 import type { AuditEnv } from "../../audit/types.js";
 import type { DrizzleDb } from "../../db/index.js";
@@ -37,7 +38,7 @@ activityRoutes.get("/", (c) => {
   const limit = Math.min(Math.max(1, limitRaw ? Number.parseInt(limitRaw, 10) : 20), 100);
 
   const db = resolveDb();
-  const rows = queryAuditLog(db, { userId: user.id, limit });
+  const rows = queryAuditLog(new DrizzleAuditLogRepository(db), { userId: user.id, limit });
 
   const events = rows.map((row) => ({
     id: row.id,
