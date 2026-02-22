@@ -549,9 +549,6 @@ fleetRoutes.get("/bots/:id/image-status", readAuth, async (c) => {
   }
 });
 
-/** In-memory set of bot names that have been seeded (placeholder until fleet manager provides real storage) */
-const seededBots = new Set<string>();
-
 export interface SeedResult {
   created: string[];
   skipped: string[];
@@ -578,7 +575,7 @@ export function seedBots(templates: ProfileTemplate[], existingNames: Set<string
   return { created, skipped };
 }
 
-fleetRoutes.post("/seed", writeAuth, (c) => {
+fleetRoutes.post("/seed", writeAuth, async (c) => {
   const templatesDir = defaultTemplatesDir();
 
   let templates: ProfileTemplate[];
@@ -593,7 +590,9 @@ fleetRoutes.post("/seed", writeAuth, (c) => {
     return c.json({ error: "No templates found" }, 404);
   }
 
-  const result = seedBots(templates, seededBots);
+  const profiles = await fleet.profiles.list();
+  const existingNames = new Set(profiles.map((p) => p.name));
+  const result = seedBots(templates, existingNames);
   return c.json(result, 200);
 });
 
