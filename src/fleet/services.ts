@@ -265,7 +265,12 @@ export function getNodeRegistrar(): NodeRegistrar {
   if (!_nodeRegistrar) {
     _nodeRegistrar = new NodeRegistrar(getNodeRepo(), getRecoveryRepo(), {
       onReturning: (_nodeId: string) => {
-        // OrphanCleaner runs on first heartbeat from a returning node (index.ts)
+        // Intentional no-op. Container cleanup for returning nodes is handled by
+        // OrphanCleaner on first heartbeat (wired via NodeConnectionManager in
+        // initFleet). Waiting-tenant placement is handled separately by the
+        // onRetryWaiting callback below, which fires for ALL registrations
+        // (active or returning) whenever open recovery events have waiting items.
+        // See WOP-912 for the investigation confirming this path is correct.
       },
       onRetryWaiting: (eventId: string) => {
         getRecoveryOrchestrator()
