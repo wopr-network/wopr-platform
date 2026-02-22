@@ -51,6 +51,7 @@ export {
 export { createGatewayRoutes } from "./routes.js";
 export { type GatewayAuthEnv, serviceKeyAuth } from "./service-key-auth.js";
 export { type SpendingCapConfig, type SpendingCaps, spendingCapCheck } from "./spending-cap.js";
+export type { ISpendingCapStore, SpendingCapRecord } from "./spending-cap-store.js";
 export { proxySSEStream } from "./streaming.js";
 export { validateTwilioSignature } from "./twilio-signature.js";
 export type {

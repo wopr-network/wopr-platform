@@ -130,8 +130,8 @@ export interface GatewayConfig {
   circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
   /** Spending cap enforcement config. */
   spendingCapConfig?: Partial<SpendingCapConfig>;
-  /** Database handle for spending cap queries. */
-  billingDb?: import("../db/index.js").DrizzleDb;
+  /** Spending cap store for querying tenant spend. */
+  spendingCapStore?: import("./spending-cap-store.js").ISpendingCapStore;
   /** Callback when circuit breaker trips (for notifications/logging). */
   onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
   /** Optional MetricsCollector for observability (WOP-825) */

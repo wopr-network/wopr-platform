@@ -2,7 +2,7 @@
  * Spending cap enforcement middleware for the API gateway.
  *
  * Before every capability request, queries the tenant's accumulated
- * daily and monthly spend from meter_events + usage_summaries and compares
+ * daily and monthly spend via ISpendingCapStore and compares
  * against their configured caps. Rejects with 402 if over cap.
  *
  * Spending caps are user-configured hard stops, distinct from plan-level
@@ -13,11 +13,9 @@
  * single-server architecture.
  */
 
-import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { Context, MiddlewareHandler, Next } from "hono";
 import { LRUCache } from "lru-cache";
-import type { DrizzleDb } from "../db/index.js";
-import { meterEvents, usageSummaries } from "../db/schema/meter-events.js";
+import type { ISpendingCapStore, SpendingCapRecord } from "./spending-cap-store.js";
 import type { GatewayTenant } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -43,88 +41,6 @@ const DEFAULT_CONFIG: SpendingCapConfig = {
   cacheMaxSize: 1000,
 };
 
-interface CachedSpend {
-  dailySpend: number;
-  monthlySpend: number;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Get the start of the current UTC day in milliseconds. */
-function getDayStart(now: number): number {
-  const d = new Date(now);
-  d.setUTCHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
-/** Get the start of the current calendar month in milliseconds (local time, matching BudgetChecker). */
-function getMonthStart(now: number): number {
-  const d = new Date(now);
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0).getTime();
-}
-
-/** Query current daily and monthly spend for a tenant. */
-function querySpend(db: DrizzleDb, tenant: string, now: number): CachedSpend {
-  const dayStart = getDayStart(now);
-  const monthStart = getMonthStart(now);
-
-  // Daily spend from meter_events
-  const dailyEvents = db
-    .select({
-      total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
-    })
-    .from(meterEvents)
-    .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, dayStart)))
-    .get();
-
-  // Daily spend from usage_summaries (may overlap — conservative to sum both)
-  const dailySummaries = db
-    .select({
-      total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-    })
-    .from(usageSummaries)
-    .where(
-      and(
-        eq(usageSummaries.tenant, tenant),
-        gte(usageSummaries.windowEnd, dayStart),
-        lte(usageSummaries.windowStart, now),
-      ),
-    )
-    .get();
-
-  const dailySpend = (dailyEvents?.total ?? 0) + (dailySummaries?.total ?? 0);
-
-  // Monthly spend from meter_events
-  const monthlyEvents = db
-    .select({
-      total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
-    })
-    .from(meterEvents)
-    .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)))
-    .get();
-
-  // Monthly spend from usage_summaries
-  const monthlySummaries = db
-    .select({
-      total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-    })
-    .from(usageSummaries)
-    .where(
-      and(
-        eq(usageSummaries.tenant, tenant),
-        gte(usageSummaries.windowEnd, monthStart),
-        lte(usageSummaries.windowStart, now),
-      ),
-    )
-    .get();
-
-  const monthlySpend = (monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0);
-
-  return { dailySpend, monthlySpend };
-}
-
 // ---------------------------------------------------------------------------
 // Middleware factory
 // ---------------------------------------------------------------------------
@@ -136,13 +52,13 @@ function querySpend(db: DrizzleDb, tenant: string, now: number): CachedSpend {
  * caps (from GatewayTenant.spendingCaps). Rejects with 402 if over cap.
  * Uses LRU cache with short TTL to avoid DB queries on every request.
  */
-export function spendingCapCheck(db: DrizzleDb, config?: Partial<SpendingCapConfig>): MiddlewareHandler {
+export function spendingCapCheck(store: ISpendingCapStore, config?: Partial<SpendingCapConfig>): MiddlewareHandler {
   const cfg: SpendingCapConfig = {
     ...DEFAULT_CONFIG,
     ...config,
   };
 
-  const cache = new LRUCache<string, CachedSpend>({
+  const cache = new LRUCache<string, SpendingCapRecord>({
     max: cfg.cacheMaxSize,
     ttl: cfg.cacheTtlMs,
   });
@@ -162,7 +78,7 @@ export function spendingCapCheck(db: DrizzleDb, config?: Partial<SpendingCapConf
     let spend = cache.get(tenant.id);
 
     if (!spend) {
-      spend = querySpend(db, tenant.id, now);
+      spend = store.querySpend(tenant.id, now);
       cache.set(tenant.id, spend);
     }
 

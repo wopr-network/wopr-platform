@@ -98,8 +98,8 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   gateway.use("/*", serviceKeyAuth(config.resolveServiceKey));
 
   // 1. Spending cap enforcement — reject if over daily/monthly cap before consuming rate limit tokens
-  if (config.billingDb) {
-    gateway.use("/*", spendingCapCheck(config.billingDb, config.spendingCapConfig));
+  if (config.spendingCapStore) {
+    gateway.use("/*", spendingCapCheck(config.spendingCapStore, config.spendingCapConfig));
   }
 
   // 2. Per-capability rate limiting (replaces flat tenantLimit)
