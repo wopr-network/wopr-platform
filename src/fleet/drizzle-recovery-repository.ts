@@ -117,6 +117,12 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
       .map(toEvent);
   }
 
+  listEvents(limit: number, status?: RecoveryEvent["status"]): RecoveryEvent[] {
+    const query = this.db.select().from(recoveryEvents);
+    const rows = status ? query.where(eq(recoveryEvents.status, status)).limit(limit).all() : query.limit(limit).all();
+    return rows.map(toEvent);
+  }
+
   getWaitingItems(eventId: string): RecoveryItem[] {
     return this.db
       .select()

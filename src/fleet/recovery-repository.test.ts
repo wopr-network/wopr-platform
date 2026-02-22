@@ -235,6 +235,52 @@ describe("DrizzleRecoveryRepository", () => {
     });
   });
 
+  describe("listEvents", () => {
+    it("returns all events regardless of status", () => {
+      repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
+      repo.createEvent({ id: "evt-2", nodeId: "node-2", trigger: "heartbeat_timeout", tenantsTotal: 2 });
+      repo.updateEvent("evt-2", { status: "completed", completedAt: Math.floor(Date.now() / 1000) });
+      const all = repo.listEvents(50);
+      expect(all).toHaveLength(2);
+      const ids = all.map((e) => e.id).sort();
+      expect(ids).toEqual(["evt-1", "evt-2"]);
+    });
+
+    it("returns completed events that listOpenEvents hides", () => {
+      repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
+      repo.updateEvent("evt-1", { status: "completed", completedAt: Math.floor(Date.now() / 1000) });
+      const open = repo.listOpenEvents();
+      expect(open).toHaveLength(0);
+      const all = repo.listEvents(50);
+      expect(all).toHaveLength(1);
+      expect(all[0].status).toBe("completed");
+    });
+
+    it("respects the limit", () => {
+      repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
+      repo.createEvent({ id: "evt-2", nodeId: "node-2", trigger: "manual", tenantsTotal: 1 });
+      repo.createEvent({ id: "evt-3", nodeId: "node-3", trigger: "manual", tenantsTotal: 1 });
+      const limited = repo.listEvents(2);
+      expect(limited).toHaveLength(2);
+    });
+
+    it("filters by status when provided", () => {
+      repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 1 });
+      repo.createEvent({ id: "evt-2", nodeId: "node-2", trigger: "manual", tenantsTotal: 1 });
+      repo.updateEvent("evt-2", { status: "completed", completedAt: Math.floor(Date.now() / 1000) });
+      const completed = repo.listEvents(50, "completed");
+      expect(completed).toHaveLength(1);
+      expect(completed[0].id).toBe("evt-2");
+      const inProgress = repo.listEvents(50, "in_progress");
+      expect(inProgress).toHaveLength(1);
+      expect(inProgress[0].id).toBe("evt-1");
+    });
+
+    it("returns empty array when no events exist", () => {
+      expect(repo.listEvents(50)).toEqual([]);
+    });
+  });
+
   describe("getWaitingItems", () => {
     it("returns only items with waiting status for given event", () => {
       repo.createEvent({ id: "evt-1", nodeId: "node-1", trigger: "manual", tenantsTotal: 3 });
