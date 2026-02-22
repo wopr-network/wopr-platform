@@ -31,7 +31,13 @@ export { initCreditAdjustmentSchema } from "./credits/schema.js";
 export type { IAdminNotesRepository } from "./notes/admin-notes-repository.js";
 export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
 export { AdminNotesStore } from "./notes/index.js";
-export type { NotificationEmailType, NotificationInput, NotificationRow } from "./notifications/index.js";
+export { initAdminNotesSchema } from "./notes/schema.js";
+export type {
+  IAdminNotificationQueueStore,
+  NotificationEmailType,
+  NotificationInput,
+  NotificationRow,
+} from "./notifications/index.js";
 export { NotificationQueueStore } from "./notifications/index.js";
 export type {
   ProviderCost,

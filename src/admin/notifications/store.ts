@@ -2,44 +2,33 @@ import crypto from "node:crypto";
 import { and, count, eq, isNull, lte, or } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { notificationQueue } from "../../db/schema/index.js";
+import type { NotificationInput, NotificationRow } from "../../email/notification-repository-types.js";
 
-export type NotificationEmailType =
-  | "low_balance"
-  | "grace_entered"
-  | "suspended"
-  | "receipt"
-  | "welcome"
-  | "reactivated";
+// Re-export domain types for backward compat
+export type {
+  NotificationEmailType,
+  NotificationInput,
+  NotificationRow,
+} from "../../email/notification-repository-types.js";
 
-export interface NotificationInput {
-  tenantId: string;
-  emailType: NotificationEmailType;
-  recipientEmail: string;
-  payload?: Record<string, unknown>;
-  maxAttempts?: number;
+// ---------------------------------------------------------------------------
+// Interface
+// ---------------------------------------------------------------------------
+
+/** Repository interface for the admin notification queue. */
+export interface IAdminNotificationQueueStore {
+  enqueue(input: NotificationInput): NotificationRow;
+  getPending(limit?: number): NotificationRow[];
+  markSent(id: string): void;
+  markFailed(id: string, error: string): void;
+  countByStatus(): Record<string, number>;
 }
 
-export interface NotificationRow {
-  id: string;
-  tenantId: string;
-  emailType: string;
-  recipientEmail: string;
-  payload: string;
-  status: string;
-  attempts: number;
-  maxAttempts: number;
-  /** Unix epoch ms of last attempt */
-  lastAttemptAt: number | null;
-  lastError: string | null;
-  /** Unix epoch ms for next retry. Null = immediately eligible. */
-  retryAfter: number | null;
-  /** Unix epoch ms */
-  createdAt: number;
-  /** Unix epoch ms */
-  sentAt: number | null;
-}
+// ---------------------------------------------------------------------------
+// Drizzle Implementation
+// ---------------------------------------------------------------------------
 
-export class NotificationQueueStore {
+export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQueueStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Enqueue a notification. */
@@ -140,3 +129,6 @@ export class NotificationQueueStore {
     return result;
   }
 }
+
+/** @deprecated Use DrizzleAdminNotificationQueueStore directly. */
+export { DrizzleAdminNotificationQueueStore as NotificationQueueStore };

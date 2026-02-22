@@ -1,18 +1,26 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationPreferences } from "../db/schema/notification-preferences.js";
+import type { NotificationPrefs } from "./notification-repository-types.js";
+
+// Re-export domain type for backward compat
+export type { NotificationPrefs } from "./notification-repository-types.js";
 
 type NotificationPrefsRow = typeof notificationPreferences.$inferInsert;
 
-export interface NotificationPrefs {
-  billing_low_balance: boolean;
-  billing_receipts: boolean;
-  billing_auto_topup: boolean;
-  agent_channel_disconnect: boolean;
-  agent_status_changes: boolean;
-  account_role_changes: boolean;
-  account_team_invites: boolean;
+// ---------------------------------------------------------------------------
+// Interface
+// ---------------------------------------------------------------------------
+
+/** Repository interface for notification preferences. */
+export interface INotificationPreferencesStore {
+  get(tenantId: string): NotificationPrefs;
+  update(tenantId: string, prefs: Partial<NotificationPrefs>): void;
 }
+
+// ---------------------------------------------------------------------------
+// Drizzle Implementation
+// ---------------------------------------------------------------------------
 
 const DEFAULTS: NotificationPrefs = {
   billing_low_balance: true,
@@ -24,7 +32,7 @@ const DEFAULTS: NotificationPrefs = {
   account_team_invites: true,
 };
 
-export class NotificationPreferencesStore {
+export class DrizzleNotificationPreferencesStore implements INotificationPreferencesStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get preferences for a tenant. Returns defaults if no row exists. */
@@ -89,3 +97,6 @@ export class NotificationPreferencesStore {
     }
   }
 }
+
+/** @deprecated Use DrizzleNotificationPreferencesStore directly. */
+export { DrizzleNotificationPreferencesStore as NotificationPreferencesStore };

@@ -13,10 +13,11 @@ export type { BillingEmailServiceConfig, BillingEmailType } from "./billing-emai
 export { BillingEmailService } from "./billing-emails.js";
 export type { EmailClientConfig, EmailSendResult, SendTemplateEmailOpts } from "./client.js";
 export { EmailClient, getEmailClient, resetEmailClient, setEmailClient } from "./client.js";
-export type { NotificationPrefs } from "./notification-preferences-store.js";
+export type { INotificationPreferencesStore } from "./notification-preferences-store.js";
 export { NotificationPreferencesStore } from "./notification-preferences-store.js";
-export type { NotificationStatus, QueuedNotification } from "./notification-queue-store.js";
+export type { INotificationQueueStore } from "./notification-queue-store.js";
 export { NotificationQueueStore } from "./notification-queue-store.js";
+export type { NotificationPrefs, NotificationStatus, QueuedNotification } from "./notification-repository-types.js";
 export { NotificationService } from "./notification-service.js";
 export type { TemplateName as NotificationTemplateName } from "./notification-templates.js";
 export { renderNotificationTemplate } from "./notification-templates.js";

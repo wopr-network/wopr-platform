@@ -15,7 +15,7 @@ import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { ITenantStatusRepository } from "../../admin/tenant-status/tenant-status-repository.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
-import type { NotificationQueueStore } from "../../email/notification-queue-store.js";
+import type { INotificationQueueStore } from "../../email/notification-queue-store.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
@@ -40,7 +40,7 @@ export interface AdminRouterDeps {
   getRestoreService?: () => import("../../backup/restore-service.js").RestoreService;
   getRestoreLogStore?: () => import("../../backup/restore-log-store.js").RestoreLogStore;
   getNotificationService?: () => NotificationService;
-  getNotificationQueueStore?: () => NotificationQueueStore;
+  getNotificationQueueStore?: () => INotificationQueueStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
