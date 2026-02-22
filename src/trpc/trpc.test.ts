@@ -4,8 +4,8 @@ import { CreditAdjustmentStore } from "../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
+import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
-import { SpendingLimitsRepository } from "../monetization/spending-limits-repository.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
 import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { createTestDb } from "../test/db.js";
@@ -187,7 +187,7 @@ describe("tRPC appRouter", () => {
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
-      const spendingLimitsRepo = new SpendingLimitsRepository(db);
+      const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {
@@ -567,7 +567,7 @@ describe("tRPC appRouter", () => {
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
-      const spendingLimitsRepo1 = new SpendingLimitsRepository(db);
+      const spendingLimitsRepo1 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {
@@ -640,7 +640,7 @@ describe("tRPC appRouter", () => {
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
-      const spendingLimitsRepo2 = new SpendingLimitsRepository(db);
+      const spendingLimitsRepo2 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {
@@ -684,7 +684,7 @@ describe("tRPC appRouter", () => {
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
-      const spendingLimitsRepo3 = new SpendingLimitsRepository(db);
+      const spendingLimitsRepo3 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {

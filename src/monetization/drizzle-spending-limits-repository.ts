@@ -63,6 +63,3 @@ export class DrizzleSpendingLimitsRepository implements ISpendingLimitsRepositor
       .run();
   }
 }
-
-// Backward-compat alias.
-export { DrizzleSpendingLimitsRepository as SpendingLimitsRepository };

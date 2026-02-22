@@ -8,8 +8,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
+import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import type { ISpendingLimitsRepository } from "../../monetization/spending-limits-repository.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import type { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
@@ -605,11 +605,31 @@ export const billingRouter = router({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
-      const { stripe, tenantStore } = deps();
+      const { stripe, tenantStore, creditStore } = deps();
 
       const { detachPaymentMethod, PaymentMethodOwnershipError } = await import(
         "../../monetization/stripe/payment-methods.js"
       );
+
+      // Guard: prevent removing the last payment method when there's an active
+      // billing hold or an outstanding balance (negative credit balance).
+      const mapping = tenantStore.getByTenant(tenant);
+      if (mapping) {
+        const paymentMethods = await stripe.paymentMethods.list({
+          customer: mapping.stripe_customer_id,
+          type: "card",
+        });
+        if (paymentMethods.data.length <= 1) {
+          const hasBillingHold = mapping.billing_hold === 1;
+          const hasOutstandingBalance = creditStore.getBalance(tenant) < 0;
+          if (hasBillingHold || hasOutstandingBalance) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Cannot remove last payment method with active billing hold or outstanding balance",
+            });
+          }
+        }
+      }
 
       try {
         await detachPaymentMethod(stripe as never, tenantStore, {
