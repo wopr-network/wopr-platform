@@ -20,6 +20,8 @@ export interface CreditGateDeps {
   graceBufferCents?: number;
   /** Called when a debit causes balance to cross the zero threshold. */
   onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
+  /** Called after every successful debit (fire-and-forget auto-topup trigger). */
+  onDebitComplete?: (tenantId: string) => void;
   metrics?: import("../observability/metrics.js").MetricsCollector;
 }
 
@@ -120,6 +122,11 @@ export function debitCredits(
       if (balanceBefore > 0 && newBalance <= 0) {
         deps.onBalanceExhausted(tenantId, newBalance);
       }
+    }
+
+    // Fire-and-forget: check if usage-based auto-topup should trigger
+    if (deps.onDebitComplete) {
+      deps.onDebitComplete(tenantId);
     }
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {

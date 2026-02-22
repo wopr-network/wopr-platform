@@ -1,6 +1,7 @@
 // Re-export all monetization repository interfaces for callers that want a single import point.
 
 export type { IBudgetChecker } from "./budget/budget-checker.js";
+export type { IAutoTopupSettingsRepository } from "./credits/auto-topup-settings-repository.js";
 export type { IBotBilling } from "./credits/bot-billing.js";
 export type { ICreditLedger } from "./credits/credit-ledger.js";
 export type { IDividendRepository } from "./credits/dividend-repository.js";
