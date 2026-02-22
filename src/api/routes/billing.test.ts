@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
+import { initAffiliateSchema } from "../../monetization/affiliate/schema.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { DrizzleWebhookSeenRepository } from "../../monetization/drizzle-webhook-seen-repository.js";
@@ -65,6 +66,7 @@ function createBillingTestDb() {
   initCreditAdjustmentSchema(sqlite);
   initCreditSchema(sqlite);
   initPayRamSchema(sqlite);
+  initAffiliateSchema(sqlite);
   const db = createDb(sqlite);
   return { sqlite, db };
 }
@@ -1264,6 +1266,123 @@ describe("billing routes", () => {
       expect(res.status).toBe(500);
       const body = await res.json();
       expect(body.error).toBe("Stripe error");
+    });
+  });
+
+  // -- GET /billing/affiliate ------------------------------------------------
+
+  describe("GET /affiliate", () => {
+    it("returns affiliate code and stats for tenant", async () => {
+      const res = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.code).toMatch(/^[a-z0-9]{6}$/);
+      expect(body.link).toContain("?ref=");
+      expect(body.referrals_total).toBe(0);
+      expect(body.referrals_converted).toBe(0);
+      expect(body.credits_earned_cents).toBe(0);
+    });
+
+    it("returns same code on subsequent calls", async () => {
+      const res1 = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      const body1 = await res1.json();
+
+      const res2 = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      const body2 = await res2.json();
+
+      expect(body1.code).toBe(body2.code);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+      });
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 400 for missing tenant", async () => {
+      const res = await billingRoutes.request("/affiliate", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // -- POST /billing/affiliate/record-referral --------------------------------
+
+  describe("POST /affiliate/record-referral", () => {
+    it("records a referral with valid code", async () => {
+      // First create a code for the referrer
+      const codeRes = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      const { code } = await codeRes.json();
+
+      const res = await billingRoutes.request("/affiliate/record-referral", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ code, referredTenantId: "new-user-1" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.recorded).toBe(true);
+      expect(body.referrer).toBe("t-1");
+    });
+
+    it("returns 404 for unknown code", async () => {
+      const res = await billingRoutes.request("/affiliate/record-referral", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "nope00", referredTenantId: "new-user-1" }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns recorded=false for duplicate attribution", async () => {
+      const codeRes = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      const { code } = await codeRes.json();
+
+      await billingRoutes.request("/affiliate/record-referral", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ code, referredTenantId: "new-user-2" }),
+      });
+
+      const res = await billingRoutes.request("/affiliate/record-referral", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({ code, referredTenantId: "new-user-2" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.recorded).toBe(false);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await billingRoutes.request("/affiliate/record-referral", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "abc123", referredTenantId: "new-user-1" }),
+      });
+      expect(res.status).toBe(401);
     });
   });
 });

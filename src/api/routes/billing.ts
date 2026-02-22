@@ -6,6 +6,7 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { AffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
@@ -122,6 +123,7 @@ let creditLedger: CreditLedger | null = null;
 let meterAggregator: MeterAggregator | null = null;
 let usageReporter: StripeUsageReporter | null = null;
 let priceMap: CreditPriceMap | null = null;
+let affiliateRepo: AffiliateRepository | null = null;
 
 /** Reject webhook events with timestamps older than 5 minutes (in seconds). */
 const WEBHOOK_TIMESTAMP_TOLERANCE = 300;
@@ -137,6 +139,8 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
+  replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
+  affiliateRepo = new AffiliateRepository(d.db);
 
   // PayRam initialization (optional — only if env vars are set)
   const payramConfig = loadPayRamConfig();
@@ -147,6 +151,13 @@ export function setBillingDeps(d: BillingRouteDeps): void {
     payramClient = null;
     payramChargeStore = null;
   }
+}
+
+function getAffiliateRepo(): AffiliateRepository {
+  if (!affiliateRepo) {
+    throw new Error("Billing routes not initialized — call setBillingDeps() first");
+  }
+  return affiliateRepo;
 }
 
 function getDeps(): BillingRouteDeps {
@@ -642,5 +653,84 @@ billingRoutes.get("/usage/history", adminAuth, async (c) => {
   } catch (err) {
     logger.error("Failed to query billing history", { error: err });
     return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+const recordReferralBodySchema = z.object({
+  code: z
+    .string()
+    .min(1)
+    .max(10)
+    .regex(/^[a-z0-9]+$/),
+  referredTenantId: tenantIdSchema,
+});
+
+/**
+ * GET /billing/affiliate
+ *
+ * Returns the authenticated user's affiliate code, link, and stats.
+ * Lazily generates a code on first request.
+ * Query param: tenant (required)
+ */
+billingRoutes.get("/affiliate", adminAuth, (c) => {
+  const tokenTenantId = c.get("tokenTenantId");
+  const tenant = tokenTenantId ?? c.req.query("tenant");
+
+  if (!tenant) {
+    return c.json({ error: "Missing tenant" }, 400);
+  }
+
+  const parsedTenant = tenantIdSchema.safeParse(tenant);
+  if (!parsedTenant.success) {
+    return c.json({ error: "Invalid tenant" }, 400);
+  }
+
+  try {
+    const repo = getAffiliateRepo();
+    const stats = repo.getStats(parsedTenant.data);
+    return c.json(stats);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to get affiliate info";
+    return c.json({ error: message }, 500);
+  }
+});
+
+/**
+ * POST /billing/affiliate/record-referral
+ *
+ * Record a referral attribution when a new user signs up with a ref code.
+ * Body: { code, referredTenantId }
+ * Called internally during signup flow.
+ */
+billingRoutes.post("/affiliate/record-referral", adminAuth, async (c) => {
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = recordReferralBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  const { code, referredTenantId } = parsed.data;
+
+  try {
+    const repo = getAffiliateRepo();
+    const codeRecord = repo.getByCode(code);
+    if (!codeRecord) {
+      return c.json({ error: "Invalid referral code" }, 404);
+    }
+
+    const isNew = repo.recordReferral(codeRecord.tenantId, referredTenantId, code);
+    return c.json({ recorded: isNew, referrer: codeRecord.tenantId });
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Self-referral")) {
+      return c.json({ error: "Self-referral is not allowed" }, 400);
+    }
+    const message = err instanceof Error ? err.message : "Failed to record referral";
+    return c.json({ error: message }, 500);
   }
 });
