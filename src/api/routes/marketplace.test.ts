@@ -104,31 +104,55 @@ describe("POST /api/marketplace/plugins/:id/install", () => {
     const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ botId: "00000000-0000-4000-8000-000000000001" }),
     });
     expect(res.status).toBe(401);
   });
 
-  it("returns success for a known plugin", async () => {
+  it("returns success with valid botId", async () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ botToken: "abc123", guildId: "123456789" }),
+      body: JSON.stringify({ botId: "00000000-0000-4000-8000-000000000001" }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { success: boolean };
+    const body = (await res.json()) as { success: boolean; pluginId: string; botId: string };
     expect(body.success).toBe(true);
+    expect(body.pluginId).toBe("discord-channel");
+    expect(body.botId).toBe("00000000-0000-4000-8000-000000000001");
   });
 
-  it("returns success with empty body", async () => {
+  it("returns 400 with empty body (botId required)", async () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins/slack-channel/install", {
       method: "POST",
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { success: boolean };
-    expect(body.success).toBe(true);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when botId is missing from body", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/botId/);
+  });
+
+  it("returns 400 when botId is not a valid UUID", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId: "not-a-uuid" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/botId/);
   });
 
   it("returns 404 for unknown plugin id", async () => {
@@ -136,7 +160,7 @@ describe("POST /api/marketplace/plugins/:id/install", () => {
     const res = await app.request("/api/marketplace/plugins/does-not-exist/install", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ botId: "00000000-0000-4000-8000-000000000001" }),
     });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };

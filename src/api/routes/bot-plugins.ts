@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
@@ -11,6 +12,7 @@ import { getCommandBus, getDb } from "../../fleet/services.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
+import { pluginRegistry } from "./marketplace-registry.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const store = new ProfileStore(DATA_DIR);
@@ -274,8 +276,8 @@ botPluginRoutes.get("/bots/:botId/plugins", readAuth, async (c) => {
   return c.json({ botId, plugins });
 });
 
-/** PATCH /fleet/bots/:botId/plugins/:pluginId — Toggle plugin enabled state */
-botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
+/** Shared toggle handler for PATCH and PUT /fleet/bots/:botId/plugins/:pluginId */
+async function togglePluginHandler(c: Context): Promise<Response> {
   const botId = c.req.param("botId");
   const pluginId = c.req.param("pluginId");
 
@@ -353,7 +355,13 @@ botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => 
     dispatched: dispatch.dispatched,
     ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
   });
-});
+}
+
+/** PATCH /fleet/bots/:botId/plugins/:pluginId — Toggle plugin enabled state */
+botPluginRoutes.patch("/bots/:botId/plugins/:pluginId", writeAuth, togglePluginHandler);
+
+/** PUT /fleet/bots/:botId/plugins/:pluginId — Toggle plugin enabled state (alias for PATCH) */
+botPluginRoutes.put("/bots/:botId/plugins/:pluginId", writeAuth, togglePluginHandler);
 
 /** DELETE /fleet/bots/:botId/plugins/:pluginId — Uninstall a plugin from a bot */
 botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
@@ -473,6 +481,312 @@ botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) =>
     pluginId,
     tenantId: profile.tenantId,
   });
+
+  return c.json({
+    success: true,
+    botId,
+    pluginId,
+    installedPlugins: remainingPlugins,
+    applied,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Channel management routes — filtered view of plugins with category "channel"
+// ---------------------------------------------------------------------------
+
+/** Helper: check if a pluginId is a channel-category plugin in the registry. */
+function isChannelPlugin(pluginId: string): boolean {
+  const entry = pluginRegistry.find((p) => p.id === pluginId);
+  return entry?.category === "channel";
+}
+
+/** GET /fleet/bots/:botId/channels — List connected channels (channel-category plugins) */
+botPluginRoutes.get("/bots/:botId/channels", readAuth, async (c) => {
+  const botId = c.req.param("botId");
+
+  const profile = await store.get(botId);
+  if (!profile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  const ownershipError = validateTenantOwnership(c, profile, profile.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  const pluginIds = (profile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const disabledSet = new Set(
+    (profile.env.WOPR_PLUGINS_DISABLED || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+  // Filter to only channel-category plugins
+  const channels = pluginIds
+    .filter((id) => isChannelPlugin(id))
+    .map((id) => ({
+      pluginId: id,
+      enabled: !disabledSet.has(id),
+    }));
+
+  return c.json({ botId, channels });
+});
+
+/** POST /fleet/bots/:botId/channels/:pluginId — Connect a channel (install channel plugin) */
+botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => {
+  const pluginId = c.req.param("pluginId");
+
+  if (!isChannelPlugin(pluginId)) {
+    return c.json({ error: `Plugin "${pluginId}" is not a channel plugin` }, 400);
+  }
+
+  // Delegate to the shared install endpoint by forwarding to the same handler logic.
+  // The botId UUID middleware and ownership validation are handled below.
+  const botId = c.req.param("botId");
+
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
+    return c.json({ error: "Invalid plugin ID format" }, 400);
+  }
+
+  const profile = await store.get(botId);
+  if (!profile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  const ownershipError = validateTenantOwnership(c, profile, profile.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const parsed = installPluginSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+  }
+
+  // Re-fetch profile immediately before write to avoid clobbering concurrent installs
+  const freshProfile = await store.get(botId);
+  if (!freshProfile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  const freshOwnershipError = validateTenantOwnership(c, freshProfile, freshProfile.tenantId);
+  if (freshOwnershipError) {
+    return freshOwnershipError;
+  }
+
+  const existingPlugins = (freshProfile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (existingPlugins.includes(pluginId)) {
+    return c.json({ error: "Plugin already installed", pluginId }, 409);
+  }
+
+  const updatedPlugins = [...existingPlugins, pluginId].join(",");
+
+  const hostedEnvVars: Record<string, string> = {};
+  const hostedKeyNames: string[] = [];
+
+  for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+    if (choice !== "hosted") continue;
+
+    const capEntry = lookupCapabilityEnv(capability);
+    if (!capEntry) {
+      return c.json({ error: `Unknown capability: ${capability}` }, 400);
+    }
+
+    if (!credentialVault) {
+      return c.json({ error: "Credential vault not configured" }, 503);
+    }
+
+    const creds = credentialVault.getActiveForProvider(capEntry.vaultProvider);
+    if (creds.length === 0) {
+      return c.json({ error: `No platform credential available for hosted capability: ${capability}` }, 503);
+    }
+
+    hostedEnvVars[capEntry.envKey] = creds[0].plaintextKey;
+    hostedKeyNames.push(capEntry.envKey);
+  }
+
+  const existingHostedKeys = (freshProfile.env.WOPR_HOSTED_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allHostedKeys = [...new Set([...existingHostedKeys, ...hostedKeyNames])];
+
+  const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
+  const updatedEnv: Record<string, string> = {
+    ...freshProfile.env,
+    WOPR_PLUGINS: updatedPlugins,
+    [configEnvKey]: JSON.stringify({ config: parsed.data.config, providerChoices: parsed.data.providerChoices }),
+    ...hostedEnvVars,
+  };
+
+  if (allHostedKeys.length > 0) {
+    updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
+  }
+
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    logger.error(`Failed to apply channel connect to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
+
+  if (meterEmitter && hostedKeyNames.length > 0) {
+    for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+      if (choice !== "hosted") continue;
+      const capEntry = lookupCapabilityEnv(capability);
+      if (!capEntry) continue;
+      meterEmitter.emit({
+        tenant: profile.tenantId,
+        cost: 0,
+        charge: 0,
+        capability: "hosted-activation",
+        provider: capEntry.vaultProvider,
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  logger.info(`Connected channel ${pluginId} on bot ${botId}`, { botId, pluginId, tenantId: profile.tenantId });
+
+  return c.json(
+    {
+      success: true,
+      botId,
+      pluginId,
+      installedPlugins: [...existingPlugins, pluginId],
+    },
+    200,
+  );
+});
+
+/** DELETE /fleet/bots/:botId/channels/:pluginId — Disconnect a channel (uninstall channel plugin) */
+botPluginRoutes.delete("/bots/:botId/channels/:pluginId", writeAuth, async (c) => {
+  const botId = c.req.param("botId");
+  const pluginId = c.req.param("pluginId");
+
+  if (!isChannelPlugin(pluginId)) {
+    return c.json({ error: `Plugin "${pluginId}" is not a channel plugin` }, 400);
+  }
+
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
+    return c.json({ error: "Invalid plugin ID format" }, 400);
+  }
+
+  const profile = await store.get(botId);
+  if (!profile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  const ownershipError = validateTenantOwnership(c, profile, profile.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  const installedPlugins = (profile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (!installedPlugins.includes(pluginId)) {
+    return c.json({ error: "Plugin not installed", pluginId }, 404);
+  }
+
+  const remainingPlugins = installedPlugins.filter((id) => id !== pluginId);
+
+  const configEnvKey = `WOPR_PLUGIN_${pluginId.toUpperCase().replace(/-/g, "_")}_CONFIG`;
+  const pluginConfigRaw = profile.env[configEnvKey];
+  const deletedPluginHostedKeyNames: string[] = [];
+  if (pluginConfigRaw) {
+    try {
+      const pluginConfigData = JSON.parse(pluginConfigRaw) as { providerChoices?: Record<string, string> };
+      if (pluginConfigData.providerChoices) {
+        for (const [capability, choice] of Object.entries(pluginConfigData.providerChoices)) {
+          if (choice === "hosted") {
+            const capEntry = lookupCapabilityEnv(capability);
+            if (capEntry) {
+              deletedPluginHostedKeyNames.push(capEntry.envKey);
+            }
+          }
+        }
+      }
+    } catch {
+      // Malformed config — can't determine which keys to remove; leave them
+    }
+  }
+
+  const { [configEnvKey]: _removedConfig, ...envWithoutConfig } = profile.env;
+
+  const currentHostedKeys = (envWithoutConfig.WOPR_HOSTED_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const deletedKeySet = new Set(deletedPluginHostedKeyNames);
+  const remainingHostedKeys = currentHostedKeys.filter((k) => !deletedKeySet.has(k));
+
+  const updatedEnv: Record<string, string> = { ...envWithoutConfig };
+
+  for (const key of deletedPluginHostedKeyNames) {
+    delete updatedEnv[key];
+  }
+
+  if (remainingHostedKeys.length > 0) {
+    updatedEnv.WOPR_HOSTED_KEYS = remainingHostedKeys.join(",");
+  } else {
+    delete updatedEnv.WOPR_HOSTED_KEYS;
+  }
+
+  if (remainingPlugins.length === 0) {
+    delete updatedEnv.WOPR_PLUGINS;
+  } else {
+    updatedEnv.WOPR_PLUGINS = remainingPlugins.join(",");
+  }
+
+  const disabledPlugins = (updatedEnv.WOPR_PLUGINS_DISABLED || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((id) => id !== pluginId);
+
+  if (disabledPlugins.length > 0) {
+    updatedEnv.WOPR_PLUGINS_DISABLED = disabledPlugins.join(",");
+  } else {
+    delete updatedEnv.WOPR_PLUGINS_DISABLED;
+  }
+
+  let applied = false;
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+    applied = true;
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    logger.error(`Failed to apply channel disconnect from container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
+
+  logger.info(`Disconnected channel ${pluginId} from bot ${botId}`, { botId, pluginId, tenantId: profile.tenantId });
 
   return c.json({
     success: true,
