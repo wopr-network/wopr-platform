@@ -4,6 +4,7 @@ import { CreditAdjustmentStore } from "../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
+import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
@@ -188,6 +189,12 @@ describe("tRPC appRouter", () => {
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
       const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
+      const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(db);
+      const mockStripeClient = {
+        customers: {
+          listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }),
+        },
+      };
 
       setBillingRouterDeps({
         stripe: {
@@ -215,6 +222,8 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: undefined,
+        autoTopupSettingsStore,
+        stripeClient: mockStripeClient as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,
@@ -521,6 +530,217 @@ describe("tRPC appRouter", () => {
       await expect(caller.billing.currentPlan()).rejects.toThrow("Authentication required");
       await expect(caller.billing.inferenceMode()).rejects.toThrow("Authentication required");
     });
+
+    // ---- autoTopupSettings (WOP-945) ----
+
+    describe("billing.autoTopupSettings", () => {
+      it("returns defaults when no settings exist", async () => {
+        const caller = createCaller(authedContext());
+        const result = await caller.billing.autoTopupSettings();
+        expect(result.usage_enabled).toBe(false);
+        expect(result.usage_threshold_cents).toBe(500);
+        expect(result.usage_topup_cents).toBe(2000);
+        expect(result.schedule_enabled).toBe(false);
+        expect(result.payment_method_last4).toBeNull();
+      });
+
+      it("returns card last4 when payment method exists", async () => {
+        const caller = createCaller(authedContext());
+        // Set up tenant-customer mapping
+        tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+        // Override stripeClient to return a payment method
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
+          "../monetization/credits/auto-topup-settings-repository.js"
+        );
+        const autoTopupSettingsStore = new Store(db);
+        const mockStripeClient = {
+          customers: {
+            listPaymentMethods: vi.fn().mockResolvedValue({
+              data: [{ card: { last4: "4242" } }],
+            }),
+          },
+        };
+        const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
+        const creditStore = new CAS(sqlite);
+        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const meterAggregator = new MeterAggregator(db);
+        const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
+        const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
+        const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+        setBillingRouterDeps({
+          stripe: {
+            checkout: { sessions: { create: vi.fn() } },
+            billingPortal: { sessions: { create: vi.fn() } },
+          } as never,
+          tenantStore,
+          creditStore,
+          meterAggregator,
+          usageReporter,
+          priceMap: undefined,
+          autoTopupSettingsStore,
+          stripeClient: mockStripeClient as never,
+          dividendRepo: {
+            getStats: () => ({
+              poolCents: 0,
+              activeUsers: 0,
+              perUserCents: 0,
+              nextDistributionAt: new Date().toISOString(),
+              userEligible: false,
+              userLastPurchaseAt: null,
+              userWindowExpiresAt: null,
+            }),
+            getHistory: () => [],
+            getLifetimeTotalCents: () => 0,
+          },
+          spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
+        });
+        const result = await caller.billing.autoTopupSettings();
+        expect(result.payment_method_last4).toBe("4242");
+      });
+    });
+
+    describe("billing.updateAutoTopupSettings", () => {
+      it("rejects enabling usage mode without payment method", async () => {
+        const caller = createCaller(authedContext());
+        // tenantStore has no entry for test-tenant → no Stripe customer
+        await expect(caller.billing.updateAutoTopupSettings({ usage_enabled: true })).rejects.toThrow(
+          /payment method/i,
+        );
+      });
+
+      it("rejects invalid topup amount", async () => {
+        const caller = createCaller(authedContext());
+        await expect(caller.billing.updateAutoTopupSettings({ usage_topup_cents: 999 })).rejects.toThrow();
+      });
+
+      it("rejects invalid threshold", async () => {
+        const caller = createCaller(authedContext());
+        await expect(caller.billing.updateAutoTopupSettings({ usage_threshold_cents: 300 })).rejects.toThrow();
+      });
+
+      it("persists usage-based settings when payment method exists", async () => {
+        const caller = createCaller(authedContext());
+        tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+        // Override stripeClient to return a payment method
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
+          "../monetization/credits/auto-topup-settings-repository.js"
+        );
+        const autoTopupSettingsStore = new Store(db);
+        const mockStripeClient = {
+          customers: {
+            listPaymentMethods: vi.fn().mockResolvedValue({
+              data: [{ card: { last4: "4242" } }],
+            }),
+          },
+        };
+        const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
+        const creditStore = new CAS(sqlite);
+        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const meterAggregator = new MeterAggregator(db);
+        const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
+        const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
+        const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+        setBillingRouterDeps({
+          stripe: {
+            checkout: { sessions: { create: vi.fn() } },
+            billingPortal: { sessions: { create: vi.fn() } },
+          } as never,
+          tenantStore,
+          creditStore,
+          meterAggregator,
+          usageReporter,
+          priceMap: undefined,
+          autoTopupSettingsStore,
+          stripeClient: mockStripeClient as never,
+          dividendRepo: {
+            getStats: () => ({
+              poolCents: 0,
+              activeUsers: 0,
+              perUserCents: 0,
+              nextDistributionAt: new Date().toISOString(),
+              userEligible: false,
+              userLastPurchaseAt: null,
+              userWindowExpiresAt: null,
+            }),
+            getHistory: () => [],
+            getLifetimeTotalCents: () => 0,
+          },
+          spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
+        });
+
+        const result = await caller.billing.updateAutoTopupSettings({
+          usage_enabled: true,
+          usage_threshold_cents: 1000,
+          usage_topup_cents: 5000,
+        });
+
+        expect(result.usage_enabled).toBe(true);
+        expect(result.usage_threshold_cents).toBe(1000);
+        expect(result.usage_topup_cents).toBe(5000);
+      });
+
+      it("computes schedule_next_at when enabling schedule", async () => {
+        const caller = createCaller(authedContext());
+        tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
+          "../monetization/credits/auto-topup-settings-repository.js"
+        );
+        const autoTopupSettingsStore = new Store(db);
+        const mockStripeClient = {
+          customers: {
+            listPaymentMethods: vi.fn().mockResolvedValue({
+              data: [{ card: { last4: "4242" } }],
+            }),
+          },
+        };
+        const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
+        const creditStore = new CAS(sqlite);
+        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const meterAggregator = new MeterAggregator(db);
+        const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
+        const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
+        const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+        setBillingRouterDeps({
+          stripe: {
+            checkout: { sessions: { create: vi.fn() } },
+            billingPortal: { sessions: { create: vi.fn() } },
+          } as never,
+          tenantStore,
+          creditStore,
+          meterAggregator,
+          usageReporter,
+          priceMap: undefined,
+          autoTopupSettingsStore,
+          stripeClient: mockStripeClient as never,
+          dividendRepo: {
+            getStats: () => ({
+              poolCents: 0,
+              activeUsers: 0,
+              perUserCents: 0,
+              nextDistributionAt: new Date().toISOString(),
+              userEligible: false,
+              userLastPurchaseAt: null,
+              userWindowExpiresAt: null,
+            }),
+            getHistory: () => [],
+            getLifetimeTotalCents: () => 0,
+          },
+          spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
+        });
+
+        const result = await caller.billing.updateAutoTopupSettings({
+          schedule_enabled: true,
+          schedule_interval: "weekly",
+          schedule_amount_cents: 2000,
+        });
+
+        expect(result.schedule_enabled).toBe(true);
+        expect(result.schedule_next_at).toBeTruthy();
+        if (result.schedule_next_at) {
+          expect(new Date(result.schedule_next_at).getTime()).toBeGreaterThan(Date.now());
+        }
+      });
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -579,6 +799,8 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: loadCreditPriceMap(),
+        autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
+        stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,
@@ -652,6 +874,8 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: loadCreditPriceMap(),
+        autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
+        stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,
@@ -696,6 +920,8 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: undefined,
+        autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
+        stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,
