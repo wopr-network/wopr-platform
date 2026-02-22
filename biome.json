@@ -168,6 +168,7 @@
         "src/admin/tenant-status/tenant-status-store.ts",
         "src/admin/credits/adjustment-store.ts",
         "src/admin/credits/schema.ts",
+        "src/admin/notes/schema.ts",
         "src/admin/rates/rate-store.ts",
         "src/admin/rates/schema.ts",
         "src/admin/roles/role-store.ts",
