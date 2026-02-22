@@ -10,6 +10,8 @@ export interface ITenantCustomerStore {
   setTier(tenant: string, tier: string): void;
   setBillingHold(tenant: string, hold: boolean): void;
   hasBillingHold(tenant: string): boolean;
+  getInferenceMode(tenant: string): string;
+  setInferenceMode(tenant: string, mode: string): void;
   list(): TenantCustomerRow[];
   buildCustomerIdMap(): Record<string, string>;
 }
@@ -93,6 +95,25 @@ export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
     return row?.billingHold === 1;
   }
 
+  /** Get inference mode for a tenant (defaults to "byok"). */
+  getInferenceMode(tenant: string): string {
+    const row = this.db
+      .select({ inferenceMode: tenantCustomers.inferenceMode })
+      .from(tenantCustomers)
+      .where(eq(tenantCustomers.tenant, tenant))
+      .get();
+    return row?.inferenceMode ?? "byok";
+  }
+
+  /** Set inference mode for a tenant. */
+  setInferenceMode(tenant: string, mode: string): void {
+    this.db
+      .update(tenantCustomers)
+      .set({ inferenceMode: mode, updatedAt: Date.now() })
+      .where(eq(tenantCustomers.tenant, tenant))
+      .run();
+  }
+
   /** List all tenants with Stripe mappings. */
   list(): TenantCustomerRow[] {
     const rows = this.db.select().from(tenantCustomers).orderBy(desc(tenantCustomers.createdAt)).all();
@@ -124,6 +145,7 @@ function mapRow(row: typeof tenantCustomers.$inferSelect): TenantCustomerRow {
     stripe_customer_id: row.stripeCustomerId,
     tier: row.tier,
     billing_hold: row.billingHold,
+    inference_mode: row.inferenceMode,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };

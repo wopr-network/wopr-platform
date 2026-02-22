@@ -4,6 +4,7 @@ export interface TenantCustomerRow {
   stripe_customer_id: string;
   tier: string;
   billing_hold: number;
+  inference_mode: string;
   created_at: number;
   updated_at: number;
 }

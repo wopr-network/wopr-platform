@@ -323,6 +323,7 @@ if (process.env.NODE_ENV !== "test") {
     const { loadCreditPriceMap } = await import("./monetization/stripe/credit-prices.js");
     const { TenantCustomerStore } = await import("./monetization/stripe/tenant-store.js");
     const { StripeUsageReporter } = await import("./monetization/stripe/usage-reporter.js");
+    const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
 
     const billingDb2 = new Database(BILLING_DB_PATH);
     applyPlatformPragmas(billingDb2);
@@ -332,6 +333,7 @@ if (process.env.NODE_ENV !== "test") {
     const tenantStore = new TenantCustomerStore(billingDrizzle2);
     const creditStore = new CreditAdjustmentStore(billingDb2);
     const meterAggregator = new MeterAggregator(billingDrizzle2);
+    const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(billingDrizzle2);
     const Stripe = (await import("stripe")).default;
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     const stripe = stripeKey ? new Stripe(stripeKey) : undefined;
@@ -345,6 +347,7 @@ if (process.env.NODE_ENV !== "test") {
         usageReporter,
         priceMap: loadCreditPriceMap(),
         dividendRepo: getDividendRepo(),
+        spendingLimitsRepo,
       });
       logger.info("tRPC billing router initialized");
 
