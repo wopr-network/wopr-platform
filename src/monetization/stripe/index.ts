@@ -16,7 +16,8 @@ export { createPortalSession } from "./portal.js";
 export { initStripeSchema } from "./schema.js";
 export type { SetupIntentOpts } from "./setup-intent.js";
 export { createSetupIntent } from "./setup-intent.js";
-export { TenantCustomerStore } from "./tenant-store.js";
+export type { ITenantCustomerStore } from "./tenant-store.js";
+export { DrizzleTenantCustomerStore, TenantCustomerStore } from "./tenant-store.js";
 export type {
   CreditCheckoutOpts,
   PortalSessionOpts,

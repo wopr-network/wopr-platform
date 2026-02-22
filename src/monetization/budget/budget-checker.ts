@@ -52,6 +52,12 @@ interface CachedBudgetData {
   maxPerMonth: number | null;
 }
 
+export interface IBudgetChecker {
+  check(tenant: string, limits: SpendLimits): BudgetCheckResult;
+  invalidate(tenant: string): void;
+  clearCache(): void;
+}
+
 /**
  * Pre-call budget checker with in-memory LRU cache.
  *
@@ -65,7 +71,7 @@ interface CachedBudgetData {
  * - Fail-closed: if DB is unavailable or cache miss fails, reject the call
  * - Callers pass SpendLimits directly (no more TierStore dependency)
  */
-export class BudgetChecker {
+export class DrizzleBudgetChecker implements IBudgetChecker {
   private readonly cache: LRUCache<string, CachedBudgetData>;
   private readonly cacheTtlMs: number;
 
@@ -239,3 +245,6 @@ export class BudgetChecker {
     this.cache.clear();
   }
 }
+
+// Backward-compat alias.
+export { DrizzleBudgetChecker as BudgetChecker };
