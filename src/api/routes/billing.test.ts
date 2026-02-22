@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
+import { DrizzleAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
 import { initAffiliateSchema } from "../../monetization/affiliate/schema.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
@@ -143,6 +144,7 @@ describe("billing routes", () => {
       db,
       webhookSecret: "whsec_test_secret",
       sigPenaltyRepo,
+      affiliateRepo: new DrizzleAffiliateRepository(db),
     });
   });
 
@@ -309,6 +311,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/credits/checkout", {
@@ -341,6 +344,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/portal", {
@@ -406,6 +410,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/portal", {
@@ -447,6 +452,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -482,6 +488,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -520,6 +527,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -557,6 +565,7 @@ describe("billing routes", () => {
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         replayGuard: createTestReplayGuardRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       // First request — should process normally
@@ -595,6 +604,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       await billingRoutes.request("/webhook", {
@@ -621,6 +631,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -645,6 +656,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       // First failure: 400 (not yet blocked)
@@ -675,6 +687,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       // Fail from IP-A
@@ -1026,7 +1039,13 @@ describe("billing routes", () => {
       // Configure PayRam so that the JSON parsing path is reached
       vi.stubEnv("PAYRAM_API_KEY", "test-key");
       vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
-      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret", sigPenaltyRepo: createTestSigPenaltyRepo() });
+      setBillingDeps({
+        stripe,
+        db,
+        webhookSecret: "whsec_test_secret",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+      });
 
       const res = await billingRoutes.request("/crypto/checkout", {
         method: "POST",
@@ -1035,7 +1054,13 @@ describe("billing routes", () => {
       });
 
       vi.unstubAllEnvs();
-      setBillingDeps({ stripe, db, webhookSecret: "whsec_test_secret", sigPenaltyRepo: createTestSigPenaltyRepo() });
+      setBillingDeps({
+        stripe,
+        db,
+        webhookSecret: "whsec_test_secret",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+      });
 
       expect(res.status).toBe(400);
     });
@@ -1089,6 +1114,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       // tenant is resolved from auth context (tokenTenantId), not from request body
@@ -1159,6 +1185,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       // tenant is resolved from auth context (tokenTenantId)
@@ -1190,6 +1217,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
@@ -1234,6 +1262,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
@@ -1256,6 +1285,7 @@ describe("billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {

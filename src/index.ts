@@ -390,6 +390,7 @@ if (process.env.NODE_ENV !== "test") {
         db: billingDrizzle2,
         webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
         sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
+        affiliateRepo: getAffiliateRepo(),
       });
       logger.info("REST billing routes initialized");
     } else {

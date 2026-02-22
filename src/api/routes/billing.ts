@@ -7,7 +7,6 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/in
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
-import { DrizzleAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
@@ -36,6 +35,7 @@ export interface BillingRouteDeps {
   replayGuard?: IWebhookSeenRepository;
   /** Replay guard for PayRam webhook deduplication. */
   payramReplayGuard?: IWebhookSeenRepository;
+  affiliateRepo: IAffiliateRepository;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -140,8 +140,7 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   meterAggregator = new MeterAggregator(d.db);
   usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
-  replayGuard = new WebhookReplayGuard(WEBHOOK_TIMESTAMP_TOLERANCE * 1000);
-  affiliateRepo = new DrizzleAffiliateRepository(d.db);
+  affiliateRepo = d.affiliateRepo;
 
   // PayRam initialization (optional — only if env vars are set)
   const payramConfig = loadPayRamConfig();

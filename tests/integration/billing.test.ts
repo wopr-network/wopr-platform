@@ -34,6 +34,8 @@ function createTestSigPenaltyRepo() {
   `);
   return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
 }
+const { initAffiliateSchema } = await import("../../src/monetization/affiliate/schema.js");
+const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/affiliate-repository.js");
 
 function createMockStripe(
   overrides: {
@@ -79,6 +81,7 @@ describe("integration: billing routes", () => {
     initMeterSchema(sqlite);
     initStripeSchema(sqlite);
     initCreditSchema(sqlite);
+    initAffiliateSchema(sqlite);
     db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
     setBillingDeps({
@@ -86,6 +89,7 @@ describe("integration: billing routes", () => {
       db,
       webhookSecret: "whsec_test_secret",
       sigPenaltyRepo: createTestSigPenaltyRepo(),
+      affiliateRepo: new DrizzleAffiliateRepository(db),
     });
   });
 
@@ -213,6 +217,7 @@ describe("integration: billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await app.request("/api/billing/credits/checkout", {
@@ -240,6 +245,7 @@ describe("integration: billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await app.request("/api/billing/portal", {
@@ -300,6 +306,7 @@ describe("integration: billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await app.request("/api/billing/webhook", {
@@ -332,6 +339,7 @@ describe("integration: billing routes", () => {
         db,
         webhookSecret: "whsec_test",
         sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const res = await app.request("/api/billing/webhook", {

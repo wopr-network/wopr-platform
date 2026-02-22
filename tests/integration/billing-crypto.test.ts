@@ -16,6 +16,8 @@ const { initCreditSchema } = await import("../../src/monetization/credits/schema
 const { initMeterSchema } = await import("../../src/monetization/metering/schema.js");
 const { initStripeSchema } = await import("../../src/monetization/stripe/schema.js");
 const { initPayRamSchema } = await import("../../src/monetization/payram/schema.js");
+const { initAffiliateSchema } = await import("../../src/monetization/affiliate/schema.js");
+const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/affiliate-repository.js");
 
 function createMockStripe() {
   return {
@@ -49,11 +51,13 @@ describe("integration: billing crypto routes", () => {
     initStripeSchema(sqlite);
     initCreditSchema(sqlite);
     initPayRamSchema(sqlite);
+    initAffiliateSchema(sqlite);
     db = createDb(sqlite);
     setBillingDeps({
       stripe: createMockStripe(),
       db,
       webhookSecret: "whsec_test_secret",
+      affiliateRepo: new DrizzleAffiliateRepository(db),
     });
   });
 
@@ -119,6 +123,7 @@ describe("integration: billing crypto routes", () => {
         stripe: createMockStripe(),
         db,
         webhookSecret: "whsec_test_secret",
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
     });
 
