@@ -1622,6 +1622,14 @@ function estimateTokenCost(
     };
     const inputTokens = parsed.usage?.prompt_tokens ?? 0;
     const outputTokens = parsed.usage?.completion_tokens ?? 0;
+    if (!rateLookupFn) {
+      logger.warn("estimateTokenCost: no rateLookupFn provided — token cost will use default fallback rates", {
+        model: model ?? "unknown",
+        capability,
+        inputTokens,
+        outputTokens,
+      });
+    }
     const rates = resolveTokenRates(rateLookupFn ?? (() => null), capability, model);
     return (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
   } catch {
