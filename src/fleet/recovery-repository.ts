@@ -7,6 +7,7 @@ export interface IRecoveryRepository {
   createItem(data: NewRecoveryItem): RecoveryItem;
   updateItem(id: string, data: Partial<Omit<RecoveryItem, "id">>): RecoveryItem;
   listOpenEvents(): RecoveryEvent[];
+  listEvents(limit: number, status?: RecoveryEvent["status"]): RecoveryEvent[];
   getWaitingItems(eventId: string): RecoveryItem[];
   incrementRetryCount(itemId: string): void;
 }

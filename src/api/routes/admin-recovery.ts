@@ -4,6 +4,7 @@ import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { checkCapacityAlerts } from "../../fleet/capacity-alerts.js";
+import type { RecoveryEvent } from "../../fleet/repository-types.js";
 import {
   getAdminAuditLog,
   getBotInstanceRepo,
@@ -31,7 +32,11 @@ adminRecoveryRoutes.get("/", adminAuth, (c) => {
   const limit = Number.isNaN(rawLimit) || rawLimit < 1 ? 50 : Math.min(rawLimit, 500);
   const recoveryRepo = getRecoveryRepo();
 
-  const events = recoveryRepo.listOpenEvents().slice(0, limit);
+  const rawStatus = c.req.query("status");
+  const validStatuses: RecoveryEvent["status"][] = ["in_progress", "partial", "completed"];
+  const statusFilter =
+    rawStatus && (validStatuses as string[]).includes(rawStatus) ? (rawStatus as RecoveryEvent["status"]) : undefined;
+  const events = recoveryRepo.listEvents(limit, statusFilter);
 
   return c.json({
     success: true,
