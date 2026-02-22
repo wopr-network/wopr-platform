@@ -106,13 +106,13 @@ describe("maybeTriggerUsageTopup", () => {
     ledger.credit("t1", 50, "purchase");
 
     const mockCharge = vi.fn().mockImplementation(async () => {
-      expect(settingsRepo.getByTenant("t1")!.usageChargeInFlight).toBe(true);
+      expect(settingsRepo.getByTenant("t1")?.usageChargeInFlight).toBe(true);
       return { success: true, paymentReference: "pi_123" };
     });
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
     await maybeTriggerUsageTopup(deps, "t1");
-    expect(settingsRepo.getByTenant("t1")!.usageChargeInFlight).toBe(false);
+    expect(settingsRepo.getByTenant("t1")?.usageChargeInFlight).toBe(false);
   });
 
   it("skips when charge is already in-flight", async () => {
@@ -135,7 +135,7 @@ describe("maybeTriggerUsageTopup", () => {
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
     await maybeTriggerUsageTopup(deps, "t1");
-    expect(settingsRepo.getByTenant("t1")!.usageConsecutiveFailures).toBe(0);
+    expect(settingsRepo.getByTenant("t1")?.usageConsecutiveFailures).toBe(0);
   });
 
   it("increments failure counter on charge failure", async () => {
@@ -145,7 +145,7 @@ describe("maybeTriggerUsageTopup", () => {
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
     await maybeTriggerUsageTopup(deps, "t1");
-    expect(settingsRepo.getByTenant("t1")!.usageConsecutiveFailures).toBe(1);
+    expect(settingsRepo.getByTenant("t1")?.usageConsecutiveFailures).toBe(1);
   });
 
   it("disables usage auto-topup after 3 consecutive failures", async () => {
@@ -157,6 +157,6 @@ describe("maybeTriggerUsageTopup", () => {
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
     await maybeTriggerUsageTopup(deps, "t1"); // failures goes to 3
-    expect(settingsRepo.getByTenant("t1")!.usageEnabled).toBe(false);
+    expect(settingsRepo.getByTenant("t1")?.usageEnabled).toBe(false);
   });
 });

@@ -1,10 +1,22 @@
 import crypto from "node:crypto";
 import BetterSqlite3 from "better-sqlite3";
+import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type DrizzleDb } from "../../db/index.js";
+import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
 import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import { DrizzleAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import { CreditLedger } from "./credit-ledger.js";
+
+interface TopupLogRow {
+  id: string;
+  tenant_id: string;
+  amount_cents: number;
+  status: string;
+  failure_reason: string | null;
+  payment_reference: string | null;
+  created_at: string;
+}
 
 function initTestSchema(sqlite: BetterSqlite3.Database): void {
   sqlite.exec(`
@@ -71,8 +83,8 @@ describe("chargeAutoTopup", () => {
     const stripe = mockStripe();
     const tenantStore = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
-      stripe: stripe as any,
-      tenantStore: tenantStore as any,
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -91,15 +103,15 @@ describe("chargeAutoTopup", () => {
     const stripe = mockStripe();
     const tenantStore = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
-      stripe: stripe as any,
-      tenantStore: tenantStore as any,
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
     await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
 
-    const events = sqlite.prepare("SELECT * FROM credit_auto_topup WHERE tenant_id = ?").all("t1") as any[];
+    const events = sqlite.prepare("SELECT * FROM credit_auto_topup WHERE tenant_id = ?").all("t1") as TopupLogRow[];
     expect(events).toHaveLength(1);
     expect(events[0].status).toBe("success");
     expect(events[0].amount_cents).toBe(500);
@@ -109,8 +121,8 @@ describe("chargeAutoTopup", () => {
     const stripe = mockStripe({ shouldFail: true, failMessage: "card_declined" });
     const tenantStore = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
-      stripe: stripe as any,
-      tenantStore: tenantStore as any,
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -120,7 +132,7 @@ describe("chargeAutoTopup", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("card_declined");
     expect(ledger.balance("t1")).toBe(0);
-    const events = sqlite.prepare("SELECT * FROM credit_auto_topup WHERE tenant_id = ?").all("t1") as any[];
+    const events = sqlite.prepare("SELECT * FROM credit_auto_topup WHERE tenant_id = ?").all("t1") as TopupLogRow[];
     expect(events).toHaveLength(1);
     expect(events[0].status).toBe("failed");
   });
@@ -129,8 +141,8 @@ describe("chargeAutoTopup", () => {
     const stripe = mockStripe();
     const tenantStore = { getByTenant: vi.fn().mockReturnValue(null) };
     const deps: AutoTopupChargeDeps = {
-      stripe: stripe as any,
-      tenantStore: tenantStore as any,
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -146,8 +158,8 @@ describe("chargeAutoTopup", () => {
     stripe.customers.listPaymentMethods = vi.fn().mockResolvedValue({ data: [] });
     const tenantStore = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
-      stripe: stripe as any,
-      tenantStore: tenantStore as any,
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -163,8 +175,8 @@ describe("chargeAutoTopup", () => {
     const stripe = mockStripe({ paymentIntentId: piId });
     const tenantStore = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
-      stripe: stripe as any,
-      tenantStore: tenantStore as any,
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };

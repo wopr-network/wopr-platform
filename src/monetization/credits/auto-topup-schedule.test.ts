@@ -98,7 +98,7 @@ describe("runScheduledTopups", () => {
 
     await runScheduledTopups(deps);
     const s = settingsRepo.getByTenant("t1");
-    expect(s!.scheduleNextAt).toBe("2026-02-21T00:00:00.000Z");
+    expect(s?.scheduleNextAt).toBe("2026-02-21T00:00:00.000Z");
   });
 
   it("advances schedule_next_at even on failure", async () => {
@@ -112,7 +112,7 @@ describe("runScheduledTopups", () => {
 
     await runScheduledTopups(deps);
     const s = settingsRepo.getByTenant("t1");
-    expect(s!.scheduleNextAt).toBe("2026-02-21T00:00:00.000Z");
+    expect(s?.scheduleNextAt).toBe("2026-02-21T00:00:00.000Z");
   });
 
   it("resets failure counter on success", async () => {
@@ -127,7 +127,7 @@ describe("runScheduledTopups", () => {
     const deps: ScheduleTopupDeps = { settingsRepo, chargeAutoTopup: mockCharge };
 
     await runScheduledTopups(deps);
-    expect(settingsRepo.getByTenant("t1")!.scheduleConsecutiveFailures).toBe(0);
+    expect(settingsRepo.getByTenant("t1")?.scheduleConsecutiveFailures).toBe(0);
   });
 
   it("disables schedule after 3 consecutive failures", async () => {
@@ -142,7 +142,7 @@ describe("runScheduledTopups", () => {
     const deps: ScheduleTopupDeps = { settingsRepo, chargeAutoTopup: mockCharge };
 
     await runScheduledTopups(deps); // failures goes to 3
-    expect(settingsRepo.getByTenant("t1")!.scheduleEnabled).toBe(false);
+    expect(settingsRepo.getByTenant("t1")?.scheduleEnabled).toBe(false);
   });
 
   it("processes multiple tenants independently", async () => {
