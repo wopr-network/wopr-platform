@@ -1,18 +1,46 @@
+import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as schema from "../db/schema/index.js";
+import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { MetricsCollector } from "./metrics.js";
 
+function makeMetrics() {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS gateway_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      minute_key INTEGER NOT NULL,
+      capability TEXT NOT NULL,
+      requests INTEGER NOT NULL DEFAULT 0,
+      errors INTEGER NOT NULL DEFAULT 0,
+      credit_failures INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(minute_key, capability)
+    );
+    CREATE INDEX IF NOT EXISTS idx_gateway_metrics_minute ON gateway_metrics(minute_key);
+  `);
+  const repo = new DrizzleMetricsRepository(drizzle(sqlite, { schema }));
+  return { sqlite, m: new MetricsCollector(repo) };
+}
+
 describe("MetricsCollector", () => {
+  let sqlite: BetterSqlite3.Database;
+  let m: MetricsCollector;
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
+    const r = makeMetrics();
+    sqlite = r.sqlite;
+    m = r.m;
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    sqlite.close();
   });
 
   it("records gateway requests per capability", () => {
-    const m = new MetricsCollector();
     m.recordGatewayRequest("chat-completions");
     m.recordGatewayRequest("chat-completions");
     m.recordGatewayRequest("tts");
@@ -24,7 +52,6 @@ describe("MetricsCollector", () => {
   });
 
   it("records gateway errors per capability", () => {
-    const m = new MetricsCollector();
     m.recordGatewayRequest("chat-completions");
     m.recordGatewayRequest("chat-completions");
     m.recordGatewayError("chat-completions");
@@ -36,7 +63,6 @@ describe("MetricsCollector", () => {
   });
 
   it("records credit deduction failures", () => {
-    const m = new MetricsCollector();
     m.recordCreditDeductionFailure();
     m.recordCreditDeductionFailure();
 
@@ -45,7 +71,6 @@ describe("MetricsCollector", () => {
   });
 
   it("only includes buckets within the requested window", () => {
-    const m = new MetricsCollector();
     m.recordGatewayRequest("chat-completions");
 
     // Advance 10 minutes
@@ -61,7 +86,6 @@ describe("MetricsCollector", () => {
   });
 
   it("prunes buckets older than 120 minutes", () => {
-    const m = new MetricsCollector();
     m.recordGatewayRequest("chat-completions");
 
     // Advance 130 minutes
@@ -74,14 +98,12 @@ describe("MetricsCollector", () => {
   });
 
   it("returns zero errorRate when no requests", () => {
-    const m = new MetricsCollector();
     const window = m.getWindow(5);
     expect(window.errorRate).toBe(0);
     expect(window.totalRequests).toBe(0);
   });
 
   it("computes overall errorRate correctly", () => {
-    const m = new MetricsCollector();
     for (let i = 0; i < 10; i++) m.recordGatewayRequest("chat-completions");
     for (let i = 0; i < 2; i++) m.recordGatewayError("chat-completions");
 

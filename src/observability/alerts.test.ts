@@ -1,6 +1,43 @@
+import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as schema from "../db/schema/index.js";
+import { DrizzleFleetEventRepository } from "../fleet/drizzle-fleet-event-repository.js";
+import type { IFleetEventRepository } from "../fleet/fleet-event-repository.js";
 import { AlertChecker, buildAlerts } from "./alerts.js";
+import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { MetricsCollector } from "./metrics.js";
+
+function makeMetrics() {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS gateway_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      minute_key INTEGER NOT NULL,
+      capability TEXT NOT NULL,
+      requests INTEGER NOT NULL DEFAULT 0,
+      errors INTEGER NOT NULL DEFAULT 0,
+      credit_failures INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(minute_key, capability)
+    );
+    CREATE INDEX IF NOT EXISTS idx_gateway_metrics_minute ON gateway_metrics(minute_key);
+  `);
+  return new MetricsCollector(new DrizzleMetricsRepository(drizzle(sqlite, { schema })));
+}
+
+function makeFleetRepo(): IFleetEventRepository {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS fleet_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_type TEXT NOT NULL,
+      fired INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      cleared_at INTEGER
+    );
+  `);
+  return new DrizzleFleetEventRepository(drizzle(sqlite, { schema }));
+}
 
 describe("buildAlerts", () => {
   beforeEach(() => {
@@ -13,8 +50,8 @@ describe("buildAlerts", () => {
   });
 
   it("returns 3 alert definitions", () => {
-    const metrics = new MetricsCollector();
-    const alerts = buildAlerts(metrics);
+    const metrics = makeMetrics();
+    const alerts = buildAlerts(metrics, makeFleetRepo());
     expect(alerts).toHaveLength(3);
     expect(alerts.map((a) => a.name)).toEqual([
       "gateway-error-rate",
@@ -24,12 +61,12 @@ describe("buildAlerts", () => {
   });
 
   it("gateway-error-rate fires when error rate exceeds 5%", () => {
-    const metrics = new MetricsCollector();
+    const metrics = makeMetrics();
     // 100 requests, 6 errors = 6%
     for (let i = 0; i < 100; i++) metrics.recordGatewayRequest("chat-completions");
     for (let i = 0; i < 6; i++) metrics.recordGatewayError("chat-completions");
 
-    const alerts = buildAlerts(metrics);
+    const alerts = buildAlerts(metrics, makeFleetRepo());
     const gatewayAlert = alerts.find((a) => a.name === "gateway-error-rate");
     expect(gatewayAlert).toBeDefined();
     const result = gatewayAlert?.check();
@@ -38,44 +75,44 @@ describe("buildAlerts", () => {
   });
 
   it("gateway-error-rate does not fire when error rate is below 5%", () => {
-    const metrics = new MetricsCollector();
+    const metrics = makeMetrics();
     for (let i = 0; i < 100; i++) metrics.recordGatewayRequest("chat-completions");
     for (let i = 0; i < 3; i++) metrics.recordGatewayError("chat-completions");
 
-    const alerts = buildAlerts(metrics);
+    const alerts = buildAlerts(metrics, makeFleetRepo());
     const result = alerts.find((a) => a.name === "gateway-error-rate")?.check();
     expect(result?.firing).toBe(false);
   });
 
   it("gateway-error-rate does not fire when there are zero requests", () => {
-    const metrics = new MetricsCollector();
-    const alerts = buildAlerts(metrics);
+    const metrics = makeMetrics();
+    const alerts = buildAlerts(metrics, makeFleetRepo());
     const result = alerts.find((a) => a.name === "gateway-error-rate")?.check();
     expect(result?.firing).toBe(false);
   });
 
   it("credit-deduction-spike fires when failures exceed 10 in 5min", () => {
-    const metrics = new MetricsCollector();
+    const metrics = makeMetrics();
     for (let i = 0; i < 11; i++) metrics.recordCreditDeductionFailure();
 
-    const alerts = buildAlerts(metrics);
+    const alerts = buildAlerts(metrics, makeFleetRepo());
     const result = alerts.find((a) => a.name === "credit-deduction-spike")?.check();
     expect(result?.firing).toBe(true);
     expect(result?.value).toBe(11);
   });
 
   it("credit-deduction-spike does not fire under threshold", () => {
-    const metrics = new MetricsCollector();
+    const metrics = makeMetrics();
     for (let i = 0; i < 5; i++) metrics.recordCreditDeductionFailure();
 
-    const alerts = buildAlerts(metrics);
+    const alerts = buildAlerts(metrics, makeFleetRepo());
     const result = alerts.find((a) => a.name === "credit-deduction-spike")?.check();
     expect(result?.firing).toBe(false);
   });
 
   it("fleet-unexpected-stop does not fire initially", () => {
-    const metrics = new MetricsCollector();
-    const alerts = buildAlerts(metrics);
+    const metrics = makeMetrics();
+    const alerts = buildAlerts(metrics, makeFleetRepo());
     const result = alerts.find((a) => a.name === "fleet-unexpected-stop")?.check();
     expect(result?.firing).toBe(false);
   });
@@ -126,14 +163,14 @@ describe("AlertChecker", () => {
     expect(mockAlert.check.mock.calls.length).toBe(callCountAfterCheckAll);
   });
 
-  it("getStatus does not mutate firedState (calling it does not consume fleet-stop)", async () => {
-    const { fleetStopAlert } = await import("./alerts.js");
-    const metrics = new MetricsCollector();
-    const alerts = buildAlerts(metrics);
-    const checker = new AlertChecker(alerts);
+  it("getStatus does not mutate firedState (calling it does not consume fleet-stop)", () => {
+    const fleetRepo = makeFleetRepo();
+    const metrics = makeMetrics();
+    const alerts = buildAlerts(metrics, fleetRepo);
+    const checker = new AlertChecker(alerts, { fleetEventRepo: fleetRepo });
 
-    // Trigger fleet stop
-    fleetStopAlert();
+    // Trigger fleet stop via repo
+    fleetRepo.fireFleetStop();
     // Run checkAll once to process the flag
     checker.checkAll();
     const statusAfterCheck = checker.getStatus();

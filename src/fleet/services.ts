@@ -48,7 +48,6 @@ import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js"
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
 import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
-import { fleetStopAlert } from "../observability/alerts.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
@@ -57,8 +56,10 @@ import type { IBotProfileRepository } from "./bot-profile-repository.js";
 import { DOClient } from "./do-client.js";
 import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
 import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
+import { DrizzleFleetEventRepository } from "./drizzle-fleet-event-repository.js";
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
+import type { IFleetEventRepository } from "./fleet-event-repository.js";
 import type { IGpuNodeRepository } from "./gpu-node-repository.js";
 import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
 import { HeartbeatProcessor } from "./heartbeat-processor.js";
@@ -130,6 +131,9 @@ let _nodeDrainer: NodeDrainer | null = null;
 
 // Watchdog
 let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
+
+// Fleet event repository
+let _fleetEventRepo: IFleetEventRepository | null = null;
 
 // Infrastructure
 let _doClient: DOClient | null = null;
@@ -389,6 +393,17 @@ export function getNodeDrainer(): NodeDrainer {
 }
 
 // ---------------------------------------------------------------------------
+// FleetEventRepository
+// ---------------------------------------------------------------------------
+
+export function getFleetEventRepo(): IFleetEventRepository {
+  if (!_fleetEventRepo) {
+    _fleetEventRepo = new DrizzleFleetEventRepository(getDb());
+  }
+  return _fleetEventRepo;
+}
+
+// ---------------------------------------------------------------------------
 // HeartbeatWatchdog
 // ---------------------------------------------------------------------------
 
@@ -399,7 +414,7 @@ export function getHeartbeatWatchdog() {
       (nodeId: string) => {
         // Signal the fleet-unexpected-stop alert: this fires only for
         // heartbeat timeouts (crash/OOM), never for user-initiated stops.
-        fleetStopAlert();
+        getFleetEventRepo().fireFleetStop();
         getRecoveryOrchestrator()
           .triggerRecovery(nodeId, "heartbeat_timeout")
           .catch((err) => {

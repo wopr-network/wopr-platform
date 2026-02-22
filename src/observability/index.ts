@@ -3,7 +3,7 @@
  */
 
 export type { AlertCheckResult, AlertDefinition } from "./alerts.js";
-export { AlertChecker, buildAlerts, fleetStopAlert } from "./alerts.js";
+export { AlertChecker, buildAlerts } from "./alerts.js";
 export type { AdminHealthDeps } from "./health-dashboard.js";
 export { createAdminHealthHandler } from "./health-dashboard.js";
 export type { WindowResult } from "./metrics.js";

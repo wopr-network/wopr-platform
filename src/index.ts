@@ -20,6 +20,7 @@ import {
   getCommandBus,
   getConnectionRegistry,
   getDividendRepo,
+  getFleetEventRepo,
   getHeartbeatProcessor,
   getHeartbeatWatchdog,
   getNodeRegistrar,
@@ -35,6 +36,7 @@ import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
 import type { HeartbeatMessage } from "./node-agent/types.js";
+import { DrizzleMetricsRepository } from "./observability/drizzle-metrics-repository.js";
 import {
   AlertChecker,
   buildAlerts,
@@ -177,9 +179,11 @@ if (process.env.NODE_ENV !== "test") {
     const billingDrizzle = createDb(billingDb);
 
     // ── Observability ──────────────────────────────────────────────────────────
-    const metrics = new MetricsCollector();
-    const alerts = buildAlerts(metrics);
-    const alertChecker = new AlertChecker(alerts);
+    const metricsRepo = new DrizzleMetricsRepository(billingDrizzle);
+    const metrics = new MetricsCollector(metricsRepo);
+    const fleetEventRepo = getFleetEventRepo();
+    const alerts = buildAlerts(metrics, fleetEventRepo);
+    const alertChecker = new AlertChecker(alerts, { fleetEventRepo });
     alertChecker.start();
 
     const ratesDb = new Database(RATES_DB_PATH);

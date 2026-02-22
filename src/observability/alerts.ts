@@ -1,4 +1,5 @@
 import { logger } from "../config/logger.js";
+import type { IFleetEventRepository } from "../fleet/fleet-event-repository.js";
 import type { MetricsCollector } from "./metrics.js";
 import { captureMessage } from "./sentry.js";
 
@@ -14,19 +15,6 @@ export interface AlertDefinition {
   check: () => AlertCheckResult;
 }
 
-/** Track fleet-unexpected-stop events externally. */
-let fleetStopFired = false;
-
-/** Call this from the fleet event handler when bots stop unexpectedly. */
-export function fleetStopAlert(): void {
-  fleetStopFired = true;
-}
-
-/** Reset the fleet stop flag (called by AlertChecker after processing). */
-export function clearFleetStopAlert(): void {
-  fleetStopFired = false;
-}
-
 /**
  * Build the 3 business metric alerts.
  *
@@ -34,7 +22,7 @@ export function clearFleetStopAlert(): void {
  * 2. Credit deduction failures spike (> 10 in 5 minutes)
  * 3. Fleet unexpected stop (event-driven)
  */
-export function buildAlerts(metrics: MetricsCollector): AlertDefinition[] {
+export function buildAlerts(metrics: MetricsCollector, fleetEventRepo: IFleetEventRepository): AlertDefinition[] {
   return [
     {
       name: "gateway-error-rate",
@@ -73,7 +61,7 @@ export function buildAlerts(metrics: MetricsCollector): AlertDefinition[] {
     {
       name: "fleet-unexpected-stop",
       check: () => {
-        const firing = fleetStopFired;
+        const firing = fleetEventRepo.isFleetStopFired();
         return {
           firing,
           value: firing ? 1 : 0,
@@ -92,13 +80,15 @@ export function buildAlerts(metrics: MetricsCollector): AlertDefinition[] {
 export class AlertChecker {
   private readonly alerts: AlertDefinition[];
   private readonly intervalMs: number;
+  private readonly fleetEventRepo: IFleetEventRepository | null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly firedState: Map<string, boolean> = new Map();
   private lastResults: Array<{ name: string; firing: boolean; message: string }> = [];
 
-  constructor(alerts: AlertDefinition[], opts?: { intervalMs?: number }) {
+  constructor(alerts: AlertDefinition[], opts?: { intervalMs?: number; fleetEventRepo?: IFleetEventRepository }) {
     this.alerts = alerts;
     this.intervalMs = opts?.intervalMs ?? 60_000;
+    this.fleetEventRepo = opts?.fleetEventRepo ?? null;
   }
 
   start(): void {
@@ -140,8 +130,8 @@ export class AlertChecker {
     }
 
     // Clear the event-driven fleet stop flag after processing
-    if (fleetStopFired) {
-      clearFleetStopAlert();
+    if (this.fleetEventRepo?.isFleetStopFired()) {
+      this.fleetEventRepo.clearFleetStop();
     }
 
     this.lastResults = results;

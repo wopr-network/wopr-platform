@@ -117,7 +117,9 @@
         "src/api/drizzle-sig-penalty-repository.ts",
         "src/auth/drizzle-session-repository.ts",
         "src/monetization/drizzle-webhook-seen-repository.ts",
-        "src/monetization/drizzle-provider-health-repository.ts"
+        "src/monetization/drizzle-provider-health-repository.ts",
+        "src/fleet/drizzle-fleet-event-repository.ts",
+        "src/observability/drizzle-metrics-repository.ts"
       ],
       "linter": {
         "rules": {
