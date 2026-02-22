@@ -67,9 +67,16 @@ export const billingRouter = router({
     if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
     }
-    const { creditStore } = deps();
+    const { creditStore, meterAggregator } = deps();
     const balance = creditStore.getBalance(tenant);
-    return { tenant, balance_cents: balance };
+
+    // Compute 7-day average daily burn from usage summaries.
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const { totalCharge } = meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
+    const daily_burn_cents = Math.round(totalCharge / 7);
+    const runway_days = daily_burn_cents > 0 ? Math.floor(balance / daily_burn_cents) : null;
+
+    return { tenant, balance_cents: balance, daily_burn_cents, runway_days };
   }),
 
   /** Get credit transaction history for a tenant. Tenant defaults to ctx.tenantId when omitted. */

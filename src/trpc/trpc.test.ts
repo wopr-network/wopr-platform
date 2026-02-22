@@ -203,6 +203,24 @@ describe("tRPC appRouter", () => {
       expect(result.balance_cents).toBe(0);
     });
 
+    it("creditsBalance includes daily_burn_cents and runway_days", async () => {
+      const caller = createCaller(authedContext({ tenantId: undefined }));
+      const result = await caller.billing.creditsBalance({ tenant: "test-user" });
+      expect(result).toHaveProperty("daily_burn_cents");
+      expect(result).toHaveProperty("runway_days");
+      expect(typeof result.daily_burn_cents).toBe("number");
+      // runway_days is null when burn is 0
+      expect(result.runway_days).toBeNull();
+    });
+
+    it("creditsBalance returns null runway_days when daily_burn is zero", async () => {
+      const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
+      const result = await caller.billing.creditsBalance({});
+      // No usage events → daily_burn_cents = 0 → runway_days = null
+      expect(result.daily_burn_cents).toBe(0);
+      expect(result.runway_days).toBeNull();
+    });
+
     it("usage returns empty for tenant with no events", async () => {
       const caller = createCaller(authedContext());
       const result = await caller.billing.usage({ tenant: "test-tenant" });
