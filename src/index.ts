@@ -19,6 +19,7 @@ import { applyPlatformPragmas, createDb } from "./db/index.js";
 import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
+  getAffiliateRepo,
   getBotInstanceRepo,
   getBotProfileRepo,
   getCircuitBreakerRepo,
@@ -378,6 +379,7 @@ if (process.env.NODE_ENV !== "test") {
         spendingLimitsRepo,
         autoTopupSettingsStore,
         stripeClient: stripe,
+        affiliateRepo: getAffiliateRepo(),
       });
       logger.info("tRPC billing router initialized");
 

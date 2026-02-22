@@ -15,6 +15,7 @@ import {
   computeNextScheduleAt,
   type IAutoTopupSettingsRepository,
 } from "../../monetization/credits/auto-topup-settings-repository.js";
+import type { IAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
@@ -157,6 +158,7 @@ export interface BillingRouterDeps {
   stripeClient: Stripe;
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
+  affiliateRepo: IAffiliateRepository;
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -832,5 +834,39 @@ export const billingRouter = router({
       const { dividendRepo } = deps();
       const total = dividendRepo.getLifetimeTotalCents(tenant);
       return { total_cents: total, tenant };
+    }),
+
+  /** Get affiliate code, link, and stats for the authenticated user. */
+  affiliateInfo: protectedProcedure.query(({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { affiliateRepo } = deps();
+    return affiliateRepo.getStats(tenant);
+  }),
+
+  /** Record a referral attribution (called during signup if ref param present). */
+  affiliateRecordReferral: protectedProcedure
+    .input(
+      z.object({
+        code: z
+          .string()
+          .min(1)
+          .max(10)
+          .regex(/^[a-z0-9]+$/),
+        referredTenantId: tenantIdSchema,
+      }),
+    )
+    .mutation(({ input }) => {
+      const { affiliateRepo } = deps();
+      const codeRecord = affiliateRepo.getByCode(input.code);
+      if (!codeRecord) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Invalid referral code" });
+      }
+
+      if (codeRecord.tenantId === input.referredTenantId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Self-referral is not allowed" });
+      }
+
+      const isNew = affiliateRepo.recordReferral(codeRecord.tenantId, input.referredTenantId, input.code);
+      return { recorded: isNew, referrer: codeRecord.tenantId };
     }),
 });

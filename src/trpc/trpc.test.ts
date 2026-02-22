@@ -6,6 +6,7 @@ import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
+import { DrizzleAffiliateRepository } from "../monetization/affiliate/affiliate-repository.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
 import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
@@ -238,6 +239,7 @@ describe("tRPC appRouter", () => {
           getLifetimeTotalCents: () => 0,
         },
         spendingLimitsRepo,
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
     });
 
@@ -815,6 +817,7 @@ describe("tRPC appRouter", () => {
           getLifetimeTotalCents: () => 0,
         },
         spendingLimitsRepo: spendingLimitsRepo1,
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const caller = createCaller(authedContext());
@@ -890,6 +893,7 @@ describe("tRPC appRouter", () => {
           getLifetimeTotalCents: () => 0,
         },
         spendingLimitsRepo: spendingLimitsRepo2,
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const caller = createCaller(authedContext());
@@ -936,6 +940,7 @@ describe("tRPC appRouter", () => {
           getLifetimeTotalCents: () => 0,
         },
         spendingLimitsRepo: spendingLimitsRepo3,
+        affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
       const caller = createCaller(authedContext());
