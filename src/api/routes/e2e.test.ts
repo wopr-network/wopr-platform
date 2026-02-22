@@ -1,9 +1,11 @@
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
+import * as schema from "../../db/schema/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
@@ -11,6 +13,7 @@ import { initMeterSchema } from "../../monetization/metering/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
+import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 
 // ---------------------------------------------------------------------------
 // Shared test token and auth header
@@ -507,10 +510,22 @@ describe("E2E: Billing flow (credit model)", () => {
     setLedger(creditLedger);
 
     // Inject billing deps
+    const sigPenaltySqlite = new BetterSqlite3(":memory:");
+    sigPenaltySqlite.exec(`
+      CREATE TABLE IF NOT EXISTS webhook_sig_penalties (
+        ip TEXT NOT NULL,
+        source TEXT NOT NULL,
+        failures INTEGER NOT NULL DEFAULT 0,
+        blocked_until INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (ip, source)
+      );
+    `);
     setBillingDeps({
       stripe: mockStripe,
       db,
       webhookSecret: "whsec_test",
+      sigPenaltyRepo: new DrizzleSigPenaltyRepository(drizzle(sigPenaltySqlite, { schema })),
     });
 
     app = buildApp();

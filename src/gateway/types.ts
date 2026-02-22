@@ -136,6 +136,8 @@ export interface GatewayConfig {
   onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
   /** Optional MetricsCollector for observability (WOP-825) */
   metrics?: import("../observability/metrics.js").MetricsCollector;
+  /** Repository for tracking per-IP webhook signature failure penalties. Required when Twilio webhook routes are enabled. */
+  sigPenaltyRepo?: import("../api/sig-penalty-repository.js").ISigPenaltyRepository;
 }
 
 /** Standard gateway error response. */

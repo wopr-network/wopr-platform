@@ -113,7 +113,8 @@
         "src/backup/*-repository.ts",
         "src/audit/audit-log-repository.ts",
         "src/admin/admin-audit-log-repository.ts",
-        "src/api/drizzle-oauth-state-repository.ts"
+        "src/api/drizzle-oauth-state-repository.ts",
+        "src/api/drizzle-sig-penalty-repository.ts"
       ],
       "linter": {
         "rules": {

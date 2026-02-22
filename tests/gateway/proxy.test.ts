@@ -1,9 +1,28 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
+import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DrizzleSigPenaltyRepository } from "../../src/api/drizzle-sig-penalty-repository.js";
+import * as schema from "../../src/db/schema/index.js";
 import { createGatewayRoutes } from "../../src/gateway/routes.js";
 import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
 import type { FetchFn, GatewayConfig, GatewayTenant } from "../../src/gateway/types.js";
+
+function makeTestSigPenaltyRepo() {
+  const sqlite = new Database(":memory:");
+  sqlite.exec(`
+    CREATE TABLE webhook_sig_penalties (
+      ip TEXT NOT NULL,
+      source TEXT NOT NULL,
+      failures INTEGER NOT NULL DEFAULT 0,
+      blocked_until INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (ip, source)
+    )
+  `);
+  return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
+}
 
 // ---------------------------------------------------------------------------
 // Stubs
@@ -165,6 +184,7 @@ function makeGatewayApp(
     resolveServiceKey: resolver,
     webhookBaseUrl: TEST_WEBHOOK_BASE_URL,
     resolveTenantFromWebhook: () => TENANT,
+    sigPenaltyRepo: makeTestSigPenaltyRepo(),
   };
 
   const app = new Hono<GatewayAuthEnv>();

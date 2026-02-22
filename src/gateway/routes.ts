@@ -83,11 +83,17 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
       "Gateway: resolveTenantFromWebhook is set but webhookBaseUrl is missing — Twilio webhook routes will not be registered and webhooks will receive 404",
     );
   }
-  if (config.providers.twilio?.authToken && config.webhookBaseUrl && config.resolveTenantFromWebhook) {
+  if (
+    config.providers.twilio?.authToken &&
+    config.webhookBaseUrl &&
+    config.resolveTenantFromWebhook &&
+    config.sigPenaltyRepo
+  ) {
     const webhookAuth = createTwilioWebhookAuth({
       twilioAuthToken: config.providers.twilio.authToken,
       webhookBaseUrl: config.webhookBaseUrl,
       resolveTenantFromWebhook: config.resolveTenantFromWebhook,
+      sigPenaltyRepo: config.sigPenaltyRepo,
     });
     gateway.post("/phone/inbound/:tenantId", webhookAuth, phoneInbound(deps));
     gateway.post("/messages/sms/inbound/:tenantId", webhookAuth, smsInbound(deps));

@@ -10,12 +10,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
 
 const { app } = await import("../../src/api/app.js");
-const { setBillingDeps, resetSignatureFailurePenalties } = await import("../../src/api/routes/billing.js");
+const { setBillingDeps } = await import("../../src/api/routes/billing.js");
+const { DrizzleSigPenaltyRepository } = await import("../../src/api/drizzle-sig-penalty-repository.js");
 const { createDb } = await import("../../src/db/index.js");
+const { drizzle } = await import("drizzle-orm/better-sqlite3");
 const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
 const { initMeterSchema } = await import("../../src/monetization/metering/schema.js");
 const { initStripeSchema } = await import("../../src/monetization/stripe/schema.js");
 const { TenantCustomerStore } = await import("../../src/monetization/stripe/tenant-store.js");
+import * as schema from "../../src/db/schema/index.js";
+
+function createTestSigPenaltyRepo() {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE webhook_sig_penalties (
+      ip TEXT NOT NULL,
+      source TEXT NOT NULL,
+      failures INTEGER NOT NULL DEFAULT 0,
+      blocked_until INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (ip, source)
+    )
+  `);
+  return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
+}
 
 function createMockStripe(
   overrides: {
@@ -57,7 +75,6 @@ describe("integration: billing routes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    resetSignatureFailurePenalties();
     sqlite = new BetterSqlite3(":memory:");
     initMeterSchema(sqlite);
     initStripeSchema(sqlite);
@@ -68,6 +85,7 @@ describe("integration: billing routes", () => {
       stripe: createMockStripe(),
       db,
       webhookSecret: "whsec_test_secret",
+      sigPenaltyRepo: createTestSigPenaltyRepo(),
     });
   });
 
@@ -194,6 +212,7 @@ describe("integration: billing routes", () => {
         stripe: createMockStripe({ checkoutCreate }),
         db,
         webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
       });
 
       const res = await app.request("/api/billing/credits/checkout", {
@@ -220,6 +239,7 @@ describe("integration: billing routes", () => {
         stripe: createMockStripe({ portalCreate }),
         db,
         webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
       });
 
       const res = await app.request("/api/billing/portal", {
@@ -279,6 +299,7 @@ describe("integration: billing routes", () => {
         stripe: createMockStripe({ constructEvent }),
         db,
         webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
       });
 
       const res = await app.request("/api/billing/webhook", {
@@ -310,6 +331,7 @@ describe("integration: billing routes", () => {
         stripe: createMockStripe({ constructEvent }),
         db,
         webhookSecret: "whsec_test",
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
       });
 
       const res = await app.request("/api/billing/webhook", {
