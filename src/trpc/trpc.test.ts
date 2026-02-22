@@ -194,6 +194,19 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: undefined,
+        dividendRepo: {
+          getStats: () => ({
+            poolCents: 0,
+            activeUsers: 0,
+            perUserCents: 0,
+            nextDistributionAt: new Date().toISOString(),
+            userEligible: false,
+            userLastPurchaseAt: null,
+            userWindowExpiresAt: null,
+          }),
+          getHistory: () => [],
+          getLifetimeTotalCents: () => 0,
+        },
       });
     });
 
@@ -468,6 +481,19 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: loadCreditPriceMap(),
+        dividendRepo: {
+          getStats: () => ({
+            poolCents: 0,
+            activeUsers: 0,
+            perUserCents: 0,
+            nextDistributionAt: new Date().toISOString(),
+            userEligible: false,
+            userLastPurchaseAt: null,
+            userWindowExpiresAt: null,
+          }),
+          getHistory: () => [],
+          getLifetimeTotalCents: () => 0,
+        },
       });
 
       const caller = createCaller(authedContext());
@@ -526,6 +552,19 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: loadCreditPriceMap(),
+        dividendRepo: {
+          getStats: () => ({
+            poolCents: 0,
+            activeUsers: 0,
+            perUserCents: 0,
+            nextDistributionAt: new Date().toISOString(),
+            userEligible: false,
+            userLastPurchaseAt: null,
+            userWindowExpiresAt: null,
+          }),
+          getHistory: () => [],
+          getLifetimeTotalCents: () => 0,
+        },
       });
 
       const caller = createCaller(authedContext());
@@ -555,6 +594,19 @@ describe("tRPC appRouter", () => {
         meterAggregator,
         usageReporter,
         priceMap: undefined,
+        dividendRepo: {
+          getStats: () => ({
+            poolCents: 0,
+            activeUsers: 0,
+            perUserCents: 0,
+            nextDistributionAt: new Date().toISOString(),
+            userEligible: false,
+            userLastPurchaseAt: null,
+            userWindowExpiresAt: null,
+          }),
+          getHistory: () => [],
+          getLifetimeTotalCents: () => 0,
+        },
       });
 
       const caller = createCaller(authedContext());

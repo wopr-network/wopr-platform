@@ -7,6 +7,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
@@ -43,6 +44,7 @@ export interface BillingRouterDeps {
   meterAggregator: MeterAggregator;
   usageReporter: StripeUsageReporter;
   priceMap: CreditPriceMap | undefined;
+  dividendRepo: IDividendRepository;
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -454,4 +456,59 @@ export const billingRouter = router({
     // TODO(WOP-687): wire to Stripe payment method removal
     return { removed: true };
   }),
+
+  /** Get current dividend pool stats and user eligibility. */
+  dividendStats: protectedProcedure
+    .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
+    .query(({ input, ctx }) => {
+      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+      const { dividendRepo } = deps();
+      const stats = dividendRepo.getStats(tenant);
+      return {
+        pool_cents: stats.poolCents,
+        active_users: stats.activeUsers,
+        per_user_cents: stats.perUserCents,
+        next_distribution_at: stats.nextDistributionAt,
+        user_eligible: stats.userEligible,
+        user_last_purchase_at: stats.userLastPurchaseAt,
+        user_window_expires_at: stats.userWindowExpiresAt,
+      };
+    }),
+
+  /** Get paginated dividend history for the authenticated user. */
+  dividendHistory: protectedProcedure
+    .input(
+      z
+        .object({
+          tenant: tenantIdSchema.optional(),
+          limit: z.number().int().positive().max(250).optional(),
+          offset: z.number().int().min(0).optional(),
+        })
+        .optional(),
+    )
+    .query(({ input, ctx }) => {
+      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+      const { dividendRepo } = deps();
+      const dividends = dividendRepo.getHistory(tenant, input?.limit ?? 50, input?.offset ?? 0);
+      return { dividends };
+    }),
+
+  /** Get lifetime total dividend credits for the authenticated user. */
+  dividendLifetime: protectedProcedure
+    .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
+    .query(({ input, ctx }) => {
+      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+      const { dividendRepo } = deps();
+      const total = dividendRepo.getLifetimeTotalCents(tenant);
+      return { total_cents: total, tenant };
+    }),
 });

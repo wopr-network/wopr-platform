@@ -32,6 +32,8 @@ import type { IBotBilling } from "../monetization/credits/bot-billing.js";
 import { DrizzleBotBilling } from "../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleCreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { IDividendRepository } from "../monetization/credits/dividend-repository.js";
+import { DrizzleDividendRepository } from "../monetization/credits/dividend-repository.js";
 import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
@@ -504,6 +506,7 @@ let _usageAggregationWorker: IUsageAggregationWorker | null = null;
 let _budgetChecker: IBudgetChecker | null = null;
 let _tenantCustomerStore: ITenantCustomerStore | null = null;
 let _payramChargeStore: IPayRamChargeStore | null = null;
+let _dividendRepo: IDividendRepository | null = null;
 
 export function getCreditLedger(): ICreditLedger {
   if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
@@ -543,6 +546,11 @@ export function getTenantCustomerStore(): ITenantCustomerStore {
 export function getPayRamChargeStore(): IPayRamChargeStore {
   if (!_payramChargeStore) _payramChargeStore = new DrizzlePayRamChargeStore(getDb());
   return _payramChargeStore;
+}
+
+export function getDividendRepo(): IDividendRepository {
+  if (!_dividendRepo) _dividendRepo = new DrizzleDividendRepository(getDb());
+  return _dividendRepo;
 }
 
 // ---------------------------------------------------------------------------
