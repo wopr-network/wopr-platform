@@ -1,6 +1,6 @@
 import { serve } from "@hono/node-server";
 import Database from "better-sqlite3";
-import { eq, gte } from "drizzle-orm";
+import { eq, gte, sql } from "drizzle-orm";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
@@ -275,12 +275,14 @@ if (process.env.NODE_ENV !== "test") {
       },
       queryCreditsConsumed24h: () => {
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-        const rows = billingDrizzle
-          .select({ charge: schema.meterEvents.charge })
+        const row = billingDrizzle
+          .select({
+            total: sql<number>`COALESCE(SUM(${schema.meterEvents.charge}), 0)`,
+          })
           .from(schema.meterEvents)
           .where(gte(schema.meterEvents.timestamp, cutoff))
-          .all();
-        return Math.round(rows.reduce((sum, r) => sum + r.charge, 0) * 100);
+          .get();
+        return Math.round((row?.total ?? 0) * 100);
       },
     });
     adminHealth.use("*", scopedBearerAuthWithTenant(tokenMetadata, "admin"));
