@@ -112,7 +112,8 @@
         "src/security/credential-vault/credential-repository.ts",
         "src/backup/*-repository.ts",
         "src/audit/audit-log-repository.ts",
-        "src/admin/admin-audit-log-repository.ts"
+        "src/admin/admin-audit-log-repository.ts",
+        "src/api/drizzle-oauth-state-repository.ts"
       ],
       "linter": {
         "rules": {
