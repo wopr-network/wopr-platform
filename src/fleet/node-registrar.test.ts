@@ -128,4 +128,46 @@ describe("NodeRegistrar", () => {
     expect(recoveryRepo.getWaitingItems).toHaveBeenCalledWith("evt-1");
     expect(onRetryWaiting).toHaveBeenCalledWith("evt-1");
   });
+
+  it("triggers onRetryWaiting for waiting tenants even when onReturning is a no-op (returning node)", () => {
+    // Regression guard for WOP-912: onReturning is wired as a no-op in services.ts
+    // because OrphanCleaner handles container cleanup on first heartbeat.
+    // The waiting-tenant retry is handled separately by the onRetryWaiting path,
+    // which fires for ALL registrations regardless of node status. This test
+    // verifies that a no-op onReturning does not suppress the retry.
+    const node = makeNode({ id: "node-1", status: "returning" });
+    const event = makeRecoveryEvent({ id: "evt-1" });
+    const waitingItem = {
+      id: "item-1",
+      recoveryEventId: "evt-1",
+      tenant: "tenant-abc",
+      sourceNode: "node-dead",
+      targetNode: null,
+      backupKey: null,
+      status: "waiting" as const,
+      reason: "no_capacity",
+      startedAt: 1000,
+      completedAt: null,
+    };
+
+    const nodeRepo: NodeRegistrarNodeRepo = {
+      register: vi.fn().mockReturnValue(node),
+      registerSelfHosted: vi.fn().mockReturnValue(node),
+    };
+    const recoveryRepo: NodeRegistrarRecoveryRepo = {
+      listOpenEvents: vi.fn().mockReturnValue([event]),
+      getWaitingItems: vi.fn().mockReturnValue([waitingItem]),
+    };
+    // Simulate services.ts wiring: onReturning is a no-op, onRetryWaiting is active
+    const onReturning = vi.fn(); // no-op stand-in
+    const onRetryWaiting = vi.fn();
+
+    const registrar = new NodeRegistrar(nodeRepo, recoveryRepo, { onReturning, onRetryWaiting });
+    registrar.register(makeRegistration({ nodeId: "node-1" }));
+
+    // onReturning fires for node lifecycle (container cleanup hand-off)
+    expect(onReturning).toHaveBeenCalledWith("node-1");
+    // onRetryWaiting fires independently — waiting tenants get placed regardless
+    expect(onRetryWaiting).toHaveBeenCalledWith("evt-1");
+  });
 });
