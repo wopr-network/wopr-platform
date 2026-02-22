@@ -4,7 +4,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
 
 /** Transaction types that add credits */
-export type CreditType = "signup_grant" | "purchase" | "bounty" | "referral" | "promo";
+export type CreditType = "signup_grant" | "purchase" | "bounty" | "referral" | "promo" | "community_dividend";
 
 /** Transaction types that remove credits */
 export type DebitType = "bot_runtime" | "adapter_usage" | "addon" | "refund" | "correction";

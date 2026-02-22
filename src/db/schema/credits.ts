@@ -12,7 +12,7 @@ export const creditTransactions = sqliteTable(
     tenantId: text("tenant_id").notNull(),
     amountCents: integer("amount_cents").notNull(),
     balanceAfterCents: integer("balance_after_cents").notNull(),
-    type: text("type").notNull(), // signup_grant | purchase | bounty | referral | promo | bot_runtime | adapter_usage | addon | refund | correction
+    type: text("type").notNull(), // signup_grant | purchase | bounty | referral | promo | community_dividend | bot_runtime | adapter_usage | addon | refund | correction
     description: text("description"),
     referenceId: text("reference_id").unique(),
     fundingSource: text("funding_source"), // "stripe" | "payram" | null (null = legacy/signup)
