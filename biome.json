@@ -96,6 +96,7 @@
         "src/admin/tenant-status/tenant-status-repository.ts",
         "src/monetization/credits/credit-ledger.ts",
         "src/monetization/credits/bot-billing.ts",
+        "src/monetization/credits/dividend-cron.ts",
         "src/monetization/budget/budget-checker.ts",
         "src/monetization/metering/aggregator.ts",
         "src/monetization/metering/emitter.ts",
