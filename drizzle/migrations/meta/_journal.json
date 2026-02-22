@@ -156,5 +156,13 @@
       "tag": "0022_fluffy_next_avengers",
       "breakpoints": true
     }
+    ,
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1771744431730,
+      "tag": "0023_tidy_klaw",
+      "breakpoints": true
+    }
   ]
 }

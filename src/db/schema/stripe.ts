@@ -7,6 +7,7 @@ export const tenantCustomers = sqliteTable(
     stripeCustomerId: text("stripe_customer_id").notNull().unique(),
     tier: text("tier").notNull().default("free"),
     billingHold: integer("billing_hold").notNull().default(0),
+    inferenceMode: text("inference_mode").notNull().default("byok"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },

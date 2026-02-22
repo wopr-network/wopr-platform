@@ -106,6 +106,7 @@
         "src/monetization/metering/emitter.ts",
         "src/monetization/metering/usage-aggregation-worker.ts",
         "src/monetization/payram/charge-store.ts",
+        "src/monetization/spending-limits-repository.ts",
         "src/monetization/stripe/tenant-store.ts",
         "src/account/deletion-repository.ts",
         "src/account/deletion-executor-repository.ts",

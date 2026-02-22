@@ -19,6 +19,10 @@ export function initStripeSchema(db: Database.Database): void {
     db.exec("ALTER TABLE tenant_customers ADD COLUMN billing_hold INTEGER NOT NULL DEFAULT 0");
   }
 
+  if (!cols.some((c) => c.name === "inference_mode")) {
+    db.exec("ALTER TABLE tenant_customers ADD COLUMN inference_mode TEXT NOT NULL DEFAULT 'byok'");
+  }
+
   // Migration: drop stripe_subscription_id if it exists (WOP-406: credits replace subscriptions)
   if (cols.some((c) => c.name === "stripe_subscription_id")) {
     // SQLite doesn't support DROP COLUMN before 3.35.0; recreate for safety.

@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
+import type { ISpendingLimitsRepository } from "../../monetization/spending-limits-repository.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import type { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
@@ -31,6 +32,73 @@ const identifierSchema = z
   .regex(/^[a-z0-9_-]+$/i);
 
 // ---------------------------------------------------------------------------
+// Static plan data (WOPR is credit-based, not subscription-based)
+// ---------------------------------------------------------------------------
+
+const PLAN_TIERS = [
+  {
+    id: "free",
+    tier: "free" as const,
+    name: "Free",
+    price: 0,
+    priceLabel: "$0/mo",
+    features: {
+      instanceCap: 1,
+      channels: "1 channel",
+      plugins: "Community",
+      support: "Community",
+      extras: [] as string[],
+    },
+    recommended: false,
+  },
+  {
+    id: "pro",
+    tier: "pro" as const,
+    name: "Pro",
+    price: 19,
+    priceLabel: "$19/mo",
+    features: {
+      instanceCap: 5,
+      channels: "Unlimited",
+      plugins: "All plugins",
+      support: "Email",
+      extras: ["Priority queue"],
+    },
+    recommended: true,
+  },
+  {
+    id: "team",
+    tier: "team" as const,
+    name: "Team",
+    price: 49,
+    priceLabel: "$49/mo",
+    features: {
+      instanceCap: 20,
+      channels: "Unlimited",
+      plugins: "All plugins",
+      support: "Priority",
+      extras: ["Team management", "Audit log"],
+    },
+    recommended: false,
+  },
+  {
+    id: "enterprise",
+    tier: "enterprise" as const,
+    name: "Enterprise",
+    price: null as number | null,
+    priceLabel: "Custom",
+    features: {
+      instanceCap: null as number | null,
+      channels: "Unlimited",
+      plugins: "All + custom",
+      support: "Dedicated",
+      extras: ["SLA", "Custom integrations", "On-prem option"],
+    },
+    recommended: false,
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
 // Deps — injected at startup
 // ---------------------------------------------------------------------------
 
@@ -38,6 +106,38 @@ export interface BillingRouterDeps {
   stripe: {
     checkout: { sessions: { create: (...args: unknown[]) => Promise<{ id: string; url: string | null }> } };
     billingPortal: { sessions: { create: (...args: unknown[]) => Promise<{ url: string }> } };
+    customers: {
+      retrieve: (
+        id: string,
+        params?: { expand?: string[] },
+      ) => Promise<{
+        id: string;
+        email: string | null;
+        invoice_settings?: { default_payment_method?: string | null };
+      }>;
+      update: (id: string, params: { email: string }) => Promise<{ id: string; email: string | null }>;
+    };
+    paymentMethods: {
+      list: (params: { customer: string; type: string }) => Promise<{
+        data: Array<{
+          id: string;
+          card?: { brand: string; last4: string; exp_month: number; exp_year: number };
+        }>;
+      }>;
+      retrieve: (id: string) => Promise<{ id: string; customer: string | null }>;
+      detach: (id: string) => Promise<{ id: string }>;
+    };
+    invoices: {
+      list: (params: { customer: string; limit: number }) => Promise<{
+        data: Array<{
+          id: string;
+          created: number;
+          amount_due: number;
+          status: string | null;
+          invoice_pdf: string | null;
+        }>;
+      }>;
+    };
   };
   tenantStore: TenantCustomerStore;
   creditStore: CreditAdjustmentStore;
@@ -45,6 +145,7 @@ export interface BillingRouterDeps {
   usageReporter: StripeUsageReporter;
   priceMap: CreditPriceMap | undefined;
   dividendRepo: IDividendRepository;
+  spendingLimitsRepo: ISpendingLimitsRepository;
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -247,94 +348,47 @@ export const billingRouter = router({
 
   /** Get available subscription plans. */
   plans: protectedProcedure.query(() => {
-    // TODO(WOP-687): wire to real plan configuration
-    return [
-      {
-        id: "free",
-        tier: "free" as const,
-        name: "Free",
-        price: 0,
-        priceLabel: "$0/mo",
-        features: {
-          instanceCap: 1,
-          channels: "1 channel",
-          plugins: "Community",
-          support: "Community",
-          extras: [] as string[],
-        },
-        recommended: false,
-      },
-      {
-        id: "pro",
-        tier: "pro" as const,
-        name: "Pro",
-        price: 19,
-        priceLabel: "$19/mo",
-        features: {
-          instanceCap: 5,
-          channels: "Unlimited",
-          plugins: "All plugins",
-          support: "Email",
-          extras: ["Priority queue"],
-        },
-        recommended: true,
-      },
-      {
-        id: "team",
-        tier: "team" as const,
-        name: "Team",
-        price: 49,
-        priceLabel: "$49/mo",
-        features: {
-          instanceCap: 20,
-          channels: "Unlimited",
-          plugins: "All plugins",
-          support: "Priority",
-          extras: ["Team management", "Audit log"],
-        },
-        recommended: false,
-      },
-      {
-        id: "enterprise",
-        tier: "enterprise" as const,
-        name: "Enterprise",
-        price: null as number | null,
-        priceLabel: "Custom",
-        features: {
-          instanceCap: null as number | null,
-          channels: "Unlimited",
-          plugins: "All + custom",
-          support: "Dedicated",
-          extras: ["SLA", "Custom integrations", "On-prem option"],
-        },
-        recommended: false,
-      },
-    ];
+    return [...PLAN_TIERS];
   }),
 
   /** Get current plan tier for the authenticated user. */
-  currentPlan: protectedProcedure.query(() => {
-    // TODO(WOP-687): wire to real subscription store
-    return { tier: "free" as const };
+  currentPlan: protectedProcedure.query(({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { tenantStore } = deps();
+    const mapping = tenantStore.getByTenant(tenant);
+    return { tier: (mapping?.tier ?? "free") as "free" | "pro" | "team" | "enterprise" };
   }),
 
   /** Change subscription plan. */
   changePlan: protectedProcedure
     .input(z.object({ tier: z.enum(["free", "pro", "team", "enterprise"]) }))
-    .mutation(({ input }) => {
-      // TODO(WOP-687): wire to Stripe subscription change
+    .mutation(({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { tenantStore } = deps();
+      tenantStore.setTier(tenant, input.tier);
       return { tier: input.tier };
     }),
 
   /** Get inference mode (byok or hosted). */
-  inferenceMode: protectedProcedure.query(() => {
-    // TODO(WOP-687): wire to tenant settings store
-    return { mode: "byok" as const };
+  inferenceMode: protectedProcedure.query(({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { tenantStore } = deps();
+    const mode = tenantStore.getInferenceMode(tenant);
+    return { mode: mode as "byok" | "hosted" };
   }),
+
+  /** Set inference mode (byok or hosted). */
+  setInferenceMode: protectedProcedure
+    .input(z.object({ mode: z.enum(["byok", "hosted"]) }))
+    .mutation(({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { tenantStore } = deps();
+      tenantStore.setInferenceMode(tenant, input.mode);
+      return { mode: input.mode };
+    }),
 
   /** Get provider cost estimates (BYOK users). */
   providerCosts: protectedProcedure.query(() => {
-    // TODO(WOP-687): wire to metering aggregator
     return [] as Array<{
       provider: string;
       estimatedCost: number;
@@ -344,21 +398,44 @@ export const billingRouter = router({
   }),
 
   /** Get hosted usage summary for current billing period. */
-  hostedUsageSummary: protectedProcedure.query(() => {
-    // TODO(WOP-687): wire to metering aggregator for hosted usage
+  hostedUsageSummary: protectedProcedure.query(({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { meterAggregator, creditStore } = deps();
+
+    const periodStart = new Date();
+    periodStart.setDate(1);
+    periodStart.setHours(0, 0, 0, 0);
+    const since = periodStart.getTime();
+
+    const summaries = meterAggregator.querySummaries(tenant, { since, limit: 1000 });
+
+    // Group by capability
+    const capMap = new Map<string, { units: number; cost: number }>();
+    for (const s of summaries) {
+      const existing = capMap.get(s.capability) ?? { units: 0, cost: 0 };
+      existing.units += s.event_count;
+      existing.cost += s.total_charge;
+      capMap.set(s.capability, existing);
+    }
+
+    const capabilities = Array.from(capMap.entries()).map(([capability, data]) => ({
+      capability,
+      label: capability.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      units: data.units,
+      unitLabel: "events",
+      cost: data.cost,
+    }));
+
+    const totalCost = capabilities.reduce((sum, c) => sum + c.cost, 0);
+    const balance = creditStore.getBalance(tenant);
+
     return {
-      periodStart: new Date(Date.now() - 30 * 86400000).toISOString(),
+      periodStart: periodStart.toISOString(),
       periodEnd: new Date().toISOString(),
-      capabilities: [] as Array<{
-        capability: string;
-        label: string;
-        units: number;
-        unitLabel: string;
-        cost: number;
-      }>,
-      totalCost: 0,
-      includedCredit: 0,
-      amountDue: 0,
+      capabilities,
+      totalCost,
+      includedCredit: balance,
+      amountDue: Math.max(0, totalCost - balance),
     };
   }),
 
@@ -373,31 +450,39 @@ export const billingRouter = router({
         })
         .optional(),
     )
-    .query(() => {
-      // TODO(WOP-687): wire to metering aggregator event query
-      return [] as Array<{
-        id: string;
-        date: string;
-        capability: string;
-        provider: string;
-        units: number;
-        unitLabel: string;
-        cost: number;
-      }>;
+    .query(({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { meterAggregator } = deps();
+
+      const since = input?.from ? new Date(input.from).getTime() : undefined;
+      const until = input?.to ? new Date(input.to).getTime() : undefined;
+
+      let summaries = meterAggregator.querySummaries(tenant, {
+        since,
+        until,
+        limit: 500,
+      });
+
+      if (input?.capability) {
+        summaries = summaries.filter((s) => s.capability === input.capability);
+      }
+
+      return summaries.map((s) => ({
+        id: `${s.tenant}-${s.capability}-${s.window_start}`,
+        date: new Date(s.window_start).toISOString(),
+        capability: s.capability,
+        provider: s.provider,
+        units: s.event_count,
+        unitLabel: "events",
+        cost: s.total_charge,
+      }));
     }),
 
   /** Get spending limits configuration. */
-  spendingLimits: protectedProcedure.query(() => {
-    // TODO(WOP-687): wire to tenant spending limits store
-    return {
-      global: { alertAt: null as number | null, hardCap: null as number | null },
-      perCapability: {
-        transcription: { alertAt: null as number | null, hardCap: null as number | null },
-        image_gen: { alertAt: null as number | null, hardCap: null as number | null },
-        text_gen: { alertAt: null as number | null, hardCap: null as number | null },
-        embeddings: { alertAt: null as number | null, hardCap: null as number | null },
-      },
-    };
+  spendingLimits: protectedProcedure.query(({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { spendingLimitsRepo } = deps();
+    return spendingLimitsRepo.get(tenant);
   }),
 
   /** Update spending limits. */
@@ -417,45 +502,131 @@ export const billingRouter = router({
         ),
       }),
     )
-    .mutation(({ input }) => {
-      // TODO(WOP-687): persist spending limits
-      return input;
+    .mutation(({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { spendingLimitsRepo } = deps();
+      spendingLimitsRepo.upsert(tenant, input);
+      return spendingLimitsRepo.get(tenant);
     }),
 
   /** Get billing info (payment methods, invoices, email). */
-  billingInfo: protectedProcedure.query(() => {
-    // TODO(WOP-687): wire to Stripe customer data
-    return {
-      email: "",
-      paymentMethods: [] as Array<{
-        id: string;
-        brand: string;
-        last4: string;
-        expiryMonth: number;
-        expiryYear: number;
-        isDefault: boolean;
-      }>,
-      invoices: [] as Array<{
-        id: string;
-        date: string;
-        amount: number;
-        status: string;
-        downloadUrl: string;
-      }>,
-    };
+  billingInfo: protectedProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { stripe, tenantStore } = deps();
+    const mapping = tenantStore.getByTenant(tenant);
+
+    if (!mapping) {
+      return {
+        email: "",
+        paymentMethods: [] as Array<{
+          id: string;
+          brand: string;
+          last4: string;
+          expiryMonth: number;
+          expiryYear: number;
+          isDefault: boolean;
+        }>,
+        invoices: [] as Array<{
+          id: string;
+          date: string;
+          amount: number;
+          status: string;
+          downloadUrl: string;
+        }>,
+      };
+    }
+
+    const customerId = mapping.stripe_customer_id;
+
+    try {
+      const [customer, paymentMethodsResult, invoicesResult] = await Promise.all([
+        stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] }),
+        stripe.paymentMethods.list({ customer: customerId, type: "card" }),
+        stripe.invoices.list({ customer: customerId, limit: 20 }),
+      ]);
+
+      const defaultPmId =
+        typeof customer === "object" && "invoice_settings" in customer
+          ? (customer.invoice_settings?.default_payment_method as string | null)
+          : null;
+
+      const paymentMethods = paymentMethodsResult.data
+        .filter((pm) => pm.card)
+        .map((pm) => ({
+          id: pm.id,
+          brand: pm.card?.brand ?? "",
+          last4: pm.card?.last4 ?? "",
+          expiryMonth: pm.card?.exp_month ?? 0,
+          expiryYear: pm.card?.exp_year ?? 0,
+          isDefault: pm.id === defaultPmId,
+        }));
+
+      const invoices = invoicesResult.data.map((inv) => ({
+        id: inv.id,
+        date: new Date(inv.created * 1000).toISOString(),
+        amount: inv.amount_due,
+        status: inv.status ?? "unknown",
+        downloadUrl: inv.invoice_pdf ?? "",
+      }));
+
+      return {
+        email: typeof customer === "object" && "email" in customer ? (customer.email ?? "") : "",
+        paymentMethods,
+        invoices,
+      };
+    } catch {
+      // Stripe customer may have been deleted or API is down
+      return {
+        email: "",
+        paymentMethods: [],
+        invoices: [],
+      };
+    }
   }),
 
   /** Update billing email. */
-  updateBillingEmail: protectedProcedure.input(z.object({ email: z.string().email() })).mutation(({ input }) => {
-    // TODO(WOP-687): wire to Stripe customer update
-    return { email: input.email };
-  }),
+  updateBillingEmail: protectedProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { stripe, tenantStore } = deps();
+      const mapping = tenantStore.getByTenant(tenant);
+
+      if (!mapping) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No billing account found" });
+      }
+
+      await stripe.customers.update(mapping.stripe_customer_id, { email: input.email });
+      return { email: input.email };
+    }),
 
   /** Remove a payment method. */
-  removePaymentMethod: protectedProcedure.input(z.object({ id: z.string().min(1) })).mutation(() => {
-    // TODO(WOP-687): wire to Stripe payment method removal
-    return { removed: true };
-  }),
+  removePaymentMethod: protectedProcedure
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { stripe, tenantStore } = deps();
+
+      const { detachPaymentMethod, PaymentMethodOwnershipError } = await import(
+        "../../monetization/stripe/payment-methods.js"
+      );
+
+      try {
+        await detachPaymentMethod(stripe as never, tenantStore, {
+          tenant,
+          paymentMethodId: input.id,
+        });
+        return { removed: true };
+      } catch (err) {
+        if (err instanceof PaymentMethodOwnershipError) {
+          throw new TRPCError({ code: "FORBIDDEN", message: err.message });
+        }
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: err instanceof Error ? err.message : "Failed to remove payment method",
+        });
+      }
+    }),
 
   /** Get current dividend pool stats and user eligibility. */
   dividendStats: protectedProcedure

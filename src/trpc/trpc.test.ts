@@ -5,7 +5,9 @@ import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
+import { SpendingLimitsRepository } from "../monetization/spending-limits-repository.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
+import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { createTestDb } from "../test/db.js";
 import { appRouter } from "./index.js";
 import type { TRPCContext } from "./init.js";
@@ -174,20 +176,39 @@ describe("tRPC appRouter", () => {
   // -------------------------------------------------------------------------
 
   describe("billing", () => {
+    let tenantStore: DrizzleTenantCustomerStore;
+
     beforeEach(async () => {
       const creditStore = new CreditAdjustmentStore(sqlite);
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
-      const tenantStore = new TenantCustomerStore(db);
+      tenantStore = new TenantCustomerStore(db);
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+      const spendingLimitsRepo = new SpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {
           checkout: { sessions: { create: vi.fn() } },
           billingPortal: { sessions: { create: vi.fn() } },
+          customers: {
+            retrieve: vi.fn().mockResolvedValue({
+              id: "cus_test",
+              email: "test@example.com",
+              invoice_settings: { default_payment_method: null },
+            }),
+            update: vi.fn().mockResolvedValue({ id: "cus_test", email: "updated@example.com" }),
+          },
+          paymentMethods: {
+            list: vi.fn().mockResolvedValue({ data: [] }),
+            retrieve: vi.fn().mockResolvedValue({ id: "pm_test", customer: "cus_test" }),
+            detach: vi.fn().mockResolvedValue({ id: "pm_test" }),
+          },
+          invoices: {
+            list: vi.fn().mockResolvedValue({ data: [] }),
+          },
         } as never,
         tenantStore,
         creditStore,
@@ -207,6 +228,7 @@ describe("tRPC appRouter", () => {
           getHistory: () => [],
           getLifetimeTotalCents: () => 0,
         },
+        spendingLimitsRepo,
       });
     });
 
@@ -398,24 +420,99 @@ describe("tRPC appRouter", () => {
       expect(result.global.hardCap).toBe(200);
     });
 
-    it("billingInfo returns info shape", async () => {
+    it("billingInfo returns empty state when tenant has no Stripe mapping", async () => {
       const caller = createCaller(authedContext());
       const result = await caller.billing.billingInfo();
       expect(result).toHaveProperty("email");
       expect(result).toHaveProperty("paymentMethods");
       expect(result).toHaveProperty("invoices");
+      expect(result.email).toBe("");
+      expect(result.paymentMethods).toEqual([]);
+      expect(result.invoices).toEqual([]);
     });
 
-    it("updateBillingEmail returns updated email", async () => {
+    it("billingInfo returns Stripe data when mapping exists", async () => {
+      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
-      const result = await caller.billing.updateBillingEmail({ email: "test@example.com" });
+      const result = await caller.billing.billingInfo();
       expect(result.email).toBe("test@example.com");
     });
 
-    it("removePaymentMethod returns removed confirmation", async () => {
+    it("updateBillingEmail throws NOT_FOUND when tenant has no mapping", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.billing.removePaymentMethod({ id: "pm-123" });
+      await expect(caller.billing.updateBillingEmail({ email: "test@example.com" })).rejects.toThrow(
+        "No billing account found",
+      );
+    });
+
+    it("updateBillingEmail calls Stripe when mapping exists", async () => {
+      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.updateBillingEmail({ email: "new@example.com" });
+      expect(result.email).toBe("new@example.com");
+    });
+
+    it("removePaymentMethod throws when tenant has no Stripe mapping", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.billing.removePaymentMethod({ id: "pm_test" })).rejects.toThrow();
+    });
+
+    it("removePaymentMethod returns removed true when PM belongs to tenant", async () => {
+      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.removePaymentMethod({ id: "pm_test" });
       expect(result.removed).toBe(true);
+    });
+
+    it("currentPlan returns free tier for tenant with no mapping", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.currentPlan();
+      expect(result.tier).toBe("free");
+    });
+
+    it("changePlan persists tier change", async () => {
+      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      const caller = createCaller(authedContext());
+      await caller.billing.changePlan({ tier: "pro" });
+      const result = await caller.billing.currentPlan();
+      expect(result.tier).toBe("pro");
+    });
+
+    it("inferenceMode defaults to byok for new tenant", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.inferenceMode();
+      expect(result.mode).toBe("byok");
+    });
+
+    it("setInferenceMode persists mode change", async () => {
+      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      const caller = createCaller(authedContext());
+      await caller.billing.setInferenceMode({ mode: "hosted" });
+      const result = await caller.billing.inferenceMode();
+      expect(result.mode).toBe("hosted");
+    });
+
+    it("spendingLimits returns null defaults for new tenant", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.billing.spendingLimits();
+      expect(result.global.alertAt).toBeNull();
+      expect(result.global.hardCap).toBeNull();
+      expect(result.perCapability).toEqual({});
+    });
+
+    it("updateSpendingLimits round-trips through DB", async () => {
+      const caller = createCaller(authedContext());
+      const limits = {
+        global: { alertAt: 100, hardCap: 200 },
+        perCapability: {
+          image_gen: { alertAt: 10, hardCap: 50 },
+        },
+      };
+      await caller.billing.updateSpendingLimits(limits);
+      const result = await caller.billing.spendingLimits();
+      expect(result.global.alertAt).toBe(100);
+      expect(result.global.hardCap).toBe(200);
+      expect(result.perCapability.image_gen.hardCap).toBe(50);
     });
 
     it("new procedures reject unauthenticated requests", async () => {
@@ -470,6 +567,7 @@ describe("tRPC appRouter", () => {
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+      const spendingLimitsRepo1 = new SpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {
@@ -494,6 +592,7 @@ describe("tRPC appRouter", () => {
           getHistory: () => [],
           getLifetimeTotalCents: () => 0,
         },
+        spendingLimitsRepo: spendingLimitsRepo1,
       });
 
       const caller = createCaller(authedContext());
@@ -541,6 +640,7 @@ describe("tRPC appRouter", () => {
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+      const spendingLimitsRepo2 = new SpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {
@@ -565,6 +665,7 @@ describe("tRPC appRouter", () => {
           getHistory: () => [],
           getLifetimeTotalCents: () => 0,
         },
+        spendingLimitsRepo: spendingLimitsRepo2,
       });
 
       const caller = createCaller(authedContext());
@@ -583,6 +684,7 @@ describe("tRPC appRouter", () => {
       const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
       const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
       const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
+      const spendingLimitsRepo3 = new SpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         stripe: {
@@ -607,6 +709,7 @@ describe("tRPC appRouter", () => {
           getHistory: () => [],
           getLifetimeTotalCents: () => 0,
         },
+        spendingLimitsRepo: spendingLimitsRepo3,
       });
 
       const caller = createCaller(authedContext());
