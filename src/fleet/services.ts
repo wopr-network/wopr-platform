@@ -37,10 +37,12 @@ import type { ICredentialRepository } from "../security/credential-vault/credent
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
-import { DrizzleBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
-import { DrizzleBotProfileRepository } from "./bot-profile-repository.js";
 import { DOClient } from "./do-client.js";
+import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
+import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
+import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
+import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
 import type { IGpuNodeRepository } from "./gpu-node-repository.js";
 import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
 import { HeartbeatProcessor } from "./heartbeat-processor.js";
@@ -52,11 +54,9 @@ import { NodeDrainer } from "./node-drainer.js";
 import { NodeProvisioner } from "./node-provisioner.js";
 import { NodeRegistrar } from "./node-registrar.js";
 import type { INodeRepository } from "./node-repository.js";
-import { DrizzleNodeRepository } from "./node-repository.js";
 import { OrphanCleaner } from "./orphan-cleaner.js";
 import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
-import { DrizzleRecoveryRepository } from "./recovery-repository.js";
 import { RegistrationTokenStore } from "./registration-token-store.js";
 import { DrizzleSpendingCapStore } from "./spending-cap-repository.js";
 

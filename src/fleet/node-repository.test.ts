@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
 import { nodes } from "../db/schema/index.js";
 import { nodeTransitions } from "../db/schema/node-transitions.js";
-import { DrizzleNodeRepository } from "./node-repository.js";
+import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { ConcurrentTransitionError, InvalidTransitionError, NodeNotFoundError } from "./node-state-machine.js";
 
 function setupDb() {

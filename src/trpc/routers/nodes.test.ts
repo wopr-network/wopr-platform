@@ -2,9 +2,9 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../../db/schema/index.js";
-import { DrizzleBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
+import { DrizzleNodeRepository } from "../../fleet/drizzle-node-repository.js";
 import { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
-import { DrizzleNodeRepository } from "../../fleet/node-repository.js";
 import { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
 import { nodesRouter, setNodesRouterDeps } from "./nodes.js";
 

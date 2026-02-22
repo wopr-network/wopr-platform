@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../db/schema/index.js";
-import { DrizzleBotInstanceRepository } from "./bot-instance-repository.js";
+import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
 
 function makeDb() {
   const sqlite = new Database(":memory:");
