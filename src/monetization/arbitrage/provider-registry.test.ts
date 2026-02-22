@@ -1,13 +1,29 @@
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import { initRateSchema } from "../../admin/rates/schema.js";
+import * as schema from "../../db/schema/index.js";
+import { DrizzleProviderHealthRepository } from "../drizzle-provider-health-repository.js";
+import type { IProviderHealthRepository } from "../provider-health-repository.js";
 import { ProviderRegistry } from "./provider-registry.js";
 
 function createTestDb() {
   const db = new BetterSqlite3(":memory:");
   initRateSchema(db);
   return db;
+}
+
+function createTestHealthRepo(): IProviderHealthRepository {
+  const sqlite = new BetterSqlite3(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS provider_health_overrides (
+      adapter TEXT PRIMARY KEY,
+      healthy INTEGER NOT NULL DEFAULT 1,
+      marked_at INTEGER NOT NULL
+    );
+  `);
+  return new DrizzleProviderHealthRepository(drizzle(sqlite, { schema }));
 }
 
 describe("ProviderRegistry", () => {
@@ -24,7 +40,7 @@ describe("ProviderRegistry", () => {
   });
 
   function makeRegistry(cacheTtlMs = 30_000, unhealthyTtlMs = 60_000): ProviderRegistry {
-    return new ProviderRegistry({ rateStore: store, cacheTtlMs, unhealthyTtlMs });
+    return new ProviderRegistry({ rateStore: store, healthRepo: createTestHealthRepo(), cacheTtlMs, unhealthyTtlMs });
   }
 
   // ── Tier mapping ──
