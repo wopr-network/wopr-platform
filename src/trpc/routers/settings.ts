@@ -7,7 +7,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import type { NotificationPreferencesStore } from "../../email/notification-preferences-store.js";
+import type { INotificationPreferencesStore } from "../../email/notification-preferences-store.js";
 import { publicProcedure, router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -15,7 +15,7 @@ import { publicProcedure, router, tenantProcedure } from "../init.js";
 // ---------------------------------------------------------------------------
 
 export interface SettingsRouterDeps {
-  getNotificationPrefsStore: () => NotificationPreferencesStore;
+  getNotificationPrefsStore: () => INotificationPreferencesStore;
 }
 
 let _deps: SettingsRouterDeps | null = null;

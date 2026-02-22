@@ -2,22 +2,32 @@ import crypto from "node:crypto";
 import { and, desc, eq, lte, or, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationQueue } from "../db/schema/notification-queue.js";
+import type { NotificationStatus, QueuedNotification } from "./notification-repository-types.js";
 
-export type NotificationStatus = "pending" | "sent" | "failed";
+// Re-export domain types for backward compat
+export type { NotificationStatus, QueuedNotification } from "./notification-repository-types.js";
 
-export interface QueuedNotification {
-  id: string;
-  tenantId: string;
-  template: string;
-  data: string; // JSON
-  status: NotificationStatus;
-  attempts: number;
-  retryAfter: number | null;
-  sentAt: number | null;
-  createdAt: number;
+// ---------------------------------------------------------------------------
+// Interface
+// ---------------------------------------------------------------------------
+
+/** Repository interface for the email notification queue. */
+export interface INotificationQueueStore {
+  enqueue(tenantId: string, template: string, data: Record<string, unknown>): string;
+  fetchPending(limit?: number): QueuedNotification[];
+  markSent(id: string): void;
+  markFailed(id: string, attempts: number): void;
+  listForTenant(
+    tenantId: string,
+    opts?: { limit?: number; offset?: number; status?: NotificationStatus },
+  ): { entries: QueuedNotification[]; total: number };
 }
 
-export class NotificationQueueStore {
+// ---------------------------------------------------------------------------
+// Drizzle Implementation
+// ---------------------------------------------------------------------------
+
+export class DrizzleNotificationQueueStore implements INotificationQueueStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Enqueue a notification for async delivery. Returns the new row ID. */
@@ -133,3 +143,6 @@ export class NotificationQueueStore {
     return { entries, total };
   }
 }
+
+/** @deprecated Use DrizzleNotificationQueueStore directly. */
+export { DrizzleNotificationQueueStore as NotificationQueueStore };

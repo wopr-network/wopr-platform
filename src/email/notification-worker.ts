@@ -7,14 +7,14 @@
 
 import { logger } from "../config/logger.js";
 import type { EmailClient } from "./client.js";
-import type { NotificationPreferencesStore } from "./notification-preferences-store.js";
-import type { NotificationQueueStore } from "./notification-queue-store.js";
+import type { INotificationPreferencesStore } from "./notification-preferences-store.js";
+import type { INotificationQueueStore } from "./notification-queue-store.js";
 import { renderNotificationTemplate, type TemplateName } from "./notification-templates.js";
 
 export interface NotificationWorkerConfig {
-  queue: NotificationQueueStore;
+  queue: INotificationQueueStore;
   emailClient: EmailClient;
-  preferences: NotificationPreferencesStore;
+  preferences: INotificationPreferencesStore;
   batchSize?: number;
 }
 
@@ -50,9 +50,9 @@ const PREF_MAP: Record<string, string> = {
 };
 
 export class NotificationWorker {
-  private readonly queue: NotificationQueueStore;
+  private readonly queue: INotificationQueueStore;
   private readonly emailClient: EmailClient;
-  private readonly preferences: NotificationPreferencesStore;
+  private readonly preferences: INotificationPreferencesStore;
   private readonly batchSize: number;
 
   constructor(config: NotificationWorkerConfig) {
