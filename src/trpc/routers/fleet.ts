@@ -26,7 +26,7 @@ import { protectedProcedure, router, tenantProcedure } from "../init.js";
 
 const uuidSchema = z.string().uuid();
 
-const controlActionSchema = z.enum(["start", "stop", "restart"]);
+const controlActionSchema = z.enum(["start", "stop", "restart", "destroy"]);
 
 const tailSchema = z.number().int().min(1).max(10_000).default(100);
 
@@ -169,6 +169,9 @@ export const fleetRouter = router({
             break;
           case "restart":
             await fleet.restart(input.id);
+            break;
+          case "destroy":
+            await fleet.remove(input.id);
             break;
         }
         return { ok: true };
