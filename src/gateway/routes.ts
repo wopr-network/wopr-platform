@@ -89,6 +89,16 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
     config.providers.twilio?.authToken &&
     config.webhookBaseUrl &&
     config.resolveTenantFromWebhook &&
+    !config.sigPenaltyRepo
+  ) {
+    logger.warn(
+      "Gateway: Twilio is configured but sigPenaltyRepo is absent — Twilio webhook routes will not be registered and webhooks will receive 404",
+    );
+  }
+  if (
+    config.providers.twilio?.authToken &&
+    config.webhookBaseUrl &&
+    config.resolveTenantFromWebhook &&
     config.sigPenaltyRepo
   ) {
     const webhookAuth = createTwilioWebhookAuth({

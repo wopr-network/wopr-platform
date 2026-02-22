@@ -62,7 +62,7 @@ describe("DrizzleProviderHealthRepository", () => {
     repo.markUnhealthy("elevenlabs");
     const second = repo.get("elevenlabs");
     expect(second?.healthy).toBe(false);
-    expect(second!.markedAt).toBeGreaterThanOrEqual(first!.markedAt);
+    expect(second?.markedAt).toBeGreaterThanOrEqual(first?.markedAt ?? 0);
   });
 
   it("getAll returns all unhealthy overrides", () => {

@@ -11,18 +11,20 @@ CREATE TABLE `oauth_states` (
 --> statement-breakpoint
 CREATE INDEX `idx_oauth_states_expires` ON `oauth_states` (`expires_at`);--> statement-breakpoint
 CREATE TABLE `webhook_sig_penalties` (
-	`ip` text PRIMARY KEY NOT NULL,
+	`ip` text NOT NULL,
 	`source` text NOT NULL,
 	`failures` integer DEFAULT 0 NOT NULL,
 	`blocked_until` integer DEFAULT 0 NOT NULL,
-	`updated_at` integer NOT NULL
+	`updated_at` integer NOT NULL,
+	PRIMARY KEY(`ip`, `source`)
 );
 --> statement-breakpoint
 CREATE INDEX `idx_sig_penalties_blocked` ON `webhook_sig_penalties` (`blocked_until`);--> statement-breakpoint
 CREATE TABLE `webhook_seen_events` (
-	`event_id` text PRIMARY KEY NOT NULL,
+	`event_id` text NOT NULL,
 	`source` text NOT NULL,
-	`seen_at` integer NOT NULL
+	`seen_at` integer NOT NULL,
+	PRIMARY KEY(`event_id`, `source`)
 );
 --> statement-breakpoint
 CREATE INDEX `idx_webhook_seen_expires` ON `webhook_seen_events` (`seen_at`);--> statement-breakpoint

@@ -6,7 +6,11 @@ import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
 import { initRateSchema } from "./admin/rates/schema.js";
 import { app } from "./api/app.js";
+import { DrizzleOAuthStateRepository } from "./api/drizzle-oauth-state-repository.js";
+import { DrizzleSigPenaltyRepository } from "./api/drizzle-sig-penalty-repository.js";
+import { setBillingDeps } from "./api/routes/billing.js";
 import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
+import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
@@ -20,6 +24,7 @@ import {
   getCircuitBreakerRepo,
   getCommandBus,
   getConnectionRegistry,
+  getDb,
   getDividendRepo,
   getFleetEventRepo,
   getHeartbeatProcessor,
@@ -342,10 +347,24 @@ if (process.env.NODE_ENV !== "test") {
         dividendRepo: getDividendRepo(),
       });
       logger.info("tRPC billing router initialized");
+
+      // Wire REST billing routes (Stripe webhooks, checkout, portal).
+      // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).
+      setBillingDeps({
+        stripe: stripe as never,
+        db: billingDrizzle2,
+        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+        sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
+      });
+      logger.info("REST billing routes initialized");
     } else {
       logger.warn("STRIPE_SECRET_KEY not set — tRPC billing router not initialized");
     }
   }
+
+  // Wire channel OAuth repository (used by /api/channel-oauth/* REST routes).
+  // Uses the platform DB (oauth_states table is in platform migrations).
+  setChannelOAuthRepo(new DrizzleOAuthStateRepository(getDb()));
 
   // Wire OrphanCleaner into NodeConnectionManager for stale container cleanup on node reboot
   initFleet();
