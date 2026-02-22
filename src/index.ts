@@ -45,7 +45,7 @@ import {
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
-import { setNodesRouterDeps } from "./trpc/index.js";
+import { setBillingRouterDeps, setNodesRouterDeps } from "./trpc/index.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
@@ -298,6 +298,43 @@ if (process.env.NODE_ENV !== "test") {
     getConnectionRegistry,
     getBotInstanceRepo,
   });
+
+  // Wire billing tRPC router deps
+  {
+    const { CreditAdjustmentStore } = await import("./admin/credits/adjustment-store.js");
+    const { initCreditAdjustmentSchema } = await import("./admin/credits/schema.js");
+    const { MeterAggregator } = await import("./monetization/metering/aggregator.js");
+    const { loadCreditPriceMap } = await import("./monetization/stripe/credit-prices.js");
+    const { TenantCustomerStore } = await import("./monetization/stripe/tenant-store.js");
+    const { StripeUsageReporter } = await import("./monetization/stripe/usage-reporter.js");
+
+    const billingDb2 = new Database(BILLING_DB_PATH);
+    applyPlatformPragmas(billingDb2);
+    initCreditAdjustmentSchema(billingDb2);
+    const billingDrizzle2 = createDb(billingDb2);
+
+    const tenantStore = new TenantCustomerStore(billingDrizzle2);
+    const creditStore = new CreditAdjustmentStore(billingDb2);
+    const meterAggregator = new MeterAggregator(billingDrizzle2);
+    const Stripe = (await import("stripe")).default;
+    const stripeKey = process.env.STRIPE_SECRET_KEY;
+    const stripe = stripeKey ? new Stripe(stripeKey) : undefined;
+    const usageReporter = new StripeUsageReporter(billingDrizzle2, stripe as never, tenantStore);
+
+    if (stripe) {
+      setBillingRouterDeps({
+        stripe: stripe as never,
+        tenantStore,
+        creditStore,
+        meterAggregator,
+        usageReporter,
+        priceMap: loadCreditPriceMap(),
+      });
+      logger.info("tRPC billing router initialized");
+    } else {
+      logger.warn("STRIPE_SECRET_KEY not set — tRPC billing router not initialized");
+    }
+  }
 
   // Wire OrphanCleaner into NodeConnectionManager for stale container cleanup on node reboot
   initFleet();
