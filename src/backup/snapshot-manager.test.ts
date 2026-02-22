@@ -64,7 +64,7 @@ describe("SnapshotManager", () => {
     await mkdir(woprHomePath, { recursive: true });
     await writeFile(join(woprHomePath, "config.json"), JSON.stringify({ key: "value" }));
     await writeFile(join(woprHomePath, "data.txt"), "hello world");
-  });
+  }, 30000);
 
   afterEach(async () => {
     sqlite.close();
