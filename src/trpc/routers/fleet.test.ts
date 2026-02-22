@@ -87,6 +87,7 @@ function createFleetMock() {
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
     create: vi.fn().mockResolvedValue(mockProfile),
+    update: vi.fn().mockResolvedValue(mockProfile),
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
     restart: vi.fn().mockResolvedValue(undefined),
@@ -345,5 +346,145 @@ describe("fleet.listTemplates", () => {
   it("rejects unauthenticated", async () => {
     const caller = createCaller(unauthContext());
     await expect(caller.fleet.listTemplates()).rejects.toThrow("Authentication required");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getSettings
+// ---------------------------------------------------------------------------
+
+describe("fleet.getSettings", () => {
+  it("returns composed bot settings for owned bot", async () => {
+    fleetMock.profiles.get.mockResolvedValue({
+      ...mockProfile,
+      env: { WOPR_PLUGINS: "discord", WOPR_PLUGINS_DISABLED: "" },
+    });
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getSettings({ id: TEST_BOT_ID });
+    expect(result.id).toBe(TEST_BOT_ID);
+    expect(result.identity.name).toBe("test-bot");
+    expect(result.status).toBe("running");
+    expect(result.installedPlugins).toEqual([
+      { id: "discord", name: "discord", description: "", icon: "", status: "active", capabilities: [] },
+    ]);
+  });
+
+  it("returns stopped status when bot state is stopped", async () => {
+    fleetMock.status.mockResolvedValue({ ...mockStatus, state: "stopped" });
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getSettings({ id: TEST_BOT_ID });
+    expect(result.status).toBe("stopped");
+  });
+
+  it("throws NOT_FOUND for non-owned bot", async () => {
+    fleetMock.profiles.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.getSettings({ id: TEST_BOT_ID })).rejects.toMatchObject({
+      message: "Bot not found",
+    });
+  });
+
+  it("throws NOT_FOUND when bot does not exist", async () => {
+    fleetMock.profiles.get.mockResolvedValue(null);
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.getSettings({ id: TEST_BOT_ID })).rejects.toMatchObject({
+      message: "Bot not found",
+    });
+  });
+
+  it("rejects unauthenticated", async () => {
+    const caller = createCaller(unauthContext());
+    await expect(caller.fleet.getSettings({ id: TEST_BOT_ID })).rejects.toThrow("Authentication required");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateIdentity
+// ---------------------------------------------------------------------------
+
+describe("fleet.updateIdentity", () => {
+  it("updates bot name and description via fleet.update", async () => {
+    const updatedProfile = { ...mockProfile, name: "new-name", description: "new desc" };
+    fleetMock.update.mockResolvedValue(updatedProfile);
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.updateIdentity({
+      id: TEST_BOT_ID,
+      name: "new-name",
+      avatar: "",
+      personality: "Be helpful",
+    });
+    expect(result.name).toBe("new-name");
+    expect(result.avatar).toBe("");
+    expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, expect.objectContaining({ name: "new-name" }));
+  });
+
+  it("throws NOT_FOUND for non-owned bot", async () => {
+    fleetMock.profiles.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+    const caller = createCaller(authedContext());
+    await expect(
+      caller.fleet.updateIdentity({ id: TEST_BOT_ID, name: "x", avatar: "", personality: "" }),
+    ).rejects.toMatchObject({ message: "Bot not found" });
+  });
+
+  it("throws NOT_FOUND when bot does not exist", async () => {
+    fleetMock.profiles.get.mockResolvedValue(null);
+    const caller = createCaller(authedContext());
+    await expect(
+      caller.fleet.updateIdentity({ id: TEST_BOT_ID, name: "x", avatar: "", personality: "" }),
+    ).rejects.toMatchObject({ message: "Bot not found" });
+  });
+
+  it("rejects unauthenticated", async () => {
+    const caller = createCaller(unauthContext());
+    await expect(
+      caller.fleet.updateIdentity({ id: TEST_BOT_ID, name: "x", avatar: "", personality: "" }),
+    ).rejects.toThrow("Authentication required");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// activateCapability
+// ---------------------------------------------------------------------------
+
+describe("fleet.activateCapability", () => {
+  it("returns success when capability is known", async () => {
+    fleetMock.update.mockResolvedValue(mockProfile);
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.activateCapability({
+      id: TEST_BOT_ID,
+      capabilityId: "tts",
+    });
+    expect(result.success).toBe(true);
+    expect(result.capabilityId).toBe("tts");
+  });
+
+  it("throws BAD_REQUEST for unknown capability", async () => {
+    const caller = createCaller(authedContext());
+    await expect(
+      caller.fleet.activateCapability({ id: TEST_BOT_ID, capabilityId: "unknown-cap" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("throws NOT_FOUND for non-owned bot", async () => {
+    fleetMock.profiles.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.activateCapability({ id: TEST_BOT_ID, capabilityId: "tts" })).rejects.toMatchObject({
+      message: "Bot not found",
+    });
+  });
+
+  it("throws NOT_FOUND when bot does not exist", async () => {
+    fleetMock.profiles.get.mockResolvedValue(null);
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.activateCapability({ id: TEST_BOT_ID, capabilityId: "tts" })).rejects.toMatchObject({
+      message: "Bot not found",
+    });
+  });
+
+  it("rejects unauthenticated", async () => {
+    const caller = createCaller(unauthContext());
+    await expect(caller.fleet.activateCapability({ id: TEST_BOT_ID, capabilityId: "tts" })).rejects.toThrow(
+      "Authentication required",
+    );
   });
 });
