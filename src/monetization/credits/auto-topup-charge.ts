@@ -1,9 +1,7 @@
-import crypto from "node:crypto";
 import type Stripe from "stripe";
 import { logger } from "../../config/logger.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
 import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
+import type { IAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import type { ICreditLedger } from "./credit-ledger.js";
 
 /** After this many consecutive Stripe failures, the auto-topup mode is disabled. */
@@ -13,7 +11,7 @@ export interface AutoTopupChargeDeps {
   stripe: Stripe;
   tenantStore: ITenantCustomerStore;
   creditLedger: ICreditLedger;
-  db: DrizzleDb;
+  eventLogRepo: IAutoTopupEventLogRepository;
 }
 
 export interface AutoTopupChargeResult {
@@ -40,7 +38,7 @@ export async function chargeAutoTopup(
   const mapping = deps.tenantStore.getByTenant(tenantId);
   if (!mapping) {
     const error = `No Stripe customer for tenant ${tenantId}`;
-    writeEventLog(deps.db, tenantId, amountCents, "failed", error);
+    deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
     return { success: false, error };
   }
 
@@ -52,13 +50,13 @@ export async function chargeAutoTopup(
     const methods = await deps.stripe.customers.listPaymentMethods(customerId, { limit: 1 });
     if (!methods.data.length) {
       const error = `No payment method on file for tenant ${tenantId}`;
-      writeEventLog(deps.db, tenantId, amountCents, "failed", error);
+      deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
       return { success: false, error };
     }
     paymentMethodId = methods.data[0].id;
   } catch (err) {
     const error = `Failed to list payment methods: ${err instanceof Error ? err.message : String(err)}`;
-    writeEventLog(deps.db, tenantId, amountCents, "failed", error);
+    deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
     return { success: false, error };
   }
 
@@ -79,7 +77,7 @@ export async function chargeAutoTopup(
     });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    writeEventLog(deps.db, tenantId, amountCents, "failed", error);
+    deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
     logger.warn("Auto-topup Stripe charge failed", { tenantId, amountCents, source, error });
     return { success: false, error };
   }
@@ -87,7 +85,13 @@ export async function chargeAutoTopup(
   // 4. Verify payment succeeded (could be requires_action for 3DS)
   if (paymentIntent.status !== "succeeded") {
     const error = `PaymentIntent status: ${paymentIntent.status}`;
-    writeEventLog(deps.db, tenantId, amountCents, "failed", error, paymentIntent.id);
+    deps.eventLogRepo.writeEvent({
+      tenantId,
+      amountCents,
+      status: "failed",
+      failureReason: error,
+      paymentReference: paymentIntent.id,
+    });
     logger.warn("Auto-topup PaymentIntent not succeeded", { tenantId, status: paymentIntent.status });
     return { success: false, error, paymentReference: paymentIntent.id };
   }
@@ -98,29 +102,8 @@ export async function chargeAutoTopup(
   }
 
   // 6. Write success event
-  writeEventLog(deps.db, tenantId, amountCents, "success", undefined, paymentIntent.id);
+  deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "success", paymentReference: paymentIntent.id });
   logger.info("Auto-topup charge succeeded", { tenantId, amountCents, source, piId: paymentIntent.id });
 
   return { success: true, paymentReference: paymentIntent.id };
-}
-
-/** Write a row to the credit_auto_topup event log. */
-function writeEventLog(
-  db: DrizzleDb,
-  tenantId: string,
-  amountCents: number,
-  status: "success" | "failed",
-  failureReason?: string,
-  paymentReference?: string,
-): void {
-  db.insert(creditAutoTopup)
-    .values({
-      id: crypto.randomUUID(),
-      tenantId,
-      amountCents,
-      status,
-      failureReason: failureReason ?? null,
-      paymentReference: paymentReference ?? null,
-    })
-    .run();
 }

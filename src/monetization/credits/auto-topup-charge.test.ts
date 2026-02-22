@@ -3,6 +3,7 @@ import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
+import { DrizzleAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import { CreditLedger } from "./credit-ledger.js";
 
 function initTestSchema(sqlite: BetterSqlite3.Database): void {
@@ -73,7 +74,7 @@ describe("chargeAutoTopup", () => {
       stripe: stripe as any,
       tenantStore: tenantStore as any,
       creditLedger: ledger,
-      db,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
     const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
@@ -93,7 +94,7 @@ describe("chargeAutoTopup", () => {
       stripe: stripe as any,
       tenantStore: tenantStore as any,
       creditLedger: ledger,
-      db,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
     await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
@@ -111,7 +112,7 @@ describe("chargeAutoTopup", () => {
       stripe: stripe as any,
       tenantStore: tenantStore as any,
       creditLedger: ledger,
-      db,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
     const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
@@ -131,7 +132,7 @@ describe("chargeAutoTopup", () => {
       stripe: stripe as any,
       tenantStore: tenantStore as any,
       creditLedger: ledger,
-      db,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
     const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
@@ -148,7 +149,7 @@ describe("chargeAutoTopup", () => {
       stripe: stripe as any,
       tenantStore: tenantStore as any,
       creditLedger: ledger,
-      db,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
     const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
@@ -165,7 +166,7 @@ describe("chargeAutoTopup", () => {
       stripe: stripe as any,
       tenantStore: tenantStore as any,
       creditLedger: ledger,
-      db,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
     await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
