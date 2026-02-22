@@ -1,5 +1,5 @@
 import type { Context, Next } from "hono";
-import type { TenantStatusStore } from "./tenant-status-store.js";
+import type { ITenantStatusRepository } from "./tenant-status-repository.js";
 
 /**
  * Callback that resolves a tenant ID from the Hono context.
@@ -7,8 +7,8 @@ import type { TenantStatusStore } from "./tenant-status-store.js";
 export type ResolveTenantId = (c: Context) => string | undefined;
 
 export interface TenantStatusGateConfig {
-  /** TenantStatusStore instance for checking account state. */
-  statusStore: TenantStatusStore;
+  /** Status repository for checking account state. */
+  statusStore: ITenantStatusRepository;
   /** Resolve the tenant ID from the request context. */
   resolveTenantId: ResolveTenantId;
 }
@@ -60,7 +60,7 @@ export function createTenantStatusGate(cfg: TenantStatusGateConfig) {
  * Returns an error object if the tenant is not operational, null otherwise.
  */
 export function checkTenantStatus(
-  statusStore: TenantStatusStore,
+  statusStore: ITenantStatusRepository,
   tenantId: string,
 ): { error: string; message: string } | null {
   const row = statusStore.get(tenantId);

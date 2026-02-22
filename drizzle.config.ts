@@ -4,6 +4,8 @@ export default defineConfig({
   schema: [
     "./src/db/schema/admin-audit.ts",
     "./src/db/schema/admin-notes.ts",
+    "./src/db/schema/admin-users.ts",
+    "./src/db/schema/bulk-undo-grants.ts",
     "./src/db/schema/audit.ts",
     "./src/db/schema/bot-instances.ts",
     "./src/db/schema/bot-profiles.ts",

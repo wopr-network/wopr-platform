@@ -2,34 +2,15 @@ import crypto from "node:crypto";
 import { count, desc, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminNotes } from "../../db/schema/index.js";
+import type { AdminNote, AdminNoteFilters, AdminNoteInput } from "../admin-repository-types.js";
+import type { IAdminNotesRepository } from "./admin-notes-repository.js";
 
-export interface AdminNote {
-  id: string;
-  tenantId: string;
-  authorId: string;
-  content: string;
-  isPinned: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface AdminNoteInput {
-  tenantId: string;
-  authorId: string;
-  content: string;
-  isPinned?: boolean;
-}
-
-export interface AdminNoteFilters {
-  tenantId: string;
-  limit?: number;
-  offset?: number;
-}
+export type { AdminNote, AdminNoteFilters, AdminNoteInput };
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 250;
 
-export class AdminNotesStore {
+export class AdminNotesStore implements IAdminNotesRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Add a new note. */

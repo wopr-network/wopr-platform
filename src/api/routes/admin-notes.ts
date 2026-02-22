@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { IAdminNotesRepository } from "../../admin/notes/admin-notes-repository.js";
 import { AdminNotesStore } from "../../admin/notes/store.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
@@ -12,7 +13,7 @@ export interface AdminNotesRouteDeps {
   db: DrizzleDb;
 }
 
-let _notesStore: AdminNotesStore | null = null;
+let _notesStore: IAdminNotesRepository | null = null;
 
 /** Override the store (used in tests or for explicit wiring). */
 export function setAdminNotesDeps(deps: AdminNotesRouteDeps): void {
@@ -20,7 +21,7 @@ export function setAdminNotesDeps(deps: AdminNotesRouteDeps): void {
 }
 
 /** Lazily initialize from the platform DB on first request. */
-function getNotesStore(): AdminNotesStore {
+function getNotesStore(): IAdminNotesRepository {
   if (!_notesStore) {
     _notesStore = new AdminNotesStore(getDb());
   }
@@ -39,7 +40,7 @@ export function createAdminNotesApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
   return buildRoutes(() => store);
 }
 
-function buildRoutes(storeFactory: () => AdminNotesStore): Hono<AuthEnv> {
+function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
 
   // GET /:tenantId -- list notes

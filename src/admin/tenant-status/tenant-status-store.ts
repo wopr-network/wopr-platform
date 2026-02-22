@@ -1,27 +1,20 @@
 import { eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { tenantStatus } from "../../db/schema/index.js";
+import {
+  BAN_DELETE_DAYS,
+  GRACE_PERIOD_DAYS,
+  type TenantAccountStatus,
+  type TenantStatusRecord,
+} from "../admin-repository-types.js";
+import type { ITenantStatusRepository } from "./tenant-status-repository.js";
 
-/** Valid account states. */
-export type TenantAccountStatus = "active" | "grace_period" | "suspended" | "banned";
+export type { TenantAccountStatus };
 
-/** Number of days for grace period before auto-suspension. */
-export const GRACE_PERIOD_DAYS = 3;
+/** @deprecated Use TenantStatusRecord from admin-repository-types.js */
+export type TenantStatusRow = TenantStatusRecord;
 
-/** Number of days after ban before data is queued for deletion. */
-export const BAN_DELETE_DAYS = 30;
-
-export interface TenantStatusRow {
-  tenantId: string;
-  status: string;
-  statusReason: string | null;
-  statusChangedAt: number | null;
-  statusChangedBy: string | null;
-  graceDeadline: string | null;
-  dataDeleteAfter: string | null;
-  createdAt: number;
-  updatedAt: number;
-}
+export { GRACE_PERIOD_DAYS, BAN_DELETE_DAYS };
 
 /**
  * Tenant account status manager.
@@ -29,13 +22,13 @@ export interface TenantStatusRow {
  * Handles status transitions: active, grace_period, suspended, banned.
  * All state changes are atomic Drizzle operations.
  */
-export class TenantStatusStore {
+export class TenantStatusStore implements ITenantStatusRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get the status row for a tenant. Returns null if not found. */
-  get(tenantId: string): TenantStatusRow | null {
+  get(tenantId: string): TenantStatusRecord | null {
     const row = this.db.select().from(tenantStatus).where(eq(tenantStatus.tenantId, tenantId)).get();
-    return (row as TenantStatusRow) ?? null;
+    return (row as TenantStatusRecord) ?? null;
   }
 
   /** Get the account status string for a tenant. Defaults to 'active' if no row exists. */
