@@ -16,4 +16,5 @@ export interface INodeRepository {
   addCapacity(id: string, deltaMb: number): void;
   findBestTarget(excludeId: string, requiredMb: number): Node | null;
   listTransitions(nodeId: string, limit?: number): NodeTransition[];
+  delete(id: string): void;
 }

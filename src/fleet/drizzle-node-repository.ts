@@ -217,4 +217,8 @@ export class DrizzleNodeRepository implements INodeRepository {
       .all()
       .map(toNodeTransition);
   }
+
+  delete(id: string): void {
+    this.db.delete(nodes).where(eq(nodes.id, id)).run();
+  }
 }

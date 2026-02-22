@@ -262,9 +262,9 @@ describe("nodesRouter", () => {
       const result = await caller.remove({ nodeId: "self-fff666" });
 
       expect(result.success).toBe(true);
-      // Node should still exist in DB but connection closed
+      // Node should be deleted from the DB after removal
       const node = nodeRepo.getById("self-fff666");
-      expect(node).not.toBeNull();
+      expect(node).toBeNull();
     });
 
     it("throws FORBIDDEN when removing another user's node", async () => {
