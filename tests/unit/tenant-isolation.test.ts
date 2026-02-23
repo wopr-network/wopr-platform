@@ -91,6 +91,7 @@ const fleetMock = {
   remove: vi.fn(),
   status: vi.fn(),
   listAll: vi.fn(),
+  listByTenant: vi.fn(),
   logs: vi.fn(),
   update: vi.fn(),
   profiles: {
@@ -127,11 +128,11 @@ vi.mock("../../src/fleet/fleet-manager.js", () => ({
     remove = fleetMock.remove;
     status = fleetMock.status;
     listAll = fleetMock.listAll;
+    listByTenant = fleetMock.listByTenant;
     logs = fleetMock.logs;
     update = fleetMock.update;
     profiles = fleetMock.profiles;
   },
-  BotNotFoundError: MockBotNotFoundError,
 }));
 vi.mock("../../src/fleet/image-poller.js", () => ({
   ImagePoller: class {
@@ -265,28 +266,28 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
   // After WOP-822 fix this test should assert only org A's bots are returned.
   // -------------------------------------------------------------------------
 
-  it("GET /fleet/bots returns only caller's bots (CURRENTLY BROKEN — returns all)", async () => {
-    fleetMock.listAll.mockResolvedValue([
-      makeBotStatus(BOT_A_ID, "alpha-bot"),
-      makeBotStatus(BOT_B_ID, "bravo-bot"),
-    ]);
+  it("GET /fleet/bots returns only caller's bots", async () => {
+    fleetMock.listByTenant.mockImplementation(async (tenantId: string) => {
+      if (tenantId === TENANT_A) {
+        return [makeBotStatus(BOT_A_ID, "alpha-bot")];
+      }
+      return [];
+    });
 
     const res = await fleetApp.request("/fleet/bots", { headers: authA });
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    // BUG: currently returns 2 bots (both tenants). After fix should return 1.
-    // This documents the broken behavior — update assertion when fix lands.
-    // expect(body.bots).toHaveLength(1);               // <-- expected after fix
-    // expect(body.bots[0].id).toBe(BOT_A_ID);          // <-- expected after fix
-    expect(body.bots).toHaveLength(2); // BUG: cross-tenant data leak
+    // After fix: returns only tenant A's bots
+    expect(body.bots).toHaveLength(1);
+    expect(body.bots[0].id).toBe(BOT_A_ID);
   });
 
   // -------------------------------------------------------------------------
   // POST /fleet/bots — IDOR: tenantId from body should be validated against token
   // -------------------------------------------------------------------------
 
-  it("POST /fleet/bots with mismatched tenantId in body is rejected (CURRENTLY BROKEN — IDOR)", async () => {
+  it("POST /fleet/bots with mismatched tenantId in body is rejected", async () => {
     fleetMock.profiles.list.mockResolvedValue([]);
     fleetMock.create.mockResolvedValue(profileB);
 
@@ -301,10 +302,8 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
       }),
     });
 
-    // BUG: currently returns 201 — IDOR vulnerability.
-    // After fix: should return 403 (or 400).
-    // expect(res.status).toBe(403);    // <-- expected after fix
-    expect(res.status).toBe(201); // BUG: IDOR — tenant A can create under tenant B's account
+    // After fix: returns 403 Forbidden
+    expect(res.status).toBe(403);
   });
 
   it("POST /fleet/bots with matching tenantId succeeds", async () => {
