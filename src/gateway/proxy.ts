@@ -72,6 +72,7 @@ export interface ProxyDeps {
   metrics?: import("../observability/metrics.js").MetricsCollector;
   /** Base URL for Twilio webhook callbacks (e.g., https://api.wopr.network/v1). Used to construct StatusCallback and TwiML URLs. */
   webhookBaseUrl?: string;
+  phoneRepo?: import("../monetization/credits/phone-billing.js").IPhoneNumberRepository;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -88,6 +89,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     rateLookupFn: config.rateLookupFn,
     metrics: config.metrics,
     webhookBaseUrl: config.webhookBaseUrl,
+    phoneRepo: config.phoneRepo,
   };
 }
 
@@ -1605,10 +1607,7 @@ export function phoneNumberProvision(deps: ProxyDeps) {
         capabilities: { sms: boolean; voice: boolean; mms: boolean };
       };
 
-      // Meter the initial phone number cost.
-      // TODO(WOP-444): Phone numbers are a recurring monthly cost ($1.15/mo).
-      // This only bills the first month. A recurring billing scheduler should
-      // enumerate active numbers per tenant and emit monthly meter events.
+      // Meter the initial phone number cost and track for monthly billing
       emitMeterEvent(
         deps,
         tenant.id,
@@ -1622,6 +1621,13 @@ export function phoneNumberProvision(deps: ProxyDeps) {
         },
       );
       debitCredits(deps, tenant.id, PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN, "phone-number-provision", "twilio");
+
+      // Track for monthly recurring billing (WOP-964)
+      if (deps.phoneRepo) {
+        deps.phoneRepo.trackPhoneNumber(tenant.id, purchased.sid, purchased.phone_number).catch((err) => {
+          logger.warn("Failed to track phone number for monthly billing", { sid: purchased.sid, err });
+        });
+      }
 
       logger.info("Gateway proxy: phone/numbers provisioned", {
         tenant: tenant.id,
@@ -1798,6 +1804,13 @@ export function phoneNumberRelease(deps: ProxyDeps) {
         const errText = await res.text();
         throw Object.assign(new Error(`Twilio API error (${res.status}): ${errText}`), {
           httpStatus: res.status,
+        });
+      }
+
+      // Remove from tracking (WOP-964)
+      if (deps.phoneRepo) {
+        deps.phoneRepo.removePhoneNumber(numberId).catch((err) => {
+          logger.warn("Failed to remove phone number from tracking", { numberId, err });
         });
       }
 
