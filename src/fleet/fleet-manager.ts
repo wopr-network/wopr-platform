@@ -226,8 +226,16 @@ export class FleetManager {
       await this.store.save(updated);
 
       try {
-        await container.stop().catch(() => {});
-        await container.remove().catch(() => {});
+        try {
+          await container.stop();
+        } catch (err) {
+          logger.warn(`Failed to stop container ${id} during update`, { botId: id, err });
+        }
+        try {
+          await container.remove();
+        } catch (err) {
+          logger.warn(`Failed to remove container ${id} during update`, { botId: id, err });
+        }
         await this.createContainer(updated);
 
         if (wasRunning) {
