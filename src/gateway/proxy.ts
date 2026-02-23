@@ -920,9 +920,16 @@ export function phoneOutbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
 
-    // Provider config check — keep existing 503 for unconfigured phone
-    const providerCfg = deps.providers.twilio ?? deps.providers.telnyx;
-    if (!providerCfg) {
+    const budgetErr = budgetCheck(c, deps);
+    if (budgetErr) return budgetErr;
+
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
+
+    const twilioCfg = deps.providers.twilio;
+    if (!twilioCfg) {
       return c.json(
         {
           error: {
@@ -935,20 +942,89 @@ export function phoneOutbound(deps: ProxyDeps) {
       );
     }
 
-    // Outbound calling is not yet implemented. Return 501 so callers
-    // know this endpoint exists but is not functional.
-    logger.info("Gateway proxy: phone/outbound — not implemented", { tenant: tenant.id });
+    try {
+      deps.metrics?.recordGatewayRequest("phone-outbound");
+      const body = await c.req.json<{
+        to: string;
+        from: string;
+        twiml?: string;
+      }>();
 
-    return c.json(
-      {
-        error: {
-          message: "Outbound calling is not yet implemented. This endpoint will be available in a future release.",
-          type: "server_error",
-          code: "not_implemented",
+      if (!body.to || !body.from) {
+        return c.json(
+          {
+            error: {
+              message: "Missing required fields: to, from",
+              type: "invalid_request_error",
+              code: "missing_field",
+            },
+          },
+          400,
+        );
+      }
+
+      const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
+      const twilioUrl = `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/Calls.json`;
+
+      const params = new URLSearchParams();
+      params.set("To", body.to);
+      params.set("From", body.from);
+      params.set("Url", body.twiml ?? "http://twiml.ai/hangup");
+
+      const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
+
+      const res = await deps.fetchFn(twilioUrl, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/x-www-form-urlencoded",
         },
-      },
-      501,
-    );
+        body: params.toString(),
+      });
+
+      const responseBody = await res.text();
+
+      if (!res.ok) {
+        throw Object.assign(new Error(`Twilio API error (${res.status}): ${responseBody}`), {
+          httpStatus: res.status,
+        });
+      }
+
+      const twilioCall = JSON.parse(responseBody) as {
+        sid?: string;
+        status?: string;
+        error_code?: number | null;
+        error_message?: string | null;
+      };
+
+      const costPerMinute = 0.013;
+      const cost = costPerMinute;
+
+      logger.info("Gateway proxy: phone/outbound", {
+        tenant: tenant.id,
+        to: body.to,
+        from: body.from,
+        sid: twilioCall.sid,
+        status: twilioCall.status,
+        cost,
+      });
+
+      emitMeterEvent(deps, tenant.id, "phone-outbound", "twilio", cost, deps.defaultMargin, {
+        usage: { units: 1, unitType: "minutes" },
+        tier: "branded",
+      });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "phone-outbound", "twilio");
+
+      return c.json({
+        sid: twilioCall.sid,
+        status: twilioCall.status,
+      });
+    } catch (error) {
+      deps.metrics?.recordGatewayError("phone-outbound");
+      logger.error("Gateway proxy error: phone/outbound", { tenant: tenant.id, error });
+      const mapped = mapProviderError(error, "twilio");
+      return c.json(mapped.body, mapped.status as 502);
+    }
   };
 }
 
