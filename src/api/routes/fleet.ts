@@ -182,10 +182,12 @@ fleetRoutes.use("/bots/:id", async (c, next) => {
 /** GET /fleet/bots — List bots for the authenticated tenant */
 fleetRoutes.get("/bots", readAuth, async (c) => {
   const tokenTenantId = c.get("tokenTenantId");
-  if (!tokenTenantId) {
-    return c.json({ error: "Tenant ID not found in token" }, 400);
+  let bots: Awaited<ReturnType<typeof fleet.listAll>>;
+  if (tokenTenantId) {
+    bots = await fleet.listByTenant(tokenTenantId);
+  } else {
+    bots = await fleet.listAll();
   }
-  const bots = await fleet.listByTenant(tokenTenantId);
   return c.json({ bots });
 });
 
@@ -202,12 +204,9 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
   }
 
-  // Validate tenant ID matches the authenticated token
+  // Validate tenant ID matches the authenticated token (for tenant-scoped tokens)
   const tokenTenantId = c.get("tokenTenantId");
-  if (!tokenTenantId) {
-    return c.json({ error: "Tenant ID not found in token" }, 400);
-  }
-  if (parsed.data.tenantId !== tokenTenantId) {
+  if (tokenTenantId && parsed.data.tenantId !== tokenTenantId) {
     return c.json({ error: "Cannot create bot for a different tenant" }, 403);
   }
 
