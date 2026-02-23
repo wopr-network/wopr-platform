@@ -60,6 +60,30 @@ import { setBillingRouterDeps, setNodesRouterDeps } from "./trpc/index.js";
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
 
+/**
+ * Validate critical environment variables at startup.
+ * Fails fast if required vars are missing or weak.
+ * Skip validation in test mode.
+ */
+function validateRequiredEnvVars() {
+  if (process.env.NODE_ENV === "test") return;
+
+  const issues: string[] = [];
+
+  const platformSecret = process.env.PLATFORM_SECRET;
+  if (!platformSecret) {
+    issues.push("PLATFORM_SECRET is required but not set");
+  } else if (platformSecret.length < 32) {
+    issues.push("PLATFORM_SECRET must be at least 32 characters");
+  }
+
+  if (issues.length > 0) {
+    throw new Error(`Environment validation failed:\n${issues.join("\n")}`);
+  }
+}
+
+validateRequiredEnvVars();
+
 const port = config.port;
 
 // Global process-level error handlers to prevent crashes from unhandled errors.
