@@ -230,11 +230,13 @@ export class FleetManager {
           await container.stop();
         } catch (err) {
           logger.warn(`Failed to stop container ${id} during update`, { botId: id, err });
+          throw err;
         }
         try {
           await container.remove();
         } catch (err) {
           logger.warn(`Failed to remove container ${id} during update`, { botId: id, err });
+          throw err;
         }
         await this.createContainer(updated);
 
