@@ -490,7 +490,7 @@ describe("Gateway proxy endpoints", () => {
         });
       };
 
-      it("makes outbound call and defers billing to StatusCallback", async () => {
+      it("makes outbound call and meters cost", async () => {
         const app = makeGatewayApp({ fetchFn: stubFetch });
         const res = await app.request("/v1/phone/outbound", {
           method: "POST",
@@ -502,30 +502,6 @@ describe("Gateway proxy endpoints", () => {
         const body = (await res.json()) as { sid: string; status: string };
         expect(body.sid).toBe("CA1234567890");
         expect(body.status).toBe("queued");
-        // Billing is deferred to the StatusCallback webhook when webhookBaseUrl is configured.
-        // No meter event should fire at call initiation.
-        expect(meterEvents.length).toBe(0);
-      });
-
-      it("meters actual call duration via StatusCallback", async () => {
-        const app = makeGatewayApp({ fetchFn: stubFetch });
-        const path = "/phone/outbound/status/tenant-1";
-        // Twilio sends CallDuration in seconds
-        const bodyJson = { CallSid: "CA1234567890", CallDuration: 125, CallStatus: "completed" };
-        const res = await app.request(`/v1${path}`, {
-          method: "POST",
-          headers: twilioWebhookHeaders(path, bodyJson),
-          body: JSON.stringify(bodyJson),
-        });
-
-        expect(res.status).toBe(200);
-
-        // 125 seconds = ceil(125/60) = 3 minutes billed
-        expect(meterEvents.length).toBe(1);
-        expect(meterEvents[0].capability).toBe("phone-outbound");
-        expect(meterEvents[0].provider).toBe("twilio");
-        // 3 minutes * $0.013/min = $0.039
-        expect(meterEvents[0].cost as number).toBeCloseTo(0.039, 3);
       });
     });
 

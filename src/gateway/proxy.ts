@@ -1207,21 +1207,13 @@ export function phoneOutboundStatus(deps: ProxyDeps) {
 }
 
 // -----------------------------------------------------------------------
-// Phone TwiML Hangup — GET /v1/phone/twiml/hangup (self-hosted TwiML endpoint)
+// Phone TwiML Hangup — GET /v1/phone/twiml/hangup (self-hosted TwiML)
 // -----------------------------------------------------------------------
 
-/** Returns a minimal TwiML <Response><Hangup/></Response> document.
- *
- * Replaces the third-party http://twiml.ai/hangup URL used as the default
- * TwiML fallback for outbound calls. Using a self-hosted HTTPS endpoint avoids
- * Twilio error 11200 (plain HTTP rejected in production) and eliminates the
- * supply-chain risk of an external domain not under org control.
- */
 export function phoneTwimlHangup() {
-  return async (_c: Context) => {
+  return (_c: Context) => {
     return new Response("<Response><Hangup/></Response>", {
-      status: 200,
-      headers: { "Content-Type": "text/xml; charset=utf-8" },
+      headers: { "Content-Type": "text/xml" },
     });
   };
 }
