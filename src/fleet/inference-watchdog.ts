@@ -11,14 +11,6 @@ const SERVICE_PORTS: Record<string, number> = {
   qwen: 8083,
 };
 
-/** Maps service name to capability-registry provider ID (for future CapabilityRegistry integration). */
-export const PROVIDER_IDS: Record<string, string> = {
-  llama: "wopr-gpu-llama",
-  chatterbox: "wopr-gpu-chatterbox",
-  whisper: "wopr-gpu-whisper",
-  qwen: "wopr-gpu-qwen",
-};
-
 export interface InferenceWatchdogOptions {
   /** Polling interval in ms. Default: 30000 */
   intervalMs?: number;
