@@ -39,6 +39,7 @@ export default defineConfig({
     "./src/db/schema/gateway-metrics.ts",
     "./src/db/schema/rate-limit-entries.ts",
     "./src/db/schema/circuit-breaker-states.ts",
+    "./src/db/schema/provisioned-phone-numbers.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "sqlite",

@@ -26,6 +26,7 @@ export * from "./oauth-states.js";
 export * from "./payram.js";
 export * from "./provider-credentials.js";
 export * from "./provider-health-overrides.js";
+export * from "./provisioned-phone-numbers.js";
 export * from "./rate-limit-entries.js";
 export * from "./rates.js";
 export * from "./recovery-events.js";

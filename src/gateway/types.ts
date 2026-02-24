@@ -144,6 +144,8 @@ export interface GatewayConfig {
   rateLimitRepo?: IRateLimitRepository;
   /** Repository for circuit breaker state. Required when circuit breaker is active. */
   circuitBreakerRepo?: ICircuitBreakerRepository;
+  /** Repository for tracking provisioned phone numbers (WOP-964) */
+  phoneRepo?: import("../monetization/credits/drizzle-phone-number-repository.js").IPhoneNumberRepository;
 }
 
 /** Standard gateway error response. */

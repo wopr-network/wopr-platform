@@ -97,6 +97,7 @@
         "src/monetization/credits/auto-topup-settings-repository.ts",
         "src/monetization/credits/auto-topup-settings-repository.ts",
         "src/monetization/credits/auto-topup-event-log-repository.ts",
+        "src/monetization/credits/drizzle-phone-number-repository.ts",
         "src/monetization/credits/credit-ledger.ts",
         "src/monetization/credits/dividend-repository.ts",
         "src/monetization/credits/bot-billing.ts",
