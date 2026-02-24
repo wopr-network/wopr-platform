@@ -179,9 +179,15 @@ fleetRoutes.use("/bots/:id", async (c, next) => {
   return next();
 });
 
-/** GET /fleet/bots — List all bots with live status */
+/** GET /fleet/bots — List bots for the authenticated tenant */
 fleetRoutes.get("/bots", readAuth, async (c) => {
-  const bots = await fleet.listAll();
+  const tokenTenantId = c.get("tokenTenantId");
+  let bots: Awaited<ReturnType<typeof fleet.listAll>>;
+  if (tokenTenantId) {
+    bots = await fleet.listByTenant(tokenTenantId);
+  } else {
+    bots = await fleet.listAll();
+  }
   return c.json({ bots });
 });
 
@@ -196,6 +202,12 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
   const parsed = createBotSchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+  }
+
+  // Validate tenant ID matches the authenticated token (for tenant-scoped tokens)
+  const tokenTenantId = c.get("tokenTenantId");
+  if (tokenTenantId && parsed.data.tenantId !== tokenTenantId) {
+    return c.json({ error: "Cannot create bot for a different tenant" }, 403);
   }
 
   // Check credit balance before creating container (skip if billing DB unavailable)
