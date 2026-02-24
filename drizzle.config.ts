@@ -65,6 +65,7 @@ export default defineConfig({
     "./src/db/schema/circuit-breaker-states.ts",
     "./src/db/schema/provisioned-phone-numbers.ts",
     "./src/db/schema/tenant-model-selection.ts",
+    "./src/db/schema/tenant-customers.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "sqlite",
