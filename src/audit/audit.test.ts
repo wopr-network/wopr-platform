@@ -380,13 +380,13 @@ describe("retention", () => {
     sqlite.close();
   });
 
-  it("returns correct retention days (flat 30)", () => {
-    expect(getRetentionDays()).toBe(30);
+  it("returns correct retention days (flat 365)", () => {
+    expect(getRetentionDays()).toBe(365);
   });
 
   it("purges entries older than retention period", () => {
     const now = Date.now();
-    const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
+    const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
     const oneDayAgo = now - 1 * 24 * 60 * 60 * 1000;
 
     db.insert(auditLog)
@@ -428,7 +428,7 @@ describe("retention", () => {
 
   it("purges per user for user-scoped retention", () => {
     const now = Date.now();
-    const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
+    const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
 
     db.insert(auditLog)
       .values({
@@ -745,7 +745,7 @@ describe("audit API routes", () => {
 
     it("defaults to retention cleanup on query", async () => {
       const now = Date.now();
-      const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
+      const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
       db.insert(auditLog)
         .values({
           id: "old-no-tier",
@@ -856,7 +856,7 @@ describe("audit API routes", () => {
 
     it("applies retention cleanup on query", async () => {
       const now = Date.now();
-      const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
+      const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
       db.insert(auditLog)
         .values({
           id: "old-entry",

@@ -12,6 +12,7 @@ export interface AuditEntry {
   details: Record<string, unknown>;
   ipAddress?: string;
   userAgent?: string;
+  outcome?: "success" | "failure";
 }
 
 export interface AdminAuditLogRow {
@@ -25,6 +26,7 @@ export interface AdminAuditLogRow {
   ip_address: string | null;
   user_agent: string | null;
   created_at: number;
+  outcome: string | null;
 }
 
 export interface AuditFilters {
@@ -58,6 +60,7 @@ export class AdminAuditLog {
       ip_address: entry.ipAddress ?? null,
       user_agent: entry.userAgent ?? null,
       created_at: Date.now(),
+      outcome: entry.outcome ?? null,
     };
 
     this.repo.insert(row);
@@ -75,7 +78,8 @@ export class AdminAuditLog {
     const exportFilters = { ...filters, limit: undefined, offset: undefined };
     const rows = this.repo.queryAll(exportFilters);
 
-    const header = "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at";
+    const header =
+      "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at,outcome";
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const lines = rows.map((r) => {
       const fields = [
@@ -89,6 +93,7 @@ export class AdminAuditLog {
         csvEscape(r.ip_address ?? ""),
         csvEscape(r.user_agent ?? ""),
         String(r.created_at),
+        csvEscape(r.outcome ?? ""),
       ];
       return fields.join(",");
     });

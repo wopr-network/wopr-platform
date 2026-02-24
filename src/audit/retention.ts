@@ -1,7 +1,7 @@
 import type { IAuditLogRepository } from "./audit-log-repository.js";
 
 /** Flat retention period in days. */
-const RETENTION_DAYS = 30;
+const RETENTION_DAYS = 365;
 
 /** Get retention period in days. */
 export function getRetentionDays(): number {

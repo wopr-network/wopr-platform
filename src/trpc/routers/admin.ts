@@ -158,8 +158,30 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      const { getCreditStore } = deps();
-      return getCreditStore().grant(input.tenantId, input.amount_cents, input.reason, ctx.user?.id ?? "unknown");
+      const { getCreditStore, getAuditLog } = deps();
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getCreditStore().grant(input.tenantId, input.amount_cents, input.reason, adminUser);
+        getAuditLog().log({
+          adminUser,
+          action: "credits.grant",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "credits.grant",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Refund credits from a tenant. */
@@ -173,14 +195,41 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      const { getCreditStore } = deps();
-      return getCreditStore().refund(
-        input.tenantId,
-        input.amount_cents,
-        input.reason,
-        ctx.user?.id ?? "unknown",
-        input.reference_ids,
-      );
+      const { getCreditStore, getAuditLog } = deps();
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getCreditStore().refund(
+          input.tenantId,
+          input.amount_cents,
+          input.reason,
+          adminUser,
+          input.reference_ids,
+        );
+        getAuditLog().log({
+          adminUser,
+          action: "credits.refund",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason, reference_ids: input.reference_ids },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "credits.refund",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: {
+            amount_cents: input.amount_cents,
+            reason: input.reason,
+            reference_ids: input.reference_ids,
+            error: String(err),
+          },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Apply a credit correction. */
@@ -193,8 +242,30 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      const { getCreditStore } = deps();
-      return getCreditStore().correction(input.tenantId, input.amount_cents, input.reason, ctx.user?.id ?? "unknown");
+      const { getCreditStore, getAuditLog } = deps();
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getCreditStore().correction(input.tenantId, input.amount_cents, input.reason, adminUser);
+        getAuditLog().log({
+          adminUser,
+          action: "credits.correction",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "credits.correction",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** List credit transactions for a tenant. */
@@ -482,11 +553,31 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getRateStore } = deps();
+      const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
-      return getRateStore().createSellRate(input);
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getRateStore().createSellRate(input);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.create",
+          category: "config",
+          details: { ...input },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.create",
+          category: "config",
+          details: { ...input, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Update a sell rate. */
@@ -505,26 +596,65 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getRateStore } = deps();
+      const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
+      const adminUser = ctx.user?.id ?? "unknown";
       const { id, ...updates } = input;
-      return getRateStore().updateSellRate(id, updates);
+      try {
+        const result = getRateStore().updateSellRate(id, updates);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.update",
+          category: "config",
+          details: { id, ...updates },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.update",
+          category: "config",
+          details: { id, ...updates, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Delete a sell rate. */
   ratesDeleteSell: protectedProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
     requirePlatformAdmin(ctx.user?.roles ?? []);
-    const { getRateStore } = deps();
+    const { getRateStore, getAuditLog } = deps();
     if (!getRateStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
     }
-    const deleted = getRateStore().deleteSellRate(input.id);
-    if (!deleted) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Sell rate not found" });
+    const adminUser = ctx.user?.id ?? "unknown";
+    try {
+      const deleted = getRateStore().deleteSellRate(input.id);
+      if (!deleted) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Sell rate not found" });
+      }
+      getAuditLog().log({
+        adminUser,
+        action: "rates.sell.delete",
+        category: "config",
+        details: { id: input.id },
+        outcome: "success",
+      });
+      return { success: true };
+    } catch (err) {
+      getAuditLog().log({
+        adminUser,
+        action: "rates.sell.delete",
+        category: "config",
+        details: { id: input.id, error: String(err) },
+        outcome: "failure",
+      });
+      throw err;
     }
-    return { success: true };
   }),
 
   /** List provider costs with optional filters. */
@@ -563,11 +693,31 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getRateStore } = deps();
+      const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
-      return getRateStore().createProviderCost(input);
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getRateStore().createProviderCost(input);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.create",
+          category: "config",
+          details: { ...input },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.create",
+          category: "config",
+          details: { ...input, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Update a provider cost. */
@@ -587,26 +737,65 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getRateStore } = deps();
+      const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
+      const adminUser = ctx.user?.id ?? "unknown";
       const { id, ...updates } = input;
-      return getRateStore().updateProviderCost(id, updates);
+      try {
+        const result = getRateStore().updateProviderCost(id, updates);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.update",
+          category: "config",
+          details: { id, ...updates },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.update",
+          category: "config",
+          details: { id, ...updates, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Delete a provider cost. */
   ratesDeleteProvider: protectedProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
     requirePlatformAdmin(ctx.user?.roles ?? []);
-    const { getRateStore } = deps();
+    const { getRateStore, getAuditLog } = deps();
     if (!getRateStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
     }
-    const deleted = getRateStore().deleteProviderCost(input.id);
-    if (!deleted) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Provider cost not found" });
+    const adminUser = ctx.user?.id ?? "unknown";
+    try {
+      const deleted = getRateStore().deleteProviderCost(input.id);
+      if (!deleted) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Provider cost not found" });
+      }
+      getAuditLog().log({
+        adminUser,
+        action: "rates.provider.delete",
+        category: "config",
+        details: { id: input.id },
+        outcome: "success",
+      });
+      return { success: true };
+    } catch (err) {
+      getAuditLog().log({
+        adminUser,
+        action: "rates.provider.delete",
+        category: "config",
+        details: { id: input.id, error: String(err) },
+        outcome: "failure",
+      });
+      throw err;
     }
-    return { success: true };
   }),
 
   /** Get margin report. */
@@ -836,16 +1025,37 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getNotesStore } = deps();
+      const { getNotesStore, getAuditLog } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
+      const adminUser = ctx.user?.id ?? "unknown";
       const { noteId, tenantId, ...updates } = input;
-      const note = getNotesStore().update(noteId, tenantId, updates);
-      if (!note) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+      try {
+        const note = getNotesStore().update(noteId, tenantId, updates);
+        if (!note) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+        }
+        getAuditLog().log({
+          adminUser,
+          action: "note.update",
+          category: "support",
+          targetTenant: tenantId,
+          details: { noteId, hasContentChange: !!updates.content, hasPinChange: updates.isPinned !== undefined },
+          outcome: "success",
+        });
+        return note;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "note.update",
+          category: "support",
+          targetTenant: tenantId,
+          details: { noteId, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
       }
-      return note;
     }),
 
   /** Delete a note. */
@@ -853,15 +1063,36 @@ export const adminRouter = router({
     .input(z.object({ noteId: z.string().min(1), tenantId: tenantIdSchema }))
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getNotesStore } = deps();
+      const { getNotesStore, getAuditLog } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
-      const deleted = getNotesStore().delete(input.noteId, input.tenantId);
-      if (!deleted) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const deleted = getNotesStore().delete(input.noteId, input.tenantId);
+        if (!deleted) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+        }
+        getAuditLog().log({
+          adminUser,
+          action: "note.delete",
+          category: "support",
+          targetTenant: input.tenantId,
+          details: { noteId: input.noteId },
+          outcome: "success",
+        });
+        return { success: true };
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "note.delete",
+          category: "support",
+          targetTenant: input.tenantId,
+          details: { noteId: input.noteId, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
       }
-      return { success: true };
     }),
 
   /** Change a user's role. */

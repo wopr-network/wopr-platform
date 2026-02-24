@@ -23,23 +23,23 @@ describe("audit retention", () => {
   });
 
   describe("getRetentionDays", () => {
-    it("returns 30 days", () => {
-      expect(getRetentionDays()).toBe(30);
+    it("returns 365 days", () => {
+      expect(getRetentionDays()).toBe(365);
     });
   });
 
   describe("purgeExpiredEntries", () => {
-    it("deletes entries older than 30 days", () => {
+    it("deletes entries older than 365 days", () => {
       // Create an entry "now"
-      vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
       logger.log({ userId: "u1", authMethod: "session", action: "instance.create", resourceType: "instance" });
 
-      // Create an entry at day 15
-      vi.setSystemTime(new Date("2026-01-16T00:00:00Z"));
+      // Create an entry at day 180
+      vi.setSystemTime(new Date("2025-07-01T00:00:00Z"));
       logger.log({ userId: "u1", authMethod: "session", action: "instance.stop", resourceType: "instance" });
 
-      // Advance to day 31 — first entry is now >30 days old
-      vi.setSystemTime(new Date("2026-02-01T00:00:00Z"));
+      // Advance to day 366 — first entry is now >365 days old
+      vi.setSystemTime(new Date("2026-01-02T00:00:00Z"));
       const deleted = purgeExpiredEntries(repo);
 
       expect(deleted).toBe(1);
@@ -63,16 +63,16 @@ describe("audit retention", () => {
   describe("purgeExpiredEntriesForUser", () => {
     it("only deletes expired entries for the specified user", () => {
       // Create old entries for both users
-      vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+      vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
       logger.log({ userId: "u1", authMethod: "session", action: "instance.create", resourceType: "instance" });
       logger.log({ userId: "u2", authMethod: "api_key", action: "auth.login", resourceType: "user" });
 
       // Create recent entry for u1
-      vi.setSystemTime(new Date("2026-02-01T00:00:00Z"));
+      vi.setSystemTime(new Date("2025-07-01T00:00:00Z"));
       logger.log({ userId: "u1", authMethod: "session", action: "instance.stop", resourceType: "instance" });
 
-      // Advance past 30 days from the old entries
-      vi.setSystemTime(new Date("2026-02-02T00:00:00Z"));
+      // Advance past 365 days from the old entries
+      vi.setSystemTime(new Date("2026-01-02T00:00:00Z"));
 
       const deleted = purgeExpiredEntriesForUser(repo, "u1");
       expect(deleted).toBe(1);

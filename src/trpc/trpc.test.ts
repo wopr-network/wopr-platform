@@ -1,5 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
+import { AdminAuditLog } from "../admin/audit-log.js";
 import { CreditAdjustmentStore } from "../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
@@ -101,10 +103,9 @@ describe("tRPC appRouter", () => {
       const creditStore = new CreditAdjustmentStore(sqlite);
       const userStore = new AdminUserStore(sqlite);
 
+      const auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
       setAdminRouterDeps({
-        getAuditLog: () => {
-          throw new Error("Audit log not available in tests");
-        },
+        getAuditLog: () => auditLog,
         getCreditStore: () => creditStore,
         getUserStore: () => userStore,
         getTenantStatusStore: () => {

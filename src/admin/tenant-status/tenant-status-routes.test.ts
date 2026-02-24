@@ -39,7 +39,8 @@ function initSchemas(sqlite: BetterSqlite3.Database): void {
       details TEXT NOT NULL DEFAULT '{}',
       ip_address TEXT,
       user_agent TEXT,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      outcome TEXT
     )
   `);
 

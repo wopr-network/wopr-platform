@@ -4,6 +4,7 @@ import { requirePlatformAdmin, requireTenantAdmin } from "../../admin/roles/requ
 import { isValidRole, RoleStore } from "../../admin/roles/role-store.js";
 import { initRolesSchema } from "../../admin/roles/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 export interface AdminRolesRouteDeps {
   db: Database.Database;
@@ -48,6 +49,20 @@ export function createAdminRolesRoutes(db: Database.Database): Hono<AuthEnv> {
 
     roleStore.setRole(userId, tenantId, body.role, currentUser.id);
 
+    try {
+      getAdminAuditLog().log({
+        adminUser: currentUser.id ?? "unknown",
+        action: "role.set",
+        category: "roles",
+        targetTenant: tenantId,
+        targetUser: userId,
+        details: { role: body.role },
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
+    }
+
     return c.json({ ok: true });
   });
 
@@ -60,6 +75,21 @@ export function createAdminRolesRoutes(db: Database.Database): Hono<AuthEnv> {
     const removed = roleStore.removeRole(userId, tenantId);
     if (!removed) {
       return c.json({ error: "Role not found" }, 404);
+    }
+
+    const currentUser = c.get("user");
+    try {
+      getAdminAuditLog().log({
+        adminUser: currentUser?.id ?? "unknown",
+        action: "role.remove",
+        category: "roles",
+        targetTenant: tenantId,
+        targetUser: userId,
+        details: {},
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
     }
 
     return c.json({ ok: true });
@@ -102,6 +132,19 @@ export function createPlatformAdminRoutes(db: Database.Database): Hono<AuthEnv> 
     const currentUser = c.get("user");
     roleStore.setRole(body.userId, RoleStore.PLATFORM_TENANT, "platform_admin", currentUser.id);
 
+    try {
+      getAdminAuditLog().log({
+        adminUser: currentUser.id ?? "unknown",
+        action: "platform_admin.add",
+        category: "roles",
+        targetUser: body.userId,
+        details: {},
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
+    }
+
     return c.json({ ok: true });
   });
 
@@ -117,6 +160,20 @@ export function createPlatformAdminRoutes(db: Database.Database): Hono<AuthEnv> 
     const removed = roleStore.removeRole(userId, RoleStore.PLATFORM_TENANT);
     if (!removed) {
       return c.json({ error: "Platform admin not found" }, 404);
+    }
+
+    const currentUser = c.get("user");
+    try {
+      getAdminAuditLog().log({
+        adminUser: currentUser?.id ?? "unknown",
+        action: "platform_admin.remove",
+        category: "roles",
+        targetUser: userId,
+        details: {},
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
     }
 
     return c.json({ ok: true });
