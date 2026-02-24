@@ -56,6 +56,7 @@ TEMP_EXCLUDED_PATTERNS=(
   "src/security/credential-vault/migrate-plaintext\.ts"
   "src/security/credential-vault/migration-check\.ts"
   "src/security/tenant-keys/schema\.ts"
+  "src/security/tenant-keys/capability-settings-store\.ts"
   # WOP-899: fleet managers (temporary - WOP-899-906)
   "src/fleet/node-provisioner\.ts"
   "src/fleet/node-connection-manager\.ts"

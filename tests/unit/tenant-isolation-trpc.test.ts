@@ -22,6 +22,7 @@ import { initCreditAdjustmentSchema } from "../../src/admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../src/db/index.js";
 import { initMeterSchema } from "../../src/monetization/metering/schema.js";
 import { initStripeSchema } from "../../src/monetization/stripe/schema.js";
+import { CapabilitySettingsStore } from "../../src/security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "../../src/security/tenant-keys/schema.js";
 import { appRouter } from "../../src/trpc/index.js";
 import type { TRPCContext } from "../../src/trpc/init.js";
@@ -202,14 +203,17 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
 describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
   let sqlite: BetterSqlite3.Database;
   let store: TenantKeyStore;
+  let capStore: CapabilitySettingsStore;
 
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
     store = new TenantKeyStore(sqlite);
+    capStore = new CapabilitySettingsStore(sqlite);
 
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => store,
-      encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: "test-iv" }),
+      getCapabilitySettingsStore: () => capStore,
+      encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: "test-iv", authTag: "tag" }),
       deriveTenantKey: (_tenantId: string, _secret: string) => Buffer.alloc(32),
       platformSecret: "test-platform-secret-32bytes!!ok",
       validateProviderKey: async (_provider: string, _key: string) => ({ valid: true }),
@@ -222,7 +226,7 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
 
   it("listKeys returns only caller's own tenant keys", async () => {
     // Store a key directly for TENANT_B
-    store.upsert(TENANT_B, "openai", { ciphertext: "enc:sk-b", iv: "iv" }, "B Key");
+    store.upsert(TENANT_B, "openai", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
 
     // Caller for TENANT_A should see empty list
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
@@ -237,7 +241,7 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
 
   it("getKey returns NOT_FOUND for other tenant's key", async () => {
     // Store a key for TENANT_B
-    store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv" }, "B Anthropic");
+    store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Anthropic");
 
     // TENANT_A caller tries to get TENANT_B's key
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
@@ -259,7 +263,7 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
 
   it("deleteKey cannot delete other tenant's key", async () => {
     // Store a key for TENANT_B
-    store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv" }, "B Key");
+    store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
 
     // TENANT_A caller tries to delete it — should get NOT_FOUND (not B's key)
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));

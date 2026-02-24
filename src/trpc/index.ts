@@ -17,7 +17,7 @@
 //   fleet.*         — mirror of REST /fleet/bots/* (UI migration pending)
 //
 // Routers NOT yet consumed by UI (candidates for cleanup if unused):
-//   capabilities.*  — UI uses REST /api/tenant-keys instead; wire UI or remove
+//   capabilities.*  — key CRUD + capability settings (listCapabilitySettings, updateCapabilitySettings)
 //   credentials.*   — admin credential vault; wire admin UI or remove
 //   usage.*         — quota check; UI uses REST /api/quota instead; wire or remove
 //

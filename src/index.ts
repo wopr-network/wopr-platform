@@ -63,6 +63,7 @@ import { DrizzleCredentialRepository } from "./security/credential-vault/credent
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
 import { encrypt } from "./security/encryption.js";
 import { validateProviderKey } from "./security/key-validation.js";
+import { CapabilitySettingsStore } from "./security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "./security/tenant-keys/schema.js";
 import type { Provider } from "./security/types.js";
 import { setBillingRouterDeps, setCapabilitiesRouterDeps, setNodesRouterDeps } from "./trpc/index.js";
@@ -389,19 +390,22 @@ if (process.env.NODE_ENV !== "test") {
     getBotInstanceRepo,
   });
 
-  // Wire capabilities tRPC router deps
+  // Wire capabilities tRPC router deps (WOP-915: +listCapabilitySettings, +updateCapabilitySettings)
   {
     const tenantKeysDb = new Database(TENANT_KEYS_DB_PATH);
     applyPlatformPragmas(tenantKeysDb);
     const tenantKeyStore = new TenantKeyStore(tenantKeysDb);
+    const capabilitySettingsStore = new CapabilitySettingsStore(tenantKeysDb);
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => tenantKeyStore as never,
+      getCapabilitySettingsStore: () => capabilitySettingsStore,
       encrypt,
       deriveTenantKey: (tenantId: string, platformSecret: string) =>
         createHmac("sha256", platformSecret).update(`tenant:${tenantId}`).digest(),
       platformSecret: process.env.PLATFORM_SECRET,
       validateProviderKey: (provider, key) => validateProviderKey(provider as Provider, key),
     });
+    logger.info("tRPC capabilities router initialized");
   }
 
   // Wire billing tRPC router deps
