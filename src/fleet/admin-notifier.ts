@@ -116,6 +116,48 @@ export class AdminNotifier {
   }
 
   /**
+   * Notify admin that a GPU node has degraded services
+   */
+  async gpuNodeDegraded(nodeId: string, serviceHealth: Record<string, "ok" | "down">): Promise<void> {
+    const downServices = Object.entries(serviceHealth)
+      .filter(([, status]) => status === "down")
+      .map(([name]) => name);
+
+    const message = [
+      `GPU Node Degraded`,
+      `Node: ${nodeId}`,
+      `Services down: ${downServices.length > 0 ? downServices.join(", ") : "none"}`,
+      `Full health: ${JSON.stringify(serviceHealth)}`,
+    ].join("\n");
+
+    logger.warn(message);
+
+    if (this.webhookUrl) {
+      await this.sendWebhook({
+        type: "gpu_node_degraded",
+        node_id: nodeId,
+        service_health: serviceHealth,
+      });
+    }
+  }
+
+  /**
+   * Notify admin that a GPU node has completely failed
+   */
+  async gpuNodeFailed(nodeId: string): Promise<void> {
+    const message = [`GPU Node Failed`, `Node: ${nodeId}`, `Action required: investigate GPU node failure`].join("\n");
+
+    logger.error(message);
+
+    if (this.webhookUrl) {
+      await this.sendWebhook({
+        type: "gpu_node_failed",
+        node_id: nodeId,
+      });
+    }
+  }
+
+  /**
    * Send a webhook notification
    */
   private async sendWebhook(payload: Record<string, unknown>): Promise<void> {
