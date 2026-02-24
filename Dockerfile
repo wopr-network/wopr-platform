@@ -48,6 +48,8 @@ COPY package.json ./
 
 # Profile templates loaded at runtime by fleet module
 COPY templates/ ./templates/
+# Migration files for schema versioning
+COPY drizzle/ ./drizzle/
 
 # Ownership
 RUN chown -R wopr:wopr /app
