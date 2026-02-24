@@ -12,6 +12,7 @@ import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "
 import { activityRoutes } from "./routes/activity.js";
 import { adminBackupRoutes } from "./routes/admin-backups.js";
 import { adminCreditRoutes } from "./routes/admin-credits.js";
+import { adminGpuRoutes } from "./routes/admin-gpu.js";
 import { adminMigrationRoutes } from "./routes/admin-migration.js";
 import { adminNotesRoutes } from "./routes/admin-notes.js";
 import { adminRateRoutes } from "./routes/admin-rates.js";
@@ -158,6 +159,7 @@ app.route("/api/admin/notes", adminNotesRoutes);
 app.route("/api/admin/rates", adminRateRoutes);
 app.route("/api/admin/recovery", adminRecoveryRoutes);
 app.route("/api/admin/nodes", adminNodeRoutes);
+app.route("/api/admin/gpu", adminGpuRoutes);
 app.route("/api/admin/migrate", adminMigrationRoutes);
 app.route("/api/admin/users", adminUsersApiRoutes);
 app.route("/api/channel-oauth", channelOAuthRoutes);
