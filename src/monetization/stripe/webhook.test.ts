@@ -10,6 +10,8 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
+import { DrizzleAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
+import { initAffiliateSchema } from "../affiliate/schema.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
 import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
@@ -384,6 +386,85 @@ describe("handleWebhookEvent (credit model)", () => {
       // Negative TTL pushes cutoff into the future — entry is expired
       guard.purgeExpired(-24 * 60 * 60 * 1000);
       expect(guard.isDuplicate("evt_expire", "stripe")).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // New-user affiliate bonus (WOP-950)
+  // ---------------------------------------------------------------------------
+
+  describe("new-user affiliate bonus (WOP-950)", () => {
+    let affiliateRepo: DrizzleAffiliateRepository;
+    let depsWithAffiliate: WebhookDeps;
+
+    function createCheckoutEvent(overrides?: Partial<Stripe.Checkout.Session>): Stripe.Event {
+      return {
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_affiliate_test",
+            client_reference_id: "tenant-123",
+            customer: "cus_abc",
+            amount_total: 5000,
+            metadata: {},
+            ...overrides,
+          } as Stripe.Checkout.Session,
+        },
+      } as Stripe.Event;
+    }
+
+    beforeEach(() => {
+      initAffiliateSchema(sqlite);
+      affiliateRepo = new DrizzleAffiliateRepository(createDb(sqlite));
+      depsWithAffiliate = { ...deps, affiliateRepo };
+    });
+
+    it("grants bonus to referred user on first purchase", () => {
+      affiliateRepo.getOrCreateCode("referrer-1");
+      const code = affiliateRepo.getOrCreateCode("referrer-1").code;
+      affiliateRepo.recordReferral("referrer-1", "tenant-123", code);
+
+      const event = createCheckoutEvent({ amount_total: 5000 });
+      const result = handleWebhookEvent(depsWithAffiliate, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(5000);
+      expect(result.affiliateBonusCents).toBe(1000); // 20% of 5000
+
+      // Total balance = purchase + bonus
+      expect(creditLedger.balance("tenant-123")).toBe(6000);
+    });
+
+    it("does not grant bonus to non-referred user", () => {
+      const event = createCheckoutEvent({ amount_total: 5000 });
+      const result = handleWebhookEvent(depsWithAffiliate, event);
+
+      expect(result.affiliateBonusCents).toBeUndefined();
+      expect(creditLedger.balance("tenant-123")).toBe(5000);
+    });
+
+    it("does not grant bonus on second purchase", () => {
+      affiliateRepo.getOrCreateCode("referrer-1");
+      const code = affiliateRepo.getOrCreateCode("referrer-1").code;
+      affiliateRepo.recordReferral("referrer-1", "tenant-123", code);
+
+      const event1 = createCheckoutEvent({ id: "cs_first", amount_total: 5000 });
+      handleWebhookEvent(depsWithAffiliate, event1);
+
+      const event2 = createCheckoutEvent({ id: "cs_second", amount_total: 3000 });
+      const result2 = handleWebhookEvent(depsWithAffiliate, event2);
+
+      expect(result2.affiliateBonusCents).toBeUndefined();
+      // Balance = 5000 (first purchase) + 1000 (bonus) + 3000 (second purchase) = 9000
+      expect(creditLedger.balance("tenant-123")).toBe(9000);
+    });
+
+    it("works without affiliateRepo in deps (backwards compatible)", () => {
+      const event = createCheckoutEvent({ id: "cs_no_affiliate", amount_total: 2500 });
+      const result = handleWebhookEvent(deps, event);
+
+      expect(result.affiliateBonusCents).toBeUndefined();
+      expect(result.creditedCents).toBe(2500);
     });
   });
 

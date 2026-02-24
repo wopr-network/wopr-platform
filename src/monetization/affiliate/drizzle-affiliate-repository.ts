@@ -51,6 +51,9 @@ export interface IAffiliateRepository {
   /** List referrals for a tenant. */
   listReferrals(tenantId: string): AffiliateReferral[];
 
+  /** Get the referral record for a referred tenant. Returns null if not referred. */
+  getReferral(referredTenantId: string): AffiliateReferral | null;
+
   /** Mark a referral as having made first purchase (for conversion tracking). */
   markFirstPurchase(referredTenantId: string): void;
 
@@ -151,6 +154,27 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       .get();
 
     return row != null;
+  }
+
+  getReferral(referredTenantId: string): AffiliateReferral | null {
+    const row = this.db
+      .select()
+      .from(affiliateReferrals)
+      .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
+      .limit(1)
+      .get();
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      referrerTenantId: row.referrerTenantId,
+      referredTenantId: row.referredTenantId,
+      code: row.code,
+      signedUpAt: row.signedUpAt,
+      firstPurchaseAt: row.firstPurchaseAt,
+      matchAmountCents: row.matchAmountCents,
+      matchedAt: row.matchedAt,
+    };
   }
 
   getStats(tenantId: string): AffiliateStats {

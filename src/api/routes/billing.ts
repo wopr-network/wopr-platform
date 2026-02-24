@@ -410,7 +410,13 @@ billingRoutes.post("/webhook", async (c) => {
   const store = getTenantStore();
   const ledger = getCreditLedger();
   const result = handleWebhookEvent(
-    { tenantStore: store, creditLedger: ledger, priceMap: priceMap ?? undefined, replayGuard: getDeps().replayGuard },
+    {
+      tenantStore: store,
+      creditLedger: ledger,
+      priceMap: priceMap ?? undefined,
+      replayGuard: getDeps().replayGuard,
+      affiliateRepo: getDeps().affiliateRepo,
+    },
     event,
   );
 
