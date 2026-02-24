@@ -155,8 +155,109 @@ export function chatCompletions(deps: ProxyDeps) {
       return c.json({ error: creditErr }, 402);
     }
 
-    // TODO(WOP-463): Add arbitrage routing for chat completions (non-streaming only)
-    // Streaming requests need raw Response piping via proxySSEStream; skip for now.
+    // Parse body once — needed for both arbitrage routing and direct proxy.
+    const body = await c.req.text();
+    let isStreaming = false;
+    let requestModel: string | undefined;
+    let parsedBody:
+      | {
+          stream?: boolean;
+          model?: string;
+          messages?: Array<{ role: string; content: string }>;
+          max_tokens?: number;
+          temperature?: number;
+        }
+      | undefined;
+    try {
+      parsedBody = JSON.parse(body) as typeof parsedBody;
+      isStreaming = parsedBody?.stream === true;
+      requestModel = parsedBody?.model;
+    } catch {
+      // Not valid JSON, assume non-streaming
+    }
+
+    deps.metrics?.recordGatewayRequest("chat-completions");
+
+    // WOP-746: Arbitrage routing for non-streaming chat completions.
+    // Mirrors the TTS arbitrage pattern. When arbitrageRouter is present and
+    // the request is non-streaming, delegate to the cheapest available provider.
+    // Falls back to direct OpenRouter proxy on NoProviderAvailableError.
+    if (deps.arbitrageRouter && !isStreaming) {
+      try {
+        // Extract prompt from messages array for the adapter's TextGenerationInput
+        const lastUserMsg = parsedBody?.messages?.filter((m) => m.role === "user").pop();
+        const prompt = lastUserMsg?.content ?? "";
+
+        const result = await deps.arbitrageRouter.route<
+          import("../monetization/adapters/types.js").TextGenerationOutput
+        >({
+          capability: "text-generation",
+          tenantId: tenant.id,
+          input: {
+            prompt,
+            model: requestModel,
+            maxTokens: parsedBody?.max_tokens,
+            temperature: parsedBody?.temperature,
+          },
+          model: requestModel,
+        });
+
+        const { text, model: responseModel, usage } = result.result;
+        const cost = result.cost;
+        const provider = result.provider;
+        const totalTokens = usage.inputTokens + usage.outputTokens;
+
+        logger.info("Gateway proxy: chat/completions (arbitrage)", {
+          tenant: tenant.id,
+          model: responseModel,
+          cost,
+          provider,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        });
+
+        emitMeterEvent(deps, tenant.id, "chat-completions", provider, cost, undefined, {
+          usage: { units: totalTokens, unitType: "tokens" },
+          tier: "branded",
+          metadata: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, model: responseModel },
+        });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", provider);
+
+        return c.json(
+          {
+            id: `chatcmpl-arb-${Date.now()}`,
+            object: "chat.completion",
+            created: Math.floor(Date.now() / 1000),
+            model: responseModel,
+            choices: [
+              {
+                index: 0,
+                message: { role: "assistant", content: text },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: usage.inputTokens,
+              completion_tokens: usage.outputTokens,
+              total_tokens: totalTokens,
+            },
+          },
+          200,
+        );
+      } catch (error) {
+        if (error instanceof NoProviderAvailableError) {
+          // Fall through to direct OpenRouter proxy below
+          logger.info("Gateway proxy: chat/completions arbitrage no provider, falling back to direct proxy", {
+            tenant: tenant.id,
+          });
+        } else {
+          deps.metrics?.recordGatewayError("chat-completions");
+          logger.error("Gateway proxy error: chat/completions (arbitrage)", { tenant: tenant.id, error });
+          const mapped = mapProviderError(error, "arbitrage");
+          return c.json(mapped.body, mapped.status as 502);
+        }
+      }
+    }
 
     const providerCfg = deps.providers.openrouter;
     if (!providerCfg) {
@@ -173,20 +274,9 @@ export function chatCompletions(deps: ProxyDeps) {
     }
 
     try {
-      deps.metrics?.recordGatewayRequest("chat-completions");
-      const body = await c.req.text();
       const baseUrl = providerCfg.baseUrl ?? "https://openrouter.ai/api";
 
-      // Detect streaming and extract model before making the request
-      let isStreaming = false;
-      let requestModel: string | undefined;
-      try {
-        const parsed = JSON.parse(body) as { stream?: boolean; model?: string };
-        isStreaming = parsed.stream === true;
-        requestModel = parsed.model;
-      } catch {
-        // Not valid JSON, assume non-streaming
-      }
+      // body, isStreaming, and requestModel are parsed above before the arbitrage block.
 
       const res = await deps.fetchFn(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
