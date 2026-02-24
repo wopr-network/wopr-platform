@@ -50,6 +50,8 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
     },
     emailAndPassword: {
       enabled: true,
+      // SOC 2 M1: Enforce minimum password length (12 chars for complexity baseline)
+      minPasswordLength: 12,
       sendResetPassword: async ({ user, url }) => {
         try {
           const emailClient = getEmailClient();

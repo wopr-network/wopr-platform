@@ -163,3 +163,31 @@ jobs:
           path: test-results/e2e-junit.xml
           retention-days: 30
           if-no-files-found: ignore
+
+  # SOC 2 C3: Dependency vulnerability scanning
+  dependency-scan:
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner (filesystem)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-fs-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Upload Trivy filesystem scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-results
+          path: trivy-fs-results.sarif
+          retention-days: 30
+          if-no-files-found: ignore
