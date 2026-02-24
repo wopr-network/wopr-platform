@@ -10,12 +10,13 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
-import { RESOURCE_TIERS, tierToResourceLimits } from "../../fleet/resource-tiers.js";
+import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../../fleet/resource-tiers.js";
 import { createBotSchema } from "../../fleet/types.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
@@ -43,6 +44,7 @@ export interface FleetRouterDeps {
   getTemplates: () => ProfileTemplate[];
   getCreditLedger: () => CreditLedger | null;
   getBotBilling?: () => IBotBilling | null;
+  getBotInstanceRepo?: () => IBotInstanceRepository | null;
 }
 
 let _deps: FleetRouterDeps | null = null;
@@ -427,14 +429,14 @@ export const fleetRouter = router({
 
   /** Get current resource tier for a bot. */
   getResourceTier: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {
-    const { getFleetManager, getBotBilling } = deps();
+    const { getFleetManager, getBotInstanceRepo } = deps();
     const fleet = getFleetManager();
     const profile = await fleet.profiles.get(input.id);
     if (!profile || profile.tenantId !== ctx.tenantId) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
     }
-    const billing = getBotBilling?.();
-    const tier = billing?.getResourceTier(input.id) ?? "standard";
+    const repo = getBotInstanceRepo?.();
+    const tier = repo?.getResourceTier(input.id) ?? "standard";
     return { tier };
   }),
 
@@ -447,7 +449,7 @@ export const fleetRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const { getFleetManager, getCreditLedger, getBotBilling } = deps();
+      const { getFleetManager, getCreditLedger, getBotInstanceRepo } = deps();
       const fleet = getFleetManager();
       const profile = await fleet.profiles.get(input.id);
       if (!profile || profile.tenantId !== ctx.tenantId) {
@@ -466,7 +468,11 @@ export const fleetRouter = router({
               throw new TRPCError({
                 code: "PAYMENT_REQUIRED",
                 message: "Insufficient credits for this resource tier",
-                cause: { balance, required: tierConfig.dailyCostCents, buyUrl: "/dashboard/credits" },
+                cause: {
+                  balance,
+                  required: tierConfig.dailyCostCents,
+                  buyUrl: "/dashboard/credits",
+                },
               });
             }
           }
@@ -477,13 +483,11 @@ export const fleetRouter = router({
       }
 
       // Remember previous tier for rollback
-      const billing = getBotBilling?.();
-      const previousTier = billing?.getResourceTier(input.id) ?? "standard";
+      const repo = getBotInstanceRepo?.();
+      const previousTier = repo?.getResourceTier(input.id) ?? "standard";
 
       // Update billing record
-      if (billing) {
-        billing.setResourceTier(input.id, input.tier);
-      }
+      repo?.setResourceTier(input.id, input.tier);
 
       // Restart container with new resource limits (if bot has a container)
       try {
@@ -495,12 +499,34 @@ export const fleetRouter = router({
           await fleet.remove(input.id, false);
         }
         const { id: _id, ...profileWithoutId } = profile;
-        await fleet.create(profileWithoutId, limits);
+        try {
+          await fleet.create(profileWithoutId, limits);
+        } catch (createErr) {
+          // New container failed — attempt to re-create with old tier limits to restore service
+          const oldLimits = tierToResourceLimits(previousTier as ResourceTierKey);
+          try {
+            await fleet.create(profileWithoutId, oldLimits);
+            if (wasRunning) await fleet.start(profile.id);
+          } catch (recreateErr) {
+            // Re-create with old tier also failed — log critical so ops can manually recover
+            const { logger } = await import("../../config/logger.js");
+            logger.error(
+              `CRITICAL: container lost after tier change — manual recovery required. botId=${input.id} newTier=${input.tier} previousTier=${previousTier} createErr=${String(createErr)} recreateErr=${String(recreateErr)}`,
+            );
+          }
+          // Revert billing record regardless of re-create outcome
+          repo?.setResourceTier(input.id, previousTier);
+          if (createErr instanceof TRPCError) throw createErr;
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to apply resource tier — rolled back",
+          });
+        }
         if (wasRunning) await fleet.start(profile.id);
       } catch (err) {
         if (err instanceof TRPCError) throw err;
-        // Rollback tier on container failure
-        if (billing) billing.setResourceTier(input.id, previousTier);
+        // Outer catch: stop/remove failed — revert billing record
+        repo?.setResourceTier(input.id, previousTier);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to apply resource tier — rolled back",
