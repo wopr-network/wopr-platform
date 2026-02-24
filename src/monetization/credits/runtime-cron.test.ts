@@ -257,7 +257,7 @@ describe("runRuntimeDeductions", () => {
   });
 
   it("buildResourceTierCosts: deducts pro tier surcharge via getResourceTierCosts", async () => {
-    const proTierCost = RESOURCE_TIERS["pro"].dailyCostCents;
+    const proTierCost = RESOURCE_TIERS.pro.dailyCostCents;
     // Grant enough for base cost + pro surcharge
     const startBalance = DAILY_BOT_COST_CENTS + proTierCost + 10;
     ledger.credit("tenant-1", startBalance, "purchase", "top-up");

@@ -598,7 +598,9 @@ if (process.env.NODE_ENV !== "test") {
           logger.info("Daily runtime deductions complete", result);
         })
         .catch((err) => {
-          logger.error("Daily runtime deductions failed", { error: err instanceof Error ? err.message : String(err) });
+          logger.error("Daily runtime deductions failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
     }, DAILY_MS);
     logger.info("Daily runtime deduction cron scheduled (24h interval)");

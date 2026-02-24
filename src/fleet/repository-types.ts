@@ -233,5 +233,6 @@ export interface NewVpsSubscription {
   tenantId: string;
   stripeSubscriptionId: string;
   stripeCustomerId: string;
-  hostname: string;
+  hostname?: string | null;
+  diskSizeGb?: number;
 }

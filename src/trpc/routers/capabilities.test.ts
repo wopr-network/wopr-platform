@@ -34,7 +34,11 @@ describe("capabilities.listCapabilitySettings", () => {
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => keyStore,
       getCapabilitySettingsStore: () => capStore,
-      encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: "test-iv", authTag: "tag" }),
+      encrypt: (plaintext: string) => ({
+        ciphertext: `enc:${plaintext}`,
+        iv: "test-iv",
+        authTag: "tag",
+      }),
       deriveTenantKey: (_tenantId: string, _secret: string) => Buffer.alloc(32),
       platformSecret: "test-platform-secret-32bytes!!ok",
       validateProviderKey: async () => ({ valid: true }),
@@ -72,9 +76,9 @@ describe("capabilities.listCapabilitySettings", () => {
 
     const textGen = result.find((r) => r.capability === "text-gen");
     expect(textGen).toBeDefined();
-    expect(textGen!.mode).toBe("byok");
-    expect(textGen!.maskedKey).toBe("...1234");
-    expect(textGen!.keyStatus).toBe("unchecked");
+    expect(textGen?.mode).toBe("byok");
+    expect(textGen?.maskedKey).toBe("...1234");
+    expect(textGen?.keyStatus).toBe("unchecked");
   });
 
   it("returns hosted mode even when key exists if mode preference is hosted", async () => {
@@ -86,9 +90,9 @@ describe("capabilities.listCapabilitySettings", () => {
 
     const textGen = result.find((r) => r.capability === "text-gen");
     expect(textGen).toBeDefined();
-    expect(textGen!.mode).toBe("hosted");
-    expect(textGen!.maskedKey).toBeNull();
-    expect(textGen!.keyStatus).toBeNull();
+    expect(textGen?.mode).toBe("hosted");
+    expect(textGen?.maskedKey).toBeNull();
+    expect(textGen?.keyStatus).toBeNull();
   });
 
   it("returns null provider for hosted-only capabilities", async () => {
@@ -97,8 +101,8 @@ describe("capabilities.listCapabilitySettings", () => {
 
     const transcription = result.find((r) => r.capability === "transcription");
     const imageGen = result.find((r) => r.capability === "image-gen");
-    expect(transcription!.provider).toBeNull();
-    expect(imageGen!.provider).toBeNull();
+    expect(transcription?.provider).toBeNull();
+    expect(imageGen?.provider).toBeNull();
   });
 
   it("isolates settings between tenants", async () => {
@@ -128,7 +132,11 @@ describe("capabilities.updateCapabilitySettings", () => {
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => keyStore,
       getCapabilitySettingsStore: () => capStore,
-      encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: "test-iv", authTag: "tag" }),
+      encrypt: (plaintext: string) => ({
+        ciphertext: `enc:${plaintext}`,
+        iv: "test-iv",
+        authTag: "tag",
+      }),
       deriveTenantKey: (_tenantId: string, _secret: string) => Buffer.alloc(32),
       platformSecret: "test-platform-secret-32bytes!!ok",
       validateProviderKey: async () => ({ valid: true }),

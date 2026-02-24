@@ -7,11 +7,26 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import type { CapabilitySettingsStore } from "../../security/tenant-keys/capability-settings-store.js";
-import { ALL_CAPABILITIES } from "../../security/tenant-keys/capability-settings-store.js";
+import {
+  ALL_CAPABILITIES,
+  type CapabilitySettingsStore,
+} from "../../security/tenant-keys/capability-settings-store.js";
 import type { EncryptedPayload } from "../../security/types.js";
 import { providerSchema } from "../../security/types.js";
 import { router, tenantProcedure } from "../init.js";
+
+// ---------------------------------------------------------------------------
+// Capability metadata
+// ---------------------------------------------------------------------------
+
+/** Capabilities that only support hosted mode (no BYOK). */
+const HOSTED_ONLY_CAPABILITIES = new Set(["transcription", "image-gen"]);
+
+/** Maps a capability to the provider whose key it uses (for BYOK). */
+const CAPABILITY_PROVIDER: Record<string, string> = {
+  "text-gen": "openai",
+  embeddings: "openai",
+};
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -24,12 +39,19 @@ export interface CapabilitiesRouterDeps {
       tenantId: string,
       provider: string,
     ) =>
-      | { id: string; tenant_id: string; provider: string; label: string; created_at: number; updated_at: number }
+      | {
+          id: string;
+          tenant_id: string;
+          provider: string;
+          label: string;
+          created_at: number;
+          updated_at: number;
+        }
       | undefined;
     upsert: (tenantId: string, provider: string, encryptedPayload: EncryptedPayload, label: string) => string;
     delete: (tenantId: string, provider: string) => boolean;
   };
-  getCapabilitySettingsStore: () => Pick<CapabilitySettingsStore, "listForTenant" | "upsert">;
+  getCapabilitySettingsStore: () => CapabilitySettingsStore;
   encrypt: (plaintext: string, key: Buffer) => EncryptedPayload;
   deriveTenantKey: (tenantId: string, platformSecret: string) => Buffer;
   platformSecret: string | undefined;
@@ -103,7 +125,10 @@ export const capabilitiesRouter = router({
     .mutation(({ input, ctx }) => {
       const { getTenantKeyStore, encrypt, deriveTenantKey, platformSecret } = deps();
       if (!platformSecret) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Platform secret not configured" });
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Platform secret not configured",
+        });
       }
 
       const tenantKey = deriveTenantKey(ctx.tenantId, platformSecret);
@@ -135,86 +160,103 @@ export const capabilitiesRouter = router({
       }
     }),
 
-  /** List capability settings with mode, masked key info for the authenticated tenant. */
+  /** List capability settings for the authenticated tenant. */
   listCapabilitySettings: tenantProcedure.query(({ ctx }) => {
     const { getTenantKeyStore, getCapabilitySettingsStore } = deps();
-    const settings = getCapabilitySettingsStore().listForTenant(ctx.tenantId);
-    const keys = getTenantKeyStore().listForTenant(ctx.tenantId) as Array<{
-      provider: string;
-      label: string;
-    }>;
-
-    const settingsMap = new Map(settings.map((s) => [s.capability, s]));
-    const keysMap = new Map(keys.map((k) => [k.provider, k]));
+    const keyStore = getTenantKeyStore();
+    const capStore = getCapabilitySettingsStore();
+    const settings = capStore.listForTenant(ctx.tenantId);
+    const settingsMap = new Map(settings.map((s) => [s.capability, s.mode]));
 
     return ALL_CAPABILITIES.map((capability) => {
-      const setting = settingsMap.get(capability);
-      const mode = (setting?.mode ?? "hosted") as "hosted" | "byok";
-      const byokProvider = CAPABILITY_BYOK_PROVIDER[capability];
-      const keyRecord = byokProvider ? keysMap.get(byokProvider) : undefined;
+      const mode = settingsMap.get(capability) ?? "hosted";
+      const provider = CAPABILITY_PROVIDER[capability] ?? null;
+      const hostedOnly = HOSTED_ONLY_CAPABILITIES.has(capability);
 
+      if (mode === "hosted" || hostedOnly) {
+        return {
+          capability,
+          mode: "hosted" as const,
+          provider: hostedOnly ? null : provider,
+          maskedKey: null,
+          keyStatus: null,
+        };
+      }
+
+      // byok mode
+      const keyRecord = provider ? keyStore.get(ctx.tenantId, provider) : undefined;
       return {
         capability,
-        mode,
-        maskedKey: mode === "byok" && keyRecord?.label ? keyRecord.label : null,
-        keyStatus: mode === "byok" && keyRecord ? ("unchecked" as const) : null,
-        provider: byokProvider ?? null,
+        mode: "byok" as const,
+        provider,
+        maskedKey: keyRecord ? (keyRecord as { label: string }).label : null,
+        keyStatus: keyRecord ? ("unchecked" as const) : null,
       };
     });
   }),
 
-  /** Update mode (hosted/byok) for a specific capability. */
+  /** Update capability mode (hosted vs byok) and optionally store a new key. */
   updateCapabilitySettings: tenantProcedure
     .input(
       z.object({
-        capability: capabilityNameSchema,
-        mode: capabilityModeSchema,
+        capability: z.enum(ALL_CAPABILITIES),
+        mode: z.enum(["hosted", "byok"]),
         key: z.string().min(1).optional(),
       }),
     )
     .mutation(({ input, ctx }) => {
-      const { getCapabilitySettingsStore, getTenantKeyStore, encrypt, deriveTenantKey, platformSecret } = deps();
+      const { getTenantKeyStore, getCapabilitySettingsStore, encrypt, deriveTenantKey, platformSecret } = deps();
 
-      // Reject BYOK for hosted-only capabilities
-      if (input.mode === "byok" && CAPABILITY_BYOK_PROVIDER[input.capability] === null) {
+      if (input.mode === "byok" && HOSTED_ONLY_CAPABILITIES.has(input.capability)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `${input.capability} does not support BYOK mode`,
         });
       }
 
-      // If switching to BYOK with a key, require platformSecret to encrypt it
-      if (input.mode === "byok" && input.key && !platformSecret) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Cannot store BYOK key: platform secret is not configured",
-        });
+      const capStore = getCapabilitySettingsStore();
+      capStore.upsert(ctx.tenantId, input.capability, input.mode);
+
+      if (input.mode === "hosted") {
+        return {
+          capability: input.capability,
+          mode: "hosted" as const,
+          provider: null,
+          maskedKey: null,
+          keyStatus: null,
+        };
       }
 
-      // If switching to BYOK with a key, store it
-      if (input.mode === "byok" && input.key && platformSecret) {
-        const provider = CAPABILITY_BYOK_PROVIDER[input.capability];
-        if (provider) {
-          const tenantKey = deriveTenantKey(ctx.tenantId, platformSecret);
-          const encryptedPayload = encrypt(input.key, tenantKey);
-          const maskedLabel = `...${input.key.slice(-4)}`;
-          getTenantKeyStore().upsert(ctx.tenantId, provider, encryptedPayload, maskedLabel);
+      const provider = CAPABILITY_PROVIDER[input.capability] ?? null;
+      const keyStore = getTenantKeyStore();
+
+      if (input.key && provider) {
+        if (!platformSecret) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Platform secret not configured",
+          });
         }
+        const tenantKey = deriveTenantKey(ctx.tenantId, platformSecret);
+        const encryptedPayload = encrypt(input.key, tenantKey);
+        const maskedKey = `...${input.key.slice(-4)}`;
+        keyStore.upsert(ctx.tenantId, provider, encryptedPayload, maskedKey);
+        return {
+          capability: input.capability,
+          mode: "byok" as const,
+          provider,
+          maskedKey,
+          keyStatus: "unchecked" as const,
+        };
       }
 
-      getCapabilitySettingsStore().upsert(ctx.tenantId, input.capability, input.mode);
-
-      const byokProvider = CAPABILITY_BYOK_PROVIDER[input.capability];
-      const keyRecord = byokProvider
-        ? (getTenantKeyStore().get(ctx.tenantId, byokProvider) as { label: string } | undefined)
-        : undefined;
-
+      const keyRecord = provider ? keyStore.get(ctx.tenantId, provider) : undefined;
       return {
         capability: input.capability,
-        mode: input.mode,
-        maskedKey: input.mode === "byok" && keyRecord?.label ? keyRecord.label : null,
-        keyStatus: input.mode === "byok" && keyRecord ? ("unchecked" as const) : null,
-        provider: byokProvider ?? null,
+        mode: "byok" as const,
+        provider,
+        maskedKey: keyRecord ? (keyRecord as { label: string }).label : null,
+        keyStatus: keyRecord ? ("unchecked" as const) : null,
       };
     }),
 });

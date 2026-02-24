@@ -42,10 +42,10 @@ describe("DrizzleVpsRepository", () => {
 
     const sub = repo.getByBotId("bot-1");
     expect(sub).not.toBeNull();
-    expect(sub!.botId).toBe("bot-1");
-    expect(sub!.status).toBe("active");
-    expect(sub!.hostname).toBe("alice.bot.wopr.bot");
-    expect(sub!.diskSizeGb).toBe(20);
+    expect(sub?.botId).toBe("bot-1");
+    expect(sub?.status).toBe("active");
+    expect(sub?.hostname).toBe("alice.bot.wopr.bot");
+    expect(sub?.diskSizeGb).toBe(20);
   });
 
   it("should return null for non-existent bot", () => {
@@ -63,7 +63,7 @@ describe("DrizzleVpsRepository", () => {
 
     const sub = repo.getBySubscriptionId("sub_456");
     expect(sub).not.toBeNull();
-    expect(sub!.botId).toBe("bot-2");
+    expect(sub?.botId).toBe("bot-2");
   });
 
   it("should list by tenant", () => {
@@ -103,7 +103,7 @@ describe("DrizzleVpsRepository", () => {
     });
 
     repo.updateStatus("bot-1", "canceling");
-    expect(repo.getByBotId("bot-1")!.status).toBe("canceling");
+    expect(repo.getByBotId("bot-1")?.status).toBe("canceling");
   });
 
   it("should delete a subscription", () => {
@@ -129,7 +129,7 @@ describe("DrizzleVpsRepository", () => {
     });
 
     repo.setSshPublicKey("bot-1", "ssh-rsa AAAAB3...");
-    expect(repo.getByBotId("bot-1")!.sshPublicKey).toBe("ssh-rsa AAAAB3...");
+    expect(repo.getByBotId("bot-1")?.sshPublicKey).toBe("ssh-rsa AAAAB3...");
   });
 
   it("should set tunnel ID", () => {
@@ -142,6 +142,6 @@ describe("DrizzleVpsRepository", () => {
     });
 
     repo.setTunnelId("bot-1", "tunnel-abc123");
-    expect(repo.getByBotId("bot-1")!.cloudflareTunnelId).toBe("tunnel-abc123");
+    expect(repo.getByBotId("bot-1")?.cloudflareTunnelId).toBe("tunnel-abc123");
   });
 });

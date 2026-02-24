@@ -512,13 +512,13 @@ export const fleetRouter = router({
         }
         const { id: _id, ...profileWithoutId } = profile;
         try {
-          const newProfile = await fleet.create(profileWithoutId, limits);
+          const newProfile = await fleet.create({ ...profileWithoutId, id: profile.id }, limits);
           if (wasRunning) await fleet.start(newProfile.id);
         } catch (createErr) {
           // New container failed — attempt to re-create with old tier limits to restore service
           const oldLimits = tierToResourceLimits(previousTier as ResourceTierKey);
           try {
-            const restoredProfile = await fleet.create(profileWithoutId, oldLimits);
+            const restoredProfile = await fleet.create({ ...profileWithoutId, id: profile.id }, oldLimits);
             if (wasRunning) await fleet.start(restoredProfile.id);
           } catch (recreateErr) {
             // Re-create with old tier also failed — log critical so ops can manually recover
