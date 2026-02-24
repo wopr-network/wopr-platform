@@ -6,6 +6,7 @@ import { secureHeaders } from "hono/secure-headers";
 import type { AuthUser } from "../auth/index.js";
 import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
 import { logger } from "../config/logger.js";
+import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
@@ -198,6 +199,16 @@ app.use("/api/*", resolveSessionUser());
 app.use("/fleet/*", resolveSessionUser());
 
 app.route("/health", healthRoutes);
+
+// GET /health/certs — certificate expiry status
+app.get("/health/certs", async (c) => {
+  const domains = process.env.CERT_CHECK_DOMAINS?.split(",").map((s) => s.trim()) || undefined;
+  const results = await checkAllCerts(domains);
+  const expiringSoon = results.filter((r) => r.daysRemaining !== undefined && r.daysRemaining < 30);
+  const failed = results.filter((r) => !r.valid);
+  const status = failed.length > 0 || expiringSoon.length > 0 ? 503 : 200;
+  return c.json({ ok: status === 200, results, expiringSoon: expiringSoon.length, failed: failed.length }, status);
+});
 app.route("/fleet", fleetRoutes);
 app.route("/fleet", botPluginRoutes);
 app.route("/api/quota", quotaRoutes);

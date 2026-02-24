@@ -113,18 +113,31 @@ export class NightlyBackup {
       const { rename } = await import("node:fs/promises");
       await rename(exportedPath, localPath);
 
+      // Encrypt before upload if BACKUP_ENCRYPTION_KEY is set
+      const encryptionKey = process.env.BACKUP_ENCRYPTION_KEY;
+      let uploadPath = localPath;
+      let uploadRemotePath = remotePath;
+      if (encryptionKey) {
+        const { encryptFile } = await import("./encrypt-archive.js");
+        const encryptedPath = `${localPath}.enc`;
+        await encryptFile(localPath, encryptedPath, encryptionKey);
+        await rm(localPath, { force: true }); // Remove unencrypted
+        uploadPath = encryptedPath;
+        uploadRemotePath = `${remotePath}.enc`;
+      }
+
       // Get file size
-      const info = await stat(localPath);
+      const info = await stat(uploadPath);
       const sizeMb = Math.round((info.size / (1024 * 1024)) * 100) / 100;
 
       // Upload to DO Spaces
-      await this.spaces.upload(localPath, remotePath);
+      await this.spaces.upload(uploadPath, uploadRemotePath);
 
       // Clean up local file
-      await rm(localPath, { force: true });
+      await rm(uploadPath, { force: true });
 
       logger.info(`Backup complete: ${name} (${sizeMb}MB)`);
-      return { container: name, success: true, sizeMb, remotePath };
+      return { container: name, success: true, sizeMb, remotePath: uploadRemotePath };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.error(`Backup failed: ${name}`, { err: message });

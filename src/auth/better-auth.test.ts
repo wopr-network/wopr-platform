@@ -7,8 +7,33 @@ import { betterAuth } from "better-auth";
 import BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resetAuth, setAuth } from "./better-auth.js";
+import { getAuth, resetAuth, setAuth } from "./better-auth.js";
 import { type AuthEnv, requireSessionOrToken, resolveSessionUser } from "./index.js";
+
+describe("getAuth singleton", () => {
+  afterEach(() => {
+    resetAuth();
+  });
+
+  it("returns the same instance on repeated calls", () => {
+    const db = new BetterSqlite3(":memory:");
+    const auth = betterAuth({ database: db, secret: "s", emailAndPassword: { enabled: true } });
+    setAuth(auth);
+    const a = getAuth();
+    const b = getAuth();
+    expect(a).toBe(b);
+    db.close();
+  });
+
+  it("getAuth creates a new instance when auth is reset and called with in-memory db via setAuth", () => {
+    resetAuth();
+    const db = new BetterSqlite3(":memory:");
+    const auth = betterAuth({ database: db, secret: "s", emailAndPassword: { enabled: true } });
+    setAuth(auth);
+    expect(getAuth()).toBe(auth);
+    db.close();
+  });
+});
 
 describe("better-auth integration", () => {
   afterEach(() => {

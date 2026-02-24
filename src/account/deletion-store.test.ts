@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type DrizzleDb } from "../db/index.js";
 import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore, DELETION_GRACE_DAYS } from "./deletion-store.js";
@@ -39,6 +39,20 @@ describe("AccountDeletionStore", () => {
   });
 
   describe("create()", () => {
+    it("throws when getById returns null after insert (defensive branch)", () => {
+      // Mock the repo to simulate a race condition where insert succeeds but getById returns null
+      const fakeRepo = {
+        insert: vi.fn(),
+        getById: vi.fn().mockReturnValue(null),
+        getPendingForTenant: vi.fn(),
+        cancel: vi.fn(),
+        markCompleted: vi.fn(),
+        findExpired: vi.fn(),
+      };
+      const fakeStore = new AccountDeletionStore(fakeRepo as never);
+      expect(() => fakeStore.create("tenant-x", "user-x")).toThrow("Failed to retrieve newly created deletion request");
+    });
+
     it("creates a pending request with correct initial state", () => {
       const req = store.create("tenant-1", "user-1");
       expect(req.id).toBeTruthy();
