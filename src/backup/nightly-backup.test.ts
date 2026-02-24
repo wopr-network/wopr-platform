@@ -131,4 +131,41 @@ describe("NightlyBackup.run", () => {
     const report = await backup.run();
     expect(report.failed).toContain("prefixed-name");
   });
+
+  it("encrypts backup when BACKUP_ENCRYPTION_KEY is set", async () => {
+    const fs = await import("node:fs/promises");
+    const containerName = "tenant-enc";
+    const exportPath = path.join(backupDir, `${containerName}.tar.gz`);
+
+    const docker = makeDocker([{ Names: [`/${containerName}`] }], async (_name: string) => {
+      await fs.mkdir(backupDir, { recursive: true });
+      await fs.writeFile(exportPath, "fake-data-for-encryption-test");
+    });
+
+    const spaces = makeSpaces();
+    const backup = new NightlyBackup({
+      docker: docker as never,
+      spaces: spaces as never,
+      backupDir,
+      nodeId: "node-1",
+    });
+
+    const originalKey = process.env.BACKUP_ENCRYPTION_KEY;
+    process.env.BACKUP_ENCRYPTION_KEY = "test-key-test-key-test-key-32!!";
+    try {
+      const report = await backup.run();
+      expect(report.exported).toContain(containerName);
+      expect(report.failed).toEqual([]);
+      // Encrypted upload path should end in .enc
+      const result = report.results[0];
+      expect(result.success).toBe(true);
+      expect(result.remotePath).toMatch(/\.enc$/);
+    } finally {
+      if (originalKey === undefined) {
+        delete process.env.BACKUP_ENCRYPTION_KEY;
+      } else {
+        process.env.BACKUP_ENCRYPTION_KEY = originalKey;
+      }
+    }
+  });
 });

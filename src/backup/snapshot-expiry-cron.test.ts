@@ -93,4 +93,19 @@ describe("runSnapshotExpiryCron", () => {
     expect(result.expired).toBe(1);
     expect(result.errors).toHaveLength(1);
   });
+
+  it("handles non-Error thrown from hardDelete", async () => {
+    const expiredSnap = makeSnapshot({ id: "s1" });
+    const manager = {
+      listExpired: vi.fn().mockReturnValue([expiredSnap]),
+      // Throw a plain string (not an Error instance) to cover the String(err) branch
+      hardDelete: vi.fn().mockRejectedValue("string error"),
+    } as unknown as SnapshotManager;
+
+    const result = await runSnapshotExpiryCron(manager);
+
+    expect(result.expired).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain("string error");
+  });
 });
