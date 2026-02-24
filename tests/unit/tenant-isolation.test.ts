@@ -133,6 +133,7 @@ vi.mock("../../src/fleet/fleet-manager.js", () => ({
     update = fleetMock.update;
     profiles = fleetMock.profiles;
   },
+  BotNotFoundError: MockBotNotFoundError,
 }));
 vi.mock("../../src/fleet/image-poller.js", () => ({
   ImagePoller: class {
