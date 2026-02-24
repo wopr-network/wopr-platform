@@ -187,9 +187,19 @@ app.post("/api/auth/reset-password", async (c, next) => {
 
 // better-auth handler — serves /api/auth/* (signup, login, session, etc.)
 // Lazily initialized to avoid opening DB at import time.
+//
+// Clone POST requests before forwarding to better-auth (WOP-988).
+// The Hono node-server wraps the Node.js IncomingMessage in a lazy proxy whose
+// body ReadableStream is created on first access. If any prior middleware has
+// begun consuming the stream (e.g. the password-complexity middleware on
+// sign-up uses c.req.raw.clone() to tee the stream), better-auth must receive
+// an unconsumed copy. Cloning here ensures better-auth always gets a fresh,
+// fully-readable Request — the clone tees whatever body stream exists. For GET
+// requests there is no body to clone, so the raw proxy is passed directly.
 app.on(["POST", "GET"], "/api/auth/*", async (c) => {
   const { getAuth } = await import("../auth/better-auth.js");
-  return getAuth().handler(c.req.raw);
+  const req = c.req.method === "POST" ? c.req.raw.clone() : c.req.raw;
+  return getAuth().handler(req);
 });
 
 // Resolve session user from better-auth cookie on all API and fleet routes.
