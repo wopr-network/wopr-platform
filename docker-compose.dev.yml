@@ -20,7 +20,7 @@ services:
     ports:
       - "3100:3100"
     env_file: .env
-    command: ["npx", "tsx", "src/index.ts"]
+    command: ["sh", "-c", "mkdir -p data/platform data/fleet data/snapshots && npx drizzle-kit migrate && npx tsx src/index.ts"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
       interval: 10s
