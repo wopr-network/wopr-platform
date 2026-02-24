@@ -47,6 +47,7 @@ import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
+import { buildResourceTierCosts, runRuntimeDeductions } from "./monetization/credits/runtime-cron.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
 import type { HeartbeatMessage } from "./node-agent/types.js";
 import { DrizzleMetricsRepository } from "./observability/drizzle-metrics-repository.js";
@@ -567,6 +568,41 @@ if (process.env.NODE_ENV !== "test") {
 
   // SOC 2 H7: Ensure backup verifier singleton is available for admin-triggered verification
   getBackupVerifier();
+
+  // Daily runtime deduction cron — charges tenants for active bots + resource tier surcharges.
+  // Runs once every 24 h (offset by 1 min from midnight to avoid thundering herd).
+  {
+    const cronBillingDb = new Database(BILLING_DB_PATH);
+    applyPlatformPragmas(cronBillingDb);
+    const cronBillingDrizzle = createDb(cronBillingDb);
+    const cronLedger = new CreditLedger(cronBillingDrizzle);
+    const botInstanceRepo = getBotInstanceRepo();
+    const getResourceTierCosts = buildResourceTierCosts(botInstanceRepo, (tenantId) =>
+      botInstanceRepo
+        .listByTenant(tenantId)
+        .filter((b) => b.billingState === "active")
+        .map((b) => b.id),
+    );
+    const DAILY_MS = 24 * 60 * 60 * 1000;
+    setInterval(() => {
+      void runRuntimeDeductions({
+        ledger: cronLedger,
+        getActiveBotCount: (tenantId) =>
+          botInstanceRepo.listByTenant(tenantId).filter((b) => b.billingState === "active").length,
+        getResourceTierCosts,
+        onSuspend: (tenantId) => {
+          logger.warn("Tenant suspended due to insufficient credits", { tenantId });
+        },
+      })
+        .then((result) => {
+          logger.info("Daily runtime deductions complete", result);
+        })
+        .catch((err) => {
+          logger.error("Daily runtime deductions failed", { error: err instanceof Error ? err.message : String(err) });
+        });
+    }, DAILY_MS);
+    logger.info("Daily runtime deduction cron scheduled (24h interval)");
+  }
 
   const server = serve({ fetch: app.fetch, port }, () => {
     logger.info(`wopr-platform listening on http://0.0.0.0:${port}`);

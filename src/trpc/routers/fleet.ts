@@ -427,6 +427,18 @@ export const fleetRouter = router({
       }
     }),
 
+  /** List all available resource tiers with their metadata. */
+  listResourceTiers: tenantProcedure.query(() => {
+    return Object.entries(RESOURCE_TIERS).map(([key, cfg]) => ({
+      key,
+      label: cfg.label,
+      memoryLimitMb: cfg.memoryLimitMb,
+      cpuQuota: cfg.cpuQuota,
+      dailyCostCents: cfg.dailyCostCents,
+      description: cfg.description,
+    }));
+  }),
+
   /** Get current resource tier for a bot. */
   getResourceTier: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {
     const { getFleetManager, getBotInstanceRepo } = deps();
