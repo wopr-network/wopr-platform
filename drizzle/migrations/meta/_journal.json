@@ -176,6 +176,13 @@
       "when": 1771750160184,
       "tag": "0025_nappy_red_wolf",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1771943054361,
+      "tag": "0026_next_anthem",
+      "breakpoints": true
     }
   ]
 }

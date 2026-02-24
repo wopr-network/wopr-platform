@@ -2,16 +2,11 @@
  * Auth — Session management, token verification, and middleware.
  *
  * Provides:
- * - Session creation and validation with configurable TTL
- * - Bearer token verification
- * - `requireAuth` middleware for Hono routes
  * - `requireRole` middleware for role-based access control
  * - `scopedBearerAuth` middleware for operation-scoped API tokens
  */
 
-import { randomUUID } from "node:crypto";
 import type { Context, Next } from "hono";
-import type { ISessionRepository } from "./session-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,114 +17,12 @@ export interface AuthUser {
   roles: string[];
 }
 
-export interface Session {
-  id: string;
-  userId: string;
-  roles: string[];
-  createdAt: number;
-  expiresAt: number;
-}
-
-export interface AuthConfig {
-  /** Session TTL in milliseconds (default: 1 hour) */
-  sessionTtlMs?: number;
-  /** Static bearer tokens mapped to users (for API key auth) */
-  apiTokens?: Map<string, AuthUser>;
-}
-
-// ---------------------------------------------------------------------------
-// Session Store
-// ---------------------------------------------------------------------------
-
-/**
- * DB-backed session store.
- *
- * Delegates all persistence to the injected ISessionRepository.
- * Maintains the same public API as the old in-memory SessionStore
- * so existing consumers don't need updating.
- */
-export class SessionStore {
-  private readonly repo: ISessionRepository;
-  private readonly ttlMs: number;
-
-  constructor(repo: ISessionRepository, ttlMs = 3_600_000) {
-    this.repo = repo;
-    this.ttlMs = ttlMs;
-  }
-
-  /** Create a new session for a user. Returns the session object. */
-  create(user: AuthUser): Session {
-    const now = Date.now();
-    const session: Session = {
-      id: randomUUID(),
-      userId: user.id,
-      roles: [...user.roles],
-      createdAt: now,
-      expiresAt: now + this.ttlMs,
-    };
-    this.repo.create(session);
-    return session;
-  }
-
-  /**
-   * Validate a session by ID.
-   * Returns the session if valid and not expired, or `null` otherwise.
-   */
-  validate(sessionId: string): Session | null {
-    const record = this.repo.validate(sessionId);
-    if (!record) return null;
-    return record;
-  }
-
-  /** Revoke (delete) a session. */
-  revoke(sessionId: string): boolean {
-    return this.repo.revoke(sessionId);
-  }
-
-  /** Remove all expired sessions. Returns the number removed. */
-  purgeExpired(): number {
-    return this.repo.purgeExpired();
-  }
-
-  /** Return the number of active (non-expired) sessions. */
-  get size(): number {
-    return this.repo.size;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Token verification
-// ---------------------------------------------------------------------------
-
-/**
- * Verify a bearer token against the configured API tokens or session store.
- *
- * Resolution order:
- * 1. Check static API tokens
- * 2. Check session store (token = session ID)
- *
- * Returns the authenticated user or `null`.
- */
-export function verifyBearerToken(
-  token: string,
-  sessionStore: SessionStore,
-  apiTokens?: Map<string, AuthUser>,
-): AuthUser | null {
-  if (!token) return null;
-
-  // 1. Static API token lookup
-  if (apiTokens) {
-    const user = apiTokens.get(token);
-    if (user) return { ...user, roles: [...user.roles] };
-  }
-
-  // 2. Session-based lookup
-  const session = sessionStore.validate(token);
-  if (session) {
-    return { id: session.userId, roles: [...session.roles] };
-  }
-
-  return null;
+export interface AuthEnv {
+  Variables: {
+    user: AuthUser;
+    authMethod: "session" | "api_key";
+    tokenTenantId?: string;
+  };
 }
 
 /**
@@ -147,52 +40,6 @@ export function extractBearerToken(header: string | undefined): string | null {
 // ---------------------------------------------------------------------------
 // Middleware
 // ---------------------------------------------------------------------------
-
-export interface AuthEnv {
-  Variables: {
-    user: AuthUser;
-    authMethod: "session" | "api_key";
-    tokenTenantId?: string;
-  };
-}
-
-/**
- * Create a `requireAuth` middleware that rejects unauthenticated requests.
- *
- * On success, sets:
- * - `c.set("user", { id, roles })`
- * - `c.set("authMethod", "session" | "api_key")`
- */
-export function requireAuth(sessionStore: SessionStore, apiTokens?: Map<string, AuthUser>) {
-  return async (c: Context<AuthEnv>, next: Next) => {
-    const authHeader = c.req.header("Authorization");
-    const token = extractBearerToken(authHeader);
-
-    if (!token) {
-      return c.json({ error: "Authentication required" }, 401);
-    }
-
-    // Check API tokens first
-    if (apiTokens) {
-      const apiUser = apiTokens.get(token);
-      if (apiUser) {
-        c.set("user", { ...apiUser, roles: [...apiUser.roles] });
-        c.set("authMethod", "api_key");
-        return next();
-      }
-    }
-
-    // Check session store
-    const session = sessionStore.validate(token);
-    if (session) {
-      c.set("user", { id: session.userId, roles: [...session.roles] });
-      c.set("authMethod", "session");
-      return next();
-    }
-
-    return c.json({ error: "Invalid or expired token" }, 401);
-  };
-}
 
 /**
  * Create a `requireRole` middleware that rejects users without the specified role.
