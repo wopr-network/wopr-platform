@@ -48,6 +48,7 @@ export class DrizzlePhoneNumberRepository implements IPhoneNumberRepository {
   async markBilled(sid: string): Promise<void> {
     await this.db
       .update(provisionedPhoneNumbers)
+      // raw SQL: Drizzle cannot express datetime('now') for SQLite current timestamp
       .set({ lastBilledAt: sql`(datetime('now'))` })
       .where(eq(provisionedPhoneNumbers.sid, sid))
       .run();
