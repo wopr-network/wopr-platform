@@ -207,3 +207,31 @@ export interface FleetEvent {
   createdAt: number;
   clearedAt: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// VPS Subscription
+// ---------------------------------------------------------------------------
+
+export type VpsStatus = "active" | "canceling" | "canceled";
+
+export interface VpsSubscription {
+  botId: string;
+  tenantId: string;
+  stripeSubscriptionId: string;
+  stripeCustomerId: string;
+  status: VpsStatus;
+  sshPublicKey: string | null;
+  cloudflareTunnelId: string | null;
+  hostname: string | null;
+  diskSizeGb: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NewVpsSubscription {
+  botId: string;
+  tenantId: string;
+  stripeSubscriptionId: string;
+  stripeCustomerId: string;
+  hostname: string;
+}

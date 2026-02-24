@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import type { NotificationService } from "../../email/notification-service.js";
+import type { IVpsRepository } from "../../fleet/vps-repository.js";
 import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
 import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
@@ -44,6 +45,8 @@ export interface WebhookDeps {
   notificationService?: NotificationService;
   /** Look up email address for a tenant ID (required for affiliate match notifications). */
   getEmailForTenant?: (tenantId: string) => string | null;
+  /** VPS repository for subscription lifecycle (WOP-741). */
+  vpsRepo?: IVpsRepository;
 }
 
 /**
@@ -51,9 +54,11 @@ export interface WebhookDeps {
  *
  * Handles the events WOPR cares about:
  * - checkout.session.completed — record customer mapping and credit the ledger
+ * - customer.subscription.created/updated — activate VPS tier for bot (WOP-741)
+ * - customer.subscription.deleted — cancel VPS tier for bot (WOP-741)
  *
  * All other event types are acknowledged but not processed.
- * No subscription events are handled — WOPR uses credits, not subscriptions.
+ * Credit-based events use mode: "payment"; VPS subscription events use mode: "subscription".
  */
 export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): WebhookResult {
   // Replay guard: reject duplicate event IDs within the TTL window.
@@ -174,6 +179,72 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         creditedCents: creditCents,
         reactivatedBots,
         affiliateBonusCents,
+      };
+      break;
+    }
+
+    case "customer.subscription.created":
+    case "customer.subscription.updated": {
+      const subscription = event.data.object as Stripe.Subscription;
+      const botId = subscription.metadata?.wopr_bot_id;
+      const tenant = subscription.metadata?.wopr_tenant;
+      const purchaseType = subscription.metadata?.wopr_purchase_type;
+
+      if (!botId || !tenant || purchaseType !== "vps" || !deps.vpsRepo) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
+
+      // Upsert tenant-customer mapping.
+      deps.tenantStore.upsert({ tenant, processorCustomerId: customerId });
+
+      const existing = deps.vpsRepo.getByBotId(botId);
+      if (subscription.status === "active") {
+        if (!existing) {
+          deps.vpsRepo.create({
+            botId,
+            tenantId: tenant,
+            stripeSubscriptionId: subscription.id,
+            stripeCustomerId: customerId,
+            hostname: `${tenant}.bot.wopr.bot`,
+          });
+        } else {
+          deps.vpsRepo.updateStatus(botId, "active");
+        }
+      } else if (subscription.status === "canceled") {
+        if (existing) {
+          deps.vpsRepo.updateStatus(botId, "canceled");
+        }
+      } else if (subscription.cancel_at_period_end) {
+        if (existing) {
+          deps.vpsRepo.updateStatus(botId, "canceling");
+        }
+      }
+
+      result = { handled: true, event_type: event.type, tenant };
+      break;
+    }
+
+    case "customer.subscription.deleted": {
+      const subscription = event.data.object as Stripe.Subscription;
+      const botId = subscription.metadata?.wopr_bot_id;
+
+      if (!botId || !deps.vpsRepo) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const existing = deps.vpsRepo.getByBotId(botId);
+      if (existing) {
+        deps.vpsRepo.updateStatus(botId, "canceled");
+      }
+
+      result = {
+        handled: true,
+        event_type: event.type,
+        tenant: subscription.metadata?.wopr_tenant,
       };
       break;
     }

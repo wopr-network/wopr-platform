@@ -39,5 +39,6 @@ export * from "./tenant-customers.js";
 export * from "./tenant-model-selection.js";
 export * from "./tenant-status.js";
 export * from "./user-roles.js";
+export * from "./vps-subscriptions.js";
 export * from "./webhook-seen-events.js";
 export * from "./webhook-sig-penalties.js";

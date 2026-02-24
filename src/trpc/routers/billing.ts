@@ -104,6 +104,27 @@ const PLAN_TIERS = [
     },
     recommended: false,
   },
+  {
+    id: "vps",
+    tier: "vps" as const,
+    name: "VPS",
+    price: 15,
+    priceLabel: "$15/mo",
+    features: {
+      instanceCap: 1,
+      channels: "Unlimited",
+      plugins: "All plugins",
+      support: "Email",
+      extras: [
+        "2GB RAM / 2 vCPU / 20GB SSD",
+        "Persistent container",
+        "Dedicated hostname",
+        "SSH access via Cloudflare Tunnel",
+        "Fixed monthly price (no per-credit billing for compute)",
+      ],
+    },
+    recommended: false,
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------

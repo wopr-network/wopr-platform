@@ -86,6 +86,8 @@ import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
 import { RegistrationTokenStore } from "./registration-token-store.js";
 import { DrizzleSpendingCapStore } from "./spending-cap-repository.js";
+import type { IVpsRepository } from "./vps-repository.js";
+import { DrizzleVpsRepository } from "./vps-repository.js";
 
 const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
 const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
@@ -678,6 +680,19 @@ export function getPhoneNumberRepo(): IPhoneNumberRepository {
 export function getAffiliateRepo(): IAffiliateRepository {
   if (!_affiliateRepo) _affiliateRepo = new DrizzleAffiliateRepository(getDb());
   return _affiliateRepo;
+}
+
+// ---------------------------------------------------------------------------
+// VPS Repository (WOP-741)
+// ---------------------------------------------------------------------------
+
+let _vpsRepo: IVpsRepository | null = null;
+
+export function getVpsRepo(): IVpsRepository {
+  if (!_vpsRepo) {
+    _vpsRepo = new DrizzleVpsRepository(getDb());
+  }
+  return _vpsRepo;
 }
 
 // ---------------------------------------------------------------------------

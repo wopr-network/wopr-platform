@@ -30,6 +30,20 @@ export interface PortalSessionOpts {
   returnUrl: string;
 }
 
+/** Options for creating a Stripe VPS subscription Checkout session. */
+export interface VpsCheckoutOpts {
+  /** Internal tenant ID. */
+  tenant: string;
+  /** Bot instance ID being upgraded. */
+  botId: string;
+  /** Stripe Price ID for the VPS subscription. */
+  vpsPriceId: string;
+  /** URL to redirect to after successful checkout. */
+  successUrl: string;
+  /** URL to redirect to if the user cancels checkout. */
+  cancelUrl: string;
+}
+
 /** Configuration for the Stripe billing integration. */
 export interface StripeBillingConfig {
   /** Stripe secret API key. */
