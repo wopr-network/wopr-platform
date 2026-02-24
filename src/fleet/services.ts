@@ -553,6 +553,9 @@ export function initFleet(): void {
   // Eagerly initialize orphan cleaner so it's ready when heartbeats arrive
   getOrphanCleaner();
 
+  // Start inference watchdog so GPU node health checks run in production
+  getInferenceWatchdog().start();
+
   // Periodic cleanup: purge stale rate-limit rows every 5 minutes.
   // Uses the longest platform rate-limit window (1 hour) as the TTL so that
   // no active window is ever removed prematurely.
