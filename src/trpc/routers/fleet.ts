@@ -14,9 +14,12 @@ import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
+import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
 import { createBotSchema } from "../../fleet/types.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
+import { createVpsCheckoutSession } from "../../monetization/stripe/checkout.js";
+import { createStripeClient, loadStripeConfig } from "../../monetization/stripe/client.js";
 import { protectedProcedure, router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -458,4 +461,88 @@ export const fleetRouter = router({
         throw err;
       }
     }),
+
+  /** Initiate VPS tier upgrade for a bot — returns Stripe Checkout URL. */
+  upgradeToVps: tenantProcedure
+    .input(
+      z.object({
+        id: uuidSchema,
+        successUrl: z.string().url().optional(),
+        cancelUrl: z.string().url().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const fleet = deps().getFleetManager();
+      const profile = await fleet.profiles.get(input.id);
+      if (!profile || profile.tenantId !== ctx.tenantId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+      }
+
+      const vpsPriceId = process.env.STRIPE_VPS_PRICE_ID;
+      if (!vpsPriceId) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "VPS tier not configured" });
+      }
+
+      const vpsRepo = getVpsRepo();
+      const existing = vpsRepo.getByBotId(input.id);
+      if (existing && existing.status === "active") {
+        throw new TRPCError({ code: "CONFLICT", message: "Bot already on VPS tier" });
+      }
+
+      const tenantStore = getTenantCustomerStore();
+      const customer = tenantStore.getByTenant(ctx.tenantId);
+      if (!customer) {
+        throw new TRPCError({
+          code: "PAYMENT_REQUIRED",
+          message: "No payment method on file. Please add a payment method first.",
+        });
+      }
+
+      const stripeConfig = loadStripeConfig();
+      if (!stripeConfig) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Stripe not configured" });
+      }
+
+      const baseUrl = process.env.PLATFORM_UI_URL ?? "https://app.wopr.bot";
+      const successUrl = input.successUrl ?? `${baseUrl}/dashboard/bots/${input.id}?vps=activated`;
+      const cancelUrl = input.cancelUrl ?? `${baseUrl}/dashboard/bots/${input.id}`;
+
+      const session = await createVpsCheckoutSession(createStripeClient(stripeConfig), tenantStore, {
+        tenant: ctx.tenantId,
+        botId: input.id,
+        vpsPriceId,
+        successUrl,
+        cancelUrl,
+      });
+
+      return { url: session.url, sessionId: session.id };
+    }),
+
+  /** Get VPS subscription info for a bot. */
+  vpsInfo: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {
+    const fleet = deps().getFleetManager();
+    const profile = await fleet.profiles.get(input.id);
+    if (!profile || profile.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+    }
+
+    const vpsRepo = getVpsRepo();
+    const sub = vpsRepo.getByBotId(input.id);
+    if (!sub) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot is not on VPS tier" });
+    }
+
+    const sshConnectionString = sub.sshPublicKey
+      ? `ssh root@${sub.hostname ?? input.id + ".bot.wopr.bot"} -p 22`
+      : null;
+
+    return {
+      botId: sub.botId,
+      status: sub.status,
+      hostname: sub.hostname,
+      sshConnectionString,
+      diskSizeGb: sub.diskSizeGb,
+      createdAt: sub.createdAt,
+    };
+  }),
 });

@@ -758,5 +758,94 @@ fleetRoutes.post("/bots/:id/capabilities/:capabilityId/activate", writeAuth, asy
   }
 });
 
+/** POST /fleet/bots/:id/upgrade-to-vps — Initiate VPS upgrade via Stripe subscription checkout */
+fleetRoutes.post("/bots/:id/upgrade-to-vps", writeAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) return ownershipError;
+  if (!profile) return c.json({ error: "Bot not found" }, 404);
+
+  const vpsPriceId = process.env.STRIPE_VPS_PRICE_ID;
+  if (!vpsPriceId) {
+    return c.json({ error: "VPS tier not configured" }, 503);
+  }
+
+  const { getVpsRepo, getTenantCustomerStore } = await import("../../fleet/services.js");
+  const vpsRepo = getVpsRepo();
+  const existing = vpsRepo.getByBotId(botId);
+  if (existing && existing.status === "active") {
+    return c.json({ error: "Bot already on VPS tier" }, 409);
+  }
+
+  const tenantStore = getTenantCustomerStore();
+  const customer = tenantStore.getByTenant(profile.tenantId);
+  if (!customer) {
+    return c.json(
+      {
+        error: "No payment method on file. Please add a payment method first.",
+        buyUrl: "/dashboard/billing",
+      },
+      402,
+    );
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    // No body is fine — use defaults
+  }
+
+  const baseUrl = process.env.PLATFORM_UI_URL ?? "https://app.wopr.bot";
+  const successUrl =
+    typeof body.successUrl === "string" ? body.successUrl : `${baseUrl}/dashboard/bots/${botId}?vps=activated`;
+  const cancelUrl = typeof body.cancelUrl === "string" ? body.cancelUrl : `${baseUrl}/dashboard/bots/${botId}`;
+
+  const { createVpsCheckoutSession } = await import("../../monetization/stripe/checkout.js");
+  const { createStripeClient, loadStripeConfig } = await import("../../monetization/stripe/client.js");
+
+  const stripeConfig = loadStripeConfig();
+  if (!stripeConfig) {
+    return c.json({ error: "Stripe not configured" }, 503);
+  }
+
+  const session = await createVpsCheckoutSession(createStripeClient(stripeConfig), tenantStore, {
+    tenant: profile.tenantId,
+    botId,
+    vpsPriceId,
+    successUrl,
+    cancelUrl,
+  });
+
+  return c.json({ url: session.url, sessionId: session.id });
+});
+
+/** GET /fleet/bots/:id/vps-info — Get VPS subscription info for a bot */
+fleetRoutes.get("/bots/:id/vps-info", readAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) return ownershipError;
+  if (!profile) return c.json({ error: "Bot not found" }, 404);
+
+  const { getVpsRepo } = await import("../../fleet/services.js");
+  const sub = getVpsRepo().getByBotId(botId);
+  if (!sub) {
+    return c.json({ error: "Bot is not on VPS tier" }, 404);
+  }
+
+  const sshConnectionString = sub.sshPublicKey ? `ssh root@${sub.hostname ?? botId + ".bot.wopr.bot"} -p 22` : null;
+
+  return c.json({
+    botId: sub.botId,
+    status: sub.status,
+    hostname: sub.hostname,
+    sshConnectionString,
+    diskSizeGb: sub.diskSizeGb,
+    createdAt: sub.createdAt,
+  });
+});
+
 /** Export fleet manager and related modules for testing */
 export { fleet, FleetManager, imagePoller, updater };
