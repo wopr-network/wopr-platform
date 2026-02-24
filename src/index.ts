@@ -527,6 +527,7 @@ if (process.env.NODE_ENV !== "test") {
         tenantStore,
         webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
         priceMap,
+        creditLedger: getCreditLedger(),
       });
 
       // Create PayRam deps before tRPC router so both REST and tRPC can share them.
