@@ -44,8 +44,8 @@ describe("buildCriticalAlerts", () => {
       authHealthCheck: () => true,
       gatewayHealthCheck: () => ({ healthy: true, latencyMs: 50 }),
     });
-    const result = alerts.find((a) => a.name === "sev1-billing-pipeline")!.check();
-    expect(result.firing).toBe(true);
+    const result = alerts.find((a) => a.name === "sev1-billing-pipeline")?.check();
+    expect(result?.firing).toBe(true);
   });
 
   it("sev1-database-unavailable fires when dbHealthCheck returns false", () => {
@@ -55,8 +55,8 @@ describe("buildCriticalAlerts", () => {
       authHealthCheck: () => true,
       gatewayHealthCheck: () => ({ healthy: true, latencyMs: 50 }),
     });
-    const result = alerts.find((a) => a.name === "sev1-database-unavailable")!.check();
-    expect(result.firing).toBe(true);
+    const result = alerts.find((a) => a.name === "sev1-database-unavailable")?.check();
+    expect(result?.firing).toBe(true);
   });
 
   it("sev1-auth-failure fires when authHealthCheck returns false", () => {
@@ -66,8 +66,8 @@ describe("buildCriticalAlerts", () => {
       authHealthCheck: () => false,
       gatewayHealthCheck: () => ({ healthy: true, latencyMs: 50 }),
     });
-    const result = alerts.find((a) => a.name === "sev1-auth-failure")!.check();
-    expect(result.firing).toBe(true);
+    const result = alerts.find((a) => a.name === "sev1-auth-failure")?.check();
+    expect(result?.firing).toBe(true);
   });
 
   it("sev1-inference-gateway-down fires when gateway is unhealthy", () => {
@@ -77,8 +77,8 @@ describe("buildCriticalAlerts", () => {
       authHealthCheck: () => true,
       gatewayHealthCheck: () => ({ healthy: false, latencyMs: 30000 }),
     });
-    const result = alerts.find((a) => a.name === "sev1-inference-gateway-down")!.check();
-    expect(result.firing).toBe(true);
+    const result = alerts.find((a) => a.name === "sev1-inference-gateway-down")?.check();
+    expect(result?.firing).toBe(true);
   });
 
   it("sev1-payment-processing fires when error rate > 10% with high traffic", () => {
@@ -88,8 +88,8 @@ describe("buildCriticalAlerts", () => {
       authHealthCheck: () => true,
       gatewayHealthCheck: () => ({ healthy: true, latencyMs: 50 }),
     });
-    const result = alerts.find((a) => a.name === "sev1-payment-processing")!.check();
-    expect(result.firing).toBe(true);
+    const result = alerts.find((a) => a.name === "sev1-payment-processing")?.check();
+    expect(result?.firing).toBe(true);
   });
 
   it("no alerts fire when everything is healthy", () => {
