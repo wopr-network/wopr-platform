@@ -50,10 +50,12 @@ import { DrizzleMetricsRepository } from "./observability/drizzle-metrics-reposi
 import {
   AlertChecker,
   buildAlerts,
+  buildCriticalAlerts,
   captureError,
   createAdminHealthHandler,
   initSentry,
   MetricsCollector,
+  PagerDutyNotifier,
 } from "./observability/index.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
@@ -217,7 +219,46 @@ if (process.env.NODE_ENV !== "test") {
     const metrics = new MetricsCollector(metricsRepo);
     const fleetEventRepo = getFleetEventRepo();
     const alerts = buildAlerts(metrics, fleetEventRepo);
-    const alertChecker = new AlertChecker(alerts, { fleetEventRepo });
+
+    // ── PagerDuty integration ────────────────────────────────────────────────
+    const pagerduty = new PagerDutyNotifier(config.pagerduty);
+
+    const criticalAlerts = buildCriticalAlerts({
+      metrics,
+      dbHealthCheck: () => {
+        try {
+          billingDrizzle.run(sql`SELECT 1`);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      authHealthCheck: () => {
+        // Auth is co-located — if platform is running, auth is up.
+        return true;
+      },
+      gatewayHealthCheck: () => {
+        const window = metrics.getWindow(1);
+        const last5m = metrics.getWindow(5);
+        const healthy = window.totalRequests > 0 || last5m.totalRequests === 0;
+        return { healthy, latencyMs: 0 };
+      },
+    });
+
+    const allAlerts = [...alerts, ...criticalAlerts];
+    const alertChecker = new AlertChecker(allAlerts, {
+      fleetEventRepo,
+      onFire: (alertName, result) => {
+        const severity = alertName.startsWith("sev1-") ? "critical" : "error";
+        void pagerduty.trigger(alertName, result.message, severity, {
+          value: result.value,
+          threshold: result.threshold,
+        });
+      },
+      onResolve: (alertName) => {
+        void pagerduty.resolve(alertName);
+      },
+    });
     alertChecker.start();
 
     const ratesDb = new Database(RATES_DB_PATH);

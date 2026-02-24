@@ -58,6 +58,22 @@ const configSchema = z.object({
     .default({
       defaultTopic: DEFAULT_DISCOVERY_TOPIC,
     }),
+
+  /** PagerDuty alerting configuration. */
+  pagerduty: z
+    .object({
+      enabled: z.coerce.boolean().default(false),
+      routingKey: z.string().default(""),
+      afterHoursRoutingKey: z.string().optional(),
+      businessHoursStart: z.coerce.number().int().min(0).max(23).default(14),
+      businessHoursEnd: z.coerce.number().int().min(0).max(23).default(23),
+    })
+    .default({
+      enabled: false,
+      routingKey: "",
+      businessHoursStart: 14,
+      businessHoursEnd: 23,
+    }),
 });
 
 export const config = configSchema.parse({
@@ -72,6 +88,13 @@ export const config = configSchema.parse({
   },
   discovery: {
     defaultTopic: process.env.DISCOVERY_DEFAULT_TOPIC,
+  },
+  pagerduty: {
+    enabled: process.env.PAGERDUTY_ENABLED,
+    routingKey: process.env.PAGERDUTY_ROUTING_KEY,
+    afterHoursRoutingKey: process.env.PAGERDUTY_AFTER_HOURS_ROUTING_KEY,
+    businessHoursStart: process.env.PAGERDUTY_BUSINESS_HOURS_START,
+    businessHoursEnd: process.env.PAGERDUTY_BUSINESS_HOURS_END,
   },
 });
 

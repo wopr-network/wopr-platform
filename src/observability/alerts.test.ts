@@ -217,6 +217,56 @@ describe("AlertChecker", () => {
     expect(result[0].firing).toBe(false);
   });
 
+  it("calls onFire callback on not-firing -> firing transition", () => {
+    const onFire = vi.fn();
+    const mockAlert = {
+      name: "test-alert",
+      check: vi.fn().mockReturnValue({ firing: true, value: 10, threshold: 5, message: "too high" }),
+    };
+
+    const checker = new AlertChecker([mockAlert], { onFire });
+    checker.checkAll();
+
+    expect(onFire).toHaveBeenCalledOnce();
+    expect(onFire).toHaveBeenCalledWith("test-alert", { firing: true, value: 10, threshold: 5, message: "too high" });
+  });
+
+  it("calls onResolve callback on firing -> not-firing transition", () => {
+    const onResolve = vi.fn();
+    let firing = true;
+    const mockAlert = {
+      name: "test-alert",
+      check: vi.fn().mockImplementation(() => ({
+        firing,
+        value: firing ? 10 : 2,
+        threshold: 5,
+        message: firing ? "too high" : "ok",
+      })),
+    };
+
+    const checker = new AlertChecker([mockAlert], { onResolve });
+    checker.checkAll(); // fires
+    firing = false;
+    checker.checkAll(); // resolves
+
+    expect(onResolve).toHaveBeenCalledOnce();
+    expect(onResolve).toHaveBeenCalledWith("test-alert", { firing: false, value: 2, threshold: 5, message: "ok" });
+  });
+
+  it("does not call onFire on second consecutive firing check", () => {
+    const onFire = vi.fn();
+    const mockAlert = {
+      name: "test-alert",
+      check: vi.fn().mockReturnValue({ firing: true, value: 10, threshold: 5, message: "too high" }),
+    };
+
+    const checker = new AlertChecker([mockAlert], { onFire });
+    checker.checkAll();
+    checker.checkAll();
+
+    expect(onFire).toHaveBeenCalledOnce();
+  });
+
   it("start/stop manages interval", () => {
     const mockAlert = {
       name: "test-alert",
