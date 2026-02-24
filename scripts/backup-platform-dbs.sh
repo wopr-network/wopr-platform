@@ -28,12 +28,11 @@ encrypt_file() {
   local src="$1"
   local dst="${src}.enc"
   if [ -n "$ENCRYPTION_KEY" ]; then
-    openssl enc -aes-256-cbc -salt -pbkdf2 -in "$src" -out "$dst" -pass "pass:${ENCRYPTION_KEY}"
+    openssl enc -aes-256-cbc -salt -pbkdf2 -in "$src" -out "$dst" -pass env:BACKUP_ENCRYPTION_KEY
     rm -f "$src"
     echo "$dst"
   else
-    log "WARN: BACKUP_ENCRYPTION_KEY not set, uploading unencrypted"
-    echo "$src"
+    error_exit "BACKUP_ENCRYPTION_KEY is not set — refusing to upload unencrypted backup"
   fi
 }
 
