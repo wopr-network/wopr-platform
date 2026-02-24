@@ -81,14 +81,26 @@ export class AlertChecker {
   private readonly alerts: AlertDefinition[];
   private readonly intervalMs: number;
   private readonly fleetEventRepo: IFleetEventRepository | null;
+  private readonly onFire: ((alertName: string, result: AlertCheckResult) => void) | null;
+  private readonly onResolve: ((alertName: string, result: AlertCheckResult) => void) | null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private readonly firedState: Map<string, boolean> = new Map();
   private lastResults: Array<{ name: string; firing: boolean; message: string }> = [];
 
-  constructor(alerts: AlertDefinition[], opts?: { intervalMs?: number; fleetEventRepo?: IFleetEventRepository }) {
+  constructor(
+    alerts: AlertDefinition[],
+    opts?: {
+      intervalMs?: number;
+      fleetEventRepo?: IFleetEventRepository;
+      onFire?: (alertName: string, result: AlertCheckResult) => void;
+      onResolve?: (alertName: string, result: AlertCheckResult) => void;
+    },
+  ) {
     this.alerts = alerts;
     this.intervalMs = opts?.intervalMs ?? 60_000;
     this.fleetEventRepo = opts?.fleetEventRepo ?? null;
+    this.onFire = opts?.onFire ?? null;
+    this.onResolve = opts?.onResolve ?? null;
   }
 
   start(): void {
@@ -120,10 +132,12 @@ export class AlertChecker {
         });
         captureMessage(`Alert: ${alert.name} — ${result.message}`, "warning");
         this.firedState.set(alert.name, true);
+        this.onFire?.(alert.name, result);
       } else if (!result.firing && wasFiring) {
         // Transition: firing -> resolved
         logger.info(`Alert RESOLVED: ${alert.name}`, { message: result.message });
         this.firedState.set(alert.name, false);
+        this.onResolve?.(alert.name, result);
       }
 
       results.push({ name: alert.name, firing: result.firing, message: result.message });

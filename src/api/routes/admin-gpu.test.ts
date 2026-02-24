@@ -9,7 +9,8 @@ vi.mock("../../fleet/services.js", () => ({
 }));
 vi.mock("../../auth/index.js", () => ({
   buildTokenMetadataMap: vi.fn().mockReturnValue(new Map()),
-  scopedBearerAuthWithTenant: vi.fn().mockReturnValue(async (c: any, next: any) => {
+  // biome-ignore lint/suspicious/noExplicitAny: vi.fn() mock context
+  scopedBearerAuthWithTenant: vi.fn().mockReturnValue(async (c: any, next: () => Promise<void>) => {
     c.set("user", { id: "test-admin" });
     await next();
   }),
