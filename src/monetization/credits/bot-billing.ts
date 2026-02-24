@@ -1,6 +1,7 @@
 import { and, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
+import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import type { ICreditLedger } from "./credit-ledger.js";
 
 /** Billing state literals */
@@ -20,6 +21,9 @@ export interface IBotBilling {
   getBotBilling(botId: string): unknown;
   listForTenant(tenantId: string): unknown[];
   registerBot(botId: string, tenantId: string, name: string): void;
+  getStorageTier(botId: string): string | null;
+  setStorageTier(botId: string, tier: string): void;
+  getStorageTierCostsForTenant(tenantId: string): number;
 }
 
 /**
@@ -158,6 +162,44 @@ export class DrizzleBotBilling implements IBotBilling {
   /** List all bots for a tenant (any billing state). */
   listForTenant(tenantId: string) {
     return this.db.select().from(botInstances).where(eq(botInstances.tenantId, tenantId)).all();
+  }
+
+  /** Get storage tier key for a bot. Returns null if bot doesn't exist. */
+  getStorageTier(botId: string): string | null {
+    const row = this.db
+      .select({ storageTier: botInstances.storageTier })
+      .from(botInstances)
+      .where(eq(botInstances.id, botId))
+      .get();
+    return row?.storageTier ?? null;
+  }
+
+  /** Set storage tier for a bot. */
+  setStorageTier(botId: string, tier: string): void {
+    this.db
+      .update(botInstances)
+      .set({
+        storageTier: tier,
+        updatedAt: sql`(datetime('now'))`,
+      })
+      .where(eq(botInstances.id, botId))
+      .run();
+  }
+
+  /** Sum daily storage tier costs for all active bots for a tenant. */
+  getStorageTierCostsForTenant(tenantId: string): number {
+    const activeBots = this.db
+      .select({ storageTier: botInstances.storageTier })
+      .from(botInstances)
+      .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "active")))
+      .all();
+
+    let total = 0;
+    for (const bot of activeBots) {
+      const tier = bot.storageTier as StorageTierKey;
+      total += STORAGE_TIERS[tier]?.dailyCostCents ?? 0;
+    }
+    return total;
   }
 
   /** Register a new bot instance for billing. */

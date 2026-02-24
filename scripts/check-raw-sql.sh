@@ -62,6 +62,8 @@ TEMP_EXCLUDED_PATTERNS=(
   "src/fleet/node-connection-manager\.ts"
   "src/fleet/recovery-manager\.ts"
   "src/fleet/migration-manager\.ts"
+  # WOP-740: fleet-manager uses container.exec() (Docker API, not raw SQL)
+  "src/fleet/fleet-manager\.ts"
   # WOP-906: admin
   "src/admin/analytics/analytics-store\.ts"
   "src/admin/notes/notes-store\.ts"

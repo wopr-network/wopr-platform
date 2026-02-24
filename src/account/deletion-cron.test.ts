@@ -22,7 +22,7 @@ function setupStore(): { store: AccountDeletionStore; sqlite: Database.Database 
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE TABLE bot_instances (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, billing_state TEXT NOT NULL DEFAULT 'active', suspended_at TEXT, destroy_after TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE bot_instances (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL, billing_state TEXT NOT NULL DEFAULT 'active', suspended_at TEXT, destroy_after TEXT, storage_tier TEXT NOT NULL DEFAULT 'standard', created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE credit_transactions (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, amount_cents INTEGER NOT NULL, balance_after_cents INTEGER NOT NULL, type TEXT NOT NULL, description TEXT, reference_id TEXT, funding_source TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE credit_balances (tenant_id TEXT PRIMARY KEY, balance_cents INTEGER NOT NULL DEFAULT 0, last_updated TEXT NOT NULL DEFAULT (datetime('now')));
     CREATE TABLE meter_events (id TEXT PRIMARY KEY, tenant TEXT NOT NULL, cost REAL NOT NULL, charge REAL NOT NULL, capability TEXT NOT NULL, provider TEXT NOT NULL, timestamp INTEGER NOT NULL);

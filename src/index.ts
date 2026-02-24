@@ -72,6 +72,7 @@ import type { Provider } from "./security/types.js";
 import {
   setBillingRouterDeps,
   setCapabilitiesRouterDeps,
+  setFleetRouterDeps,
   setModelSelectionRouterDeps,
   setNodesRouterDeps,
   setProfileRouterDeps,
@@ -571,6 +572,32 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire OrphanCleaner into NodeConnectionManager for stale container cleanup on node reboot
   initFleet();
+
+  // Wire fleet tRPC router deps (storage tier procedures + bot billing)
+  {
+    const { getBotBilling, getCreditLedger } = await import("./fleet/services.js");
+    const DockerLib = (await import("dockerode")).default;
+    const { ProfileStore } = await import("./fleet/profile-store.js");
+    const { FleetManager } = await import("./fleet/fleet-manager.js");
+    const { NetworkPolicy } = await import("./network/network-policy.js");
+    const { getProxyManager } = await import("./proxy/singleton.js");
+    const { loadProfileTemplates, defaultTemplatesDir } = await import("./fleet/profile-loader.js");
+    const tRpcDocker = new DockerLib();
+    const tRpcStore = new ProfileStore(process.env.FLEET_DATA_DIR || "/data/fleet");
+    const tRpcNetworkPolicy = new NetworkPolicy(tRpcDocker);
+    const tRpcFleet = new FleetManager(tRpcDocker, tRpcStore, config.discovery, tRpcNetworkPolicy, getProxyManager());
+    let _templates: import("./fleet/profile-schema.js").ProfileTemplate[] | null = null;
+    setFleetRouterDeps({
+      getFleetManager: () => tRpcFleet,
+      getTemplates: () => {
+        if (!_templates) _templates = loadProfileTemplates(defaultTemplatesDir());
+        return _templates;
+      },
+      getCreditLedger: () => getCreditLedger(),
+      getBotBilling: () => getBotBilling(),
+    });
+    logger.info("tRPC fleet router initialized");
+  }
 
   // Start heartbeat watchdog
   getHeartbeatWatchdog().start();

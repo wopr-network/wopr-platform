@@ -17,6 +17,7 @@ import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../../fleet/resource-tiers.js";
 import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
+import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import { createBotSchema } from "../../fleet/types.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
@@ -548,7 +549,118 @@ export const fleetRouter = router({
       return { tier: input.tier, dailyCostCents: tierConfig.dailyCostCents };
     }),
 
-  /** Activate a capability (superpower) on a bot. */
+  /** Get current storage tier for a bot. */
+  getStorageTier: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {
+    const { getFleetManager, getBotBilling } = deps();
+    const fleet = getFleetManager();
+    const profile = await fleet.profiles.get(input.id);
+    if (!profile || profile.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+    }
+    const billing = getBotBilling();
+    const tierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
+    const tierConfig = STORAGE_TIERS[tierKey] ?? STORAGE_TIERS.standard;
+    return {
+      tier: tierKey,
+      limitGb: tierConfig.storageLimitGb,
+      dailyCostCents: tierConfig.dailyCostCents,
+    };
+  }),
+
+  /** Upgrade or downgrade storage tier for a bot. */
+  setStorageTier: tenantProcedure
+    .input(
+      z.object({
+        id: uuidSchema,
+        tier: z.enum(["standard", "plus", "pro", "max"]),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { getFleetManager, getCreditLedger, getBotBilling } = deps();
+      const fleet = getFleetManager();
+      const profile = await fleet.profiles.get(input.id);
+      if (!profile || profile.tenantId !== ctx.tenantId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+      }
+
+      const newTierConfig = STORAGE_TIERS[input.tier];
+      const billing = getBotBilling();
+      const currentTierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
+      const currentTierConfig = STORAGE_TIERS[currentTierKey] ?? STORAGE_TIERS.standard;
+
+      // Downgrade check: is current usage > new tier limit?
+      const isDowngrade = newTierConfig.storageLimitGb < currentTierConfig.storageLimitGb;
+      if (isDowngrade) {
+        const usage = await fleet.getVolumeUsage(input.id);
+        if (usage) {
+          const usedGb = usage.usedBytes / 1024 ** 3;
+          if (usedGb > newTierConfig.storageLimitGb) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Cannot downgrade: currently using ${usedGb.toFixed(1)} GB, but ${newTierConfig.label} tier only allows ${newTierConfig.storageLimitGb} GB. Free up disk space first.`,
+            });
+          }
+        }
+      }
+
+      // Credit check for non-standard tiers
+      if (newTierConfig.dailyCostCents > 0) {
+        const ledger = getCreditLedger();
+        if (ledger) {
+          const balance = ledger.balance(ctx.tenantId);
+          if (balance < newTierConfig.dailyCostCents) {
+            throw new TRPCError({
+              code: "PAYMENT_REQUIRED",
+              message: "Insufficient credits for this storage tier",
+              cause: {
+                balance,
+                required: newTierConfig.dailyCostCents,
+                buyUrl: "/dashboard/credits",
+              },
+            });
+          }
+        }
+      }
+
+      if (billing) {
+        billing.setStorageTier(input.id, input.tier);
+      }
+
+      return {
+        tier: input.tier,
+        limitGb: newTierConfig.storageLimitGb,
+        dailyCostCents: newTierConfig.dailyCostCents,
+      };
+    }),
+
+  /** Get live storage usage for a bot. */
+  getStorageUsage: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {
+    const { getFleetManager, getBotBilling } = deps();
+    const fleet = getFleetManager();
+    const profile = await fleet.profiles.get(input.id);
+    if (!profile || profile.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+    }
+
+    const billing = getBotBilling();
+    const tierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
+    const tierConfig = STORAGE_TIERS[tierKey] ?? STORAGE_TIERS.standard;
+
+    const usage = await fleet.getVolumeUsage(input.id);
+    const usedBytes = usage?.usedBytes ?? 0;
+    const usedGb = usedBytes / 1024 ** 3;
+    const limitGb = tierConfig.storageLimitGb;
+    const percentUsed = limitGb > 0 ? Math.round((usedGb / limitGb) * 100) : 0;
+
+    return {
+      tier: tierKey,
+      limitGb,
+      usedBytes,
+      usedGb: Math.round(usedGb * 100) / 100,
+      percentUsed: Math.min(percentUsed, 100),
+      dailyCostCents: tierConfig.dailyCostCents,
+    };
+  }),
   activateCapability: tenantProcedure
     .input(z.object({ id: uuidSchema, capabilityId: z.string().min(1).max(64) }))
     .mutation(async ({ input, ctx }) => {

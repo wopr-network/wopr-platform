@@ -263,6 +263,57 @@ export class FleetManager {
     return updated;
   }
 
+  /**
+   * Get disk usage for a bot's /data volume.
+   * Returns null if the container is not running or exec fails.
+   */
+  async getVolumeUsage(id: string): Promise<{ usedBytes: number; totalBytes: number; availableBytes: number } | null> {
+    const container = await this.findContainer(id);
+    if (!container) return null;
+
+    try {
+      const info = await container.inspect();
+      if (!info.State.Running) return null;
+
+      const exec = await container.exec({
+        Cmd: ["df", "-B1", "/data"],
+        AttachStdout: true,
+        AttachStderr: false,
+      });
+
+      const output = await new Promise<string>((resolve, reject) => {
+        exec.start({}, (err: Error | null, stream: import("node:stream").Duplex | undefined) => {
+          if (err) return reject(err);
+          if (!stream) return reject(new Error("No stream from exec"));
+          let data = "";
+          stream.on("data", (chunk: Buffer) => {
+            data += chunk.toString();
+          });
+          stream.on("end", () => resolve(data));
+          stream.on("error", reject);
+        });
+      });
+
+      // Parse df output — second line has the numbers
+      const lines = output.trim().split("\n");
+      if (lines.length < 2) return null;
+
+      const parts = lines[lines.length - 1].split(/\s+/);
+      if (parts.length < 4) return null;
+
+      const totalBytes = parseInt(parts[1], 10);
+      const usedBytes = parseInt(parts[2], 10);
+      const availableBytes = parseInt(parts[3], 10);
+
+      if (Number.isNaN(totalBytes) || Number.isNaN(usedBytes) || Number.isNaN(availableBytes)) return null;
+
+      return { usedBytes, totalBytes, availableBytes };
+    } catch {
+      logger.warn(`Failed to get volume usage for bot ${id}`);
+      return null;
+    }
+  }
+
   /** Get the underlying profile store */
   get profiles(): ProfileStore {
     return this.store;

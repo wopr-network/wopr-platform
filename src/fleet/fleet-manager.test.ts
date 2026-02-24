@@ -459,4 +459,64 @@ describe("FleetManager", () => {
       expect(netPolicy.cleanupAfterRemoval).not.toHaveBeenCalled();
     });
   });
+
+  describe("getVolumeUsage", () => {
+    it("returns disk usage from running container", async () => {
+      const dfOutput =
+        "Filesystem     1B-blocks      Used Available Use% Mounted on\n" +
+        "/dev/sda1    5368709120 1073741824 4294967296  20% /data\n";
+
+      const execMock = {
+        start: vi.fn((_opts: unknown, cb: (err: Error | null, stream: NodeJS.ReadableStream) => void) => {
+          const { Readable } = require("node:stream");
+          const stream = Readable.from([dfOutput]);
+          cb(null, stream);
+        }),
+      };
+      const containerWithExec = mockContainer({
+        exec: vi.fn().mockResolvedValue(execMock),
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+      docker.getContainer.mockReturnValue(containerWithExec);
+
+      const result = await fleet.getVolumeUsage("bot-id");
+
+      expect(result).toEqual({
+        totalBytes: 5368709120,
+        usedBytes: 1073741824,
+        availableBytes: 4294967296,
+      });
+    });
+
+    it("returns null when container is not found", async () => {
+      docker.listContainers.mockResolvedValue([]);
+      const result = await fleet.getVolumeUsage("bot-id");
+      expect(result).toBeNull();
+    });
+
+    it("returns null when container is stopped", async () => {
+      const stoppedContainer = mockContainer({
+        inspect: vi.fn().mockResolvedValue({
+          Id: "container-123",
+          State: { Running: false },
+        }),
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+      docker.getContainer.mockReturnValue(stoppedContainer);
+
+      const result = await fleet.getVolumeUsage("bot-id");
+      expect(result).toBeNull();
+    });
+
+    it("returns null when exec fails", async () => {
+      const containerWithFailingExec = mockContainer({
+        exec: vi.fn().mockRejectedValue(new Error("exec failed")),
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+      docker.getContainer.mockReturnValue(containerWithFailingExec);
+
+      const result = await fleet.getVolumeUsage("bot-id");
+      expect(result).toBeNull();
+    });
+  });
 });
