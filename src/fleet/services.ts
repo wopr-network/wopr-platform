@@ -178,6 +178,12 @@ export function getDb() {
   return _db;
 }
 
+/** Returns the raw better-sqlite3 instance backing the platform DB. */
+export function getSqliteDb(): Database.Database {
+  getDb(); // ensure initialized
+  return _sqlite!;
+}
+
 /** Lazy-initialized audit database singleton. */
 export function getAuditDb(): DrizzleDb {
   if (!_auditDb) {

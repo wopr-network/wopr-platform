@@ -16,7 +16,7 @@ import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
-import { applyPlatformPragmas, createDb } from "./db/index.js";
+import { applyPlatformPragmas } from "./db/index.js";
 import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
@@ -38,6 +38,7 @@ import {
   getNotificationPrefsStore,
   getRateLimitRepo,
   getRegistrationTokenStore,
+  getSqliteDb,
   getSystemResourceMonitor,
   initFleet,
 } from "./fleet/services.js";
@@ -78,7 +79,6 @@ import {
   setSettingsRouterDeps,
 } from "./trpc/index.js";
 
-const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
 const TENANT_KEYS_DB_PATH = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
 
@@ -227,12 +227,9 @@ if (process.env.NODE_ENV !== "test") {
   // registered. Provider API keys are optional — omitting one disables that
   // capability silently (gateway returns 503 for unconfigured providers).
   {
-    const billingDb = new Database(BILLING_DB_PATH);
-    applyPlatformPragmas(billingDb);
-    const billingDrizzle = createDb(billingDb);
-
-    // ── Observability ──────────────────────────────────────────────────────────
-    const metricsRepo = new DrizzleMetricsRepository(billingDrizzle);
+    // All tables live in platform.db (drizzle-kit migrations target).
+    // BILLING_DB_PATH was a legacy holdover — use getDb() throughout.
+    const metricsRepo = new DrizzleMetricsRepository(getDb());
     const metrics = new MetricsCollector(metricsRepo);
     const fleetEventRepo = getFleetEventRepo();
     const alerts = buildAlerts(metrics, fleetEventRepo);
@@ -244,7 +241,7 @@ if (process.env.NODE_ENV !== "test") {
       metrics,
       dbHealthCheck: () => {
         try {
-          billingDrizzle.run(sql`SELECT 1`);
+          getDb().run(sql`SELECT 1`);
           return true;
         } catch {
           return false;
@@ -283,9 +280,9 @@ if (process.env.NODE_ENV !== "test") {
     initRateSchema(ratesDb);
     const rateStore = new RateStore(ratesDb);
 
-    const meter = new MeterEmitter(billingDrizzle);
-    const budgetChecker = new BudgetChecker(billingDrizzle);
-    const creditLedger = new CreditLedger(billingDrizzle);
+    const meter = new MeterEmitter(getDb());
+    const budgetChecker = new BudgetChecker(getDb());
+    const creditLedger = new CreditLedger(getDb());
 
     // Build resolveServiceKey from FLEET_TOKEN_<TENANT>=<scope>:<token> env vars.
     // The same tokens that authenticate the fleet API also authenticate gateway calls.
@@ -303,7 +300,7 @@ if (process.env.NODE_ENV !== "test") {
 
     // Wire hosted credential injection for plugin install route
     const vaultKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
-    const credentialRepo = new DrizzleCredentialRepository(billingDrizzle);
+    const credentialRepo = new DrizzleCredentialRepository(getDb());
     const credentialVault = new CredentialVaultStore(credentialRepo, vaultKey);
     setBotPluginDeps({ credentialVault, meterEmitter: meter });
 
@@ -311,7 +308,7 @@ if (process.env.NODE_ENV !== "test") {
       meter,
       budgetChecker,
       creditLedger,
-      spendingCapStore: new DrizzleSpendingCapStore(billingDrizzle),
+      spendingCapStore: new DrizzleSpendingCapStore(getDb()),
       metrics,
       providers: {
         openrouter: process.env.OPENROUTER_API_KEY ? { apiKey: process.env.OPENROUTER_API_KEY } : undefined,
@@ -365,7 +362,7 @@ if (process.env.NODE_ENV !== "test") {
       metrics,
       alertChecker,
       queryActiveBots: () => {
-        const rows = billingDrizzle
+        const rows = getDb()
           .select({ id: schema.botInstances.id })
           .from(schema.botInstances)
           .where(eq(schema.botInstances.billingState, "active"))
@@ -374,7 +371,7 @@ if (process.env.NODE_ENV !== "test") {
       },
       queryCreditsConsumed24h: () => {
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-        const row = billingDrizzle
+        const row = getDb()
           .select({
             total: sql<number>`COALESCE(SUM(${schema.meterEvents.charge}), 0)`,
           })
@@ -499,16 +496,16 @@ if (process.env.NODE_ENV !== "test") {
     const { StripePaymentProcessor } = await import("./monetization/stripe/stripe-payment-processor.js");
     const { DrizzlePayRamChargeStore } = await import("./monetization/payram/charge-store.js");
 
-    const billingDb2 = new Database(BILLING_DB_PATH);
-    applyPlatformPragmas(billingDb2);
-    initCreditAdjustmentSchema(billingDb2);
-    const billingDrizzle2 = createDb(billingDb2);
+    // All tables live in platform.db — use getSqliteDb() for the raw sqlite
+    // instance needed by CreditAdjustmentStore, and getDb() for drizzle.
+    const platformSqliteDb = getSqliteDb();
+    initCreditAdjustmentSchema(platformSqliteDb);
 
-    const tenantStore = new DrizzleTenantCustomerStore(billingDrizzle2);
-    const creditStore = new CreditAdjustmentStore(billingDb2);
-    const meterAggregator = new MeterAggregator(billingDrizzle2);
-    const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(billingDrizzle2);
-    const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(billingDrizzle2);
+    const tenantStore = new DrizzleTenantCustomerStore(getDb());
+    const creditStore = new CreditAdjustmentStore(platformSqliteDb);
+    const meterAggregator = new MeterAggregator(getDb());
+    const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
+    const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (stripeKey) {
       const Stripe = (await import("stripe")).default;
