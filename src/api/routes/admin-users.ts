@@ -64,25 +64,17 @@ export function createAdminUsersApiRoutes(db: Database.Database): Hono<AuthEnv> 
 
   routes.get("/", (c) => {
     const filters = buildFilters(c);
-    try {
-      const result = userStore.list(filters);
-      return c.json(result);
-    } catch {
-      return c.json({ error: "Internal server error" }, 500);
-    }
+    const result = userStore.list(filters);
+    return c.json(result);
   });
 
   routes.get("/:userId", (c) => {
     const userId = c.req.param("userId");
-    try {
-      const user = userStore.getById(userId);
-      if (!user) {
-        return c.json({ error: "User not found" }, 404);
-      }
-      return c.json(user);
-    } catch {
-      return c.json({ error: "Internal server error" }, 500);
+    const user = userStore.getById(userId);
+    if (!user) {
+      return c.json({ error: "User not found" }, 404);
     }
+    return c.json(user);
   });
 
   return routes;
@@ -99,26 +91,18 @@ adminUsersApiRoutes.use("*", adminAuth);
 adminUsersApiRoutes.get("/", (c) => {
   const store = getUserStore();
   const filters = buildFilters(c);
-  try {
-    const result = store.list(filters);
-    return c.json(result);
-  } catch {
-    return c.json({ error: "Internal server error" }, 500);
-  }
+  const result = store.list(filters);
+  return c.json(result);
 });
 
 adminUsersApiRoutes.get("/:userId", (c) => {
   const store = getUserStore();
   const userId = c.req.param("userId");
-  try {
-    const user = store.getById(userId);
-    if (!user) {
-      return c.json({ error: "User not found" }, 404);
-    }
-    return c.json(user);
-  } catch {
-    return c.json({ error: "Internal server error" }, 500);
+  const user = store.getById(userId);
+  if (!user) {
+    return c.json({ error: "User not found" }, 404);
   }
+  return c.json(user);
 });
 
 // ---------------------------------------------------------------------------
