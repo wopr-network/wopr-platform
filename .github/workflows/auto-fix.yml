@@ -139,7 +139,7 @@ jobs:
             });
             core.setOutput('head_ref', pr.head.ref);
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: steps.label-check.outputs.skip == 'false' && steps.fork-check.outputs.safe == 'true'
         with:
           ref: ${{ steps.pr-info.outputs.head_ref }}
