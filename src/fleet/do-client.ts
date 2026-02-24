@@ -70,9 +70,9 @@ export class DOClient {
     await this.del(`/droplets/${id}`);
   }
 
-  /** Reboot a droplet */
-  async rebootDroplet(id: number): Promise<void> {
-    await this.post(`/droplets/${id}/actions`, { type: "reboot" });
+  /** Reboot a droplet by ID (power cycle) */
+  async rebootDroplet(dropletId: number): Promise<void> {
+    await this.post(`/droplets/${dropletId}/actions`, { type: "reboot" });
   }
 
   /** List available regions */

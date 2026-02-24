@@ -73,6 +73,7 @@ import type { IGpuNodeRepository } from "./gpu-node-repository.js";
 import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
 import { HeartbeatProcessor } from "./heartbeat-processor.js";
 import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
+import { InferenceWatchdog } from "./inference-watchdog.js";
 import { MigrationOrchestrator } from "./migration-orchestrator.js";
 import { NodeCommandBus } from "./node-command-bus.js";
 import { NodeConnectionRegistry } from "./node-connection-registry.js";
@@ -140,6 +141,7 @@ let _nodeDrainer: NodeDrainer | null = null;
 
 // Watchdog
 let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
+let _inferenceWatchdog: InferenceWatchdog | null = null;
 
 // Fleet event repository
 let _fleetEventRepo: IFleetEventRepository | null = null;
@@ -460,6 +462,17 @@ export function getHeartbeatWatchdog() {
 }
 
 // ---------------------------------------------------------------------------
+// InferenceWatchdog
+// ---------------------------------------------------------------------------
+
+export function getInferenceWatchdog(): InferenceWatchdog {
+  if (!_inferenceWatchdog) {
+    _inferenceWatchdog = new InferenceWatchdog(getGpuNodeRepo(), getDOClient(), getAdminNotifier());
+  }
+  return _inferenceWatchdog;
+}
+
+// ---------------------------------------------------------------------------
 // Infrastructure
 // ---------------------------------------------------------------------------
 
@@ -556,6 +569,9 @@ export function getRestoreService(): RestoreService {
 export function initFleet(): void {
   // Eagerly initialize orphan cleaner so it's ready when heartbeats arrive
   getOrphanCleaner();
+
+  // Start inference watchdog so GPU node health checks run in production
+  getInferenceWatchdog().start();
 
   // Periodic cleanup: purge stale rate-limit rows every 5 minutes.
   // Uses the longest platform rate-limit window (1 hour) as the TTL so that
