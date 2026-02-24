@@ -173,7 +173,6 @@ export class BackupVerifier {
       gunzip.on("end", () => done());
       gunzip.on("data", () => {}); // drain output
       src.on("error", done);
-      src.on("end", () => done()); // if compressed data ends before gunzip emits end, that's ok
 
       src.pipe(gunzip);
     });
