@@ -23,8 +23,8 @@ export interface SavedPaymentMethod {
 export interface CheckoutOpts {
   /** Internal tenant ID. */
   tenant: string;
-  /** Amount to charge. */
-  amount: Credit;
+  /** Amount to charge. Required when no priceId is provided; may be omitted when priceId resolves the amount. */
+  amount?: Credit;
   /** URL to redirect to after successful checkout. */
   successUrl: string;
   /** URL to redirect to if the user cancels checkout. */
@@ -109,9 +109,9 @@ export interface IPaymentProcessor {
 
   /**
    * Create a billing portal session (only if supportsPortal() is true).
-   * Implementations that return false from supportsPortal() may leave this undefined.
+   * Implementations that return false from supportsPortal() must throw rather than leaving this undefined.
    */
-  createPortalSession?(opts: PortalOpts): Promise<{ url: string }>;
+  createPortalSession(opts: PortalOpts): Promise<{ url: string }>;
 
   /** Save a payment method for future off-session charges. */
   setupPaymentMethod(tenant: string): Promise<SetupResult>;

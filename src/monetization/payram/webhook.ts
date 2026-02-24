@@ -1,12 +1,12 @@
 import type { BotBilling } from "../credits/bot-billing.js";
-import type { CreditLedger } from "../credits/credit-ledger.js";
+import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
 import type { PayRamChargeStore } from "./charge-store.js";
 import type { PayRamWebhookPayload, PayRamWebhookResult } from "./types.js";
 
 export interface PayRamWebhookDeps {
   chargeStore: PayRamChargeStore;
-  creditLedger: CreditLedger;
+  creditLedger: ICreditLedger;
   botBilling?: BotBilling;
   replayGuard?: IWebhookSeenRepository;
 }

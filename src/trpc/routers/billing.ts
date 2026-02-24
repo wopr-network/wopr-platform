@@ -239,10 +239,8 @@ export const billingRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { processor } = deps();
-      const { Credit } = await import("../../monetization/credit.js");
       const session = await processor.createCheckoutSession({
         tenant,
-        amount: Credit.fromCents(0),
         priceId: input.priceId,
         successUrl: input.successUrl,
         cancelUrl: input.cancelUrl,
@@ -262,10 +260,7 @@ export const billingRouter = router({
       if (!processor.supportsPortal()) {
         throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Billing portal not supported" });
       }
-      const session = await processor.createPortalSession?.({ tenant, returnUrl: input.returnUrl });
-      if (!session) {
-        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Billing portal not supported" });
-      }
+      const session = await processor.createPortalSession({ tenant, returnUrl: input.returnUrl });
       return { url: session.url };
     }),
 

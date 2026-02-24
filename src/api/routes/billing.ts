@@ -172,10 +172,8 @@ billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
 
   try {
     // StripePaymentProcessor resolves the priceId to the matching credit tier internally.
-    const { Credit } = await import("../../monetization/credit.js");
     const session = await processor.createCheckoutSession({
       tenant,
-      amount: Credit.fromCents(0),
       successUrl,
       cancelUrl,
       priceId,
@@ -216,7 +214,7 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
   }
 
   try {
-    const session = await processor.createPortalSession?.({ tenant, returnUrl });
+    const session = await processor.createPortalSession({ tenant, returnUrl });
     if (!session?.url) {
       return c.json({ error: "Billing portal not supported by current payment processor" }, 501);
     }
@@ -438,7 +436,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   const result = handlePayRamWebhook(
     {
       chargeStore: chargeStore2,
-      creditLedger: creditLedger as never,
+      creditLedger,
       replayGuard: payramReplayGuard,
     },
     parsed.data as PayRamWebhookPayload,

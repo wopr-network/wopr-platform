@@ -50,13 +50,16 @@ describe("IPaymentProcessor types", () => {
     expectTypeOf<IPaymentProcessor>().toHaveProperty("charge");
   });
 
-  it("createPortalSession is optional on IPaymentProcessor", () => {
-    // A valid implementation without createPortalSession
+  it("createPortalSession is required on IPaymentProcessor", () => {
+    // Implementations that don't support portal must still implement createPortalSession (and throw)
     const processor: IPaymentProcessor = {
       name: "test",
       createCheckoutSession: async () => ({ id: "s", url: "u" }),
       handleWebhook: async () => ({ handled: true, eventType: "test" }),
       supportsPortal: () => false,
+      createPortalSession: async () => {
+        throw new Error("Billing portal not supported");
+      },
       setupPaymentMethod: async () => ({ clientSecret: "cs" }),
       listPaymentMethods: async () => [],
       detachPaymentMethod: async () => undefined,
