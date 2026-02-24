@@ -1,4 +1,6 @@
 import type Stripe from "stripe";
+import type { NotificationService } from "../../email/notification-service.js";
+import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
 import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
 import type { BotBilling } from "../credits/bot-billing.js";
@@ -36,8 +38,12 @@ export interface WebhookDeps {
   botBilling?: BotBilling;
   /** Replay attack guard — rejects duplicate event IDs within TTL window. */
   replayGuard?: IWebhookSeenRepository;
-  /** Affiliate repository for new-user bonus (WOP-950). */
+  /** Affiliate repository for credit match (WOP-949) and new-user bonus (WOP-950). */
   affiliateRepo?: IAffiliateRepository;
+  /** Notification service for sending affiliate credit match emails (WOP-949). */
+  notificationService?: NotificationService;
+  /** Look up email address for a tenant ID (required for affiliate match notifications). */
+  getEmailForTenant?: (tenantId: string) => string | null;
 }
 
 /**
@@ -119,6 +125,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       );
 
       // New-user first-purchase bonus for referred users (WOP-950).
+      // Must run before credit match so markFirstPurchase hasn't been called yet.
       let affiliateBonusCents: number | undefined;
       if (deps.affiliateRepo) {
         const bonusResult = grantNewUserBonus({
@@ -129,6 +136,27 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         });
         if (bonusResult.granted) {
           affiliateBonusCents = bonusResult.bonusCents;
+        }
+      }
+
+      // Affiliate credit match — grant referrer matching credits on first purchase (WOP-949).
+      if (deps.affiliateRepo) {
+        const matchResult = processAffiliateCreditMatch({
+          tenantId: tenant,
+          purchaseAmountCents: creditCents,
+          ledger: deps.creditLedger,
+          affiliateRepo: deps.affiliateRepo,
+        });
+        if (matchResult && deps.notificationService && deps.getEmailForTenant) {
+          const referrerEmail = deps.getEmailForTenant(matchResult.referrerTenantId);
+          if (referrerEmail) {
+            const amountDollars = (matchResult.matchAmountCents / 100).toFixed(2);
+            deps.notificationService.notifyAffiliateCreditMatch(
+              matchResult.referrerTenantId,
+              referrerEmail,
+              amountDollars,
+            );
+          }
         }
       }
 

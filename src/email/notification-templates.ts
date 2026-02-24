@@ -37,6 +37,7 @@ export type NotificationTemplateName =
   | "account-deletion-cancelled"
   | "account-deletion-completed"
   | "dividend-weekly-digest"
+  | "affiliate-credit-match"
   // Passthrough to existing templates
   | "low-balance"
   | "credit-purchase-receipt"
@@ -604,6 +605,23 @@ export function renderNotificationTemplate(template: TemplateName, data: Record<
       return channelDisconnectedTemplate(data);
     case "agent-suspended":
       return agentSuspendedTemplate(data);
+    case "affiliate-credit-match": {
+      const amountDollars = escapeHtml((data.amountDollars as string) || "$0.00");
+      const creditsUrl = (data.creditsUrl as string) || "";
+      const parts = [
+        heading("You Earned Affiliate Credits!"),
+        paragraph(
+          `<p>Great news! A user you referred just made their first purchase, and you've been credited <strong>${amountDollars}</strong>.</p>`,
+        ),
+      ];
+      if (creditsUrl) parts.push(button(creditsUrl, "View Credit Balance"));
+      parts.push(footer("Thank you for spreading the word about WOPR!"));
+      return {
+        subject: `You earned ${data.amountDollars as string} in affiliate credits!`,
+        html: wrapHtml("Affiliate Credits Earned", parts.join("\n")),
+        text: `You Earned Affiliate Credits!\n\nA user you referred just made their first purchase, and you've been credited ${data.amountDollars as string}.\n${creditsUrl ? `\nView your balance: ${creditsUrl}\n` : ""}${copyright()}`,
+      };
+    }
     case "custom":
       return customTemplate(data);
     case "dividend-weekly-digest":
