@@ -34,6 +34,7 @@ import {
   getHeartbeatWatchdog,
   getNodeRegistrar,
   getNodeRepo,
+  getNotificationPrefsStore,
   getRateLimitRepo,
   getRegistrationTokenStore,
   getSystemResourceMonitor,
@@ -65,7 +66,14 @@ import { encrypt } from "./security/encryption.js";
 import { validateProviderKey } from "./security/key-validation.js";
 import { TenantKeyStore } from "./security/tenant-keys/schema.js";
 import type { Provider } from "./security/types.js";
-import { setBillingRouterDeps, setCapabilitiesRouterDeps, setNodesRouterDeps } from "./trpc/index.js";
+import {
+  setBillingRouterDeps,
+  setCapabilitiesRouterDeps,
+  setModelSelectionRouterDeps,
+  setNodesRouterDeps,
+  setProfileRouterDeps,
+  setSettingsRouterDeps,
+} from "./trpc/index.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
@@ -402,6 +410,73 @@ if (process.env.NODE_ENV !== "test") {
       platformSecret: process.env.PLATFORM_SECRET,
       validateProviderKey: (provider, key) => validateProviderKey(provider as Provider, key),
     });
+  }
+
+  // Wire profile tRPC router deps (reads/writes better-auth user table directly)
+  {
+    const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
+    const AUTH_DB_PATH_LOCAL = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
+    const authDb = new Database(AUTH_DB_PATH_LOCAL);
+    applyPlatformPragmas(authDb);
+    const authUserRepo = new BetterAuthUserRepository(authDb);
+    setProfileRouterDeps({
+      getUser: (userId) => authUserRepo.getUser(userId),
+      updateUser: (userId, data) => authUserRepo.updateUser(userId, data),
+      changePassword: (userId, currentPassword, newPassword) =>
+        authUserRepo.changePassword(userId, currentPassword, newPassword),
+    });
+    logger.info("tRPC profile router initialized");
+  }
+
+  // Wire model selection tRPC router deps
+  {
+    const { DrizzleTenantModelSelectionRepository } = await import("./db/tenant-model-selection-repository.js");
+    const repo = new DrizzleTenantModelSelectionRepository(getDb());
+    setModelSelectionRouterDeps({ getRepository: () => repo });
+    logger.info("tRPC model selection router initialized");
+  }
+
+  // Wire settings tRPC router deps
+  {
+    const { resolveApiKey, buildPooledKeysMap } = await import("./security/tenant-keys/key-resolution.js");
+    const { validateProviderKey, PROVIDER_ENDPOINTS } = await import("./security/key-validation.js");
+    const { initTenantKeySchema } = await import("./security/tenant-keys/schema.js");
+    const BetterSqlite = (await import("better-sqlite3")).default;
+
+    const TENANT_KEYS_DB_PATH = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
+    const tenantKeysDb = new BetterSqlite(TENANT_KEYS_DB_PATH);
+    applyPlatformPragmas(tenantKeysDb);
+    initTenantKeySchema(tenantKeysDb);
+    const vaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
+    const pooledKeys = buildPooledKeysMap();
+
+    setSettingsRouterDeps({
+      getNotificationPrefsStore,
+      testProvider: async (provider, tenantId) => {
+        const validProvider = provider as Parameters<typeof validateProviderKey>[0];
+        if (!PROVIDER_ENDPOINTS[validProvider]) {
+          return { ok: false, error: `Unknown provider: ${provider}` };
+        }
+        const resolved = resolveApiKey(tenantKeysDb, tenantId, validProvider, vaultEncKey, pooledKeys);
+        if (!resolved) {
+          return { ok: false, error: "No API key configured for this provider" };
+        }
+        const start = Date.now();
+        try {
+          const result = await Promise.race([
+            validateProviderKey(validProvider, resolved.key),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Provider test timed out")), 5_000)),
+          ]);
+          if (!result.valid) {
+            return { ok: false, error: result.error ?? "Provider returned invalid key" };
+          }
+          return { ok: true, latencyMs: Date.now() - start };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : "Provider test failed" };
+        }
+      },
+    });
+    logger.info("tRPC settings router initialized");
   }
 
   // Wire billing tRPC router deps

@@ -36,6 +36,7 @@ export * from "./security-settings.js";
 export * from "./snapshots.js";
 export * from "./spending-limits.js";
 export * from "./stripe.js";
+export * from "./tenant-model-selection.js";
 export * from "./tenant-status.js";
 export * from "./user-roles.js";
 export * from "./webhook-seen-events.js";

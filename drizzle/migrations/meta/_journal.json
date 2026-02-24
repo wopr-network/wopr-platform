@@ -183,6 +183,13 @@
       "when": 1771943054361,
       "tag": "0026_next_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1771942786929,
+      "tag": "0027_add_tenant_model_selection",
+      "breakpoints": true
     }
   ]
 }

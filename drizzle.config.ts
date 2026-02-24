@@ -41,6 +41,7 @@ export default defineConfig({
     "./src/db/schema/rate-limit-entries.ts",
     "./src/db/schema/circuit-breaker-states.ts",
     "./src/db/schema/provisioned-phone-numbers.ts",
+    "./src/db/schema/tenant-model-selection.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "sqlite",
