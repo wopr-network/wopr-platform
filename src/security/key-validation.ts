@@ -32,6 +32,18 @@ export const PROVIDER_ENDPOINTS: Record<Provider, ProviderEndpoint> = {
       Authorization: `Bot ${key}`,
     }),
   },
+  elevenlabs: {
+    url: "https://api.elevenlabs.io/v1/user",
+    headers: (key) => ({
+      "xi-api-key": key,
+    }),
+  },
+  deepgram: {
+    url: "https://api.deepgram.com/v1/projects",
+    headers: (key) => ({
+      Authorization: `Token ${key}`,
+    }),
+  },
 };
 
 /**

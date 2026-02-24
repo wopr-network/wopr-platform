@@ -212,6 +212,7 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
       encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: "test-iv" }),
       deriveTenantKey: (_tenantId: string, _secret: string) => Buffer.alloc(32),
       platformSecret: "test-platform-secret-32bytes!!ok",
+      validateProviderKey: async (_provider: string, _key: string) => ({ valid: true }),
     });
   });
 
