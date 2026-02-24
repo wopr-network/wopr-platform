@@ -129,6 +129,39 @@ describe("DOClient", () => {
     });
   });
 
+  describe("rebootDroplet", () => {
+    it("calls POST /droplets/{id}/actions with reboot type", async () => {
+      const fetchMock = mockFetch({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({ action: { id: 1, type: "reboot", status: "in-progress" } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(client.rebootDroplet(5678)).resolves.toBeUndefined();
+
+      expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/droplets/5678/actions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ type: "reboot" }),
+      });
+    });
+
+    it("throws DOApiError on failure", async () => {
+      const fetchMock = mockFetch({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ message: "Droplet not found" }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(client.rebootDroplet(9999)).rejects.toThrow(DOApiError);
+    });
+  });
+
   describe("listRegions", () => {
     it("returns only available regions", async () => {
       const regions = [

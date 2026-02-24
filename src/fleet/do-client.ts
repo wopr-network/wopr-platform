@@ -70,6 +70,11 @@ export class DOClient {
     await this.del(`/droplets/${id}`);
   }
 
+  /** Reboot a droplet */
+  async rebootDroplet(id: number): Promise<void> {
+    await this.post(`/droplets/${id}/actions`, { type: "reboot" });
+  }
+
   /** List available regions */
   async listRegions(): Promise<DORegion[]> {
     return this.get<{ regions: DORegion[] }>("/regions").then((r) => r.regions.filter((r) => r.available));
