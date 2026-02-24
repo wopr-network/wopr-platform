@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, count, eq, isNotNull, sql, sum } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, sql, sum } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateCodes, affiliateReferrals } from "../../db/schema/affiliate.js";
 
@@ -99,7 +99,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       } catch (err) {
         // If it's a UNIQUE constraint violation on code, retry
         const msg = err instanceof Error ? err.message : "";
-        if (msg.includes("UNIQUE") && msg.includes("code")) continue;
+        if (msg.includes("UNIQUE") && msg.includes("affiliate_codes.code")) continue;
         throw err;
       }
     }
@@ -201,7 +201,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     this.db
       .update(affiliateReferrals)
       .set({ firstPurchaseAt: sql`(datetime('now'))` })
-      .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
+      .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.firstPurchaseAt)))
       .run();
   }
 
@@ -212,7 +212,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
         matchAmountCents: amountCents,
         matchedAt: sql`(datetime('now'))`,
       })
-      .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
+      .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.matchedAt)))
       .run();
   }
 }

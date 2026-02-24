@@ -855,7 +855,11 @@ export const billingRouter = router({
         referredTenantId: tenantIdSchema,
       }),
     )
-    .mutation(({ input }) => {
+    .mutation(({ input, ctx }) => {
+      const callerTenant = ctx.tenantId ?? ctx.user.id;
+      if (input.referredTenantId !== callerTenant) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot record referral for another tenant" });
+      }
       const { affiliateRepo } = deps();
       const codeRecord = affiliateRepo.getByCode(input.code);
       if (!codeRecord) {
