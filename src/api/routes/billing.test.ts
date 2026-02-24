@@ -335,7 +335,7 @@ describe("billing routes", () => {
 
   describe("POST /portal", () => {
     it("creates portal session and returns URL", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const portalCreate = vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_123" });
       const mockStripe = createMockStripe({ portalCreate });
@@ -401,7 +401,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when Stripe API fails", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const portalCreate = vi.fn().mockRejectedValue(new Error("Portal unavailable"));
       const mockStripe = createMockStripe({ portalCreate });
@@ -506,7 +506,7 @@ describe("billing routes", () => {
       // Verify the tenant was persisted and credits granted
       const store = new TenantCustomerStore(db);
       const mapping = store.getByTenant("t-new");
-      expect(mapping?.stripe_customer_id).toBe("cus_new");
+      expect(mapping?.processor_customer_id).toBe("cus_new");
 
       const ledger = new CreditLedger(db);
       const balance = ledger.balance("t-new");
@@ -1044,7 +1044,7 @@ describe("billing routes", () => {
 
   describe("POST /setup-intent", () => {
     it("creates setup intent and returns client secret", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const setupIntentCreate = vi.fn().mockResolvedValue({
         id: "seti_test_123",
@@ -1118,7 +1118,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when Stripe API fails", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const setupIntentCreate = vi.fn().mockRejectedValue(new Error("Stripe is down"));
       const mockStripe = createMockStripe({ setupIntentCreate });
@@ -1146,7 +1146,7 @@ describe("billing routes", () => {
 
   describe("DELETE /payment-methods/:id", () => {
     it("detaches payment method and returns removed=true", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const paymentMethodRetrieve = vi.fn().mockResolvedValue({
         id: "pm_test_123",
@@ -1192,7 +1192,7 @@ describe("billing routes", () => {
     });
 
     it("returns 403 when payment method belongs to another tenant", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const paymentMethodRetrieve = vi.fn().mockResolvedValue({
         id: "pm_test_123",
@@ -1218,7 +1218,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when Stripe API fails", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const paymentMethodRetrieve = vi.fn().mockRejectedValue(new Error("Stripe error"));
       const mockStripe = createMockStripe({ paymentMethodRetrieve });

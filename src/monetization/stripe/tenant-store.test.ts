@@ -19,21 +19,21 @@ describe("TenantCustomerStore", () => {
 
   describe("upsert and getByTenant", () => {
     it("inserts a new tenant mapping", () => {
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc" });
       const row = store.getByTenant("t-1");
 
       expect(row).not.toBeNull();
       expect(row?.tenant).toBe("t-1");
-      expect(row?.stripe_customer_id).toBe("cus_abc");
+      expect(row?.processor_customer_id).toBe("cus_abc");
       expect(row?.tier).toBe("free");
     });
 
     it("updates existing mapping on conflict", () => {
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_old" });
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_new" });
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_old" });
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_new" });
 
       const row = store.getByTenant("t-1");
-      expect(row?.stripe_customer_id).toBe("cus_new");
+      expect(row?.processor_customer_id).toBe("cus_new");
     });
 
     it("returns null for non-existent tenant", () => {
@@ -41,23 +41,23 @@ describe("TenantCustomerStore", () => {
     });
   });
 
-  describe("getByStripeCustomerId", () => {
-    it("looks up by Stripe customer ID", () => {
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_lookup" });
-      const row = store.getByStripeCustomerId("cus_lookup");
+  describe("getByProcessorCustomerId", () => {
+    it("looks up by processor customer ID", () => {
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_lookup" });
+      const row = store.getByProcessorCustomerId("cus_lookup");
 
       expect(row).not.toBeNull();
       expect(row?.tenant).toBe("t-1");
     });
 
-    it("returns null for unknown Stripe customer", () => {
-      expect(store.getByStripeCustomerId("cus_unknown")).toBeNull();
+    it("returns null for unknown processor customer", () => {
+      expect(store.getByProcessorCustomerId("cus_unknown")).toBeNull();
     });
   });
 
   describe("setTier", () => {
     it("updates the tier for a tenant", () => {
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc" });
       store.setTier("t-1", "enterprise");
 
       const row = store.getByTenant("t-1");
@@ -67,7 +67,7 @@ describe("TenantCustomerStore", () => {
 
   describe("setBillingHold and hasBillingHold", () => {
     it("sets and checks billing hold", () => {
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc" });
 
       expect(store.hasBillingHold("t-1")).toBe(false);
 
@@ -85,9 +85,9 @@ describe("TenantCustomerStore", () => {
 
   describe("list", () => {
     it("returns all tenant mappings", () => {
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_1" });
-      store.upsert({ tenant: "t-2", stripeCustomerId: "cus_2" });
-      store.upsert({ tenant: "t-3", stripeCustomerId: "cus_3" });
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_1" });
+      store.upsert({ tenant: "t-2", processorCustomerId: "cus_2" });
+      store.upsert({ tenant: "t-3", processorCustomerId: "cus_3" });
 
       const rows = store.list();
       expect(rows).toHaveLength(3);
@@ -99,9 +99,9 @@ describe("TenantCustomerStore", () => {
   });
 
   describe("buildCustomerIdMap", () => {
-    it("builds a tenant->stripeCustomerId map", () => {
-      store.upsert({ tenant: "t-1", stripeCustomerId: "cus_1" });
-      store.upsert({ tenant: "t-2", stripeCustomerId: "cus_2" });
+    it("builds a tenant->processorCustomerId map", () => {
+      store.upsert({ tenant: "t-1", processorCustomerId: "cus_1" });
+      store.upsert({ tenant: "t-2", processorCustomerId: "cus_2" });
 
       const map = store.buildCustomerIdMap();
       expect(map).toEqual({

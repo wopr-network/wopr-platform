@@ -190,6 +190,13 @@
       "when": 1771942786929,
       "tag": "0027_add_tenant_model_selection",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1771941087033,
+      "tag": "0028_processor_customer_id",
+      "breakpoints": true
     }
   ]
 }

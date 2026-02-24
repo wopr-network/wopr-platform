@@ -434,7 +434,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("billingInfo returns Stripe data when mapping exists", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.billingInfo();
       expect(result.email).toBe("test@example.com");
@@ -448,7 +448,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("updateBillingEmail calls Stripe when mapping exists", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.updateBillingEmail({ email: "new@example.com" });
       expect(result.email).toBe("new@example.com");
@@ -460,7 +460,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("removePaymentMethod returns removed true when PM belongs to tenant", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.removePaymentMethod({ id: "pm_test" });
       expect(result.removed).toBe(true);
@@ -473,7 +473,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("changePlan persists tier change", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       await caller.billing.changePlan({ tier: "pro" });
       const result = await caller.billing.currentPlan();
@@ -487,7 +487,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("setInferenceMode persists mode change", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       await caller.billing.setInferenceMode({ mode: "hosted" });
       const result = await caller.billing.inferenceMode();
@@ -540,7 +540,7 @@ describe("tRPC appRouter", () => {
       it("returns card last4 when payment method exists", async () => {
         const caller = createCaller(authedContext());
         // Set up tenant-customer mapping
-        tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+        tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
         // Override stripeClient to return a payment method
         const { DrizzleAutoTopupSettingsRepository: Store } = await import(
           "../monetization/credits/auto-topup-settings-repository.js"
@@ -612,7 +612,7 @@ describe("tRPC appRouter", () => {
 
       it("persists usage-based settings when payment method exists", async () => {
         const caller = createCaller(authedContext());
-        tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+        tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
         // Override stripeClient to return a payment method
         const { DrizzleAutoTopupSettingsRepository: Store } = await import(
           "../monetization/credits/auto-topup-settings-repository.js"
@@ -672,7 +672,7 @@ describe("tRPC appRouter", () => {
 
       it("computes schedule_next_at when enabling schedule", async () => {
         const caller = createCaller(authedContext());
-        tenantStore.upsert({ tenant: "test-tenant", stripeCustomerId: "cus_test" });
+        tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
         const { DrizzleAutoTopupSettingsRepository: Store } = await import(
           "../monetization/credits/auto-topup-settings-repository.js"
         );

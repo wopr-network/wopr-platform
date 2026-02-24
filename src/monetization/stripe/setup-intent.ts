@@ -26,7 +26,7 @@ export async function createSetupIntent(
   }
 
   return stripe.setupIntents.create({
-    customer: mapping.stripe_customer_id,
+    customer: mapping.processor_customer_id,
     metadata: {
       wopr_tenant: opts.tenant,
     },

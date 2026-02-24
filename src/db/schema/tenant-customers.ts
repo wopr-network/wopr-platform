@@ -4,14 +4,15 @@ export const tenantCustomers = sqliteTable(
   "tenant_customers",
   {
     tenant: text("tenant").primaryKey(),
-    stripeCustomerId: text("stripe_customer_id").notNull().unique(),
+    processorCustomerId: text("processor_customer_id").notNull().unique(),
+    processor: text("processor").notNull().default("stripe"),
     tier: text("tier").notNull().default("free"),
     billingHold: integer("billing_hold").notNull().default(0),
     inferenceMode: text("inference_mode").notNull().default("byok"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
-  (table) => [index("idx_tenant_customers_stripe").on(table.stripeCustomerId)],
+  (table) => [index("idx_tenant_customers_processor").on(table.processorCustomerId)],
 );
 
 export const stripeUsageReports = sqliteTable(

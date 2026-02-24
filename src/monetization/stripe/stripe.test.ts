@@ -90,31 +90,31 @@ describe("TenantCustomerStore", () => {
   });
 
   it("upsert creates a new mapping", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const row = store.getByTenant("t-1");
     expect(row).toBeDefined();
-    expect(row?.stripe_customer_id).toBe("cus_abc123");
+    expect(row?.processor_customer_id).toBe("cus_abc123");
     expect(row?.tier).toBe("free");
   });
 
   it("upsert updates existing mapping", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
     store.upsert({
       tenant: "t-1",
-      stripeCustomerId: "cus_xyz789",
+      processorCustomerId: "cus_xyz789",
       tier: "pro",
     });
 
     const row = store.getByTenant("t-1");
-    expect(row?.stripe_customer_id).toBe("cus_xyz789");
+    expect(row?.processor_customer_id).toBe("cus_xyz789");
     expect(row?.tier).toBe("pro");
   });
 
-  it("getByStripeCustomerId finds by customer ID", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+  it("getByProcessorCustomerId finds by customer ID", () => {
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
-    const row = store.getByStripeCustomerId("cus_abc123");
+    const row = store.getByProcessorCustomerId("cus_abc123");
     expect(row?.tenant).toBe("t-1");
   });
 
@@ -122,12 +122,12 @@ describe("TenantCustomerStore", () => {
     expect(store.getByTenant("nonexistent")).toBeNull();
   });
 
-  it("getByStripeCustomerId returns null for unknown customer", () => {
-    expect(store.getByStripeCustomerId("cus_nonexistent")).toBeNull();
+  it("getByProcessorCustomerId returns null for unknown customer", () => {
+    expect(store.getByProcessorCustomerId("cus_nonexistent")).toBeNull();
   });
 
   it("setTier updates the tier", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123", tier: "pro" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123", tier: "pro" });
     store.setTier("t-1", "free");
 
     const row = store.getByTenant("t-1");
@@ -135,16 +135,16 @@ describe("TenantCustomerStore", () => {
   });
 
   it("list returns all mappings", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_1" });
-    store.upsert({ tenant: "t-2", stripeCustomerId: "cus_2" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_1" });
+    store.upsert({ tenant: "t-2", processorCustomerId: "cus_2" });
 
     const rows = store.list();
     expect(rows).toHaveLength(2);
   });
 
   it("buildCustomerIdMap returns tenant -> customer ID map", () => {
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_aaa" });
-    store.upsert({ tenant: "t-2", stripeCustomerId: "cus_bbb" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_aaa" });
+    store.upsert({ tenant: "t-2", processorCustomerId: "cus_bbb" });
 
     const map = store.buildCustomerIdMap();
     expect(map).toEqual({ "t-1": "cus_aaa", "t-2": "cus_bbb" });
@@ -197,7 +197,7 @@ describe("createCreditCheckoutSession", () => {
   });
 
   it("reuses existing Stripe customer when mapping exists", async () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_existing" });
+    tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_existing" });
 
     const sessionsCreate = vi
       .fn()
@@ -301,7 +301,7 @@ describe("createPortalSession", () => {
   }
 
   it("creates a portal session for existing customer", async () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const mockSession = { url: "https://billing.stripe.com/session_xyz" };
     const portalCreate = vi.fn().mockResolvedValue(mockSession);
@@ -334,7 +334,7 @@ describe("createPortalSession", () => {
   });
 
   it("propagates Stripe API errors", async () => {
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const portalCreate = vi.fn().mockRejectedValue(new Error("Portal config not found"));
     const stripe = createMockStripe(portalCreate);
@@ -393,7 +393,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
     // Verify tenant mapping was created
     const mapping = tenantStore.getByTenant("t-1");
-    expect(mapping?.stripe_customer_id).toBe("cus_abc123");
+    expect(mapping?.processor_customer_id).toBe("cus_abc123");
   });
 
   it("handles checkout.session.completed - uses metadata fallback", () => {
@@ -477,7 +477,7 @@ describe("handleWebhookEvent (credit model)", () => {
     const result = handleWebhookEvent({ tenantStore, creditLedger }, event);
     expect(result.handled).toBe(true);
     const mapping = tenantStore.getByTenant("t-1");
-    expect(mapping?.stripe_customer_id).toBe("cus_abc123");
+    expect(mapping?.processor_customer_id).toBe("cus_abc123");
   });
 });
 

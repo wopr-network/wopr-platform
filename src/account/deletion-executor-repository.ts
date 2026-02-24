@@ -13,7 +13,7 @@ import { notificationPreferences } from "../db/schema/notification-preferences.j
 import { notificationQueue } from "../db/schema/notification-queue.js";
 import { payramCharges } from "../db/schema/payram.js";
 import { snapshots } from "../db/schema/snapshots.js";
-import { stripeUsageReports, tenantCustomers } from "../db/schema/stripe.js";
+import { stripeUsageReports, tenantCustomers } from "../db/schema/tenant-customers.js";
 import { tenantStatus } from "../db/schema/tenant-status.js";
 import { userRoles } from "../db/schema/user-roles.js";
 

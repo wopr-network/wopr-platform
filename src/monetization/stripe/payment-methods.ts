@@ -32,7 +32,7 @@ export async function detachPaymentMethod(
 
   // Retrieve the payment method to verify it belongs to this customer
   const pm = await stripe.paymentMethods.retrieve(opts.paymentMethodId);
-  if (!pm.customer || pm.customer !== mapping.stripe_customer_id) {
+  if (!pm.customer || pm.customer !== mapping.processor_customer_id) {
     throw new PaymentMethodOwnershipError();
   }
 

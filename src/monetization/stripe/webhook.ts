@@ -79,7 +79,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       // Upsert tenant-to-customer mapping (no subscription).
       deps.tenantStore.upsert({
         tenant,
-        stripeCustomerId: customerId,
+        processorCustomerId: customerId,
       });
 
       // Determine credit amount from price metadata or payment amount.

@@ -30,7 +30,7 @@ describe("createSetupIntent", () => {
   it("calls stripe.setupIntents.create with correct customer ID", async () => {
     const { db } = setupDb();
     const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const stripe = mockStripe();
     const result = await createSetupIntent(stripe, store, { tenant: "t-1" });
@@ -55,7 +55,7 @@ describe("createSetupIntent", () => {
   it("omits payment_method_types to allow dynamic payment methods", async () => {
     const { db } = setupDb();
     const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-2", stripeCustomerId: "cus_def456" });
+    store.upsert({ tenant: "t-2", processorCustomerId: "cus_def456" });
 
     const setupIntentCreate = vi.fn().mockResolvedValue({
       id: "seti_test_456",

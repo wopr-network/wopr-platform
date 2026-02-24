@@ -33,7 +33,7 @@ function makeMockStripe() {
 function makeMockTenantStore() {
   return {
     getByTenant: vi.fn(),
-    getByStripeCustomerId: vi.fn(),
+    getByProcessorCustomerId: vi.fn(),
     upsert: vi.fn(),
     setTier: vi.fn(),
     setBillingHold: vi.fn(),
@@ -179,7 +179,7 @@ describe("StripePaymentProcessor", () => {
     it("creates portal session and returns url", async () => {
       tenantStore.getByTenant.mockReturnValue({
         tenant: "t-1",
-        stripe_customer_id: "cus_abc123",
+        processor_customer_id: "cus_abc123",
       });
       const mockSession = { url: "https://billing.stripe.com/session_xyz" };
       (stripe.billingPortal.sessions.create as ReturnType<typeof vi.fn>).mockResolvedValue(mockSession);
@@ -208,7 +208,7 @@ describe("StripePaymentProcessor", () => {
     it("creates a SetupIntent and returns clientSecret", async () => {
       tenantStore.getByTenant.mockReturnValue({
         tenant: "t-1",
-        stripe_customer_id: "cus_abc123",
+        processor_customer_id: "cus_abc123",
       });
       (stripe.setupIntents.create as ReturnType<typeof vi.fn>).mockResolvedValue({
         client_secret: "seti_secret_abc",
@@ -224,7 +224,7 @@ describe("StripePaymentProcessor", () => {
     it("returns mapped SavedPaymentMethod array", async () => {
       tenantStore.getByTenant.mockReturnValue({
         tenant: "t-1",
-        stripe_customer_id: "cus_abc123",
+        processor_customer_id: "cus_abc123",
       });
       (stripe.customers.listPaymentMethods as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: [
@@ -263,7 +263,7 @@ describe("StripePaymentProcessor", () => {
     it("charges and returns success result", async () => {
       tenantStore.getByTenant.mockReturnValue({
         tenant: "t-1",
-        stripe_customer_id: "cus_abc123",
+        processor_customer_id: "cus_abc123",
       });
       (stripe.customers.listPaymentMethods as ReturnType<typeof vi.fn>).mockResolvedValue({
         data: [{ id: "pm_1" }],

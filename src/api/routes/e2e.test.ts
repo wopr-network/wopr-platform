@@ -604,7 +604,7 @@ describe("E2E: Billing flow (credit model)", () => {
     // Step 5: Verify the tenant is now mapped to a Stripe customer
     const mapping = tenantStore.getByTenant(tenantId);
     expect(mapping).not.toBeNull();
-    expect(mapping?.stripe_customer_id).toBe("cus_e2e_123");
+    expect(mapping?.processor_customer_id).toBe("cus_e2e_123");
 
     // Step 6: Verify credits were granted
     const balance = creditLedger.balance(tenantId);

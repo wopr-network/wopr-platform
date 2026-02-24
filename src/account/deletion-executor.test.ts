@@ -76,7 +76,8 @@ function setupDbs(): { db: DrizzleDb; rawDb: Database.Database; authDb: Database
     );
     CREATE TABLE IF NOT EXISTS tenant_customers (
       tenant TEXT PRIMARY KEY,
-      stripe_customer_id TEXT NOT NULL,
+      processor_customer_id TEXT NOT NULL,
+      processor TEXT NOT NULL DEFAULT 'stripe',
       tier TEXT NOT NULL DEFAULT 'free',
       billing_hold INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -257,7 +258,7 @@ function seedTenant(rawDb: Database.Database, tenantId: string): void {
     INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES ('me-${tenantId}', '${tenantId}', 0.1, 0.2, 'tts', 'openai', 1700000000);
     INSERT INTO usage_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, window_start, window_end) VALUES ('us-${tenantId}', '${tenantId}', 'tts', 'openai', 1, 0.1, 0.2, 1700000000, 1700003600);
     INSERT INTO billing_period_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, period_start, period_end, updated_at) VALUES ('bps-${tenantId}', '${tenantId}', 'tts', 'openai', 1, 0.1, 0.2, 1700000000, 1700003600, 1700000000);
-    INSERT INTO tenant_customers (tenant, stripe_customer_id, created_at, updated_at) VALUES ('${tenantId}', 'cus_test_${tenantId}', 1700000000, 1700000000);
+    INSERT INTO tenant_customers (tenant, processor_customer_id, created_at, updated_at) VALUES ('${tenantId}', 'cus_test_${tenantId}', 1700000000, 1700000000);
     INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES ('sur-${tenantId}', '${tenantId}', 'tts', 'openai', 1700000000, 1700003600, 'tts_usage', 20, 1700000001);
     INSERT INTO notification_queue (id, tenant_id, email_type, recipient_email) VALUES ('nq-${tenantId}', '${tenantId}', 'low-balance', 'user@example.com');
     INSERT INTO notification_preferences (tenant_id) VALUES ('${tenantId}');
@@ -380,7 +381,7 @@ describe("executeDeletion", () => {
 
       const mockStripe = { customers: { del: vi.fn().mockResolvedValue({}) } };
       const mockTenantStore = {
-        getByTenant: vi.fn().mockReturnValue({ stripe_customer_id: "cus_test_tenant-stripe" }),
+        getByTenant: vi.fn().mockReturnValue({ processor_customer_id: "cus_test_tenant-stripe" }),
       };
 
       await executeDeletion({ ...deps, stripe: mockStripe as never, tenantStore: mockTenantStore as never }, tenantId);
@@ -398,7 +399,7 @@ describe("executeDeletion", () => {
         },
       };
       const mockTenantStore = {
-        getByTenant: vi.fn().mockReturnValue({ stripe_customer_id: "cus_fail" }),
+        getByTenant: vi.fn().mockReturnValue({ processor_customer_id: "cus_fail" }),
       };
 
       const result = await executeDeletion(

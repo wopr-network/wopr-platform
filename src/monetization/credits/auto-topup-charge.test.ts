@@ -59,7 +59,7 @@ function mockStripe(overrides?: { paymentIntentId?: string; shouldFail?: boolean
 
 function mockTenantStore(stripeCustomerId = "cus_123") {
   return {
-    getByTenant: vi.fn().mockReturnValue({ tenant: "t1", stripe_customer_id: stripeCustomerId }),
+    getByTenant: vi.fn().mockReturnValue({ tenant: "t1", processor_customer_id: stripeCustomerId }),
   };
 }
 

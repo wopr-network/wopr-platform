@@ -5,7 +5,8 @@ export function initStripeSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tenant_customers (
       tenant TEXT PRIMARY KEY,
-      stripe_customer_id TEXT NOT NULL UNIQUE,
+      processor_customer_id TEXT NOT NULL UNIQUE,
+      processor TEXT NOT NULL DEFAULT 'stripe',
       tier TEXT NOT NULL DEFAULT 'free',
       billing_hold INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
@@ -23,6 +24,16 @@ export function initStripeSchema(db: Database.Database): void {
     db.exec("ALTER TABLE tenant_customers ADD COLUMN inference_mode TEXT NOT NULL DEFAULT 'byok'");
   }
 
+  // Migration: rename stripe_customer_id -> processor_customer_id (WOP-979)
+  if (cols.some((c) => c.name === "stripe_customer_id") && !cols.some((c) => c.name === "processor_customer_id")) {
+    db.exec("ALTER TABLE tenant_customers RENAME COLUMN stripe_customer_id TO processor_customer_id");
+  }
+
+  // Migration: add processor column if it doesn't exist (WOP-979)
+  if (!cols.some((c) => c.name === "processor")) {
+    db.exec("ALTER TABLE tenant_customers ADD COLUMN processor TEXT NOT NULL DEFAULT 'stripe'");
+  }
+
   // Migration: drop stripe_subscription_id if it exists (WOP-406: credits replace subscriptions)
   if (cols.some((c) => c.name === "stripe_subscription_id")) {
     // SQLite doesn't support DROP COLUMN before 3.35.0; recreate for safety.
@@ -30,7 +41,7 @@ export function initStripeSchema(db: Database.Database): void {
     // For existing databases with the column, we leave it — reads simply ignore it.
   }
 
-  db.exec("CREATE INDEX IF NOT EXISTS idx_tenant_customers_stripe ON tenant_customers (stripe_customer_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_tenant_customers_processor ON tenant_customers (processor_customer_id)");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS stripe_usage_reports (

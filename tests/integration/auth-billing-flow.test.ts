@@ -51,7 +51,7 @@ describe("integration: auth → billing → credit flow", () => {
       // Step 1: User registers (starts on free tier)
       tenantStore.upsert({
         tenant: tenantId,
-        stripeCustomerId: "cus_new_user",
+        processorCustomerId: "cus_new_user",
       });
       tenantStore.setTier(tenantId, "free");
 
@@ -81,7 +81,7 @@ describe("integration: auth → billing → credit flow", () => {
       expect(creditLedger.balance(tenantId)).toBe(1000);
 
       mapping = tenantStore.getByTenant(tenantId);
-      expect(mapping?.stripe_customer_id).toBe("cus_new_user");
+      expect(mapping?.processor_customer_id).toBe("cus_new_user");
     });
 
     it("handles multiple credit purchases accumulating balance", () => {
@@ -89,7 +89,7 @@ describe("integration: auth → billing → credit flow", () => {
 
       tenantStore.upsert({
         tenant: tenantId,
-        stripeCustomerId: "cus_multi",
+        processorCustomerId: "cus_multi",
       });
 
       // First purchase: $5

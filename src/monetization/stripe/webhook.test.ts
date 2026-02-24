@@ -157,7 +157,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       const mapping = tenantStore.getByTenant("tenant-123");
       expect(mapping).not.toBeNull();
-      expect(mapping?.stripe_customer_id).toBe("cus_abc");
+      expect(mapping?.processor_customer_id).toBe("cus_abc");
     });
 
     it("handles tenant from metadata when client_reference_id is null", () => {
@@ -182,7 +182,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       expect(result.handled).toBe(true);
       const mapping = tenantStore.getByTenant("tenant-123");
-      expect(mapping?.stripe_customer_id).toBe("cus_obj_123");
+      expect(mapping?.processor_customer_id).toBe("cus_obj_123");
     });
 
     it("returns handled:false when tenant is missing", () => {

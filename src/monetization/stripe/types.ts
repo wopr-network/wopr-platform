@@ -1,7 +1,8 @@
-/** Tenant-to-Stripe customer mapping stored in SQLite. */
+/** Tenant-to-payment-processor customer mapping stored in SQLite. */
 export interface TenantCustomerRow {
   tenant: string;
-  stripe_customer_id: string;
+  processor_customer_id: string;
+  processor: string;
   tier: string;
   billing_hold: number;
   inference_mode: string;
