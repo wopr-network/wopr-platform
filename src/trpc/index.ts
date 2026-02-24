@@ -44,8 +44,10 @@ import { billingRouter } from "./routers/billing.js";
 import { capabilitiesRouter } from "./routers/capabilities.js";
 import { credentialsRouter } from "./routers/credentials.js";
 import { fleetRouter } from "./routers/fleet.js";
+import { modelSelectionRouter } from "./routers/model-selection.js";
 import { nodesRouter } from "./routers/nodes.js";
 import { orgRouter } from "./routers/org.js";
+import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 import { twoFactorRouter } from "./routers/two-factor.js";
 import { usageRouter } from "./routers/usage.js";
@@ -56,7 +58,9 @@ export const appRouter = router({
   capabilities: capabilitiesRouter,
   credentials: credentialsRouter,
   fleet: fleetRouter,
+  modelSelection: modelSelectionRouter,
   usage: usageRouter,
+  profile: profileRouter,
   settings: settingsRouter,
   admin: adminRouter,
   twoFactor: twoFactorRouter,
@@ -76,6 +80,8 @@ export { setBillingRouterDeps } from "./routers/billing.js";
 export { setCapabilitiesRouterDeps } from "./routers/capabilities.js";
 export { setCredentialsRouterDeps } from "./routers/credentials.js";
 export { setFleetRouterDeps } from "./routers/fleet.js";
+export { setModelSelectionRouterDeps } from "./routers/model-selection.js";
 export { setNodesRouterDeps } from "./routers/nodes.js";
 export { setOrgRouterDeps } from "./routers/org.js";
+export { setProfileRouterDeps } from "./routers/profile.js";
 export { setTwoFactorRouterDeps } from "./routers/two-factor.js";

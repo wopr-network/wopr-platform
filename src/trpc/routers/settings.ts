@@ -16,6 +16,7 @@ import { publicProcedure, router, tenantProcedure } from "../init.js";
 
 export interface SettingsRouterDeps {
   getNotificationPrefsStore: () => INotificationPreferencesStore;
+  testProvider?: (provider: string, tenantId: string) => Promise<{ ok: boolean; latencyMs?: number; error?: string }>;
 }
 
 let _deps: SettingsRouterDeps | null = null;
@@ -66,6 +67,17 @@ export const settingsRouter = router({
     const store = deps().getNotificationPrefsStore();
     return store.get(ctx.tenantId);
   }),
+
+  /** Test connectivity to a provider. */
+  testProvider: tenantProcedure
+    .input(z.object({ provider: z.string().min(1).max(64) }))
+    .mutation(async ({ input, ctx }) => {
+      const testFn = deps().testProvider;
+      if (!testFn) {
+        return { ok: false as const, error: "Provider testing not configured" };
+      }
+      return testFn(input.provider, ctx.tenantId);
+    }),
 
   /** Update notification preferences for the authenticated tenant. */
   updateNotificationPreferences: tenantProcedure
