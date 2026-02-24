@@ -63,6 +63,8 @@ export interface ImageGenerationOutput {
 export interface TextGenerationInput {
   /** The prompt or messages */
   prompt: string;
+  /** Full conversation history (preferred over prompt when available) */
+  messages?: Array<{ role: string; content: string }>;
   /** Model to use */
   model?: string;
   /** Max tokens to generate */
