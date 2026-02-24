@@ -195,6 +195,7 @@ export function chatCompletions(deps: ProxyDeps) {
           tenantId: tenant.id,
           input: {
             prompt,
+            messages: parsedBody?.messages,
             model: requestModel,
             maxTokens: parsedBody?.max_tokens,
             temperature: parsedBody?.temperature,
