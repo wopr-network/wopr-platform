@@ -198,7 +198,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
       // Upsert tenant-customer mapping.
-      deps.tenantStore.upsert({ tenant, stripeCustomerId: customerId });
+      deps.tenantStore.upsert({ tenant, processorCustomerId: customerId });
 
       const existing = deps.vpsRepo.getByBotId(botId);
       if (subscription.status === "active") {

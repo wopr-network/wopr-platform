@@ -7,7 +7,7 @@
 import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import type Stripe from "stripe";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
 import { DrizzleAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
@@ -487,6 +487,186 @@ describe("handleWebhookEvent (credit model)", () => {
 
       expect(result.affiliateBonusCents).toBeUndefined();
       expect(result.creditedCents).toBe(2500);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // VPS subscription webhook paths (WOP-741)
+  // ---------------------------------------------------------------------------
+
+  describe("VPS subscription events (WOP-741)", () => {
+    function makeVpsRepo() {
+      const store = new Map<string, Record<string, unknown>>();
+      const repo = {
+        getByBotId: vi.fn((botId: string) => store.get(botId) ?? null),
+        create: vi.fn(
+          (sub: {
+            botId: string;
+            tenantId: string;
+            stripeSubscriptionId: string;
+            stripeCustomerId: string;
+            hostname: string;
+          }) => {
+            store.set(sub.botId, { ...sub, status: "active" });
+          },
+        ),
+        updateStatus: vi.fn((botId: string, status: string) => {
+          const row = store.get(botId);
+          if (row) store.set(botId, { ...row, status });
+        }),
+        getBySubscriptionId: vi.fn(),
+        listByTenant: vi.fn(),
+        setSshPublicKey: vi.fn(),
+        setTunnelId: vi.fn(),
+        delete: vi.fn(),
+      };
+      return repo as unknown as import("../../fleet/vps-repository.js").IVpsRepository & typeof repo;
+    }
+
+    function makeSubEvent(type: string, overrides?: Partial<Stripe.Subscription>): Stripe.Event {
+      return {
+        type,
+        data: {
+          object: {
+            id: "sub_test_123",
+            customer: "cus_vps_abc",
+            status: "active",
+            cancel_at_period_end: false,
+            metadata: {
+              wopr_bot_id: "bot-vps-1",
+              wopr_tenant: "tenant-vps-1",
+              wopr_purchase_type: "vps",
+            },
+            ...overrides,
+          } as Stripe.Subscription,
+        },
+      } as Stripe.Event;
+    }
+
+    it("creates VPS subscription on customer.subscription.created (active)", () => {
+      const vpsRepo = makeVpsRepo();
+      const event = makeSubEvent("customer.subscription.created");
+      const result = handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.tenant).toBe("tenant-vps-1");
+      expect(vpsRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          botId: "bot-vps-1",
+          tenantId: "tenant-vps-1",
+          stripeSubscriptionId: "sub_test_123",
+          stripeCustomerId: "cus_vps_abc",
+        }),
+      );
+    });
+
+    it("upserts tenant-customer mapping on subscription created", () => {
+      const vpsRepo = makeVpsRepo();
+      const event = makeSubEvent("customer.subscription.created");
+      handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      const mapping = tenantStore.getByTenant("tenant-vps-1");
+      expect(mapping?.processor_customer_id).toBe("cus_vps_abc");
+    });
+
+    it("updates status to active when bot already exists", () => {
+      const vpsRepo = makeVpsRepo();
+      // Pre-populate so getByBotId returns existing
+      vpsRepo.create({
+        botId: "bot-vps-1",
+        tenantId: "tenant-vps-1",
+        stripeSubscriptionId: "sub_old",
+        stripeCustomerId: "cus_vps_abc",
+        hostname: "tenant-vps-1.bot.wopr.bot",
+      });
+      vpsRepo.getByBotId = vi.fn(() =>
+        vpsRepo.create.mock.calls.length > 0 ? ({ botId: "bot-vps-1", status: "canceling" } as never) : null,
+      );
+
+      const event = makeSubEvent("customer.subscription.updated", { status: "active" });
+      const result = handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(result.handled).toBe(true);
+      expect(vpsRepo.updateStatus).toHaveBeenCalledWith("bot-vps-1", "active");
+    });
+
+    it("sets status to canceling when cancel_at_period_end is true (non-active status)", () => {
+      const vpsRepo = makeVpsRepo();
+      vpsRepo.getByBotId = vi.fn(() => ({ botId: "bot-vps-1" }) as never);
+
+      const event = makeSubEvent("customer.subscription.updated", {
+        status: "trialing" as Stripe.Subscription["status"],
+        cancel_at_period_end: true,
+      });
+      handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(vpsRepo.updateStatus).toHaveBeenCalledWith("bot-vps-1", "canceling");
+    });
+
+    it("sets status to canceled on subscription canceled", () => {
+      const vpsRepo = makeVpsRepo();
+      vpsRepo.getByBotId = vi.fn(() => ({ botId: "bot-vps-1" }) as never);
+
+      const event = makeSubEvent("customer.subscription.updated", { status: "canceled" });
+      handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(vpsRepo.updateStatus).toHaveBeenCalledWith("bot-vps-1", "canceled");
+    });
+
+    it("cancels VPS on customer.subscription.deleted", () => {
+      const vpsRepo = makeVpsRepo();
+      vpsRepo.getByBotId = vi.fn(() => ({ botId: "bot-vps-1" }) as never);
+
+      const event = makeSubEvent("customer.subscription.deleted");
+      const result = handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(result.handled).toBe(true);
+      expect(vpsRepo.updateStatus).toHaveBeenCalledWith("bot-vps-1", "canceled");
+    });
+
+    it("returns handled:false when vpsRepo is not provided", () => {
+      const event = makeSubEvent("customer.subscription.created");
+      const result = handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(false);
+    });
+
+    it("returns handled:false when metadata is missing botId", () => {
+      const vpsRepo = makeVpsRepo();
+      const event = makeSubEvent("customer.subscription.created", {
+        metadata: { wopr_tenant: "t-1", wopr_purchase_type: "vps" },
+      });
+      const result = handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(result.handled).toBe(false);
+    });
+
+    it("returns handled:false for non-vps purchase type", () => {
+      const vpsRepo = makeVpsRepo();
+      const event = makeSubEvent("customer.subscription.created", {
+        metadata: { wopr_bot_id: "bot-1", wopr_tenant: "t-1", wopr_purchase_type: "other" },
+      });
+      const result = handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(result.handled).toBe(false);
+    });
+
+    it("handles customer object (non-string) in subscription", () => {
+      const vpsRepo = makeVpsRepo();
+      const event = makeSubEvent("customer.subscription.created", {
+        customer: { id: "cus_obj_vps" } as Stripe.Customer,
+      });
+      handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(vpsRepo.create).toHaveBeenCalledWith(expect.objectContaining({ stripeCustomerId: "cus_obj_vps" }));
+    });
+
+    it("returns handled:false for subscription.deleted when no botId in metadata", () => {
+      const vpsRepo = makeVpsRepo();
+      const event = makeSubEvent("customer.subscription.deleted", { metadata: {} });
+      const result = handleWebhookEvent({ ...deps, vpsRepo }, event);
+
+      expect(result.handled).toBe(false);
     });
   });
 

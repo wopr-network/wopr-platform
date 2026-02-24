@@ -75,7 +75,7 @@ export async function createVpsCheckoutSession(
   };
 
   if (existing) {
-    params.customer = existing.stripe_customer_id;
+    params.customer = existing.processor_customer_id;
   }
 
   return stripe.checkout.sessions.create(params);
