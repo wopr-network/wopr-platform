@@ -59,6 +59,9 @@ export interface IAffiliateRepository {
 
   /** Record a match payout on a referral. */
   recordMatch(referredTenantId: string, amountCents: number): void;
+
+  /** Look up a referral by the referred tenant. Returns null if not referred. */
+  getReferralByReferred(referredTenantId: string): AffiliateReferral | null;
 }
 
 /** Generate a random 6-char lowercase alphanumeric code. */
@@ -232,6 +235,26 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       .set({ firstPurchaseAt: sql`(datetime('now'))` })
       .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.firstPurchaseAt)))
       .run();
+  }
+
+  getReferralByReferred(referredTenantId: string): AffiliateReferral | null {
+    const row = this.db
+      .select()
+      .from(affiliateReferrals)
+      .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
+      .get();
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      referrerTenantId: row.referrerTenantId,
+      referredTenantId: row.referredTenantId,
+      code: row.code,
+      signedUpAt: row.signedUpAt,
+      firstPurchaseAt: row.firstPurchaseAt,
+      matchAmountCents: row.matchAmountCents,
+      matchedAt: row.matchedAt,
+    };
   }
 
   recordMatch(referredTenantId: string, amountCents: number): void {

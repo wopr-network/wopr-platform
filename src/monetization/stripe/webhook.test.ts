@@ -66,6 +66,7 @@ describe("handleWebhookEvent (credit model)", () => {
     sqlite = new BetterSqlite3(":memory:");
     initStripeSchema(sqlite);
     initCreditSchema(sqlite);
+    initAffiliateSchema(sqlite);
     const db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);
     creditLedger = new CreditLedger(db);
@@ -257,6 +258,27 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(txns[0].description).toContain("cs_test_abc");
       expect(txns[0].type).toBe("purchase");
       expect(txns[0].referenceId).toBe("cs_test_abc");
+    });
+
+    it("grants affiliate match credits on first purchase for referred tenant (WOP-949)", () => {
+      const db = createDb(sqlite);
+      const affiliateRepo = new DrizzleAffiliateRepository(db);
+      affiliateRepo.recordReferral("referrer-tenant", "tenant-123", "ref123");
+
+      const depsWithAffiliate: WebhookDeps = { ...deps, affiliateRepo };
+      const event = createCheckoutEvent({ amount_total: 2000, id: "cs_affiliate_test" });
+      const result = handleWebhookEvent(depsWithAffiliate, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(2000);
+
+      // Referrer should have received matching credits
+      expect(creditLedger.balance("referrer-tenant")).toBe(2000);
+
+      // Referral record should be updated
+      const ref = affiliateRepo.getReferralByReferred("tenant-123");
+      expect(ref?.matchAmountCents).toBe(2000);
+      expect(ref?.matchedAt).not.toBeNull();
     });
   });
 

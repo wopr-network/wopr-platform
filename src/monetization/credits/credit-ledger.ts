@@ -11,7 +11,8 @@ export type CreditType =
   | "referral"
   | "promo"
   | "community_dividend"
-  | "affiliate_bonus";
+  | "affiliate_bonus"
+  | "affiliate_match";
 
 /** Transaction types that remove credits */
 export type DebitType = "bot_runtime" | "adapter_usage" | "addon" | "refund" | "correction";

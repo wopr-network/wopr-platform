@@ -77,6 +77,14 @@ export class NotificationService {
     });
   }
 
+  notifyAffiliateCreditMatch(tenantId: string, email: string, amountDollars: string): void {
+    this.queue.enqueue(tenantId, "affiliate-credit-match", {
+      email,
+      amountDollars,
+      creditsUrl: this.creditsUrl(),
+    });
+  }
+
   notifyCreditPurchaseReceipt(tenantId: string, email: string, amountDollars: string, newBalanceDollars: string): void {
     this.queue.enqueue(tenantId, "credit-purchase-receipt", {
       email,

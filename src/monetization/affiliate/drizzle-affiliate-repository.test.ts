@@ -158,6 +158,24 @@ describe("DrizzleAffiliateRepository", () => {
     });
   });
 
+  describe("getReferralByReferred", () => {
+    it("returns null when no referral exists", () => {
+      expect(repo.getReferralByReferred("unknown")).toBeNull();
+    });
+
+    it("returns the referral for a referred tenant", () => {
+      repo.recordReferral("referrer-1", "referred-1", "abc123");
+      const ref = repo.getReferralByReferred("referred-1");
+      expect(ref).not.toBeNull();
+      expect(ref?.referrerTenantId).toBe("referrer-1");
+      expect(ref?.referredTenantId).toBe("referred-1");
+      expect(ref?.code).toBe("abc123");
+      expect(ref?.firstPurchaseAt).toBeNull();
+      expect(ref?.matchAmountCents).toBeNull();
+      expect(ref?.matchedAt).toBeNull();
+    });
+  });
+
   describe("getOrCreateCode — catch block paths", () => {
     afterEach(() => {
       vi.restoreAllMocks();

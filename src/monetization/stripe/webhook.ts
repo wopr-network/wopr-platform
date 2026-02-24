@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
 import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
 import type { BotBilling } from "../credits/bot-billing.js";
@@ -36,7 +37,7 @@ export interface WebhookDeps {
   botBilling?: BotBilling;
   /** Replay attack guard — rejects duplicate event IDs within TTL window. */
   replayGuard?: IWebhookSeenRepository;
-  /** Affiliate repository for new-user bonus (WOP-950). */
+  /** Affiliate repository for credit match (WOP-949) and new-user bonus (WOP-950). */
   affiliateRepo?: IAffiliateRepository;
 }
 
@@ -117,6 +118,16 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         stripeSessionId,
         "stripe",
       );
+
+      // Affiliate credit match — grant referrer matching credits on first purchase (WOP-949).
+      if (deps.affiliateRepo) {
+        processAffiliateCreditMatch({
+          tenantId: tenant,
+          purchaseAmountCents: creditCents,
+          ledger: deps.creditLedger,
+          affiliateRepo: deps.affiliateRepo,
+        });
+      }
 
       // New-user first-purchase bonus for referred users (WOP-950).
       let affiliateBonusCents: number | undefined;
