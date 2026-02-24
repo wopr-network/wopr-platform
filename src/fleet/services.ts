@@ -68,6 +68,7 @@ import { DrizzleFleetEventRepository } from "./drizzle-fleet-event-repository.js
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
 import type { IFleetEventRepository } from "./fleet-event-repository.js";
+import { GpuNodeProvisioner } from "./gpu-node-provisioner.js";
 import type { IGpuNodeRepository } from "./gpu-node-repository.js";
 import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
 import { HeartbeatProcessor } from "./heartbeat-processor.js";
@@ -152,6 +153,7 @@ let _circuitBreakerRepo: ICircuitBreakerRepository | null = null;
 // Infrastructure
 let _doClient: DOClient | null = null;
 let _nodeProvisioner: NodeProvisioner | null = null;
+let _gpuNodeProvisioner: GpuNodeProvisioner | null = null;
 let _adminAuditLog: AdminAuditLog | null = null;
 let _restoreLogStore: RestoreLogStore | null = null;
 let _restoreService: RestoreService | null = null;
@@ -481,6 +483,21 @@ export function getNodeProvisioner(): NodeProvisioner {
     });
   }
   return _nodeProvisioner;
+}
+
+export function getGpuNodeProvisioner(): GpuNodeProvisioner {
+  if (!_gpuNodeProvisioner) {
+    const sshKeyIdStr = process.env.DO_SSH_KEY_ID;
+    if (!sshKeyIdStr) throw new Error("DO_SSH_KEY_ID environment variable is required");
+    _gpuNodeProvisioner = new GpuNodeProvisioner(getGpuNodeRepo(), getDOClient(), {
+      sshKeyId: Number(sshKeyIdStr),
+      defaultRegion: process.env.DO_GPU_DEFAULT_REGION ?? "nyc1",
+      defaultSize: process.env.DO_GPU_DEFAULT_SIZE ?? "gpu-h100x1-80gb",
+      platformUrl: process.env.PLATFORM_URL ?? "https://api.wopr.bot",
+      gpuNodeSecret: process.env.GPU_NODE_SECRET ?? "",
+    });
+  }
+  return _gpuNodeProvisioner;
 }
 
 export function getAdminAuditLog(): AdminAuditLog {
