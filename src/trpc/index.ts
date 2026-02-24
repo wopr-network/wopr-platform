@@ -84,4 +84,5 @@ export { setModelSelectionRouterDeps } from "./routers/model-selection.js";
 export { setNodesRouterDeps } from "./routers/nodes.js";
 export { setOrgRouterDeps } from "./routers/org.js";
 export { setProfileRouterDeps } from "./routers/profile.js";
+export { setSettingsRouterDeps } from "./routers/settings.js";
 export { setTwoFactorRouterDeps } from "./routers/two-factor.js";
