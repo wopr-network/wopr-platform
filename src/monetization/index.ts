@@ -114,19 +114,14 @@ export {
 export type {
   BillingPeriod,
   BillingPeriodSummary,
-  MeterEventNameMap,
   MeterEventRow,
-  StripeMeterRecord,
-  UsageAggregationWorkerOpts,
   UsageSummary,
 } from "./metering/index.js";
 export {
   DrizzleMeterAggregator,
   DrizzleMeterEmitter,
-  DrizzleUsageAggregationWorker,
   MeterAggregator,
   MeterEmitter,
-  UsageAggregationWorker,
 } from "./metering/index.js";
 // Payment processor interface (WOP-977)
 export type {
@@ -181,7 +176,6 @@ export type {
   IMeterEmitter,
   IPayRamChargeStore,
   ITenantCustomerStore,
-  IUsageAggregationWorker,
   PayRamChargeRecord,
 } from "./repository-types.js";
 // Socket layer — adapter orchestrator (WOP-376)
@@ -191,14 +185,9 @@ export type {
   CreditCheckoutOpts,
   CreditPriceMap,
   CreditPricePoint,
-  MeterValidatorOpts,
   PortalSessionOpts,
   StripeBillingConfig,
-  StripeUsageReportRow,
   TenantCustomerRow,
-  UsageReporterOpts,
-  ValidationMode,
-  ValidationResult,
   WebhookDeps,
   WebhookResult,
 } from "./stripe/index.js";
@@ -215,7 +204,5 @@ export {
   loadCreditPriceMap,
   loadStripeConfig,
   lookupCreditPrice,
-  StripeUsageReporter,
   TenantCustomerStore,
-  validateStripeMeters,
 } from "./stripe/index.js";

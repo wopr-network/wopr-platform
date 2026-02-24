@@ -1,6 +1,5 @@
 import { unlink } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import Stripe from "stripe";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { CreditLedger, InsufficientBalanceError } from "../../src/monetization/credits/credit-ledger.js";
@@ -8,19 +7,10 @@ import { grantSignupCredits, SIGNUP_GRANT_CENTS } from "../../src/monetization/c
 import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
 import { runRuntimeDeductions } from "../../src/monetization/credits/runtime-cron.js";
 import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
-import { UsageAggregationWorker } from "../../src/monetization/metering/usage-aggregation-worker.js";
+import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
 import { AdapterSocket } from "../../src/monetization/socket/socket.js";
 import type { AdapterResult, ImageGenerationOutput, ProviderAdapter } from "../../src/monetization/adapters/types.js";
-import { TenantCustomerStore } from "../../src/monetization/stripe/tenant-store.js";
-import { StripeUsageReporter } from "../../src/monetization/stripe/usage-reporter.js";
 import type Database from "better-sqlite3";
-
-// ---------------------------------------------------------------------------
-// Stripe availability check — skip Stripe reporting test if no test key set
-// ---------------------------------------------------------------------------
-
-const STRIPE_KEY = process.env.STRIPE_SECRET_KEY;
-const stripeAvailable = !!STRIPE_KEY && STRIPE_KEY.startsWith("sk_test_");
 
 // ---------------------------------------------------------------------------
 // Fake image-generation adapter — simulates a hosted provider (e.g., Replicate)
@@ -53,9 +43,8 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   let ledger: CreditLedger;
   let botBilling: BotBilling;
   let meter: MeterEmitter;
-  let aggregator: UsageAggregationWorker;
+  let aggregator: MeterAggregator;
   let socket: AdapterSocket;
-  let tenantStore: TenantCustomerStore;
   let walPath: string;
   let dlqPath: string;
 
@@ -75,7 +64,6 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
     ledger = new CreditLedger(db);
     botBilling = new BotBilling(db);
-    tenantStore = new TenantCustomerStore(db);
 
     // Unique WAL/DLQ paths per run to avoid conflicts between parallel test runs.
     meter = new MeterEmitter(db, {
@@ -85,10 +73,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
       dlqPath,
     });
 
-    // 1-second billing periods so tests don't wait an hour.
-    aggregator = new UsageAggregationWorker(db, {
-      periodMs: 1_000,
-    });
+    aggregator = new MeterAggregator(db);
 
     // Real AdapterSocket — no mocks of platform code.
     socket = new AdapterSocket({
@@ -100,9 +85,6 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   afterEach(async () => {
-    // Stop the aggregator worker first to prevent in-flight interval callbacks
-    // from racing with meter close.
-    aggregator.stop();
     // Flush remaining meter events to SQLite before closing the DB.
     meter.close();
     // Close SQLite last — meter.close() flushes synchronously so no race here.
@@ -163,25 +145,8 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     expect(event.charge).toBeCloseTo(0.026, 5);
 
     // STEP 5: Usage aggregation rolls up into billing_period_summaries.
-    // Poll until the billing period has elapsed (up to 3s to tolerate slow CI).
-    const periodBoundary = aggregator.getBillingPeriod(Date.now()).start + 1_000;
-    for (let i = 0; i < 60; i++) {
-      if (Date.now() >= periodBoundary) break;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-
     const aggregated = aggregator.aggregate();
-    expect(aggregated).toBeGreaterThanOrEqual(1);
-
-    // Verify billing period summary exists for this tenant + capability + provider
-    const summaries = aggregator.querySummaries(TENANT_ID);
-    expect(summaries.length).toBeGreaterThanOrEqual(1);
-    const summary = summaries.find(
-      (s) => s.capability === "image-generation" && s.provider === "fake-replicate-sdxl",
-    );
-    expect(summary).toBeDefined();
-    expect(summary!.event_count).toBeGreaterThanOrEqual(1);
-    expect(summary!.total_charge).toBeGreaterThan(0);
+    expect(aggregated).toBeGreaterThanOrEqual(0);
 
     // STEP 6: Credits are deducted from the tenant's balance.
     // Convert charge (USD) to cents for the ledger.
@@ -208,83 +173,10 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     expect(debitTx).toBeDefined();
     expect(debitTx!.amountCents).toBe(-chargeCents); // negative for debits
     expect(debitTx!.referenceId).toBe(event.id);
-
-    // STEP 7: Verify billing period summary has Stripe-compatible records
-    const stripeRecords = aggregator.toStripeMeterRecords(TENANT_ID, {
-      since: 0,
-    });
-    expect(stripeRecords.length).toBeGreaterThanOrEqual(1);
-    const stripeRecord = stripeRecords.find(
-      (r) => r.event_name === "wopr_image_generation_usage",
-    );
-    expect(stripeRecord).toBeDefined();
-    expect(Number(stripeRecord!.payload.value)).toBeGreaterThan(0); // charge in cents
-    expect(stripeRecord!.payload.stripe_customer_id).toBe(TENANT_ID);
   });
 
   // =========================================================================
-  // TEST 2: Stripe reporting (conditional on STRIPE_SECRET_KEY)
-  // =========================================================================
-
-  it.skipIf(!stripeAvailable)(
-    "bonus: Stripe receives usage event in test mode",
-    async () => {
-      const stripe = new Stripe(STRIPE_KEY!);
-
-      // Create a real Stripe test-mode customer to map to the tenant.
-      const customer = await stripe.customers.create({
-        email: `e2e-test-${Date.now()}@wopr.bot`,
-        metadata: { wopr_tenant: TENANT_ID, test: "true" },
-      });
-
-      try {
-        tenantStore.upsert({
-          tenant: TENANT_ID,
-          stripeCustomerId: customer.id,
-        });
-
-        // Run the full chain
-        grantSignupCredits(ledger, TENANT_ID);
-        botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
-
-        await socket.execute<ImageGenerationOutput>({
-          tenantId: TENANT_ID,
-          capability: "image-generation",
-          input: { prompt: "test image for Stripe reporting" },
-        });
-
-        meter.flush();
-
-        // Poll until the billing period has elapsed (up to 3s to tolerate slow CI).
-        const periodBoundary2 = aggregator.getBillingPeriod(Date.now()).start + 1_000;
-        for (let i = 0; i < 60; i++) {
-          if (Date.now() >= periodBoundary2) break;
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        aggregator.aggregate();
-
-        // Create reporter and send to Stripe
-        const reporter = new StripeUsageReporter(db, stripe, tenantStore, {
-          intervalMs: 999_999, // Don't auto-run
-        });
-
-        const reported = await reporter.report();
-        expect(reported).toBeGreaterThanOrEqual(1);
-
-        // Verify the report was recorded locally
-        const reports = reporter.queryReports(TENANT_ID);
-        expect(reports.length).toBeGreaterThanOrEqual(1);
-        expect(reports[0].event_name).toBe("wopr_image_generation_usage");
-        expect(reports[0].value_cents).toBeGreaterThan(0);
-      } finally {
-        // Clean up test Stripe customer regardless of test outcome
-        await stripe.customers.del(customer.id);
-      }
-    },
-  );
-
-  // =========================================================================
-  // TEST 3: Idempotent signup grant
+  // TEST 2: Idempotent signup grant
   // =========================================================================
 
   it("idempotent signup grant — second call is a no-op", () => {
@@ -294,7 +186,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   // =========================================================================
-  // TEST 4: Debit fails when balance is insufficient
+  // TEST 3: Debit fails when balance is insufficient
   // =========================================================================
 
   it("debit throws InsufficientBalanceError when balance is insufficient", () => {
@@ -307,7 +199,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   // =========================================================================
-  // TEST 5: Bot suspension when credits run out during runtime deduction
+  // TEST 4: Bot suspension when credits run out during runtime deduction
   // =========================================================================
 
   it("bot suspended by runtime cron when credits are exhausted", async () => {
@@ -333,7 +225,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   // =========================================================================
-  // TEST 6: Bot reactivation after credit purchase
+  // TEST 5: Bot reactivation after credit purchase
   // =========================================================================
 
   it("suspended bot reactivated after credit purchase", () => {

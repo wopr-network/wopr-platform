@@ -21,7 +21,6 @@ import { detachPaymentMethod, PaymentMethodOwnershipError } from "../../monetiza
 import { createPortalSession } from "../../monetization/stripe/portal.js";
 import { createSetupIntent } from "../../monetization/stripe/setup-intent.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
-import { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
 import type { IWebhookSeenRepository } from "../../monetization/webhook-seen-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
@@ -122,7 +121,6 @@ let deps: BillingRouteDeps | null = null;
 let tenantStore: TenantCustomerStore | null = null;
 let creditLedger: CreditLedger | null = null;
 let meterAggregator: MeterAggregator | null = null;
-let usageReporter: StripeUsageReporter | null = null;
 let priceMap: CreditPriceMap | null = null;
 let affiliateRepo: IAffiliateRepository | null = null;
 
@@ -138,7 +136,6 @@ export function setBillingDeps(d: BillingRouteDeps): void {
   tenantStore = new TenantCustomerStore(d.db);
   creditLedger = new CreditLedger(d.db);
   meterAggregator = new MeterAggregator(d.db);
-  usageReporter = new StripeUsageReporter(d.db, d.stripe, tenantStore);
   priceMap = loadCreditPriceMap();
   affiliateRepo = d.affiliateRepo;
 
@@ -186,13 +183,6 @@ function getMeterAggregator(): MeterAggregator {
     throw new Error("Billing routes not initialized — call setBillingDeps() first");
   }
   return meterAggregator;
-}
-
-function getUsageReporter(): StripeUsageReporter {
-  if (!usageReporter) {
-    throw new Error("Billing routes not initialized — call setBillingDeps() first");
-  }
-  return usageReporter;
 }
 
 // BOUNDARY(WOP-805): REST is the correct layer for billing routes.
@@ -621,43 +611,6 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
     });
   } catch (err) {
     logger.error("Failed to query usage summary", { error: err });
-    return c.json({ error: "Internal server error" }, 500);
-  }
-});
-
-/**
- * GET /billing/usage/history
- *
- * Get historical billing data (reports sent to Stripe).
- * Query params: tenant (required), limit (optional, default 100, max 1000)
- */
-billingRoutes.get("/usage/history", adminAuth, async (c) => {
-  const reporter = getUsageReporter();
-
-  const requestedTenant = c.req.query("tenant");
-  const tokenTenantId = c.get("tokenTenantId");
-  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
-    return c.json({ error: "Forbidden" }, 403);
-  }
-
-  const params = {
-    tenant: c.req.query("tenant"),
-    limit: c.req.query("limit"),
-  };
-
-  const parsed = usageQuerySchema.safeParse(params);
-
-  if (!parsed.success) {
-    return c.json({ error: "Invalid query parameters", details: parsed.error.flatten().fieldErrors }, 400);
-  }
-
-  const { tenant, limit } = parsed.data;
-
-  try {
-    const reports = reporter.queryReports(tenant, { limit });
-    return c.json({ tenant, reports });
-  } catch (err) {
-    logger.error("Failed to query billing history", { error: err });
     return c.json({ error: "Internal server error" }, 500);
   }
 });

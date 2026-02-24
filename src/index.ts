@@ -390,7 +390,6 @@ if (process.env.NODE_ENV !== "test") {
     const { MeterAggregator } = await import("./monetization/metering/aggregator.js");
     const { loadCreditPriceMap } = await import("./monetization/stripe/credit-prices.js");
     const { TenantCustomerStore } = await import("./monetization/stripe/tenant-store.js");
-    const { StripeUsageReporter } = await import("./monetization/stripe/usage-reporter.js");
     const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
     const { DrizzleAutoTopupSettingsRepository } = await import(
       "./monetization/credits/auto-topup-settings-repository.js"
@@ -409,14 +408,12 @@ if (process.env.NODE_ENV !== "test") {
     const Stripe = (await import("stripe")).default;
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     const stripe = stripeKey ? new Stripe(stripeKey) : undefined;
-    const usageReporter = new StripeUsageReporter(billingDrizzle2, stripe as never, tenantStore);
     if (stripe) {
       setBillingRouterDeps({
         stripe: stripe as never,
         tenantStore,
         creditStore,
         meterAggregator,
-        usageReporter,
         priceMap: loadCreditPriceMap(),
         dividendRepo: getDividendRepo(),
         spendingLimitsRepo,

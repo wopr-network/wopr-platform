@@ -89,20 +89,3 @@ export interface BillingPeriodSummary {
   /** Unix epoch ms when this row was last (re-)computed. */
   updated_at: number;
 }
-
-/**
- * A record formatted for the Stripe Meters API (POST /v1/billing/meter_events).
- * See https://docs.stripe.com/api/billing/meter-event
- */
-export interface StripeMeterRecord {
-  /** Stripe meter event name (maps to a Stripe Meter configured in the dashboard). */
-  event_name: string;
-  /** Unix epoch seconds (Stripe expects seconds, not ms). */
-  timestamp: number;
-  payload: {
-    /** Stripe customer ID or external reference (tenant). */
-    stripe_customer_id: string;
-    /** Numeric value to report (e.g., total_charge in cents). */
-    value: string;
-  };
-}
