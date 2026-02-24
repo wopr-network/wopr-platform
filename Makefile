@@ -1,4 +1,4 @@
-.PHONY: setup dev test check lint lint-fix format build db-migrate db-generate db-studio clean
+.PHONY: setup dev test test-e2e check lint lint-fix format build db-migrate db-generate db-studio clean
 
 # First-time setup
 setup:
