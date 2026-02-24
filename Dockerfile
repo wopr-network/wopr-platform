@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Install production dependencies
 # ---------------------------------------------------------------------------
-FROM node:24-alpine AS deps
+FROM node:25-alpine AS deps
 
 # better-sqlite3 requires native compilation toolchain on Alpine
 RUN apk add --no-cache python3 make g++
@@ -13,7 +13,7 @@ RUN npm ci --omit=dev
 # ---------------------------------------------------------------------------
 # Stage 2: Build TypeScript
 # ---------------------------------------------------------------------------
-FROM node:24-alpine AS build
+FROM node:25-alpine AS build
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # Stage 3: Runtime
 # ---------------------------------------------------------------------------
-FROM node:24-alpine AS runtime
+FROM node:25-alpine AS runtime
 
 # curl for HEALTHCHECK
 RUN apk add --no-cache curl
