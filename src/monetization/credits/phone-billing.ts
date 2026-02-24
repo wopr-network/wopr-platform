@@ -37,7 +37,7 @@ export async function runMonthlyPhoneBilling(
     result.processed++;
 
     const lastBilled = number.lastBilledAt ?? number.provisionedAt;
-    if (lastBilled > thirtyDaysAgo.toISOString()) {
+    if (new Date(lastBilled) > thirtyDaysAgo) {
       continue;
     }
 

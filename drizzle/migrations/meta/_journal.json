@@ -162,6 +162,13 @@
       "when": 1771744431730,
       "tag": "0023_tidy_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1771919063016,
+      "tag": "0024_lowly_wendell_vaughn",
+      "breakpoints": true
     }
   ]
 }

@@ -15,7 +15,7 @@ export class DrizzlePhoneNumberRepository implements IPhoneNumberRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   async trackPhoneNumber(tenantId: string, sid: string, phoneNumber: string): Promise<void> {
-    this.db
+    await this.db
       .insert(provisionedPhoneNumbers)
       .values({
         sid,
@@ -29,7 +29,7 @@ export class DrizzlePhoneNumberRepository implements IPhoneNumberRepository {
   }
 
   async removePhoneNumber(sid: string): Promise<void> {
-    this.db.delete(provisionedPhoneNumbers).where(eq(provisionedPhoneNumbers.sid, sid)).run();
+    await this.db.delete(provisionedPhoneNumbers).where(eq(provisionedPhoneNumbers.sid, sid)).run();
   }
 
   async listActivePhoneNumbers(): Promise<ProvisionedPhoneNumber[]> {
@@ -46,7 +46,7 @@ export class DrizzlePhoneNumberRepository implements IPhoneNumberRepository {
   }
 
   async markBilled(sid: string): Promise<void> {
-    this.db
+    await this.db
       .update(provisionedPhoneNumbers)
       .set({ lastBilledAt: sql`(datetime('now'))` })
       .where(eq(provisionedPhoneNumbers.sid, sid))
