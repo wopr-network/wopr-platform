@@ -243,8 +243,12 @@ export function createReplicateAdapter(
     },
 
     async generateText(input: TextGenerationInput): Promise<AdapterResult<TextGenerationOutput>> {
+      // Replicate models use a raw text prompt. When the full conversation
+      // history is provided via `messages`, serialize it to a text prompt so
+      // prior turns aren't silently discarded.
+      const prompt = input.messages ? input.messages.map((m) => `${m.role}: ${m.content}`).join("\n") : input.prompt;
       let prediction = await createPrediction(textModelVersion, {
-        prompt: input.prompt,
+        prompt,
         ...(input.maxTokens ? { max_new_tokens: input.maxTokens } : {}),
         ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       });
