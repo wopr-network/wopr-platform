@@ -23,6 +23,23 @@ CONTAINER_NAME="${CONTAINER_NAME:-wopr-platform-api}"
 S3_BUCKET="${S3_BUCKET:-s3://wopr-backups}"
 LOCAL_BACKUP_DIR="${LOCAL_BACKUP_DIR:-/backups}"
 
+ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY:-}"
+
+decrypt_file() {
+  local src="$1"
+  local dst="${src%.enc}"
+  if [[ "$src" == *.enc ]]; then
+    if [ -z "$ENCRYPTION_KEY" ]; then
+      error_exit "Backup is encrypted but BACKUP_ENCRYPTION_KEY is not set"
+    fi
+    openssl enc -aes-256-cbc -d -salt -pbkdf2 -in "$src" -out "$dst" -pass "pass:${ENCRYPTION_KEY}"
+    rm -f "$src"
+    echo "$dst"
+  else
+    echo "$src"
+  fi
+}
+
 # Database name -> container path mapping
 declare -A DB_PATHS=(
   ["auth"]="/data/platform/auth.db"
@@ -85,14 +102,21 @@ fi
 
 # Download backup from DO Spaces
 mkdir -p "$LOCAL_BACKUP_DIR"
-log "Downloading ${S3_PATH}..."
-if ! s3cmd get "$S3_PATH" "${LOCAL_BACKUP_DIR}/${BACKUP_FILE}"; then
-  error_exit "Failed to download backup from ${S3_PATH}"
+log "Downloading backup..."
+DOWNLOADED="${LOCAL_BACKUP_DIR}/${BACKUP_FILE}"
+if s3cmd get "${S3_PATH}.enc" "${DOWNLOADED}.enc" 2>/dev/null; then
+  log "Found encrypted backup"
+  DOWNLOADED=$(decrypt_file "${DOWNLOADED}.enc")
+elif s3cmd get "$S3_PATH" "$DOWNLOADED" 2>/dev/null; then
+  log "Found unencrypted backup"
+else
+  error_exit "Failed to download backup from ${S3_PATH} (tried .enc and plain)"
 fi
+BACKUP_FILE=$(basename "$DOWNLOADED")
 
 # Verify the downloaded file is a valid SQLite database
-if ! sqlite3 "${LOCAL_BACKUP_DIR}/${BACKUP_FILE}" "PRAGMA integrity_check;" 2>/dev/null | grep -q "ok"; then
-  rm -f "${LOCAL_BACKUP_DIR}/${BACKUP_FILE}"
+if ! sqlite3 "$DOWNLOADED" "PRAGMA integrity_check;" 2>/dev/null | grep -q "ok"; then
+  rm -f "$DOWNLOADED"
   error_exit "Downloaded file is not a valid SQLite database"
 fi
 
@@ -121,7 +145,7 @@ docker stop "$CONTAINER_NAME"
 
 # Copy the backup into the container's volume
 log "Restoring database..."
-docker cp "${LOCAL_BACKUP_DIR}/${BACKUP_FILE}" "${CONTAINER_NAME}:${DB_CONTAINER_PATH}"
+docker cp "$DOWNLOADED" "${CONTAINER_NAME}:${DB_CONTAINER_PATH}"
 
 # Remove WAL and SHM files (stale after restore).
 # Use a throwaway container against the same volume so the app cannot
@@ -139,7 +163,7 @@ log "Starting container ${CONTAINER_NAME}..."
 docker start "$CONTAINER_NAME"
 
 # Clean up local download
-rm -f "${LOCAL_BACKUP_DIR}/${BACKUP_FILE}"
+rm -f "$DOWNLOADED"
 
 log "Restore complete: ${DB_NAME} restored from ${RESTORE_DATE}"
 log "The container has been restarted and will re-enable WAL mode on first query."

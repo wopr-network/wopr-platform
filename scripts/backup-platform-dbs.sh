@@ -21,6 +21,22 @@ S3_BUCKET="${S3_BUCKET:-s3://wopr-backups}"
 LOCAL_BACKUP_DIR="${LOCAL_BACKUP_DIR:-/backups}"
 DATE=$(date +%Y%m%d)
 
+# Encryption key for AES-256 (must be set in environment)
+ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY:-}"
+
+encrypt_file() {
+  local src="$1"
+  local dst="${src}.enc"
+  if [ -n "$ENCRYPTION_KEY" ]; then
+    openssl enc -aes-256-cbc -salt -pbkdf2 -in "$src" -out "$dst" -pass "pass:${ENCRYPTION_KEY}"
+    rm -f "$src"
+    echo "$dst"
+  else
+    log "WARN: BACKUP_ENCRYPTION_KEY not set, uploading unencrypted"
+    echo "$src"
+  fi
+}
+
 # Platform databases to back up (path inside the container)
 DATABASES=(
   "/data/platform/auth.db"
@@ -80,17 +96,19 @@ for db_path in "${DATABASES[@]}"; do
     continue
   fi
 
-  # Upload to DO Spaces
-  if ! s3cmd put "${LOCAL_BACKUP_DIR}/${backup_file}" "${S3_BUCKET}/platform/${DATE}/${backup_file}"; then
-    log "WARN: s3cmd upload failed for ${backup_file}"
-    rm -f "${LOCAL_BACKUP_DIR}/${backup_file}"
+  # Encrypt before upload
+  upload_file=$(encrypt_file "${LOCAL_BACKUP_DIR}/${backup_file}")
+  upload_name=$(basename "$upload_file")
+  if ! s3cmd put "$upload_file" "${S3_BUCKET}/platform/${DATE}/${upload_name}"; then
+    log "WARN: s3cmd upload failed for ${upload_name}"
+    rm -f "$upload_file"
     docker exec "$CONTAINER_NAME" rm -f "${container_tmp}" 2>/dev/null || true
     FAILED=$((FAILED + 1))
     continue
   fi
 
   # Clean up
-  rm -f "${LOCAL_BACKUP_DIR}/${backup_file}"
+  rm -f "$upload_file"
   docker exec "$CONTAINER_NAME" rm -f "${container_tmp}" 2>/dev/null || true
 
   BACKED_UP=$((BACKED_UP + 1))

@@ -27,6 +27,23 @@ S3_BUCKET="${S3_BUCKET:-s3://wopr-backups}"
 DRILL_DIR="${DRILL_DIR:-/tmp/wopr-restore-drill}"
 REPORT_FILE="${DRILL_DIR}/drill-report.txt"
 
+ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY:-}"
+
+decrypt_file() {
+  local src="$1"
+  local dst="${src%.enc}"
+  if [[ "$src" == *.enc ]]; then
+    if [ -z "$ENCRYPTION_KEY" ]; then
+      error_exit "Backup is encrypted but BACKUP_ENCRYPTION_KEY is not set"
+    fi
+    openssl enc -aes-256-cbc -d -salt -pbkdf2 -in "$src" -out "$dst" -pass "pass:${ENCRYPTION_KEY}"
+    rm -f "$src"
+    echo "$dst"
+  else
+    echo "$src"
+  fi
+}
+
 log() {
   echo "[$(date -Iseconds)] $*"
 }
@@ -86,8 +103,10 @@ for db_name in "${!DB_TABLES[@]}"; do
 
   log "--- Testing ${db_name} ---"
 
-  # Download
-  if ! s3cmd get "$s3_path" "$local_path" 2>/dev/null; then
+  # Download (try encrypted first, fall back to plain)
+  if s3cmd get "${s3_path}.enc" "${local_path}.enc" 2>/dev/null; then
+    local_path=$(decrypt_file "${local_path}.enc")
+  elif ! s3cmd get "$s3_path" "$local_path" 2>/dev/null; then
     log "SKIP: ${db_name} — not found in backup (may not be initialized yet)"
     echo "SKIP  ${db_name}" | tee -a "$REPORT_FILE"
     SKIPPED=$((SKIPPED + 1))
