@@ -74,16 +74,6 @@ function deps(): CapabilitiesRouterDeps {
 // Capability-to-provider mapping
 // ---------------------------------------------------------------------------
 
-const CAPABILITY_BYOK_PROVIDER: Record<string, string | null> = {
-  transcription: null,
-  "image-gen": null,
-  "text-gen": "openai",
-  embeddings: "openai",
-};
-
-const capabilityNameSchema = z.enum(["transcription", "image-gen", "text-gen", "embeddings"]);
-const capabilityModeSchema = z.enum(["hosted", "byok"]);
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------

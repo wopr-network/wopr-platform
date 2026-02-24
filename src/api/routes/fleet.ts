@@ -835,7 +835,7 @@ fleetRoutes.get("/bots/:id/vps-info", readAuth, async (c) => {
     return c.json({ error: "Bot is not on VPS tier" }, 404);
   }
 
-  const sshConnectionString = sub.sshPublicKey ? `ssh root@${sub.hostname ?? botId + ".bot.wopr.bot"} -p 22` : null;
+  const sshConnectionString = sub.sshPublicKey ? `ssh root@${sub.hostname ?? `${botId}.bot.wopr.bot`} -p 22` : null;
 
   return c.json({
     botId: sub.botId,
