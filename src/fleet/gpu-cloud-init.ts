@@ -57,6 +57,8 @@ runcmd:
   - ${pingCmd("installing_docker")}
   - mkdir -p /opt/models
   - docker pull ghcr.io/ggerganov/llama.cpp:server --platform linux/amd64 || true
+  - apt-get install -y python3-pip
+  - pip3 install huggingface_hub
   - huggingface-cli download ${llama} --local-dir /opt/models/llama
   - huggingface-cli download ${qwen} --local-dir /opt/models/qwen
   - huggingface-cli download ${whisper} --local-dir /opt/models/whisper
@@ -95,7 +97,7 @@ runcmd:
         restart: unless-stopped
     COMPOSE
   - |
-    cat > /opt/wopr-gpu/.env << ENVFILE
+    cat > /opt/wopr-gpu/.env << 'ENVFILE'
     NODE_ID=${nodeId}
     PLATFORM_URL=${baseUrl}
     GPU_NODE_SECRET=${secret}
