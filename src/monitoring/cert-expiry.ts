@@ -68,11 +68,14 @@ export async function checkAllCerts(
   thresholdDays = ALERT_THRESHOLD_DAYS,
 ): Promise<CertExpiryResult[]> {
   const targets = domains ?? DEFAULT_DOMAINS;
-  const results: CertExpiryResult[] = [];
 
-  for (const domain of targets) {
-    const result = await checkCertExpiry(domain, 443);
-    results.push(result);
+  const settled = await Promise.allSettled(targets.map((domain) => checkCertExpiry(domain, 443)));
+
+  return settled.map((outcome) => {
+    const result: CertExpiryResult =
+      outcome.status === "fulfilled"
+        ? outcome.value
+        : { hostname: "unknown", port: 443, valid: false, error: String(outcome.reason) };
 
     // Sanitize: only log the validated hostname from the result struct, not the raw
     // env-derived domain string, to avoid log injection from malformed env values.
@@ -85,7 +88,7 @@ export async function checkAllCerts(
     } else {
       logger.info(`TLS cert for ${safeDomain}: ${result.daysRemaining} days remaining`);
     }
-  }
 
-  return results;
+    return result;
+  });
 }
