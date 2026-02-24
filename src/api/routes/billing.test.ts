@@ -951,64 +951,6 @@ describe("billing routes", () => {
     });
   });
 
-  // -- GET /billing/usage/history -------------------------------------------
-
-  describe("GET /billing/usage/history", () => {
-    it("returns historical billing reports", async () => {
-      // Insert a test report
-      sqlite
-        .prepare(
-          `INSERT INTO stripe_usage_reports
-          (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("report-1", "t-hist-1", "chat", "openai", 1000, 4600000, "wopr_chat_usage", 150, Date.now());
-
-      const res = await billingRoutes.request(`/usage/history?tenant=t-hist-1`, {
-        method: "GET",
-        headers: authHeader,
-      });
-
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.tenant).toBe("t-hist-1");
-      expect(body.reports).toHaveLength(1);
-      expect(body.reports[0].event_name).toBe("wopr_chat_usage");
-      expect(body.reports[0].value_cents).toBe(150);
-    });
-
-    it("returns empty array for tenant with no reports", async () => {
-      const res = await billingRoutes.request(`/usage/history?tenant=t-hist-no-reports`, {
-        method: "GET",
-        headers: authHeader,
-      });
-
-      expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.tenant).toBe("t-hist-no-reports");
-      expect(body.reports).toEqual([]);
-    });
-
-    it("returns 401 without auth", async () => {
-      const res = await billingRoutes.request(`/usage/history?tenant=t-hist-1`, {
-        method: "GET",
-      });
-
-      expect(res.status).toBe(401);
-    });
-
-    it("returns 400 for invalid limit", async () => {
-      const res = await billingRoutes.request(`/usage/history?tenant=t-hist-1&limit=2000`, {
-        method: "GET",
-        headers: authHeader,
-      });
-
-      expect(res.status).toBe(400);
-      const body = await res.json();
-      expect(body.error).toBe("Invalid query parameters");
-    });
-  });
-
   // -- POST /crypto/checkout -------------------------------------------------
 
   describe("POST /crypto/checkout", () => {

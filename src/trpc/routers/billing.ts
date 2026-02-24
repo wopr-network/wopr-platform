@@ -21,7 +21,6 @@ import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spend
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
 import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
-import type { StripeUsageReporter } from "../../monetization/stripe/usage-reporter.js";
 import { protectedProcedure, publicProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -151,7 +150,6 @@ export interface BillingRouterDeps {
   tenantStore: TenantCustomerStore;
   creditStore: CreditAdjustmentStore;
   meterAggregator: MeterAggregator;
-  usageReporter: StripeUsageReporter;
   priceMap: CreditPriceMap | undefined;
   autoTopupSettingsStore: IAutoTopupSettingsRepository;
   /** Stripe client for payment method lookups. */
@@ -338,25 +336,6 @@ export const billingRouter = router({
         total_charge: total.totalCharge,
         event_count: total.eventCount,
       };
-    }),
-
-  /** Get historical billing reports sent to Stripe. Tenant defaults to ctx.tenantId when omitted. */
-  usageHistory: protectedProcedure
-    .input(
-      z.object({
-        tenant: tenantIdSchema.optional(),
-        limit: z.number().int().positive().max(1000).optional(),
-      }),
-    )
-    .query(({ input, ctx }) => {
-      const { usageReporter } = deps();
-      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
-      }
-
-      const reports = usageReporter.queryReports(tenant, { limit: input.limit });
-      return { tenant, reports };
     }),
 
   /** Get available subscription plans. */

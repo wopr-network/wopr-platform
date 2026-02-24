@@ -186,9 +186,6 @@ describe("tRPC appRouter", () => {
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
       tenantStore = new TenantCustomerStore(db);
-      const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
-      const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
       const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
       const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(db);
       const mockStripeClient = {
@@ -221,7 +218,6 @@ describe("tRPC appRouter", () => {
         tenantStore,
         creditStore,
         meterAggregator,
-        usageReporter,
         priceMap: undefined,
         autoTopupSettingsStore,
         stripeClient: mockStripeClient as never,
@@ -283,13 +279,6 @@ describe("tRPC appRouter", () => {
       expect(result.total_cost).toBe(0);
       expect(result.total_charge).toBe(0);
       expect(result.event_count).toBe(0);
-    });
-
-    it("usageHistory returns empty for no reports", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.billing.usageHistory({ tenant: "test-tenant" });
-      expect(result.tenant).toBe("test-tenant");
-      expect(result.reports).toEqual([]);
     });
 
     it("usage enforces tenant isolation", async () => {
@@ -568,9 +557,6 @@ describe("tRPC appRouter", () => {
         const creditStore = new CAS(sqlite);
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
-        const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
-        const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-        const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
         setBillingRouterDeps({
           stripe: {
             checkout: { sessions: { create: vi.fn() } },
@@ -579,7 +565,6 @@ describe("tRPC appRouter", () => {
           tenantStore,
           creditStore,
           meterAggregator,
-          usageReporter,
           priceMap: undefined,
           autoTopupSettingsStore,
           stripeClient: mockStripeClient as never,
@@ -644,9 +629,6 @@ describe("tRPC appRouter", () => {
         const creditStore = new CAS(sqlite);
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
-        const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
-        const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-        const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
         setBillingRouterDeps({
           stripe: {
             checkout: { sessions: { create: vi.fn() } },
@@ -655,7 +637,6 @@ describe("tRPC appRouter", () => {
           tenantStore,
           creditStore,
           meterAggregator,
-          usageReporter,
           priceMap: undefined,
           autoTopupSettingsStore,
           stripeClient: mockStripeClient as never,
@@ -707,9 +688,6 @@ describe("tRPC appRouter", () => {
         const creditStore = new CAS(sqlite);
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
-        const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
-        const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-        const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
         setBillingRouterDeps({
           stripe: {
             checkout: { sessions: { create: vi.fn() } },
@@ -718,7 +696,6 @@ describe("tRPC appRouter", () => {
           tenantStore,
           creditStore,
           meterAggregator,
-          usageReporter,
           priceMap: undefined,
           autoTopupSettingsStore,
           stripeClient: mockStripeClient as never,
@@ -797,9 +774,6 @@ describe("tRPC appRouter", () => {
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
       const tenantStore = new TenantCustomerStore(db);
-      const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
-      const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
       const spendingLimitsRepo1 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
@@ -810,7 +784,6 @@ describe("tRPC appRouter", () => {
         tenantStore,
         creditStore,
         meterAggregator,
-        usageReporter,
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
@@ -875,9 +848,6 @@ describe("tRPC appRouter", () => {
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
       const tenantStore = new TenantCustomerStore(db);
-      const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
-      const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
       const spendingLimitsRepo2 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
@@ -888,7 +858,6 @@ describe("tRPC appRouter", () => {
         tenantStore,
         creditStore,
         meterAggregator,
-        usageReporter,
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
@@ -924,9 +893,6 @@ describe("tRPC appRouter", () => {
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
       const tenantStore = new TenantCustomerStore(db);
-      const { StripeUsageReporter } = await import("../monetization/stripe/usage-reporter.js");
-      const mockStripe = { billing: { meterEvents: { create: vi.fn() } } };
-      const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
       const spendingLimitsRepo3 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
@@ -937,7 +903,6 @@ describe("tRPC appRouter", () => {
         tenantStore,
         creditStore,
         meterAggregator,
-        usageReporter,
         priceMap: undefined,
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,

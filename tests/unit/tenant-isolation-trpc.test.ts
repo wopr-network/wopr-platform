@@ -8,7 +8,7 @@
  * access, and assert that FORBIDDEN is thrown.
  *
  * Key finding:
- * - billing.usage, usageSummary, usageHistory: HAVE isolation check (pass)
+ * - billing.usage, usageSummary: HAVE isolation check (pass)
  * - billing.creditsBalance, creditsHistory, creditsCheckout, portalSession:
  *   HAVE isolation check (pass) — check is `input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)`
  * - capabilities.*: use tenantProcedure — ctx.tenantId only, never user input → safe
@@ -73,10 +73,6 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
     const meterAggregator = new MeterAggregator(db);
     const { TenantCustomerStore } = await import("../../src/monetization/stripe/tenant-store.js");
     const tenantStore = new TenantCustomerStore(db);
-    const { StripeUsageReporter } = await import("../../src/monetization/stripe/usage-reporter.js");
-    const mockStripe = { billing: { meterEvents: { create: () => Promise.resolve() } } };
-    const usageReporter = new StripeUsageReporter(db, mockStripe as never, tenantStore);
-
     setBillingRouterDeps({
       stripe: {
         checkout: { sessions: { create: () => Promise.resolve({ id: "cs_test", url: "https://checkout.stripe.com/test" }) } },
@@ -85,7 +81,6 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
       tenantStore,
       creditStore,
       meterAggregator,
-      usageReporter,
       priceMap: undefined,
       dividendRepo: {
         getStats: () => ({ poolCents: 0, activeUsers: 0, perUserCents: 0, nextDistributionAt: new Date().toISOString(), userEligible: false, userLastPurchaseAt: null, userWindowExpiresAt: null }),
@@ -198,22 +193,6 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
     await expect(callerA.billing.usageSummary({ tenant: TENANT_B })).rejects.toThrow("Forbidden");
   });
 
-  // -------------------------------------------------------------------------
-  // usageHistory — has isolation check (verifies existing protection)
-  // -------------------------------------------------------------------------
-
-  it("tenant-scoped caller cannot read other tenant's usageHistory (existing protection)", async () => {
-    const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
-
-    await expect(callerA.billing.usageHistory({ tenant: TENANT_B })).rejects.toThrow("Forbidden");
-  });
-
-  it("tenant-scoped caller can read own usageHistory", async () => {
-    const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
-    const result = await callerA.billing.usageHistory({ tenant: TENANT_A });
-    expect(result.tenant).toBe(TENANT_A);
-    expect(result.reports).toEqual([]);
-  });
 });
 
 // ---------------------------------------------------------------------------

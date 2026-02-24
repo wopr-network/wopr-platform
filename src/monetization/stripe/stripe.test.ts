@@ -1,6 +1,3 @@
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,10 +5,7 @@ import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { initCreditSchema } from "../credits/schema.js";
-import { MeterEmitter } from "../metering/emitter.js";
 import { initMeterSchema } from "../metering/schema.js";
-import type { MeterEvent } from "../metering/types.js";
-import { UsageAggregationWorker } from "../metering/usage-aggregation-worker.js";
 import { createCreditCheckoutSession } from "./checkout.js";
 import { loadStripeConfig } from "./client.js";
 import {
@@ -23,7 +17,6 @@ import {
 import { createPortalSession } from "./portal.js";
 import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
-import { StripeUsageReporter } from "./usage-reporter.js";
 import { handleWebhookEvent } from "./webhook.js";
 
 function createTestDb() {
@@ -33,18 +26,6 @@ function createTestDb() {
   initCreditAdjustmentSchema(sqlite);
   const db = createDb(sqlite);
   return { sqlite, db };
-}
-
-function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
-  return {
-    tenant: "tenant-1",
-    cost: 0.001,
-    charge: 0.002,
-    capability: "embeddings",
-    provider: "openai",
-    timestamp: Date.now(),
-    ...overrides,
-  };
 }
 
 // -- Schema -----------------------------------------------------------------
@@ -167,234 +148,6 @@ describe("TenantCustomerStore", () => {
 
     const map = store.buildCustomerIdMap();
     expect(map).toEqual({ "t-1": "cus_aaa", "t-2": "cus_bbb" });
-  });
-});
-
-// -- StripeUsageReporter ----------------------------------------------------
-
-describe("StripeUsageReporter", () => {
-  let sqlite: BetterSqlite3.Database;
-  let db: DrizzleDb;
-  let emitter: MeterEmitter;
-  let worker: UsageAggregationWorker;
-  let tenantStore: TenantCustomerStore;
-  let testWalPath: string;
-  let testDlqPath: string;
-
-  const BILLING_PERIOD = 300_000; // 5 minutes
-
-  function createMockStripe(meterEventsCreate: ReturnType<typeof vi.fn>) {
-    return {
-      billing: {
-        meterEvents: {
-          create: meterEventsCreate,
-        },
-      },
-    } as unknown as Stripe;
-  }
-
-  beforeEach(() => {
-    const id = Math.random().toString(36).slice(2);
-    testWalPath = join(tmpdir(), `meter-wal-${id}.jsonl`);
-    testDlqPath = join(tmpdir(), `meter-dlq-${id}.jsonl`);
-    const testDb = createTestDb();
-    sqlite = testDb.sqlite;
-    emitter = new MeterEmitter(testDb.db, {
-      flushIntervalMs: 60_000,
-      walPath: testWalPath,
-      dlqPath: testDlqPath,
-    });
-    worker = new UsageAggregationWorker(testDb.db, {
-      periodMs: BILLING_PERIOD,
-      lateArrivalGraceMs: BILLING_PERIOD,
-    });
-    db = testDb.db;
-    tenantStore = new TenantCustomerStore(db);
-  });
-
-  afterEach(() => {
-    worker.stop();
-    emitter.close();
-    sqlite.close();
-    for (const p of [testWalPath, testDlqPath]) {
-      try {
-        rmSync(p);
-      } catch {
-        // file may not exist
-      }
-    }
-  });
-
-  it("reports unreported billing periods to Stripe", async () => {
-    const now = Date.now();
-    const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
-
-    // Set up tenant mapping.
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
-
-    // Emit and aggregate usage.
-    emitter.emit(makeEvent({ tenant: "t-1", charge: 0.5, timestamp: periodStart + 10_000 }));
-    emitter.flush();
-    worker.aggregate(now);
-
-    const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    const count = await reporter.report();
-
-    expect(count).toBe(1);
-    expect(mockCreate).toHaveBeenCalledOnce();
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event_name: "wopr_embeddings_usage",
-        payload: expect.objectContaining({
-          stripe_customer_id: "cus_stripe_t1",
-          value: "50", // 0.50 * 100 = 50 cents
-        }),
-      }),
-    );
-  });
-
-  it("does not re-report already reported periods", async () => {
-    const now = Date.now();
-    const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
-
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
-
-    emitter.emit(makeEvent({ tenant: "t-1", charge: 0.5, timestamp: periodStart + 10_000 }));
-    emitter.flush();
-    worker.aggregate(now);
-
-    const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    await reporter.report();
-    const secondCount = await reporter.report();
-
-    expect(secondCount).toBe(0);
-    expect(mockCreate).toHaveBeenCalledOnce(); // Not called again.
-  });
-
-  it("skips tenants without Stripe customer mapping", async () => {
-    const now = Date.now();
-    const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
-
-    // No tenant mapping set up.
-    emitter.emit(makeEvent({ tenant: "t-1", charge: 0.5, timestamp: periodStart + 10_000 }));
-    emitter.flush();
-    worker.aggregate(now);
-
-    const mockCreate = vi.fn();
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    const count = await reporter.report();
-    expect(count).toBe(0);
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it("returns 0 when no unreported periods exist", async () => {
-    const mockCreate = vi.fn();
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    const count = await reporter.report();
-    expect(count).toBe(0);
-  });
-
-  it("reports multiple capabilities separately", async () => {
-    const now = Date.now();
-    const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
-
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
-
-    emitter.emit(makeEvent({ tenant: "t-1", capability: "embeddings", charge: 0.5, timestamp: periodStart + 10_000 }));
-    emitter.emit(makeEvent({ tenant: "t-1", capability: "voice", charge: 1.0, timestamp: periodStart + 20_000 }));
-    emitter.flush();
-    worker.aggregate(now);
-
-    const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    const count = await reporter.report();
-    expect(count).toBe(2);
-    expect(mockCreate).toHaveBeenCalledTimes(2);
-  });
-
-  it("stops on first API error to avoid hammering", async () => {
-    const now = Date.now();
-    const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
-
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
-
-    emitter.emit(makeEvent({ tenant: "t-1", capability: "embeddings", charge: 0.5, timestamp: periodStart + 10_000 }));
-    emitter.emit(makeEvent({ tenant: "t-1", capability: "voice", charge: 1.0, timestamp: periodStart + 20_000 }));
-    emitter.flush();
-    worker.aggregate(now);
-
-    const mockCreate = vi.fn().mockRejectedValue(new Error("Stripe API error"));
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    const count = await reporter.report();
-    expect(count).toBe(0);
-    expect(mockCreate).toHaveBeenCalledOnce(); // Stopped after first error.
-  });
-
-  it("queryReports returns reported entries", async () => {
-    const now = Date.now();
-    const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
-
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
-
-    emitter.emit(makeEvent({ tenant: "t-1", charge: 0.5, timestamp: periodStart + 10_000 }));
-    emitter.flush();
-    worker.aggregate(now);
-
-    const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    await reporter.report();
-
-    const reports = reporter.queryReports("t-1");
-    expect(reports).toHaveLength(1);
-    expect(reports[0].tenant).toBe("t-1");
-    expect(reports[0].event_name).toBe("wopr_embeddings_usage");
-    expect(reports[0].value_cents).toBe(50);
-  });
-
-  it("marks zero-value periods as reported without calling Stripe", async () => {
-    const now = Date.now();
-    const periodStart = Math.floor(now / BILLING_PERIOD) * BILLING_PERIOD - 2 * BILLING_PERIOD;
-
-    tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_stripe_t1" });
-
-    emitter.emit(makeEvent({ tenant: "t-1", charge: 0.0, timestamp: periodStart + 10_000 }));
-    emitter.flush();
-    worker.aggregate(now);
-
-    const mockCreate = vi.fn().mockResolvedValue({ identifier: "mevt_123" });
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore);
-
-    const count = await reporter.report();
-    expect(count).toBe(1); // Marked as reported
-    expect(mockCreate).not.toHaveBeenCalled(); // But didn't call Stripe
-  });
-
-  it("start/stop manages the periodic timer", () => {
-    const mockCreate = vi.fn();
-    const stripe = createMockStripe(mockCreate);
-    const reporter = new StripeUsageReporter(db, stripe, tenantStore, { intervalMs: 60_000 });
-
-    reporter.start();
-    reporter.start(); // Idempotent
-    reporter.stop();
-    reporter.stop(); // Safe to call twice
   });
 });
 

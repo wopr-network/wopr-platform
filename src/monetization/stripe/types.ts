@@ -9,22 +9,6 @@ export interface TenantCustomerRow {
   updated_at: number;
 }
 
-/** Tracks which billing period summaries have been reported to Stripe. */
-export interface StripeUsageReportRow {
-  id: string;
-  tenant: string;
-  capability: string;
-  provider: string;
-  period_start: number;
-  period_end: number;
-  /** The Stripe meter event name used. */
-  event_name: string;
-  /** Charge in cents reported to Stripe. */
-  value_cents: number;
-  /** Unix epoch ms when this row was reported. */
-  reported_at: number;
-}
-
 /** Options for creating a Stripe credit purchase Checkout session. */
 export interface CreditCheckoutOpts {
   /** Internal tenant ID. */

@@ -51,8 +51,6 @@ import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
-import type { IUsageAggregationWorker } from "../monetization/metering/usage-aggregation-worker.js";
-import { DrizzleUsageAggregationWorker } from "../monetization/metering/usage-aggregation-worker.js";
 import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js";
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
 import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
@@ -613,7 +611,6 @@ let _creditLedger: ICreditLedger | null = null;
 let _botBilling: IBotBilling | null = null;
 let _meterEmitter: IMeterEmitter | null = null;
 let _meterAggregator: IMeterAggregator | null = null;
-let _usageAggregationWorker: IUsageAggregationWorker | null = null;
 let _budgetChecker: IBudgetChecker | null = null;
 let _tenantCustomerStore: ITenantCustomerStore | null = null;
 let _payramChargeStore: IPayRamChargeStore | null = null;
@@ -641,11 +638,6 @@ export function getMeterEmitter(): IMeterEmitter {
 export function getMeterAggregator(): IMeterAggregator {
   if (!_meterAggregator) _meterAggregator = new DrizzleMeterAggregator(getDb());
   return _meterAggregator;
-}
-
-export function getUsageAggregationWorker(): IUsageAggregationWorker {
-  if (!_usageAggregationWorker) _usageAggregationWorker = new DrizzleUsageAggregationWorker(getDb());
-  return _usageAggregationWorker;
 }
 
 export function getBudgetChecker(): IBudgetChecker {

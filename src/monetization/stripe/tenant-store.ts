@@ -120,7 +120,7 @@ export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
     return rows.map(mapRow);
   }
 
-  /** Build a tenant -> stripe_customer_id map for use with UsageAggregationWorker. */
+  /** Build a tenant -> stripe_customer_id map. */
   buildCustomerIdMap(): Record<string, string> {
     const rows = this.db
       .select({

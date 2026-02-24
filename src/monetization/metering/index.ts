@@ -7,15 +7,5 @@ export type {
   BillingPeriodSummary,
   MeterEvent,
   MeterEventRow,
-  StripeMeterRecord,
   UsageSummary,
 } from "./types.js";
-export type {
-  IUsageAggregationWorker,
-  MeterEventNameMap,
-  UsageAggregationWorkerOpts,
-} from "./usage-aggregation-worker.js";
-export {
-  DrizzleUsageAggregationWorker,
-  UsageAggregationWorker,
-} from "./usage-aggregation-worker.js";
