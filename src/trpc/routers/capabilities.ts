@@ -183,6 +183,14 @@ export const capabilitiesRouter = router({
         });
       }
 
+      // If switching to BYOK with a key, require platformSecret to encrypt it
+      if (input.mode === "byok" && input.key && !platformSecret) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot store BYOK key: platform secret is not configured",
+        });
+      }
+
       // If switching to BYOK with a key, store it
       if (input.mode === "byok" && input.key && platformSecret) {
         const provider = CAPABILITY_BYOK_PROVIDER[input.capability];
