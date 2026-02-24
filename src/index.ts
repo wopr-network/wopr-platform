@@ -65,7 +65,13 @@ import { encrypt } from "./security/encryption.js";
 import { validateProviderKey } from "./security/key-validation.js";
 import { TenantKeyStore } from "./security/tenant-keys/schema.js";
 import type { Provider } from "./security/types.js";
-import { setBillingRouterDeps, setCapabilitiesRouterDeps, setNodesRouterDeps } from "./trpc/index.js";
+import {
+  setBillingRouterDeps,
+  setCapabilitiesRouterDeps,
+  setModelSelectionRouterDeps,
+  setNodesRouterDeps,
+  setProfileRouterDeps,
+} from "./trpc/index.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
@@ -402,6 +408,30 @@ if (process.env.NODE_ENV !== "test") {
       platformSecret: process.env.PLATFORM_SECRET,
       validateProviderKey: (provider, key) => validateProviderKey(provider as Provider, key),
     });
+  }
+
+  // Wire profile tRPC router deps (reads/writes better-auth user table directly)
+  {
+    const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
+    const AUTH_DB_PATH_LOCAL = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
+    const authDb = new Database(AUTH_DB_PATH_LOCAL);
+    applyPlatformPragmas(authDb);
+    const authUserRepo = new BetterAuthUserRepository(authDb);
+    setProfileRouterDeps({
+      getUser: (userId) => authUserRepo.getUser(userId),
+      updateUser: (userId, data) => authUserRepo.updateUser(userId, data),
+      changePassword: (userId, currentPassword, newPassword) =>
+        authUserRepo.changePassword(userId, currentPassword, newPassword),
+    });
+    logger.info("tRPC profile router initialized");
+  }
+
+  // Wire model selection tRPC router deps
+  {
+    const { DrizzleTenantModelSelectionRepository } = await import("./db/tenant-model-selection-repository.js");
+    const repo = new DrizzleTenantModelSelectionRepository(getDb());
+    setModelSelectionRouterDeps({ getRepository: () => repo });
+    logger.info("tRPC model selection router initialized");
   }
 
   // Wire billing tRPC router deps
