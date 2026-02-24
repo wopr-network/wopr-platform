@@ -1,15 +1,28 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
+import { adminUsers } from "../../db/schema/admin-users.js";
 import { creditTransactions } from "../../db/schema/credits.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
 import type { DividendHistoryEntry, DividendStats } from "../repository-types.js";
 
 export type { DividendHistoryEntry, DividendStats };
 
+export interface DigestTenantRow {
+  tenantId: string;
+  totalCents: number;
+  distributionCount: number;
+  avgPoolCents: number;
+  avgActiveUsers: number;
+}
+
 export interface IDividendRepository {
   getStats(tenantId: string): DividendStats;
   getHistory(tenantId: string, limit: number, offset: number): DividendHistoryEntry[];
   getLifetimeTotalCents(tenantId: string): number;
+  /** Aggregate dividend distributions per tenant for a date window [windowStart, windowEnd). */
+  getDigestTenantAggregates(windowStart: string, windowEnd: string): DigestTenantRow[];
+  /** Resolve email for a tenant from admin_users. Returns undefined if no row exists. */
+  getTenantEmail(tenantId: string): string | undefined;
 }
 
 export class DrizzleDividendRepository implements IDividendRepository {
@@ -112,5 +125,30 @@ export class DrizzleDividendRepository implements IDividendRepository {
       .where(eq(dividendDistributions.tenantId, tenantId))
       .get();
     return row?.total ?? 0;
+  }
+
+  getDigestTenantAggregates(windowStart: string, windowEnd: string): DigestTenantRow[] {
+    return this.db
+      .select({
+        tenantId: dividendDistributions.tenantId,
+        totalCents: sql<number>`SUM(${dividendDistributions.amountCents})`,
+        distributionCount: sql<number>`COUNT(DISTINCT ${dividendDistributions.date})`,
+        avgPoolCents: sql<number>`CAST(AVG(${dividendDistributions.poolCents}) AS INTEGER)`,
+        avgActiveUsers: sql<number>`CAST(AVG(${dividendDistributions.activeUsers}) AS INTEGER)`,
+      })
+      .from(dividendDistributions)
+      .where(and(gte(dividendDistributions.date, windowStart), lt(dividendDistributions.date, windowEnd)))
+      .groupBy(dividendDistributions.tenantId)
+      .all();
+  }
+
+  getTenantEmail(tenantId: string): string | undefined {
+    const row = this.db
+      .select({ email: adminUsers.email })
+      .from(adminUsers)
+      .where(eq(adminUsers.tenantId, tenantId))
+      .limit(1)
+      .get();
+    return row?.email;
   }
 }

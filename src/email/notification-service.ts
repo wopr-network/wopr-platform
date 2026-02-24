@@ -86,6 +86,36 @@ export class NotificationService {
     });
   }
 
+  notifyDividendWeeklyDigest(
+    tenantId: string,
+    email: string,
+    weeklyTotalDollars: string,
+    weeklyTotalCents: number,
+    lifetimeTotalDollars: string,
+    distributionCount: number,
+    poolAvgCents: number,
+    activeUsersAvg: number,
+    nextDividendDate: string,
+    weekStartDate: string,
+    weekEndDate: string,
+  ): void {
+    const unsubscribeUrl = `${this.appBaseUrl}/settings/notifications`;
+    this.queue.enqueue(tenantId, "dividend-weekly-digest", {
+      email,
+      weeklyTotalDollars,
+      weeklyTotalCents,
+      lifetimeTotalDollars,
+      distributionCount,
+      poolAvgCents,
+      activeUsersAvg,
+      nextDividendDate,
+      weekStartDate,
+      weekEndDate,
+      unsubscribeUrl,
+      creditsUrl: this.creditsUrl(),
+    });
+  }
+
   notifyCryptoPaymentConfirmed(
     tenantId: string,
     email: string,
