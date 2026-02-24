@@ -20,6 +20,7 @@ import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
   getAffiliateRepo,
+  getBackupVerifier,
   getBotInstanceRepo,
   getBotProfileRepo,
   getCircuitBreakerRepo,
@@ -34,6 +35,7 @@ import {
   getNodeRepo,
   getRateLimitRepo,
   getRegistrationTokenStore,
+  getSystemResourceMonitor,
   initFleet,
 } from "./fleet/services.js";
 import { DrizzleSpendingCapStore } from "./fleet/spending-cap-repository.js";
@@ -407,6 +409,12 @@ if (process.env.NODE_ENV !== "test") {
 
   // Start heartbeat watchdog
   getHeartbeatWatchdog().start();
+
+  // SOC 2 M4: Start system resource monitor (CPU/memory/disk threshold alerting)
+  getSystemResourceMonitor().start();
+
+  // SOC 2 H7: Ensure backup verifier singleton is available for admin-triggered verification
+  getBackupVerifier();
 
   const server = serve({ fetch: app.fetch, port }, () => {
     logger.info(`wopr-platform listening on http://0.0.0.0:${port}`);

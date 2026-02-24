@@ -9,3 +9,5 @@ export { createAdminHealthHandler } from "./health-dashboard.js";
 export type { WindowResult } from "./metrics.js";
 export { MetricsCollector } from "./metrics.js";
 export { captureError, captureMessage, initSentry } from "./sentry.js";
+export type { SystemResourceSnapshot, SystemResourceThresholds } from "./system-resources.js";
+export { SystemResourceMonitor } from "./system-resources.js";
