@@ -74,12 +74,16 @@ export async function checkAllCerts(
     const result = await checkCertExpiry(domain, 443);
     results.push(result);
 
+    // Sanitize: only log the validated hostname from the result struct, not the raw
+    // env-derived domain string, to avoid log injection from malformed env values.
+    const safeDomain = result.hostname.replace(/[^\w.-]/g, "");
+
     if (!result.valid) {
-      logger.error(`TLS cert check FAILED for ${domain}: ${result.error}`);
+      logger.error(`TLS cert check FAILED for ${safeDomain}: ${result.error}`);
     } else if (result.daysRemaining !== undefined && result.daysRemaining < thresholdDays) {
-      logger.warn(`TLS cert for ${domain} expires in ${result.daysRemaining} days (threshold: ${thresholdDays})`);
+      logger.warn(`TLS cert for ${safeDomain} expires in ${result.daysRemaining} days (threshold: ${thresholdDays})`);
     } else {
-      logger.info(`TLS cert for ${domain}: ${result.daysRemaining} days remaining`);
+      logger.info(`TLS cert for ${safeDomain}: ${result.daysRemaining} days remaining`);
     }
   }
 

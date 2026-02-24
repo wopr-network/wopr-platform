@@ -1,22 +1,28 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96-bit IV for GCM
 const AUTH_TAG_LENGTH = 16;
+// Fixed salt — key material comes from a high-entropy env var, not a human password.
+// The salt prevents identical keys from producing identical derived keys across deployments.
+const SCRYPT_SALT = Buffer.from("wopr-backup-v1-salt");
 
 /**
- * Derive a 32-byte key from a passphrase using SHA-256.
- * (The key is already a high-entropy env var, not a human password.)
+ * Derive a 32-byte key from a passphrase using scrypt.
  */
 function deriveKey(passphrase: string): Buffer {
-  return createHash("sha256").update(passphrase).digest();
+  return scryptSync(passphrase, SCRYPT_SALT, 32);
 }
 
 /**
  * Encrypt a file using AES-256-GCM.
  * Output format: [12-byte IV] [encrypted data] [16-byte auth tag]
+ *
+ * The auth tag is written atomically before the write stream closes — we do
+ * NOT use appendFile after pipeline() because pipeline auto-closes the write
+ * stream, making any subsequent append a separate open/write which could race
+ * or fail silently.
  */
 export async function encryptFile(inputPath: string, outputPath: string, key: string): Promise<void> {
   const derivedKey = deriveKey(key);
@@ -30,12 +36,20 @@ export async function encryptFile(inputPath: string, outputPath: string, key: st
   // Write IV first
   output.write(iv);
 
-  // Pipe encrypted data
-  await pipeline(input, cipher, output);
+  // Stream encrypted data manually so we can append the auth tag before close
+  await new Promise<void>((resolve, reject) => {
+    input.on("error", reject);
+    cipher.on("error", reject);
+    output.on("error", reject);
 
-  // Append auth tag after pipeline closes the write stream
-  const { appendFile } = await import("node:fs/promises");
-  await appendFile(outputPath, cipher.getAuthTag());
+    cipher.on("data", (chunk: Buffer) => output.write(chunk));
+    cipher.on("end", () => {
+      // Auth tag is available after cipher finalises — write it before closing
+      output.end(cipher.getAuthTag(), () => resolve());
+    });
+
+    input.pipe(cipher);
+  });
 }
 
 /**
