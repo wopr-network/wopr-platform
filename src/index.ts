@@ -240,7 +240,7 @@ if (process.env.NODE_ENV !== "test") {
       gatewayHealthCheck: () => {
         const window = metrics.getWindow(1);
         const last5m = metrics.getWindow(5);
-        const healthy = !(window.totalRequests === 0 && last5m.totalRequests > 0);
+        const healthy = window.totalRequests > 0 || last5m.totalRequests === 0;
         return { healthy, latencyMs: 0 };
       },
     });
