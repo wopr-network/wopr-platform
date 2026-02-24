@@ -128,6 +128,18 @@ export {
   MeterEmitter,
   UsageAggregationWorker,
 } from "./metering/index.js";
+// Payment processor interface (WOP-977)
+export type {
+  ChargeOpts,
+  ChargeResult,
+  CheckoutOpts,
+  CheckoutSession,
+  IPaymentProcessor,
+  PortalOpts,
+  SavedPaymentMethod,
+  SetupResult,
+  WebhookResult as ProcessorWebhookResult,
+} from "./payment-processor.js";
 // PayRam crypto payments (WOP-407)
 export type {
   PayRamBillingConfig,
