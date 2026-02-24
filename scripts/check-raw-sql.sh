@@ -45,6 +45,7 @@ TEMP_EXCLUDED_PATTERNS=(
   # WOP-902: api routes
   "src/api/routes/admin-backups\.ts"
   # WOP-904: monetization schemas
+  "src/monetization/affiliate/schema\.ts"
   "src/monetization/credits/schema\.ts"
   "src/monetization/metering/schema\.ts"
   "src/monetization/payram/schema\.ts"

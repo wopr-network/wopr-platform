@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import type Stripe from "stripe";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import {
   ALLOWED_SCHEDULE_INTERVALS,
   ALLOWED_THRESHOLD_CENTS,
@@ -157,6 +158,7 @@ export interface BillingRouterDeps {
   stripeClient: Stripe;
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
+  affiliateRepo: IAffiliateRepository;
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -832,5 +834,43 @@ export const billingRouter = router({
       const { dividendRepo } = deps();
       const total = dividendRepo.getLifetimeTotalCents(tenant);
       return { total_cents: total, tenant };
+    }),
+
+  /** Get affiliate code, link, and stats for the authenticated user. */
+  affiliateInfo: protectedProcedure.query(({ ctx }) => {
+    const tenant = ctx.tenantId ?? ctx.user.id;
+    const { affiliateRepo } = deps();
+    return affiliateRepo.getStats(tenant);
+  }),
+
+  /** Record a referral attribution (called during signup if ref param present). */
+  affiliateRecordReferral: protectedProcedure
+    .input(
+      z.object({
+        code: z
+          .string()
+          .min(1)
+          .max(10)
+          .regex(/^[a-z0-9]+$/),
+        referredTenantId: tenantIdSchema,
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      const callerTenant = ctx.tenantId ?? ctx.user.id;
+      if (input.referredTenantId !== callerTenant) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot record referral for another tenant" });
+      }
+      const { affiliateRepo } = deps();
+      const codeRecord = affiliateRepo.getByCode(input.code);
+      if (!codeRecord) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Invalid referral code" });
+      }
+
+      if (codeRecord.tenantId === input.referredTenantId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Self-referral is not allowed" });
+      }
+
+      const isNew = affiliateRepo.recordReferral(codeRecord.tenantId, input.referredTenantId, input.code);
+      return { recorded: isNew, referrer: codeRecord.tenantId };
     }),
 });

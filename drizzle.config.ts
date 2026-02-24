@@ -29,6 +29,7 @@ export default defineConfig({
     "./src/db/schema/tenant-status.ts",
     "./src/db/schema/spending-limits.ts",
     "./src/db/schema/user-roles.ts",
+    "./src/db/schema/affiliate.ts",
     "./src/db/schema/dividend-distributions.ts",
     "./src/db/schema/oauth-states.ts",
     "./src/db/schema/webhook-sig-penalties.ts",

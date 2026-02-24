@@ -1,5 +1,11 @@
 // Re-export all monetization repository interfaces for callers that want a single import point.
 
+export type {
+  AffiliateCode,
+  AffiliateReferral,
+  AffiliateStats,
+  IAffiliateRepository,
+} from "./affiliate/drizzle-affiliate-repository.js";
 export type { IBudgetChecker } from "./budget/budget-checker.js";
 export type { IAutoTopupSettingsRepository } from "./credits/auto-topup-settings-repository.js";
 export type { IBotBilling } from "./credits/bot-billing.js";

@@ -107,6 +107,8 @@
         "src/monetization/metering/aggregator.ts",
         "src/monetization/metering/emitter.ts",
         "src/monetization/metering/usage-aggregation-worker.ts",
+        "src/monetization/affiliate/drizzle-affiliate-repository.ts",
+        "src/monetization/affiliate/schema.ts",
         "src/monetization/payram/charge-store.ts",
         "src/monetization/drizzle-spending-limits-repository.ts",
         "src/monetization/stripe/tenant-store.ts",

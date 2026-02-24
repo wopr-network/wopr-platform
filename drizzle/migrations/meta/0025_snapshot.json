@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ec027fe1-35c3-4cb5-a437-e7d7d27f2ef2",
-  "prevId": "8ac973a0-dec2-424d-a08f-396d1f6e1a5b",
+  "id": "7c75061f-8881-4d50-8430-fce2964c5551",
+  "prevId": "e436439c-c420-4d86-adfe-24485127a775",
   "tables": {
     "admin_audit_log": {
       "name": "admin_audit_log",
@@ -3225,6 +3225,133 @@
       },
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "affiliate_codes": {
+      "name": "affiliate_codes",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "affiliate_codes_code_unique": {
+          "name": "affiliate_codes_code_unique",
+          "columns": [
+            "code"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "affiliate_referrals": {
+      "name": "affiliate_referrals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "referrer_tenant_id": {
+          "name": "referrer_tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "referred_tenant_id": {
+          "name": "referred_tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "signed_up_at": {
+          "name": "signed_up_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        },
+        "first_purchase_at": {
+          "name": "first_purchase_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "match_amount_cents": {
+          "name": "match_amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "matched_at": {
+          "name": "matched_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "affiliate_referrals_referred_tenant_id_unique": {
+          "name": "affiliate_referrals_referred_tenant_id_unique",
+          "columns": [
+            "referred_tenant_id"
+          ],
+          "isUnique": true
+        },
+        "idx_affiliate_ref_referrer": {
+          "name": "idx_affiliate_ref_referrer",
+          "columns": [
+            "referrer_tenant_id"
+          ],
+          "isUnique": false
+        },
+        "idx_affiliate_ref_code": {
+          "name": "idx_affiliate_ref_code",
+          "columns": [
+            "code"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
     }
   },
   "views": {},

@@ -169,6 +169,13 @@
       "when": 1771919063016,
       "tag": "0024_lowly_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1771750160184,
+      "tag": "0025_nappy_red_wolf",
+      "breakpoints": true
     }
   ]
 }
