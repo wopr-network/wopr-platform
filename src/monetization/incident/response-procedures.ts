@@ -155,15 +155,15 @@ const SEV3_PROCEDURE: ResponseProcedure = {
     },
     {
       order: 3,
-      action: "Review tenants with negative balance and trigger manual credit reconciliation if needed",
-      owner: "on-call-engineer",
-      slaMinutes: 240,
-    },
-    {
-      order: 4,
       action: "Monitor gateway error rate trend over next 30 minutes",
       owner: "on-call-engineer",
       slaMinutes: 90,
+    },
+    {
+      order: 4,
+      action: "Review tenants with negative balance and trigger manual credit reconciliation if needed",
+      owner: "on-call-engineer",
+      slaMinutes: 240,
     },
     {
       order: 5,

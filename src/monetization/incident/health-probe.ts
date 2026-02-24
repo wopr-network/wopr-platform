@@ -50,12 +50,11 @@ export async function probePaymentHealth(deps: HealthProbeDeps): Promise<Payment
 
   // 2. Webhook freshness
   let lastEventAgeMs: number | null = null;
-  let webhooksOk = true;
+  // null = dep not configured; skip the check rather than reporting healthy when unchecked
+  let webhooksOk: boolean | null = null;
   if (deps.queryLastWebhookAgeMs) {
     lastEventAgeMs = deps.queryLastWebhookAgeMs();
-    if (lastEventAgeMs === null || lastEventAgeMs > WEBHOOK_FRESHNESS_THRESHOLD_MS) {
-      webhooksOk = false;
-    }
+    webhooksOk = lastEventAgeMs !== null && lastEventAgeMs <= WEBHOOK_FRESHNESS_THRESHOLD_MS;
   }
 
   // 3. Credit ledger
@@ -87,7 +86,7 @@ export async function probePaymentHealth(deps: HealthProbeDeps): Promise<Payment
 
   const checks: PaymentHealthStatus["checks"] = {
     stripeApi: { ok: stripeOk, latencyMs: stripeLatencyMs, ...(stripeError ? { error: stripeError } : {}) },
-    webhookFreshness: { ok: webhooksOk, lastEventAgeMs },
+    webhookFreshness: { ok: webhooksOk ?? true, lastEventAgeMs },
     creditLedger: { ok: negativeBalanceTenants === 0, negativeBalanceTenants },
     meterDlq: { ok: dlqOk, depth: dlqDepth },
     gatewayMetrics: { ok: gatewayOk, errorRate, creditFailures },
@@ -102,7 +101,10 @@ export async function probePaymentHealth(deps: HealthProbeDeps): Promise<Payment
     creditDeductionFailures: creditFailures,
     dlqDepth,
     tenantsWithNegativeBalance: negativeBalanceTenants,
-    autoTopupFailures: 0, // not available from deps without event log query
+    // TODO(WOP-528): autoTopupFailures is not yet tracked by MetricsCollector.
+    // MetricsCollector.getWindow() has no autoTopup counter. A dedicated event log
+    // query or counter must be added to deps before this signal can fire.
+    autoTopupFailures: 0,
     firingAlertCount: firingCount,
   });
 

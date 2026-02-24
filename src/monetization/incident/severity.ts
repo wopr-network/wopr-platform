@@ -3,8 +3,8 @@ export type Severity = "SEV1" | "SEV2" | "SEV3";
 export interface SeveritySignals {
   /** Stripe API reachable? */
   stripeReachable: boolean;
-  /** Webhook events received in last 30 minutes? */
-  webhooksReceiving: boolean;
+  /** Webhook events received in last 30 minutes? null = not monitored (skip check). */
+  webhooksReceiving: boolean | null;
   /** Gateway error rate (0-1) from MetricsCollector 5min window. */
   gatewayErrorRate: number;
   /** Credit deduction failures in 5min window. */
@@ -38,11 +38,14 @@ export function classifySeverity(signals: SeveritySignals): { severity: Severity
   if (!signals.stripeReachable) {
     reasons.push("Stripe API unreachable");
   }
-  if (!signals.webhooksReceiving) {
+  if (signals.webhooksReceiving === false) {
     reasons.push("No webhook events received in last 30 minutes");
   }
   if (signals.gatewayErrorRate > 0.5) {
     reasons.push(`Gateway error rate ${(signals.gatewayErrorRate * 100).toFixed(1)}% exceeds 50% threshold`);
+  }
+  if (signals.firingAlertCount >= 3) {
+    reasons.push(`${signals.firingAlertCount} alerts firing — SEV1 escalation threshold reached`);
   }
 
   if (reasons.length > 0) {
@@ -50,6 +53,9 @@ export function classifySeverity(signals: SeveritySignals): { severity: Severity
   }
 
   // SEV2 conditions
+  if (signals.firingAlertCount >= 1) {
+    reasons.push(`${signals.firingAlertCount} alert(s) firing`);
+  }
   if (signals.creditDeductionFailures > 10) {
     reasons.push(`Credit deduction failures (${signals.creditDeductionFailures}) exceeds threshold of 10`);
   }
