@@ -124,6 +124,21 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         "stripe",
       );
 
+      // New-user first-purchase bonus for referred users (WOP-950).
+      // Must run before credit match so markFirstPurchase hasn't been called yet.
+      let affiliateBonusCents: number | undefined;
+      if (deps.affiliateRepo) {
+        const bonusResult = grantNewUserBonus({
+          ledger: deps.creditLedger,
+          affiliateRepo: deps.affiliateRepo,
+          referredTenantId: tenant,
+          purchaseAmountCents: creditCents,
+        });
+        if (bonusResult.granted) {
+          affiliateBonusCents = bonusResult.bonusCents;
+        }
+      }
+
       // Affiliate credit match — grant referrer matching credits on first purchase (WOP-949).
       if (deps.affiliateRepo) {
         const matchResult = processAffiliateCreditMatch({
@@ -142,20 +157,6 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
               amountDollars,
             );
           }
-        }
-      }
-
-      // New-user first-purchase bonus for referred users (WOP-950).
-      let affiliateBonusCents: number | undefined;
-      if (deps.affiliateRepo) {
-        const bonusResult = grantNewUserBonus({
-          ledger: deps.creditLedger,
-          affiliateRepo: deps.affiliateRepo,
-          referredTenantId: tenant,
-          purchaseAmountCents: creditCents,
-        });
-        if (bonusResult.granted) {
-          affiliateBonusCents = bonusResult.bonusCents;
         }
       }
 
