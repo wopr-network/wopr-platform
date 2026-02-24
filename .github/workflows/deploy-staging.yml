@@ -22,21 +22,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm lint
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       - name: Test
-        run: npm test
+        run: pnpm test
 
   build-and-push:
     runs-on: [self-hosted, Linux, X64]
@@ -101,6 +105,20 @@ jobs:
               echo "No previous SHA tag found (first deploy)"
             fi
 
+      - name: Pre-deploy database backup
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          envs: COMPOSE_DIR
+          script: |
+            if [ -f "${COMPOSE_DIR}/scripts/deploy-preflight.sh" ]; then
+              bash "${COMPOSE_DIR}/scripts/deploy-preflight.sh"
+            else
+              echo "No preflight script found, skipping"
+            fi
+
       - name: Pull and restart service
         uses: appleboy/ssh-action@v1
         with:
@@ -126,14 +144,35 @@ jobs:
           script: |
             for i in $(seq 1 12); do
               if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
-                echo "Staging health check passed"
-                exit 0
+                echo "Liveness check passed"
+                # Also verify readiness
+                if curl -sf http://localhost:3100/health/ready > /dev/null 2>&1; then
+                  echo "Readiness check passed"
+                  exit 0
+                fi
+                echo "Liveness OK but readiness not ready yet ($i/12)"
+              else
+                echo "Waiting for health check... ($i/12)"
               fi
-              echo "Waiting for health check... ($i/12)"
               sleep 5
             done
             echo "Health check timed out after 60s"
             exit 1
+
+      - name: Post-deploy smoke test
+        if: steps.health.outcome != 'failure'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          envs: COMPOSE_DIR
+          script: |
+            if [ -f "${COMPOSE_DIR}/scripts/deploy-smoke-test.sh" ]; then
+              bash "${COMPOSE_DIR}/scripts/deploy-smoke-test.sh"
+            else
+              echo "No smoke test script found, skipping"
+            fi
 
       - name: Rollback on failure
         if: steps.health.outcome == 'failure'
