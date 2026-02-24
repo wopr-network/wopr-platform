@@ -36,7 +36,7 @@ decrypt_file() {
     if [ -z "$ENCRYPTION_KEY" ]; then
       error_exit "Backup is encrypted but BACKUP_ENCRYPTION_KEY is not set"
     fi
-    openssl enc -aes-256-cbc -d -salt -pbkdf2 -in "$src" -out "$dst" -pass "pass:${ENCRYPTION_KEY}"
+    openssl enc -aes-256-cbc -d -salt -pbkdf2 -in "$src" -out "$dst" -pass env:BACKUP_ENCRYPTION_KEY
     rm -f "$src"
     echo "$dst"
   else
