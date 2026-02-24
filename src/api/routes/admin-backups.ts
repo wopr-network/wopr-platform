@@ -4,7 +4,7 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/in
 import type { BackupStatusStore } from "../../backup/backup-status-store.js";
 import { SpacesClient } from "../../backup/spaces-client.js";
 import { logger } from "../../config/logger.js";
-import { getBackupStatusStore } from "../../fleet/services.js";
+import { getAdminAuditLog, getBackupStatusStore } from "../../fleet/services.js";
 
 const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
 
@@ -140,6 +140,18 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
     // Validate the remote path refers to this container's backups using segment matching
     if (!isRemotePathOwnedBy(body.remotePath, containerId)) {
       return c.json({ error: "remotePath does not belong to this container" }, 403);
+    }
+
+    try {
+      getAdminAuditLog().log({
+        adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+        action: "backup.restore",
+        category: "config",
+        details: { containerId, remotePath: body.remotePath, targetNodeId: body.targetNodeId ?? "auto" },
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
     }
 
     return c.json({

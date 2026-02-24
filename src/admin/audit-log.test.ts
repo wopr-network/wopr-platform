@@ -76,6 +76,18 @@ describe("AdminAuditLog.log", () => {
     const row = auditLogInstance.log(makeEntry({ details: { amount: 100, currency: "USD" } }));
     expect(row.details).toBe('{"amount":100,"currency":"USD"}');
   });
+
+  it("stores outcome field when provided", () => {
+    const row = auditLogInstance.log(makeEntry({ outcome: "success" }));
+    expect(row.outcome).toBe("success");
+  });
+
+  it("defaults outcome to null when not provided", () => {
+    const row = auditLogInstance.log(
+      makeEntry({ targetTenant: undefined, targetUser: undefined, ipAddress: undefined, userAgent: undefined }),
+    );
+    expect(row.outcome).toBeNull();
+  });
 });
 
 describe("AdminAuditLog.query", () => {
@@ -240,7 +252,7 @@ describe("AdminAuditLog.exportCsv", () => {
     const lines = csv.split("\n");
 
     expect(lines[0]).toBe(
-      "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at",
+      "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at,outcome",
     );
     expect(lines).toHaveLength(2);
 

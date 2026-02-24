@@ -61,6 +61,7 @@ function toRow(r: typeof adminAuditLog.$inferSelect): AdminAuditLogRow {
     ip_address: r.ipAddress,
     user_agent: r.userAgent,
     created_at: r.createdAt,
+    outcome: r.outcome ?? null,
   };
 }
 
@@ -81,6 +82,7 @@ export class DrizzleAdminAuditLogRepository implements IAdminAuditLogRepository 
         ipAddress: row.ip_address,
         userAgent: row.user_agent,
         createdAt: row.created_at,
+        outcome: row.outcome,
       })
       .run();
   }

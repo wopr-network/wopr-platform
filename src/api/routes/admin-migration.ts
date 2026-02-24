@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { getMigrationOrchestrator } from "../../fleet/services.js";
+import { getAdminAuditLog, getMigrationOrchestrator } from "../../fleet/services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
@@ -30,6 +30,18 @@ adminMigrationRoutes.post("/:botId", adminAuth, async (c) => {
 
   try {
     const result = await getMigrationOrchestrator().migrate(botId, body.targetNodeId);
+
+    try {
+      getAdminAuditLog().log({
+        adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+        action: "bot.migrate",
+        category: "config",
+        details: { botId, targetNodeId: body.targetNodeId, success: result.success },
+        outcome: result.success ? "success" : "failure",
+      });
+    } catch {
+      /* audit must not break request */
+    }
 
     if (result.success) {
       return c.json({ success: true, result });

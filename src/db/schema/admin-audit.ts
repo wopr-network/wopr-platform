@@ -13,6 +13,7 @@ export const adminAuditLog = sqliteTable(
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
     createdAt: integer("created_at").notNull(),
+    outcome: text("outcome"),
   },
   (table) => [
     index("idx_admin_audit_admin").on(table.adminUser, table.createdAt),

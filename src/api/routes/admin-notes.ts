@@ -4,7 +4,7 @@ import { AdminNotesStore } from "../../admin/notes/store.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { getDb } from "../../fleet/services.js";
+import { getAdminAuditLog, getDb } from "../../fleet/services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
@@ -82,6 +82,18 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
         content,
         isPinned: body.isPinned === true,
       });
+      try {
+        getAdminAuditLog().log({
+          adminUser: user?.id ?? "unknown",
+          action: "note.create",
+          category: "support",
+          targetTenant: tenantId,
+          details: { noteId: note.id },
+          outcome: "success",
+        });
+      } catch {
+        /* audit must not break request */
+      }
       return c.json(note, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -108,6 +120,19 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
         // Could be not found or ownership mismatch — return 403 to avoid leaking note existence
         return c.json({ error: "Forbidden" }, 403);
       }
+      try {
+        const user = c.get("user");
+        getAdminAuditLog().log({
+          adminUser: user?.id ?? "unknown",
+          action: "note.update",
+          category: "support",
+          targetTenant: tenantId,
+          details: { noteId, hasContentChange: !!updates.content, hasPinChange: updates.isPinned !== undefined },
+          outcome: "success",
+        });
+      } catch {
+        /* audit must not break request */
+      }
       return c.json(note);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -122,6 +147,19 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
     try {
       const deleted = store.delete(noteId, tenantId);
       if (!deleted) return c.json({ error: "Forbidden" }, 403);
+      try {
+        const user = c.get("user");
+        getAdminAuditLog().log({
+          adminUser: user?.id ?? "unknown",
+          action: "note.delete",
+          category: "support",
+          targetTenant: tenantId,
+          details: { noteId },
+          outcome: "success",
+        });
+      } catch {
+        /* audit must not break request */
+      }
       return c.json({ ok: true });
     } catch {
       return c.json({ error: "Internal server error" }, 500);

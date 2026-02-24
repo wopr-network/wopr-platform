@@ -7,6 +7,7 @@ import { initRateSchema } from "../../admin/rates/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { applyPlatformPragmas } from "../../db/pragmas.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
 
@@ -125,6 +126,17 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
         sortOrder: sortOrder as number | undefined,
       };
       const result = store.createSellRate(input);
+      try {
+        getAdminAuditLog().log({
+          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          action: "rates.sell.create",
+          category: "config",
+          details: { ...input },
+          outcome: "success",
+        });
+      } catch {
+        /* audit must not break request */
+      }
       return c.json(result, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -184,6 +196,17 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       if (sortOrder !== undefined) input.sortOrder = sortOrder as number;
 
       const result = store.updateSellRate(id, input);
+      try {
+        getAdminAuditLog().log({
+          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          action: "rates.sell.update",
+          category: "config",
+          details: { id, ...input },
+          outcome: "success",
+        });
+      } catch {
+        /* audit must not break request */
+      }
       return c.json(result, 200);
     } catch (err) {
       if (err instanceof Error && err.message.includes("not found")) {
@@ -201,6 +224,17 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     try {
       const deleted = store.deleteSellRate(id);
       if (deleted) {
+        try {
+          getAdminAuditLog().log({
+            adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+            action: "rates.sell.delete",
+            category: "config",
+            details: { id },
+            outcome: "success",
+          });
+        } catch {
+          /* audit must not break request */
+        }
         return c.json({ success: true }, 200);
       }
       return c.json({ error: "Sell rate not found" }, 404);
@@ -268,6 +302,17 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
         isActive: isActive as boolean | undefined,
       };
       const result = store.createProviderCost(input);
+      try {
+        getAdminAuditLog().log({
+          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          action: "rates.provider.create",
+          category: "config",
+          details: { ...input },
+          outcome: "success",
+        });
+      } catch {
+        /* audit must not break request */
+      }
       return c.json(result, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -332,6 +377,17 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       if (isActive !== undefined) input.isActive = isActive as boolean;
 
       const result = store.updateProviderCost(id, input);
+      try {
+        getAdminAuditLog().log({
+          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          action: "rates.provider.update",
+          category: "config",
+          details: { id, ...input },
+          outcome: "success",
+        });
+      } catch {
+        /* audit must not break request */
+      }
       return c.json(result, 200);
     } catch (err) {
       if (err instanceof Error && err.message.includes("not found")) {
@@ -349,6 +405,17 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     try {
       const deleted = store.deleteProviderCost(id);
       if (deleted) {
+        try {
+          getAdminAuditLog().log({
+            adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+            action: "rates.provider.delete",
+            category: "config",
+            details: { id },
+            outcome: "success",
+          });
+        } catch {
+          /* audit must not break request */
+        }
         return c.json({ success: true }, 200);
       }
       return c.json({ error: "Provider cost not found" }, 404);
