@@ -6,7 +6,7 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
-import type { IAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
+import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { PayRamChargeStore } from "../../monetization/payram/charge-store.js";

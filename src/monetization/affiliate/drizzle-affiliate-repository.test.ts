@@ -1,7 +1,7 @@
 import BetterSqlite3 from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createDb, type DrizzleDb } from "../../db/index.js";
-import { DrizzleAffiliateRepository } from "./affiliate-repository.js";
+import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";
 import { initAffiliateSchema } from "./schema.js";
 
 describe("DrizzleAffiliateRepository", () => {

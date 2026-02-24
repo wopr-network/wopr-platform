@@ -97,11 +97,19 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
           createdAt: row.createdAt,
         };
       } catch (err) {
-        // If it's a UNIQUE constraint violation on code, retry
         const msg = err instanceof Error ? err.message : "";
+        // Code collision — retry with a new code
         if (msg.includes("UNIQUE") && msg.includes("affiliate_codes.code")) continue;
+        // Concurrent request won the race on tenant_id — return existing row
+        if (msg.includes("UNIQUE") && msg.includes("affiliate_codes.tenant_id")) break;
         throw err;
       }
+    }
+
+    // Loop exhausted or broke out of tenant_id race — read back whatever row now exists
+    const row = this.db.select().from(affiliateCodes).where(eq(affiliateCodes.tenantId, tenantId)).get();
+    if (row) {
+      return { tenantId: row.tenantId, code: row.code, createdAt: row.createdAt };
     }
 
     throw new Error(`Failed to generate unique affiliate code after ${MAX_CODE_ATTEMPTS} attempts`);
@@ -124,18 +132,14 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     }
 
     const id = crypto.randomUUID();
-    try {
-      const result = this.db
-        .insert(affiliateReferrals)
-        .values({ id, referrerTenantId, referredTenantId, code })
-        .onConflictDoNothing({ target: affiliateReferrals.referredTenantId })
-        .run();
+    const result = this.db
+      .insert(affiliateReferrals)
+      .values({ id, referrerTenantId, referredTenantId, code })
+      .onConflictDoNothing({ target: affiliateReferrals.referredTenantId })
+      .run();
 
-      // SQLite returns changes=0 if onConflictDoNothing triggered
-      return result.changes > 0;
-    } catch {
-      return false;
-    }
+    // SQLite returns changes=0 if onConflictDoNothing triggered
+    return result.changes > 0;
   }
 
   isReferred(referredTenantId: string): boolean {
@@ -200,6 +204,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
   markFirstPurchase(referredTenantId: string): void {
     this.db
       .update(affiliateReferrals)
+      // raw SQL: Drizzle cannot express datetime('now') for SQLite current timestamp
       .set({ firstPurchaseAt: sql`(datetime('now'))` })
       .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.firstPurchaseAt)))
       .run();
@@ -208,6 +213,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
   recordMatch(referredTenantId: string, amountCents: number): void {
     this.db
       .update(affiliateReferrals)
+      // raw SQL: Drizzle cannot express datetime('now') for SQLite current timestamp
       .set({
         matchAmountCents: amountCents,
         matchedAt: sql`(datetime('now'))`,

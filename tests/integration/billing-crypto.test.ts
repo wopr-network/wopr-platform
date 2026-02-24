@@ -17,7 +17,7 @@ const { initMeterSchema } = await import("../../src/monetization/metering/schema
 const { initStripeSchema } = await import("../../src/monetization/stripe/schema.js");
 const { initPayRamSchema } = await import("../../src/monetization/payram/schema.js");
 const { initAffiliateSchema } = await import("../../src/monetization/affiliate/schema.js");
-const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/affiliate-repository.js");
+const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
 
 function createMockStripe() {
   return {

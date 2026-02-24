@@ -7,7 +7,7 @@ import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
-import { DrizzleAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
+import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import { initAffiliateSchema } from "../../monetization/affiliate/schema.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";

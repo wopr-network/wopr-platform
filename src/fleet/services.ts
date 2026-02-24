@@ -30,8 +30,8 @@ import { DrizzleNotificationQueueStore } from "../email/notification-queue-store
 import type { ICircuitBreakerRepository } from "../gateway/circuit-breaker-repository.js";
 import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-breaker-repository.js";
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
-import type { IAffiliateRepository } from "../monetization/affiliate/affiliate-repository.js";
-import { DrizzleAffiliateRepository } from "../monetization/affiliate/affiliate-repository.js";
+import type { IAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
+import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
 import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
 import type { IAutoTopupEventLogRepository } from "../monetization/credits/auto-topup-event-log-repository.js";

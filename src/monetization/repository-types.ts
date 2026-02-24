@@ -5,7 +5,7 @@ export type {
   AffiliateReferral,
   AffiliateStats,
   IAffiliateRepository,
-} from "./affiliate/affiliate-repository.js";
+} from "./affiliate/drizzle-affiliate-repository.js";
 export type { IBudgetChecker } from "./budget/budget-checker.js";
 export type { IAutoTopupSettingsRepository } from "./credits/auto-topup-settings-repository.js";
 export type { IBotBilling } from "./credits/bot-billing.js";

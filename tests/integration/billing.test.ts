@@ -35,7 +35,7 @@ function createTestSigPenaltyRepo() {
   return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
 }
 const { initAffiliateSchema } = await import("../../src/monetization/affiliate/schema.js");
-const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/affiliate-repository.js");
+const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
 
 function createMockStripe(
   overrides: {
