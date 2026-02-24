@@ -164,6 +164,27 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
+  migration-check:
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check migrations are fresh
+        run: bash scripts/check-migrations-fresh.sh
+
   npm-audit:
     runs-on: [self-hosted, Linux, X64]
     permissions:
