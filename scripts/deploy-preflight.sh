@@ -73,12 +73,22 @@ for db_path in "${DATABASES[@]}"; do
     continue
   fi
 
+  # Check that sqlite3 is available in the container before attempting .backup
+  if ! docker exec "$CONTAINER_NAME" which sqlite3 >/dev/null 2>&1; then
+    log "  WARN: sqlite3 binary not found in container — cannot backup ${db_name}"
+    log "        Install sqlite3 in the production image (apk add sqlite) to enable backups"
+    continue
+  fi
+
   if docker exec "$CONTAINER_NAME" sqlite3 "$db_path" ".backup /tmp/${backup_file}" 2>/dev/null; then
     docker cp "${CONTAINER_NAME}:/tmp/${backup_file}" "${LOCAL_BACKUP_DIR}/pre-deploy/${backup_file}" 2>/dev/null
     docker exec "$CONTAINER_NAME" rm -f "/tmp/${backup_file}" 2>/dev/null || true
     # Upload to S3 under pre-deploy prefix
-    s3cmd put "${LOCAL_BACKUP_DIR}/pre-deploy/${backup_file}" "${S3_BUCKET}/pre-deploy/${DATE}/${backup_file}" 2>/dev/null || true
-    rm -f "${LOCAL_BACKUP_DIR}/pre-deploy/${backup_file}"
+    if ! s3cmd put "${LOCAL_BACKUP_DIR}/pre-deploy/${backup_file}" "${S3_BUCKET}/pre-deploy/${DATE}/${backup_file}" 2>&1; then
+      log "  WARN: S3 upload failed for ${db_name} — local backup retained at ${LOCAL_BACKUP_DIR}/pre-deploy/${backup_file}"
+    else
+      rm -f "${LOCAL_BACKUP_DIR}/pre-deploy/${backup_file}"
+    fi
     BACKUP_OK=$((BACKUP_OK + 1))
     log "  OK: ${db_name}"
   else

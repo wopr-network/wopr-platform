@@ -1,9 +1,26 @@
 #!/bin/bash
 # Run Drizzle database migrations inside the running container.
 #
-# This script copies the migration files into the container and runs
-# drizzle-kit migrate. It should be called AFTER pulling the new image
-# but BEFORE restarting the service.
+# NOTE: This script is NOT called by the CI/CD workflows. Migrations for
+# SQLite/Drizzle are applied automatically on app startup via the migrate()
+# call in the application code. You do NOT need to run this script as part
+# of a normal deployment.
+#
+# When to run this script manually:
+#   1. EMERGENCY SCHEMA REPAIR: If the app fails to start due to a migration
+#      error, run this script to diagnose which migrations are pending/applied.
+#   2. OFFLINE MIGRATION: If you need to apply migrations while the container
+#      is stopped (e.g., for a long-running schema change).
+#   3. MIGRATION AUDIT: To verify which SQL files are bundled in the image
+#      and confirm the migration journal is up to date.
+#
+# Typical manual deployment sequence (only if migrate() is NOT in app startup):
+#   1. docker pull <new-image>
+#   2. ./scripts/deploy-preflight.sh   # backup DBs
+#   3. ./scripts/deploy-migrate.sh     # apply pending migrations (this script)
+#   4. docker compose up -d            # restart with new image
+#
+# On failure: restore from backup using scripts/restore-platform-db.sh
 #
 # Usage:
 #   ./scripts/deploy-migrate.sh
