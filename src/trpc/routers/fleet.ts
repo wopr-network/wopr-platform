@@ -20,7 +20,7 @@ import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import { createBotSchema } from "../../fleet/types.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
-import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import type { ICreditLedger as CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { createVpsCheckoutSession } from "../../monetization/stripe/checkout.js";
 import { createStripeClient, loadStripeConfig } from "../../monetization/stripe/client.js";
@@ -557,7 +557,7 @@ export const fleetRouter = router({
     if (!profile || profile.tenantId !== ctx.tenantId) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
     }
-    const billing = getBotBilling();
+    const billing = getBotBilling?.() ?? null;
     const tierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
     const tierConfig = STORAGE_TIERS[tierKey] ?? STORAGE_TIERS.standard;
     return {
@@ -584,7 +584,7 @@ export const fleetRouter = router({
       }
 
       const newTierConfig = STORAGE_TIERS[input.tier];
-      const billing = getBotBilling();
+      const billing = getBotBilling?.() ?? null;
       const currentTierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
       const currentTierConfig = STORAGE_TIERS[currentTierKey] ?? STORAGE_TIERS.standard;
 
@@ -642,7 +642,7 @@ export const fleetRouter = router({
       throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
     }
 
-    const billing = getBotBilling();
+    const billing = getBotBilling?.() ?? null;
     const tierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
     const tierConfig = STORAGE_TIERS[tierKey] ?? STORAGE_TIERS.standard;
 

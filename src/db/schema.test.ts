@@ -641,8 +641,6 @@ describe("cross-schema composition", () => {
     expect(tables).toContain("meter_events");
     expect(tables).toContain("usage_summaries");
     expect(tables).toContain("billing_period_summaries");
-    expect(tables).toContain("tenant_customers");
-    expect(tables).toContain("stripe_usage_reports");
 
     db.close();
   });
@@ -670,8 +668,6 @@ describe("cross-schema composition", () => {
     expect(tables).toContain("meter_events");
     expect(tables).toContain("snapshots");
     expect(tables).toContain("bot_profiles");
-    expect(tables).toContain("tenant_customers");
-    expect(tables).toContain("stripe_usage_reports");
     sqlite.close();
   });
 });

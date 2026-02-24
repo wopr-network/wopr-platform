@@ -15,7 +15,14 @@ export type CreditType =
   | "affiliate_match";
 
 /** Transaction types that remove credits */
-export type DebitType = "bot_runtime" | "adapter_usage" | "addon" | "refund" | "correction" | "resource_upgrade" | "storage_upgrade";
+export type DebitType =
+  | "bot_runtime"
+  | "adapter_usage"
+  | "addon"
+  | "refund"
+  | "correction"
+  | "resource_upgrade"
+  | "storage_upgrade";
 
 export type TransactionType = CreditType | DebitType;
 
