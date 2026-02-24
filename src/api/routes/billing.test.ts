@@ -1,6 +1,5 @@
 import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
@@ -9,12 +8,14 @@ import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle
 import { initAffiliateSchema } from "../../monetization/affiliate/schema.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
-import { DrizzleWebhookSeenRepository } from "../../monetization/drizzle-webhook-seen-repository.js";
+import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
+import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
+import { PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
+import { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
 import { initPayRamSchema } from "../../monetization/payram/schema.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
-import type { IWebhookSeenRepository } from "../../monetization/webhook-seen-repository.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
@@ -48,18 +49,6 @@ function createTestSigPenaltyRepo(): ISigPenaltyRepository {
   return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
 }
 
-function createTestReplayGuardRepo(): IWebhookSeenRepository {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS webhook_seen_events (
-      event_id TEXT PRIMARY KEY,
-      source TEXT NOT NULL,
-      seen_at INTEGER NOT NULL
-    );
-  `);
-  return new DrizzleWebhookSeenRepository(drizzle(sqlite, { schema }));
-}
-
 function createBillingTestDb() {
   const sqlite = new BetterSqlite3(":memory:");
   initMeterSchema(sqlite);
@@ -72,63 +61,48 @@ function createBillingTestDb() {
   return { sqlite, db };
 }
 
-function createMockStripe(
+function createMockProcessor(
   overrides: {
-    checkoutCreate?: ReturnType<typeof vi.fn>;
-    portalCreate?: ReturnType<typeof vi.fn>;
-    constructEvent?: ReturnType<typeof vi.fn>;
-    setupIntentCreate?: ReturnType<typeof vi.fn>;
-    paymentMethodRetrieve?: ReturnType<typeof vi.fn>;
-    paymentMethodDetach?: ReturnType<typeof vi.fn>;
+    createCheckoutSession?: ReturnType<typeof vi.fn>;
+    createPortalSession?: ReturnType<typeof vi.fn>;
+    handleWebhook?: ReturnType<typeof vi.fn>;
+    setupPaymentMethod?: ReturnType<typeof vi.fn>;
+    listPaymentMethods?: ReturnType<typeof vi.fn>;
+    detachPaymentMethod?: ReturnType<typeof vi.fn>;
+    supportsPortal?: boolean;
+    charge?: ReturnType<typeof vi.fn>;
   } = {},
-) {
+): IPaymentProcessor {
   return {
-    checkout: {
-      sessions: {
-        create:
-          overrides.checkoutCreate ??
-          vi.fn().mockResolvedValue({
-            id: "cs_test_123",
-            url: "https://checkout.stripe.com/cs_test_123",
-          }),
-      },
-    },
-    billingPortal: {
-      sessions: {
-        create:
-          overrides.portalCreate ??
-          vi.fn().mockResolvedValue({
-            url: "https://billing.stripe.com/session_xyz",
-          }),
-      },
-    },
-    webhooks: {
-      constructEvent: overrides.constructEvent ?? vi.fn(),
-    },
-    setupIntents: {
-      create:
-        overrides.setupIntentCreate ??
-        vi.fn().mockResolvedValue({
-          id: "seti_test_123",
-          client_secret: "seti_test_123_secret_abc",
-        }),
-    },
-    paymentMethods: {
-      retrieve:
-        overrides.paymentMethodRetrieve ??
-        vi.fn().mockResolvedValue({
-          id: "pm_test_123",
-          customer: "cus_abc123",
-        }),
-      detach: overrides.paymentMethodDetach ?? vi.fn().mockResolvedValue({ id: "pm_test_123" }),
-    },
-  } as unknown as Stripe;
+    name: "mock",
+    supportsPortal: () => overrides.supportsPortal ?? true,
+    createCheckoutSession: (overrides.createCheckoutSession ??
+      vi.fn().mockResolvedValue({
+        id: "cs_test_123",
+        url: "https://checkout.stripe.com/cs_test_123",
+      })) as IPaymentProcessor["createCheckoutSession"],
+    createPortalSession: (overrides.createPortalSession ??
+      vi.fn().mockResolvedValue({
+        url: "https://billing.stripe.com/portal_123",
+      })) as IPaymentProcessor["createPortalSession"],
+    handleWebhook: (overrides.handleWebhook ??
+      vi.fn().mockResolvedValue({ handled: false, eventType: "unknown" })) as IPaymentProcessor["handleWebhook"],
+    setupPaymentMethod: (overrides.setupPaymentMethod ??
+      vi
+        .fn()
+        .mockResolvedValue({ clientSecret: "seti_test_123_secret_abc" })) as IPaymentProcessor["setupPaymentMethod"],
+    listPaymentMethods: (overrides.listPaymentMethods ??
+      vi.fn().mockResolvedValue([])) as IPaymentProcessor["listPaymentMethods"],
+    detachPaymentMethod: (overrides.detachPaymentMethod ??
+      vi.fn().mockResolvedValue(undefined)) as IPaymentProcessor["detachPaymentMethod"],
+    charge: (overrides.charge ?? vi.fn().mockResolvedValue({ success: true })) as IPaymentProcessor["charge"],
+  };
 }
 
 describe("billing routes", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
-  let stripe: Stripe;
+  let processor: IPaymentProcessor;
   let tenantStore: TenantCustomerStore;
   let sigPenaltyRepo: ISigPenaltyRepository;
 
@@ -136,13 +110,13 @@ describe("billing routes", () => {
     const testDb = createBillingTestDb();
     sqlite = testDb.sqlite;
     db = testDb.db;
-    stripe = createMockStripe();
+    processor = createMockProcessor();
     tenantStore = new TenantCustomerStore(db);
     sigPenaltyRepo = createTestSigPenaltyRepo();
     setBillingDeps({
-      stripe,
-      db,
-      webhookSecret: "whsec_test_secret",
+      processor,
+      creditLedger: new CreditLedger(db),
+      meterAggregator: new MeterAggregator(db),
       sigPenaltyRepo,
       affiliateRepo: new DrizzleAffiliateRepository(db),
     });
@@ -303,13 +277,12 @@ describe("billing routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 500 when Stripe API fails", async () => {
-      const checkoutCreate = vi.fn().mockRejectedValue(new Error("Stripe is down"));
-      const mockStripe = createMockStripe({ checkoutCreate });
+    it("returns 500 when processor API fails", async () => {
+      const createCheckoutSession = vi.fn().mockRejectedValue(new Error("Stripe is down"));
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ createCheckoutSession }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -337,12 +310,11 @@ describe("billing routes", () => {
     it("creates portal session and returns URL", async () => {
       tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
-      const portalCreate = vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_123" });
-      const mockStripe = createMockStripe({ portalCreate });
+      const createPortalSession = vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_123" });
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ createPortalSession }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -385,7 +357,14 @@ describe("billing routes", () => {
       expect(body.error).toBe("Invalid input");
     });
 
-    it("returns 500 when tenant has no Stripe customer", async () => {
+    it("returns 501 when processor does not support portal", async () => {
+      setBillingDeps({
+        processor: createMockProcessor({ supportsPortal: false }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+      });
       const res = await billingRoutes.request("/portal", {
         method: "POST",
         body: JSON.stringify({
@@ -395,20 +374,19 @@ describe("billing routes", () => {
         headers: { ...authHeader, "Content-Type": "application/json" },
       });
 
-      expect(res.status).toBe(500);
+      expect(res.status).toBe(501);
       const body = await res.json();
-      expect(body.error).toContain("No Stripe customer found");
+      expect(body.error).toContain("not supported");
     });
 
-    it("returns 500 when Stripe API fails", async () => {
+    it("returns 500 when processor API fails", async () => {
       tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
-      const portalCreate = vi.fn().mockRejectedValue(new Error("Portal unavailable"));
-      const mockStripe = createMockStripe({ portalCreate });
+      const createPortalSession = vi.fn().mockRejectedValue(new Error("Portal unavailable"));
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ createPortalSession }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -443,14 +421,11 @@ describe("billing routes", () => {
     });
 
     it("returns 400 when signature verification fails", async () => {
-      const constructEvent = vi.fn().mockImplementation(() => {
-        throw new Error("Webhook signature verification failed");
-      });
-      const mockStripe = createMockStripe({ constructEvent });
+      const handleWebhook = vi.fn().mockRejectedValue(new Error("Webhook signature verification failed"));
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -466,27 +441,17 @@ describe("billing routes", () => {
       expect(body.error).toBe("Invalid webhook signature");
     });
 
-    it("processes checkout.session.completed and credits the ledger", async () => {
-      const checkoutEvent: Stripe.Event = {
-        id: "evt_checkout_1",
-        type: "checkout.session.completed",
-        data: {
-          object: {
-            id: "cs_test_webhook",
-            client_reference_id: "t-new",
-            customer: "cus_new",
-            amount_total: 2500,
-            metadata: {},
-          },
-        },
-      } as unknown as Stripe.Event;
-
-      const constructEvent = vi.fn().mockReturnValue(checkoutEvent);
-      const mockStripe = createMockStripe({ constructEvent });
+    it("processes checkout.session.completed and returns handled=true", async () => {
+      const handleWebhook = vi.fn().mockResolvedValue({
+        handled: true,
+        eventType: "checkout.session.completed",
+        tenant: "t-new",
+        creditedCents: 2500,
+      });
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -502,30 +467,14 @@ describe("billing routes", () => {
       expect(body.handled).toBe(true);
       expect(body.tenant).toBe("t-new");
       expect(body.creditedCents).toBe(2500);
-
-      // Verify the tenant was persisted and credits granted
-      const store = new TenantCustomerStore(db);
-      const mapping = store.getByTenant("t-new");
-      expect(mapping?.processor_customer_id).toBe("cus_new");
-
-      const ledger = new CreditLedger(db);
-      const balance = ledger.balance("t-new");
-      expect(balance).toBe(2500);
     });
 
     it("returns handled=false for subscription events (no longer handled)", async () => {
-      const subEvent: Stripe.Event = {
-        id: "evt_sub_update_1",
-        type: "customer.subscription.updated",
-        data: { object: { id: "sub_123", customer: "cus_123" } },
-      } as unknown as Stripe.Event;
-
-      const constructEvent = vi.fn().mockReturnValue(subEvent);
-      const mockStripe = createMockStripe({ constructEvent });
+      const handleWebhook = vi.fn().mockResolvedValue({ handled: false, eventType: "customer.subscription.updated" });
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -543,28 +492,27 @@ describe("billing routes", () => {
     });
 
     it("rejects replayed webhook events with duplicate flag", async () => {
-      const checkoutEvent: Stripe.Event = {
-        id: "evt_replay_test",
-        type: "checkout.session.completed",
-        data: {
-          object: {
-            id: "cs_test_replay_route",
-            client_reference_id: "t-replay",
-            customer: "cus_replay",
-            amount_total: 500,
-            metadata: {},
-          },
-        },
-      } as unknown as Stripe.Event;
-
-      const constructEvent = vi.fn().mockReturnValue(checkoutEvent);
-      const mockStripe = createMockStripe({ constructEvent });
+      // First call returns credited result; second call returns duplicate=true
+      const handleWebhook = vi
+        .fn()
+        .mockResolvedValueOnce({
+          handled: true,
+          eventType: "checkout.session.completed",
+          tenant: "t-replay",
+          creditedCents: 500,
+        })
+        .mockResolvedValueOnce({
+          handled: true,
+          eventType: "checkout.session.completed",
+          tenant: "t-replay",
+          creditedCents: 500,
+          duplicate: true,
+        });
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
-        replayGuard: createTestReplayGuardRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -592,17 +540,12 @@ describe("billing routes", () => {
       expect(body2.duplicate).toBe(true);
     });
 
-    it("passes timestamp tolerance to constructEvent", async () => {
-      const constructEvent = vi.fn().mockReturnValue({
-        id: "evt_tolerance_test",
-        type: "payment_intent.succeeded",
-        data: { object: {} },
-      });
-      const mockStripe = createMockStripe({ constructEvent });
+    it("routes webhook body and signature to processor.handleWebhook", async () => {
+      const handleWebhook = vi.fn().mockResolvedValue({ handled: false, eventType: "payment_intent.succeeded" });
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -613,23 +556,16 @@ describe("billing routes", () => {
         headers: { "stripe-signature": "t=123,v1=valid" },
       });
 
-      // Verify constructEvent was called with 4 args (body, sig, secret, tolerance)
-      expect(constructEvent).toHaveBeenCalledWith("raw-body", "t=123,v1=valid", "whsec_test", 300);
+      // Verify processor.handleWebhook was called with body buffer and signature
+      expect(handleWebhook).toHaveBeenCalledWith(Buffer.from("raw-body"), "t=123,v1=valid");
     });
 
     it("returns handled=false for unrecognized event types", async () => {
-      const unknownEvent: Stripe.Event = {
-        id: "evt_unknown_type_1",
-        type: "payment_intent.succeeded",
-        data: { object: {} },
-      } as unknown as Stripe.Event;
-
-      const constructEvent = vi.fn().mockReturnValue(unknownEvent);
-      const mockStripe = createMockStripe({ constructEvent });
+      const handleWebhook = vi.fn().mockResolvedValue({ handled: false, eventType: "payment_intent.succeeded" });
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -647,15 +583,13 @@ describe("billing routes", () => {
     });
 
     it("returns 429 when IP has too many signature failures (exponential backoff)", async () => {
-      const constructEvent = vi.fn().mockImplementation(() => {
-        throw new Error("Webhook signature verification failed");
-      });
-      const mockStripe = createMockStripe({ constructEvent });
+      const handleWebhook = vi.fn().mockRejectedValue(new Error("Webhook signature verification failed"));
+      const sharedSigPenaltyRepo = createTestSigPenaltyRepo();
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
+        sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -678,15 +612,13 @@ describe("billing routes", () => {
     });
 
     it("does not penalize different IPs for another IP's failures", async () => {
-      const constructEvent = vi.fn().mockImplementation(() => {
-        throw new Error("sig fail");
-      });
-      const mockStripe = createMockStripe({ constructEvent });
+      const handleWebhook = vi.fn().mockRejectedValue(new Error("sig fail"));
+      const sharedSigPenaltyRepo = createTestSigPenaltyRepo();
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        processor: createMockProcessor({ handleWebhook }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
+        sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -982,11 +914,12 @@ describe("billing routes", () => {
       vi.stubEnv("PAYRAM_API_KEY", "test-key");
       vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
       setBillingDeps({
-        stripe,
-        db,
-        webhookSecret: "whsec_test_secret",
+        processor: createMockProcessor(),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        payramChargeStore: new DrizzlePayRamChargeStore(db),
       });
 
       const res = await billingRoutes.request("/crypto/checkout", {
@@ -997,9 +930,9 @@ describe("billing routes", () => {
 
       vi.unstubAllEnvs();
       setBillingDeps({
-        stripe,
-        db,
-        webhookSecret: "whsec_test_secret",
+        processor: createMockProcessor(),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -1044,17 +977,11 @@ describe("billing routes", () => {
 
   describe("POST /setup-intent", () => {
     it("creates setup intent and returns client secret", async () => {
-      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
-
-      const setupIntentCreate = vi.fn().mockResolvedValue({
-        id: "seti_test_123",
-        client_secret: "seti_test_123_secret_abc",
-      });
-      const mockStripe = createMockStripe({ setupIntentCreate });
+      const setupPaymentMethod = vi.fn().mockResolvedValue({ clientSecret: "seti_test_123_secret_abc" });
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ setupPaymentMethod }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -1105,8 +1032,16 @@ describe("billing routes", () => {
       expect(body.error).toBe("Missing tenant");
     });
 
-    it("returns 500 when tenant has no Stripe customer", async () => {
-      // t-unknown has no Stripe customer in the store
+    it("returns 500 when processor throws (e.g. no customer found)", async () => {
+      const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("No Stripe customer found for tenant: t-unknown"));
+      setBillingDeps({
+        processor: createMockProcessor({ setupPaymentMethod }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
+        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+      });
+
       const res = await billingRoutes.request("/setup-intent", {
         method: "POST",
         headers: { ...tenantUnknownAuthHeader, "Content-Type": "application/json" },
@@ -1117,15 +1052,12 @@ describe("billing routes", () => {
       expect(body.error).toContain("No Stripe customer found");
     });
 
-    it("returns 500 when Stripe API fails", async () => {
-      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
-
-      const setupIntentCreate = vi.fn().mockRejectedValue(new Error("Stripe is down"));
-      const mockStripe = createMockStripe({ setupIntentCreate });
+    it("returns 500 when processor API call fails", async () => {
+      const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("Stripe is down"));
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ setupPaymentMethod }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -1146,18 +1078,11 @@ describe("billing routes", () => {
 
   describe("DELETE /payment-methods/:id", () => {
     it("detaches payment method and returns removed=true", async () => {
-      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
-
-      const paymentMethodRetrieve = vi.fn().mockResolvedValue({
-        id: "pm_test_123",
-        customer: "cus_abc123",
-      });
-      const paymentMethodDetach = vi.fn().mockResolvedValue({ id: "pm_test_123" });
-      const mockStripe = createMockStripe({ paymentMethodRetrieve, paymentMethodDetach });
+      const detachPaymentMethod = vi.fn().mockResolvedValue(undefined);
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ detachPaymentMethod }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -1192,17 +1117,11 @@ describe("billing routes", () => {
     });
 
     it("returns 403 when payment method belongs to another tenant", async () => {
-      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
-
-      const paymentMethodRetrieve = vi.fn().mockResolvedValue({
-        id: "pm_test_123",
-        customer: "cus_other_customer",
-      });
-      const mockStripe = createMockStripe({ paymentMethodRetrieve });
+      const detachPaymentMethod = vi.fn().mockRejectedValue(new PaymentMethodOwnershipError());
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ detachPaymentMethod }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
@@ -1217,15 +1136,12 @@ describe("billing routes", () => {
       expect(body.error).toContain("does not belong");
     });
 
-    it("returns 500 when Stripe API fails", async () => {
-      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
-
-      const paymentMethodRetrieve = vi.fn().mockRejectedValue(new Error("Stripe error"));
-      const mockStripe = createMockStripe({ paymentMethodRetrieve });
+    it("returns 500 when processor API call fails", async () => {
+      const detachPaymentMethod = vi.fn().mockRejectedValue(new Error("Stripe error"));
       setBillingDeps({
-        stripe: mockStripe,
-        db,
-        webhookSecret: "whsec_test",
+        processor: createMockProcessor({ detachPaymentMethod }),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });

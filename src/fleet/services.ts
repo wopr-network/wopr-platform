@@ -47,14 +47,13 @@ import type { IDividendRepository } from "../monetization/credits/dividend-repos
 import { DrizzleDividendRepository } from "../monetization/credits/dividend-repository.js";
 import type { IPhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
 import { DrizzlePhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
+import { DrizzleTenantCustomerStore, type ITenantCustomerStore } from "../monetization/index.js";
 import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
 import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js";
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
-import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
-import { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { SystemResourceMonitor } from "../observability/system-resources.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";

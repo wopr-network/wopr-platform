@@ -46,6 +46,7 @@ describe("IPaymentProcessor types", () => {
     expectTypeOf<IPaymentProcessor>().toHaveProperty("supportsPortal");
     expectTypeOf<IPaymentProcessor>().toHaveProperty("setupPaymentMethod");
     expectTypeOf<IPaymentProcessor>().toHaveProperty("listPaymentMethods");
+    expectTypeOf<IPaymentProcessor>().toHaveProperty("detachPaymentMethod");
     expectTypeOf<IPaymentProcessor>().toHaveProperty("charge");
   });
 
@@ -58,6 +59,7 @@ describe("IPaymentProcessor types", () => {
       supportsPortal: () => false,
       setupPaymentMethod: async () => ({ clientSecret: "cs" }),
       listPaymentMethods: async () => [],
+      detachPaymentMethod: async () => undefined,
       charge: async () => ({ success: true }),
     };
     expectTypeOf(processor).toMatchTypeOf<IPaymentProcessor>();

@@ -1,5 +1,14 @@
 import type { Credit } from "./credit.js";
 
+/** Thrown when a tenant tries to detach a payment method they don't own. */
+export class PaymentMethodOwnershipError extends Error {
+  readonly code = "PAYMENT_METHOD_NOT_OWNED" as const;
+  constructor() {
+    super("Payment method does not belong to this tenant");
+    this.name = "PaymentMethodOwnershipError";
+  }
+}
+
 /** A saved payment method on file for a tenant (processor-agnostic). */
 export interface SavedPaymentMethod {
   /** Processor-specific payment method ID (e.g. Stripe pm_xxx, PayRam wallet address). */
@@ -20,6 +29,8 @@ export interface CheckoutOpts {
   successUrl: string;
   /** URL to redirect to if the user cancels checkout. */
   cancelUrl: string;
+  /** Processor-specific price ID (e.g. Stripe price_xxx). Processors that don't use price IDs may ignore this. */
+  priceId?: string;
 }
 
 /** Returned after creating a checkout session. */
@@ -110,4 +121,7 @@ export interface IPaymentProcessor {
 
   /** Charge a saved payment method off-session. */
   charge(opts: ChargeOpts): Promise<ChargeResult>;
+
+  /** Detach a payment method from the tenant's account. */
+  detachPaymentMethod(tenant: string, paymentMethodId: string): Promise<void>;
 }

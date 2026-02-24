@@ -4,16 +4,17 @@ import { chargeAutoTopup } from "../credits/auto-topup-charge.js";
 import type { IAutoTopupEventLogRepository } from "../credits/auto-topup-event-log-repository.js";
 import type { BotBilling } from "../credits/bot-billing.js";
 import type { ICreditLedger } from "../credits/credit-ledger.js";
-import type {
-  ChargeOpts,
-  ChargeResult,
-  CheckoutOpts,
-  CheckoutSession,
-  IPaymentProcessor,
-  PortalOpts,
-  SavedPaymentMethod,
-  SetupResult,
-  WebhookResult,
+import {
+  type ChargeOpts,
+  type ChargeResult,
+  type CheckoutOpts,
+  type CheckoutSession,
+  type IPaymentProcessor,
+  PaymentMethodOwnershipError,
+  type PortalOpts,
+  type SavedPaymentMethod,
+  type SetupResult,
+  type WebhookResult,
 } from "../payment-processor.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
 import { createCreditCheckoutSession } from "./checkout.js";
@@ -58,21 +59,24 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async createCheckoutSession(opts: CheckoutOpts): Promise<CheckoutSession> {
-    // Convert Credit value object to cents for price map lookup.
-    const amountCents = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
-    let priceId: string | undefined;
-
-    for (const [id, point] of this.priceMap.entries()) {
-      if (point.creditCents === amountCents || point.amountCents === amountCents) {
-        priceId = id;
-        break;
-      }
-    }
+    let priceId: string | undefined = opts.priceId;
 
     if (!priceId) {
-      throw new Error(
-        `No Stripe price tier matches amount ${amountCents} cents. Configure STRIPE_CREDIT_PRICE_* env vars.`,
-      );
+      // Fall back to looking up by amount when no explicit priceId provided.
+      const amountCents = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
+
+      for (const [id, point] of this.priceMap.entries()) {
+        if (point.creditCents === amountCents || point.amountCents === amountCents) {
+          priceId = id;
+          break;
+        }
+      }
+
+      if (!priceId) {
+        throw new Error(
+          `No Stripe price tier matches amount ${amountCents} cents. Configure STRIPE_CREDIT_PRICE_* env vars.`,
+        );
+      }
     }
 
     const session = await createCreditCheckoutSession(
@@ -156,6 +160,20 @@ export class StripePaymentProcessor implements IPaymentProcessor {
       label: formatPaymentMethodLabel(pm),
       isDefault: index === 0,
     }));
+  }
+
+  async detachPaymentMethod(tenant: string, paymentMethodId: string): Promise<void> {
+    const mapping = this.tenantStore.getByTenant(tenant);
+    if (!mapping) {
+      throw new Error(`No Stripe customer found for tenant: ${tenant}`);
+    }
+
+    const pm = await this.stripe.paymentMethods.retrieve(paymentMethodId);
+    if (!pm.customer || pm.customer !== mapping.processor_customer_id) {
+      throw new PaymentMethodOwnershipError();
+    }
+
+    await this.stripe.paymentMethods.detach(paymentMethodId);
   }
 
   async charge(opts: ChargeOpts): Promise<ChargeResult> {

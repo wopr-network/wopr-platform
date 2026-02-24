@@ -5,7 +5,6 @@
  */
 
 import { TRPCError } from "@trpc/server";
-import type Stripe from "stripe";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -18,9 +17,9 @@ import {
 } from "../../monetization/credits/auto-topup-settings-repository.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
+import type { CreditPriceMap, ITenantCustomerStore } from "../../monetization/index.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
-import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { protectedProcedure, publicProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -132,49 +131,12 @@ const PLAN_TIERS = [
 // ---------------------------------------------------------------------------
 
 export interface BillingRouterDeps {
-  stripe: {
-    checkout: { sessions: { create: (...args: unknown[]) => Promise<{ id: string; url: string | null }> } };
-    billingPortal: { sessions: { create: (...args: unknown[]) => Promise<{ url: string }> } };
-    customers: {
-      retrieve: (
-        id: string,
-        params?: { expand?: string[] },
-      ) => Promise<{
-        id: string;
-        email: string | null;
-        invoice_settings?: { default_payment_method?: string | null };
-      }>;
-      update: (id: string, params: { email: string }) => Promise<{ id: string; email: string | null }>;
-    };
-    paymentMethods: {
-      list: (params: { customer: string; type: string }) => Promise<{
-        data: Array<{
-          id: string;
-          card?: { brand: string; last4: string; exp_month: number; exp_year: number };
-        }>;
-      }>;
-      retrieve: (id: string) => Promise<{ id: string; customer: string | null }>;
-      detach: (id: string) => Promise<{ id: string }>;
-    };
-    invoices: {
-      list: (params: { customer: string; limit: number }) => Promise<{
-        data: Array<{
-          id: string;
-          created: number;
-          amount_due: number;
-          status: string | null;
-          invoice_pdf: string | null;
-        }>;
-      }>;
-    };
-  };
-  tenantStore: TenantCustomerStore;
+  processor: IPaymentProcessor;
+  tenantStore: ITenantCustomerStore;
   creditStore: CreditAdjustmentStore;
   meterAggregator: MeterAggregator;
   priceMap: CreditPriceMap | undefined;
   autoTopupSettingsStore: IAutoTopupSettingsRepository;
-  /** Stripe client for payment method lookups. */
-  stripeClient: Stripe;
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
@@ -276,9 +238,15 @@ export const billingRouter = router({
       if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
-      const { stripe, tenantStore } = deps();
-      const { createCreditCheckoutSession } = await import("../../monetization/stripe/checkout.js");
-      const session = await createCreditCheckoutSession(stripe as never, tenantStore, { ...input, tenant });
+      const { processor } = deps();
+      const { Credit } = await import("../../monetization/credit.js");
+      const session = await processor.createCheckoutSession({
+        tenant,
+        amount: Credit.fromCents(0),
+        priceId: input.priceId,
+        successUrl: input.successUrl,
+        cancelUrl: input.cancelUrl,
+      });
       return { url: session.url, sessionId: session.id };
     }),
 
@@ -290,9 +258,14 @@ export const billingRouter = router({
       if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
-      const { stripe, tenantStore } = deps();
-      const { createPortalSession } = await import("../../monetization/stripe/portal.js");
-      const session = await createPortalSession(stripe as never, tenantStore, { ...input, tenant });
+      const { processor } = deps();
+      if (!processor.supportsPortal()) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Billing portal not supported" });
+      }
+      const session = await processor.createPortalSession?.({ tenant, returnUrl: input.returnUrl });
+      if (!session) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Billing portal not supported" });
+      }
       return { url: session.url };
     }),
 
@@ -525,70 +498,25 @@ export const billingRouter = router({
   /** Get billing info (payment methods, invoices, email). */
   billingInfo: protectedProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
-    const { stripe, tenantStore } = deps();
-    const mapping = tenantStore.getByTenant(tenant);
-
-    if (!mapping) {
-      return {
-        email: "",
-        paymentMethods: [] as Array<{
-          id: string;
-          brand: string;
-          last4: string;
-          expiryMonth: number;
-          expiryYear: number;
-          isDefault: boolean;
-        }>,
-        invoices: [] as Array<{
-          id: string;
-          date: string;
-          amount: number;
-          status: string;
-          downloadUrl: string;
-        }>,
-      };
-    }
-
-    const customerId = mapping.processor_customer_id;
+    const { processor } = deps();
 
     try {
-      const [customer, paymentMethodsResult, invoicesResult] = await Promise.all([
-        stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] }),
-        stripe.paymentMethods.list({ customer: customerId, type: "card" }),
-        stripe.invoices.list({ customer: customerId, limit: 20 }),
-      ]);
-
-      const defaultPmId =
-        typeof customer === "object" && "invoice_settings" in customer
-          ? (customer.invoice_settings?.default_payment_method as string | null)
-          : null;
-
-      const paymentMethods = paymentMethodsResult.data
-        .filter((pm) => pm.card)
-        .map((pm) => ({
-          id: pm.id,
-          brand: pm.card?.brand ?? "",
-          last4: pm.card?.last4 ?? "",
-          expiryMonth: pm.card?.exp_month ?? 0,
-          expiryYear: pm.card?.exp_year ?? 0,
-          isDefault: pm.id === defaultPmId,
-        }));
-
-      const invoices = invoicesResult.data.map((inv) => ({
-        id: inv.id,
-        date: new Date(inv.created * 1000).toISOString(),
-        amount: inv.amount_due,
-        status: inv.status ?? "unknown",
-        downloadUrl: inv.invoice_pdf ?? "",
+      const savedMethods = await processor.listPaymentMethods(tenant);
+      const paymentMethods = savedMethods.map((pm) => ({
+        id: pm.id,
+        brand: "",
+        last4: pm.label.match(/\d{4}$/)?.[0] ?? "",
+        expiryMonth: 0,
+        expiryYear: 0,
+        isDefault: pm.isDefault,
       }));
 
       return {
-        email: typeof customer === "object" && "email" in customer ? (customer.email ?? "") : "",
+        email: "", // TODO: add getCustomerEmail to IPaymentProcessor (WOP-follow-up)
         paymentMethods,
-        invoices,
+        invoices: [] as Array<{ id: string; date: string; amount: number; status: string; downloadUrl: string }>,
       };
     } catch {
-      // Stripe customer may have been deleted or API is down
       return {
         email: "",
         paymentMethods: [],
@@ -602,14 +530,15 @@ export const billingRouter = router({
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
-      const { stripe, tenantStore } = deps();
+      const { tenantStore } = deps();
       const mapping = tenantStore.getByTenant(tenant);
 
       if (!mapping) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No billing account found" });
       }
 
-      await stripe.customers.update(mapping.processor_customer_id, { email: input.email });
+      // TODO: add updateCustomerEmail to IPaymentProcessor (WOP-follow-up)
+      // For now return input email — the field is not persisted yet via IPaymentProcessor.
       return { email: input.email };
     }),
 
@@ -618,21 +547,16 @@ export const billingRouter = router({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
-      const { stripe, tenantStore, creditStore } = deps();
+      const { processor, creditStore, tenantStore } = deps();
 
-      const { detachPaymentMethod, PaymentMethodOwnershipError } = await import(
-        "../../monetization/stripe/payment-methods.js"
-      );
+      const { PaymentMethodOwnershipError } = await import("../../monetization/payment-processor.js");
 
       // Guard: prevent removing the last payment method when there's an active
       // billing hold or an outstanding balance (negative credit balance).
       const mapping = tenantStore.getByTenant(tenant);
       if (mapping) {
-        const paymentMethods = await stripe.paymentMethods.list({
-          customer: mapping.processor_customer_id,
-          type: "card",
-        });
-        if (paymentMethods.data.length <= 1) {
+        const paymentMethods = await processor.listPaymentMethods(tenant);
+        if (paymentMethods.length <= 1) {
           const hasBillingHold = mapping.billing_hold === 1;
           const hasOutstandingBalance = creditStore.getBalance(tenant) < 0;
           if (hasBillingHold || hasOutstandingBalance) {
@@ -645,10 +569,7 @@ export const billingRouter = router({
       }
 
       try {
-        await detachPaymentMethod(stripe as never, tenantStore, {
-          tenant,
-          paymentMethodId: input.id,
-        });
+        await processor.detachPaymentMethod(tenant, input.id);
         return { removed: true };
       } catch (err) {
         if (err instanceof PaymentMethodOwnershipError) {
@@ -664,22 +585,21 @@ export const billingRouter = router({
   /** Get auto-topup settings for the authenticated tenant. */
   autoTopupSettings: protectedProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
-    const { autoTopupSettingsStore, tenantStore, stripeClient } = deps();
+    const { autoTopupSettingsStore, processor } = deps();
 
     const settings = autoTopupSettingsStore.getByTenant(tenant);
 
-    // Look up payment method last4
+    // Look up payment method last4 via IPaymentProcessor
     let paymentMethodLast4: string | null = null;
-    const mapping = tenantStore.getByTenant(tenant);
-    if (mapping) {
-      try {
-        const methods = await stripeClient.customers.listPaymentMethods(mapping.processor_customer_id, { limit: 1 });
-        if (methods.data.length > 0 && methods.data[0].card) {
-          paymentMethodLast4 = methods.data[0].card.last4;
-        }
-      } catch {
-        // Stripe call failed — return null for last4, don't block the response
+    try {
+      const methods = await processor.listPaymentMethods(tenant);
+      const first = methods[0];
+      if (first) {
+        // Extract last4 from label (e.g. "Visa ending 4242")
+        paymentMethodLast4 = first.label.match(/\d{4}$/)?.[0] ?? null;
       }
+    } catch {
+      // Processor call failed — return null for last4, don't block the response
     }
 
     return {
@@ -726,23 +646,15 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
-      const { autoTopupSettingsStore, tenantStore, stripeClient } = deps();
+      const { autoTopupSettingsStore, processor } = deps();
 
       // If enabling either mode, verify payment method exists
       const enablingUsage = input.usage_enabled === true;
       const enablingSchedule = input.schedule_enabled === true;
 
       if (enablingUsage || enablingSchedule) {
-        const mapping = tenantStore.getByTenant(tenant);
-        if (!mapping) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "No payment method on file. Please add a payment method first.",
-          });
-        }
-
-        const methods = await stripeClient.customers.listPaymentMethods(mapping.processor_customer_id, { limit: 1 });
-        if (methods.data.length === 0) {
+        const methods = await processor.listPaymentMethods(tenant);
+        if (methods.length === 0) {
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "No payment method on file. Please add a payment method first.",

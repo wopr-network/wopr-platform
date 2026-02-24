@@ -12,19 +12,28 @@ import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { createDb } = await import("../../src/db/index.js");
+const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
 const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
+const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
 const { initMeterSchema } = await import("../../src/monetization/metering/schema.js");
 const { initStripeSchema } = await import("../../src/monetization/stripe/schema.js");
 const { initPayRamSchema } = await import("../../src/monetization/payram/schema.js");
 const { initAffiliateSchema } = await import("../../src/monetization/affiliate/schema.js");
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
+const { DrizzlePayRamChargeStore } = await import("../../src/monetization/payram/charge-store.js");
 
-function createMockStripe() {
+function createMockProcessor(): import("../../src/monetization/payment-processor.js").IPaymentProcessor {
   return {
-    checkout: { sessions: { create: vi.fn() } },
-    billingPortal: { sessions: { create: vi.fn() } },
-    webhooks: { constructEvent: vi.fn() },
-  } as unknown as import("stripe").default;
+    name: "mock",
+    supportsPortal: () => true,
+    createCheckoutSession: vi.fn().mockResolvedValue({ id: "cs_test", url: "https://checkout.stripe.com/cs_test" }) as never,
+    createPortalSession: vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_test" }) as never,
+    handleWebhook: vi.fn().mockResolvedValue({ handled: false, eventType: "unknown" }) as never,
+    setupPaymentMethod: vi.fn().mockResolvedValue({ clientSecret: "seti_test" }) as never,
+    listPaymentMethods: vi.fn().mockResolvedValue([]) as never,
+    detachPaymentMethod: vi.fn().mockResolvedValue(undefined) as never,
+    charge: vi.fn().mockResolvedValue({ success: true }) as never,
+  };
 }
 
 function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn> } = {}): Payram {
@@ -54,10 +63,15 @@ describe("integration: billing crypto routes", () => {
     initAffiliateSchema(sqlite);
     db = createDb(sqlite);
     setBillingDeps({
-      stripe: createMockStripe(),
-      db,
-      webhookSecret: "whsec_test_secret",
+      processor: createMockProcessor(),
+      creditLedger: new CreditLedger(db),
+      meterAggregator: new MeterAggregator(db),
       affiliateRepo: new DrizzleAffiliateRepository(db),
+      sigPenaltyRepo: {
+        get: () => null,
+        recordFailure: (ip: string) => ({ ip, source: "stripe", failures: 1, blockedUntil: 0, updatedAt: 0 }),
+        clear: () => {},
+      },
     });
   });
 
@@ -120,10 +134,17 @@ describe("integration: billing crypto routes", () => {
       process.env.PAYRAM_BASE_URL = "https://payram.example.com";
       // Re-init deps to pick up the env vars
       setBillingDeps({
-        stripe: createMockStripe(),
-        db,
-        webhookSecret: "whsec_test_secret",
+        processor: createMockProcessor(),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        payramChargeStore: new DrizzlePayRamChargeStore(db),
+        sigPenaltyRepo: {
+          get: () => null,
+          recordFailure: (ip: string, source: string) => ({ ip, source, failures: 1, blockedUntil: 0, updatedAt: 0 }),
+          clear: () => {},
+          purgeStale: () => 0,
+        },
       });
     });
 
