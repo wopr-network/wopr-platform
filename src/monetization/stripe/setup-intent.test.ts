@@ -38,7 +38,6 @@ describe("createSetupIntent", () => {
     expect(result.client_secret).toBe("seti_test_123_secret_abc");
     expect(stripe.setupIntents.create).toHaveBeenCalledWith({
       customer: "cus_abc123",
-      payment_method_types: ["card"],
       metadata: { wopr_tenant: "t-1" },
     });
   });
@@ -53,7 +52,7 @@ describe("createSetupIntent", () => {
     );
   });
 
-  it("passes payment_method_types: ['card'] and metadata", async () => {
+  it("omits payment_method_types to allow dynamic payment methods", async () => {
     const { db } = setupDb();
     const store = new TenantCustomerStore(db);
     store.upsert({ tenant: "t-2", stripeCustomerId: "cus_def456" });
@@ -67,7 +66,8 @@ describe("createSetupIntent", () => {
     await createSetupIntent(stripe, store, { tenant: "t-2" });
 
     const callArgs = setupIntentCreate.mock.calls[0][0];
-    expect(callArgs.payment_method_types).toEqual(["card"]);
+    // payment_method_types should NOT be set - allows Stripe to use dynamic methods
+    expect(callArgs.payment_method_types).toBeUndefined();
     expect(callArgs.metadata).toEqual({ wopr_tenant: "t-2" });
   });
 });
