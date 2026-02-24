@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { PaymentHealthStatus } from "../monetization/incident/health-probe.js";
 import type { AlertChecker } from "./alerts.js";
 import type { MetricsCollector } from "./metrics.js";
 
@@ -9,6 +10,8 @@ export interface AdminHealthDeps {
   queryActiveBots: () => number;
   /** Query total credits consumed in last 24 hours (cents). Should not throw (caller wraps). */
   queryCreditsConsumed24h: () => number;
+  /** Optional payment health probe — runs probePaymentHealth if provided. */
+  probePaymentHealth?: () => Promise<PaymentHealthStatus>;
 }
 
 /**
@@ -18,7 +21,7 @@ export interface AdminHealthDeps {
 export function createAdminHealthHandler(deps: AdminHealthDeps): Hono {
   const app = new Hono();
 
-  app.get("/", (c) => {
+  app.get("/", async (c) => {
     const last5m = deps.metrics.getWindow(5);
     const last60m = deps.metrics.getWindow(60);
 
@@ -40,6 +43,16 @@ export function createAdminHealthHandler(deps: AdminHealthDeps): Hono {
 
     // Read last-computed alert statuses (read-only — no state mutation)
     const alertStatuses = deps.alertChecker.getStatus();
+
+    // Optional payment health probe
+    let paymentHealth: PaymentHealthStatus | null = null;
+    if (deps.probePaymentHealth) {
+      try {
+        paymentHealth = await deps.probePaymentHealth();
+      } catch {
+        // Non-critical — omit if probe fails
+      }
+    }
 
     return c.json({
       timestamp: Date.now(),
@@ -63,6 +76,7 @@ export function createAdminHealthHandler(deps: AdminHealthDeps): Hono {
         creditsConsumed24h,
       },
       alerts: alertStatuses,
+      payment: paymentHealth,
     });
   });
 
