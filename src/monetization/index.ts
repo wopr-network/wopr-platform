@@ -90,6 +90,7 @@ export type {
 } from "./credits/index.js";
 export {
   BotBilling,
+  buildResourceTierCosts,
   CreditLedger,
   DAILY_BOT_COST_CENTS,
   DrizzleBotBilling,

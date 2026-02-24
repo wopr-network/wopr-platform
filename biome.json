@@ -196,7 +196,8 @@
         "src/admin/users/user-store.ts",
         "src/admin/analytics/analytics-store.ts",
         "src/gateway/spending-cap.ts",
-        "src/trpc/routers/two-factor.ts"
+        "src/trpc/routers/two-factor.ts",
+        "src/security/tenant-keys/capability-settings-store.ts"
       ],
       "linter": {
         "rules": {

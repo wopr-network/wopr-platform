@@ -1,8 +1,9 @@
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type DrizzleDb } from "../../db/index.js";
+import { RESOURCE_TIERS } from "../../fleet/resource-tiers.js";
 import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
-import { DAILY_BOT_COST_CENTS, runRuntimeDeductions } from "./runtime-cron.js";
+import { buildResourceTierCosts, DAILY_BOT_COST_CENTS, runRuntimeDeductions } from "./runtime-cron.js";
 
 function initTestSchema(sqlite: BetterSqlite3.Database): void {
   sqlite.exec(`
@@ -253,5 +254,31 @@ describe("runRuntimeDeductions", () => {
     });
     expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
     expect(ledger.balance("tenant-1")).toBe(0);
+  });
+
+  it("buildResourceTierCosts: deducts pro tier surcharge via getResourceTierCosts", async () => {
+    const proTierCost = RESOURCE_TIERS.pro.dailyCostCents;
+    // Grant enough for base cost + pro surcharge
+    const startBalance = DAILY_BOT_COST_CENTS + proTierCost + 10;
+    ledger.credit("tenant-1", startBalance, "purchase", "top-up");
+
+    const mockRepo = {
+      getResourceTier: (_botId: string) => "pro" as string | null,
+      setResourceTier: () => {},
+    };
+
+    const getResourceTierCosts = buildResourceTierCosts(
+      mockRepo as unknown as Parameters<typeof buildResourceTierCosts>[0],
+      (_tenantId: string) => ["bot-1"],
+    );
+
+    await runRuntimeDeductions({
+      ledger,
+      getActiveBotCount: () => 1,
+      getResourceTierCosts,
+    });
+
+    const expected = startBalance - DAILY_BOT_COST_CENTS - proTierCost;
+    expect(ledger.balance("tenant-1")).toBe(expected);
   });
 });

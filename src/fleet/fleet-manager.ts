@@ -40,8 +40,11 @@ export class FleetManager {
    * @param params - Bot profile fields (without id)
    * @param resourceLimits - Optional Docker resource constraints (from tier)
    */
-  async create(params: Omit<BotProfile, "id">, resourceLimits?: ContainerResourceLimits): Promise<BotProfile> {
-    const profile: BotProfile = { id: randomUUID(), ...params };
+  async create(
+    params: Omit<BotProfile, "id"> & { id?: string },
+    resourceLimits?: ContainerResourceLimits,
+  ): Promise<BotProfile> {
+    const profile: BotProfile = { id: params.id ?? randomUUID(), ...params };
 
     await this.store.save(profile);
 
@@ -49,7 +52,9 @@ export class FleetManager {
       await this.pullImage(profile.image);
       await this.createContainer(profile, resourceLimits);
     } catch (err) {
-      logger.error(`Failed to create container for bot ${profile.id}, rolling back profile`, { err });
+      logger.error(`Failed to create container for bot ${profile.id}, rolling back profile`, {
+        err,
+      });
       await this.store.delete(profile.id);
       throw err;
     }

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type * as schema from "../db/schema/index.js";
 import { botInstances } from "../db/schema/index.js";
@@ -79,6 +79,26 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
     const updated = this.getById(id);
     if (!updated) throw new Error(`Bot instance not found after update: ${id}`);
     return updated;
+  }
+
+  getResourceTier(botId: string): string | null {
+    const row = this.db
+      .select({ resourceTier: botInstances.resourceTier })
+      .from(botInstances)
+      .where(eq(botInstances.id, botId))
+      .get();
+    return row?.resourceTier ?? null;
+  }
+
+  setResourceTier(botId: string, tier: string): void {
+    this.db
+      .update(botInstances)
+      .set({
+        resourceTier: tier,
+        updatedAt: sql`(datetime('now'))`,
+      })
+      .where(eq(botInstances.id, botId))
+      .run();
   }
 }
 

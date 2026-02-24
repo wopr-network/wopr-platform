@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "809d5ffe-3686-43dc-871b-7cec69aec959",
+  "id": "944e4a73-917f-4d15-80ca-bebf64e21f0a",
   "prevId": "8a9de3ae-362c-47b5-8a41-72ac7658b2cb",
   "tables": {
     "admin_audit_log": {
@@ -562,6 +562,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "resource_tier": {
+          "name": "resource_tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'standard'"
         },
         "created_at": {
           "name": "created_at",
@@ -4058,38 +4066,6 @@
           "isUnique": false
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "tenant_model_selection": {
-      "name": "tenant_model_selection",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "default_model": {
-          "name": "default_model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'openrouter/auto'"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

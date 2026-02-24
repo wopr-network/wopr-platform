@@ -1,4 +1,6 @@
 import { logger } from "../../config/logger.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import { RESOURCE_TIERS } from "../../fleet/resource-tiers.js";
 import type { CreditLedger } from "./credit-ledger.js";
 import { InsufficientBalanceError } from "./credit-ledger.js";
 
@@ -25,12 +27,40 @@ export interface RuntimeCronConfig {
   onLowBalance?: (tenantId: string, balanceCents: number) => void | Promise<void>;
   /** Called when balance hits exactly 0 or goes negative. */
   onCreditsExhausted?: (tenantId: string) => void | Promise<void>;
+  /**
+   * Optional: returns total daily resource tier surcharge in cents for a tenant.
+   * Sum of all active bots' tier surcharges. If not provided, no surcharge is applied.
+   */
+  getResourceTierCosts?: (tenantId: string) => number | Promise<number>;
 }
 
 export interface RuntimeCronResult {
   processed: number;
   suspended: string[];
   errors: string[];
+}
+
+/**
+ * Build a `getResourceTierCosts` callback suitable for passing to `runRuntimeDeductions`.
+ *
+ * Sums the daily surcharge of all active bots owned by a tenant by reading each
+ * bot's resource tier from `IBotInstanceRepository` and looking up the cost in
+ * `RESOURCE_TIERS`. Standard-tier bots contribute 0 cents.
+ */
+export function buildResourceTierCosts(
+  botInstanceRepo: IBotInstanceRepository,
+  getBotBillingActiveIds: (tenantId: string) => string[],
+): (tenantId: string) => number {
+  return (tenantId: string): number => {
+    const botIds = getBotBillingActiveIds(tenantId);
+    let total = 0;
+    for (const botId of botIds) {
+      const tier = botInstanceRepo.getResourceTier(botId) ?? "standard";
+      const tierKey = tier in RESOURCE_TIERS ? (tier as keyof typeof RESOURCE_TIERS) : "standard";
+      total += RESOURCE_TIERS[tierKey].dailyCostCents;
+    }
+    return total;
+  };
 }
 
 /**
@@ -65,6 +95,24 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           "bot_runtime",
           `Daily runtime: ${botCount} bot(s) x $${(DAILY_BOT_COST_CENTS / 100).toFixed(2)}`,
         );
+
+        // Debit resource tier surcharges (if any)
+        if (cfg.getResourceTierCosts) {
+          const tierCost = await cfg.getResourceTierCosts(tenantId);
+          if (tierCost > 0) {
+            const balanceAfterRuntime = cfg.ledger.balance(tenantId);
+            if (balanceAfterRuntime >= tierCost) {
+              cfg.ledger.debit(tenantId, tierCost, "resource_upgrade", "Daily resource tier surcharge");
+            } else if (balanceAfterRuntime > 0) {
+              cfg.ledger.debit(
+                tenantId,
+                balanceAfterRuntime,
+                "resource_upgrade",
+                "Partial resource tier surcharge (balance exhausted)",
+              );
+            }
+          }
+        }
 
         const newBalance = cfg.ledger.balance(tenantId);
 

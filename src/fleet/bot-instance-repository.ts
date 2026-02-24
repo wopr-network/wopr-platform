@@ -15,4 +15,6 @@ export interface IBotInstanceRepository {
   create(data: NewBotInstance): BotInstance;
   reassign(id: string, nodeId: string): BotInstance;
   setBillingState(id: string, state: BillingState): BotInstance;
+  getResourceTier(botId: string): string | null;
+  setResourceTier(botId: string, tier: string): void;
 }

@@ -10,12 +10,15 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
+import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../../fleet/resource-tiers.js";
 import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
 import { createBotSchema } from "../../fleet/types.js";
+import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { createVpsCheckoutSession } from "../../monetization/stripe/checkout.js";
@@ -40,6 +43,8 @@ export interface FleetRouterDeps {
   getFleetManager: () => FleetManager;
   getTemplates: () => ProfileTemplate[];
   getCreditLedger: () => CreditLedger | null;
+  getBotBilling?: () => IBotBilling | null;
+  getBotInstanceRepo?: () => IBotInstanceRepository | null;
 }
 
 let _deps: FleetRouterDeps | null = null;
@@ -422,6 +427,127 @@ export const fleetRouter = router({
       }
     }),
 
+  /** List all available resource tiers with their metadata. */
+  listResourceTiers: tenantProcedure.query(() => {
+    return Object.entries(RESOURCE_TIERS).map(([key, cfg]) => ({
+      key,
+      label: cfg.label,
+      memoryLimitMb: cfg.memoryLimitMb,
+      cpuQuota: cfg.cpuQuota,
+      dailyCostCents: cfg.dailyCostCents,
+      description: cfg.description,
+    }));
+  }),
+
+  /** Get current resource tier for a bot. */
+  getResourceTier: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {
+    const { getFleetManager, getBotInstanceRepo } = deps();
+    const fleet = getFleetManager();
+    const profile = await fleet.profiles.get(input.id);
+    if (!profile || profile.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+    }
+    const repo = getBotInstanceRepo?.();
+    const tier = repo?.getResourceTier(input.id) ?? "standard";
+    return { tier };
+  }),
+
+  /** Upgrade or downgrade resource tier for a bot. */
+  setResourceTier: tenantProcedure
+    .input(
+      z.object({
+        id: uuidSchema,
+        tier: z.enum(["standard", "pro", "power", "beast"]),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { getFleetManager, getCreditLedger, getBotInstanceRepo } = deps();
+      const fleet = getFleetManager();
+      const profile = await fleet.profiles.get(input.id);
+      if (!profile || profile.tenantId !== ctx.tenantId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+      }
+
+      const tierConfig = RESOURCE_TIERS[input.tier];
+
+      // Credit check for non-standard tiers
+      if (tierConfig.dailyCostCents > 0) {
+        try {
+          const ledger = getCreditLedger();
+          if (ledger) {
+            const balance = ledger.balance(ctx.tenantId);
+            if (balance < tierConfig.dailyCostCents) {
+              throw new TRPCError({
+                code: "PAYMENT_REQUIRED",
+                message: "Insufficient credits for this resource tier",
+                cause: {
+                  balance,
+                  required: tierConfig.dailyCostCents,
+                  buyUrl: "/dashboard/credits",
+                },
+              });
+            }
+          }
+        } catch (err) {
+          if (err instanceof TRPCError) throw err;
+          // Billing DB unavailable — skip credit check
+        }
+      }
+
+      // Remember previous tier for rollback
+      const repo = getBotInstanceRepo?.();
+      const previousTier = repo?.getResourceTier(input.id) ?? "standard";
+
+      // Update billing record
+      repo?.setResourceTier(input.id, input.tier);
+
+      // Restart container with new resource limits (if bot has a container)
+      try {
+        const limits = tierToResourceLimits(input.tier);
+        const status = await fleet.status(input.id);
+        const wasRunning = status.state === "running";
+        if (status.containerId) {
+          if (wasRunning) await fleet.stop(input.id);
+          await fleet.remove(input.id, false);
+        }
+        const { id: _id, ...profileWithoutId } = profile;
+        try {
+          const newProfile = await fleet.create({ ...profileWithoutId, id: profile.id }, limits);
+          if (wasRunning) await fleet.start(newProfile.id);
+        } catch (createErr) {
+          // New container failed — attempt to re-create with old tier limits to restore service
+          const oldLimits = tierToResourceLimits(previousTier as ResourceTierKey);
+          try {
+            const restoredProfile = await fleet.create({ ...profileWithoutId, id: profile.id }, oldLimits);
+            if (wasRunning) await fleet.start(restoredProfile.id);
+          } catch (recreateErr) {
+            // Re-create with old tier also failed — log critical so ops can manually recover
+            const { logger } = await import("../../config/logger.js");
+            logger.error(
+              `CRITICAL: container lost after tier change — manual recovery required. botId=${input.id} newTier=${input.tier} previousTier=${previousTier} createErr=${String(createErr)} recreateErr=${String(recreateErr)}`,
+            );
+          }
+          // Revert billing record regardless of re-create outcome
+          repo?.setResourceTier(input.id, previousTier);
+          if (createErr instanceof TRPCError) throw createErr;
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to apply resource tier — rolled back",
+          });
+        }
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        // Outer catch: stop/remove failed — revert billing record
+        repo?.setResourceTier(input.id, previousTier);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to apply resource tier — rolled back",
+        });
+      }
+
+      return { tier: input.tier, dailyCostCents: tierConfig.dailyCostCents };
+    }),
+
   /** Activate a capability (superpower) on a bot. */
   activateCapability: tenantProcedure
     .input(z.object({ id: uuidSchema, capabilityId: z.string().min(1).max(64) }))
@@ -533,7 +659,7 @@ export const fleetRouter = router({
     }
 
     const sshConnectionString = sub.sshPublicKey
-      ? `ssh root@${sub.hostname ?? input.id + ".bot.wopr.bot"} -p 22`
+      ? `ssh root@${sub.hostname ?? `${input.id}.bot.wopr.bot`} -p 22`
       : null;
 
     return {
