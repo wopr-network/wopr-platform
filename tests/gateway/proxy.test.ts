@@ -475,24 +475,59 @@ describe("Gateway proxy endpoints", () => {
   // Phone Outbound
   // -----------------------------------------------------------------------
 
-  describe("POST /v1/phone/outbound", () => {
-    it("returns 501 Not Implemented", async () => {
-      const app = makeGatewayApp();
-      const res = await app.request("/v1/phone/outbound", {
-        method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ to: "+15551234567", from: "+15559876543" }),
+    describe("POST /v1/phone/outbound", () => {
+      const stubFetch = async (_url: string, opts?: { method?: string; headers?: Record<string, string>; body?: string }) => {
+        const url = _url as string;
+        if (url.includes("/Calls.json")) {
+          return new Response(JSON.stringify({ sid: "CA1234567890", status: "queued" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ sid: "SM123", status: "sent" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      };
+
+      it("makes outbound call and defers billing to StatusCallback", async () => {
+        const app = makeGatewayApp({ fetchFn: stubFetch });
+        const res = await app.request("/v1/phone/outbound", {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({ to: "+15551234567", from: "+15559876543" }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { sid: string; status: string };
+        expect(body.sid).toBe("CA1234567890");
+        expect(body.status).toBe("queued");
+        // Billing is deferred to the StatusCallback webhook when webhookBaseUrl is configured.
+        // No meter event should fire at call initiation.
+        expect(meterEvents.length).toBe(0);
       });
 
-      expect(res.status).toBe(501);
-      const body = (await res.json()) as { error: { code: string; message: string } };
-      expect(body.error.code).toBe("not_implemented");
-      expect(body.error.message).toContain("not yet implemented");
+      it("meters actual call duration via StatusCallback", async () => {
+        const app = makeGatewayApp({ fetchFn: stubFetch });
+        const path = "/phone/outbound/status/tenant-1";
+        // Twilio sends CallDuration in seconds
+        const bodyJson = { CallSid: "CA1234567890", CallDuration: 125, CallStatus: "completed" };
+        const res = await app.request(`/v1${path}`, {
+          method: "POST",
+          headers: twilioWebhookHeaders(path, bodyJson),
+          body: JSON.stringify(bodyJson),
+        });
 
-      // No meter event — endpoint is not implemented
-      expect(meterEvents.length).toBe(0);
+        expect(res.status).toBe(200);
+
+        // 125 seconds = ceil(125/60) = 3 minutes billed
+        expect(meterEvents.length).toBe(1);
+        expect(meterEvents[0].capability).toBe("phone-outbound");
+        expect(meterEvents[0].provider).toBe("twilio");
+        // 3 minutes * $0.013/min = $0.039
+        expect(meterEvents[0].cost as number).toBeCloseTo(0.039, 3);
+      });
     });
-  });
 
   // -----------------------------------------------------------------------
   // Phone Inbound
@@ -1038,7 +1073,7 @@ describe("Gateway proxy endpoints", () => {
       expect(res.status).toBe(402);
     });
 
-    it("unimplemented endpoints return 501 regardless of balance", async () => {
+    it("returns 402 when credit balance is zero", async () => {
       const app = makeGatewayApp({ creditBalance: 0 }); // Zero balance
 
       const res = await app.request("/v1/phone/outbound", {
@@ -1047,10 +1082,8 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ to: "+15551234567", from: "+15559876543" }),
       });
 
-      // Should return 501 Not Implemented regardless of balance
-      expect(res.status).toBe(501);
-      const body = (await res.json()) as { error: { code: string } };
-      expect(body.error.code).toBe("not_implemented");
+      // Now implemented - returns 402 for insufficient credits
+      expect(res.status).toBe(402);
     });
   });
 });

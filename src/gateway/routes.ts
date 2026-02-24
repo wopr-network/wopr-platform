@@ -28,6 +28,8 @@ import {
   phoneNumberProvision,
   phoneNumberRelease,
   phoneOutbound,
+  phoneOutboundStatus,
+  phoneTwimlHangup,
   smsDeliveryStatus,
   smsInbound,
   smsOutbound,
@@ -108,9 +110,14 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
       sigPenaltyRepo: config.sigPenaltyRepo,
     });
     gateway.post("/phone/inbound/:tenantId", webhookAuth, phoneInbound(deps));
+    gateway.post("/phone/outbound/status/:tenantId", webhookAuth, phoneOutboundStatus(deps));
     gateway.post("/messages/sms/inbound/:tenantId", webhookAuth, smsInbound(deps));
     gateway.post("/messages/sms/status/:tenantId", webhookAuth, smsDeliveryStatus(deps));
   }
+
+  // Self-hosted TwiML endpoint — public, no auth required (Twilio fetches it during call setup).
+  // Replaces the third-party http://twiml.ai/hangup used as default TwiML fallback.
+  gateway.get("/phone/twiml/hangup", phoneTwimlHangup());
 
   // All remaining gateway routes require service key authentication via Bearer
   gateway.use("/*", serviceKeyAuth(config.resolveServiceKey));

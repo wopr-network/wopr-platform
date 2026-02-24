@@ -70,6 +70,8 @@ export interface ProxyDeps {
   arbitrageRouter?: import("../monetization/arbitrage/router.js").ArbitrageRouter;
   rateLookupFn?: SellRateLookupFn;
   metrics?: import("../observability/metrics.js").MetricsCollector;
+  /** Base URL for Twilio webhook callbacks (e.g., https://api.wopr.network/v1). Used to construct StatusCallback and TwiML URLs. */
+  webhookBaseUrl?: string;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -85,6 +87,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     arbitrageRouter: config.arbitrageRouter,
     rateLookupFn: config.rateLookupFn,
     metrics: config.metrics,
+    webhookBaseUrl: config.webhookBaseUrl,
   };
 }
 
@@ -920,9 +923,16 @@ export function phoneOutbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
 
-    // Provider config check — keep existing 503 for unconfigured phone
-    const providerCfg = deps.providers.twilio ?? deps.providers.telnyx;
-    if (!providerCfg) {
+    const budgetErr = budgetCheck(c, deps);
+    if (budgetErr) return budgetErr;
+
+    const creditErr = creditBalanceCheck(c, deps, 1);
+    if (creditErr) {
+      return c.json({ error: creditErr }, 402);
+    }
+
+    const twilioCfg = deps.providers.twilio;
+    if (!twilioCfg) {
       return c.json(
         {
           error: {
@@ -935,20 +945,116 @@ export function phoneOutbound(deps: ProxyDeps) {
       );
     }
 
-    // Outbound calling is not yet implemented. Return 501 so callers
-    // know this endpoint exists but is not functional.
-    logger.info("Gateway proxy: phone/outbound — not implemented", { tenant: tenant.id });
-
-    return c.json(
-      {
-        error: {
-          message: "Outbound calling is not yet implemented. This endpoint will be available in a future release.",
-          type: "server_error",
-          code: "not_implemented",
+    let body: { to: string; from: string; twiml?: string };
+    try {
+      body = await c.req.json<{ to: string; from: string; twiml?: string }>();
+    } catch {
+      return c.json(
+        {
+          error: {
+            message: "Invalid JSON body",
+            type: "invalid_request_error",
+            code: "bad_request",
+          },
         },
-      },
-      501,
-    );
+        400,
+      );
+    }
+
+    try {
+      deps.metrics?.recordGatewayRequest("phone-outbound");
+
+      if (!body.to || !body.from) {
+        return c.json(
+          {
+            error: {
+              message: "Missing required fields: to, from",
+              type: "invalid_request_error",
+              code: "missing_field",
+            },
+          },
+          400,
+        );
+      }
+
+      const baseUrl = twilioCfg.baseUrl ?? "https://api.twilio.com";
+      const twilioUrl = `${baseUrl}/2010-04-01/Accounts/${twilioCfg.accountSid}/Calls.json`;
+
+      // Self-hosted TwiML fallback — avoids plain-HTTP third-party URLs (Twilio rejects HTTP in production).
+      const webhookBase = deps.webhookBaseUrl?.replace(/\/$/, "") ?? "";
+
+      const params = new URLSearchParams();
+      params.set("To", body.to);
+      params.set("From", body.from);
+      // Use caller-provided TwiML URL if given; otherwise use self-hosted HTTPS endpoint.
+      // Omitting Url entirely when no webhookBase is set — Twilio's own default is a hangup.
+      const twimlUrl = body.twiml ?? (webhookBase ? `${webhookBase}/phone/twiml/hangup` : undefined);
+      if (twimlUrl) {
+        params.set("Url", twimlUrl);
+      }
+      // Bill based on actual call duration reported by Twilio StatusCallback,
+      // matching the inbound pattern. Without this, short/failed calls are over-billed
+      // and long calls are under-billed.
+      if (webhookBase) {
+        params.set("StatusCallback", `${webhookBase}/phone/outbound/status/${tenant.id}`);
+        params.set("StatusCallbackMethod", "POST");
+        params.set("StatusCallbackEvent", "completed");
+      }
+
+      const authHeader = `Basic ${btoa(`${twilioCfg.accountSid}:${twilioCfg.authToken}`)}`;
+
+      const res = await deps.fetchFn(twilioUrl, {
+        method: "POST",
+        headers: {
+          Authorization: authHeader,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+
+      const responseBody = await res.text();
+
+      if (!res.ok) {
+        throw Object.assign(new Error(`Twilio API error (${res.status}): ${responseBody}`), {
+          httpStatus: res.status,
+        });
+      }
+
+      const twilioCall = JSON.parse(responseBody) as {
+        sid?: string;
+        status?: string;
+        error_code?: number | null;
+        error_message?: string | null;
+      };
+
+      logger.info("Gateway proxy: phone/outbound", {
+        tenant: tenant.id,
+        sid: twilioCall.sid,
+        status: twilioCall.status,
+      });
+
+      // When webhookBaseUrl is configured, billing is deferred to the StatusCallback
+      // (phoneOutboundStatus) so we meter actual call duration instead of a flat 1 minute.
+      // Without webhookBaseUrl (e.g., local dev), bill 1 minute as a conservative estimate.
+      if (!webhookBase) {
+        const cost = 0.013; // 1 minute at wholesale rate
+        emitMeterEvent(deps, tenant.id, "phone-outbound", "twilio", cost, deps.defaultMargin, {
+          usage: { units: 1, unitType: "minutes" },
+          tier: "branded",
+        });
+        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "phone-outbound", "twilio");
+      }
+
+      return c.json({
+        sid: twilioCall.sid,
+        status: twilioCall.status,
+      });
+    } catch (error) {
+      deps.metrics?.recordGatewayError("phone-outbound");
+      logger.error("Gateway proxy error: phone/outbound", { tenant: tenant.id, error });
+      const mapped = mapProviderError(error, "twilio");
+      return c.json(mapped.body, mapped.status as 502);
+    }
   };
 }
 
@@ -1010,6 +1116,110 @@ export function phoneInbound(deps: ProxyDeps) {
       const mapped = mapProviderError(error, providerName);
       return c.json(mapped.body, mapped.status as 502);
     }
+  };
+}
+
+// -----------------------------------------------------------------------
+// Phone Outbound Status — POST /v1/phone/outbound/status/:tenantId (Twilio StatusCallback)
+// -----------------------------------------------------------------------
+
+const phoneOutboundStatusBodySchema = z.object({
+  CallSid: z.string().optional(),
+  // Twilio sends CallDuration in seconds as a string in form-encoded bodies; coerce to number.
+  CallDuration: z.coerce
+    .number()
+    .min(0)
+    .max(MAX_CALL_DURATION_MINUTES * 60)
+    .optional(),
+  CallStatus: z.string().optional(),
+});
+
+export function phoneOutboundStatus(deps: ProxyDeps) {
+  return async (c: Context<GatewayAuthEnv>) => {
+    const tenant = c.get("gatewayTenant");
+    const providerName = "twilio";
+
+    try {
+      deps.metrics?.recordGatewayRequest("phone-outbound");
+      const rawBody = c.get("webhookBody") ?? (await c.req.json());
+      const parsed = phoneOutboundStatusBodySchema.safeParse(rawBody);
+      if (!parsed.success) {
+        logger.warn("Gateway proxy: phone/outbound/status invalid body", {
+          tenant: tenant.id,
+          errors: parsed.error.flatten().fieldErrors,
+        });
+        return c.json(
+          {
+            error: {
+              message: "Invalid webhook payload",
+              type: "invalid_request_error",
+              code: "validation_error",
+            },
+          },
+          400,
+        );
+      }
+      const body = parsed.data;
+
+      // Only meter completed calls that actually connected (have a duration).
+      // Calls that fail before connecting have CallDuration = 0 or absent.
+      const durationSeconds = body.CallDuration ?? 0;
+      const durationMinutes = Math.ceil(durationSeconds / 60);
+
+      if (durationMinutes === 0) {
+        // Call failed before connecting — no charge.
+        logger.info("Gateway proxy: phone/outbound/status no-charge (call did not connect)", {
+          tenant: tenant.id,
+          sid: body.CallSid,
+          status: body.CallStatus,
+        });
+        return c.json({ status: "no-charge" });
+      }
+
+      const costPerMinute = 0.013; // wholesale per-minute rate
+      const cost = durationMinutes * costPerMinute;
+
+      logger.info("Gateway proxy: phone/outbound/status", {
+        tenant: tenant.id,
+        sid: body.CallSid,
+        durationMinutes,
+        cost,
+        status: body.CallStatus,
+      });
+
+      emitMeterEvent(deps, tenant.id, "phone-outbound", providerName, cost, deps.defaultMargin, {
+        usage: { units: durationMinutes, unitType: "minutes" },
+        tier: "branded",
+      });
+      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "phone-outbound", providerName);
+
+      return c.json({ status: "metered", duration_minutes: durationMinutes });
+    } catch (error) {
+      deps.metrics?.recordGatewayError("phone-outbound");
+      logger.error("Gateway proxy error: phone/outbound/status", { tenant: tenant.id, error });
+      const mapped = mapProviderError(error, providerName);
+      return c.json(mapped.body, mapped.status as 502);
+    }
+  };
+}
+
+// -----------------------------------------------------------------------
+// Phone TwiML Hangup — GET /v1/phone/twiml/hangup (self-hosted TwiML endpoint)
+// -----------------------------------------------------------------------
+
+/** Returns a minimal TwiML <Response><Hangup/></Response> document.
+ *
+ * Replaces the third-party http://twiml.ai/hangup URL used as the default
+ * TwiML fallback for outbound calls. Using a self-hosted HTTPS endpoint avoids
+ * Twilio error 11200 (plain HTTP rejected in production) and eliminates the
+ * supply-chain risk of an external domain not under org control.
+ */
+export function phoneTwimlHangup() {
+  return async (_c: Context) => {
+    return new Response("<Response><Hangup/></Response>", {
+      status: 200,
+      headers: { "Content-Type": "text/xml; charset=utf-8" },
+    });
   };
 }
 
