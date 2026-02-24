@@ -31,6 +31,8 @@ export const botInstances = sqliteTable(
     destroyAfter: text("destroy_after"),
     /** Resource tier: standard | pro | power | beast */
     resourceTier: text("resource_tier").notNull().default("standard"),
+    /** Storage tier: standard | plus | pro | max */
+    storageTier: text("storage_tier").notNull().default("standard"),
     /** ISO timestamp of record creation */
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     /** ISO timestamp of last update */

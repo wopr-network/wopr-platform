@@ -93,8 +93,10 @@ function createFleetMock() {
     restart: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     logs: vi.fn().mockResolvedValue("2026-01-01T00:00:00Z log line 1\n"),
+    getVolumeUsage: vi.fn().mockResolvedValue(null),
     profiles: {
       get: vi.fn().mockResolvedValue(mockProfile),
+      list: vi.fn().mockResolvedValue([mockProfile]),
     },
   };
 }
@@ -107,6 +109,7 @@ beforeEach(() => {
     getFleetManager: () => fleetMock as unknown as FleetManager,
     getTemplates: () => mockTemplates,
     getCreditLedger: () => null,
+    getBotBilling: () => null,
   });
 });
 
@@ -486,5 +489,147 @@ describe("fleet.activateCapability", () => {
     await expect(caller.fleet.activateCapability({ id: TEST_BOT_ID, capabilityId: "tts" })).rejects.toThrow(
       "Authentication required",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getStorageTier
+// ---------------------------------------------------------------------------
+
+describe("fleet.getStorageTier", () => {
+  it("returns standard tier when billing is null", async () => {
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getStorageTier({ id: TEST_BOT_ID });
+    expect(result).toEqual({ tier: "standard", limitGb: 5, dailyCostCents: 0 });
+  });
+
+  it("returns tier from billing when available", async () => {
+    const mockBilling = { getStorageTier: vi.fn().mockReturnValue("pro") };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotBilling: () => mockBilling as never,
+    });
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getStorageTier({ id: TEST_BOT_ID });
+    expect(result).toEqual({ tier: "pro", limitGb: 50, dailyCostCents: 8 });
+  });
+
+  it("throws NOT_FOUND for non-owned bot", async () => {
+    fleetMock.profiles.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.getStorageTier({ id: TEST_BOT_ID })).rejects.toMatchObject({
+      message: "Bot not found",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setStorageTier
+// ---------------------------------------------------------------------------
+
+describe("fleet.setStorageTier", () => {
+  it("rejects invalid tier (Zod validation)", async () => {
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.setStorageTier({ id: TEST_BOT_ID, tier: "invalid" as never })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("rejects upgrade with insufficient credits", async () => {
+    const mockLedger = { balance: vi.fn().mockReturnValue(2) };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => mockLedger as never,
+      getBotBilling: () => ({ getStorageTier: vi.fn().mockReturnValue("standard"), setStorageTier: vi.fn() }) as never,
+    });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.setStorageTier({ id: TEST_BOT_ID, tier: "plus" })).rejects.toMatchObject({
+      code: "PAYMENT_REQUIRED",
+    });
+  });
+
+  it("rejects downgrade when usage exceeds new tier limit", async () => {
+    // Currently on max (100GB), trying to downgrade to standard (5GB), but 25GB used
+    const mockBilling = {
+      getStorageTier: vi.fn().mockReturnValue("max"),
+      setStorageTier: vi.fn(),
+    };
+    fleetMock.getVolumeUsage.mockResolvedValue({
+      usedBytes: 25 * 1024 ** 3, // 25GB
+      totalBytes: 100 * 1024 ** 3,
+      availableBytes: 75 * 1024 ** 3,
+    });
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotBilling: () => mockBilling as never,
+    });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.setStorageTier({ id: TEST_BOT_ID, tier: "standard" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
+  it("updates storage tier successfully", async () => {
+    const mockBilling = {
+      getStorageTier: vi.fn().mockReturnValue("standard"),
+      setStorageTier: vi.fn(),
+    };
+    const mockLedger = { balance: vi.fn().mockReturnValue(1000) };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => mockLedger as never,
+      getBotBilling: () => mockBilling as never,
+    });
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.setStorageTier({ id: TEST_BOT_ID, tier: "plus" });
+    expect(result).toEqual({ tier: "plus", limitGb: 20, dailyCostCents: 3 });
+    expect(mockBilling.setStorageTier).toHaveBeenCalledWith(TEST_BOT_ID, "plus");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getStorageUsage
+// ---------------------------------------------------------------------------
+
+describe("fleet.getStorageUsage", () => {
+  it("returns zero usage for stopped bot", async () => {
+    fleetMock.getVolumeUsage.mockResolvedValue(null);
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getStorageUsage({ id: TEST_BOT_ID });
+    expect(result).toMatchObject({
+      tier: "standard",
+      limitGb: 5,
+      usedBytes: 0,
+      usedGb: 0,
+      percentUsed: 0,
+      dailyCostCents: 0,
+    });
+  });
+
+  it("returns live disk usage for running bot", async () => {
+    const mockBilling = { getStorageTier: vi.fn().mockReturnValue("pro") };
+    fleetMock.getVolumeUsage.mockResolvedValue({
+      usedBytes: 10 * 1024 ** 3, // 10GB
+      totalBytes: 50 * 1024 ** 3,
+      availableBytes: 40 * 1024 ** 3,
+    });
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotBilling: () => mockBilling as never,
+    });
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getStorageUsage({ id: TEST_BOT_ID });
+    expect(result.tier).toBe("pro");
+    expect(result.limitGb).toBe(50);
+    expect(result.usedGb).toBe(10);
+    expect(result.percentUsed).toBe(20);
   });
 });

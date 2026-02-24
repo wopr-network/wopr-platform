@@ -256,6 +256,37 @@ describe("runRuntimeDeductions", () => {
     expect(ledger.balance("tenant-1")).toBe(0);
   });
 
+  it("partially debits resource tier surcharge when balance is positive but insufficient", async () => {
+    // Setup: runtime cost = 17, resource tier cost = 50, starting balance = 30
+    // After runtime deduction: 30 - 17 = 13 remaining (> 0 but < 50 tier cost)
+    // Should partially debit 13 cents (lines 111-112)
+    ledger.credit("tenant-1", 30, "purchase", "top-up");
+    const result = await runRuntimeDeductions({
+      ledger,
+      getActiveBotCount: () => 1,
+      getResourceTierCosts: () => 50,
+    });
+    expect(result.processed).toBe(1);
+    // Balance should be 0: 30 - 17 (runtime) - 13 (partial tier) = 0
+    expect(ledger.balance("tenant-1")).toBe(0);
+  });
+
+  it("skips resource tier partial debit when balance is exactly 0 after runtime", async () => {
+    // Setup: runtime cost = 17, starting balance = 17
+    // After runtime deduction: 0 remaining → skip partial debit (balanceAfterRuntime not > 0)
+    ledger.credit("tenant-1", 17, "purchase", "top-up");
+    const onCreditsExhausted = vi.fn();
+    const result = await runRuntimeDeductions({
+      ledger,
+      getActiveBotCount: () => 1,
+      getResourceTierCosts: () => 50,
+      onCreditsExhausted,
+    });
+    expect(result.processed).toBe(1);
+    expect(ledger.balance("tenant-1")).toBe(0);
+    expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
+  });
+
   it("buildResourceTierCosts: deducts pro tier surcharge via getResourceTierCosts", async () => {
     const proTierCost = RESOURCE_TIERS.pro.dailyCostCents;
     // Grant enough for base cost + pro surcharge

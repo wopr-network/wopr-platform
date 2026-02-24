@@ -32,6 +32,11 @@ export interface RuntimeCronConfig {
    * Sum of all active bots' tier surcharges. If not provided, no surcharge is applied.
    */
   getResourceTierCosts?: (tenantId: string) => number | Promise<number>;
+  /**
+   * Optional: returns total daily storage tier surcharge in cents for a tenant.
+   * Sum of all active bots' storage tier costs. If not provided, no surcharge applied.
+   */
+  getStorageTierCosts?: (tenantId: string) => number | Promise<number>;
 }
 
 export interface RuntimeCronResult {
@@ -129,6 +134,29 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
         // Fire onCreditsExhausted if balance just hit 0
         if (newBalance <= 0 && balanceCents > 0 && cfg.onCreditsExhausted) {
           await cfg.onCreditsExhausted(tenantId);
+        }
+
+        // Debit storage tier surcharges (if any)
+        if (cfg.getStorageTierCosts) {
+          const storageCost = await cfg.getStorageTierCosts(tenantId);
+          if (storageCost > 0) {
+            const currentBalance = cfg.ledger.balance(tenantId);
+            if (currentBalance >= storageCost) {
+              cfg.ledger.debit(tenantId, storageCost, "storage_upgrade", "Daily storage tier surcharge");
+            } else {
+              // Partial debit — take what's left, then suspend
+              if (currentBalance > 0) {
+                cfg.ledger.debit(
+                  tenantId,
+                  currentBalance,
+                  "storage_upgrade",
+                  "Partial storage tier surcharge (balance exhausted)",
+                );
+              }
+              result.suspended.push(tenantId);
+              if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+            }
+          }
         }
       } else {
         // Partial deduction — debit remaining balance, then suspend

@@ -27,6 +27,7 @@ function initTestSchema(sqlite: BetterSqlite3.Database): void {
       suspended_at TEXT,
       destroy_after TEXT,
       resource_tier TEXT NOT NULL DEFAULT 'standard',
+      storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -306,6 +307,43 @@ describe("BotBilling", () => {
   // ---------------------------------------------------------------------------
   // listForTenant
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // getStorageTierCostsForTenant
+  // ---------------------------------------------------------------------------
+
+  describe("getStorageTierCostsForTenant", () => {
+    it("returns 0 for a tenant with no active bots", () => {
+      expect(billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+    });
+
+    it("returns correct daily cost for known storage tiers", () => {
+      billing.registerBot("bot-1", "tenant-1", "bot-a");
+      billing.setStorageTier("bot-1", "pro");
+      billing.registerBot("bot-2", "tenant-1", "bot-b");
+      billing.setStorageTier("bot-2", "plus");
+
+      // pro=8, plus=3
+      expect(billing.getStorageTierCostsForTenant("tenant-1")).toBe(11);
+    });
+
+    it("returns 0 for unknown storage tier (fallback branch)", () => {
+      billing.registerBot("bot-1", "tenant-1", "bot-a");
+      // Bypass setStorageTier to insert an unrecognized tier value directly
+      sqlite.exec(`UPDATE bot_instances SET storage_tier = 'unknown_tier' WHERE id = 'bot-1'`);
+
+      // STORAGE_TIERS['unknown_tier'] is undefined → ?? 0 fallback
+      expect(billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+    });
+
+    it("does not include suspended bots in storage tier cost", () => {
+      billing.registerBot("bot-1", "tenant-1", "bot-a");
+      billing.setStorageTier("bot-1", "pro");
+      billing.suspendBot("bot-1");
+
+      expect(billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+    });
+  });
 
   describe("listForTenant", () => {
     it("lists all bots regardless of billing state", () => {

@@ -42,6 +42,7 @@ function setupTestDb() {
       suspended_at TEXT,
       destroy_after TEXT,
       resource_tier TEXT NOT NULL DEFAULT 'standard',
+      storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -135,6 +136,7 @@ function createTestDb() {
       suspended_at TEXT,
       destroy_after TEXT,
       resource_tier TEXT NOT NULL DEFAULT 'standard',
+      storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
