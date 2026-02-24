@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import type { NotificationService } from "../../email/notification-service.js";
 import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
 import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
@@ -39,6 +40,10 @@ export interface WebhookDeps {
   replayGuard?: IWebhookSeenRepository;
   /** Affiliate repository for credit match (WOP-949) and new-user bonus (WOP-950). */
   affiliateRepo?: IAffiliateRepository;
+  /** Notification service for sending affiliate credit match emails (WOP-949). */
+  notificationService?: NotificationService;
+  /** Look up email address for a tenant ID (required for affiliate match notifications). */
+  getEmailForTenant?: (tenantId: string) => string | null;
 }
 
 /**
@@ -121,12 +126,23 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
 
       // Affiliate credit match — grant referrer matching credits on first purchase (WOP-949).
       if (deps.affiliateRepo) {
-        processAffiliateCreditMatch({
+        const matchResult = processAffiliateCreditMatch({
           tenantId: tenant,
           purchaseAmountCents: creditCents,
           ledger: deps.creditLedger,
           affiliateRepo: deps.affiliateRepo,
         });
+        if (matchResult && deps.notificationService && deps.getEmailForTenant) {
+          const referrerEmail = deps.getEmailForTenant(matchResult.referrerTenantId);
+          if (referrerEmail) {
+            const amountDollars = (matchResult.matchAmountCents / 100).toFixed(2);
+            deps.notificationService.notifyAffiliateCreditMatch(
+              matchResult.referrerTenantId,
+              referrerEmail,
+              amountDollars,
+            );
+          }
+        }
       }
 
       // New-user first-purchase bonus for referred users (WOP-950).
