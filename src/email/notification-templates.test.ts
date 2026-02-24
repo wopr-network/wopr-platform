@@ -212,6 +212,34 @@ describe("renderNotificationTemplate", () => {
     });
   });
 
+  describe("dividend-weekly-digest", () => {
+    it("renders dividend-weekly-digest template", () => {
+      const result = renderNotificationTemplate("dividend-weekly-digest", {
+        email: "alice@example.com",
+        weeklyTotalDollars: "$3.50",
+        weeklyTotalCents: 350,
+        lifetimeTotalDollars: "$42.00",
+        distributionCount: 5,
+        poolAvgCents: 2000,
+        activeUsersAvg: 10,
+        nextDividendDate: "Tuesday, February 25, 2026",
+        weekStartDate: "February 17",
+        weekEndDate: "February 23",
+        unsubscribeUrl: "https://app.wopr.bot/settings/notifications",
+        creditsUrl: "https://app.wopr.bot/billing/credits",
+      });
+
+      expect(result.subject).toBe("WOPR paid you $3.50 this week");
+      expect(result.html).toContain("$3.50");
+      expect(result.html).toContain("$42.00");
+      expect(result.html).toContain("February 17");
+      expect(result.html).toContain("February 23");
+      expect(result.html).toContain("Unsubscribe");
+      expect(result.text).toContain("$3.50");
+      expect(result.text).toContain("Unsubscribe");
+    });
+  });
+
   describe("XSS protection", () => {
     it("escapes HTML in user-supplied fields like agentName", () => {
       const result = renderNotificationTemplate("agent-created", {

@@ -45,6 +45,7 @@ const PREF_MAP: Record<string, string> = {
   "channel-connected": "agent_status_changes",
   "agent-suspended": "agent_status_changes",
   "credits-granted": "billing_receipts",
+  "dividend-weekly-digest": "billing_receipts",
   "role-changed": "account_role_changes",
   "team-invite": "account_team_invites",
 };

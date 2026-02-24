@@ -36,6 +36,7 @@ export type NotificationTemplateName =
   | "account-deletion-requested"
   | "account-deletion-cancelled"
   | "account-deletion-completed"
+  | "dividend-weekly-digest"
   // Passthrough to existing templates
   | "low-balance"
   | "credit-purchase-receipt"
@@ -485,6 +486,65 @@ function accountDeletionCompletedTemplate(data: Record<string, unknown>): Templa
   };
 }
 
+function dividendWeeklyDigestTemplate(data: Record<string, unknown>): TemplateResult {
+  const weeklyTotal = escapeHtml((data.weeklyTotalDollars as string) || "$0.00");
+  const lifetimeTotal = escapeHtml((data.lifetimeTotalDollars as string) || "$0.00");
+  const distributionCount = Number(data.distributionCount) || 0;
+  const poolAvgCents = Number(data.poolAvgCents) || 0;
+  const activeUsersAvg = Number(data.activeUsersAvg) || 0;
+  const nextDividendDate = escapeHtml((data.nextDividendDate as string) || "");
+  const weekStart = escapeHtml((data.weekStartDate as string) || "");
+  const weekEnd = escapeHtml((data.weekEndDate as string) || "");
+  const creditsUrl = (data.creditsUrl as string) || "";
+  const unsubscribeUrl = (data.unsubscribeUrl as string) || "";
+  const poolAvgDollars = `$${(poolAvgCents / 100).toFixed(2)}`;
+
+  const parts = [
+    heading(`WOPR Paid You ${weeklyTotal} This Week`),
+    paragraph(
+      `<p>Here's your weekly dividend summary for <strong>${weekStart} – ${weekEnd}</strong>.</p>` +
+        `<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">` +
+        `<tr><td style="padding: 8px 0; color: #4a5568;">This week's dividends</td><td style="padding: 8px 0; text-align: right; font-weight: 600; color: #1a1a1a;">${weeklyTotal}</td></tr>` +
+        `<tr><td style="padding: 8px 0; color: #4a5568;">Days with distributions</td><td style="padding: 8px 0; text-align: right; font-weight: 600; color: #1a1a1a;">${distributionCount} of 7</td></tr>` +
+        `<tr><td style="padding: 8px 0; color: #4a5568;">Avg. daily pool</td><td style="padding: 8px 0; text-align: right; font-weight: 600; color: #1a1a1a;">${escapeHtml(poolAvgDollars)}</td></tr>` +
+        `<tr><td style="padding: 8px 0; color: #4a5568;">Avg. active users</td><td style="padding: 8px 0; text-align: right; font-weight: 600; color: #1a1a1a;">${activeUsersAvg}</td></tr>` +
+        `<tr style="border-top: 2px solid #e2e8f0;"><td style="padding: 12px 0; color: #4a5568; font-weight: 600;">Lifetime total</td><td style="padding: 12px 0; text-align: right; font-weight: 700; color: #1a1a1a; font-size: 18px;">${lifetimeTotal}</td></tr>` +
+        `</table>` +
+        (nextDividendDate
+          ? `<p style="color: #718096; font-size: 14px;">Next dividend: <strong>${nextDividendDate}</strong></p>`
+          : ""),
+    ),
+  ];
+  if (creditsUrl) parts.push(button(creditsUrl, "View Your Credits"));
+  parts.push(
+    footer(
+      "Community dividends are distributed daily from platform revenue. Keep your credits active to stay eligible.",
+    ),
+  );
+  if (unsubscribeUrl) {
+    parts.push(
+      `<tr><td style="padding: 0 40px 20px 40px; text-align: center; color: #a0aec0; font-size: 12px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color: #a0aec0; text-decoration: underline;">Unsubscribe from dividend digests</a></td></tr>`,
+    );
+  }
+
+  return {
+    subject: `WOPR paid you ${data.weeklyTotalDollars as string} this week`,
+    html: wrapHtml("Weekly Dividend Digest", parts.join("\n")),
+    text:
+      `WOPR Paid You ${data.weeklyTotalDollars as string} This Week\n\n` +
+      `Weekly summary for ${data.weekStartDate as string} – ${data.weekEndDate as string}:\n\n` +
+      `This week's dividends: ${data.weeklyTotalDollars as string}\n` +
+      `Days with distributions: ${distributionCount} of 7\n` +
+      `Avg. daily pool: ${poolAvgDollars}\n` +
+      `Avg. active users: ${activeUsersAvg}\n` +
+      `Lifetime total: ${data.lifetimeTotalDollars as string}\n\n` +
+      `Next dividend: ${data.nextDividendDate as string}\n\n` +
+      `Community dividends are distributed daily from platform revenue.` +
+      (unsubscribeUrl ? `\n\nUnsubscribe: ${unsubscribeUrl}` : "") +
+      copyright(),
+  };
+}
+
 function customTemplate(data: Record<string, unknown>): TemplateResult {
   const subject = (data.subject as string) || "Message from WOPR";
   const rawBody = (data.bodyText as string) || "";
@@ -546,6 +606,8 @@ export function renderNotificationTemplate(template: TemplateName, data: Record<
       return agentSuspendedTemplate(data);
     case "custom":
       return customTemplate(data);
+    case "dividend-weekly-digest":
+      return dividendWeeklyDigestTemplate(data);
     case "account-deletion-requested":
       return accountDeletionRequestedTemplate(data);
     case "account-deletion-cancelled":
