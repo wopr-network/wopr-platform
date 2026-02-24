@@ -42,6 +42,8 @@ import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleCreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { IDividendRepository } from "../monetization/credits/dividend-repository.js";
 import { DrizzleDividendRepository } from "../monetization/credits/dividend-repository.js";
+import type { IPhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
+import { DrizzlePhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
 import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
@@ -581,6 +583,7 @@ let _payramChargeStore: IPayRamChargeStore | null = null;
 let _dividendRepo: IDividendRepository | null = null;
 let _autoTopupSettingsRepo: IAutoTopupSettingsRepository | null = null;
 let _autoTopupEventLogRepo: IAutoTopupEventLogRepository | null = null;
+let _phoneNumberRepo: IPhoneNumberRepository | null = null;
 
 export function getCreditLedger(): ICreditLedger {
   if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
@@ -635,6 +638,11 @@ export function getAutoTopupSettingsRepo(): IAutoTopupSettingsRepository {
 export function getAutoTopupEventLogRepo(): IAutoTopupEventLogRepository {
   if (!_autoTopupEventLogRepo) _autoTopupEventLogRepo = new DrizzleAutoTopupEventLogRepository(getDb());
   return _autoTopupEventLogRepo;
+}
+
+export function getPhoneNumberRepo(): IPhoneNumberRepository {
+  if (!_phoneNumberRepo) _phoneNumberRepo = new DrizzlePhoneNumberRepository(getDb());
+  return _phoneNumberRepo;
 }
 
 // ---------------------------------------------------------------------------

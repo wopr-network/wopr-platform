@@ -18,6 +18,7 @@ import { withMargin } from "../monetization/adapters/types.js";
 import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import { PHONE_NUMBER_MONTHLY_COST } from "../monetization/credits/phone-billing.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
 import { mapBudgetError, mapProviderError } from "./error-mapping.js";
@@ -72,7 +73,7 @@ export interface ProxyDeps {
   metrics?: import("../observability/metrics.js").MetricsCollector;
   /** Base URL for Twilio webhook callbacks (e.g., https://api.wopr.network/v1). Used to construct StatusCallback and TwiML URLs. */
   webhookBaseUrl?: string;
-  phoneRepo?: import("../monetization/credits/phone-billing.js").IPhoneNumberRepository;
+  phoneRepo?: import("../monetization/credits/drizzle-phone-number-repository.js").IPhoneNumberRepository;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -1486,8 +1487,6 @@ export function smsDeliveryStatus(_deps: ProxyDeps) {
 // Phone Number Provisioning — POST /v1/phone/numbers
 // -----------------------------------------------------------------------
 
-/** Phone number monthly wholesale cost. */
-const PHONE_NUMBER_MONTHLY_COST = 1.15;
 const PHONE_NUMBER_MARGIN = 2.6;
 
 /** Prefix used in Twilio FriendlyName to track tenant ownership. */
