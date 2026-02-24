@@ -25,6 +25,11 @@ export interface RuntimeCronConfig {
   onLowBalance?: (tenantId: string, balanceCents: number) => void | Promise<void>;
   /** Called when balance hits exactly 0 or goes negative. */
   onCreditsExhausted?: (tenantId: string) => void | Promise<void>;
+  /**
+   * Optional: returns total daily resource tier surcharge in cents for a tenant.
+   * Sum of all active bots' tier surcharges. If not provided, no surcharge is applied.
+   */
+  getResourceTierCosts?: (tenantId: string) => number | Promise<number>;
 }
 
 export interface RuntimeCronResult {
@@ -65,6 +70,24 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           "bot_runtime",
           `Daily runtime: ${botCount} bot(s) x $${(DAILY_BOT_COST_CENTS / 100).toFixed(2)}`,
         );
+
+        // Debit resource tier surcharges (if any)
+        if (cfg.getResourceTierCosts) {
+          const tierCost = await cfg.getResourceTierCosts(tenantId);
+          if (tierCost > 0) {
+            const balanceAfterRuntime = cfg.ledger.balance(tenantId);
+            if (balanceAfterRuntime >= tierCost) {
+              cfg.ledger.debit(tenantId, tierCost, "resource_upgrade", "Daily resource tier surcharge");
+            } else if (balanceAfterRuntime > 0) {
+              cfg.ledger.debit(
+                tenantId,
+                balanceAfterRuntime,
+                "resource_upgrade",
+                "Partial resource tier surcharge (balance exhausted)",
+              );
+            }
+          }
+        }
 
         const newBalance = cfg.ledger.balance(tenantId);
 

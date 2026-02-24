@@ -29,6 +29,8 @@ export const botInstances = sqliteTable(
     suspendedAt: text("suspended_at"),
     /** ISO timestamp for auto-destruction (suspendedAt + 30 days); NULL when active */
     destroyAfter: text("destroy_after"),
+    /** Resource tier: standard | pro | power | beast */
+    resourceTier: text("resource_tier").notNull().default("standard"),
     /** ISO timestamp of record creation */
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     /** ISO timestamp of last update */

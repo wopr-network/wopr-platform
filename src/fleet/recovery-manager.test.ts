@@ -41,6 +41,7 @@ function setupTestDb() {
       billing_state TEXT NOT NULL DEFAULT 'active',
       suspended_at TEXT,
       destroy_after TEXT,
+      resource_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -133,6 +134,7 @@ function createTestDb() {
       billing_state TEXT NOT NULL DEFAULT 'active',
       suspended_at TEXT,
       destroy_after TEXT,
+      resource_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

@@ -20,6 +20,8 @@ export interface IBotBilling {
   getBotBilling(botId: string): unknown;
   listForTenant(tenantId: string): unknown[];
   registerBot(botId: string, tenantId: string, name: string): void;
+  getResourceTier(botId: string): string | null;
+  setResourceTier(botId: string, tier: string): void;
 }
 
 /**
@@ -158,6 +160,28 @@ export class DrizzleBotBilling implements IBotBilling {
   /** List all bots for a tenant (any billing state). */
   listForTenant(tenantId: string) {
     return this.db.select().from(botInstances).where(eq(botInstances.tenantId, tenantId)).all();
+  }
+
+  /** Get current resource tier for a bot. Returns null if bot not found. */
+  getResourceTier(botId: string): string | null {
+    const row = this.db
+      .select({ resourceTier: botInstances.resourceTier })
+      .from(botInstances)
+      .where(eq(botInstances.id, botId))
+      .get();
+    return row?.resourceTier ?? null;
+  }
+
+  /** Set resource tier for a bot. */
+  setResourceTier(botId: string, tier: string): void {
+    this.db
+      .update(botInstances)
+      .set({
+        resourceTier: tier,
+        updatedAt: sql`(datetime('now'))`,
+      })
+      .where(eq(botInstances.id, botId))
+      .run();
   }
 
   /** Register a new bot instance for billing. */
