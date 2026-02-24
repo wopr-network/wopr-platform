@@ -135,7 +135,8 @@ app.use("*", async (c, next) => {
 // with a clear error message. Better-auth also enforces minPasswordLength: 12.
 app.post("/api/auth/sign-up/email", async (c, next) => {
   try {
-    const body = await c.req.json();
+    const cloned = c.req.raw.clone();
+    const body = await cloned.json();
     const password: unknown = body?.password;
     if (typeof password === "string" && password.length >= 12) {
       const hasUpper = /[A-Z]/.test(password);
@@ -160,7 +161,8 @@ app.post("/api/auth/sign-up/email", async (c, next) => {
 // SOC 2 M1: Apply the same password complexity check to the reset-password flow.
 app.post("/api/auth/reset-password", async (c, next) => {
   try {
-    const body = await c.req.json();
+    const cloned = c.req.raw.clone();
+    const body = await cloned.json();
     const password: unknown = body?.password;
     if (typeof password === "string" && password.length >= 12) {
       const hasUpper = /[A-Z]/.test(password);

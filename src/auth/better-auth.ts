@@ -142,6 +142,16 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
 /** The type of a better-auth instance. */
 export type Auth = ReturnType<typeof betterAuth>;
 
+/**
+ * Run better-auth migrations against the auth database.
+ * Must be called before the server starts accepting requests.
+ */
+export async function runAuthMigrations(): Promise<void> {
+  const { getMigrations } = await import("better-auth/db");
+  const { runMigrations } = await getMigrations(authOptions());
+  await runMigrations();
+}
+
 let _auth: Auth | null = null;
 
 /**
