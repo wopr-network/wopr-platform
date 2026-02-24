@@ -1,0 +1,1 @@
+ALTER TABLE `bot_instances` DROP COLUMN `storage_tier`;
