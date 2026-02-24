@@ -182,6 +182,8 @@ describe("admin-gpu routes", () => {
 
   describe("DELETE /:nodeId", () => {
     it("should destroy a GPU node", async () => {
+      const node = makeGpuNode({ status: "active" });
+      (getGpuNodeRepository as ReturnType<typeof vi.fn>).mockReturnValue({ getById: () => node });
       (getGpuNodeProvisioner as ReturnType<typeof vi.fn>).mockReturnValue({
         destroy: vi.fn().mockResolvedValue(undefined),
       });
@@ -193,19 +195,24 @@ describe("admin-gpu routes", () => {
       expect(body.success).toBe(true);
     });
 
+    it("should return 404 when node not found on destroy", async () => {
+      (getGpuNodeRepository as ReturnType<typeof vi.fn>).mockReturnValue({ getById: () => null });
+
+      const res = await adminGpuRoutes.request("/nonexistent", { method: "DELETE" });
+      expect(res.status).toBe(404);
+    });
+
     it("should return 409 when node is provisioning", async () => {
-      (getGpuNodeProvisioner as ReturnType<typeof vi.fn>).mockReturnValue({
-        destroy: vi.fn().mockRejectedValue(new Error("Cannot destroy GPU node in provisioning state")),
-      });
+      const node = makeGpuNode({ status: "provisioning" });
+      (getGpuNodeRepository as ReturnType<typeof vi.fn>).mockReturnValue({ getById: () => node });
 
       const res = await adminGpuRoutes.request("/gpu-test-1", { method: "DELETE" });
       expect(res.status).toBe(409);
     });
 
     it("should return 409 when node is bootstrapping", async () => {
-      (getGpuNodeProvisioner as ReturnType<typeof vi.fn>).mockReturnValue({
-        destroy: vi.fn().mockRejectedValue(new Error("Cannot destroy GPU node in bootstrapping state")),
-      });
+      const node = makeGpuNode({ status: "bootstrapping" });
+      (getGpuNodeRepository as ReturnType<typeof vi.fn>).mockReturnValue({ getById: () => node });
 
       const res = await adminGpuRoutes.request("/gpu-test-1", { method: "DELETE" });
       expect(res.status).toBe(409);

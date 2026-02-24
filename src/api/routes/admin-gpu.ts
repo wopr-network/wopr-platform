@@ -158,6 +158,20 @@ adminGpuRoutes.delete("/:nodeId", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
 
   try {
+    const node = getGpuNodeRepository().getById(nodeId);
+    if (!node) {
+      return c.json({ success: false, error: "GPU node not found" }, 404);
+    }
+    if (node.status === "provisioning" || node.status === "bootstrapping") {
+      return c.json(
+        {
+          success: false,
+          error: `Cannot destroy GPU node in ${node.status} state — wait until provisioning/bootstrapping completes`,
+        },
+        409,
+      );
+    }
+
     const provisioner = getGpuNodeProvisioner();
     await provisioner.destroy(nodeId);
 
@@ -171,9 +185,7 @@ adminGpuRoutes.delete("/:nodeId", adminAuth, async (c) => {
     return c.json({ success: true });
   } catch (err) {
     logger.error("GPU node destruction failed", { nodeId, err });
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    const status = msg.includes("provisioning") || msg.includes("bootstrapping") ? 409 : 500;
-    return c.json({ success: false, error: msg }, status);
+    return c.json({ success: false, error: err instanceof Error ? err.message : "Unknown error" }, 500);
   }
 });
 

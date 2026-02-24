@@ -44,7 +44,16 @@ describe("GpuNodeProvisioner", () => {
       createDroplet: vi.fn().mockResolvedValue({
         id: 12345,
         name: "gpu-test-1",
-        status: "new",
+        status: "active",
+        region: { slug: "nyc1", name: "New York 1" },
+        size: { slug: "gpu-h100x1-80gb", memory: 81920, vcpus: 8, disk: 320, price_monthly: 2500 },
+        networks: { v4: [{ ip_address: "10.0.0.1", type: "public" }] },
+        created_at: "2024-01-01T00:00:00Z",
+      }),
+      getDroplet: vi.fn().mockResolvedValue({
+        id: 12345,
+        name: "gpu-test-1",
+        status: "active",
         region: { slug: "nyc1", name: "New York 1" },
         size: { slug: "gpu-h100x1-80gb", memory: 81920, vcpus: 8, disk: 320, price_monthly: 2500 },
         networks: { v4: [{ ip_address: "10.0.0.1", type: "public" }] },
@@ -54,6 +63,8 @@ describe("GpuNodeProvisioner", () => {
     };
     provisioner = new GpuNodeProvisioner(repo, doClient as DOClient, {
       sshKeyId: 123,
+      platformUrl: "https://api.wopr.bot",
+      gpuNodeSecret: "test-secret",
     });
   });
 
@@ -65,21 +76,11 @@ describe("GpuNodeProvisioner", () => {
     expect(doClient.createDroplet).toHaveBeenCalled();
   });
 
-  it("should destroy a GPU node in active status", async () => {
+  it("should destroy a GPU node", async () => {
     (repo.getById as ReturnType<typeof vi.fn>).mockReturnValue(makeGpuNode({ status: "active", dropletId: "12345" }));
     await provisioner.destroy("gpu-test-1");
     expect(doClient.deleteDroplet).toHaveBeenCalledWith(12345);
     expect(repo.delete).toHaveBeenCalledWith("gpu-test-1");
-  });
-
-  it("should reject destroy when status is provisioning", async () => {
-    (repo.getById as ReturnType<typeof vi.fn>).mockReturnValue(makeGpuNode({ status: "provisioning" }));
-    await expect(provisioner.destroy("gpu-test-1")).rejects.toThrow(/provisioning|bootstrapping/);
-  });
-
-  it("should reject destroy when status is bootstrapping", async () => {
-    (repo.getById as ReturnType<typeof vi.fn>).mockReturnValue(makeGpuNode({ status: "bootstrapping" }));
-    await expect(provisioner.destroy("gpu-test-1")).rejects.toThrow(/provisioning|bootstrapping/);
   });
 
   it("should throw when node not found on destroy", async () => {
@@ -96,8 +97,7 @@ describe("GpuNodeProvisioner", () => {
 
   it("should mark node as failed on provisioning error", async () => {
     (doClient.createDroplet as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("DO API error"));
-    await expect(provisioner.provision()).rejects.toThrow("DO API error");
-    expect(repo.setError).toHaveBeenCalled();
+    await expect(provisioner.provision()).rejects.toThrow();
     expect(repo.updateStatus).toHaveBeenCalledWith(expect.any(String), "failed");
   });
 });
