@@ -520,7 +520,7 @@ if (process.env.NODE_ENV !== "test") {
       });
 
       // Create PayRam deps before tRPC router so both REST and tRPC can share them.
-      const payramChargeStore = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeStore(billingDrizzle2) : undefined;
+      const payramChargeStore = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeStore(getDb()) : undefined;
       let payramClient: import("payram").Payram | undefined;
       if (process.env.PAYRAM_API_KEY) {
         const { createPayRamClient, loadPayRamConfig } = await import("./monetization/payram/client.js");
@@ -589,10 +589,7 @@ if (process.env.NODE_ENV !== "test") {
   // Daily runtime deduction cron — charges tenants for active bots + resource tier surcharges.
   // Runs once every 24 h (offset by 1 min from midnight to avoid thundering herd).
   {
-    const cronBillingDb = new Database(BILLING_DB_PATH);
-    applyPlatformPragmas(cronBillingDb);
-    const cronBillingDrizzle = createDb(cronBillingDb);
-    const cronLedger = new CreditLedger(cronBillingDrizzle);
+    const cronLedger = new CreditLedger(getDb());
     const botInstanceRepo = getBotInstanceRepo();
     const getResourceTierCosts = buildResourceTierCosts(botInstanceRepo, (tenantId) =>
       botInstanceRepo
