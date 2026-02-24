@@ -27,9 +27,6 @@ export type {
   ExportField,
 } from "./bulk/bulk-operations-store.js";
 export { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk/bulk-operations-store.js";
-export type { AdjustmentFilters, AdjustmentType, CreditAdjustment } from "./credits/adjustment-store.js";
-export { BalanceError, CreditAdjustmentStore } from "./credits/adjustment-store.js";
-export { initCreditAdjustmentSchema } from "./credits/schema.js";
 export type { IAdminNotesRepository } from "./notes/admin-notes-repository.js";
 export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
 export { AdminNotesStore } from "./notes/index.js";

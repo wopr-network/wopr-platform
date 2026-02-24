@@ -2,10 +2,9 @@ import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import type { DrizzleDb } from "../../db/index.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { createTestDb } from "../../test/db.js";
 import { AdminAuditLog } from "../audit-log.js";
-import { CreditAdjustmentStore } from "../credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../credits/schema.js";
 import { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
 import { DrizzleBulkOperationsRepository } from "./bulk-operations-repository.js";
 import { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk-operations-store.js";
@@ -13,7 +12,7 @@ import { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk-opera
 describe("BulkOperationsStore", () => {
   let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
-  let creditStore: CreditAdjustmentStore;
+  let creditStore: ICreditLedger;
   let tenantStatusStore: TenantStatusStore;
   let auditLog: AdminAuditLog;
   let store: BulkOperationsStore;
@@ -23,9 +22,49 @@ describe("BulkOperationsStore", () => {
     db = t.db;
     sqlite = t.sqlite;
 
-    initCreditAdjustmentSchema(sqlite);
-
-    creditStore = new CreditAdjustmentStore(sqlite);
+    const balances = new Map<string, number>();
+    creditStore = {
+      credit(tenantId, amountCents) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+        return {
+          id: "tx-1",
+          tenantId,
+          amountCents,
+          balanceAfterCents: balances.get(tenantId)!,
+          type: "signup_grant",
+          description: null,
+          referenceId: null,
+          fundingSource: null,
+          createdAt: new Date().toISOString(),
+        };
+      },
+      debit(tenantId, amountCents) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+        return {
+          id: "tx-2",
+          tenantId,
+          amountCents: -amountCents,
+          balanceAfterCents: balances.get(tenantId)!,
+          type: "correction",
+          description: null,
+          referenceId: null,
+          fundingSource: null,
+          createdAt: new Date().toISOString(),
+        };
+      },
+      balance(tenantId) {
+        return balances.get(tenantId) ?? 0;
+      },
+      hasReferenceId() {
+        return false;
+      },
+      history() {
+        return [];
+      },
+      tenantsWithBalance() {
+        return [];
+      },
+    };
     tenantStatusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     const bulkRepo = new DrizzleBulkOperationsRepository(db, sqlite);
@@ -86,8 +125,8 @@ describe("BulkOperationsStore", () => {
       expect(result.totalAmountCents).toBe(1000);
       expect(result.undoDeadline).toBeGreaterThan(Date.now());
 
-      expect(creditStore.getBalance("tenant-1")).toBe(500);
-      expect(creditStore.getBalance("tenant-2")).toBe(500);
+      expect(creditStore.balance("tenant-1")).toBe(500);
+      expect(creditStore.balance("tenant-2")).toBe(500);
     });
 
     it("creates an audit log entry with category bulk", () => {
@@ -111,13 +150,13 @@ describe("BulkOperationsStore", () => {
         { tenantIds: ["tenant-1", "tenant-2"], amountCents: 300, reason: "test", notifyByEmail: false },
         "admin-1",
       );
-      expect(creditStore.getBalance("tenant-1")).toBe(300);
+      expect(creditStore.balance("tenant-1")).toBe(300);
 
       const undo = store.undoGrant(grant.operationId, "admin-1");
       expect(undo.succeeded).toBe(2);
       expect(undo.failed).toBe(0);
-      expect(creditStore.getBalance("tenant-1")).toBe(0);
-      expect(creditStore.getBalance("tenant-2")).toBe(0);
+      expect(creditStore.balance("tenant-1")).toBe(0);
+      expect(creditStore.balance("tenant-2")).toBe(0);
     });
 
     it("fails after 5-minute window expires", () => {

@@ -1,35 +1,9 @@
-import type DatabaseType from "better-sqlite3";
-import Database from "better-sqlite3";
 import { Hono } from "hono";
-import type { AdjustmentType } from "../../admin/credits/adjustment-store.js";
-import { BalanceError, CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
-import { getAdminAuditLog } from "../../fleet/services.js";
-
-const CREDITS_DB_PATH = process.env.CREDITS_DB_PATH || "/data/platform/credits.db";
-const VALID_ADJUSTMENT_TYPES: AdjustmentType[] = ["grant", "refund", "correction"];
-
-/** Lazy-initialized credits database (avoids opening DB at module load time). */
-let _creditsDb: DatabaseType.Database | null = null;
-function getCreditsDb(): DatabaseType.Database {
-  if (!_creditsDb) {
-    _creditsDb = new Database(CREDITS_DB_PATH);
-    applyPlatformPragmas(_creditsDb);
-    initCreditAdjustmentSchema(_creditsDb);
-  }
-  return _creditsDb;
-}
-
-let _store: CreditAdjustmentStore | null = null;
-function getStore(): CreditAdjustmentStore {
-  if (!_store) {
-    _store = new CreditAdjustmentStore(getCreditsDb());
-  }
-  return _store;
-}
+import { getAdminAuditLog, getCreditLedger } from "../../fleet/services.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { InsufficientBalanceError } from "../../monetization/credits/credit-ledger.js";
 
 function parseIntParam(value: string | undefined): number | undefined {
   if (value == null) return undefined;
@@ -42,21 +16,19 @@ function parseIntParam(value: string | undefined): number | undefined {
 // creditsCorrection, creditsTransactions, creditsTransactionsExport).
 // Keep REST for backwards compatibility until admin UI fully migrates to tRPC.
 /**
- * Create admin credit API routes with an explicit database.
- * Used in tests to inject an in-memory database.
+ * Create admin credit API routes with an explicit ledger.
+ * Used in tests to inject a mock ledger.
  */
-export function createAdminCreditApiRoutes(db: DatabaseType.Database): Hono<AuthEnv> {
-  initCreditAdjustmentSchema(db);
-  const store = new CreditAdjustmentStore(db);
-  return buildRoutes(() => store);
+export function createAdminCreditApiRoutes(ledger: ICreditLedger): Hono<AuthEnv> {
+  return buildRoutes(() => ledger);
 }
 
-function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
+function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
 
   /** POST /:tenantId/grant */
   routes.post("/:tenantId/grant", async (c) => {
-    const store = storeFactory();
+    const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
 
     let body: Record<string, unknown>;
@@ -80,9 +52,9 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
     try {
       const user = c.get("user");
       const adminUser = user?.id ?? "unknown";
-      let adjustment: ReturnType<typeof store.grant>;
+      let result: ReturnType<typeof ledger.credit>;
       try {
-        adjustment = store.grant(tenant, amountCents, reason, adminUser);
+        result = ledger.credit(tenant, amountCents, "signup_grant", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -110,7 +82,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
       } catch {
         /* audit must not break request */
       }
-      return c.json(adjustment, 201);
+      return c.json(result, 201);
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
     }
@@ -118,7 +90,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
   /** POST /:tenantId/refund */
   routes.post("/:tenantId/refund", async (c) => {
-    const store = storeFactory();
+    const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
 
     let body: Record<string, unknown>;
@@ -130,7 +102,6 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
     const amountCents = body.amount_cents;
     const reason = body.reason;
-    const referenceIds = body.reference_ids;
 
     if (typeof amountCents !== "number" || !Number.isInteger(amountCents) || amountCents <= 0) {
       return c.json({ error: "amount_cents must be a positive integer" }, 400);
@@ -140,19 +111,12 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
       return c.json({ error: "reason is required and must be non-empty" }, 400);
     }
 
-    if (
-      referenceIds !== undefined &&
-      (!Array.isArray(referenceIds) || !referenceIds.every((id) => typeof id === "string"))
-    ) {
-      return c.json({ error: "reference_ids must be an array of strings" }, 400);
-    }
-
     try {
       const user = c.get("user");
       const adminUser = user?.id ?? "unknown";
-      let adjustment: ReturnType<typeof store.refund>;
+      let result: ReturnType<typeof ledger.credit>;
       try {
-        adjustment = store.refund(tenant, amountCents, reason, adminUser, referenceIds as string[] | undefined);
+        result = ledger.credit(tenant, amountCents, "purchase", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -160,7 +124,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
             action: "credits.refund",
             category: "credits",
             targetTenant: tenant,
-            details: { amount_cents: amountCents, reason, reference_ids: referenceIds, error: String(err) },
+            details: { amount_cents: amountCents, reason, error: String(err) },
             outcome: "failure",
           });
         } catch {
@@ -174,15 +138,15 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
           action: "credits.refund",
           category: "credits",
           targetTenant: tenant,
-          details: { amount_cents: amountCents, reason, reference_ids: referenceIds },
+          details: { amount_cents: amountCents, reason },
           outcome: "success",
         });
       } catch {
         /* audit must not break request */
       }
-      return c.json(adjustment, 201);
+      return c.json(result, 201);
     } catch (err) {
-      if (err instanceof BalanceError) {
+      if (err instanceof InsufficientBalanceError) {
         return c.json({ error: err.message, current_balance: err.currentBalance }, 400);
       }
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -191,7 +155,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
   /** POST /:tenantId/correction */
   routes.post("/:tenantId/correction", async (c) => {
-    const store = storeFactory();
+    const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
 
     let body: Record<string, unknown>;
@@ -215,9 +179,13 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
     try {
       const user = c.get("user");
       const adminUser = user?.id ?? "unknown";
-      let adjustment: ReturnType<typeof store.correction>;
+      let result: ReturnType<typeof ledger.credit> | ReturnType<typeof ledger.debit>;
       try {
-        adjustment = store.correction(tenant, amountCents, reason, adminUser);
+        if (amountCents >= 0) {
+          result = ledger.credit(tenant, amountCents || 1, "promo", reason);
+        } else {
+          result = ledger.debit(tenant, Math.abs(amountCents), "correction", reason);
+        }
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -245,9 +213,9 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
       } catch {
         /* audit must not break request */
       }
-      return c.json(adjustment, 201);
+      return c.json(result, 201);
     } catch (err) {
-      if (err instanceof BalanceError) {
+      if (err instanceof InsufficientBalanceError) {
         return c.json({ error: err.message, current_balance: err.currentBalance }, 400);
       }
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
@@ -256,11 +224,11 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
   /** GET /:tenantId/balance */
   routes.get("/:tenantId/balance", (c) => {
-    const store = storeFactory();
+    const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
 
     try {
-      const balance = store.getBalance(tenant);
+      const balance = ledger.balance(tenant);
       return c.json({ tenant, balance_cents: balance });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
@@ -269,25 +237,19 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
   /** GET /:tenantId/transactions */
   routes.get("/:tenantId/transactions", (c) => {
-    const store = storeFactory();
+    const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
     const typeParam = c.req.query("type");
 
-    if (typeParam !== undefined && !VALID_ADJUSTMENT_TYPES.includes(typeParam as AdjustmentType)) {
-      return c.json({ error: `Invalid type: must be one of ${VALID_ADJUSTMENT_TYPES.join(", ")}` }, 400);
-    }
-
     const filters = {
-      type: typeParam as AdjustmentType | undefined,
-      from: parseIntParam(c.req.query("from")),
-      to: parseIntParam(c.req.query("to")),
+      type: typeParam,
       limit: parseIntParam(c.req.query("limit")),
       offset: parseIntParam(c.req.query("offset")),
     };
 
     try {
-      const result = store.listTransactions(tenant, filters);
-      return c.json(result);
+      const entries = ledger.history(tenant, filters);
+      return c.json({ entries, total: entries.length });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
     }
@@ -295,25 +257,19 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
   /** GET /:tenantId/adjustments -- alias for transactions */
   routes.get("/:tenantId/adjustments", (c) => {
-    const store = storeFactory();
+    const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
     const typeParam = c.req.query("type");
 
-    if (typeParam !== undefined && !VALID_ADJUSTMENT_TYPES.includes(typeParam as AdjustmentType)) {
-      return c.json({ error: `Invalid type: must be one of ${VALID_ADJUSTMENT_TYPES.join(", ")}` }, 400);
-    }
-
     const filters = {
-      type: typeParam as AdjustmentType | undefined,
-      from: parseIntParam(c.req.query("from")),
-      to: parseIntParam(c.req.query("to")),
+      type: typeParam,
       limit: parseIntParam(c.req.query("limit")),
       offset: parseIntParam(c.req.query("offset")),
     };
 
     try {
-      const result = store.listTransactions(tenant, filters);
-      return c.json(result);
+      const entries = ledger.history(tenant, filters);
+      return c.json({ entries, total: entries.length });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
     }
@@ -325,7 +281,7 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 
-/** Pre-built admin credit routes with auth and lazy DB initialization. */
+/** Pre-built admin credit routes with auth and lazy ledger initialization. */
 export const adminCreditRoutes = new Hono<AuthEnv>();
 adminCreditRoutes.use("*", adminAuth);
-adminCreditRoutes.route("/", buildRoutes(getStore));
+adminCreditRoutes.route("/", buildRoutes(getCreditLedger));

@@ -9,7 +9,6 @@ import { z } from "zod";
 import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { BulkOperationsStore } from "../../admin/bulk/bulk-operations-store.js";
-import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { IAdminNotesRepository } from "../../admin/notes/admin-notes-repository.js";
 import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { RoleStore } from "../../admin/roles/role-store.js";
@@ -18,6 +17,7 @@ import type { AdminUserStore } from "../../admin/users/user-store.js";
 import type { INotificationQueueStore } from "../../email/notification-queue-store.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { protectedProcedure, router } from "../init.js";
 
@@ -27,7 +27,7 @@ import { protectedProcedure, router } from "../init.js";
 
 export interface AdminRouterDeps {
   getAuditLog: () => AdminAuditLog;
-  getCreditStore: () => CreditAdjustmentStore;
+  getCreditLedger: () => ICreditLedger;
   getRateStore?: () => RateStore;
   getUserStore: () => AdminUserStore;
   getTenantStatusStore: () => ITenantStatusRepository;
@@ -143,8 +143,8 @@ export const adminRouter = router({
 
   /** Get credits balance for a tenant. */
   creditsBalance: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input }) => {
-    const { getCreditStore } = deps();
-    const balance = getCreditStore().getBalance(input.tenantId);
+    const { getCreditLedger } = deps();
+    const balance = getCreditLedger().balance(input.tenantId);
     return { tenant: input.tenantId, balance_cents: balance };
   }),
 
@@ -158,10 +158,10 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      const { getCreditStore, getAuditLog } = deps();
+      const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = getCreditStore().grant(input.tenantId, input.amount_cents, input.reason, adminUser);
+        const result = getCreditLedger().credit(input.tenantId, input.amount_cents, "signup_grant", input.reason);
         getAuditLog().log({
           adminUser,
           action: "credits.grant",
@@ -195,16 +195,10 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      const { getCreditStore, getAuditLog } = deps();
+      const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = getCreditStore().refund(
-          input.tenantId,
-          input.amount_cents,
-          input.reason,
-          adminUser,
-          input.reference_ids,
-        );
+        const result = getCreditLedger().debit(input.tenantId, input.amount_cents, "refund", input.reason);
         getAuditLog().log({
           adminUser,
           action: "credits.refund",
@@ -242,10 +236,13 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      const { getCreditStore, getAuditLog } = deps();
+      const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = getCreditStore().correction(input.tenantId, input.amount_cents, input.reason, adminUser);
+        const result =
+          input.amount_cents >= 0
+            ? getCreditLedger().credit(input.tenantId, input.amount_cents || 1, "promo", input.reason)
+            : getCreditLedger().debit(input.tenantId, Math.abs(input.amount_cents), "correction", input.reason);
         getAuditLog().log({
           adminUser,
           action: "credits.correction",
@@ -281,9 +278,10 @@ export const adminRouter = router({
       }),
     )
     .query(({ input }) => {
-      const { getCreditStore } = deps();
+      const { getCreditLedger } = deps();
       const { tenantId, ...filters } = input;
-      return getCreditStore().listTransactions(tenantId, filters);
+      const entries = getCreditLedger().history(tenantId, filters);
+      return { entries, total: entries.length };
     }),
 
   /** List users with filters. */
@@ -452,7 +450,7 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getTenantStatusStore, getAuditLog, getCreditStore, getBotBilling } = deps();
+      const { getTenantStatusStore, getAuditLog, getCreditLedger, getBotBilling } = deps();
       const store = getTenantStatusStore();
       const adminUserId = ctx.user?.id ?? "unknown";
 
@@ -482,9 +480,9 @@ export const adminRouter = router({
 
       // Auto-refund remaining credits
       let refundedCents = 0;
-      const balance = getCreditStore().getBalance(input.tenantId);
+      const balance = getCreditLedger().balance(input.tenantId);
       if (balance > 0) {
-        getCreditStore().refund(input.tenantId, balance, `Auto-refund on account ban: ${input.reason}`, adminUserId);
+        getCreditLedger().debit(input.tenantId, balance, "refund", `Auto-refund on account ban: ${input.reason}`);
         refundedCents = balance;
       }
 
@@ -927,11 +925,11 @@ export const adminRouter = router({
   /** Get full tenant detail (god view). Aggregates user info, credits, status, usage. */
   tenantDetail: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
     requirePlatformAdmin(ctx.user?.roles ?? []);
-    const { getUserStore, getCreditStore, getTenantStatusStore, getMeterAggregator } = deps();
+    const { getUserStore, getCreditLedger, getTenantStatusStore, getMeterAggregator } = deps();
 
     const user = getUserStore().getById(input.tenantId);
-    const balance = getCreditStore().getBalance(input.tenantId);
-    const recentTransactions = getCreditStore().listTransactions(input.tenantId, { limit: 10 });
+    const balance = getCreditLedger().balance(input.tenantId);
+    const recentTransactions = getCreditLedger().history(input.tenantId, { limit: 10 });
     const status = getTenantStatusStore().get(input.tenantId);
 
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -1156,22 +1154,21 @@ export const adminRouter = router({
     )
     .query(({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getCreditStore } = deps();
+      const { getCreditLedger } = deps();
       const { tenantId, ...filters } = input;
-      const result = getCreditStore().listTransactions(tenantId, { ...filters, limit: 10000 });
+      const entries = getCreditLedger().history(tenantId, { ...filters, limit: 10000 });
 
-      const header = "id,tenant,type,amount_cents,reason,admin_user,reference_ids,created_at";
+      const header = "id,tenantId,type,amountCents,description,referenceId,createdAt";
       const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-      const lines = result.entries.map((r) =>
+      const lines = entries.map((r) =>
         [
           csvEscape(r.id),
-          csvEscape(r.tenant),
+          csvEscape(r.tenantId),
           csvEscape(r.type),
-          String(r.amount_cents),
-          csvEscape(r.reason),
-          csvEscape(r.admin_user),
-          csvEscape(r.reference_ids ?? ""),
-          String(r.created_at),
+          String(r.amountCents),
+          csvEscape(r.description ?? ""),
+          csvEscape(r.referenceId ?? ""),
+          csvEscape(r.createdAt),
         ].join(","),
       );
 

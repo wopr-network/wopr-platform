@@ -16,16 +16,15 @@
 import type DatabaseType from "better-sqlite3";
 import Database from "better-sqlite3";
 import { Hono } from "hono";
-import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { logger } from "../../config/logger.js";
 import { applyPlatformPragmas } from "../../db/pragmas.js";
 import { getEmailClient } from "../../email/client.js";
 import { welcomeTemplate } from "../../email/templates.js";
 import { verifyToken } from "../../email/verification.js";
+import { getCreditLedger } from "../../fleet/services.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
-const CREDITS_DB_PATH = process.env.CREDITS_DB_PATH || "/data/platform/credits.db";
 const UI_ORIGIN = process.env.UI_ORIGIN || "http://localhost:3001";
 const SIGNUP_CREDIT_CENTS = 500; // $5.00
 
@@ -39,36 +38,25 @@ function getAuthDb(): DatabaseType.Database {
   return _authDb;
 }
 
-/** Lazy-initialized credits database. */
-let _creditsDb: DatabaseType.Database | null = null;
-function getCreditsDb(): DatabaseType.Database {
-  if (!_creditsDb) {
-    _creditsDb = new Database(CREDITS_DB_PATH);
-    applyPlatformPragmas(_creditsDb);
-    initCreditAdjustmentSchema(_creditsDb);
-  }
-  return _creditsDb;
-}
-
 export interface VerifyEmailRouteDeps {
   authDb: DatabaseType.Database;
-  creditsDb: DatabaseType.Database;
+  creditLedger: ICreditLedger;
 }
 
 // BOUNDARY(WOP-805): REST is the correct layer for email verification.
 // Users click a link in their email → GET /auth/verify?token=xxx → redirect.
 // This is a browser redirect flow, not a JSON RPC call.
 /**
- * Create verify-email routes with explicit database dependencies (for testing).
+ * Create verify-email routes with explicit dependencies (for testing).
  */
 export function createVerifyEmailRoutes(deps: VerifyEmailRouteDeps): Hono {
   return buildRoutes(
     () => deps.authDb,
-    () => deps.creditsDb,
+    () => deps.creditLedger,
   );
 }
 
-function buildRoutes(authDbFactory: () => DatabaseType.Database, creditsDbFactory: () => DatabaseType.Database): Hono {
+function buildRoutes(authDbFactory: () => DatabaseType.Database, creditLedgerFactory: () => ICreditLedger): Hono {
   const routes = new Hono();
 
   routes.get("/verify", async (c) => {
@@ -87,10 +75,8 @@ function buildRoutes(authDbFactory: () => DatabaseType.Database, creditsDbFactor
 
     // Grant $5 signup credit
     try {
-      const creditsDb = creditsDbFactory();
-      initCreditAdjustmentSchema(creditsDb);
-      const store = new CreditAdjustmentStore(creditsDb);
-      store.grant(result.userId, SIGNUP_CREDIT_CENTS, "Signup verification credit", "system");
+      const ledger = creditLedgerFactory();
+      ledger.credit(result.userId, SIGNUP_CREDIT_CENTS, "signup_grant", "Signup verification credit");
       logger.info("Signup credit granted", { userId: result.userId, amountCents: SIGNUP_CREDIT_CENTS });
     } catch (err) {
       logger.error("Failed to grant signup credit", {
@@ -124,5 +110,5 @@ function buildRoutes(authDbFactory: () => DatabaseType.Database, creditsDbFactor
   return routes;
 }
 
-/** Production routes using lazy-initialized databases. */
-export const verifyEmailRoutes = buildRoutes(getAuthDb, getCreditsDb);
+/** Production routes using lazy-initialized dependencies. */
+export const verifyEmailRoutes = buildRoutes(getAuthDb, getCreditLedger);

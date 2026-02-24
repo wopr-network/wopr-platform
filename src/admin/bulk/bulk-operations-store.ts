@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { AdminAuditLog } from "../audit-log.js";
-import type { CreditAdjustmentStore } from "../credits/adjustment-store.js";
 import type { ITenantStatusRepository } from "../tenant-status/tenant-status-repository.js";
 import type { IBulkOperationsRepository } from "./bulk-operations-repository.js";
 
@@ -72,7 +72,7 @@ export interface BulkExportInput {
 export class BulkOperationsStore {
   constructor(
     private readonly repo: IBulkOperationsRepository,
-    private readonly creditStore: CreditAdjustmentStore,
+    private readonly creditStore: ICreditLedger,
     private readonly tenantStatusStore: ITenantStatusRepository,
     private readonly auditLog: AdminAuditLog,
   ) {}
@@ -110,7 +110,7 @@ export class BulkOperationsStore {
     this.repo.transaction(() => {
       for (const tenantId of input.tenantIds) {
         try {
-          this.creditStore.grant(tenantId, input.amountCents, input.reason, adminUser);
+          this.creditStore.credit(tenantId, input.amountCents, "signup_grant", input.reason);
           succeeded++;
           succeededIds.push(tenantId);
         } catch (err) {
@@ -176,7 +176,7 @@ export class BulkOperationsStore {
     this.repo.transaction(() => {
       for (const tenantId of tenantIds) {
         try {
-          this.creditStore.correction(tenantId, -grant.amountCents, `Undo bulk grant ${operationId}`, adminUser);
+          this.creditStore.debit(tenantId, grant.amountCents, "correction", `Undo bulk grant ${operationId}`);
           succeeded++;
         } catch (err) {
           errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
@@ -340,7 +340,7 @@ export class BulkOperationsStore {
       if (enabledKeys.has("credit_balance")) fields.push(String(r.creditBalanceCents ?? 0));
       if (enabledKeys.has("monthly_products")) fields.push(String(r.agentCount ?? 0));
       if (enabledKeys.has("lifetime_spend")) {
-        const spend = this.creditStore.getBalance(String(r.tenantId));
+        const spend = this.creditStore.balance(String(r.tenantId));
         fields.push(String(spend));
       }
       if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));

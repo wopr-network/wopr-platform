@@ -2,7 +2,6 @@ import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
@@ -507,7 +506,6 @@ describe("E2E: Billing flow (credit model)", () => {
     sqlite = new BetterSqlite3(":memory:");
     initMeterSchema(sqlite);
     initStripeSchema(sqlite);
-    initCreditAdjustmentSchema(sqlite);
     initCreditSchema(sqlite);
     initAffiliateSchema(sqlite);
     db = createDb(sqlite);

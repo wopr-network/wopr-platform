@@ -39,7 +39,6 @@ import {
   getNotificationPrefsStore,
   getRateLimitRepo,
   getRegistrationTokenStore,
-  getSqliteDb,
   getSystemResourceMonitor,
   initFleet,
 } from "./fleet/services.js";
@@ -494,8 +493,6 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire billing tRPC router deps
   {
-    const { CreditAdjustmentStore } = await import("./admin/credits/adjustment-store.js");
-    const { initCreditAdjustmentSchema } = await import("./admin/credits/schema.js");
     const { MeterAggregator } = await import("./monetization/metering/aggregator.js");
     const { loadCreditPriceMap } = await import("./monetization/stripe/credit-prices.js");
     const { DrizzleTenantCustomerStore } = await import("./monetization/stripe/tenant-store.js");
@@ -506,13 +503,7 @@ if (process.env.NODE_ENV !== "test") {
     const { StripePaymentProcessor } = await import("./monetization/stripe/stripe-payment-processor.js");
     const { DrizzlePayRamChargeStore } = await import("./monetization/payram/charge-store.js");
 
-    // All tables live in platform.db — use getSqliteDb() for the raw sqlite
-    // instance needed by CreditAdjustmentStore, and getDb() for drizzle.
-    const platformSqliteDb = getSqliteDb();
-    initCreditAdjustmentSchema(platformSqliteDb);
-
     const tenantStore = new DrizzleTenantCustomerStore(getDb());
-    const creditStore = new CreditAdjustmentStore(platformSqliteDb);
     const meterAggregator = new MeterAggregator(getDb());
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
@@ -544,7 +535,7 @@ if (process.env.NODE_ENV !== "test") {
       setBillingRouterDeps({
         processor,
         tenantStore,
-        creditStore,
+        creditLedger: getCreditLedger(),
         meterAggregator,
         priceMap,
         dividendRepo: getDividendRepo(),

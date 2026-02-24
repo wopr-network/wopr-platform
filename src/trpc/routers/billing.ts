@@ -7,7 +7,6 @@
 import { TRPCError } from "@trpc/server";
 import type { Payram } from "payram";
 import { z } from "zod";
-import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import {
   ALLOWED_SCHEDULE_INTERVALS,
@@ -16,6 +15,7 @@ import {
   computeNextScheduleAt,
   type IAutoTopupSettingsRepository,
 } from "../../monetization/credits/auto-topup-settings-repository.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { CreditPriceMap, ITenantCustomerStore } from "../../monetization/index.js";
@@ -136,7 +136,7 @@ const PLAN_TIERS = [
 export interface BillingRouterDeps {
   processor: IPaymentProcessor;
   tenantStore: ITenantCustomerStore;
-  creditStore: CreditAdjustmentStore;
+  creditLedger: ICreditLedger;
   meterAggregator: MeterAggregator;
   priceMap: CreditPriceMap | undefined;
   autoTopupSettingsStore: IAutoTopupSettingsRepository;
@@ -169,8 +169,8 @@ export const billingRouter = router({
     if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
     }
-    const { creditStore, meterAggregator } = deps();
-    const balance = creditStore.getBalance(tenant);
+    const { creditLedger, meterAggregator } = deps();
+    const balance = creditLedger.balance(tenant);
 
     // Compute 7-day average daily burn from usage summaries.
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -198,9 +198,10 @@ export const billingRouter = router({
       if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
-      const { creditStore } = deps();
+      const { creditLedger } = deps();
       const { tenant: _t, ...filters } = { ...input, tenant };
-      return creditStore.listTransactions(tenant, filters);
+      const entries = creditLedger.history(tenant, filters);
+      return { entries, total: entries.length };
     }),
 
   /** Get available credit purchase tiers with real Stripe price IDs. */
@@ -409,7 +410,7 @@ export const billingRouter = router({
   /** Get hosted usage summary for current billing period. */
   hostedUsageSummary: protectedProcedure.query(({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
-    const { meterAggregator, creditStore } = deps();
+    const { meterAggregator, creditLedger } = deps();
 
     const periodStart = new Date();
     periodStart.setDate(1);
@@ -436,7 +437,7 @@ export const billingRouter = router({
     }));
 
     const totalCost = capabilities.reduce((sum, c) => sum + c.cost, 0);
-    const balance = creditStore.getBalance(tenant);
+    const balance = creditLedger.balance(tenant);
 
     return {
       periodStart: periodStart.toISOString(),
@@ -570,7 +571,7 @@ export const billingRouter = router({
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
-      const { processor, creditStore, tenantStore } = deps();
+      const { processor, creditLedger, tenantStore } = deps();
 
       const { PaymentMethodOwnershipError } = await import("../../monetization/payment-processor.js");
 
@@ -581,7 +582,7 @@ export const billingRouter = router({
         const paymentMethods = await processor.listPaymentMethods(tenant);
         if (paymentMethods.length <= 1) {
           const hasBillingHold = mapping.billing_hold === 1;
-          const hasOutstandingBalance = creditStore.getBalance(tenant) < 0;
+          const hasOutstandingBalance = creditLedger.balance(tenant) < 0;
           if (hasBillingHold || hasOutstandingBalance) {
             throw new TRPCError({
               code: "FORBIDDEN",
