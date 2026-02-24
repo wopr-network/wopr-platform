@@ -14,6 +14,8 @@ app.{$DOMAIN} {
 }
 
 # Platform API — api subdomain
+# NOTE: Set TRUSTED_PROXY_IPS env var on platform-api to this container's
+# Docker network IP (e.g. 172.18.0.5) so the rate limiter trusts XFF from Caddy.
 api.{$DOMAIN} {
 	reverse_proxy platform-api:3100
 }
