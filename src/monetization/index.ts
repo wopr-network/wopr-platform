@@ -73,6 +73,8 @@ export {
 } from "./arbitrage/index.js";
 export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budget/index.js";
 export { BudgetChecker, DrizzleBudgetChecker } from "./budget/index.js";
+// Credit value object (WOP-983)
+export { Credit } from "./credit.js";
 // Credit ledger (WOP-384)
 export type {
   BillingState,

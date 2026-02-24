@@ -11,4 +11,6 @@ export function createDb(sqlite: Database.Database) {
 }
 
 export { schema };
+// Custom column types (WOP-983)
+export { creditColumn } from "./credit-column.js";
 export { applyPlatformPragmas } from "./pragmas.js";
