@@ -33,7 +33,6 @@ export * from "./rates.js";
 export * from "./recovery-events.js";
 export * from "./restore-log.js";
 export * from "./security-settings.js";
-export * from "./sessions.js";
 export * from "./snapshots.js";
 export * from "./spending-limits.js";
 export * from "./stripe.js";
