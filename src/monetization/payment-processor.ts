@@ -1,5 +1,14 @@
 import type { Credit } from "./credit.js";
 
+/** Thrown when a tenant tries to detach a payment method they don't own. */
+export class PaymentMethodOwnershipError extends Error {
+  readonly code = "PAYMENT_METHOD_NOT_OWNED" as const;
+  constructor() {
+    super("Payment method does not belong to this tenant");
+    this.name = "PaymentMethodOwnershipError";
+  }
+}
+
 /** A saved payment method on file for a tenant (processor-agnostic). */
 export interface SavedPaymentMethod {
   /** Processor-specific payment method ID (e.g. Stripe pm_xxx, PayRam wallet address). */
@@ -14,12 +23,14 @@ export interface SavedPaymentMethod {
 export interface CheckoutOpts {
   /** Internal tenant ID. */
   tenant: string;
-  /** Amount to charge. */
-  amount: Credit;
+  /** Amount to charge. Required when no priceId is provided; may be omitted when priceId resolves the amount. */
+  amount?: Credit;
   /** URL to redirect to after successful checkout. */
   successUrl: string;
   /** URL to redirect to if the user cancels checkout. */
   cancelUrl: string;
+  /** Processor-specific price ID (e.g. Stripe price_xxx). Processors that don't use price IDs may ignore this. */
+  priceId?: string;
 }
 
 /** Returned after creating a checkout session. */
@@ -98,9 +109,9 @@ export interface IPaymentProcessor {
 
   /**
    * Create a billing portal session (only if supportsPortal() is true).
-   * Implementations that return false from supportsPortal() may leave this undefined.
+   * Implementations that return false from supportsPortal() must throw rather than leaving this undefined.
    */
-  createPortalSession?(opts: PortalOpts): Promise<{ url: string }>;
+  createPortalSession(opts: PortalOpts): Promise<{ url: string }>;
 
   /** Save a payment method for future off-session charges. */
   setupPaymentMethod(tenant: string): Promise<SetupResult>;
@@ -110,4 +121,7 @@ export interface IPaymentProcessor {
 
   /** Charge a saved payment method off-session. */
   charge(opts: ChargeOpts): Promise<ChargeResult>;
+
+  /** Detach a payment method from the tenant's account. */
+  detachPaymentMethod(tenant: string, paymentMethodId: string): Promise<void>;
 }

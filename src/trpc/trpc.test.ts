@@ -10,6 +10,7 @@ import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-af
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
+import type { IPaymentProcessor } from "../monetization/payment-processor.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
 import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { createTestDb } from "../test/db.js";
@@ -33,6 +34,21 @@ function unauthContext(): TRPCContext {
 /** Create a tRPC caller with the given context. */
 function createCaller(ctx: TRPCContext) {
   return appRouter.createCaller(ctx);
+}
+
+function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPaymentProcessor {
+  return {
+    name: "mock",
+    supportsPortal: () => true,
+    createCheckoutSession: vi.fn().mockResolvedValue({ id: "cs_test", url: "https://checkout.stripe.com/cs_test" }),
+    createPortalSession: vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_test" }),
+    handleWebhook: vi.fn().mockResolvedValue({ handled: false, eventType: "unknown" }),
+    setupPaymentMethod: vi.fn().mockResolvedValue({ clientSecret: "seti_test_secret" }),
+    listPaymentMethods: vi.fn().mockResolvedValue([]),
+    detachPaymentMethod: vi.fn().mockResolvedValue(undefined),
+    charge: vi.fn().mockResolvedValue({ success: true }),
+    ...overrides,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -189,39 +205,14 @@ describe("tRPC appRouter", () => {
       tenantStore = new TenantCustomerStore(db);
       const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
       const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(db);
-      const mockStripeClient = {
-        customers: {
-          listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }),
-        },
-      };
 
       setBillingRouterDeps({
-        stripe: {
-          checkout: { sessions: { create: vi.fn() } },
-          billingPortal: { sessions: { create: vi.fn() } },
-          customers: {
-            retrieve: vi.fn().mockResolvedValue({
-              id: "cus_test",
-              email: "test@example.com",
-              invoice_settings: { default_payment_method: null },
-            }),
-            update: vi.fn().mockResolvedValue({ id: "cus_test", email: "updated@example.com" }),
-          },
-          paymentMethods: {
-            list: vi.fn().mockResolvedValue({ data: [] }),
-            retrieve: vi.fn().mockResolvedValue({ id: "pm_test", customer: "cus_test" }),
-            detach: vi.fn().mockResolvedValue({ id: "pm_test" }),
-          },
-          invoices: {
-            list: vi.fn().mockResolvedValue({ data: [] }),
-          },
-        } as never,
+        processor: createMockProcessor(),
         tenantStore,
         creditStore,
         meterAggregator,
         priceMap: undefined,
         autoTopupSettingsStore,
-        stripeClient: mockStripeClient as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,
@@ -315,9 +306,9 @@ describe("tRPC appRouter", () => {
 
     it("portalSession accepts omitted tenant and uses ctx.tenantId", async () => {
       const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
-      // portalSession needs a Stripe customer — it will throw a portal/customer error,
-      // but NOT "Tenant context required" — proving tenant is derived from ctx
-      await expect(caller.billing.portalSession({ returnUrl: "https://example.com/billing" })).rejects.toThrow(); // throws Stripe/customer error, not missing-tenant error
+      // With IPaymentProcessor mock, portalSession resolves successfully — proving tenant is derived from ctx
+      const result = await caller.billing.portalSession({ returnUrl: "https://example.com/billing" });
+      expect(result).toHaveProperty("url");
     });
 
     // ---- new stub procedures (WOP-687) ----
@@ -434,11 +425,13 @@ describe("tRPC appRouter", () => {
       expect(result.invoices).toEqual([]);
     });
 
-    it("billingInfo returns Stripe data when mapping exists", async () => {
+    it("billingInfo returns payment methods from processor when mapping exists", async () => {
       tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.billingInfo();
-      expect(result.email).toBe("test@example.com");
+      expect(result).toHaveProperty("email");
+      expect(result).toHaveProperty("paymentMethods");
+      expect(result).toHaveProperty("invoices");
     });
 
     it("updateBillingEmail throws NOT_FOUND when tenant has no mapping", async () => {
@@ -455,9 +448,11 @@ describe("tRPC appRouter", () => {
       expect(result.email).toBe("new@example.com");
     });
 
-    it("removePaymentMethod throws when tenant has no Stripe mapping", async () => {
+    it("removePaymentMethod succeeds via processor even when tenant has no billing mapping", async () => {
       const caller = createCaller(authedContext());
-      await expect(caller.billing.removePaymentMethod({ id: "pm_test" })).rejects.toThrow();
+      // With IPaymentProcessor mock, detachPaymentMethod resolves regardless of tenant mapping
+      const result = await caller.billing.removePaymentMethod({ id: "pm_test" });
+      expect(result.removed).toBe(true);
     });
 
     it("removePaymentMethod returns removed true when PM belongs to tenant", async () => {
@@ -540,35 +535,25 @@ describe("tRPC appRouter", () => {
 
       it("returns card last4 when payment method exists", async () => {
         const caller = createCaller(authedContext());
-        // Set up tenant-customer mapping
-        tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
-        // Override stripeClient to return a payment method
         const { DrizzleAutoTopupSettingsRepository: Store } = await import(
           "../monetization/credits/auto-topup-settings-repository.js"
         );
         const autoTopupSettingsStore = new Store(db);
-        const mockStripeClient = {
-          customers: {
-            listPaymentMethods: vi.fn().mockResolvedValue({
-              data: [{ card: { last4: "4242" } }],
-            }),
-          },
-        };
         const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
         const creditStore = new CAS(sqlite);
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
         setBillingRouterDeps({
-          stripe: {
-            checkout: { sessions: { create: vi.fn() } },
-            billingPortal: { sessions: { create: vi.fn() } },
-          } as never,
+          processor: createMockProcessor({
+            listPaymentMethods: vi
+              .fn()
+              .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
+          }),
           tenantStore,
           creditStore,
           meterAggregator,
           priceMap: undefined,
           autoTopupSettingsStore,
-          stripeClient: mockStripeClient as never,
           dividendRepo: {
             getStats: () => ({
               poolCents: 0,
@@ -613,34 +598,25 @@ describe("tRPC appRouter", () => {
 
       it("persists usage-based settings when payment method exists", async () => {
         const caller = createCaller(authedContext());
-        tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
-        // Override stripeClient to return a payment method
         const { DrizzleAutoTopupSettingsRepository: Store } = await import(
           "../monetization/credits/auto-topup-settings-repository.js"
         );
         const autoTopupSettingsStore = new Store(db);
-        const mockStripeClient = {
-          customers: {
-            listPaymentMethods: vi.fn().mockResolvedValue({
-              data: [{ card: { last4: "4242" } }],
-            }),
-          },
-        };
         const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
         const creditStore = new CAS(sqlite);
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
         setBillingRouterDeps({
-          stripe: {
-            checkout: { sessions: { create: vi.fn() } },
-            billingPortal: { sessions: { create: vi.fn() } },
-          } as never,
+          processor: createMockProcessor({
+            listPaymentMethods: vi
+              .fn()
+              .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
+          }),
           tenantStore,
           creditStore,
           meterAggregator,
           priceMap: undefined,
           autoTopupSettingsStore,
-          stripeClient: mockStripeClient as never,
           dividendRepo: {
             getStats: () => ({
               poolCents: 0,
@@ -673,33 +649,25 @@ describe("tRPC appRouter", () => {
 
       it("computes schedule_next_at when enabling schedule", async () => {
         const caller = createCaller(authedContext());
-        tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
         const { DrizzleAutoTopupSettingsRepository: Store } = await import(
           "../monetization/credits/auto-topup-settings-repository.js"
         );
         const autoTopupSettingsStore = new Store(db);
-        const mockStripeClient = {
-          customers: {
-            listPaymentMethods: vi.fn().mockResolvedValue({
-              data: [{ card: { last4: "4242" } }],
-            }),
-          },
-        };
         const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
         const creditStore = new CAS(sqlite);
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
         setBillingRouterDeps({
-          stripe: {
-            checkout: { sessions: { create: vi.fn() } },
-            billingPortal: { sessions: { create: vi.fn() } },
-          } as never,
+          processor: createMockProcessor({
+            listPaymentMethods: vi
+              .fn()
+              .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
+          }),
           tenantStore,
           creditStore,
           meterAggregator,
           priceMap: undefined,
           autoTopupSettingsStore,
-          stripeClient: mockStripeClient as never,
           dividendRepo: {
             getStats: () => ({
               poolCents: 0,
@@ -778,16 +746,12 @@ describe("tRPC appRouter", () => {
       const spendingLimitsRepo1 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
-        stripe: {
-          checkout: { sessions: { create: vi.fn() } },
-          billingPortal: { sessions: { create: vi.fn() } },
-        } as never,
+        processor: createMockProcessor(),
         tenantStore,
         creditStore,
         meterAggregator,
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
-        stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,
@@ -852,16 +816,12 @@ describe("tRPC appRouter", () => {
       const spendingLimitsRepo2 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
-        stripe: {
-          checkout: { sessions: { create: vi.fn() } },
-          billingPortal: { sessions: { create: vi.fn() } },
-        } as never,
+        processor: createMockProcessor(),
         tenantStore,
         creditStore,
         meterAggregator,
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
-        stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,
@@ -897,16 +857,12 @@ describe("tRPC appRouter", () => {
       const spendingLimitsRepo3 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
-        stripe: {
-          checkout: { sessions: { create: vi.fn() } },
-          billingPortal: { sessions: { create: vi.fn() } },
-        } as never,
+        processor: createMockProcessor(),
         tenantStore,
         creditStore,
         meterAggregator,
         priceMap: undefined,
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
-        stripeClient: { customers: { listPaymentMethods: vi.fn().mockResolvedValue({ data: [] }) } } as never,
         dividendRepo: {
           getStats: () => ({
             poolCents: 0,

@@ -1,40 +1,32 @@
 import crypto from "node:crypto";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import type Stripe from "stripe";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import type { DrizzleDb } from "../../db/index.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
+import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
+import { type IPaymentProcessor, PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
+import type { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
 import { createPayRamClient, loadPayRamConfig } from "../../monetization/payram/client.js";
 import type { PayRamWebhookPayload } from "../../monetization/payram/types.js";
 import { handlePayRamWebhook } from "../../monetization/payram/webhook.js";
-import { createCreditCheckoutSession } from "../../monetization/stripe/checkout.js";
-import type { CreditPriceMap } from "../../monetization/stripe/credit-prices.js";
-import { loadCreditPriceMap } from "../../monetization/stripe/credit-prices.js";
-import { detachPaymentMethod, PaymentMethodOwnershipError } from "../../monetization/stripe/payment-methods.js";
-import { createPortalSession } from "../../monetization/stripe/portal.js";
-import { createSetupIntent } from "../../monetization/stripe/setup-intent.js";
-import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
-import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
 import type { IWebhookSeenRepository } from "../../monetization/webhook-seen-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
 export interface BillingRouteDeps {
-  stripe: Stripe;
-  db: DrizzleDb;
-  webhookSecret: string;
+  processor: IPaymentProcessor;
+  creditLedger: ICreditLedger;
+  meterAggregator: IMeterAggregator;
   sigPenaltyRepo: ISigPenaltyRepository;
   /** Replay guard for Stripe webhook deduplication. */
   replayGuard?: IWebhookSeenRepository;
   /** Replay guard for PayRam webhook deduplication. */
   payramReplayGuard?: IWebhookSeenRepository;
   affiliateRepo: IAffiliateRepository;
+  payramChargeStore?: DrizzlePayRamChargeStore;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -117,72 +109,28 @@ const payramWebhookBodySchema = z.object({
 
 // -- Route factory ------------------------------------------------------------
 
-let deps: BillingRouteDeps | null = null;
-let tenantStore: TenantCustomerStore | null = null;
-let creditLedger: CreditLedger | null = null;
-let meterAggregator: MeterAggregator | null = null;
-let priceMap: CreditPriceMap | null = null;
-let affiliateRepo: IAffiliateRepository | null = null;
-
-/** Reject webhook events with timestamps older than 5 minutes (in seconds). */
-const WEBHOOK_TIMESTAMP_TOLERANCE = 300;
+let _deps: BillingRouteDeps | null = null;
 
 let payramClient: import("payram").Payram | null = null;
-let payramChargeStore: PayRamChargeStore | null = null;
 
 /** Inject dependencies (call before serving). */
 export function setBillingDeps(d: BillingRouteDeps): void {
-  deps = d;
-  tenantStore = new TenantCustomerStore(d.db);
-  creditLedger = new CreditLedger(d.db);
-  meterAggregator = new MeterAggregator(d.db);
-  priceMap = loadCreditPriceMap();
-  affiliateRepo = d.affiliateRepo;
+  _deps = d;
 
   // PayRam initialization (optional — only if env vars are set)
   const payramConfig = loadPayRamConfig();
   if (payramConfig) {
     payramClient = createPayRamClient(payramConfig);
-    payramChargeStore = new PayRamChargeStore(d.db);
   } else {
     payramClient = null;
-    payramChargeStore = null;
   }
-}
-
-function getAffiliateRepo(): IAffiliateRepository {
-  if (!affiliateRepo) {
-    throw new Error("Billing routes not initialized — call setBillingDeps() first");
-  }
-  return affiliateRepo;
 }
 
 function getDeps(): BillingRouteDeps {
-  if (!deps) {
+  if (!_deps) {
     throw new Error("Billing routes not initialized — call setBillingDeps() first");
   }
-  return deps;
-}
-
-function getTenantStore(): TenantCustomerStore {
-  if (!tenantStore) {
-    throw new Error("Billing routes not initialized — call setBillingDeps() first");
-  }
-  return tenantStore;
-}
-
-function getCreditLedger(): CreditLedger {
-  if (!creditLedger) {
-    throw new Error("Billing routes not initialized — call setBillingDeps() first");
-  }
-  return creditLedger;
-}
-
-function getMeterAggregator(): MeterAggregator {
-  if (!meterAggregator) {
-    throw new Error("Billing routes not initialized — call setBillingDeps() first");
-  }
-  return meterAggregator;
+  return _deps;
 }
 
 // BOUNDARY(WOP-805): REST is the correct layer for billing routes.
@@ -206,8 +154,7 @@ if (metadataMap.size === 0) {
  * Body: { tenant, priceId, successUrl, cancelUrl }
  */
 billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
-  const { stripe } = getDeps();
-  const store = getTenantStore();
+  const { processor } = getDeps();
 
   let body: Record<string, unknown>;
   try {
@@ -224,11 +171,12 @@ billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
   const { tenant, priceId, successUrl, cancelUrl } = parsed.data;
 
   try {
-    const session = await createCreditCheckoutSession(stripe, store, {
+    // StripePaymentProcessor resolves the priceId to the matching credit tier internally.
+    const session = await processor.createCheckoutSession({
       tenant,
-      priceId,
       successUrl,
       cancelUrl,
+      priceId,
     });
 
     return c.json({ url: session.url, sessionId: session.id });
@@ -245,8 +193,7 @@ billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
  * Body: { tenant, returnUrl }
  */
 billingRoutes.post("/portal", adminAuth, async (c) => {
-  const { stripe } = getDeps();
-  const store = getTenantStore();
+  const { processor } = getDeps();
 
   let body: Record<string, unknown>;
   try {
@@ -262,8 +209,15 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
 
   const { tenant, returnUrl } = parsed.data;
 
+  if (!processor.supportsPortal()) {
+    return c.json({ error: "Billing portal not supported by current payment processor" }, 501);
+  }
+
   try {
-    const session = await createPortalSession(stripe, store, { tenant, returnUrl });
+    const session = await processor.createPortalSession({ tenant, returnUrl });
+    if (!session?.url) {
+      return c.json({ error: "Billing portal not supported by current payment processor" }, 501);
+    }
     return c.json({ url: session.url });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Portal session creation failed";
@@ -279,8 +233,7 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
  * Returns: { clientSecret }
  */
 billingRoutes.post("/setup-intent", adminAuth, async (c) => {
-  const { stripe } = getDeps();
-  const store = getTenantStore();
+  const { processor } = getDeps();
 
   const tokenTenantId = c.get("tokenTenantId");
   if (!tokenTenantId) {
@@ -293,11 +246,11 @@ billingRoutes.post("/setup-intent", adminAuth, async (c) => {
   }
 
   try {
-    const intent = await createSetupIntent(stripe, store, { tenant: parsedTenant.data });
-    if (!intent.client_secret) {
+    const result = await processor.setupPaymentMethod(parsedTenant.data);
+    if (!result.clientSecret) {
       return c.json({ error: "Failed to create setup intent" }, 500);
     }
-    return c.json({ clientSecret: intent.client_secret });
+    return c.json({ clientSecret: result.clientSecret });
   } catch (err) {
     const message = err instanceof Error ? err.message : "SetupIntent creation failed";
     return c.json({ error: message }, 500);
@@ -310,8 +263,7 @@ billingRoutes.post("/setup-intent", adminAuth, async (c) => {
  * Detach a payment method from the tenant's Stripe customer.
  */
 billingRoutes.delete("/payment-methods/:id", adminAuth, async (c) => {
-  const { stripe } = getDeps();
-  const store = getTenantStore();
+  const { processor } = getDeps();
 
   const id = c.req.param("id");
   const parsedId = detachPaymentMethodParamsSchema.safeParse({ id });
@@ -340,10 +292,7 @@ billingRoutes.delete("/payment-methods/:id", adminAuth, async (c) => {
   }
 
   try {
-    await detachPaymentMethod(stripe, store, {
-      tenant: parsedTenant.data,
-      paymentMethodId: parsedId.data.id,
-    });
+    await processor.detachPaymentMethod(parsedTenant.data, parsedId.data.id);
     return c.json({ removed: true });
   } catch (err) {
     if (err instanceof PaymentMethodOwnershipError) {
@@ -361,7 +310,7 @@ billingRoutes.delete("/payment-methods/:id", adminAuth, async (c) => {
  * Note: No bearer auth — webhook uses Stripe signature verification.
  */
 billingRoutes.post("/webhook", async (c) => {
-  const { stripe, webhookSecret, sigPenaltyRepo } = getDeps();
+  const { processor, sigPenaltyRepo } = getDeps();
   const ip = getClientIp(c);
   const now = Date.now();
 
@@ -380,11 +329,20 @@ billingRoutes.post("/webhook", async (c) => {
     return c.json({ error: "Missing stripe-signature header" }, 400);
   }
 
-  let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(body, signature, webhookSecret, WEBHOOK_TIMESTAMP_TOLERANCE);
+    const result = await processor.handleWebhook(Buffer.from(body), signature);
     // Clear any stale penalties on successful verification (WOP-477)
     sigPenaltyRepo.clear(ip, "stripe");
+
+    if (result.duplicate) {
+      logger.warn("Webhook replay attempt detected", {
+        eventType: result.eventType,
+        ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "unknown",
+      });
+    }
+
+    const { eventType, ...rest } = result;
+    return c.json({ ...rest, event_type: eventType }, 200);
   } catch (err) {
     // Track signature failure for exponential backoff (WOP-477)
     const updated = sigPenaltyRepo.recordFailure(ip, "stripe");
@@ -396,29 +354,6 @@ billingRoutes.post("/webhook", async (c) => {
     });
     return c.json({ error: "Invalid webhook signature" }, 400);
   }
-
-  const store = getTenantStore();
-  const ledger = getCreditLedger();
-  const result = handleWebhookEvent(
-    {
-      tenantStore: store,
-      creditLedger: ledger,
-      priceMap: priceMap ?? undefined,
-      replayGuard: getDeps().replayGuard,
-      affiliateRepo: getDeps().affiliateRepo,
-    },
-    event,
-  );
-
-  if (result.duplicate) {
-    logger.warn("Webhook replay attempt detected", {
-      eventId: event.id,
-      eventType: event.type,
-      ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "unknown",
-    });
-  }
-
-  return c.json(result, 200);
 });
 
 /**
@@ -428,10 +363,6 @@ billingRoutes.post("/webhook", async (c) => {
  * Body: { tenant, amountUsd }
  */
 billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
-  if (!payramClient || !payramChargeStore) {
-    return c.json({ error: "Crypto payments not configured" }, 503);
-  }
-
   let body: Record<string, unknown>;
   try {
     body = (await c.req.json()) as Record<string, unknown>;
@@ -444,8 +375,13 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     return c.json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }, 400);
   }
 
+  const { payramChargeStore: chargeStore } = getDeps();
+  if (!payramClient || !chargeStore) {
+    return c.json({ error: "Crypto payments not configured" }, 503);
+  }
+
   try {
-    const result = await createPayRamCheckout(payramClient, payramChargeStore, parsed.data);
+    const result = await createPayRamCheckout(payramClient, chargeStore, parsed.data);
     return c.json({ url: result.url, referenceId: result.referenceId });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Crypto checkout failed";
@@ -460,7 +396,7 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
  * Note: No bearer auth — webhook uses PayRam API key verification.
  */
 billingRoutes.post("/crypto/webhook", async (c) => {
-  if (!payramChargeStore) {
+  if (!payramClient) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
 
@@ -493,12 +429,15 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     return c.json({ received: false }, 400);
   }
 
-  const ledger = getCreditLedger();
+  const { creditLedger, payramChargeStore: chargeStore2, payramReplayGuard } = getDeps();
+  if (!chargeStore2) {
+    return c.json({ error: "Crypto payments not configured" }, 503);
+  }
   const result = handlePayRamWebhook(
     {
-      chargeStore: payramChargeStore,
-      creditLedger: ledger,
-      replayGuard: getDeps().payramReplayGuard,
+      chargeStore: chargeStore2,
+      creditLedger,
+      replayGuard: payramReplayGuard,
     },
     parsed.data as PayRamWebhookPayload,
   );
@@ -521,7 +460,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
  * Query params: tenant (required), capability, provider, startDate, endDate, limit
  */
 billingRoutes.get("/usage", adminAuth, async (c) => {
-  const aggregator = getMeterAggregator();
+  const aggregator = getDeps().meterAggregator;
 
   const requestedTenant = c.req.query("tenant");
   const tokenTenantId = c.get("tokenTenantId");
@@ -576,7 +515,7 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
  * Query params: tenant (required), startDate (optional)
  */
 billingRoutes.get("/usage/summary", adminAuth, async (c) => {
-  const aggregator = getMeterAggregator();
+  const aggregator = getDeps().meterAggregator;
 
   const requestedTenant = c.req.query("tenant");
   const tokenTenantId = c.get("tokenTenantId");
@@ -645,7 +584,7 @@ billingRoutes.get("/affiliate", adminAuth, (c) => {
   }
 
   try {
-    const repo = getAffiliateRepo();
+    const repo = getDeps().affiliateRepo;
     const stats = repo.getStats(parsedTenant.data);
     return c.json(stats);
   } catch (err) {
@@ -677,7 +616,7 @@ billingRoutes.post("/affiliate/record-referral", adminAuth, async (c) => {
   const { code, referredTenantId } = parsed.data;
 
   try {
-    const repo = getAffiliateRepo();
+    const repo = getDeps().affiliateRepo;
     const codeRecord = repo.getByCode(code);
     if (!codeRecord) {
       return c.json({ error: "Invalid referral code" }, 404);

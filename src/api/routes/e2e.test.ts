@@ -1,7 +1,6 @@
 import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
-import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
@@ -11,7 +10,9 @@ import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle
 import { initAffiliateSchema } from "../../monetization/affiliate/schema.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../monetization/credits/schema.js";
+import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { initMeterSchema } from "../../monetization/metering/schema.js";
+import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
@@ -476,21 +477,25 @@ describe("E2E: Billing flow (credit model)", () => {
   let tenantStore: TenantCustomerStore;
   let creditLedger: CreditLedger;
 
-  const mockStripe = {
-    checkout: {
-      sessions: {
-        create: vi.fn(),
-      },
+  const mockCheckoutCreate = vi.fn();
+  const mockPortalCreate = vi.fn();
+  const mockProcessor: IPaymentProcessor = {
+    name: "mock",
+    supportsPortal: () => true,
+    createCheckoutSession: async (opts) => {
+      const result = await mockCheckoutCreate(opts);
+      return { id: result.id, url: result.url ?? "" };
     },
-    billingPortal: {
-      sessions: {
-        create: vi.fn(),
-      },
+    createPortalSession: async (opts) => {
+      const result = await mockPortalCreate(opts);
+      return { url: result.url };
     },
-    webhooks: {
-      constructEvent: vi.fn(),
-    },
-  } as unknown as Stripe;
+    handleWebhook: vi.fn().mockResolvedValue({ handled: false, eventType: "unknown" }),
+    setupPaymentMethod: vi.fn().mockResolvedValue({ clientSecret: "seti_test_secret" }),
+    listPaymentMethods: vi.fn().mockResolvedValue([]),
+    detachPaymentMethod: vi.fn().mockResolvedValue(undefined),
+    charge: vi.fn().mockResolvedValue({ success: true }),
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -525,9 +530,9 @@ describe("E2E: Billing flow (credit model)", () => {
       );
     `);
     setBillingDeps({
-      stripe: mockStripe,
-      db,
-      webhookSecret: "whsec_test",
+      processor: mockProcessor,
+      creditLedger,
+      meterAggregator: new MeterAggregator(db),
       sigPenaltyRepo: new DrizzleSigPenaltyRepository(drizzle(sigPenaltySqlite, { schema })),
       affiliateRepo: new DrizzleAffiliateRepository(db),
     });
@@ -561,7 +566,7 @@ describe("E2E: Billing flow (credit model)", () => {
     expect(quotaCheck.allowed).toBe(false);
 
     // Step 3: Create a credit checkout session ($25 purchase)
-    (mockStripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockCheckoutCreate.mockResolvedValue({
       id: "cs_test_123",
       url: "https://checkout.stripe.com/cs_test_123",
     });
@@ -594,7 +599,7 @@ describe("E2E: Billing flow (credit model)", () => {
           metadata: { wopr_tenant: tenantId },
         },
       },
-    } as unknown as Stripe.Event;
+    } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
     const webhookResult = handleWebhookEvent({ tenantStore, creditLedger }, checkoutEvent);
     expect(webhookResult.handled).toBe(true);
@@ -619,7 +624,7 @@ describe("E2E: Billing flow (credit model)", () => {
     expect(balanceBody.balanceCents).toBe(2500);
 
     // Step 8: Access billing portal
-    (mockStripe.billingPortal.sessions.create as ReturnType<typeof vi.fn>).mockResolvedValue({
+    mockPortalCreate.mockResolvedValue({
       url: "https://billing.stripe.com/session/portal_123",
     });
 
@@ -647,7 +652,7 @@ describe("E2E: Billing flow (credit model)", () => {
           metadata: { wopr_tenant: tenantId },
         },
       },
-    } as unknown as Stripe.Event;
+    } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
     const secondResult = handleWebhookEvent({ tenantStore, creditLedger }, secondCheckoutEvent);
     expect(secondResult.handled).toBe(true);

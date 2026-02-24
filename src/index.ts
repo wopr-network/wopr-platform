@@ -27,6 +27,7 @@ import {
   getCircuitBreakerRepo,
   getCommandBus,
   getConnectionRegistry,
+  getCreditLedger,
   getDb,
   getDividendRepo,
   getFleetEventRepo,
@@ -489,48 +490,61 @@ if (process.env.NODE_ENV !== "test") {
     const { initCreditAdjustmentSchema } = await import("./admin/credits/schema.js");
     const { MeterAggregator } = await import("./monetization/metering/aggregator.js");
     const { loadCreditPriceMap } = await import("./monetization/stripe/credit-prices.js");
-    const { TenantCustomerStore } = await import("./monetization/stripe/tenant-store.js");
+    const { DrizzleTenantCustomerStore } = await import("./monetization/stripe/tenant-store.js");
     const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
     const { DrizzleAutoTopupSettingsRepository } = await import(
       "./monetization/credits/auto-topup-settings-repository.js"
     );
+    const { StripePaymentProcessor } = await import("./monetization/stripe/stripe-payment-processor.js");
+    const { DrizzlePayRamChargeStore } = await import("./monetization/payram/charge-store.js");
 
     const billingDb2 = new Database(BILLING_DB_PATH);
     applyPlatformPragmas(billingDb2);
     initCreditAdjustmentSchema(billingDb2);
     const billingDrizzle2 = createDb(billingDb2);
 
-    const tenantStore = new TenantCustomerStore(billingDrizzle2);
+    const tenantStore = new DrizzleTenantCustomerStore(billingDrizzle2);
     const creditStore = new CreditAdjustmentStore(billingDb2);
     const meterAggregator = new MeterAggregator(billingDrizzle2);
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(billingDrizzle2);
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(billingDrizzle2);
-    const Stripe = (await import("stripe")).default;
     const stripeKey = process.env.STRIPE_SECRET_KEY;
-    const stripe = stripeKey ? new Stripe(stripeKey) : undefined;
-    if (stripe) {
+    if (stripeKey) {
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(stripeKey);
+      const priceMap = loadCreditPriceMap();
+
+      const processor = new StripePaymentProcessor({
+        stripe,
+        tenantStore,
+        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+        priceMap,
+      });
+
       setBillingRouterDeps({
-        stripe: stripe as never,
+        processor,
         tenantStore,
         creditStore,
         meterAggregator,
-        priceMap: loadCreditPriceMap(),
+        priceMap,
         dividendRepo: getDividendRepo(),
         spendingLimitsRepo,
         autoTopupSettingsStore,
-        stripeClient: stripe,
         affiliateRepo: getAffiliateRepo(),
       });
       logger.info("tRPC billing router initialized");
 
       // Wire REST billing routes (Stripe webhooks, checkout, portal).
       // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).
+      const payramChargeStore = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeStore(billingDrizzle2) : undefined;
+
       setBillingDeps({
-        stripe: stripe as never,
-        db: billingDrizzle2,
-        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+        processor,
+        creditLedger: getCreditLedger(),
+        meterAggregator,
         sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
         affiliateRepo: getAffiliateRepo(),
+        payramChargeStore,
       });
       logger.info("REST billing routes initialized");
     } else {
