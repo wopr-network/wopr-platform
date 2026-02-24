@@ -618,6 +618,14 @@ if (process.env.NODE_ENV !== "test") {
     logger.info("Daily runtime deduction cron scheduled (24h interval)");
   }
 
+  // Run better-auth migrations before accepting requests.
+  // better-auth does not auto-migrate — runMigrations() must be called explicitly.
+  {
+    const { runAuthMigrations } = await import("./auth/better-auth.js");
+    await runAuthMigrations();
+    logger.info("better-auth migrations applied");
+  }
+
   const server = serve({ fetch: app.fetch, port }, () => {
     logger.info(`wopr-platform listening on http://0.0.0.0:${port}`);
   });
