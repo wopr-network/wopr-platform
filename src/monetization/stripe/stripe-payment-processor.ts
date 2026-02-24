@@ -149,7 +149,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
       return [];
     }
 
-    const methods = await this.stripe.customers.listPaymentMethods(mapping.stripe_customer_id);
+    const methods = await this.stripe.customers.listPaymentMethods(mapping.processor_customer_id);
 
     return methods.data.map((pm, index) => ({
       id: pm.id,

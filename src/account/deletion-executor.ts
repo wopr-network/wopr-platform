@@ -3,7 +3,7 @@ import type { IDeletionExecutorRepository } from "./deletion-executor-repository
 export interface DeletionExecutorDeps {
   repo: IDeletionExecutorRepository;
   stripe?: { customers: { del: (id: string) => Promise<unknown> } };
-  tenantStore?: { getByTenant: (tenant: string) => { stripe_customer_id: string } | null };
+  tenantStore?: { getByTenant: (tenant: string) => { processor_customer_id: string } | null };
   /** S3-compatible client for deleting snapshot objects during GDPR purge. */
   spaces?: { remove: (remotePath: string) => Promise<void> };
 }
@@ -73,7 +73,7 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
     try {
       const mapping = tenantStore.getByTenant(tenantId);
       if (mapping) {
-        await stripe.customers.del(mapping.stripe_customer_id);
+        await stripe.customers.del(mapping.processor_customer_id);
         result.stripeCustomerDeleted = true;
       }
     } catch (err) {

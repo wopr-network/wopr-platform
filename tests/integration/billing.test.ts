@@ -238,7 +238,7 @@ describe("integration: billing routes", () => {
 
   describe("POST /api/billing/portal", () => {
     it("creates portal session with valid input", async () => {
-      tenantStore.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc" });
+      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc" });
       const portalCreate = vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal" });
       setBillingDeps({
         stripe: createMockStripe({ portalCreate }),

@@ -176,7 +176,68 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   // =========================================================================
-  // TEST 2: Idempotent signup grant
+  // TEST 2: Stripe reporting (conditional on STRIPE_SECRET_KEY)
+  // =========================================================================
+
+  it.skipIf(!stripeAvailable)(
+    "bonus: Stripe receives usage event in test mode",
+    async () => {
+      const stripe = new Stripe(STRIPE_KEY!);
+
+      // Create a real Stripe test-mode customer to map to the tenant.
+      const customer = await stripe.customers.create({
+        email: `e2e-test-${Date.now()}@wopr.bot`,
+        metadata: { wopr_tenant: TENANT_ID, test: "true" },
+      });
+
+      try {
+        tenantStore.upsert({
+          tenant: TENANT_ID,
+          processorCustomerId: customer.id,
+        });
+
+        // Run the full chain
+        grantSignupCredits(ledger, TENANT_ID);
+        botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
+
+        await socket.execute<ImageGenerationOutput>({
+          tenantId: TENANT_ID,
+          capability: "image-generation",
+          input: { prompt: "test image for Stripe reporting" },
+        });
+
+        meter.flush();
+
+        // Poll until the billing period has elapsed (up to 3s to tolerate slow CI).
+        const periodBoundary2 = aggregator.getBillingPeriod(Date.now()).start + 1_000;
+        for (let i = 0; i < 60; i++) {
+          if (Date.now() >= periodBoundary2) break;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        aggregator.aggregate();
+
+        // Create reporter and send to Stripe
+        const reporter = new StripeUsageReporter(db, stripe, tenantStore, {
+          intervalMs: 999_999, // Don't auto-run
+        });
+
+        const reported = await reporter.report();
+        expect(reported).toBeGreaterThanOrEqual(1);
+
+        // Verify the report was recorded locally
+        const reports = reporter.queryReports(TENANT_ID);
+        expect(reports.length).toBeGreaterThanOrEqual(1);
+        expect(reports[0].event_name).toBe("wopr_image_generation_usage");
+        expect(reports[0].value_cents).toBeGreaterThan(0);
+      } finally {
+        // Clean up test Stripe customer regardless of test outcome
+        await stripe.customers.del(customer.id);
+      }
+    },
+  );
+
+  // =========================================================================
+  // TEST 3: Idempotent signup grant
   // =========================================================================
 
   it("idempotent signup grant — second call is a no-op", () => {

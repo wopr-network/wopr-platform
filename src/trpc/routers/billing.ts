@@ -528,7 +528,7 @@ export const billingRouter = router({
       };
     }
 
-    const customerId = mapping.stripe_customer_id;
+    const customerId = mapping.processor_customer_id;
 
     try {
       const [customer, paymentMethodsResult, invoicesResult] = await Promise.all([
@@ -588,7 +588,7 @@ export const billingRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "No billing account found" });
       }
 
-      await stripe.customers.update(mapping.stripe_customer_id, { email: input.email });
+      await stripe.customers.update(mapping.processor_customer_id, { email: input.email });
       return { email: input.email };
     }),
 
@@ -608,7 +608,7 @@ export const billingRouter = router({
       const mapping = tenantStore.getByTenant(tenant);
       if (mapping) {
         const paymentMethods = await stripe.paymentMethods.list({
-          customer: mapping.stripe_customer_id,
+          customer: mapping.processor_customer_id,
           type: "card",
         });
         if (paymentMethods.data.length <= 1) {
@@ -652,7 +652,7 @@ export const billingRouter = router({
     const mapping = tenantStore.getByTenant(tenant);
     if (mapping) {
       try {
-        const methods = await stripeClient.customers.listPaymentMethods(mapping.stripe_customer_id, { limit: 1 });
+        const methods = await stripeClient.customers.listPaymentMethods(mapping.processor_customer_id, { limit: 1 });
         if (methods.data.length > 0 && methods.data[0].card) {
           paymentMethodLast4 = methods.data[0].card.last4;
         }
@@ -720,7 +720,7 @@ export const billingRouter = router({
           });
         }
 
-        const methods = await stripeClient.customers.listPaymentMethods(mapping.stripe_customer_id, { limit: 1 });
+        const methods = await stripeClient.customers.listPaymentMethods(mapping.processor_customer_id, { limit: 1 });
         if (methods.data.length === 0) {
           throw new TRPCError({
             code: "BAD_REQUEST",

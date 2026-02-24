@@ -461,16 +461,16 @@ describe("initStripeSchema — data integrity", () => {
     db.close();
   });
 
-  it("enforces UNIQUE on tenant_customers.stripe_customer_id", () => {
+  it("enforces UNIQUE on tenant_customers.processor_customer_id", () => {
     const now = Date.now();
     db.prepare(
-      "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     ).run("t1", "cus_unique", "free", now, now);
 
     expect(() =>
       db
         .prepare(
-          "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run("t2", "cus_unique", "free", now, now),
     ).toThrow();
@@ -479,23 +479,23 @@ describe("initStripeSchema — data integrity", () => {
   it("enforces PRIMARY KEY on tenant_customers.tenant", () => {
     const now = Date.now();
     db.prepare(
-      "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     ).run("t-dup", "cus_1", "free", now, now);
 
     expect(() =>
       db
         .prepare(
-          "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run("t-dup", "cus_2", "free", now, now),
     ).toThrow();
   });
 
-  it("enforces NOT NULL on tenant_customers.stripe_customer_id", () => {
+  it("enforces NOT NULL on tenant_customers.processor_customer_id", () => {
     expect(() =>
       db
         .prepare(
-          "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run("t1", null, "free", Date.now(), Date.now()),
     ).toThrow();
@@ -505,7 +505,7 @@ describe("initStripeSchema — data integrity", () => {
     expect(() =>
       db
         .prepare(
-          "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run("t1", "cus_1", null, Date.now(), Date.now()),
     ).toThrow();
@@ -515,7 +515,7 @@ describe("initStripeSchema — data integrity", () => {
     expect(() =>
       db
         .prepare(
-          "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run("t1", "cus_1", "free", null, Date.now()),
     ).toThrow();
@@ -525,7 +525,7 @@ describe("initStripeSchema — data integrity", () => {
     expect(() =>
       db
         .prepare(
-          "INSERT INTO tenant_customers (tenant, stripe_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
         )
         .run("t1", "cus_1", "free", Date.now(), null),
     ).toThrow();
@@ -534,7 +534,7 @@ describe("initStripeSchema — data integrity", () => {
   it("defaults tier to 'free'", () => {
     const now = Date.now();
     db.prepare(
-      "INSERT INTO tenant_customers (tenant, stripe_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
+      "INSERT INTO tenant_customers (tenant, processor_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
     ).run("t-default", "cus_default", now, now);
 
     const row = db.prepare("SELECT tier FROM tenant_customers WHERE tenant = ?").get("t-default") as { tier: string };
@@ -612,7 +612,7 @@ describe("initStripeSchema — data integrity", () => {
 
   it("has expected indexes on tenant_customers", () => {
     const idxs = indexNames(db, "idx_tenant_customers_");
-    expect(idxs).toContain("idx_tenant_customers_stripe");
+    expect(idxs).toContain("idx_tenant_customers_processor");
   });
 
   it("has expected indexes on stripe_usage_reports", () => {

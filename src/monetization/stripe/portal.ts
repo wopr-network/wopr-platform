@@ -19,7 +19,7 @@ export async function createPortalSession(
   }
 
   return stripe.billingPortal.sessions.create({
-    customer: mapping.stripe_customer_id,
+    customer: mapping.processor_customer_id,
     return_url: opts.returnUrl,
   });
 }

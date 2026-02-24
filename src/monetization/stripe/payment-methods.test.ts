@@ -33,7 +33,7 @@ describe("detachPaymentMethod", () => {
   it("calls stripe.paymentMethods.detach with the correct ID", async () => {
     const { db } = setupDb();
     const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const stripe = mockStripe();
     await detachPaymentMethod(stripe, store, {
@@ -61,7 +61,7 @@ describe("detachPaymentMethod", () => {
   it("throws when payment method belongs to a different customer (cross-tenant guard)", async () => {
     const { db } = setupDb();
     const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-1", stripeCustomerId: "cus_abc123" });
+    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const paymentMethodRetrieve = vi.fn().mockResolvedValue({
       id: "pm_other",

@@ -14,7 +14,7 @@ describe("createCreditCheckoutSession", () => {
     } as unknown as Stripe;
   }
 
-  function mockTenantStore(existingMapping: { stripe_customer_id: string } | null = null) {
+  function mockTenantStore(existingMapping: { processor_customer_id: string } | null = null) {
     return {
       getByTenant: vi.fn().mockReturnValue(existingMapping),
     } as unknown as TenantCustomerStore;
@@ -46,7 +46,7 @@ describe("createCreditCheckoutSession", () => {
 
   it("reuses existing Stripe customer when available", async () => {
     const stripe = mockStripe();
-    const store = mockTenantStore({ stripe_customer_id: "cus_existing" });
+    const store = mockTenantStore({ processor_customer_id: "cus_existing" });
 
     await createCreditCheckoutSession(stripe, store, {
       tenant: "t-1",

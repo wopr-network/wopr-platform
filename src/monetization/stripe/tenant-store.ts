@@ -1,12 +1,12 @@
 import { desc, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
-import { tenantCustomers } from "../../db/schema/stripe.js";
+import { tenantCustomers } from "../../db/schema/tenant-customers.js";
 import type { TenantCustomerRow } from "./types.js";
 
 export interface ITenantCustomerStore {
   getByTenant(tenant: string): TenantCustomerRow | null;
-  getByStripeCustomerId(stripeCustomerId: string): TenantCustomerRow | null;
-  upsert(row: { tenant: string; stripeCustomerId: string; tier?: string }): void;
+  getByProcessorCustomerId(processorCustomerId: string): TenantCustomerRow | null;
+  upsert(row: { tenant: string; processorCustomerId: string; tier?: string }): void;
   setTier(tenant: string, tier: string): void;
   setBillingHold(tenant: string, hold: boolean): void;
   hasBillingHold(tenant: string): boolean;
@@ -17,10 +17,10 @@ export interface ITenantCustomerStore {
 }
 
 /**
- * Manages tenant-to-Stripe customer mappings in SQLite.
+ * Manages tenant-to-payment-processor customer mappings in SQLite.
  *
- * This is the bridge between WOPR tenant IDs and Stripe customer IDs.
- * All billing operations look up the Stripe customer via this store.
+ * This is the bridge between WOPR tenant IDs and processor customer IDs.
+ * All billing operations look up the processor customer via this store.
  *
  * Note: No subscription tracking — WOPR uses credits, not subscriptions.
  * Credit balances are managed by CreditAdjustmentStore.
@@ -28,30 +28,30 @@ export interface ITenantCustomerStore {
 export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
   constructor(private readonly db: DrizzleDb) {}
 
-  /** Get a tenant's Stripe mapping. */
+  /** Get a tenant's processor mapping. */
   getByTenant(tenant: string): TenantCustomerRow | null {
     const row = this.db.select().from(tenantCustomers).where(eq(tenantCustomers.tenant, tenant)).get();
     return row ? mapRow(row) : null;
   }
 
-  /** Get a tenant mapping by Stripe customer ID. */
-  getByStripeCustomerId(stripeCustomerId: string): TenantCustomerRow | null {
+  /** Get a tenant mapping by processor customer ID. */
+  getByProcessorCustomerId(processorCustomerId: string): TenantCustomerRow | null {
     const row = this.db
       .select()
       .from(tenantCustomers)
-      .where(eq(tenantCustomers.stripeCustomerId, stripeCustomerId))
+      .where(eq(tenantCustomers.processorCustomerId, processorCustomerId))
       .get();
     return row ? mapRow(row) : null;
   }
 
   /** Upsert a tenant-to-customer mapping. */
-  upsert(row: { tenant: string; stripeCustomerId: string; tier?: string }): void {
+  upsert(row: { tenant: string; processorCustomerId: string; tier?: string }): void {
     const now = Date.now();
     this.db
       .insert(tenantCustomers)
       .values({
         tenant: row.tenant,
-        stripeCustomerId: row.stripeCustomerId,
+        processorCustomerId: row.processorCustomerId,
         tier: row.tier ?? "free",
         createdAt: now,
         updatedAt: now,
@@ -59,7 +59,7 @@ export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
       .onConflictDoUpdate({
         target: tenantCustomers.tenant,
         set: {
-          stripeCustomerId: row.stripeCustomerId,
+          processorCustomerId: row.processorCustomerId,
           tier: row.tier !== undefined ? row.tier : undefined,
           updatedAt: now,
         },
@@ -114,25 +114,25 @@ export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
       .run();
   }
 
-  /** List all tenants with Stripe mappings. */
+  /** List all tenants with processor mappings. */
   list(): TenantCustomerRow[] {
     const rows = this.db.select().from(tenantCustomers).orderBy(desc(tenantCustomers.createdAt)).all();
     return rows.map(mapRow);
   }
 
-  /** Build a tenant -> stripe_customer_id map. */
+  /** Build a tenant -> processor_customer_id map for use with UsageAggregationWorker. */
   buildCustomerIdMap(): Record<string, string> {
     const rows = this.db
       .select({
         tenant: tenantCustomers.tenant,
-        stripeCustomerId: tenantCustomers.stripeCustomerId,
+        processorCustomerId: tenantCustomers.processorCustomerId,
       })
       .from(tenantCustomers)
       .all();
 
     const map: Record<string, string> = {};
     for (const row of rows) {
-      map[row.tenant] = row.stripeCustomerId;
+      map[row.tenant] = row.processorCustomerId;
     }
     return map;
   }
@@ -142,7 +142,8 @@ export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
 function mapRow(row: typeof tenantCustomers.$inferSelect): TenantCustomerRow {
   return {
     tenant: row.tenant,
-    stripe_customer_id: row.stripeCustomerId,
+    processor_customer_id: row.processorCustomerId,
+    processor: row.processor,
     tier: row.tier,
     billing_hold: row.billingHold,
     inference_mode: row.inferenceMode,

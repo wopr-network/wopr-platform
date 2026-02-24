@@ -42,7 +42,7 @@ export async function chargeAutoTopup(
     return { success: false, error };
   }
 
-  const customerId = mapping.stripe_customer_id;
+  const customerId = mapping.processor_customer_id;
 
   // 2. Get default payment method
   let paymentMethodId: string;

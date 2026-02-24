@@ -138,7 +138,8 @@ function createTestDb() {
     );
     CREATE TABLE tenant_customers (
       tenant TEXT PRIMARY KEY,
-      stripe_customer_id TEXT,
+      processor_customer_id TEXT,
+      processor TEXT NOT NULL DEFAULT 'stripe',
       tier TEXT DEFAULT 'free',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))

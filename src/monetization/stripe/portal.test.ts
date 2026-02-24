@@ -14,7 +14,7 @@ describe("createPortalSession", () => {
     } as unknown as Stripe;
   }
 
-  function mockTenantStore(mapping: { stripe_customer_id: string } | null = null) {
+  function mockTenantStore(mapping: { processor_customer_id: string } | null = null) {
     return {
       getByTenant: vi.fn().mockReturnValue(mapping),
     } as unknown as TenantCustomerStore;
@@ -22,7 +22,7 @@ describe("createPortalSession", () => {
 
   it("creates a portal session for an existing customer", async () => {
     const stripe = mockStripe();
-    const store = mockTenantStore({ stripe_customer_id: "cus_abc" });
+    const store = mockTenantStore({ processor_customer_id: "cus_abc" });
 
     const session = await createPortalSession(stripe, store, {
       tenant: "t-1",
@@ -51,7 +51,7 @@ describe("createPortalSession", () => {
   it("propagates Stripe API errors", async () => {
     const stripe = mockStripe();
     (stripe.billingPortal.sessions.create as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Portal API error"));
-    const store = mockTenantStore({ stripe_customer_id: "cus_abc" });
+    const store = mockTenantStore({ processor_customer_id: "cus_abc" });
 
     await expect(
       createPortalSession(stripe, store, {
