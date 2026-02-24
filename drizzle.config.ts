@@ -1,3 +1,26 @@
+/**
+ * MIGRATION CONVENTIONS (WOP-526)
+ *
+ * SQLite limitations for zero-downtime deploys:
+ *
+ * SAFE operations (backward-compatible, can run while old code serves traffic):
+ *   - CREATE TABLE
+ *   - ADD COLUMN (with DEFAULT or nullable)
+ *   - CREATE INDEX
+ *
+ * UNSAFE operations (require expand-contract pattern):
+ *   - DROP TABLE    → rename to _deprecated_X first, drop in a later release
+ *   - DROP COLUMN   → stop reading it first, drop in a later release
+ *   - RENAME COLUMN → add new column, backfill, update code, drop old in next release
+ *   - NOT NULL on existing column → add with DEFAULT, backfill, then add constraint
+ *
+ * Every migration MUST be backward-compatible with the PREVIOUS release's code.
+ * The deploy sequence is: migrate DB -> roll out new code. If the new code crashes,
+ * the old code must still work with the migrated schema.
+ *
+ * Drizzle-kit generates migrations from schema diffs. After changing src/db/schema/,
+ * run `pnpm db:generate` and review the generated SQL before committing.
+ */
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({

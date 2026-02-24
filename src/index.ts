@@ -17,6 +17,7 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { applyPlatformPragmas } from "./db/index.js";
+import { runMigrations } from "./db/migrate.js";
 import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
@@ -222,6 +223,14 @@ function acceptAndWireWebSocket(nodeId: string, ws: WebSocket): void {
 // Only start the server if not imported by tests
 if (process.env.NODE_ENV !== "test") {
   logger.info(`wopr-platform starting on port ${port}`);
+
+  // Apply pending migrations before any DB access.
+  {
+    const migrationDb = getDb();
+    logger.info("Applying pending database migrations...");
+    runMigrations(migrationDb);
+    logger.info("Database migrations complete");
+  }
 
   // ── Gateway wiring ──────────────────────────────────────────────────────────
   // Mount /v1/* gateway routes. Must be done before serve() so routes are

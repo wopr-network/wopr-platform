@@ -43,6 +43,9 @@ COPY --from=deps /app/node_modules ./node_modules
 # Compiled output
 COPY --from=build /app/dist ./dist
 
+# Migration SQL files for drizzle-orm migrator
+COPY drizzle/migrations/ ./drizzle/migrations/
+
 # Package manifest (needed by Node for ESM resolution)
 COPY package.json ./
 

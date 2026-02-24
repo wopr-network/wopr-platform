@@ -1,0 +1,4 @@
+# CVE-2025-68121: Go crypto/tls session resumption bug in esbuild's bundled Go binary.
+# esbuild is bundled inside drizzle-kit (devDependency) for CLI use only — it is not
+# a runtime binary and is never executed in production. Safe to suppress.
+CVE-2025-68121
