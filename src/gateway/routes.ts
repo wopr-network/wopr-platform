@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { rateLimit } from "../api/middleware/rate-limit.js";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
+import { audioBodyLimit, llmBodyLimit, mediaBodyLimit, webhookBodyLimit } from "./body-limit.js";
 import { capabilityRateLimit } from "./capability-rate-limit.js";
 import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "./circuit-breaker.js";
 import { modelsHandler } from "./models.js";
@@ -109,10 +110,10 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
       resolveTenantFromWebhook: config.resolveTenantFromWebhook,
       sigPenaltyRepo: config.sigPenaltyRepo,
     });
-    gateway.post("/phone/inbound/:tenantId", webhookAuth, phoneInbound(deps));
-    gateway.post("/phone/outbound/status/:tenantId", webhookAuth, phoneOutboundStatus(deps));
-    gateway.post("/messages/sms/inbound/:tenantId", webhookAuth, smsInbound(deps));
-    gateway.post("/messages/sms/status/:tenantId", webhookAuth, smsDeliveryStatus(deps));
+    gateway.post("/phone/inbound/:tenantId", webhookBodyLimit(), webhookAuth, phoneInbound(deps));
+    gateway.post("/phone/outbound/status/:tenantId", webhookBodyLimit(), webhookAuth, phoneOutboundStatus(deps));
+    gateway.post("/messages/sms/inbound/:tenantId", webhookBodyLimit(), webhookAuth, smsInbound(deps));
+    gateway.post("/messages/sms/status/:tenantId", webhookBodyLimit(), webhookAuth, smsDeliveryStatus(deps));
   }
 
   // Self-hosted TwiML endpoint — public, no auth required (Twilio fetches it during call setup).
@@ -142,23 +143,23 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
   );
 
   // LLM endpoints (OpenRouter)
-  gateway.post("/chat/completions", chatCompletions(deps));
-  gateway.post("/completions", textCompletions(deps));
-  gateway.post("/embeddings", embeddings(deps));
+  gateway.post("/chat/completions", llmBodyLimit(), chatCompletions(deps));
+  gateway.post("/completions", llmBodyLimit(), textCompletions(deps));
+  gateway.post("/embeddings", llmBodyLimit(), embeddings(deps));
 
   // Audio endpoints
-  gateway.post("/audio/transcriptions", audioTranscriptions(deps));
-  gateway.post("/audio/speech", audioSpeech(deps));
+  gateway.post("/audio/transcriptions", audioBodyLimit(), audioTranscriptions(deps));
+  gateway.post("/audio/speech", audioBodyLimit(), audioSpeech(deps));
 
   // Image & Video generation (Replicate)
-  gateway.post("/images/generations", imageGenerations(deps));
-  gateway.post("/video/generations", videoGenerations(deps));
+  gateway.post("/images/generations", mediaBodyLimit(), imageGenerations(deps));
+  gateway.post("/video/generations", mediaBodyLimit(), videoGenerations(deps));
 
   // Phone (Twilio/Telnyx)
-  gateway.post("/phone/outbound", phoneOutbound(deps));
+  gateway.post("/phone/outbound", webhookBodyLimit(), phoneOutbound(deps));
 
   // Phone Number Management
-  gateway.post("/phone/numbers", phoneNumberProvision(deps));
+  gateway.post("/phone/numbers", webhookBodyLimit(), phoneNumberProvision(deps));
   gateway.get("/phone/numbers", phoneNumberList(deps));
   gateway.delete("/phone/numbers/:id", phoneNumberRelease(deps));
 
@@ -175,7 +176,7 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
     scope: "gateway:sms",
   });
 
-  gateway.post("/messages/sms", smsRateLimit, smsOutbound(deps));
+  gateway.post("/messages/sms", smsRateLimit, webhookBodyLimit(), smsOutbound(deps));
 
   // Model discovery
   gateway.get("/models", modelsHandler(deps));

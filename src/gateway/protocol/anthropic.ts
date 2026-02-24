@@ -12,6 +12,7 @@
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
+import { llmBodyLimit } from "../body-limit.js";
 import { capabilityRateLimit } from "../capability-rate-limit.js";
 import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "../circuit-breaker.js";
 import { creditBalanceCheck, debitCredits } from "../credit-gate.js";
@@ -117,6 +118,9 @@ export function createAnthropicRoutes(deps: ProtocolDeps): Hono<GatewayAuthEnv> 
       onTrip: deps.onCircuitBreakerTrip,
     }),
   );
+
+  // Body size limit — prevent memory exhaustion from oversized payloads (WOP-655)
+  app.use("/*", llmBodyLimit());
 
   // POST /v1/messages — the main Messages API endpoint
   app.post("/v1/messages", messagesHandler(deps));
