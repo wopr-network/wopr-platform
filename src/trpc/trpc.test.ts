@@ -1,13 +1,13 @@
+import crypto from "node:crypto";
 import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../admin/audit-log.js";
-import { CreditAdjustmentStore } from "../admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
@@ -51,6 +51,59 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
   };
 }
 
+function makeMockLedger(): ICreditLedger {
+  const balances = new Map<string, number>();
+  const txns: ReturnType<ICreditLedger["credit"]>[] = [];
+  return {
+    credit(tenantId, amountCents, type, description) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+      const tx = {
+        id: crypto.randomUUID(),
+        tenantId,
+        amountCents,
+        balanceAfterCents: balances.get(tenantId)!,
+        type: type ?? "signup_grant",
+        description: description ?? null,
+        referenceId: null,
+        fundingSource: null,
+        createdAt: new Date().toISOString(),
+      };
+      txns.push(tx);
+      return tx;
+    },
+    debit(tenantId, amountCents, type, description) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+      const tx = {
+        id: crypto.randomUUID(),
+        tenantId,
+        amountCents: -amountCents,
+        balanceAfterCents: balances.get(tenantId)!,
+        type: type ?? "correction",
+        description: description ?? null,
+        referenceId: null,
+        fundingSource: null,
+        createdAt: new Date().toISOString(),
+      };
+      txns.push(tx);
+      return tx;
+    },
+    balance(tenantId) {
+      return balances.get(tenantId) ?? 0;
+    },
+    hasReferenceId() {
+      return false;
+    },
+    history(tenantId, opts) {
+      return txns
+        .filter((t) => t.tenantId === tenantId)
+        .slice(opts?.offset ?? 0, (opts?.offset ?? 0) + (opts?.limit ?? 50));
+    },
+    tenantsWithBalance() {
+      return [];
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -65,7 +118,6 @@ describe("tRPC appRouter", () => {
     db = testDb.db;
     initMeterSchema(sqlite);
     initStripeSchema(sqlite);
-    initCreditAdjustmentSchema(sqlite);
   });
 
   afterEach(() => {
@@ -116,13 +168,13 @@ describe("tRPC appRouter", () => {
 
   describe("admin", () => {
     beforeEach(() => {
-      const creditStore = new CreditAdjustmentStore(sqlite);
+      const creditLedger = makeMockLedger();
       const userStore = new AdminUserStore(sqlite);
 
       const auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
       setAdminRouterDeps({
         getAuditLog: () => auditLog,
-        getCreditStore: () => creditStore,
+        getCreditLedger: () => creditLedger,
         getUserStore: () => userStore,
         getTenantStatusStore: () => {
           throw new Error("Tenant status store not available in tests") as never;
@@ -198,7 +250,7 @@ describe("tRPC appRouter", () => {
     let tenantStore: DrizzleTenantCustomerStore;
 
     beforeEach(async () => {
-      const creditStore = new CreditAdjustmentStore(sqlite);
+      const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
@@ -209,7 +261,7 @@ describe("tRPC appRouter", () => {
       setBillingRouterDeps({
         processor: createMockProcessor(),
         tenantStore,
-        creditStore,
+        creditLedger,
         meterAggregator,
         priceMap: undefined,
         autoTopupSettingsStore,
@@ -539,8 +591,7 @@ describe("tRPC appRouter", () => {
           "../monetization/credits/auto-topup-settings-repository.js"
         );
         const autoTopupSettingsStore = new Store(db);
-        const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
-        const creditStore = new CAS(sqlite);
+        const creditLedger = makeMockLedger();
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
         setBillingRouterDeps({
@@ -550,7 +601,7 @@ describe("tRPC appRouter", () => {
               .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
           }),
           tenantStore,
-          creditStore,
+          creditLedger,
           meterAggregator,
           priceMap: undefined,
           autoTopupSettingsStore,
@@ -602,8 +653,7 @@ describe("tRPC appRouter", () => {
           "../monetization/credits/auto-topup-settings-repository.js"
         );
         const autoTopupSettingsStore = new Store(db);
-        const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
-        const creditStore = new CAS(sqlite);
+        const creditLedger = makeMockLedger();
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
         setBillingRouterDeps({
@@ -613,7 +663,7 @@ describe("tRPC appRouter", () => {
               .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
           }),
           tenantStore,
-          creditStore,
+          creditLedger,
           meterAggregator,
           priceMap: undefined,
           autoTopupSettingsStore,
@@ -653,8 +703,7 @@ describe("tRPC appRouter", () => {
           "../monetization/credits/auto-topup-settings-repository.js"
         );
         const autoTopupSettingsStore = new Store(db);
-        const { CreditAdjustmentStore: CAS } = await import("../admin/credits/adjustment-store.js");
-        const creditStore = new CAS(sqlite);
+        const creditLedger = makeMockLedger();
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
         const meterAggregator = new MeterAggregator(db);
         setBillingRouterDeps({
@@ -664,7 +713,7 @@ describe("tRPC appRouter", () => {
               .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
           }),
           tenantStore,
-          creditStore,
+          creditLedger,
           meterAggregator,
           priceMap: undefined,
           autoTopupSettingsStore,
@@ -738,7 +787,7 @@ describe("tRPC appRouter", () => {
       vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_test_100");
 
       const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
-      const creditStore = new CreditAdjustmentStore(sqlite);
+      const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
@@ -748,7 +797,7 @@ describe("tRPC appRouter", () => {
       setBillingRouterDeps({
         processor: createMockProcessor(),
         tenantStore,
-        creditStore,
+        creditLedger,
         meterAggregator,
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
@@ -808,7 +857,7 @@ describe("tRPC appRouter", () => {
       vi.stubEnv("STRIPE_CREDIT_PRICE_100", "");
 
       const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
-      const creditStore = new CreditAdjustmentStore(sqlite);
+      const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
@@ -818,7 +867,7 @@ describe("tRPC appRouter", () => {
       setBillingRouterDeps({
         processor: createMockProcessor(),
         tenantStore,
-        creditStore,
+        creditLedger,
         meterAggregator,
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
@@ -849,7 +898,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("returns empty array when priceMap is undefined", async () => {
-      const creditStore = new CreditAdjustmentStore(sqlite);
+      const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
       const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
@@ -859,7 +908,7 @@ describe("tRPC appRouter", () => {
       setBillingRouterDeps({
         processor: createMockProcessor(),
         tenantStore,
-        creditStore,
+        creditLedger,
         meterAggregator,
         priceMap: undefined,
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),

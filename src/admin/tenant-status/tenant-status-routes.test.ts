@@ -12,11 +12,10 @@ import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
-import { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { appRouter } from "../../trpc/index.js";
 import type { TRPCContext } from "../../trpc/init.js";
 import { setAdminRouterDeps } from "../../trpc/routers/admin.js";
@@ -43,9 +42,6 @@ function initSchemas(sqlite: BetterSqlite3.Database): void {
       outcome TEXT
     )
   `);
-
-  // Credit adjustments
-  initCreditAdjustmentSchema(sqlite);
 
   // Admin users
   sqlite.exec(`
@@ -114,6 +110,52 @@ function createCaller(ctx: TRPCContext) {
   return appRouter.createCaller(ctx);
 }
 
+function makeMockLedger(): ICreditLedger {
+  const balances = new Map<string, number>();
+  return {
+    credit(tenantId, amountCents) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+      return {
+        id: "tx-1",
+        tenantId,
+        amountCents,
+        balanceAfterCents: balances.get(tenantId)!,
+        type: "signup_grant",
+        description: null,
+        referenceId: null,
+        fundingSource: null,
+        createdAt: new Date().toISOString(),
+      };
+    },
+    debit(tenantId, amountCents) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+      return {
+        id: "tx-2",
+        tenantId,
+        amountCents: -amountCents,
+        balanceAfterCents: balances.get(tenantId)!,
+        type: "correction",
+        description: null,
+        referenceId: null,
+        fundingSource: null,
+        createdAt: new Date().toISOString(),
+      };
+    },
+    balance(tenantId) {
+      return balances.get(tenantId) ?? 0;
+    },
+    hasReferenceId() {
+      return false;
+    },
+    history() {
+      return [];
+    },
+    tenantsWithBalance() {
+      return [];
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -123,7 +165,7 @@ describe("admin tenant status tRPC routes", () => {
   let db: DrizzleDb;
   let statusStore: TenantStatusStore;
   let auditLog: AdminAuditLog;
-  let creditStore: CreditAdjustmentStore;
+  let creditLedger: ICreditLedger;
   let botBilling: BotBilling;
 
   beforeEach(() => {
@@ -133,12 +175,12 @@ describe("admin tenant status tRPC routes", () => {
     db = createDb(sqlite);
     statusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
-    creditStore = new CreditAdjustmentStore(sqlite);
+    creditLedger = makeMockLedger();
     botBilling = new BotBilling(db);
 
     setAdminRouterDeps({
       getAuditLog: () => auditLog,
-      getCreditStore: () => creditStore,
+      getCreditLedger: () => creditLedger,
       getUserStore: () => new AdminUserStore(sqlite),
       getTenantStatusStore: () => statusStore,
       getBotBilling: () => botBilling,
@@ -374,7 +416,7 @@ describe("admin tenant status tRPC routes", () => {
 
     it("auto-refunds remaining credits", async () => {
       statusStore.ensureExists("tenant-1");
-      creditStore.grant("tenant-1", 5000, "initial credit", "system");
+      creditLedger.credit("tenant-1", 5000, "signup_grant", "initial credit");
 
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
@@ -385,7 +427,7 @@ describe("admin tenant status tRPC routes", () => {
       });
 
       expect(result.refundedCents).toBe(5000);
-      expect(creditStore.getBalance("tenant-1")).toBe(0);
+      expect(creditLedger.balance("tenant-1")).toBe(0);
     });
 
     it("does not refund when balance is zero", async () => {
@@ -418,7 +460,7 @@ describe("admin tenant status tRPC routes", () => {
 
     it("logs to audit log with details", async () => {
       statusStore.ensureExists("tenant-1");
-      creditStore.grant("tenant-1", 3000, "initial", "system");
+      creditLedger.credit("tenant-1", 3000, "signup_grant", "initial");
 
       const caller = createCaller(adminContext());
       await caller.admin.banTenant({

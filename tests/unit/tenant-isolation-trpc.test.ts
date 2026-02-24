@@ -17,9 +17,8 @@
 
 import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CreditAdjustmentStore } from "../../src/admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../../src/admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../src/db/index.js";
+import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { initMeterSchema } from "../../src/monetization/metering/schema.js";
 import { initStripeSchema } from "../../src/monetization/stripe/schema.js";
 import { CapabilitySettingsStore } from "../../src/security/tenant-keys/capability-settings-store.js";
@@ -53,7 +52,6 @@ function createTestDb() {
   sqlite.pragma("journal_mode = WAL");
   initMeterSchema(sqlite);
   initStripeSchema(sqlite);
-  initCreditAdjustmentSchema(sqlite);
   const db = createDb(sqlite);
   return { sqlite, db };
 }
@@ -69,7 +67,14 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
   beforeEach(async () => {
     ({ sqlite, db } = createTestDb());
 
-    const creditStore = new CreditAdjustmentStore(sqlite);
+    const creditLedger: ICreditLedger = {
+      credit(tenantId, amountCents) { return { id: "t", tenantId, amountCents, balanceAfterCents: 0, type: "signup_grant", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }; },
+      debit(tenantId, amountCents) { return { id: "t", tenantId, amountCents: -amountCents, balanceAfterCents: 0, type: "correction", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }; },
+      balance() { return 0; },
+      hasReferenceId() { return false; },
+      history() { return []; },
+      tenantsWithBalance() { return []; },
+    };
     const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
     const meterAggregator = new MeterAggregator(db);
     const { TenantCustomerStore } = await import("../../src/monetization/stripe/tenant-store.js");
@@ -80,7 +85,7 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
         billingPortal: { sessions: { create: () => Promise.resolve({ url: "https://billing.stripe.com/test" }) } },
       } as never,
       tenantStore,
-      creditStore,
+      creditLedger,
       meterAggregator,
       priceMap: undefined,
       dividendRepo: {

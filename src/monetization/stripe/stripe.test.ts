@@ -1,7 +1,6 @@
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { initCreditSchema } from "../credits/schema.js";
@@ -23,7 +22,6 @@ function createTestDb() {
   const sqlite = new BetterSqlite3(":memory:");
   initMeterSchema(sqlite);
   initStripeSchema(sqlite);
-  initCreditAdjustmentSchema(sqlite);
   const db = createDb(sqlite);
   return { sqlite, db };
 }

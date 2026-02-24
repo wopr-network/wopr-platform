@@ -10,7 +10,7 @@
 import BetterSqlite3 from "better-sqlite3";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initCreditAdjustmentSchema } from "../../src/admin/credits/schema.js";
+
 import { createDb } from "../../src/db/index.js";
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { initCreditSchema } from "../../src/monetization/credits/schema.js";
@@ -28,7 +28,7 @@ describe("integration: auth → billing → credit flow", () => {
   beforeEach(() => {
     sqlite = new BetterSqlite3(":memory:");
     initStripeSchema(sqlite);
-    initCreditAdjustmentSchema(sqlite);
+
     initCreditSchema(sqlite);
     const db = createDb(sqlite);
     tenantStore = new TenantCustomerStore(db);

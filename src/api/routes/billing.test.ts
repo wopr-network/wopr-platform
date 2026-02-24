@@ -1,7 +1,6 @@
 import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initCreditAdjustmentSchema } from "../../admin/credits/schema.js";
 import { createDb, type DrizzleDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -53,7 +52,6 @@ function createBillingTestDb() {
   const sqlite = new BetterSqlite3(":memory:");
   initMeterSchema(sqlite);
   initStripeSchema(sqlite);
-  initCreditAdjustmentSchema(sqlite);
   initCreditSchema(sqlite);
   initPayRamSchema(sqlite);
   initAffiliateSchema(sqlite);

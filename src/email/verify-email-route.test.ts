@@ -1,9 +1,8 @@
 import Database from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CreditAdjustmentStore } from "../admin/credits/adjustment-store.js";
-import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
 import { createVerifyEmailRoutes } from "../api/routes/verify-email.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { generateVerificationToken, initVerificationSchema } from "./verification.js";
 
 // Mock the email client so we don't actually send emails
@@ -25,11 +24,11 @@ vi.mock("../config/logger.js", () => ({
 }));
 
 describe("verify-email route", () => {
-  let authDb: Database.Database;
-  let creditsDb: Database.Database;
+  let authDb: import("better-sqlite3").Database;
+  let creditLedger: ICreditLedger;
   let app: Hono;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
 
     authDb = new Database(":memory:");
@@ -44,17 +43,57 @@ describe("verify-email route", () => {
     initVerificationSchema(authDb);
     authDb.prepare("INSERT INTO user (id, email, name) VALUES (?, ?, ?)").run("user-1", "alice@test.com", "Alice");
 
-    creditsDb = new Database(":memory:");
-    initCreditAdjustmentSchema(creditsDb);
+    const balances = new Map<string, number>();
+    creditLedger = {
+      credit(tenantId, amountCents) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+        return {
+          id: "tx-1",
+          tenantId,
+          amountCents,
+          balanceAfterCents: balances.get(tenantId)!,
+          type: "signup_grant",
+          description: null,
+          referenceId: null,
+          fundingSource: null,
+          createdAt: new Date().toISOString(),
+        };
+      },
+      debit(tenantId, amountCents) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+        return {
+          id: "tx-2",
+          tenantId,
+          amountCents: -amountCents,
+          balanceAfterCents: balances.get(tenantId)!,
+          type: "correction",
+          description: null,
+          referenceId: null,
+          fundingSource: null,
+          createdAt: new Date().toISOString(),
+        };
+      },
+      balance(tenantId) {
+        return balances.get(tenantId) ?? 0;
+      },
+      hasReferenceId() {
+        return false;
+      },
+      history() {
+        return [];
+      },
+      tenantsWithBalance() {
+        return [];
+      },
+    };
 
-    const routes = createVerifyEmailRoutes({ authDb, creditsDb });
+    const routes = createVerifyEmailRoutes({ authDb, creditLedger });
     app = new Hono();
     app.route("/auth", routes);
   });
 
   afterEach(() => {
     authDb.close();
-    creditsDb.close();
   });
 
   it("should redirect with error when no token is provided", async () => {
@@ -85,8 +124,7 @@ describe("verify-email route", () => {
     expect(row.email_verified).toBe(1);
 
     // Check credit was granted ($5 = 500 cents)
-    const store = new CreditAdjustmentStore(creditsDb);
-    expect(store.getBalance("user-1")).toBe(500);
+    expect(creditLedger.balance("user-1")).toBe(500);
 
     // Check welcome email was sent
     expect(mockSend).toHaveBeenCalledWith(
@@ -122,8 +160,7 @@ describe("verify-email route", () => {
     expect(res.headers.get("Location")).toContain("reason=invalid_or_expired");
 
     // Only one credit grant
-    const store = new CreditAdjustmentStore(creditsDb);
-    expect(store.getBalance("user-1")).toBe(500);
+    expect(creditLedger.balance("user-1")).toBe(500);
   });
 
   it("should still verify even if welcome email fails", async () => {
@@ -141,18 +178,36 @@ describe("verify-email route", () => {
   });
 
   it("should still verify and redirect to success even if credit grant throws", async () => {
-    // Close the credits DB so the grant call throws
-    creditsDb.close();
+    // Make the ledger throw to simulate a credit grant failure
+    const throwingLedger: ICreditLedger = {
+      credit() {
+        throw new Error("simulated credit failure");
+      },
+      debit() {
+        throw new Error("simulated debit failure");
+      },
+      balance() {
+        return 0;
+      },
+      hasReferenceId() {
+        return false;
+      },
+      history() {
+        return [];
+      },
+      tenantsWithBalance() {
+        return [];
+      },
+    };
+    const routes2 = createVerifyEmailRoutes({ authDb, creditLedger: throwingLedger });
+    const app2 = new Hono();
+    app2.route("/auth", routes2);
 
     const { token } = generateVerificationToken(authDb, "user-1");
-    const res = await app.request(`/auth/verify?token=${token}`);
+    const res = await app2.request(`/auth/verify?token=${token}`);
 
     // Verification should still succeed despite the credit grant failure
     expect(res.status).toBe(302);
     expect(res.headers.get("Location")).toContain("status=success");
-
-    // Re-open a fresh DB to avoid afterEach close errors
-    creditsDb = new Database(":memory:");
-    initCreditAdjustmentSchema(creditsDb);
   });
 });
