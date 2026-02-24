@@ -57,6 +57,14 @@ describe("StripePaymentProcessor", () => {
       stripe,
       tenantStore,
       webhookSecret: "whsec_test",
+      creditLedger: {
+        credit: vi.fn(),
+        debit: vi.fn(),
+        balance: vi.fn(),
+        hasReferenceId: vi.fn().mockReturnValue(false),
+        history: vi.fn(),
+        tenantsWithBalance: vi.fn(),
+      } as unknown as import("../credits/credit-ledger.js").ICreditLedger,
     });
   });
 
@@ -93,6 +101,14 @@ describe("StripePaymentProcessor", () => {
         tenantStore,
         webhookSecret: "whsec_test",
         priceMap,
+        creditLedger: {
+          credit: vi.fn(),
+          debit: vi.fn(),
+          balance: vi.fn(),
+          hasReferenceId: vi.fn().mockReturnValue(false),
+          history: vi.fn(),
+          tenantsWithBalance: vi.fn(),
+        } as unknown as import("../credits/credit-ledger.js").ICreditLedger,
       });
 
       const result = await proc.createCheckoutSession({
@@ -112,6 +128,14 @@ describe("StripePaymentProcessor", () => {
         tenantStore,
         webhookSecret: "whsec_test",
         priceMap: new Map(),
+        creditLedger: {
+          credit: vi.fn(),
+          debit: vi.fn(),
+          balance: vi.fn(),
+          hasReferenceId: vi.fn().mockReturnValue(false),
+          history: vi.fn(),
+          tenantsWithBalance: vi.fn(),
+        } as unknown as import("../credits/credit-ledger.js").ICreditLedger,
       });
 
       await expect(

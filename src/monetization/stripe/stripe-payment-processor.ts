@@ -29,7 +29,7 @@ export interface StripePaymentProcessorDeps {
   tenantStore: ITenantCustomerStore;
   webhookSecret: string;
   priceMap?: CreditPriceMap;
-  creditLedger?: ICreditLedger;
+  creditLedger: ICreditLedger;
   botBilling?: BotBilling;
   replayGuard?: IWebhookSeenRepository;
   autoTopupEventLog?: IAutoTopupEventLogRepository;
@@ -42,7 +42,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   private readonly tenantStore: ITenantCustomerStore;
   private readonly webhookSecret: string;
   private readonly priceMap: CreditPriceMap;
-  private readonly creditLedger?: ICreditLedger;
+  private readonly creditLedger: ICreditLedger;
   private readonly botBilling?: BotBilling;
   private readonly replayGuard?: IWebhookSeenRepository;
   private readonly autoTopupEventLog?: IAutoTopupEventLogRepository;
@@ -177,9 +177,6 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async charge(opts: ChargeOpts): Promise<ChargeResult> {
-    if (!this.creditLedger) {
-      throw new Error("creditLedger is required for charge()");
-    }
     if (!this.autoTopupEventLog) {
       throw new Error("autoTopupEventLog is required for charge()");
     }
