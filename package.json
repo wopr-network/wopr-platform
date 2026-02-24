@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "setup": "bash scripts/setup-dev.sh",
     "dev": "tsx src/index.ts",
     "lint": "biome check src/",
     "lint:fix": "biome check --fix src/",

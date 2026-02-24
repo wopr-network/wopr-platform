@@ -1,0 +1,31 @@
+# Local development — just the API server with hot reload.
+# No Caddy, no TLS, no UI container.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up
+#
+# Requires: .env file (run `pnpm setup` first)
+
+services:
+  platform-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /var/run/docker.sock:/var/run/docker.sock
+      - platform_data:/app/data
+    ports:
+      - "3100:3100"
+    env_file: .env
+    command: ["npx", "tsx", "src/index.ts"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  platform_data:
