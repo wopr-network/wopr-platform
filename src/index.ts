@@ -581,6 +581,14 @@ if (process.env.NODE_ENV !== "test") {
   // SOC 2 H7: Ensure backup verifier singleton is available for admin-triggered verification
   getBackupVerifier();
 
+  // Run better-auth migrations before accepting requests.
+  // better-auth does not auto-migrate — runMigrations() must be called explicitly.
+  {
+    const { runAuthMigrations } = await import("./auth/better-auth.js");
+    await runAuthMigrations();
+    logger.info("better-auth migrations applied");
+  }
+
   // Daily runtime deduction cron — charges tenants for active bots + resource tier surcharges.
   // Runs once every 24 h (offset by 1 min from midnight to avoid thundering herd).
   {
