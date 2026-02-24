@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Supported AI provider identifiers for key validation. */
-export const providerSchema = z.enum(["anthropic", "openai", "google", "discord"]);
+export const providerSchema = z.enum(["anthropic", "openai", "google", "discord", "elevenlabs", "deepgram"]);
 export type Provider = z.infer<typeof providerSchema>;
 
 /** Request body for the encrypted key validation proxy. */

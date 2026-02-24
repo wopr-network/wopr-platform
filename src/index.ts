@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { serve } from "@hono/node-server";
 import Database from "better-sqlite3";
 import { eq, gte, sql } from "drizzle-orm";
@@ -60,10 +61,15 @@ import {
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
-import { setBillingRouterDeps, setNodesRouterDeps } from "./trpc/index.js";
+import { encrypt } from "./security/encryption.js";
+import { validateProviderKey } from "./security/key-validation.js";
+import { TenantKeyStore } from "./security/tenant-keys/schema.js";
+import type { Provider } from "./security/types.js";
+import { setBillingRouterDeps, setCapabilitiesRouterDeps, setNodesRouterDeps } from "./trpc/index.js";
 
 const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
+const TENANT_KEYS_DB_PATH = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
 
 /**
  * Validate critical environment variables at startup.
@@ -382,6 +388,21 @@ if (process.env.NODE_ENV !== "test") {
     getConnectionRegistry,
     getBotInstanceRepo,
   });
+
+  // Wire capabilities tRPC router deps
+  {
+    const tenantKeysDb = new Database(TENANT_KEYS_DB_PATH);
+    applyPlatformPragmas(tenantKeysDb);
+    const tenantKeyStore = new TenantKeyStore(tenantKeysDb);
+    setCapabilitiesRouterDeps({
+      getTenantKeyStore: () => tenantKeyStore as never,
+      encrypt,
+      deriveTenantKey: (tenantId: string, platformSecret: string) =>
+        createHmac("sha256", platformSecret).update(`tenant:${tenantId}`).digest(),
+      platformSecret: process.env.PLATFORM_SECRET,
+      validateProviderKey: (provider, key) => validateProviderKey(provider as Provider, key),
+    });
+  }
 
   // Wire billing tRPC router deps
   {

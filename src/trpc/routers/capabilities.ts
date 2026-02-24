@@ -29,6 +29,8 @@ export interface CapabilitiesRouterDeps {
   encrypt: (plaintext: string, key: Buffer) => unknown;
   deriveTenantKey: (tenantId: string, platformSecret: string) => Buffer;
   platformSecret: string | undefined;
+  /** Validate a provider API key by calling the provider's API server-side. */
+  validateProviderKey: (provider: string, key: string) => Promise<{ valid: boolean; error?: string }>;
 }
 
 let _deps: CapabilitiesRouterDeps | null = null;
@@ -102,4 +104,16 @@ export const capabilitiesRouter = router({
     }
     return { ok: true as const, provider: input.provider };
   }),
+
+  /** Validate a provider API key by calling the provider's API server-side. */
+  testKey: tenantProcedure
+    .input(z.object({ provider: providerSchema, key: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const { validateProviderKey } = deps();
+      try {
+        return await validateProviderKey(input.provider, input.key);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to validate key" });
+      }
+    }),
 });
