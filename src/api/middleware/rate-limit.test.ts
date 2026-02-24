@@ -1,11 +1,13 @@
 import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "../../db/schema/index.js";
 import { DrizzleRateLimitRepository } from "../drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../rate-limit-repository.js";
 import {
+  getClientIp,
+  parseTrustedProxies,
   platformDefaultLimit,
   platformRateLimitRules,
   type RateLimitConfig,
@@ -131,7 +133,13 @@ describe("rateLimit", () => {
   });
 
   it("tracks different IPs independently", async () => {
-    const app = buildApp({ max: 1 }, repo);
+    // Use explicit keyGenerator since test env has no real socket (XFF untrusted by default)
+    const app = new Hono();
+    app.use(
+      "/test",
+      rateLimit({ max: 1, repo, scope: "test", keyGenerator: (c) => c.req.header("x-forwarded-for") ?? "unknown" }),
+    );
+    app.get("/test", (c) => c.json({ ok: true }));
 
     const res1 = await app.request(req("/test", "10.0.0.1"));
     expect(res1.status).toBe(200);
@@ -435,7 +443,15 @@ describe("auth endpoint rate limits (WOP-839)", () => {
   });
 
   it("tracks login attempts per IP independently", async () => {
-    const app = buildPlatformApp();
+    // Use explicit keyGenerator since test env has no real socket (XFF untrusted by default)
+    const xffKeyGen = (c: Context) => c.req.header("x-forwarded-for") ?? "unknown";
+    const rulesWithKeyGen = platformRateLimitRules.map((rule) =>
+      rule.scope === "auth:login" ? { ...rule, config: { ...rule.config, keyGenerator: xffKeyGen } } : rule,
+    );
+    const app = new Hono();
+    app.use("*", rateLimitByRoute(rulesWithKeyGen, platformDefaultLimit, repo));
+    app.post("/api/auth/sign-in/email", (c) => c.json({ ok: true }));
+
     // Exhaust limit for IP 10.0.0.1
     for (let i = 0; i < 5; i++) {
       await app.request(postReq("/api/auth/sign-in/email", "10.0.0.1"));
@@ -460,5 +476,89 @@ describe("auth endpoint rate limits (WOP-839)", () => {
       expect((await app.request(postReq("/api/auth/request-password-reset"))).status).toBe(200);
     }
     expect((await app.request(postReq("/api/auth/request-password-reset"))).status).toBe(429);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Trusted proxy validation (WOP-656)
+// ---------------------------------------------------------------------------
+
+describe("trusted proxy validation (WOP-656)", () => {
+  let repo: IRateLimitRepository;
+  let sqlite: BetterSqlite3.Database;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    const r = makeRateLimitRepo();
+    repo = r.repo;
+    sqlite = r.sqlite;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    sqlite.close();
+  });
+
+  it("ignores X-Forwarded-For when TRUSTED_PROXY_IPS is not set", () => {
+    const trusted = parseTrustedProxies(undefined);
+    expect(trusted.size).toBe(0);
+
+    const ip = getClientIp("spoofed-ip", "192.168.1.100", trusted);
+    expect(ip).toBe("192.168.1.100");
+  });
+
+  it("trusts X-Forwarded-For when socket address is in TRUSTED_PROXY_IPS", () => {
+    const trusted = parseTrustedProxies("172.18.0.5,10.0.0.1");
+    expect(trusted.size).toBe(2);
+
+    const ip = getClientIp("real-client-ip", "172.18.0.5", trusted);
+    expect(ip).toBe("real-client-ip");
+  });
+
+  it("strips ::ffff: prefix when matching trusted proxies", () => {
+    const trusted = parseTrustedProxies("172.18.0.5");
+
+    const ip = getClientIp("real-client-ip", "::ffff:172.18.0.5", trusted);
+    expect(ip).toBe("real-client-ip");
+  });
+
+  it("falls back to socket address when socket is not a trusted proxy", () => {
+    const trusted = parseTrustedProxies("172.18.0.5");
+
+    const ip = getClientIp("spoofed-ip", "evil-direct-client", trusted);
+    expect(ip).toBe("evil-direct-client");
+  });
+
+  it("uses last XFF value (rightmost) when proxy is trusted", () => {
+    const trusted = parseTrustedProxies("172.18.0.5");
+
+    const ip = getClientIp("fake, real-client", "172.18.0.5", trusted);
+    expect(ip).toBe("real-client");
+  });
+
+  it("returns 'unknown' when no socket address and no trusted proxy", () => {
+    const trusted = parseTrustedProxies(undefined);
+    const ip = getClientIp(undefined, undefined, trusted);
+    expect(ip).toBe("unknown");
+  });
+
+  it("rate limits by socket IP when XFF is spoofed without trusted proxy", async () => {
+    delete process.env.TRUSTED_PROXY_IPS;
+
+    const app = new Hono();
+    app.use("/test", rateLimit({ max: 1, repo, scope: "test" }));
+    app.get("/test", (c) => c.json({ ok: true }));
+
+    const r1 = new Request("http://localhost/test", {
+      headers: { "x-forwarded-for": "attacker-ip-1" },
+    });
+    const r2 = new Request("http://localhost/test", {
+      headers: { "x-forwarded-for": "attacker-ip-2" },
+    });
+
+    const res1 = await app.request(r1);
+    expect(res1.status).toBe(200);
+
+    const res2 = await app.request(r2);
+    expect(res2.status).toBe(429);
   });
 });
