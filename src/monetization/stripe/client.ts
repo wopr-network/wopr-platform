@@ -5,7 +5,7 @@ import type { StripeBillingConfig } from "./types.js";
  * The Stripe API version to use for all requests.
  * Pinning this ensures stability across Stripe API releases.
  */
-const STRIPE_API_VERSION = "2024-12-18.acacia" as Stripe.LatestApiVersion;
+const STRIPE_API_VERSION = "2024-12-18.acacia";
 
 /**
  * Create a configured Stripe client.
@@ -15,6 +15,7 @@ const STRIPE_API_VERSION = "2024-12-18.acacia" as Stripe.LatestApiVersion;
  */
 export function createStripeClient(config: StripeBillingConfig): Stripe {
   return new Stripe(config.secretKey, {
+    // @ts-expect-error stripe-version-2024-12-18.acacia
     apiVersion: STRIPE_API_VERSION,
   });
 }
