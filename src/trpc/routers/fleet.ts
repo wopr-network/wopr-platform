@@ -500,13 +500,14 @@ export const fleetRouter = router({
         }
         const { id: _id, ...profileWithoutId } = profile;
         try {
-          await fleet.create(profileWithoutId, limits);
+          const newProfile = await fleet.create(profileWithoutId, limits);
+          if (wasRunning) await fleet.start(newProfile.id);
         } catch (createErr) {
           // New container failed — attempt to re-create with old tier limits to restore service
           const oldLimits = tierToResourceLimits(previousTier as ResourceTierKey);
           try {
-            await fleet.create(profileWithoutId, oldLimits);
-            if (wasRunning) await fleet.start(profile.id);
+            const restoredProfile = await fleet.create(profileWithoutId, oldLimits);
+            if (wasRunning) await fleet.start(restoredProfile.id);
           } catch (recreateErr) {
             // Re-create with old tier also failed — log critical so ops can manually recover
             const { logger } = await import("../../config/logger.js");
@@ -522,7 +523,6 @@ export const fleetRouter = router({
             message: "Failed to apply resource tier — rolled back",
           });
         }
-        if (wasRunning) await fleet.start(profile.id);
       } catch (err) {
         if (err instanceof TRPCError) throw err;
         // Outer catch: stop/remove failed — revert billing record
