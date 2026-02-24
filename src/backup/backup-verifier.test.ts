@@ -117,6 +117,85 @@ describe("BackupVerifier", () => {
     expect(report.results[0].error).toBeTruthy();
   });
 
+  it("fails a backup that is too small (likely corrupt)", async () => {
+    const tinyPath = join(TEST_DIR, "tiny.tar.gz");
+    // Write fewer than MIN_VALID_SIZE_BYTES (20) bytes
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(tinyPath, Buffer.alloc(5, 0x1f)); // 5 bytes — under the 20-byte minimum
+
+    const spaces = makeSpacesClient({
+      list: async () => [{ path: "nightly/node1/c1/tiny.tar.gz", size: 5, date: "2026-01-01" }],
+      download: async (_remote, local) => {
+        const { copyFile } = await import("node:fs/promises");
+        await copyFile(tinyPath, local);
+      },
+    });
+
+    const verifier = new BackupVerifier({ spaces, tempDir: TEST_DIR });
+    const report = await verifier.verify("nightly/");
+
+    expect(report.totalChecked).toBe(1);
+    expect(report.passed).toBe(0);
+    expect(report.failed).toBe(1);
+    expect(report.results[0].error).toMatch(/too small/i);
+  });
+
+  it("sorts by date descending and picks newest backups", async () => {
+    const backupPath = join(TEST_DIR, "valid2.tar.gz");
+    await writeValidGzip(backupPath);
+
+    const listItems = [
+      { path: "nightly/old.tar.gz", size: 5000, date: "2026-01-01" },
+      { path: "nightly/new.tar.gz", size: 5000, date: "2026-01-31" },
+    ];
+
+    const downloaded: string[] = [];
+    const spaces = makeSpacesClient({
+      list: async () => listItems,
+      download: async (remote, local) => {
+        downloaded.push(remote);
+        const { copyFile } = await import("node:fs/promises");
+        await copyFile(backupPath, local);
+      },
+    });
+
+    const verifier = new BackupVerifier({ spaces, tempDir: TEST_DIR });
+    await verifier.verify("nightly/", 1);
+
+    // With limit=1, should pick the newest (2026-01-31)
+    expect(downloaded.length).toBe(1);
+    expect(downloaded[0]).toBe("nightly/new.tar.gz");
+  });
+
+  it("fails a backup with valid gzip header but corrupt content (decompression error)", async () => {
+    // Construct a file that has valid gzip magic bytes (0x1f 0x8b) but is otherwise corrupt
+    const corruptPath = join(TEST_DIR, "corrupt.tar.gz");
+    const { writeFile } = await import("node:fs/promises");
+    // Magic bytes + enough zeroes to pass the size check, but not valid gzip content
+    const buf = Buffer.alloc(200, 0x00);
+    buf[0] = 0x1f;
+    buf[1] = 0x8b;
+    // Fill rest with random non-gzip data to trigger decompression failure
+    buf.fill(0xaa, 2);
+    await writeFile(corruptPath, buf);
+
+    const spaces = makeSpacesClient({
+      list: async () => [{ path: "nightly/node1/c1/corrupt.tar.gz", size: 200, date: "2026-01-01" }],
+      download: async (_remote, local) => {
+        const { copyFile } = await import("node:fs/promises");
+        await copyFile(corruptPath, local);
+      },
+    });
+
+    const verifier = new BackupVerifier({ spaces, tempDir: TEST_DIR });
+    const report = await verifier.verify("nightly/");
+
+    expect(report.totalChecked).toBe(1);
+    expect(report.passed).toBe(0);
+    expect(report.failed).toBe(1);
+    expect(report.results[0].valid).toBe(false);
+  });
+
   it("respects the limit parameter", async () => {
     const listItems = Array.from({ length: 20 }, (_, i) => ({
       path: `nightly/n/c/c_202601${String(i + 1).padStart(2, "0")}.tar.gz`,

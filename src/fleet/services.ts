@@ -15,6 +15,7 @@ import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository
 import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
 import { BackupStatusStore } from "../backup/backup-status-store.js";
+import { BackupVerifier } from "../backup/backup-verifier.js";
 import { DrizzleRestoreLogRepository } from "../backup/restore-log-repository.js";
 import { RestoreLogStore } from "../backup/restore-log-store.js";
 import { RestoreService } from "../backup/restore-service.js";
@@ -56,6 +57,7 @@ import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js"
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
 import type { ITenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
+import { SystemResourceMonitor } from "../observability/system-resources.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
@@ -682,4 +684,25 @@ export function getCredentialRepo(): ICredentialRepository {
     _credentialRepo = new DrizzleCredentialRepository(getDb());
   }
   return _credentialRepo;
+}
+
+// ---------------------------------------------------------------------------
+// Observability / backup singletons (WOP-929)
+// ---------------------------------------------------------------------------
+
+let _systemResourceMonitor: SystemResourceMonitor | null = null;
+let _backupVerifier: BackupVerifier | null = null;
+
+export function getSystemResourceMonitor(): SystemResourceMonitor {
+  if (!_systemResourceMonitor) {
+    _systemResourceMonitor = new SystemResourceMonitor();
+  }
+  return _systemResourceMonitor;
+}
+
+export function getBackupVerifier(): BackupVerifier {
+  if (!_backupVerifier) {
+    _backupVerifier = new BackupVerifier({ spaces: new SpacesClient(S3_BUCKET) });
+  }
+  return _backupVerifier;
 }

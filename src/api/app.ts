@@ -155,6 +155,31 @@ app.post("/api/auth/sign-up/email", async (c, next) => {
   return next();
 });
 
+// SOC 2 M1: Apply the same password complexity check to the reset-password flow.
+app.post("/api/auth/reset-password", async (c, next) => {
+  try {
+    const body = await c.req.json();
+    const password: unknown = body?.password;
+    if (typeof password === "string" && password.length >= 12) {
+      const hasUpper = /[A-Z]/.test(password);
+      const hasLower = /[a-z]/.test(password);
+      const hasDigit = /[0-9]/.test(password);
+      const hasSpecial = /[^A-Za-z0-9]/.test(password);
+      if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
+        return c.json(
+          {
+            error: "Password must contain uppercase, lowercase, a number, and a special character",
+          },
+          400,
+        );
+      }
+    }
+  } catch {
+    // If we can't parse the body, let better-auth handle it
+  }
+  return next();
+});
+
 // better-auth handler — serves /api/auth/* (signup, login, session, etc.)
 // Lazily initialized to avoid opening DB at import time.
 app.on(["POST", "GET"], "/api/auth/*", async (c) => {

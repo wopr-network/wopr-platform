@@ -117,4 +117,105 @@ describe("SystemResourceMonitor", () => {
     expect(() => monitor.start(100_000)).not.toThrow();
     expect(() => monitor.stop()).not.toThrow();
   });
+
+  it("stop is a no-op when not started", () => {
+    expect(() => monitor.stop()).not.toThrow();
+  });
+
+  it("start is idempotent — calling twice does not throw", () => {
+    monitor.start(100_000);
+    expect(() => monitor.start(100_000)).not.toThrow();
+    monitor.stop();
+  });
+
+  it("resolves cpu alert when load drops back under threshold", async () => {
+    const os = await import("node:os");
+    const { captureMessage } = await import("./sentry.js");
+    // First collect: fire cpu alert
+    vi.mocked(os.loadavg).mockReturnValue([1.0, 1.0, 1.0]);
+    await monitor.collect();
+    expect(captureMessage).toHaveBeenCalledWith(expect.stringContaining("cpu"), "warning");
+
+    // Second collect: load drops — alert should resolve (no new captureMessage)
+    vi.clearAllMocks();
+    vi.mocked(os.loadavg).mockReturnValue([0.1, 0.1, 0.1]);
+    vi.mocked(os.freemem).mockReturnValue(512 * 1024 * 1024);
+    vi.mocked(os.totalmem).mockReturnValue(1024 * 1024 * 1024);
+    vi.mocked(os.cpus).mockReturnValue([{} as ReturnType<typeof os.cpus>[0]]);
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.statfs).mockResolvedValue({
+      bsize: 4096,
+      blocks: 1000000,
+      bavail: 200000,
+      bfree: 200000,
+      ffree: 100,
+      files: 1000,
+      type: 0,
+    } as Awaited<ReturnType<typeof fs.statfs>>);
+    await monitor.collect();
+    // captureMessage not called again for a resolved alert
+    expect(captureMessage).not.toHaveBeenCalled();
+  });
+
+  it("fires disk alert when disk usage ratio exceeds threshold", async () => {
+    const fs = await import("node:fs/promises");
+    const { captureMessage } = await import("./sentry.js");
+    // 5% free of 1M blocks => 95% used > 85%
+    vi.mocked(fs.statfs).mockResolvedValue({
+      bsize: 4096,
+      blocks: 1000000,
+      bavail: 50000,
+      bfree: 50000,
+      ffree: 100,
+      files: 1000,
+      type: 0,
+    } as Awaited<ReturnType<typeof fs.statfs>>);
+    await monitor.collect();
+    expect(captureMessage).toHaveBeenCalledWith(expect.stringContaining("disk"), "warning");
+  });
+
+  it("handles statfs failure gracefully (diskTotal=0 branch)", async () => {
+    const fs = await import("node:fs/promises");
+    vi.mocked(fs.statfs).mockRejectedValue(new Error("statfs failed"));
+    // Should not throw; diskRatio will be 0 (diskTotal=0)
+    const snapshot = await monitor.collect();
+    expect(snapshot.diskTotalBytes).toBe(0);
+    expect(snapshot.diskUsedBytes).toBe(0);
+  });
+
+  it("interval callback collects via fake timers", async () => {
+    vi.useFakeTimers();
+    const m = new SystemResourceMonitor({ dataPath: "/tmp" });
+    m.start(1000);
+    // Advance time to trigger the interval callback
+    await vi.advanceTimersByTimeAsync(1100);
+    const snap = m.getSnapshot();
+    expect(snap).not.toBeNull();
+    m.stop();
+    vi.useRealTimers();
+  });
+
+  it("handles cpuCount=0 branch (ratio defaults to 0)", async () => {
+    const os = await import("node:os");
+    vi.mocked(os.cpus).mockReturnValue([]);
+    const { captureMessage } = await import("./sentry.js");
+    await monitor.collect();
+    // cpuCount=0 => ratio=0, no cpu alert
+    expect(captureMessage).not.toHaveBeenCalledWith(expect.stringContaining("cpu"), "warning");
+  });
+
+  it("handles memoryTotalBytes=0 branch (ratio defaults to 0)", async () => {
+    const os = await import("node:os");
+    vi.mocked(os.totalmem).mockReturnValue(0);
+    vi.mocked(os.freemem).mockReturnValue(0);
+    const { captureMessage } = await import("./sentry.js");
+    await monitor.collect();
+    expect(captureMessage).not.toHaveBeenCalledWith(expect.stringContaining("memory"), "warning");
+  });
+
+  it("constructs with no options (uses defaults)", () => {
+    const m = new SystemResourceMonitor();
+    expect(m.getSnapshot()).toBeNull();
+    m.stop();
+  });
 });
