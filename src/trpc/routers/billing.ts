@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import type Stripe from "stripe";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
+import type { IAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
 import {
   ALLOWED_SCHEDULE_INTERVALS,
   ALLOWED_THRESHOLD_CENTS,
@@ -15,7 +16,6 @@ import {
   computeNextScheduleAt,
   type IAutoTopupSettingsRepository,
 } from "../../monetization/credits/auto-topup-settings-repository.js";
-import type { IAffiliateRepository } from "../../monetization/affiliate/affiliate-repository.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";

@@ -4,9 +4,9 @@ import { CreditAdjustmentStore } from "../admin/credits/adjustment-store.js";
 import { initCreditAdjustmentSchema } from "../admin/credits/schema.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
+import { DrizzleAffiliateRepository } from "../monetization/affiliate/affiliate-repository.js";
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
-import { DrizzleAffiliateRepository } from "../monetization/affiliate/affiliate-repository.js";
 import { initMeterSchema } from "../monetization/metering/schema.js";
 import { initStripeSchema } from "../monetization/stripe/schema.js";
 import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
@@ -595,6 +595,7 @@ describe("tRPC appRouter", () => {
             getLifetimeTotalCents: () => 0,
           },
           spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
         });
         const result = await caller.billing.autoTopupSettings();
         expect(result.payment_method_last4).toBe("4242");
@@ -668,6 +669,7 @@ describe("tRPC appRouter", () => {
             getLifetimeTotalCents: () => 0,
           },
           spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
         });
 
         const result = await caller.billing.updateAutoTopupSettings({
@@ -728,6 +730,7 @@ describe("tRPC appRouter", () => {
             getLifetimeTotalCents: () => 0,
           },
           spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
         });
 
         const result = await caller.billing.updateAutoTopupSettings({
