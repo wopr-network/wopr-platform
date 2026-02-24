@@ -1,4 +1,6 @@
 import { logger } from "../../config/logger.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import { RESOURCE_TIERS } from "../../fleet/resource-tiers.js";
 import type { CreditLedger } from "./credit-ledger.js";
 import { InsufficientBalanceError } from "./credit-ledger.js";
 
@@ -36,6 +38,29 @@ export interface RuntimeCronResult {
   processed: number;
   suspended: string[];
   errors: string[];
+}
+
+/**
+ * Build a `getResourceTierCosts` callback suitable for passing to `runRuntimeDeductions`.
+ *
+ * Sums the daily surcharge of all active bots owned by a tenant by reading each
+ * bot's resource tier from `IBotInstanceRepository` and looking up the cost in
+ * `RESOURCE_TIERS`. Standard-tier bots contribute 0 cents.
+ */
+export function buildResourceTierCosts(
+  botInstanceRepo: IBotInstanceRepository,
+  getBotBillingActiveIds: (tenantId: string) => string[],
+): (tenantId: string) => number {
+  return (tenantId: string): number => {
+    const botIds = getBotBillingActiveIds(tenantId);
+    let total = 0;
+    for (const botId of botIds) {
+      const tier = botInstanceRepo.getResourceTier(botId) ?? "standard";
+      const tierKey = tier in RESOURCE_TIERS ? (tier as keyof typeof RESOURCE_TIERS) : "standard";
+      total += RESOURCE_TIERS[tierKey].dailyCostCents;
+    }
+    return total;
+  };
 }
 
 /**
