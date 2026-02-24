@@ -111,6 +111,39 @@ describe("admin-gpu routes", () => {
       expect(res.status).toBe(503);
       expect(body.success).toBe(false);
     });
+
+    it("should return 500 when provisioning fails with generic error", async () => {
+      (getGpuNodeProvisioner as ReturnType<typeof vi.fn>).mockReturnValue({
+        provision: vi.fn().mockRejectedValue(new Error("network timeout")),
+      });
+
+      const res = await adminGpuRoutes.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ region: "nyc1" }),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("network timeout");
+    });
+
+    it("should return 500 with Unknown error when provisioning fails with non-Error", async () => {
+      (getGpuNodeProvisioner as ReturnType<typeof vi.fn>).mockReturnValue({
+        provision: vi.fn().mockRejectedValue("string error"),
+      });
+
+      const res = await adminGpuRoutes.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.error).toBe("Unknown error");
+    });
   });
 
   describe("GET /regions", () => {
@@ -126,6 +159,31 @@ describe("admin-gpu routes", () => {
       expect(res.status).toBe(200);
       expect(body.success).toBe(true);
       expect(body.regions).toHaveLength(1);
+    });
+
+    it("should return 503 when DO_API_TOKEN is missing for regions", async () => {
+      (getDOClient as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw new Error("DO_API_TOKEN environment variable is required");
+      });
+
+      const res = await adminGpuRoutes.request("/regions");
+      const body = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(body.success).toBe(false);
+    });
+
+    it("should return 500 when regions request fails with generic error", async () => {
+      (getDOClient as ReturnType<typeof vi.fn>).mockReturnValue({
+        listRegions: vi.fn().mockRejectedValue(new Error("DO API down")),
+      });
+
+      const res = await adminGpuRoutes.request("/regions");
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("DO API down");
     });
   });
 
@@ -153,6 +211,31 @@ describe("admin-gpu routes", () => {
       expect(res.status).toBe(200);
       expect(body.success).toBe(true);
       expect(body.sizes).toHaveLength(1);
+    });
+
+    it("should return 503 when DO_API_TOKEN is missing for sizes", async () => {
+      (getDOClient as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw new Error("DO_API_TOKEN environment variable is required");
+      });
+
+      const res = await adminGpuRoutes.request("/sizes");
+      const body = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(body.success).toBe(false);
+    });
+
+    it("should return 500 when sizes request fails with generic error", async () => {
+      (getDOClient as ReturnType<typeof vi.fn>).mockReturnValue({
+        listSizes: vi.fn().mockRejectedValue(new Error("DO API unavailable")),
+      });
+
+      const res = await adminGpuRoutes.request("/sizes");
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("DO API unavailable");
     });
   });
 
@@ -217,6 +300,21 @@ describe("admin-gpu routes", () => {
       const res = await adminGpuRoutes.request("/gpu-test-1", { method: "DELETE" });
       expect(res.status).toBe(409);
     });
+
+    it("should return 500 when destroy throws an error", async () => {
+      const node = makeGpuNode({ status: "active" });
+      (getGpuNodeRepository as ReturnType<typeof vi.fn>).mockReturnValue({ getById: () => node });
+      (getGpuNodeProvisioner as ReturnType<typeof vi.fn>).mockReturnValue({
+        destroy: vi.fn().mockRejectedValue(new Error("DO delete failed")),
+      });
+
+      const res = await adminGpuRoutes.request("/gpu-test-1", { method: "DELETE" });
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("DO delete failed");
+    });
   });
 
   describe("POST /:nodeId/reboot", () => {
@@ -248,6 +346,21 @@ describe("admin-gpu routes", () => {
 
       const res = await adminGpuRoutes.request("/gpu-test-1/reboot", { method: "POST" });
       expect(res.status).toBe(400);
+    });
+
+    it("should return 500 when reboot throws an error", async () => {
+      const node = makeGpuNode();
+      (getGpuNodeRepository as ReturnType<typeof vi.fn>).mockReturnValue({ getById: () => node });
+      (getDOClient as ReturnType<typeof vi.fn>).mockReturnValue({
+        rebootDroplet: vi.fn().mockRejectedValue(new Error("reboot API failed")),
+      });
+
+      const res = await adminGpuRoutes.request("/gpu-test-1/reboot", { method: "POST" });
+      const body = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(body.success).toBe(false);
+      expect(body.error).toBe("reboot API failed");
     });
   });
 });
