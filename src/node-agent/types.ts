@@ -12,8 +12,15 @@ export const TENANT_PREFIX = "tenant_";
 
 export const nodeAgentConfigSchema = z
   .object({
-    /** Platform API base URL (e.g. https://api.wopr.bot) */
-    platformUrl: z.string().url(),
+    /** Platform API base URL (must be HTTPS except for localhost dev) */
+    platformUrl: z
+      .string()
+      .url()
+      .refine((url) => {
+        const parsed = new URL(url);
+        const isLocalhost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+        return parsed.protocol === "https:" || isLocalhost;
+      }, "platformUrl must use HTTPS (http:// only allowed for localhost)"),
     /** Unique node identifier — assigned by platform during token registration */
     nodeId: z.string().min(1).optional(),
     /** Persistent per-node secret for authentication (assigned after first registration) */
