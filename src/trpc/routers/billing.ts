@@ -5,6 +5,7 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { Payram } from "payram";
 import { z } from "zod";
 import type { CreditAdjustmentStore } from "../../admin/credits/adjustment-store.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -20,6 +21,8 @@ import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spend
 import type { CreditPriceMap, ITenantCustomerStore } from "../../monetization/index.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
+import type { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
+import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
 import { protectedProcedure, publicProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -140,6 +143,8 @@ export interface BillingRouterDeps {
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
+  payramClient?: Payram;
+  payramChargeStore?: PayRamChargeStore;
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -246,6 +251,29 @@ export const billingRouter = router({
         cancelUrl: input.cancelUrl,
       });
       return { url: session.url, sessionId: session.id };
+    }),
+
+  /** Create a PayRam crypto payment session. Returns a hosted payment URL. */
+  cryptoCheckout: protectedProcedure
+    .input(
+      z.object({
+        amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const tenant = ctx.tenantId ?? ctx.user.id;
+      const { payramClient, payramChargeStore } = deps();
+      if (!payramClient || !payramChargeStore) {
+        throw new TRPCError({
+          code: "NOT_IMPLEMENTED",
+          message: "Crypto payments not configured",
+        });
+      }
+      const result = await createPayRamCheckout(payramClient, payramChargeStore, {
+        tenant,
+        amountUsd: input.amountUsd,
+      });
+      return { url: result.url, referenceId: result.referenceId };
     }),
 
   /** Create a Stripe Customer Portal session. Tenant defaults to ctx.tenantId when omitted. */

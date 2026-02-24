@@ -521,6 +521,17 @@ if (process.env.NODE_ENV !== "test") {
         priceMap,
       });
 
+      // Create PayRam deps before tRPC router so both REST and tRPC can share them.
+      const payramChargeStore = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeStore(billingDrizzle2) : undefined;
+      let payramClient: import("payram").Payram | undefined;
+      if (process.env.PAYRAM_API_KEY) {
+        const { createPayRamClient, loadPayRamConfig } = await import("./monetization/payram/client.js");
+        const payramConfig = loadPayRamConfig();
+        if (payramConfig) {
+          payramClient = createPayRamClient(payramConfig);
+        }
+      }
+
       setBillingRouterDeps({
         processor,
         tenantStore,
@@ -531,12 +542,13 @@ if (process.env.NODE_ENV !== "test") {
         spendingLimitsRepo,
         autoTopupSettingsStore,
         affiliateRepo: getAffiliateRepo(),
+        payramClient,
+        payramChargeStore,
       });
       logger.info("tRPC billing router initialized");
 
       // Wire REST billing routes (Stripe webhooks, checkout, portal).
       // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).
-      const payramChargeStore = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeStore(billingDrizzle2) : undefined;
 
       setBillingDeps({
         processor,
