@@ -28,6 +28,7 @@ import { fleetRoutes } from "./routes/fleet.js";
 import { fleetResourceRoutes } from "./routes/fleet-resources.js";
 import { friendsRoutes } from "./routes/friends.js";
 import { healthRoutes } from "./routes/health.js";
+import { internalGpuRoutes } from "./routes/internal-gpu.js";
 import { internalNodeRoutes } from "./routes/internal-nodes.js";
 import { marketplaceRoutes } from "./routes/marketplace.js";
 import { publicPricingRoutes } from "./routes/public-pricing.js";
@@ -223,6 +224,7 @@ app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
 app.route("/auth", verifyEmailRoutes);
 app.route("/internal/nodes", internalNodeRoutes);
+app.route("/internal/gpu", internalGpuRoutes);
 
 // Gateway routes — /v1/* endpoints for bot-facing API.
 // These use service key auth (not session cookies), so they are mounted
