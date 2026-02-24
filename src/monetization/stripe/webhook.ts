@@ -1,4 +1,6 @@
 import type Stripe from "stripe";
+import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
+import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
 import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditLedger } from "../credits/credit-ledger.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
@@ -18,6 +20,8 @@ export interface WebhookResult {
   reactivatedBots?: string[];
   /** True when this event was a duplicate / replay. */
   duplicate?: boolean;
+  /** Bonus cents granted to referred user on first purchase (WOP-950). */
+  affiliateBonusCents?: number;
 }
 
 /**
@@ -32,6 +36,8 @@ export interface WebhookDeps {
   botBilling?: BotBilling;
   /** Replay attack guard — rejects duplicate event IDs within TTL window. */
   replayGuard?: IWebhookSeenRepository;
+  /** Affiliate repository for new-user bonus (WOP-950). */
+  affiliateRepo?: IAffiliateRepository;
 }
 
 /**
@@ -112,6 +118,20 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         "stripe",
       );
 
+      // New-user first-purchase bonus for referred users (WOP-950).
+      let affiliateBonusCents: number | undefined;
+      if (deps.affiliateRepo) {
+        const bonusResult = grantNewUserBonus({
+          ledger: deps.creditLedger,
+          affiliateRepo: deps.affiliateRepo,
+          referredTenantId: tenant,
+          purchaseAmountCents: creditCents,
+        });
+        if (bonusResult.granted) {
+          affiliateBonusCents = bonusResult.bonusCents;
+        }
+      }
+
       // Reactivate suspended bots now that balance is positive (WOP-447).
       let reactivatedBots: string[] | undefined;
       if (deps.botBilling) {
@@ -119,7 +139,14 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         if (reactivatedBots.length === 0) reactivatedBots = undefined;
       }
 
-      result = { handled: true, event_type: event.type, tenant, creditedCents: creditCents, reactivatedBots };
+      result = {
+        handled: true,
+        event_type: event.type,
+        tenant,
+        creditedCents: creditCents,
+        reactivatedBots,
+        affiliateBonusCents,
+      };
       break;
     }
 
