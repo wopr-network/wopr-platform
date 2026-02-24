@@ -116,6 +116,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     }
 
     try {
+      const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
       const input: SellRateInput = {
         capability,
         displayName,
@@ -125,10 +126,26 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
         isActive: isActive as boolean | undefined,
         sortOrder: sortOrder as number | undefined,
       };
-      const result = store.createSellRate(input);
+      let result: ReturnType<typeof store.createSellRate>;
+      try {
+        result = store.createSellRate(input);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "rates.sell.create",
+            category: "config",
+            details: { ...input, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       try {
         getAdminAuditLog().log({
-          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          adminUser,
           action: "rates.sell.create",
           category: "config",
           details: { ...input },
@@ -186,6 +203,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     }
 
     try {
+      const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
       const input: Partial<SellRateInput> = {};
       if (capability !== undefined) input.capability = capability as string;
       if (displayName !== undefined) input.displayName = displayName as string;
@@ -195,10 +213,26 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       if (isActive !== undefined) input.isActive = isActive as boolean;
       if (sortOrder !== undefined) input.sortOrder = sortOrder as number;
 
-      const result = store.updateSellRate(id, input);
+      let result: ReturnType<typeof store.updateSellRate>;
+      try {
+        result = store.updateSellRate(id, input);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "rates.sell.update",
+            category: "config",
+            details: { id, ...input, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       try {
         getAdminAuditLog().log({
-          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          adminUser,
           action: "rates.sell.update",
           category: "config",
           details: { id, ...input },
@@ -222,11 +256,28 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     const id = c.req.param("id");
 
     try {
-      const deleted = store.deleteSellRate(id);
+      const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
+      let deleted: boolean;
+      try {
+        deleted = store.deleteSellRate(id);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "rates.sell.delete",
+            category: "config",
+            details: { id, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       if (deleted) {
         try {
           getAdminAuditLog().log({
-            adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+            adminUser,
             action: "rates.sell.delete",
             category: "config",
             details: { id },
@@ -291,6 +342,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     }
 
     try {
+      const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
       const input: ProviderCostInput = {
         capability,
         adapter,
@@ -301,10 +353,26 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
         latencyClass: latencyClass as string | undefined,
         isActive: isActive as boolean | undefined,
       };
-      const result = store.createProviderCost(input);
+      let result: ReturnType<typeof store.createProviderCost>;
+      try {
+        result = store.createProviderCost(input);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "rates.provider.create",
+            category: "config",
+            details: { ...input, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       try {
         getAdminAuditLog().log({
-          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          adminUser,
           action: "rates.provider.create",
           category: "config",
           details: { ...input },
@@ -366,6 +434,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     }
 
     try {
+      const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
       const input: Partial<ProviderCostInput> = {};
       if (capability !== undefined) input.capability = capability as string;
       if (adapter !== undefined) input.adapter = adapter as string;
@@ -376,10 +445,26 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       if (latencyClass !== undefined) input.latencyClass = latencyClass as string;
       if (isActive !== undefined) input.isActive = isActive as boolean;
 
-      const result = store.updateProviderCost(id, input);
+      let result: ReturnType<typeof store.updateProviderCost>;
+      try {
+        result = store.updateProviderCost(id, input);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "rates.provider.update",
+            category: "config",
+            details: { id, ...input, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       try {
         getAdminAuditLog().log({
-          adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+          adminUser,
           action: "rates.provider.update",
           category: "config",
           details: { id, ...input },
@@ -403,11 +488,28 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
     const id = c.req.param("id");
 
     try {
-      const deleted = store.deleteProviderCost(id);
+      const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
+      let deleted: boolean;
+      try {
+        deleted = store.deleteProviderCost(id);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "rates.provider.delete",
+            category: "config",
+            details: { id, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       if (deleted) {
         try {
           getAdminAuditLog().log({
-            adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",
+            adminUser,
             action: "rates.provider.delete",
             category: "config",
             details: { id },

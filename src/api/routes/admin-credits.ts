@@ -79,10 +79,28 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
     try {
       const user = c.get("user");
-      const adjustment = store.grant(tenant, amountCents, reason, user?.id ?? "unknown");
+      const adminUser = user?.id ?? "unknown";
+      let adjustment: ReturnType<typeof store.grant>;
+      try {
+        adjustment = store.grant(tenant, amountCents, reason, adminUser);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "credits.grant",
+            category: "credits",
+            targetTenant: tenant,
+            details: { amount_cents: amountCents, reason, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       try {
         getAdminAuditLog().log({
-          adminUser: user?.id ?? "unknown",
+          adminUser,
           action: "credits.grant",
           category: "credits",
           targetTenant: tenant,
@@ -131,16 +149,28 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
     try {
       const user = c.get("user");
-      const adjustment = store.refund(
-        tenant,
-        amountCents,
-        reason,
-        user?.id ?? "unknown",
-        referenceIds as string[] | undefined,
-      );
+      const adminUser = user?.id ?? "unknown";
+      let adjustment: ReturnType<typeof store.refund>;
+      try {
+        adjustment = store.refund(tenant, amountCents, reason, adminUser, referenceIds as string[] | undefined);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "credits.refund",
+            category: "credits",
+            targetTenant: tenant,
+            details: { amount_cents: amountCents, reason, reference_ids: referenceIds, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       try {
         getAdminAuditLog().log({
-          adminUser: user?.id ?? "unknown",
+          adminUser,
           action: "credits.refund",
           category: "credits",
           targetTenant: tenant,
@@ -184,10 +214,28 @@ function buildRoutes(storeFactory: () => CreditAdjustmentStore): Hono<AuthEnv> {
 
     try {
       const user = c.get("user");
-      const adjustment = store.correction(tenant, amountCents, reason, user?.id ?? "unknown");
+      const adminUser = user?.id ?? "unknown";
+      let adjustment: ReturnType<typeof store.correction>;
+      try {
+        adjustment = store.correction(tenant, amountCents, reason, adminUser);
+      } catch (err) {
+        try {
+          getAdminAuditLog().log({
+            adminUser,
+            action: "credits.correction",
+            category: "credits",
+            targetTenant: tenant,
+            details: { amount_cents: amountCents, reason, error: String(err) },
+            outcome: "failure",
+          });
+        } catch {
+          /* audit must not break request */
+        }
+        throw err;
+      }
       try {
         getAdminAuditLog().log({
-          adminUser: user?.id ?? "unknown",
+          adminUser,
           action: "credits.correction",
           category: "credits",
           targetTenant: tenant,

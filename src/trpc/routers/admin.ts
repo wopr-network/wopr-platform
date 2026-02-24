@@ -159,21 +159,29 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       const { getCreditStore, getAuditLog } = deps();
-      const result = getCreditStore().grant(
-        input.tenantId,
-        input.amount_cents,
-        input.reason,
-        ctx.user?.id ?? "unknown",
-      );
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "credits.grant",
-        category: "credits",
-        targetTenant: input.tenantId,
-        details: { amount_cents: input.amount_cents, reason: input.reason },
-        outcome: "success",
-      });
-      return result;
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getCreditStore().grant(input.tenantId, input.amount_cents, input.reason, adminUser);
+        getAuditLog().log({
+          adminUser,
+          action: "credits.grant",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "credits.grant",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Refund credits from a tenant. */
@@ -188,22 +196,40 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       const { getCreditStore, getAuditLog } = deps();
-      const result = getCreditStore().refund(
-        input.tenantId,
-        input.amount_cents,
-        input.reason,
-        ctx.user?.id ?? "unknown",
-        input.reference_ids,
-      );
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "credits.refund",
-        category: "credits",
-        targetTenant: input.tenantId,
-        details: { amount_cents: input.amount_cents, reason: input.reason, reference_ids: input.reference_ids },
-        outcome: "success",
-      });
-      return result;
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getCreditStore().refund(
+          input.tenantId,
+          input.amount_cents,
+          input.reason,
+          adminUser,
+          input.reference_ids,
+        );
+        getAuditLog().log({
+          adminUser,
+          action: "credits.refund",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason, reference_ids: input.reference_ids },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "credits.refund",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: {
+            amount_cents: input.amount_cents,
+            reason: input.reason,
+            reference_ids: input.reference_ids,
+            error: String(err),
+          },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Apply a credit correction. */
@@ -217,21 +243,29 @@ export const adminRouter = router({
     )
     .mutation(({ input, ctx }) => {
       const { getCreditStore, getAuditLog } = deps();
-      const result = getCreditStore().correction(
-        input.tenantId,
-        input.amount_cents,
-        input.reason,
-        ctx.user?.id ?? "unknown",
-      );
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "credits.correction",
-        category: "credits",
-        targetTenant: input.tenantId,
-        details: { amount_cents: input.amount_cents, reason: input.reason },
-        outcome: "success",
-      });
-      return result;
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getCreditStore().correction(input.tenantId, input.amount_cents, input.reason, adminUser);
+        getAuditLog().log({
+          adminUser,
+          action: "credits.correction",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "credits.correction",
+          category: "credits",
+          targetTenant: input.tenantId,
+          details: { amount_cents: input.amount_cents, reason: input.reason, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** List credit transactions for a tenant. */
@@ -523,15 +557,27 @@ export const adminRouter = router({
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
-      const result = getRateStore().createSellRate(input);
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "rates.sell.create",
-        category: "config",
-        details: { ...input },
-        outcome: "success",
-      });
-      return result;
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getRateStore().createSellRate(input);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.create",
+          category: "config",
+          details: { ...input },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.create",
+          category: "config",
+          details: { ...input, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Update a sell rate. */
@@ -554,16 +600,28 @@ export const adminRouter = router({
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
+      const adminUser = ctx.user?.id ?? "unknown";
       const { id, ...updates } = input;
-      const result = getRateStore().updateSellRate(id, updates);
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "rates.sell.update",
-        category: "config",
-        details: { id, ...updates },
-        outcome: "success",
-      });
-      return result;
+      try {
+        const result = getRateStore().updateSellRate(id, updates);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.update",
+          category: "config",
+          details: { id, ...updates },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.sell.update",
+          category: "config",
+          details: { id, ...updates, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Delete a sell rate. */
@@ -573,18 +631,30 @@ export const adminRouter = router({
     if (!getRateStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
     }
-    const deleted = getRateStore().deleteSellRate(input.id);
-    if (!deleted) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Sell rate not found" });
+    const adminUser = ctx.user?.id ?? "unknown";
+    try {
+      const deleted = getRateStore().deleteSellRate(input.id);
+      if (!deleted) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Sell rate not found" });
+      }
+      getAuditLog().log({
+        adminUser,
+        action: "rates.sell.delete",
+        category: "config",
+        details: { id: input.id },
+        outcome: "success",
+      });
+      return { success: true };
+    } catch (err) {
+      getAuditLog().log({
+        adminUser,
+        action: "rates.sell.delete",
+        category: "config",
+        details: { id: input.id, error: String(err) },
+        outcome: "failure",
+      });
+      throw err;
     }
-    getAuditLog().log({
-      adminUser: ctx.user?.id ?? "unknown",
-      action: "rates.sell.delete",
-      category: "config",
-      details: { id: input.id },
-      outcome: "success",
-    });
-    return { success: true };
   }),
 
   /** List provider costs with optional filters. */
@@ -627,15 +697,27 @@ export const adminRouter = router({
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
-      const result = getRateStore().createProviderCost(input);
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "rates.provider.create",
-        category: "config",
-        details: { ...input },
-        outcome: "success",
-      });
-      return result;
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = getRateStore().createProviderCost(input);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.create",
+          category: "config",
+          details: { ...input },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.create",
+          category: "config",
+          details: { ...input, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Update a provider cost. */
@@ -659,16 +741,28 @@ export const adminRouter = router({
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
       }
+      const adminUser = ctx.user?.id ?? "unknown";
       const { id, ...updates } = input;
-      const result = getRateStore().updateProviderCost(id, updates);
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "rates.provider.update",
-        category: "config",
-        details: { id, ...updates },
-        outcome: "success",
-      });
-      return result;
+      try {
+        const result = getRateStore().updateProviderCost(id, updates);
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.update",
+          category: "config",
+          details: { id, ...updates },
+          outcome: "success",
+        });
+        return result;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "rates.provider.update",
+          category: "config",
+          details: { id, ...updates, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
+      }
     }),
 
   /** Delete a provider cost. */
@@ -678,18 +772,30 @@ export const adminRouter = router({
     if (!getRateStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
     }
-    const deleted = getRateStore().deleteProviderCost(input.id);
-    if (!deleted) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Provider cost not found" });
+    const adminUser = ctx.user?.id ?? "unknown";
+    try {
+      const deleted = getRateStore().deleteProviderCost(input.id);
+      if (!deleted) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Provider cost not found" });
+      }
+      getAuditLog().log({
+        adminUser,
+        action: "rates.provider.delete",
+        category: "config",
+        details: { id: input.id },
+        outcome: "success",
+      });
+      return { success: true };
+    } catch (err) {
+      getAuditLog().log({
+        adminUser,
+        action: "rates.provider.delete",
+        category: "config",
+        details: { id: input.id, error: String(err) },
+        outcome: "failure",
+      });
+      throw err;
     }
-    getAuditLog().log({
-      adminUser: ctx.user?.id ?? "unknown",
-      action: "rates.provider.delete",
-      category: "config",
-      details: { id: input.id },
-      outcome: "success",
-    });
-    return { success: true };
   }),
 
   /** Get margin report. */
@@ -923,20 +1029,33 @@ export const adminRouter = router({
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
+      const adminUser = ctx.user?.id ?? "unknown";
       const { noteId, tenantId, ...updates } = input;
-      const note = getNotesStore().update(noteId, tenantId, updates);
-      if (!note) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+      try {
+        const note = getNotesStore().update(noteId, tenantId, updates);
+        if (!note) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+        }
+        getAuditLog().log({
+          adminUser,
+          action: "note.update",
+          category: "support",
+          targetTenant: tenantId,
+          details: { noteId, hasContentChange: !!updates.content, hasPinChange: updates.isPinned !== undefined },
+          outcome: "success",
+        });
+        return note;
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "note.update",
+          category: "support",
+          targetTenant: tenantId,
+          details: { noteId, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
       }
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "note.update",
-        category: "support",
-        targetTenant: tenantId,
-        details: { noteId, hasContentChange: !!updates.content, hasPinChange: updates.isPinned !== undefined },
-        outcome: "success",
-      });
-      return note;
     }),
 
   /** Delete a note. */
@@ -948,19 +1067,32 @@ export const adminRouter = router({
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
-      const deleted = getNotesStore().delete(input.noteId, input.tenantId);
-      if (!deleted) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const deleted = getNotesStore().delete(input.noteId, input.tenantId);
+        if (!deleted) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
+        }
+        getAuditLog().log({
+          adminUser,
+          action: "note.delete",
+          category: "support",
+          targetTenant: input.tenantId,
+          details: { noteId: input.noteId },
+          outcome: "success",
+        });
+        return { success: true };
+      } catch (err) {
+        getAuditLog().log({
+          adminUser,
+          action: "note.delete",
+          category: "support",
+          targetTenant: input.tenantId,
+          details: { noteId: input.noteId, error: String(err) },
+          outcome: "failure",
+        });
+        throw err;
       }
-      getAuditLog().log({
-        adminUser: ctx.user?.id ?? "unknown",
-        action: "note.delete",
-        category: "support",
-        targetTenant: input.tenantId,
-        details: { noteId: input.noteId },
-        outcome: "success",
-      });
-      return { success: true };
     }),
 
   /** Change a user's role. */
