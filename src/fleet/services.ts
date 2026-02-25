@@ -190,7 +190,7 @@ export function getDb() {
 /** Returns the raw better-sqlite3 instance backing the platform DB. */
 export function getSqliteDb(): Database.Database {
   getDb(); // ensure initialized
-  if (!_sqlite) throw new Error("sqlite database not initialized");
+  if (!_sqlite) throw new Error("SQLite database not initialized");
   return _sqlite;
 }
 
@@ -812,4 +812,51 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
     _marketplacePluginRepo = new DrizzleMarketplacePluginRepository(getDb());
   }
   return _marketplacePluginRepo;
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding singletons (WOP-1020)
+// ---------------------------------------------------------------------------
+
+import { loadOnboardingConfig } from "../onboarding/config.js";
+import { DaemonManager, type IDaemonManager } from "../onboarding/daemon-manager.js";
+import type { IOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
+import { DrizzleOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
+import { OnboardingService } from "../onboarding/onboarding-service.js";
+import { WoprClient } from "../onboarding/wopr-client.js";
+
+let _onboardingSessionRepo: IOnboardingSessionRepository | null = null;
+let _woprClient: WoprClient | null = null;
+let _daemonManager: IDaemonManager | null = null;
+let _onboardingService: OnboardingService | null = null;
+
+export function getOnboardingSessionRepo(): IOnboardingSessionRepository {
+  if (!_onboardingSessionRepo) {
+    _onboardingSessionRepo = new DrizzleOnboardingSessionRepository(getDb());
+  }
+  return _onboardingSessionRepo;
+}
+
+export function getWoprClient(): WoprClient {
+  if (!_woprClient) {
+    const cfg = loadOnboardingConfig();
+    _woprClient = new WoprClient(cfg.woprPort);
+  }
+  return _woprClient;
+}
+
+export function getDaemonManager(): IDaemonManager {
+  if (!_daemonManager) {
+    const cfg = loadOnboardingConfig();
+    _daemonManager = new DaemonManager(cfg, getWoprClient());
+  }
+  return _daemonManager;
+}
+
+export function getOnboardingService(): OnboardingService {
+  if (!_onboardingService) {
+    const cfg = loadOnboardingConfig();
+    _onboardingService = new OnboardingService(getOnboardingSessionRepo(), getWoprClient(), cfg, getDaemonManager());
+  }
+  return _onboardingService;
 }
