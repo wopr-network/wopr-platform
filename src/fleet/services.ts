@@ -57,6 +57,7 @@ import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js
 import { SystemResourceMonitor } from "../observability/system-resources.js";
 import type { IOrgRepository } from "../org/drizzle-org-repository.js";
 import { DrizzleOrgRepository } from "../org/drizzle-org-repository.js";
+import { OrgService } from "../org/org-service.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
@@ -82,6 +83,8 @@ import { NodeDrainer } from "./node-drainer.js";
 import { NodeProvisioner } from "./node-provisioner.js";
 import { NodeRegistrar } from "./node-registrar.js";
 import type { INodeRepository } from "./node-repository.js";
+import type { IOrgMemberRepository } from "./org-member-repository.js";
+import { DrizzleOrgMemberRepository } from "./org-member-repository.js";
 import { OrphanCleaner } from "./orphan-cleaner.js";
 import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
@@ -765,4 +768,21 @@ export function getOrgRepo(): IOrgRepository {
     _orgRepo = new DrizzleOrgRepository(getDb());
   }
   return _orgRepo;
+}
+
+let _orgMemberRepo: IOrgMemberRepository | null = null;
+let _orgService: OrgService | null = null;
+
+export function getOrgMemberRepo(): IOrgMemberRepository {
+  if (!_orgMemberRepo) {
+    _orgMemberRepo = new DrizzleOrgMemberRepository(getDb());
+  }
+  return _orgMemberRepo;
+}
+
+export function getOrgService(): OrgService {
+  if (!_orgService) {
+    _orgService = new OrgService(getOrgRepo(), getOrgMemberRepo());
+  }
+  return _orgService;
 }

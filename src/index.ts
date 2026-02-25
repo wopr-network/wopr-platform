@@ -39,6 +39,7 @@ import {
   getNodeRegistrar,
   getNodeRepo,
   getNotificationPrefsStore,
+  getOrgService,
   getRateLimitRepo,
   getRegistrationTokenStore,
   getSystemResourceMonitor,
@@ -78,6 +79,7 @@ import {
   setFleetRouterDeps,
   setModelSelectionRouterDeps,
   setNodesRouterDeps,
+  setOrgRouterDeps,
   setProfileRouterDeps,
   setSettingsRouterDeps,
 } from "./trpc/index.js";
@@ -407,6 +409,9 @@ if (process.env.NODE_ENV !== "test") {
     getConnectionRegistry,
     getBotInstanceRepo,
   });
+
+  // Wire org tRPC router deps
+  setOrgRouterDeps({ orgService: getOrgService() });
 
   // Wire capabilities tRPC router deps (WOP-915: +listCapabilitySettings, +updateCapabilitySettings)
   {

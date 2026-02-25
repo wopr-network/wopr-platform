@@ -101,5 +101,44 @@ describe("DrizzleOrgRepository", () => {
       expect(orgs).toHaveLength(2);
       expect(orgs.map((o) => o.slug).sort()).toEqual(["org-a", "org-b"]);
     });
+
+    it("returns empty array when owner has no orgs", () => {
+      const orgs = repo.listOrgsByOwner("nobody");
+      expect(orgs).toHaveLength(0);
+    });
+  });
+
+  describe("createOrg (edge cases)", () => {
+    it("throws when name produces an empty slug", () => {
+      expect(() => repo.createOrg("user-1", "---")).toThrow(/empty slug/);
+    });
+  });
+
+  describe("updateOrg", () => {
+    it("updates name and returns updated tenant", () => {
+      const org = repo.createOrg("user-1", "Original", "original");
+      const updated = repo.updateOrg(org.id, { name: "Renamed" });
+      expect(updated.name).toBe("Renamed");
+      expect(updated.slug).toBe("original");
+    });
+
+    it("updates slug and returns updated tenant", () => {
+      const org = repo.createOrg("user-1", "Org", "old-slug");
+      const updated = repo.updateOrg(org.id, { slug: "new-slug" });
+      expect(updated.slug).toBe("new-slug");
+    });
+
+    it("throws when org not found", () => {
+      expect(() => repo.updateOrg("nonexistent-id", { name: "X" })).toThrow(/not found/);
+    });
+  });
+
+  describe("updateOwner", () => {
+    it("persists the new ownerId", () => {
+      const org = repo.createOrg("user-1", "Org", "org-slug");
+      repo.updateOwner(org.id, "user-2");
+      const updated = repo.getById(org.id);
+      expect(updated?.ownerId).toBe("user-2");
+    });
   });
 });

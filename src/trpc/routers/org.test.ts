@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { OrgService } from "../../org/org-service.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
 import { setOrgRouterDeps } from "./org.js";
@@ -23,13 +24,60 @@ function createCaller(ctx: TRPCContext) {
   return appRouter.createCaller(ctx);
 }
 
+const MOCK_ORG = {
+  id: "org-1",
+  name: "Test Org",
+  slug: "test-org",
+  type: "personal" as const,
+  ownerId: "test-user",
+  createdAt: Date.now(),
+  members: [
+    {
+      id: "m1",
+      userId: "test-user",
+      name: "Test User",
+      email: "test@example.com",
+      role: "owner" as const,
+      joinedAt: new Date().toISOString(),
+    },
+  ],
+  invites: [],
+};
+
+function makeMockOrgService(): OrgService {
+  return {
+    getOrCreatePersonalOrg: vi.fn().mockReturnValue(MOCK_ORG),
+    updateOrg: vi.fn().mockReturnValue(MOCK_ORG),
+    deleteOrg: vi.fn(),
+    inviteMember: vi.fn().mockReturnValue({
+      id: "inv-1",
+      orgId: "org-1",
+      email: "new@example.com",
+      role: "member",
+      invitedBy: "test-user",
+      token: "tok",
+      expiresAt: Date.now() + 86400000,
+      createdAt: Date.now(),
+    }),
+    revokeInvite: vi.fn(),
+    changeRole: vi.fn(),
+    removeMember: vi.fn(),
+    transferOwnership: vi.fn(),
+    validateSlug: vi.fn(),
+    getOrg: vi.fn(),
+  } as unknown as OrgService;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("tRPC org router", () => {
+  let mockOrgService: OrgService;
+
   beforeEach(() => {
-    setOrgRouterDeps({});
+    mockOrgService = makeMockOrgService();
+    setOrgRouterDeps({ orgService: mockOrgService });
   });
 
   // ---- getOrganization ----
@@ -40,11 +88,9 @@ describe("tRPC org router", () => {
       const result = await caller.org.getOrganization();
       expect(result).toHaveProperty("id");
       expect(result).toHaveProperty("name");
-      expect(result).toHaveProperty("billingEmail");
       expect(result).toHaveProperty("members");
+      expect(result).toHaveProperty("invites");
       expect(Array.isArray(result.members)).toBe(true);
-      expect(result.members.length).toBeGreaterThan(0);
-      expect(result.members[0]).toHaveProperty("role");
     });
 
     it("rejects unauthenticated request", async () => {
@@ -58,53 +104,96 @@ describe("tRPC org router", () => {
   describe("updateOrganization", () => {
     it("updates org name", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.org.updateOrganization({ name: "New Org Name" });
-      expect(result.name).toBe("New Org Name");
-    });
-
-    it("updates billing email", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.org.updateOrganization({ billingEmail: "billing@example.com" });
-      expect(result.billingEmail).toBe("billing@example.com");
+      const result = await caller.org.updateOrganization({ orgId: "org-1", name: "New Org Name" });
+      expect(mockOrgService.updateOrg).toHaveBeenCalledWith("org-1", "test-user", {
+        name: "New Org Name",
+        slug: undefined,
+      });
+      expect(result).toBeDefined();
     });
 
     it("rejects unauthenticated request", async () => {
       const caller = createCaller(unauthContext());
-      await expect(caller.org.updateOrganization({ name: "X" })).rejects.toThrow("Authentication required");
-    });
-
-    it("rejects invalid email", async () => {
-      const caller = createCaller(authedContext());
-      await expect(caller.org.updateOrganization({ billingEmail: "not-an-email" })).rejects.toThrow();
+      await expect(caller.org.updateOrganization({ orgId: "org-1", name: "X" })).rejects.toThrow(
+        "Authentication required",
+      );
     });
   });
 
   // ---- inviteMember ----
 
   describe("inviteMember", () => {
-    it("returns new member with correct email and role", async () => {
+    it("returns new invite with correct email and role", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.org.inviteMember({ email: "new@example.com", role: "viewer" });
+      const result = await caller.org.inviteMember({ orgId: "org-1", email: "new@example.com", role: "member" });
       expect(result.email).toBe("new@example.com");
-      expect(result.role).toBe("viewer");
+      expect(result.role).toBe("member");
       expect(result).toHaveProperty("id");
-      expect(result).toHaveProperty("joinedAt");
+      expect(result).toHaveProperty("expiresAt");
     });
 
     it("accepts admin role", async () => {
+      vi.mocked(mockOrgService.inviteMember).mockReturnValue({
+        id: "inv-2",
+        orgId: "org-1",
+        email: "admin@example.com",
+        role: "admin",
+        invitedBy: "test-user",
+        token: "tok2",
+        expiresAt: Date.now() + 86400000,
+        createdAt: Date.now(),
+      });
       const caller = createCaller(authedContext());
-      const result = await caller.org.inviteMember({ email: "admin@example.com", role: "admin" });
+      const result = await caller.org.inviteMember({ orgId: "org-1", email: "admin@example.com", role: "admin" });
       expect(result.role).toBe("admin");
     });
 
     it("rejects invalid role", async () => {
       const caller = createCaller(authedContext());
-      await expect(caller.org.inviteMember({ email: "a@b.com", role: "owner" as "admin" })).rejects.toThrow();
+      await expect(
+        caller.org.inviteMember({ orgId: "org-1", email: "a@b.com", role: "owner" as "admin" }),
+      ).rejects.toThrow();
     });
 
     it("rejects unauthenticated request", async () => {
       const caller = createCaller(unauthContext());
-      await expect(caller.org.inviteMember({ email: "a@b.com", role: "viewer" })).rejects.toThrow(
+      await expect(caller.org.inviteMember({ orgId: "org-1", email: "a@b.com", role: "member" })).rejects.toThrow(
+        "Authentication required",
+      );
+    });
+  });
+
+  // ---- revokeInvite ----
+
+  describe("revokeInvite", () => {
+    it("revokes an invite", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.org.revokeInvite({ orgId: "org-1", inviteId: "inv-1" });
+      expect(result.revoked).toBe(true);
+      expect(mockOrgService.revokeInvite).toHaveBeenCalledWith("org-1", "test-user", "inv-1");
+    });
+
+    it("rejects unauthenticated request", async () => {
+      const caller = createCaller(unauthContext());
+      await expect(caller.org.revokeInvite({ orgId: "org-1", inviteId: "inv-1" })).rejects.toThrow(
+        "Authentication required",
+      );
+    });
+  });
+
+  // ---- changeRole ----
+
+  describe("changeRole", () => {
+    it("changes a member's role", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.org.changeRole({ orgId: "org-1", userId: "user-2", role: "admin" });
+      expect(result.updated).toBe(true);
+      expect(mockOrgService.changeRole).toHaveBeenCalledWith("org-1", "test-user", "user-2", "admin");
+    });
+
+    it("rejects unauthenticated request", async () => {
+      const caller = createCaller(unauthContext());
+      await expect(caller.org.changeRole({ orgId: "org-1", userId: "u2", role: "admin" })).rejects.toThrow(
         "Authentication required",
       );
     });
@@ -115,14 +204,16 @@ describe("tRPC org router", () => {
   describe("removeMember", () => {
     it("returns removal confirmation", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.org.removeMember({ memberId: "member-123" });
+      const result = await caller.org.removeMember({ orgId: "org-1", userId: "member-123" });
       expect(result.removed).toBe(true);
-      expect(result.memberId).toBe("member-123");
+      expect(mockOrgService.removeMember).toHaveBeenCalledWith("org-1", "test-user", "member-123");
     });
 
     it("rejects unauthenticated request", async () => {
       const caller = createCaller(unauthContext());
-      await expect(caller.org.removeMember({ memberId: "m1" })).rejects.toThrow("Authentication required");
+      await expect(caller.org.removeMember({ orgId: "org-1", userId: "m1" })).rejects.toThrow(
+        "Authentication required",
+      );
     });
   });
 
@@ -131,14 +222,16 @@ describe("tRPC org router", () => {
   describe("transferOwnership", () => {
     it("returns transfer confirmation", async () => {
       const caller = createCaller(authedContext());
-      const result = await caller.org.transferOwnership({ memberId: "member-456" });
+      const result = await caller.org.transferOwnership({ orgId: "org-1", userId: "member-456" });
       expect(result.transferred).toBe(true);
-      expect(result.newOwnerId).toBe("member-456");
+      expect(mockOrgService.transferOwnership).toHaveBeenCalledWith("org-1", "test-user", "member-456");
     });
 
     it("rejects unauthenticated request", async () => {
       const caller = createCaller(unauthContext());
-      await expect(caller.org.transferOwnership({ memberId: "m1" })).rejects.toThrow("Authentication required");
+      await expect(caller.org.transferOwnership({ orgId: "org-1", userId: "m1" })).rejects.toThrow(
+        "Authentication required",
+      );
     });
   });
 
