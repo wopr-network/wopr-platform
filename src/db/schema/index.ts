@@ -25,6 +25,7 @@ export * from "./notification-preferences.js";
 export * from "./notification-queue.js";
 export * from "./oauth-states.js";
 export * from "./payram.js";
+export * from "./plugin-marketplace-content.js";
 export * from "./provider-credentials.js";
 export * from "./provider-health-overrides.js";
 export * from "./provisioned-phone-numbers.js";

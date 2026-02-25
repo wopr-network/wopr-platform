@@ -98,6 +98,29 @@ describe("GET /api/marketplace/plugins/:id", () => {
   });
 });
 
+describe("GET /api/marketplace/plugins/:id/content", () => {
+  it("returns 401 when no user session", async () => {
+    const app = makeApp(null);
+    const res = await app.request("/api/marketplace/plugins/discord-channel/content");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for unknown plugin", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/nonexistent/content");
+    expect(res.status).toBe(404);
+  });
+
+  it("returns manifest description as fallback when no cached content", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/discord-channel/content");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { markdown: string; source: string };
+    expect(body.source).toBe("manifest_description");
+    expect(body.markdown).toBeTruthy();
+  });
+});
+
 describe("POST /api/marketplace/plugins/:id/install", () => {
   it("returns 401 when no user session", async () => {
     const app = makeApp(null);
