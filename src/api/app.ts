@@ -33,6 +33,7 @@ import { botPluginRoutes } from "./routes/bot-plugins.js";
 import { botSnapshotRoutes } from "./routes/bot-snapshots.js";
 import { channelOAuthRoutes } from "./routes/channel-oauth.js";
 import { channelValidateRoutes } from "./routes/channel-validate.js";
+import { chatRoutes } from "./routes/chat.js";
 import { fleetRoutes } from "./routes/fleet.js";
 import { fleetResourceRoutes } from "./routes/fleet-resources.js";
 import { friendsRoutes } from "./routes/friends.js";
@@ -276,6 +277,7 @@ app.route("/api/v1/pricing", publicPricingRoutes);
 app.route("/api/activity", activityRoutes);
 app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
+app.route("/api/chat", chatRoutes);
 // Org management routes (WOP-1000)
 // A deps factory defers getOrgRepo()/getDb() until first request so the DB
 // is not opened at module load time (tests import app.ts without a live DB).
