@@ -95,10 +95,12 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
     }
 
     const { sessionId, message } = parsed.data;
-    const streamIds = registry.listBySession(sessionId);
 
     // Fire-and-forget: process in background so POST returns immediately
     const emit = (event: ChatEvent) => {
+      // Look up live writers at emission time, not at POST receipt time.
+      // This ensures events reach SSE connections that opened after POST arrived.
+      const streamIds = registry.listBySession(sessionId);
       const line = `data: ${JSON.stringify(event)}\n\n`;
       for (const id of streamIds) {
         const writer = registry.get(id);
@@ -120,7 +122,7 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
     });
 
     // Return the first streamId (or "pending" if no SSE connection yet)
-    return c.json({ streamId: streamIds[0] ?? "pending" });
+    return c.json({ streamId: registry.listBySession(sessionId)[0] ?? "pending" });
   });
 
   return routes;
@@ -144,14 +146,24 @@ function getDeps(): ChatRouteDeps {
 }
 
 /** Pre-built chat routes with lazy dep initialization. */
+// createChatRoutes is called once so the ChatStreamRegistry is shared across
+// all requests (GET /stream and POST / must use the same instance).
+let _chatRoutesInner: Hono | null = null;
+
+function getChatRoutesInner(): Hono {
+  if (!_chatRoutesInner) {
+    _chatRoutesInner = createChatRoutes(getDeps());
+  }
+  return _chatRoutesInner;
+}
+
 export const chatRoutes = new Hono();
 chatRoutes.route(
   "/",
   (() => {
-    // Lazy wrapper: defers createChatRoutes until first request
     const lazy = new Hono();
     lazy.all("/*", async (c) => {
-      const inner = createChatRoutes(getDeps());
+      const inner = getChatRoutesInner();
       return inner.fetch(c.req.raw);
     });
     return lazy;
