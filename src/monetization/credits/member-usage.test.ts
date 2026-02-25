@@ -1,5 +1,5 @@
 import BetterSqlite3 from "better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDb } from "../../db/index.js";
 import { CreditLedger } from "./credit-ledger.js";
 
@@ -37,6 +37,10 @@ describe("DrizzleCreditLedger.memberUsage", () => {
     initTestSchema(sqlite);
     db = createDb(sqlite);
     ledger = new CreditLedger(db);
+  });
+
+  afterEach(() => {
+    sqlite.close();
   });
 
   it("should aggregate debit totals per attributed user", () => {
