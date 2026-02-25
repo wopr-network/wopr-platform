@@ -48,6 +48,7 @@ import { modelSelectionRouter } from "./routers/model-selection.js";
 import { nodesRouter } from "./routers/nodes.js";
 import { orgRouter } from "./routers/org.js";
 import { orgKeysRouter } from "./routers/org-keys.js";
+import { pageContextRouter } from "./routers/page-context.js";
 import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 import { twoFactorRouter } from "./routers/two-factor.js";
@@ -68,6 +69,7 @@ export const appRouter = router({
   nodes: nodesRouter,
   org: orgRouter,
   orgKeys: orgKeysRouter,
+  pageContext: pageContextRouter,
 });
 
 /** The root router type — import this in the UI repo for full type inference. */
