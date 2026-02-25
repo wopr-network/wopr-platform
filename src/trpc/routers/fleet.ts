@@ -69,7 +69,9 @@ function deps(): FleetRouterDeps {
 async function assertCanManageBot(ctx: { user: { id: string }; tenantId: string }, botId: string): Promise<void> {
   const roleStore = deps().getRoleStore?.();
   const botRepo = deps().getBotInstanceRepo?.();
-  if (!roleStore || !botRepo) return; // graceful degradation — skip check if deps unavailable
+  if (!roleStore || !botRepo) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Bot management authorization unavailable" });
+  }
 
   const userRole = roleStore.getRole(ctx.user.id, ctx.tenantId);
   const botInstance = botRepo.getById(botId);

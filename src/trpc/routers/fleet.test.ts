@@ -119,6 +119,19 @@ function createFleetMock() {
 
 let fleetMock: ReturnType<typeof createFleetMock>;
 
+const mockRoleStore: RoleStore = {
+  getRole: vi.fn().mockReturnValue("tenant_admin"),
+} as unknown as RoleStore;
+
+const mockBotInstanceRepo: IBotInstanceRepository = {
+  getById: vi.fn().mockReturnValue(mockBotInstance),
+  listByNode: vi.fn().mockReturnValue([]),
+  listByTenant: vi.fn().mockReturnValue([]),
+  upsert: vi.fn(),
+  updateBillingState: vi.fn(),
+  delete: vi.fn(),
+} as unknown as IBotInstanceRepository;
+
 beforeEach(() => {
   fleetMock = createFleetMock();
   setFleetRouterDeps({
@@ -126,6 +139,8 @@ beforeEach(() => {
     getTemplates: () => mockTemplates,
     getCreditLedger: () => null,
     getBotBilling: () => null,
+    getBotInstanceRepo: () => mockBotInstanceRepo,
+    getRoleStore: () => mockRoleStore,
   });
 });
 
