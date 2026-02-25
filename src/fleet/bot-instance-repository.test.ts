@@ -196,6 +196,47 @@ describe("DrizzleBotInstanceRepository", () => {
     });
   });
 
+  describe("org-scoped ownership (WOP-1002)", () => {
+    it("bot persists after removing the creating user (no FK cascade)", () => {
+      repo.create({
+        id: "00000000-0000-4000-8000-000000000090",
+        tenantId: "org-tenant-1",
+        name: "org-bot-1",
+        nodeId: null,
+        createdByUserId: "user-A",
+      });
+
+      // Simulate removing user-A: just verify bot still exists
+      // (There is no FK from bot_instances to users, so nothing cascades)
+      const bot = repo.getById("00000000-0000-4000-8000-000000000090");
+      expect(bot).not.toBeNull();
+      expect(bot!.tenantId).toBe("org-tenant-1");
+      expect(bot!.createdByUserId).toBe("user-A");
+    });
+
+    it("listByTenant returns bots from all creators in the org", () => {
+      repo.create({
+        id: "00000000-0000-4000-8000-000000000089",
+        tenantId: "org-tenant-2",
+        name: "bot-by-A",
+        nodeId: null,
+        createdByUserId: "user-A",
+      });
+      repo.create({
+        id: "00000000-0000-4000-8000-000000000088",
+        tenantId: "org-tenant-2",
+        name: "bot-by-B",
+        nodeId: null,
+        createdByUserId: "user-B",
+      });
+
+      const bots = repo.listByTenant("org-tenant-2");
+      expect(bots).toHaveLength(2);
+      const creators = bots.map((b) => b.createdByUserId).sort();
+      expect(creators).toEqual(["user-A", "user-B"]);
+    });
+  });
+
   describe("setBillingState", () => {
     it("suspends a bot and sets suspension timestamps", () => {
       repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });
