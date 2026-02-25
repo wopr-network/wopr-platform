@@ -5,7 +5,6 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
-import { createDb } from "../../db/index.js";
 import { requireEmailVerified } from "../../email/require-verified.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
@@ -16,15 +15,14 @@ import { ProfileStore } from "../../fleet/profile-store.js";
 import { getRecoveryOrchestrator } from "../../fleet/services.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
-import { BotBilling } from "../../monetization/credits/bot-billing.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
 import { NetworkPolicy } from "../../network/network-policy.js";
 import { getProxyManager } from "../../proxy/singleton.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
-const BILLING_DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 
 let _authDb: Database.Database | null = null;
@@ -45,31 +43,26 @@ const fleet = new FleetManager(docker, store, config.discovery, networkPolicy, g
 const imagePoller = new ImagePoller(docker, store);
 const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
 
-// Initialize billing DB + credit ledger for balance checks
-let billingDb: Database.Database | null = null;
-let creditLedger: CreditLedger | null = null;
+// ---------------------------------------------------------------------------
+// Injected billing deps — set via setFleetDeps() before the server starts.
+// ---------------------------------------------------------------------------
 
-function getBillingDb(): Database.Database {
-  if (!billingDb) {
-    billingDb = new Database(BILLING_DB_PATH);
-    billingDb.pragma("journal_mode = WAL");
-  }
-  return billingDb;
+export interface FleetRouteDeps {
+  creditLedger: ICreditLedger;
+  botBilling: IBotBilling;
 }
 
-function getCreditLedger(): CreditLedger {
-  if (!creditLedger) {
-    creditLedger = new CreditLedger(createDb(getBillingDb()));
-  }
-  return creditLedger;
+let _deps: FleetRouteDeps | null = null;
+
+export function setFleetDeps(deps: FleetRouteDeps): void {
+  _deps = deps;
 }
 
-let botBilling: BotBilling | null = null;
-function getBotBilling(): BotBilling {
-  if (!botBilling) {
-    botBilling = new BotBilling(createDb(getBillingDb()));
+function getDeps(): FleetRouteDeps {
+  if (!_deps) {
+    throw new Error("Fleet route deps not initialized — call setFleetDeps() before serving requests");
   }
-  return botBilling;
+  return _deps;
 }
 
 // Wire up the poller to trigger updates via the updater
@@ -215,7 +208,7 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
     const tenantId = parsed.data.tenantId;
 
     // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
-    const balance = getCreditLedger().balance(tenantId);
+    const balance = getDeps().creditLedger.balance(tenantId);
     if (balance < 17) {
       return c.json(
         {
@@ -257,7 +250,7 @@ fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
 
     // Register bot in billing system for lifecycle tracking
     try {
-      getBotBilling().registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
+      getDeps().botBilling.registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
     } catch (regErr) {
       logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
     }
@@ -373,7 +366,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
   try {
     const tenantId = profile?.tenantId;
     if (!tenantId) return c.json({ error: "Missing tenant" }, 400);
-    const balance = getCreditLedger().balance(tenantId);
+    const balance = getDeps().creditLedger.balance(tenantId);
     if (balance < 17) {
       return c.json(
         {
