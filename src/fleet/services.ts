@@ -190,7 +190,7 @@ export function getDb() {
 /** Returns the raw better-sqlite3 instance backing the platform DB. */
 export function getSqliteDb(): Database.Database {
   getDb(); // ensure initialized
-  if (!_sqlite) throw new Error("sqlite database not initialized");
+  if (!_sqlite) throw new Error("SQLite database not initialized");
   return _sqlite;
 }
 
@@ -804,8 +804,6 @@ export function getOrgMembershipRepo(): IOrgMembershipRepository {
 // ---------------------------------------------------------------------------
 // Marketplace Plugin Repository (WOP-1031)
 // ---------------------------------------------------------------------------
-// Marketplace Plugin Repository (WOP-1031)
-// ---------------------------------------------------------------------------
 
 let _marketplacePluginRepo: IMarketplacePluginRepository | null = null;
 
@@ -814,9 +812,8 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
     _marketplacePluginRepo = new DrizzleMarketplacePluginRepository(getDb());
   }
   return _marketplacePluginRepo;
+}
 
-// ---------------------------------------------------------------------------
-// Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
 // Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
@@ -862,5 +859,4 @@ export function getOnboardingService(): OnboardingService {
     _onboardingService = new OnboardingService(getOnboardingSessionRepo(), getWoprClient(), cfg, getDaemonManager());
   }
   return _onboardingService;
-
 }
