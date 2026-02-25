@@ -242,7 +242,7 @@ vi.mock("../../proxy/singleton.js", () => {
 });
 
 // Import AFTER mocks
-const { fleetRoutes } = await import("./fleet.js");
+const { fleetRoutes, setFleetDeps } = await import("./fleet.js");
 const { billingRoutes, setBillingDeps } = await import("./billing.js");
 const { quotaRoutes, setLedger } = await import("./quota.js");
 const { healthRoutes } = await import("./health.js");
@@ -533,6 +533,25 @@ describe("E2E: Billing flow (credit model)", () => {
       meterAggregator: new MeterAggregator(db),
       sigPenaltyRepo: new DrizzleSigPenaltyRepository(drizzle(sigPenaltySqlite, { schema })),
       affiliateRepo: new DrizzleAffiliateRepository(db),
+    });
+
+    setFleetDeps({
+      creditLedger,
+      botBilling: {
+        registerBot: vi.fn(),
+        getActiveBotCount: vi.fn().mockReturnValue(0),
+        suspendBot: vi.fn(),
+        suspendAllForTenant: vi.fn().mockReturnValue([]),
+        reactivateBot: vi.fn(),
+        checkReactivation: vi.fn().mockReturnValue([]),
+        destroyBot: vi.fn(),
+        destroyExpiredBots: vi.fn().mockReturnValue([]),
+        getBotBilling: vi.fn().mockReturnValue(null),
+        listForTenant: vi.fn().mockReturnValue([]),
+        getStorageTier: vi.fn().mockReturnValue(null),
+        setStorageTier: vi.fn(),
+        getStorageTierCostsForTenant: vi.fn().mockReturnValue(0),
+      },
     });
 
     app = buildApp();

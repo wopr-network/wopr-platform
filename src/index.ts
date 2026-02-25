@@ -12,6 +12,7 @@ import { DrizzleSigPenaltyRepository } from "./api/drizzle-sig-penalty-repositor
 import { setBillingDeps } from "./api/routes/billing.js";
 import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
+import { setFleetDeps } from "./api/routes/fleet.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
@@ -595,6 +596,13 @@ if (process.env.NODE_ENV !== "test") {
       getBotBilling: () => getBotBilling(),
     });
     logger.info("tRPC fleet router initialized");
+
+    // Wire REST fleet routes with the same billing deps
+    setFleetDeps({
+      creditLedger: getCreditLedger(),
+      botBilling: getBotBilling(),
+    });
+    logger.info("REST fleet routes initialized");
   }
 
   // Start heartbeat watchdog

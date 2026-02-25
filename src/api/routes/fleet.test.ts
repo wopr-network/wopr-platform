@@ -163,7 +163,7 @@ vi.mock("../../proxy/singleton.js", () => {
 });
 
 // Import AFTER mocks are set up
-const { fleetRoutes, seedBots } = await import("./fleet.js");
+const { fleetRoutes, seedBots, setFleetDeps } = await import("./fleet.js");
 
 const app = new Hono();
 app.route("/fleet", fleetRoutes);
@@ -181,6 +181,25 @@ describe("fleet routes", () => {
 
     // Set default credit ledger mock (tests can override as needed)
     creditLedgerMock.balance.mockReturnValue(1000); // 1000 cents = $10
+
+    setFleetDeps({
+      creditLedger: creditLedgerMock as never,
+      botBilling: {
+        registerBot: vi.fn(),
+        getActiveBotCount: vi.fn().mockReturnValue(0),
+        suspendBot: vi.fn(),
+        suspendAllForTenant: vi.fn().mockReturnValue([]),
+        reactivateBot: vi.fn(),
+        checkReactivation: vi.fn().mockReturnValue([]),
+        destroyBot: vi.fn(),
+        destroyExpiredBots: vi.fn().mockReturnValue([]),
+        getBotBilling: vi.fn().mockReturnValue(null),
+        listForTenant: vi.fn().mockReturnValue([]),
+        getStorageTier: vi.fn().mockReturnValue(null),
+        setStorageTier: vi.fn(),
+        getStorageTierCostsForTenant: vi.fn().mockReturnValue(0),
+      },
+    });
   });
 
   describe("authentication", () => {
