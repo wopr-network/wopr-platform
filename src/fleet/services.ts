@@ -55,6 +55,8 @@ import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
 import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js";
 import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
 import { SystemResourceMonitor } from "../observability/system-resources.js";
+import type { IOrgRepository } from "../org/org-repository.js";
+import { DrizzleOrgRepository } from "../org/org-repository.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
@@ -750,4 +752,17 @@ export function getBackupVerifier(): BackupVerifier {
     _backupVerifier = new BackupVerifier({ spaces: new SpacesClient(S3_BUCKET) });
   }
   return _backupVerifier;
+}
+
+// ---------------------------------------------------------------------------
+// Org repository singleton (WOP-1000)
+// ---------------------------------------------------------------------------
+
+let _orgRepo: IOrgRepository | null = null;
+
+export function getOrgRepo(): IOrgRepository {
+  if (!_orgRepo) {
+    _orgRepo = new DrizzleOrgRepository(getDb());
+  }
+  return _orgRepo;
 }

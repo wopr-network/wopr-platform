@@ -140,7 +140,8 @@
         "src/admin/analytics/analytics-store.ts",
         "src/email/notification-preferences-store.ts",
         "src/email/notification-queue-store.ts",
-        "src/email/drizzle-billing-email-repository.ts"
+        "src/email/drizzle-billing-email-repository.ts",
+        "src/org/org-repository.ts"
       ],
       "linter": {
         "rules": {
