@@ -188,7 +188,8 @@ export function getDb() {
 /** Returns the raw better-sqlite3 instance backing the platform DB. */
 export function getSqliteDb(): Database.Database {
   getDb(); // ensure initialized
-  return _sqlite!;
+  if (!_sqlite) throw new Error("sqlite database not initialized");
+  return _sqlite;
 }
 
 /** Lazy-initialized audit database singleton. */

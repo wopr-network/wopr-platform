@@ -46,12 +46,13 @@ describe("verify-email route", () => {
     const balances = new Map<string, number>();
     creditLedger = {
       credit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+        const balanceAfterCents = (balances.get(tenantId) ?? 0) + amountCents;
+        balances.set(tenantId, balanceAfterCents);
         return {
           id: "tx-1",
           tenantId,
           amountCents,
-          balanceAfterCents: balances.get(tenantId)!,
+          balanceAfterCents,
           type: "signup_grant",
           description: null,
           referenceId: null,
@@ -60,12 +61,13 @@ describe("verify-email route", () => {
         };
       },
       debit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+        const balanceAfterCents = (balances.get(tenantId) ?? 0) - amountCents;
+        balances.set(tenantId, balanceAfterCents);
         return {
           id: "tx-2",
           tenantId,
           amountCents: -amountCents,
-          balanceAfterCents: balances.get(tenantId)!,
+          balanceAfterCents,
           type: "correction",
           description: null,
           referenceId: null,
