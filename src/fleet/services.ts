@@ -31,6 +31,8 @@ import { DrizzleNotificationQueueStore } from "../email/notification-queue-store
 import type { ICircuitBreakerRepository } from "../gateway/circuit-breaker-repository.js";
 import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-breaker-repository.js";
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
+import { DrizzleMarketplacePluginRepository } from "../marketplace/drizzle-marketplace-plugin-repository.js";
+import type { IMarketplacePluginRepository } from "../marketplace/marketplace-plugin-repository.js";
 import type { IAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
 import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
@@ -797,4 +799,17 @@ export function getOrgMembershipRepo(): IOrgMembershipRepository {
     _orgMembershipRepo = new DrizzleOrgMembershipRepository(getDb());
   }
   return _orgMembershipRepo;
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace Plugin Repository (WOP-1031)
+// ---------------------------------------------------------------------------
+
+let _marketplacePluginRepo: IMarketplacePluginRepository | null = null;
+
+export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
+  if (!_marketplacePluginRepo) {
+    _marketplacePluginRepo = new DrizzleMarketplacePluginRepository(getDb());
+  }
+  return _marketplacePluginRepo;
 }

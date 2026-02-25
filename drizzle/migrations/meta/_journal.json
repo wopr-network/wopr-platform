@@ -274,6 +274,13 @@
       "when": 1772001000000,
       "tag": "0039_solid_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1771993927132,
+      "tag": "0040_tearful_nebula",
+      "breakpoints": true
     }
   ]
 }

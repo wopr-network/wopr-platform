@@ -5,9 +5,14 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { RoleStore } from "../admin/roles/role-store.js";
 import type { AuthUser } from "../auth/index.js";
-import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
+import {
+  buildTokenMetadataMap,
+  extractBearerToken,
+  resolveSessionUser,
+  scopedBearerAuthWithTenant,
+} from "../auth/index.js";
 import { logger } from "../config/logger.js";
-import { getDb, getOrgRepo } from "../fleet/services.js";
+import { getDb, getMarketplacePluginRepo, getOrgRepo } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
@@ -16,6 +21,7 @@ import { activityRoutes } from "./routes/activity.js";
 import { adminBackupRoutes } from "./routes/admin-backups.js";
 import { adminCreditRoutes } from "./routes/admin-credits.js";
 import { adminGpuRoutes } from "./routes/admin-gpu.js";
+import { createAdminMarketplaceRoutes } from "./routes/admin-marketplace.js";
 import { adminMigrationRoutes } from "./routes/admin-migration.js";
 import { adminNotesRoutes } from "./routes/admin-notes.js";
 import { adminRateRoutes } from "./routes/admin-rates.js";
@@ -252,6 +258,16 @@ app.route("/api/admin/nodes", adminNodeRoutes);
 app.route("/api/admin/gpu", adminGpuRoutes);
 app.route("/api/admin/migrate", adminMigrationRoutes);
 app.route("/api/admin/users", adminUsersApiRoutes);
+// Admin marketplace routes (WOP-1031)
+// Deps factory defers getMarketplacePluginRepo() until first request so the DB
+// is not opened at module load time (tests import app.ts without a live DB).
+{
+  const _marketplaceAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
+  const _adminMarketplace = new Hono();
+  _adminMarketplace.use("*", _marketplaceAdminAuth);
+  _adminMarketplace.route("/", createAdminMarketplaceRoutes(getMarketplacePluginRepo));
+  app.route("/api/admin/marketplace", _adminMarketplace);
+}
 app.route("/api/channel-oauth", channelOAuthRoutes);
 app.route("/api/channels", channelValidateRoutes);
 app.route("/api/tenant-keys", tenantKeyRoutes);
