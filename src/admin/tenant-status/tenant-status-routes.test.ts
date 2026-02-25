@@ -126,6 +126,7 @@ function makeMockLedger(): ICreditLedger {
         description: null,
         referenceId: null,
         fundingSource: null,
+        attributedUserId: null,
         createdAt: new Date().toISOString(),
       };
     },
@@ -141,6 +142,7 @@ function makeMockLedger(): ICreditLedger {
         description: null,
         referenceId: null,
         fundingSource: null,
+        attributedUserId: null,
         createdAt: new Date().toISOString(),
       };
     },
@@ -154,6 +156,9 @@ function makeMockLedger(): ICreditLedger {
       return [];
     },
     tenantsWithBalance() {
+      return [];
+    },
+    memberUsage() {
       return [];
     },
   };

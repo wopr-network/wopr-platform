@@ -538,7 +538,13 @@ export const billingRouter = router({
       return {
         email: "", // TODO: add getCustomerEmail to IPaymentProcessor (WOP-follow-up)
         paymentMethods,
-        invoices: [] as Array<{ id: string; date: string; amount: number; status: string; downloadUrl: string }>,
+        invoices: [] as Array<{
+          id: string;
+          date: string;
+          amount: number;
+          status: string;
+          downloadUrl: string;
+        }>,
       };
     } catch {
       return {
@@ -794,7 +800,10 @@ export const billingRouter = router({
     .mutation(({ input, ctx }) => {
       const callerTenant = ctx.tenantId ?? ctx.user.id;
       if (input.referredTenantId !== callerTenant) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Cannot record referral for another tenant" });
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Cannot record referral for another tenant",
+        });
       }
       const { affiliateRepo } = deps();
       const codeRecord = affiliateRepo.getByCode(input.code);
@@ -808,5 +817,18 @@ export const billingRouter = router({
 
       const isNew = affiliateRepo.recordReferral(codeRecord.tenantId, input.referredTenantId, input.code);
       return { recorded: isNew, referrer: codeRecord.tenantId };
+    }),
+
+  /** Get per-member credit usage breakdown for an org. */
+  memberUsage: protectedProcedure
+    .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
+    .query(({ input, ctx }) => {
+      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+      const { creditLedger } = deps();
+      const members = creditLedger.memberUsage(tenant);
+      return { tenant, members };
     }),
 });

@@ -12,6 +12,7 @@ export function initCreditSchema(db: Database.Database): void {
       description TEXT,
       reference_id TEXT UNIQUE,
       funding_source TEXT,
+      attributed_user_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -20,6 +21,9 @@ export function initCreditSchema(db: Database.Database): void {
   const cols = db.prepare("PRAGMA table_info(credit_transactions)").all() as { name: string }[];
   if (!cols.some((c) => c.name === "funding_source")) {
     db.exec("ALTER TABLE credit_transactions ADD COLUMN funding_source TEXT");
+  }
+  if (!cols.some((c) => c.name === "attributed_user_id")) {
+    db.exec("ALTER TABLE credit_transactions ADD COLUMN attributed_user_id TEXT");
   }
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_credit_tx_tenant ON credit_transactions(tenant_id)");

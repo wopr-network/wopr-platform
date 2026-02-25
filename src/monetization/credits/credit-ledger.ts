@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
 
@@ -35,6 +35,7 @@ export interface CreditTransaction {
   description: string | null;
   referenceId: string | null;
   fundingSource: string | null;
+  attributedUserId: string | null;
   createdAt: string;
 }
 
@@ -42,6 +43,12 @@ export interface HistoryOptions {
   limit?: number;
   offset?: number;
   type?: string;
+}
+
+export interface MemberUsageSummary {
+  userId: string;
+  totalDebitCents: number;
+  transactionCount: number;
 }
 
 /** Insufficient balance error — thrown when a debit would make balance negative. */
@@ -65,6 +72,7 @@ export interface ICreditLedger {
     description?: string,
     referenceId?: string,
     fundingSource?: string,
+    attributedUserId?: string,
   ): CreditTransaction;
 
   debit(
@@ -74,12 +82,14 @@ export interface ICreditLedger {
     description?: string,
     referenceId?: string,
     allowNegative?: boolean,
+    attributedUserId?: string,
   ): CreditTransaction;
 
   balance(tenantId: string): number;
   hasReferenceId(referenceId: string): boolean;
   history(tenantId: string, opts?: HistoryOptions): CreditTransaction[];
   tenantsWithBalance(): Array<{ tenantId: string; balanceCents: number }>;
+  memberUsage(tenantId: string): MemberUsageSummary[];
 }
 
 /**
@@ -103,6 +113,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
     description?: string,
     referenceId?: string,
     fundingSource?: string,
+    attributedUserId?: string,
   ): CreditTransaction {
     if (amountCents <= 0) {
       throw new Error("amountCents must be positive for credits");
@@ -148,6 +159,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         description: description ?? null,
         referenceId: referenceId ?? null,
         fundingSource: fundingSource ?? null,
+        attributedUserId: attributedUserId ?? null,
       };
 
       tx.insert(creditTransactions).values(txn).run();
@@ -161,6 +173,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         description: txn.description ?? null,
         referenceId: txn.referenceId ?? null,
         fundingSource: txn.fundingSource ?? null,
+        attributedUserId: txn.attributedUserId ?? null,
         createdAt: new Date().toISOString(),
       };
     });
@@ -179,6 +192,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
     description?: string,
     referenceId?: string,
     allowNegative?: boolean,
+    attributedUserId?: string,
   ): CreditTransaction {
     if (amountCents <= 0) {
       throw new Error("amountCents must be positive for debits");
@@ -228,6 +242,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         description: description ?? null,
         referenceId: referenceId ?? null,
         fundingSource: null,
+        attributedUserId: attributedUserId ?? null,
       };
 
       tx.insert(creditTransactions).values(txn).run();
@@ -241,6 +256,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         description: txn.description ?? null,
         referenceId: txn.referenceId ?? null,
         fundingSource: null,
+        attributedUserId: txn.attributedUserId ?? null,
         createdAt: new Date().toISOString(),
       };
     });
@@ -287,6 +303,34 @@ export class DrizzleCreditLedger implements ICreditLedger {
       .limit(limit)
       .offset(offset)
       .all();
+  }
+
+  /** Aggregate debit totals per attributed user for a tenant. */
+  memberUsage(tenantId: string): MemberUsageSummary[] {
+    const rows = this.db
+      .select({
+        userId: creditTransactions.attributedUserId,
+        totalDebitCents: sql<number>`COALESCE(SUM(ABS(${creditTransactions.amountCents})), 0)`,
+        transactionCount: sql<number>`COUNT(*)`,
+      })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.tenantId, tenantId),
+          isNotNull(creditTransactions.attributedUserId),
+          sql`${creditTransactions.amountCents} < 0`,
+        ),
+      )
+      .groupBy(creditTransactions.attributedUserId)
+      .all();
+
+    return rows
+      .filter((r): r is typeof r & { userId: string } => r.userId != null)
+      .map((r) => ({
+        userId: r.userId,
+        totalDebitCents: r.totalDebitCents,
+        transactionCount: r.transactionCount,
+      }));
   }
 
   /** List all tenants with positive balance (for cron deduction). */
