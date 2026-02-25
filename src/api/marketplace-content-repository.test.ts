@@ -25,8 +25,8 @@ describe("DrizzleMarketplaceContentRepository", () => {
 
     const row = repo.getByPluginId("test-plugin");
     expect(row).not.toBeNull();
-    expect(row!.markdown).toBe("# Test");
-    expect(row!.source).toBe("superpower_md");
+    expect(row?.markdown).toBe("# Test");
+    expect(row?.source).toBe("superpower_md");
   });
 
   it("returns null for missing plugin", () => {
@@ -51,7 +51,7 @@ describe("DrizzleMarketplaceContentRepository", () => {
     });
 
     const row = repo.getByPluginId("test-plugin");
-    expect(row!.version).toBe("2.0.0");
-    expect(row!.markdown).toBe("# New");
+    expect(row?.version).toBe("2.0.0");
+    expect(row?.markdown).toBe("# New");
   });
 });
