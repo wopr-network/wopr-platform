@@ -18,6 +18,7 @@ function initTestSchema(sqlite: BetterSqlite3.Database): void {
       description TEXT,
       reference_id TEXT UNIQUE,
       funding_source TEXT,
+      attributed_user_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
@@ -63,5 +64,44 @@ describe("CreditLedger.debit with allowNegative", () => {
     const txn = ledger.debit("t1", 10, "adapter_usage", "test", undefined, true);
     expect(txn.amountCents).toBe(-10);
     expect(txn.balanceAfterCents).toBe(-5);
+  });
+});
+
+describe("CreditLedger attributedUserId", () => {
+  let sqlite: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let ledger: CreditLedger;
+
+  beforeEach(() => {
+    sqlite = new BetterSqlite3(":memory:");
+    initTestSchema(sqlite);
+    db = createDb(sqlite);
+    ledger = new CreditLedger(db);
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  it("should store attributedUserId on credit transactions", () => {
+    const tx = ledger.credit("tenant-1", 500, "purchase", "Test", undefined, "stripe", "user-abc");
+    expect(tx.attributedUserId).toBe("user-abc");
+  });
+
+  it("should store attributedUserId on debit transactions", () => {
+    ledger.credit("tenant-1", 1000, "purchase", "Seed");
+    const tx = ledger.debit("tenant-1", 100, "adapter_usage", "Test debit", undefined, false, "user-xyz");
+    expect(tx.attributedUserId).toBe("user-xyz");
+  });
+
+  it("should default attributedUserId to null when not provided", () => {
+    const tx = ledger.credit("tenant-1", 500, "purchase", "Test");
+    expect(tx.attributedUserId).toBeNull();
+  });
+
+  it("should return attributedUserId in history results", () => {
+    ledger.credit("tenant-1", 500, "purchase", "Test", undefined, "stripe", "user-abc");
+    const history = ledger.history("tenant-1");
+    expect(history[0]?.attributedUserId).toBe("user-abc");
   });
 });

@@ -22,6 +22,7 @@ function initTestSchema(sqlite: BetterSqlite3.Database): void {
       description TEXT,
       reference_id TEXT UNIQUE,
       funding_source TEXT,
+      attributed_user_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);

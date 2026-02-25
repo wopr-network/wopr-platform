@@ -97,6 +97,7 @@ export function debitCredits(
   margin: number,
   capability: string,
   provider: string,
+  attributedUserId?: string,
 ): void {
   if (!deps.creditLedger) return;
 
@@ -113,6 +114,7 @@ export function debitCredits(
       `Gateway ${capability} via ${provider}`,
       undefined,
       true,
+      attributedUserId,
     );
 
     // Only fire on first zero-crossing (balance was positive before, now ≤ 0)

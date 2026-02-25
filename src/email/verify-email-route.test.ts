@@ -57,6 +57,7 @@ describe("verify-email route", () => {
           description: null,
           referenceId: null,
           fundingSource: null,
+          attributedUserId: null,
           createdAt: new Date().toISOString(),
         };
       },
@@ -72,6 +73,7 @@ describe("verify-email route", () => {
           description: null,
           referenceId: null,
           fundingSource: null,
+          attributedUserId: null,
           createdAt: new Date().toISOString(),
         };
       },
@@ -85,6 +87,9 @@ describe("verify-email route", () => {
         return [];
       },
       tenantsWithBalance() {
+        return [];
+      },
+      memberUsage() {
         return [];
       },
     };
@@ -198,6 +203,9 @@ describe("verify-email route", () => {
         return [];
       },
       tenantsWithBalance() {
+        return [];
+      },
+      memberUsage() {
         return [];
       },
     };

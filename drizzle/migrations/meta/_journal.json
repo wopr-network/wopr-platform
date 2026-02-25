@@ -267,6 +267,13 @@
       "when": 1771997035470,
       "tag": "0038_unique_vengeance",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1772001000000,
+      "tag": "0039_solid_black_knight",
+      "breakpoints": true
     }
   ]
 }

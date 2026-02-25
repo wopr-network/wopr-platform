@@ -16,6 +16,7 @@ export const creditTransactions = sqliteTable(
     description: text("description"),
     referenceId: text("reference_id").unique(),
     fundingSource: text("funding_source"), // "stripe" | "payram" | null (null = legacy/signup)
+    attributedUserId: text("attributed_user_id"), // nullable — null for system/bot charges
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
@@ -24,6 +25,8 @@ export const creditTransactions = sqliteTable(
     index("idx_credit_tx_ref").on(table.referenceId),
     index("idx_credit_tx_created").on(table.createdAt),
     index("idx_credit_tx_tenant_created").on(table.tenantId, table.createdAt),
+    index("idx_credit_tx_attributed_user").on(table.attributedUserId),
+    index("idx_credit_tx_tenant_attributed").on(table.tenantId, table.attributedUserId),
   ],
 );
 

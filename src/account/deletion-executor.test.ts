@@ -29,6 +29,7 @@ function setupDbs(): { db: DrizzleDb; rawDb: Database.Database; authDb: Database
       description TEXT,
       reference_id TEXT,
       funding_source TEXT,
+      attributed_user_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS credit_balances (

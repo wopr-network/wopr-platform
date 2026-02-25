@@ -36,6 +36,7 @@ describe("BulkOperationsStore", () => {
           description: null,
           referenceId: null,
           fundingSource: null,
+          attributedUserId: null,
           createdAt: new Date().toISOString(),
         };
       },
@@ -51,6 +52,7 @@ describe("BulkOperationsStore", () => {
           description: null,
           referenceId: null,
           fundingSource: null,
+          attributedUserId: null,
           createdAt: new Date().toISOString(),
         };
       },
@@ -64,6 +66,9 @@ describe("BulkOperationsStore", () => {
         return [];
       },
       tenantsWithBalance() {
+        return [];
+      },
+      memberUsage() {
         return [];
       },
     };
