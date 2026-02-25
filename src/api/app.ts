@@ -3,9 +3,11 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import type { AuthEnv, AuthUser } from "../auth/index.js";
+import { RoleStore } from "../admin/roles/role-store.js";
+import type { AuthUser } from "../auth/index.js";
 import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
 import { logger } from "../config/logger.js";
+import { getDb, getOrgRepo } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
@@ -258,26 +260,19 @@ app.route("/api/activity", activityRoutes);
 app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
 // Org management routes (WOP-1000)
+// A deps factory defers getOrgRepo()/getDb() until first request so the DB
+// is not opened at module load time (tests import app.ts without a live DB).
 {
-  const orgH = new Hono<AuthEnv>();
-  let _orgRoutesInitialized: ReturnType<typeof createOrgRoutes> | null = null;
-  const getOrgRoutes = async () => {
-    if (!_orgRoutesInitialized) {
-      const { getOrgRepo, getDb } = await import("../fleet/services.js");
-      const { RoleStore } = await import("../admin/roles/role-store.js");
-      _orgRoutesInitialized = createOrgRoutes({ orgRepo: getOrgRepo(), roleStore: new RoleStore(getDb()) });
-    }
-    return _orgRoutesInitialized;
-  };
-  orgH.post("/", async (c) => {
-    const routes = await getOrgRoutes();
-    return routes.fetch(new Request(new URL("/", c.req.url).toString(), c.req.raw));
-  });
-  orgH.get("/", async (c) => {
-    const routes = await getOrgRoutes();
-    return routes.fetch(new Request(new URL("/", c.req.url).toString(), c.req.raw));
-  });
-  app.route("/api/orgs", orgH);
+  let _orgDeps: import("./routes/orgs.js").OrgRouteDeps | null = null;
+  app.route(
+    "/api/orgs",
+    createOrgRoutes(() => {
+      if (!_orgDeps) {
+        _orgDeps = { orgRepo: getOrgRepo(), roleStore: new RoleStore(getDb()) };
+      }
+      return _orgDeps;
+    }),
+  );
 }
 app.route("/auth", verifyEmailRoutes);
 app.route("/internal/nodes", internalNodeRoutes);

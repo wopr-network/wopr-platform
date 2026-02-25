@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { createTestDb } from "../test/db.js";
-import { DrizzleOrgRepository, type IOrgRepository } from "./org-repository.js";
+import { DrizzleOrgRepository, type IOrgRepository } from "./drizzle-org-repository.js";
 
 function setup(): { repo: IOrgRepository; db: DrizzleDb; close: () => void } {
   const { db, sqlite } = createTestDb();

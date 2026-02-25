@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const tenants = sqliteTable(
   "tenants",
@@ -15,5 +15,6 @@ export const tenants = sqliteTable(
     index("idx_tenants_slug").on(table.slug),
     index("idx_tenants_owner").on(table.ownerId),
     index("idx_tenants_type").on(table.type),
+    check("chk_tenants_type", sql`${table.type} IN ('personal', 'org')`),
   ],
 );

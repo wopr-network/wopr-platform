@@ -59,6 +59,11 @@ export class DrizzleOrgRepository implements IOrgRepository {
   createOrg(ownerId: string, name: string, slug?: string): Tenant {
     const id = crypto.randomUUID();
     const finalSlug = slug || slugify(name);
+    if (!finalSlug) {
+      throw Object.assign(new Error("Org name produces an empty slug; use only letters, numbers, or hyphens"), {
+        status: 400,
+      });
+    }
 
     const row = this.db
       .insert(tenants)

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RoleStore } from "../../admin/roles/role-store.js";
 import type { AuthEnv } from "../../auth/index.js";
-import { DrizzleOrgRepository } from "../../org/org-repository.js";
+import { DrizzleOrgRepository } from "../../org/drizzle-org-repository.js";
 import { createTestDb } from "../../test/db.js";
 import { createOrgRoutes } from "./orgs.js";
 

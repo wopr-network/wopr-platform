@@ -1,19 +1,20 @@
 import { Hono } from "hono";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { AuthEnv } from "../../auth/index.js";
-import type { IOrgRepository } from "../../org/org-repository.js";
+import type { IOrgRepository } from "../../org/drizzle-org-repository.js";
 
 export interface OrgRouteDeps {
   orgRepo: IOrgRepository;
   roleStore: RoleStore;
 }
 
-export function createOrgRoutes(deps: OrgRouteDeps): Hono<AuthEnv> {
-  const { orgRepo, roleStore } = deps;
+export function createOrgRoutes(deps: OrgRouteDeps | (() => OrgRouteDeps)): Hono<AuthEnv> {
+  const getDeps = typeof deps === "function" ? deps : () => deps;
   const routes = new Hono<AuthEnv>();
 
   // POST /api/orgs — create a new org
   routes.post("/", async (c) => {
+    const { orgRepo, roleStore } = getDeps();
     const user = c.get("user");
     if (!user) {
       return c.json({ error: "Authentication required" }, 401);
@@ -33,6 +34,9 @@ export function createOrgRoutes(deps: OrgRouteDeps): Hono<AuthEnv> {
       roleStore.setRole(user.id, org.id, "tenant_admin", user.id);
       return c.json({ id: org.id, name: org.name, slug: org.slug, type: org.type }, 201);
     } catch (err: unknown) {
+      if (err instanceof Error && (err as { status?: number }).status === 400) {
+        return c.json({ error: err.message }, 400);
+      }
       // SQLite UNIQUE constraint violation
       if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
         return c.json({ error: "An org with this slug already exists" }, 409);
@@ -43,6 +47,7 @@ export function createOrgRoutes(deps: OrgRouteDeps): Hono<AuthEnv> {
 
   // GET /api/orgs — list orgs the current user owns
   routes.get("/", (c) => {
+    const { orgRepo } = getDeps();
     const user = c.get("user");
     if (!user) {
       return c.json({ error: "Authentication required" }, 401);

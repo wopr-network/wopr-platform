@@ -232,6 +232,13 @@
       "when": 1771990980113,
       "tag": "0033_closed_drax",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1771992374471,
+      "tag": "0034_aberrant_mongoose",
+      "breakpoints": true
     }
   ]
 }
