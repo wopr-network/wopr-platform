@@ -598,9 +598,11 @@ if (process.env.NODE_ENV !== "test") {
     logger.info("tRPC fleet router initialized");
 
     // Wire REST fleet routes with the same billing deps
+    const { getEmailVerifier } = await import("./auth/better-auth.js");
     setFleetDeps({
       creditLedger: getCreditLedger(),
       botBilling: getBotBilling(),
+      emailVerifier: getEmailVerifier(),
     });
     logger.info("REST fleet routes initialized");
   }

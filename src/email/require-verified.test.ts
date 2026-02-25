@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthEnv } from "../auth/index.js";
 import { requireEmailVerified } from "./require-verified.js";
-import { initVerificationSchema } from "./verification.js";
+import { initVerificationSchema, isEmailVerified } from "./verification.js";
 
 describe("requireEmailVerified middleware", () => {
   let db: Database.Database;
@@ -21,7 +21,7 @@ describe("requireEmailVerified middleware", () => {
     initVerificationSchema(db);
     db.prepare("INSERT INTO user (id, email, name) VALUES (?, ?, ?)").run("user-1", "alice@test.com", "Alice");
 
-    const middleware = requireEmailVerified(() => db);
+    const middleware = requireEmailVerified({ isVerified: (userId) => isEmailVerified(db, userId) });
 
     app = new Hono<AuthEnv>();
     // Simulate session auth middleware setting user context

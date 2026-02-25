@@ -6,10 +6,13 @@
  * to email verification and is always allowed through.
  */
 
-import type Database from "better-sqlite3";
 import type { Context, Next } from "hono";
 import { logger } from "../config/logger.js";
-import { isEmailVerified } from "./verification.js";
+
+/** Minimal interface for checking email verification status. */
+export interface IEmailVerifier {
+  isVerified(userId: string): boolean;
+}
 
 /**
  * Create middleware that blocks session-authenticated users who haven't verified their email.
@@ -17,9 +20,9 @@ import { isEmailVerified } from "./verification.js";
  * API token auth (authMethod === "api_key") bypasses this check since machine
  * clients don't have email addresses to verify.
  *
- * @param getAuthDb - Factory function to get the auth database
+ * @param verifier - Email verification store
  */
-export function requireEmailVerified(getAuthDb: () => Database.Database) {
+export function requireEmailVerified(verifier: IEmailVerifier) {
   return async (c: Context, next: Next) => {
     let authMethod: string | undefined;
     let userId: string | undefined;
@@ -41,8 +44,7 @@ export function requireEmailVerified(getAuthDb: () => Database.Database) {
     // Session auth requires verified email
     if (authMethod === "session" && userId) {
       try {
-        const authDb = getAuthDb();
-        if (!isEmailVerified(authDb, userId)) {
+        if (!verifier.isVerified(userId)) {
           return c.json(
             {
               error: "Email verification required",

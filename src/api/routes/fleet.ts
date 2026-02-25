@@ -1,11 +1,10 @@
-import Database from "better-sqlite3";
 import Docker from "dockerode";
 import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
-import { requireEmailVerified } from "../../email/require-verified.js";
+import { type IEmailVerifier, requireEmailVerified } from "../../email/require-verified.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
@@ -23,18 +22,6 @@ import { NetworkPolicy } from "../../network/network-policy.js";
 import { getProxyManager } from "../../proxy/singleton.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
-const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
-
-let _authDb: Database.Database | null = null;
-function getAuthDb(): Database.Database {
-  if (!_authDb) {
-    _authDb = new Database(AUTH_DB_PATH);
-    _authDb.pragma("journal_mode = WAL");
-  }
-  return _authDb;
-}
-
-const emailVerified = requireEmailVerified(getAuthDb);
 
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
@@ -50,6 +37,7 @@ const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
 export interface FleetRouteDeps {
   creditLedger: ICreditLedger;
   botBilling: IBotBilling;
+  emailVerifier: IEmailVerifier;
 }
 
 let _deps: FleetRouteDeps | null = null;
@@ -185,82 +173,87 @@ fleetRoutes.get("/bots", readAuth, async (c) => {
 });
 
 /** POST /fleet/bots — Create a new bot from profile config */
-fleetRoutes.post("/bots", writeAuth, emailVerified, async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
-  const parsed = createBotSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
-  }
-
-  // Validate tenant ID matches the authenticated token (for tenant-scoped tokens)
-  const tokenTenantId = c.get("tokenTenantId");
-  if (tokenTenantId && parsed.data.tenantId !== tokenTenantId) {
-    return c.json({ error: "Cannot create bot for a different tenant" }, 403);
-  }
-
-  // Check credit balance before creating container (skip if billing DB unavailable)
-  try {
-    const tenantId = parsed.data.tenantId;
-
-    // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
-    const balance = getDeps().creditLedger.balance(tenantId);
-    if (balance < 17) {
-      return c.json(
-        {
-          error: "insufficient_credits",
-          balance,
-          required: 17,
-          buyUrl: "/dashboard/credits",
-        },
-        402,
-      );
-    }
-
-    // Count active instances for this tenant
-    const allProfiles = await fleet.profiles.list();
-    const activeInstances = allProfiles.filter((p) => p.tenantId === tenantId).length;
-
-    // Check instance quota (unlimited by default for credit users)
-    const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
-    if (!quotaResult.allowed) {
-      return c.json(
-        {
-          error: quotaResult.reason || "Instance quota exceeded",
-          currentInstances: quotaResult.currentInstances,
-          maxInstances: quotaResult.maxInstances,
-        },
-        403,
-      );
-    }
-  } catch (quotaErr) {
-    // Billing DB not available (e.g., in tests) — skip quota enforcement
-    logger.warn("Quota check skipped: billing DB unavailable", { err: quotaErr });
-  }
-
-  // Build default resource limits for bot container
-  const resourceLimits = buildResourceLimits();
-
-  try {
-    const profile = await fleet.create(parsed.data, resourceLimits);
-
-    // Register bot in billing system for lifecycle tracking
+fleetRoutes.post(
+  "/bots",
+  writeAuth,
+  (c, next) => requireEmailVerified(getDeps().emailVerifier)(c, next),
+  async (c) => {
+    let body: unknown;
     try {
-      getDeps().botBilling.registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
-    } catch (regErr) {
-      logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = createBotSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
     }
 
-    return c.json(profile, 201);
-  } catch (err) {
-    logger.error("Failed to create bot", { err });
-    return c.json({ error: "Failed to create bot" }, 500);
-  }
-});
+    // Validate tenant ID matches the authenticated token (for tenant-scoped tokens)
+    const tokenTenantId = c.get("tokenTenantId");
+    if (tokenTenantId && parsed.data.tenantId !== tokenTenantId) {
+      return c.json({ error: "Cannot create bot for a different tenant" }, 403);
+    }
+
+    // Check credit balance before creating container (skip if billing DB unavailable)
+    try {
+      const tenantId = parsed.data.tenantId;
+
+      // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
+      const balance = getDeps().creditLedger.balance(tenantId);
+      if (balance < 17) {
+        return c.json(
+          {
+            error: "insufficient_credits",
+            balance,
+            required: 17,
+            buyUrl: "/dashboard/credits",
+          },
+          402,
+        );
+      }
+
+      // Count active instances for this tenant
+      const allProfiles = await fleet.profiles.list();
+      const activeInstances = allProfiles.filter((p) => p.tenantId === tenantId).length;
+
+      // Check instance quota (unlimited by default for credit users)
+      const quotaResult = checkInstanceQuota(DEFAULT_INSTANCE_LIMITS, activeInstances);
+      if (!quotaResult.allowed) {
+        return c.json(
+          {
+            error: quotaResult.reason || "Instance quota exceeded",
+            currentInstances: quotaResult.currentInstances,
+            maxInstances: quotaResult.maxInstances,
+          },
+          403,
+        );
+      }
+    } catch (quotaErr) {
+      // Billing DB not available (e.g., in tests) — skip quota enforcement
+      logger.warn("Quota check skipped: billing DB unavailable", { err: quotaErr });
+    }
+
+    // Build default resource limits for bot container
+    const resourceLimits = buildResourceLimits();
+
+    try {
+      const profile = await fleet.create(parsed.data, resourceLimits);
+
+      // Register bot in billing system for lifecycle tracking
+      try {
+        getDeps().botBilling.registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
+      } catch (regErr) {
+        logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
+      }
+
+      return c.json(profile, 201);
+    } catch (err) {
+      logger.error("Failed to create bot", { err });
+      return c.json({ error: "Failed to create bot" }, 500);
+    }
+  },
+);
 
 /** GET /fleet/bots/:id — Get bot details + health */
 fleetRoutes.get("/bots/:id", readAuth, async (c) => {
