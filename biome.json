@@ -119,6 +119,7 @@
         "src/security/credential-vault/migration-check.ts",
         "src/security/tenant-keys/capability-settings-store.ts",
         "src/security/tenant-keys/key-resolution.ts",
+        "src/security/tenant-keys/org-key-resolution.ts",
         "src/backup/*-repository.ts",
         "src/audit/audit-log-repository.ts",
         "src/admin/admin-audit-log-repository.ts",

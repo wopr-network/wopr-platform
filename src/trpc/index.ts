@@ -47,6 +47,7 @@ import { fleetRouter } from "./routers/fleet.js";
 import { modelSelectionRouter } from "./routers/model-selection.js";
 import { nodesRouter } from "./routers/nodes.js";
 import { orgRouter } from "./routers/org.js";
+import { orgKeysRouter } from "./routers/org-keys.js";
 import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 import { twoFactorRouter } from "./routers/two-factor.js";
@@ -66,6 +67,7 @@ export const appRouter = router({
   twoFactor: twoFactorRouter,
   nodes: nodesRouter,
   org: orgRouter,
+  orgKeys: orgKeysRouter,
 });
 
 /** The root router type — import this in the UI repo for full type inference. */
@@ -83,6 +85,7 @@ export { setFleetRouterDeps } from "./routers/fleet.js";
 export { setModelSelectionRouterDeps } from "./routers/model-selection.js";
 export { setNodesRouterDeps } from "./routers/nodes.js";
 export { setOrgRouterDeps } from "./routers/org.js";
+export { setOrgKeysRouterDeps } from "./routers/org-keys.js";
 export { setProfileRouterDeps } from "./routers/profile.js";
 export { setSettingsRouterDeps } from "./routers/settings.js";
 export { setTwoFactorRouterDeps } from "./routers/two-factor.js";
