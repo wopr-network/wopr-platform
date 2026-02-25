@@ -3,7 +3,7 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import type { AuthUser } from "../auth/index.js";
+import type { AuthEnv, AuthUser } from "../auth/index.js";
 import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
 import { logger } from "../config/logger.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
@@ -32,6 +32,7 @@ import { healthRoutes } from "./routes/health.js";
 import { internalGpuRoutes } from "./routes/internal-gpu.js";
 import { internalNodeRoutes } from "./routes/internal-nodes.js";
 import { marketplaceRoutes } from "./routes/marketplace.js";
+import { createOrgRoutes } from "./routes/orgs.js";
 import { publicPricingRoutes } from "./routes/public-pricing.js";
 import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
@@ -256,6 +257,28 @@ app.route("/api/v1/pricing", publicPricingRoutes);
 app.route("/api/activity", activityRoutes);
 app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
+// Org management routes (WOP-1000)
+{
+  const orgH = new Hono<AuthEnv>();
+  let _orgRoutesInitialized: ReturnType<typeof createOrgRoutes> | null = null;
+  const getOrgRoutes = async () => {
+    if (!_orgRoutesInitialized) {
+      const { getOrgRepo, getDb } = await import("../fleet/services.js");
+      const { RoleStore } = await import("../admin/roles/role-store.js");
+      _orgRoutesInitialized = createOrgRoutes({ orgRepo: getOrgRepo(), roleStore: new RoleStore(getDb()) });
+    }
+    return _orgRoutesInitialized;
+  };
+  orgH.post("/", async (c) => {
+    const routes = await getOrgRoutes();
+    return routes.fetch(new Request(new URL("/", c.req.url).toString(), c.req.raw));
+  });
+  orgH.get("/", async (c) => {
+    const routes = await getOrgRoutes();
+    return routes.fetch(new Request(new URL("/", c.req.url).toString(), c.req.raw));
+  });
+  app.route("/api/orgs", orgH);
+}
 app.route("/auth", verifyEmailRoutes);
 app.route("/internal/nodes", internalNodeRoutes);
 app.route("/internal/gpu", internalGpuRoutes);
