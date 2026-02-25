@@ -105,7 +105,7 @@ describe("FleetManager", () => {
       expect(profile.id).toBeDefined();
       expect(profile.name).toBe("test-bot");
       expect(store.save).toHaveBeenCalledWith(expect.objectContaining({ name: "test-bot" }));
-      expect(docker.pull).toHaveBeenCalledWith("ghcr.io/wopr-network/wopr:stable");
+      expect(docker.pull).toHaveBeenCalledWith("ghcr.io/wopr-network/wopr:stable", {});
       expect(docker.createContainer).toHaveBeenCalledWith(
         expect.objectContaining({
           Image: "ghcr.io/wopr-network/wopr:stable",
@@ -169,7 +169,7 @@ describe("FleetManager", () => {
       await fleet.restart("bot-id");
 
       // Pull is called first
-      expect(docker.pull).toHaveBeenCalledWith(PROFILE_PARAMS.image);
+      expect(docker.pull).toHaveBeenCalledWith(PROFILE_PARAMS.image, {});
       // Then restart
       expect(container.restart).toHaveBeenCalled();
     });
@@ -300,7 +300,7 @@ describe("FleetManager", () => {
       const updated = await fleet.update("bot-id", { image: "ghcr.io/wopr-network/wopr:canary" });
 
       expect(updated.image).toBe("ghcr.io/wopr-network/wopr:canary");
-      expect(docker.pull).toHaveBeenCalledWith("ghcr.io/wopr-network/wopr:canary");
+      expect(docker.pull).toHaveBeenCalledWith("ghcr.io/wopr-network/wopr:canary", {});
       expect(container.stop).toHaveBeenCalled();
       expect(container.remove).toHaveBeenCalled();
     });

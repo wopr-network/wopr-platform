@@ -323,7 +323,16 @@ export class FleetManager {
 
   private async pullImage(image: string): Promise<void> {
     logger.info(`Pulling image ${image}`);
-    const stream = await this.docker.pull(image);
+
+    // Build authconfig from environment variables if present.
+    // REGISTRY_USERNAME / REGISTRY_PASSWORD / REGISTRY_SERVER are optional;
+    // when set they allow pulling from private registries (e.g. ghcr.io).
+    const username = process.env.REGISTRY_USERNAME;
+    const password = process.env.REGISTRY_PASSWORD;
+    const server = process.env.REGISTRY_SERVER;
+    const authconfig = username && password ? { username, password, serveraddress: server ?? "ghcr.io" } : undefined;
+
+    const stream = await this.docker.pull(image, authconfig ? { authconfig } : {});
     await new Promise<void>((resolve, reject) => {
       this.docker.modem.followProgress(stream, (err: Error | null) => {
         if (err) reject(err);
