@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AuditEnv } from "../../audit/types.js";
 import { logger } from "../../config/logger.js";
+import { getMarketplacePluginRepo } from "../../fleet/services.js";
 import { pluginRegistry } from "./marketplace-registry.js";
 
 // BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
@@ -23,7 +24,19 @@ marketplaceRoutes.get("/plugins", (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  let plugins = pluginRegistry;
+  // Filter by DB-enabled status when the repo is available.
+  // Plugins with no DB record are shown by default (backwards compat for static/first-party plugins).
+  let plugins: typeof pluginRegistry;
+  try {
+    const repo = getMarketplacePluginRepo();
+    plugins = pluginRegistry.filter((p) => {
+      const dbRecord = repo.findById(p.id);
+      return dbRecord ? dbRecord.enabled : true;
+    });
+  } catch {
+    // DB not available (e.g. test environment without a live DB) — serve all static plugins
+    plugins = pluginRegistry;
+  }
 
   const category = c.req.query("category");
   if (category) {

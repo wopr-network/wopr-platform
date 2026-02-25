@@ -17,6 +17,7 @@ export * from "./email-notifications.js";
 export * from "./fleet-events.js";
 export * from "./gateway-metrics.js";
 export * from "./gpu-nodes.js";
+export * from "./marketplace-plugins.js";
 export * from "./meter-events.js";
 export * from "./node-registration-tokens.js";
 export * from "./node-transitions.js";
