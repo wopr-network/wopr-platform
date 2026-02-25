@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../../auth/index.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
 import type { IMarketplacePluginRepository } from "../../marketplace/marketplace-plugin-repository.js";
 
 const addPluginSchema = z.object({
@@ -58,6 +59,18 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
       category,
       notes,
     });
+    try {
+      const user = c.get("user") as { id: string } | undefined;
+      getAdminAuditLog().log({
+        adminUser: user?.id ?? "unknown",
+        action: "marketplace.plugin.create",
+        category: "config",
+        details: { pluginId: npmPackage, version },
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
+    }
     return c.json(plugin, 201);
   });
 
@@ -86,6 +99,18 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
       id,
       patch as Partial<import("../../marketplace/marketplace-repository-types.js").MarketplacePlugin>,
     );
+    try {
+      const user = c.get("user") as { id: string } | undefined;
+      getAdminAuditLog().log({
+        adminUser: user?.id ?? "unknown",
+        action: "marketplace.plugin.update",
+        category: "config",
+        details: { pluginId: id, patch },
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
+    }
     return c.json(updated);
   });
 
@@ -97,6 +122,18 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
       return c.json({ error: "Plugin not found" }, 404);
     }
     repo().delete(id);
+    try {
+      const user = c.get("user") as { id: string } | undefined;
+      getAdminAuditLog().log({
+        adminUser: user?.id ?? "unknown",
+        action: "marketplace.plugin.delete",
+        category: "config",
+        details: { pluginId: id },
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
+    }
     return c.body(null, 204);
   });
 
@@ -110,6 +147,18 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
         logger.info(`[Marketplace] ${msg}`);
       },
     });
+    try {
+      const user = c.get("user") as { id: string } | undefined;
+      getAdminAuditLog().log({
+        adminUser: user?.id ?? "unknown",
+        action: "marketplace.discovery.trigger",
+        category: "config",
+        details: { discovered: result.discovered, skipped: result.skipped },
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
+    }
     return c.json(result);
   });
 
