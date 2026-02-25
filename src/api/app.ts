@@ -188,17 +188,28 @@ app.post("/api/auth/reset-password", async (c, next) => {
 // better-auth handler — serves /api/auth/* (signup, login, session, etc.)
 // Lazily initialized to avoid opening DB at import time.
 //
-// Clone POST requests before forwarding to better-auth (WOP-988).
-// The Hono node-server wraps the Node.js IncomingMessage in a lazy proxy whose
-// body ReadableStream is created on first access. If any prior middleware has
-// begun consuming the stream (e.g. the password-complexity middleware on
-// sign-up uses c.req.raw.clone() to tee the stream), better-auth must receive
-// an unconsumed copy. Cloning here ensures better-auth always gets a fresh,
-// fully-readable Request — the clone tees whatever body stream exists. For GET
-// requests there is no body to clone, so the raw proxy is passed directly.
+// For POST requests we buffer the raw body bytes and reconstruct a fresh
+// Request. This is necessary because the password-complexity middleware above
+// calls c.req.raw.clone() which tees the IncomingMessage stream — leaving
+// c.req.raw.body in a "first-tee-side-drained" state. A subsequent .clone()
+// on an already-teed stream produces a locked / partially-consumed body in
+// Node 25's undici, causing JSON parse errors for any character ≥ U+0021 that
+// appears near the tee boundary (WOP-988). Buffering the bytes via
+// c.req.arrayBuffer() reads the unconsumed tee half into memory, then we
+// hand better-auth a brand-new Request with that buffer as its body.
 app.on(["POST", "GET"], "/api/auth/*", async (c) => {
   const { getAuth } = await import("../auth/better-auth.js");
-  const req = c.req.method === "POST" ? c.req.raw.clone() : c.req.raw;
+  let req: Request;
+  if (c.req.method === "POST") {
+    const body = await c.req.arrayBuffer();
+    req = new Request(c.req.url, {
+      method: c.req.method,
+      headers: c.req.raw.headers,
+      body,
+    });
+  } else {
+    req = c.req.raw;
+  }
   return getAuth().handler(req);
 });
 
@@ -294,6 +305,9 @@ async function createTRPCContext(req: Request): Promise<TRPCContext> {
         const roles: string[] = [];
         if (sessionUser.role) roles.push(sessionUser.role);
         user = { id: sessionUser.id, roles };
+        // For session-cookie users, userId === tenantId (single-user tenant model).
+        // This allows tenantProcedure to work without a bearer token.
+        tenantId = sessionUser.id;
       }
     } catch {
       // Session resolution failed — user stays undefined
