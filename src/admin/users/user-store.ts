@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, lt, or, type SQL, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/index.js";
 
@@ -45,13 +45,6 @@ export interface AdminUserListResponse {
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 
-const VALID_SORT_COLUMNS: Record<string, string> = {
-  last_seen: "last_seen",
-  created_at: "created_at",
-  balance: "credit_balance_cents",
-  agent_count: "agent_count",
-};
-
 // ---------------------------------------------------------------------------
 // Store
 // ---------------------------------------------------------------------------
@@ -61,90 +54,78 @@ export class AdminUserStore {
 
   /** List users with pagination, filtering, and sorting. */
   list(filters: AdminUserFilters = {}): AdminUserListResponse {
-    // raw SQL: Drizzle cannot express dynamic ORDER BY with runtime column names from a
-    // whitelist map, or LIKE with ESCAPE clauses for safe wildcard search across multiple columns
-    const sqlite = this.db.$client;
-    const conditions: string[] = [];
-    const params: unknown[] = [];
+    const conditions: SQL[] = [];
 
     if (filters.search) {
+      // raw SQL: Drizzle's like() has no ESCAPE clause support; ESCAPE '\\' is required
+      // for correct wildcard escaping when the search term contains %, _, or \
       const pattern = `%${escapeLike(filters.search)}%`;
-      conditions.push("(name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR tenant_id LIKE ? ESCAPE '\\')");
-      params.push(pattern, pattern, pattern);
+      conditions.push(
+        or(
+          sql`${adminUsers.name} LIKE ${pattern} ESCAPE '\\'`,
+          sql`${adminUsers.email} LIKE ${pattern} ESCAPE '\\'`,
+          sql`${adminUsers.tenantId} LIKE ${pattern} ESCAPE '\\'`,
+        ) as SQL,
+      );
     }
 
     if (filters.status) {
-      conditions.push("status = ?");
-      params.push(filters.status);
+      conditions.push(eq(adminUsers.status, filters.status));
     }
 
     if (filters.role) {
-      conditions.push("role = ?");
-      params.push(filters.role);
+      conditions.push(eq(adminUsers.role, filters.role));
     }
 
     if (filters.hasCredits === true) {
-      conditions.push("credit_balance_cents > 0");
+      conditions.push(gt(adminUsers.creditBalanceCents, 0));
     } else if (filters.hasCredits === false) {
-      conditions.push("credit_balance_cents = 0");
+      conditions.push(eq(adminUsers.creditBalanceCents, 0));
     }
 
     if (filters.lowBalance === true) {
-      conditions.push("credit_balance_cents < 500");
+      conditions.push(lt(adminUsers.creditBalanceCents, 500));
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    // Count total matching rows
-    const countSql = `SELECT COUNT(*) as count FROM admin_users ${where}`;
-    const countRow = sqlite.prepare(countSql).get(...params) as { count: number };
-    const total = countRow.count;
+    const sortCol = SORT_COLUMN_MAP[filters.sortBy ?? "created_at"];
+    const orderExpr = filters.sortOrder === "asc" ? asc(sortCol) : desc(sortCol);
 
-    // Sort
-    const sortCol = VALID_SORT_COLUMNS[filters.sortBy ?? "created_at"] ?? "created_at";
-    const sortDir = filters.sortOrder === "asc" ? "ASC" : "DESC";
-    const orderBy = `ORDER BY ${sortCol} ${sortDir}`;
-
-    // Pagination
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);
 
-    const querySql = `SELECT * FROM admin_users ${where} ${orderBy} LIMIT ? OFFSET ?`;
-    const users = sqlite.prepare(querySql).all(...params, limit, offset) as AdminUserSummary[];
+    const [{ total }] = this.db.select({ total: count() }).from(adminUsers).where(where).all();
 
-    return { users, total, limit, offset };
+    const rows = this.db.select().from(adminUsers).where(where).orderBy(orderExpr).limit(limit).offset(offset).all();
+
+    return { users: rows.map(toSummary), total, limit, offset };
   }
 
   /** Full-text search across name, email, and tenant_id. */
   search(query: string): AdminUserSummary[] {
-    // raw SQL: Drizzle cannot express LIKE with ESCAPE clause for safe parameterized wildcard search
-    const sqlite = this.db.$client;
+    // raw SQL: Drizzle's like() has no ESCAPE clause support
     const pattern = `%${escapeLike(query)}%`;
-    const querySql = `
-      SELECT * FROM admin_users
-      WHERE name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR tenant_id LIKE ? ESCAPE '\\'
-      ORDER BY created_at DESC
-      LIMIT 50
-    `;
-    return sqlite.prepare(querySql).all(pattern, pattern, pattern) as AdminUserSummary[];
+    return this.db
+      .select()
+      .from(adminUsers)
+      .where(
+        or(
+          sql`${adminUsers.name} LIKE ${pattern} ESCAPE '\\'`,
+          sql`${adminUsers.email} LIKE ${pattern} ESCAPE '\\'`,
+          sql`${adminUsers.tenantId} LIKE ${pattern} ESCAPE '\\'`,
+        ),
+      )
+      .orderBy(desc(adminUsers.createdAt))
+      .limit(50)
+      .all()
+      .map(toSummary);
   }
 
   /** Get a single user by ID. */
   getById(userId: string): AdminUserSummary | null {
     const row = this.db.select().from(adminUsers).where(eq(adminUsers.id, userId)).get();
-    if (!row) return null;
-    return {
-      id: row.id,
-      email: row.email,
-      name: row.name,
-      tenant_id: row.tenantId,
-      status: row.status,
-      role: row.role,
-      credit_balance_cents: row.creditBalanceCents,
-      agent_count: row.agentCount,
-      last_seen: row.lastSeen,
-      created_at: row.createdAt,
-    };
+    return row ? toSummary(row) : null;
   }
 }
 
@@ -152,7 +133,29 @@ export class AdminUserStore {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const SORT_COLUMN_MAP = {
+  last_seen: adminUsers.lastSeen,
+  created_at: adminUsers.createdAt,
+  balance: adminUsers.creditBalanceCents,
+  agent_count: adminUsers.agentCount,
+} as const;
+
 /** Escape LIKE special characters for safe parameterized queries. */
 function escapeLike(input: string): string {
   return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+function toSummary(row: typeof adminUsers.$inferSelect): AdminUserSummary {
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    tenant_id: row.tenantId,
+    status: row.status,
+    role: row.role,
+    credit_balance_cents: row.creditBalanceCents,
+    agent_count: row.agentCount,
+    last_seen: row.lastSeen,
+    created_at: row.createdAt,
+  };
 }
