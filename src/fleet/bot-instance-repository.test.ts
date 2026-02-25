@@ -210,8 +210,8 @@ describe("DrizzleBotInstanceRepository", () => {
       // (There is no FK from bot_instances to users, so nothing cascades)
       const bot = repo.getById("00000000-0000-4000-8000-000000000090");
       expect(bot).not.toBeNull();
-      expect(bot!.tenantId).toBe("org-tenant-1");
-      expect(bot!.createdByUserId).toBe("user-A");
+      expect(bot?.tenantId).toBe("org-tenant-1");
+      expect(bot?.createdByUserId).toBe("user-A");
     });
 
     it("listByTenant returns bots from all creators in the org", () => {
