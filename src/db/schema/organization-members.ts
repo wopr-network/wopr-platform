@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { tenants } from "./tenants.js";
 
 export const organizationMembers = sqliteTable(
@@ -13,7 +13,11 @@ export const organizationMembers = sqliteTable(
     role: text("role").notNull().default("member"), // "owner" | "admin" | "member"
     joinedAt: integer("joined_at").notNull().default(sql`(unixepoch() * 1000)`),
   },
-  (table) => [index("idx_org_members_org_id").on(table.orgId), index("idx_org_members_user_id").on(table.userId)],
+  (table) => [
+    index("idx_org_members_org_id").on(table.orgId),
+    index("idx_org_members_user_id").on(table.userId),
+    uniqueIndex("org_members_org_user_unique").on(table.orgId, table.userId),
+  ],
 );
 
 export const organizationInvites = sqliteTable(

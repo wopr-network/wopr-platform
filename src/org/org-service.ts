@@ -81,12 +81,7 @@ export class OrgService {
         throw new TRPCError({ code: "CONFLICT", message: "Slug already taken" });
       }
     }
-    // The existing IOrgRepository doesn't have an update method.
-    // We update the in-memory view and return the current tenant.
-    // (A real updateOrg would be added to IOrgRepository; for now return current.)
-    const org = this.requireOrg(orgId);
-    // Return the org with any changes reflected (slug update not persisted here without extending repo)
-    return { ...org, ...(data.name ? { name: data.name } : {}), ...(data.slug ? { slug: data.slug } : {}) };
+    return this.orgRepo.updateOrg(orgId, data);
   }
 
   deleteOrg(orgId: string, actorUserId: string): void {
@@ -172,6 +167,7 @@ export class OrgService {
     }
     this.memberRepo.updateMemberRole(orgId, targetUserId, "owner");
     this.memberRepo.updateMemberRole(orgId, actorUserId, "admin");
+    this.orgRepo.updateOwner(orgId, targetUserId);
   }
 
   validateSlug(slug: string): void {

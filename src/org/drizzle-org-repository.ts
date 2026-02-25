@@ -25,6 +25,8 @@ export interface IOrgRepository {
   getById(id: string): Tenant | null;
   getBySlug(slug: string): Tenant | null;
   listOrgsByOwner(ownerId: string): Tenant[];
+  updateOrg(orgId: string, data: { name?: string; slug?: string }): Tenant;
+  updateOwner(orgId: string, newOwnerId: string): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,5 +121,18 @@ export class DrizzleOrgRepository implements IOrgRepository {
       .all()
       .filter((r) => r.type === "org");
     return rows.map(toTenant);
+  }
+
+  updateOrg(orgId: string, data: { name?: string; slug?: string }): Tenant {
+    const updates: Partial<typeof tenants.$inferInsert> = {};
+    if (data.name !== undefined) updates.name = data.name;
+    if (data.slug !== undefined) updates.slug = data.slug;
+    const row = this.db.update(tenants).set(updates).where(eq(tenants.id, orgId)).returning().get();
+    if (!row) throw new Error(`Org not found: ${orgId}`);
+    return toTenant(row);
+  }
+
+  updateOwner(orgId: string, newOwnerId: string): void {
+    this.db.update(tenants).set({ ownerId: newOwnerId }).where(eq(tenants.id, orgId)).run();
   }
 }

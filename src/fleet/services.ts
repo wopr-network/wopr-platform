@@ -60,7 +60,6 @@ import { DrizzleOrgRepository } from "../org/drizzle-org-repository.js";
 import { OrgService } from "../org/org-service.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
-import { setOrgRouterDeps } from "../trpc/index.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
@@ -784,7 +783,6 @@ export function getOrgMemberRepo(): IOrgMemberRepository {
 export function getOrgService(): OrgService {
   if (!_orgService) {
     _orgService = new OrgService(getOrgRepo(), getOrgMemberRepo());
-    setOrgRouterDeps({ orgService: _orgService });
   }
   return _orgService;
 }

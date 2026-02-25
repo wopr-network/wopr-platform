@@ -253,6 +253,13 @@
       "when": 1771995147020,
       "tag": "0036_minor_centennial",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1772000000000,
+      "tag": "0037_org_members_unique_constraint",
+      "breakpoints": true
     }
   ]
 }
