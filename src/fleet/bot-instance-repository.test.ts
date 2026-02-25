@@ -18,12 +18,14 @@ function makeDb() {
       resource_tier TEXT NOT NULL DEFAULT 'standard',
       storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_bot_instances_tenant ON bot_instances (tenant_id);
     CREATE INDEX IF NOT EXISTS idx_bot_instances_billing_state ON bot_instances (billing_state);
     CREATE INDEX IF NOT EXISTS idx_bot_instances_destroy_after ON bot_instances (destroy_after);
     CREATE INDEX IF NOT EXISTS idx_bot_instances_node ON bot_instances (node_id);
+    CREATE INDEX IF NOT EXISTS idx_bot_instances_created_by ON bot_instances (created_by_user_id);
   `);
   return drizzle(sqlite, { schema });
 }
@@ -144,6 +146,53 @@ describe("DrizzleBotInstanceRepository", () => {
 
     it("throws when bot does not exist", () => {
       expect(() => repo.reassign("nonexistent", "node-1")).toThrow("Bot instance not found: nonexistent");
+    });
+  });
+
+  describe("createdByUserId", () => {
+    it("persists createdByUserId on create", () => {
+      const bot = repo.create({
+        id: "00000000-0000-4000-8000-000000000099",
+        tenantId: "tenant-1",
+        name: "test-bot",
+        nodeId: null,
+        createdByUserId: "user-42",
+      });
+      expect(bot.createdByUserId).toBe("user-42");
+    });
+
+    it("defaults createdByUserId to null when omitted", () => {
+      const bot = repo.create({
+        id: "00000000-0000-4000-8000-000000000098",
+        tenantId: "tenant-1",
+        name: "legacy-bot",
+        nodeId: null,
+      });
+      expect(bot.createdByUserId).toBeNull();
+    });
+
+    it("returns createdByUserId from getById", () => {
+      repo.create({
+        id: "00000000-0000-4000-8000-000000000097",
+        tenantId: "tenant-1",
+        name: "owned-bot",
+        nodeId: null,
+        createdByUserId: "user-7",
+      });
+      const fetched = repo.getById("00000000-0000-4000-8000-000000000097");
+      expect(fetched?.createdByUserId).toBe("user-7");
+    });
+
+    it("returns createdByUserId in listByTenant", () => {
+      repo.create({
+        id: "00000000-0000-4000-8000-000000000096",
+        tenantId: "tenant-2",
+        name: "org-bot",
+        nodeId: null,
+        createdByUserId: "user-A",
+      });
+      const bots = repo.listByTenant("tenant-2");
+      expect(bots[0].createdByUserId).toBe("user-A");
     });
   });
 

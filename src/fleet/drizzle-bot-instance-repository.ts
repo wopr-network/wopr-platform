@@ -34,6 +34,7 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
         billingState: data.billingState ?? "active",
         createdAt: now,
         updatedAt: now,
+        createdByUserId: data.createdByUserId ?? null,
       })
       .run();
     const created = this.getById(data.id);
@@ -117,5 +118,6 @@ function toInstance(row: typeof botInstances.$inferSelect): BotInstance {
     destroyAfter: row.destroyAfter,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    createdByUserId: row.createdByUserId ?? null,
   };
 }

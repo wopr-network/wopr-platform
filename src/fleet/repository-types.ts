@@ -91,6 +91,7 @@ export interface BotInstance {
   destroyAfter: string | null;
   createdAt: string;
   updatedAt: string;
+  createdByUserId: string | null;
 }
 
 /** Create payload for a new bot instance. */
@@ -100,6 +101,7 @@ export interface NewBotInstance {
   name: string;
   nodeId: string | null;
   billingState?: BillingState;
+  createdByUserId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
