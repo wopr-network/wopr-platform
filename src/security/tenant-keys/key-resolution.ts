@@ -1,7 +1,8 @@
-import type Database from "better-sqlite3";
+import { and, eq } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { tenantApiKeys } from "../../db/schema/index.js";
 import { decrypt } from "../encryption.js";
 import type { Provider } from "../types.js";
-import type { TenantApiKey } from "./schema.js";
 
 /** Result of resolving which API key to use. */
 export interface ResolvedKey {
@@ -24,14 +25,14 @@ export interface ResolvedKey {
  * SECURITY: The decrypted key is returned to the caller and must be discarded
  * after use. This function does not log, persist, or cache the plaintext key.
  *
- * @param db - Database connection with tenant_api_keys table initialized
+ * @param db - Drizzle database with tenant_api_keys table initialized
  * @param tenantId - The tenant requesting the key
  * @param provider - The AI provider (anthropic, openai, google, discord)
  * @param encryptionKey - The 32-byte key used to decrypt the stored BYOK key
  * @param pooledKeys - Map of provider -> pooled API key (from env vars)
  */
 export function resolveApiKey(
-  db: Database.Database,
+  db: BetterSQLite3Database<Record<string, unknown>>,
   tenantId: string,
   provider: Provider,
   encryptionKey: Buffer,
@@ -39,11 +40,13 @@ export function resolveApiKey(
 ): ResolvedKey | null {
   // 1. Check for tenant BYOK key
   const row = db
-    .prepare("SELECT encrypted_key FROM tenant_api_keys WHERE tenant_id = ? AND provider = ?")
-    .get(tenantId, provider) as Pick<TenantApiKey, "encrypted_key"> | undefined;
+    .select({ encryptedKey: tenantApiKeys.encryptedKey })
+    .from(tenantApiKeys)
+    .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.provider, provider)))
+    .get();
 
   if (row) {
-    const payload = JSON.parse(row.encrypted_key);
+    const payload = JSON.parse(row.encryptedKey);
     const plaintext = decrypt(payload, encryptionKey);
     return { key: plaintext, source: "tenant", provider };
   }

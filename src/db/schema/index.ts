@@ -35,6 +35,8 @@ export * from "./restore-log.js";
 export * from "./security-settings.js";
 export * from "./snapshots.js";
 export * from "./spending-limits.js";
+export * from "./tenant-api-keys.js";
+export * from "./tenant-capability-settings.js";
 export * from "./tenant-customers.js";
 export * from "./tenant-model-selection.js";
 export * from "./tenant-status.js";

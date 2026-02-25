@@ -1,27 +1,30 @@
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import type { Provider } from "../types.js";
 import { buildPooledKeysMap, resolveApiKey } from "./key-resolution.js";
 import { TenantKeyStore } from "./schema.js";
 
-function freshDb(): BetterSqlite3.Database {
+function freshSqlite(): BetterSqlite3.Database {
   return new BetterSqlite3(":memory:");
 }
 
 describe("resolveApiKey", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
+  let db: ReturnType<typeof drizzle>;
   let store: TenantKeyStore;
   let encryptionKey: Buffer;
 
   beforeEach(() => {
-    db = freshDb();
-    store = new TenantKeyStore(db);
+    sqlite = freshSqlite();
+    store = new TenantKeyStore(sqlite);
+    db = drizzle(sqlite);
     encryptionKey = generateInstanceKey();
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns tenant BYOK key when one is stored", () => {
