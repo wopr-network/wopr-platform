@@ -97,3 +97,16 @@ export class TenantKeyStore {
     return result.changes;
   }
 }
+
+/** Initialize the tenant_capability_settings table. */
+export function initCapabilitySettingsSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_capability_settings (
+      tenant_id TEXT NOT NULL,
+      capability TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'hosted',
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant_id, capability)
+    )
+  `);
+}

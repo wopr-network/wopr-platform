@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { serve } from "@hono/node-server";
 import Database from "better-sqlite3";
 import { eq, gte, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
@@ -69,7 +70,7 @@ import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credenti
 import { encrypt } from "./security/encryption.js";
 import { validateProviderKey } from "./security/key-validation.js";
 import { CapabilitySettingsStore } from "./security/tenant-keys/capability-settings-store.js";
-import { TenantKeyStore } from "./security/tenant-keys/schema.js";
+import { initCapabilitySettingsSchema, TenantKeyStore } from "./security/tenant-keys/schema.js";
 import type { Provider } from "./security/types.js";
 import {
   setBillingRouterDeps,
@@ -409,9 +410,11 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire capabilities tRPC router deps (WOP-915: +listCapabilitySettings, +updateCapabilitySettings)
   {
-    const tenantKeysDb = new Database(TENANT_KEYS_DB_PATH);
-    applyPlatformPragmas(tenantKeysDb);
-    const tenantKeyStore = new TenantKeyStore(tenantKeysDb);
+    const tenantKeysSqlite = new Database(TENANT_KEYS_DB_PATH);
+    applyPlatformPragmas(tenantKeysSqlite);
+    initCapabilitySettingsSchema(tenantKeysSqlite);
+    const tenantKeysDb = drizzle(tenantKeysSqlite);
+    const tenantKeyStore = new TenantKeyStore(tenantKeysSqlite);
     const capabilitySettingsStore = new CapabilitySettingsStore(tenantKeysDb);
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => tenantKeyStore as never,
@@ -457,9 +460,10 @@ if (process.env.NODE_ENV !== "test") {
     const BetterSqlite = (await import("better-sqlite3")).default;
 
     const TENANT_KEYS_DB_PATH = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
-    const tenantKeysDb = new BetterSqlite(TENANT_KEYS_DB_PATH);
-    applyPlatformPragmas(tenantKeysDb);
-    initTenantKeySchema(tenantKeysDb);
+    const tenantKeysSqlite2 = new BetterSqlite(TENANT_KEYS_DB_PATH);
+    applyPlatformPragmas(tenantKeysSqlite2);
+    initTenantKeySchema(tenantKeysSqlite2);
+    const tenantKeysDb2 = drizzle(tenantKeysSqlite2);
     const vaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const pooledKeys = buildPooledKeysMap();
 
@@ -470,7 +474,7 @@ if (process.env.NODE_ENV !== "test") {
         if (!PROVIDER_ENDPOINTS[validProvider]) {
           return { ok: false, error: `Unknown provider: ${provider}` };
         }
-        const resolved = resolveApiKey(tenantKeysDb, tenantId, validProvider, vaultEncKey, pooledKeys);
+        const resolved = resolveApiKey(tenantKeysDb2, tenantId, validProvider, vaultEncKey, pooledKeys);
         if (!resolved) {
           return { ok: false, error: "No API key configured for this provider" };
         }

@@ -1,4 +1,5 @@
-import type Database from "better-sqlite3";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { scanForKeyLeaks } from "../key-audit.js";
 
 /**
@@ -15,19 +16,19 @@ export interface PlaintextFinding {
   provider: string;
 }
 
-export function auditCredentialEncryption(db: Database.Database): PlaintextFinding[] {
+export function auditCredentialEncryption(db: BetterSQLite3Database<Record<string, unknown>>): PlaintextFinding[] {
   const findings: PlaintextFinding[] = [];
 
   // Check provider_credentials.encrypted_value
-  const providerRows = db.prepare("SELECT id, encrypted_value FROM provider_credentials").all() as {
-    id: string;
-    encrypted_value: string;
-  }[];
+  const providerRows = db
+    .select({ id: providerCredentials.id, encryptedValue: providerCredentials.encryptedValue })
+    .from(providerCredentials)
+    .all();
 
   for (const row of providerRows) {
     // A properly encrypted value should be a JSON object with iv/authTag/ciphertext
     try {
-      const parsed = JSON.parse(row.encrypted_value);
+      const parsed = JSON.parse(row.encryptedValue);
       if (!parsed.iv || !parsed.authTag || !parsed.ciphertext) {
         findings.push({
           table: "provider_credentials",
@@ -38,8 +39,8 @@ export function auditCredentialEncryption(db: Database.Database): PlaintextFindi
       }
     } catch {
       // Not valid JSON = likely plaintext
-      const leaks = scanForKeyLeaks(row.encrypted_value);
-      if (leaks.length > 0 || row.encrypted_value.trim().length > 0) {
+      const leaks = scanForKeyLeaks(row.encryptedValue);
+      if (leaks.length > 0 || row.encryptedValue.trim().length > 0) {
         findings.push({
           table: "provider_credentials",
           column: "encrypted_value",
@@ -52,14 +53,14 @@ export function auditCredentialEncryption(db: Database.Database): PlaintextFindi
 
   // Check tenant_api_keys.encrypted_key (if table exists)
   try {
-    const tenantRows = db.prepare("SELECT id, encrypted_key FROM tenant_api_keys").all() as {
-      id: string;
-      encrypted_key: string;
-    }[];
+    const tenantRows = db
+      .select({ id: tenantApiKeys.id, encryptedKey: tenantApiKeys.encryptedKey })
+      .from(tenantApiKeys)
+      .all();
 
     for (const row of tenantRows) {
       try {
-        const parsed = JSON.parse(row.encrypted_key);
+        const parsed = JSON.parse(row.encryptedKey);
         if (!parsed.iv || !parsed.authTag || !parsed.ciphertext) {
           findings.push({
             table: "tenant_api_keys",
@@ -69,8 +70,8 @@ export function auditCredentialEncryption(db: Database.Database): PlaintextFindi
           });
         }
       } catch {
-        const leaks = scanForKeyLeaks(row.encrypted_key);
-        if (leaks.length > 0 || row.encrypted_key.trim().length > 0) {
+        const leaks = scanForKeyLeaks(row.encryptedKey);
+        if (leaks.length > 0 || row.encryptedKey.trim().length > 0) {
           findings.push({
             table: "tenant_api_keys",
             column: "encrypted_key",

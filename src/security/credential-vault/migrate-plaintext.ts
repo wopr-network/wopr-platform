@@ -1,4 +1,6 @@
-import type Database from "better-sqlite3";
+import { eq } from "drizzle-orm";
+import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { encrypt } from "../encryption.js";
 import { scanForKeyLeaks } from "../key-audit.js";
 
@@ -17,7 +19,7 @@ export interface MigrationResult {
  * IMPORTANT: This is destructive — run in a transaction and back up first.
  */
 export function migratePlaintextCredentials(
-  db: Database.Database,
+  db: BetterSQLite3Database<Record<string, unknown>>,
   vaultKey: Buffer,
   tenantKeyDeriver: (tenantId: string) => Buffer,
 ): MigrationResult[] {
@@ -30,14 +32,14 @@ export function migratePlaintextCredentials(
     errors: [],
   };
 
-  const provRows = db.prepare("SELECT id, encrypted_value FROM provider_credentials").all() as {
-    id: string;
-    encrypted_value: string;
-  }[];
+  const provRows = db
+    .select({ id: providerCredentials.id, encryptedValue: providerCredentials.encryptedValue })
+    .from(providerCredentials)
+    .all();
 
   for (const row of provRows) {
     try {
-      const parsed = JSON.parse(row.encrypted_value);
+      const parsed = JSON.parse(row.encryptedValue);
       if (parsed.iv && parsed.authTag && parsed.ciphertext) {
         continue; // Already encrypted
       }
@@ -46,15 +48,18 @@ export function migratePlaintextCredentials(
     }
 
     // This row has plaintext data — encrypt it
-    const leaks = scanForKeyLeaks(row.encrypted_value);
-    if (leaks.length === 0 && row.encrypted_value.trim() === "") {
+    const leaks = scanForKeyLeaks(row.encryptedValue);
+    if (leaks.length === 0 && row.encryptedValue.trim() === "") {
       continue; // Empty value, skip
     }
 
     try {
-      const encrypted = encrypt(row.encrypted_value, vaultKey);
+      const encrypted = encrypt(row.encryptedValue, vaultKey);
       const serialized = JSON.stringify(encrypted);
-      db.prepare("UPDATE provider_credentials SET encrypted_value = ? WHERE id = ?").run(serialized, row.id);
+      db.update(providerCredentials)
+        .set({ encryptedValue: serialized })
+        .where(eq(providerCredentials.id, row.id))
+        .run();
       provResult.migratedCount++;
     } catch (err) {
       provResult.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -71,15 +76,14 @@ export function migratePlaintextCredentials(
       errors: [],
     };
 
-    const tenantRows = db.prepare("SELECT id, tenant_id, encrypted_key FROM tenant_api_keys").all() as {
-      id: string;
-      tenant_id: string;
-      encrypted_key: string;
-    }[];
+    const tenantRows = db
+      .select({ id: tenantApiKeys.id, tenantId: tenantApiKeys.tenantId, encryptedKey: tenantApiKeys.encryptedKey })
+      .from(tenantApiKeys)
+      .all();
 
     for (const row of tenantRows) {
       try {
-        const parsed = JSON.parse(row.encrypted_key);
+        const parsed = JSON.parse(row.encryptedKey);
         if (parsed.iv && parsed.authTag && parsed.ciphertext) {
           continue; // Already encrypted
         }
@@ -87,13 +91,13 @@ export function migratePlaintextCredentials(
         // Not JSON — treat as plaintext
       }
 
-      if (row.encrypted_key.trim() === "") continue;
+      if (row.encryptedKey.trim() === "") continue;
 
       try {
-        const tenantKey = tenantKeyDeriver(row.tenant_id);
-        const encrypted = encrypt(row.encrypted_key, tenantKey);
+        const tenantKey = tenantKeyDeriver(row.tenantId);
+        const encrypted = encrypt(row.encryptedKey, tenantKey);
         const serialized = JSON.stringify(encrypted);
-        db.prepare("UPDATE tenant_api_keys SET encrypted_key = ? WHERE id = ?").run(serialized, row.id);
+        db.update(tenantApiKeys).set({ encryptedKey: serialized }).where(eq(tenantApiKeys.id, row.id)).run();
         tenantResult.migratedCount++;
       } catch (err) {
         tenantResult.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);

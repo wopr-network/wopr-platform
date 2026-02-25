@@ -5,6 +5,7 @@
  */
 
 import Database from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CapabilitySettingsStore } from "../../security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
@@ -22,14 +23,21 @@ function ctxForTenant(tenantId: string): TRPCContext {
 const TENANT = "tenant-test-915";
 
 describe("capabilities.listCapabilitySettings", () => {
-  let db: Database.Database;
+  let sqlite: Database.Database;
   let keyStore: TenantKeyStore;
   let capStore: CapabilitySettingsStore;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    keyStore = new TenantKeyStore(db);
-    capStore = new CapabilitySettingsStore(db);
+    sqlite = new Database(":memory:");
+    sqlite.exec(`CREATE TABLE IF NOT EXISTS tenant_capability_settings (
+      tenant_id TEXT NOT NULL,
+      capability TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'hosted',
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant_id, capability)
+    )`);
+    keyStore = new TenantKeyStore(sqlite);
+    capStore = new CapabilitySettingsStore(drizzle(sqlite));
 
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => keyStore,
@@ -46,7 +54,7 @@ describe("capabilities.listCapabilitySettings", () => {
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns all 4 capabilities defaulting to hosted when no settings stored", async () => {
@@ -120,14 +128,21 @@ describe("capabilities.listCapabilitySettings", () => {
 });
 
 describe("capabilities.updateCapabilitySettings", () => {
-  let db: Database.Database;
+  let sqlite: Database.Database;
   let keyStore: TenantKeyStore;
   let capStore: CapabilitySettingsStore;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    keyStore = new TenantKeyStore(db);
-    capStore = new CapabilitySettingsStore(db);
+    sqlite = new Database(":memory:");
+    sqlite.exec(`CREATE TABLE IF NOT EXISTS tenant_capability_settings (
+      tenant_id TEXT NOT NULL,
+      capability TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'hosted',
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant_id, capability)
+    )`);
+    keyStore = new TenantKeyStore(sqlite);
+    capStore = new CapabilitySettingsStore(drizzle(sqlite));
 
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => keyStore,
@@ -144,7 +159,7 @@ describe("capabilities.updateCapabilitySettings", () => {
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("updates mode to byok for text-gen", async () => {

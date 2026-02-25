@@ -1,36 +1,59 @@
 import BetterSqlite3 from "better-sqlite3";
+import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 import { auditCredentialEncryption } from "./migration-check.js";
 
+const PROVIDER_CREDS_DDL = `CREATE TABLE provider_credentials (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL DEFAULT '',
+  key_name TEXT NOT NULL DEFAULT '',
+  encrypted_value TEXT NOT NULL,
+  auth_type TEXT NOT NULL DEFAULT '',
+  auth_header TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  last_validated TEXT,
+  created_at TEXT NOT NULL DEFAULT '',
+  rotated_at TEXT,
+  created_by TEXT NOT NULL DEFAULT ''
+)`;
+
+const TENANT_KEYS_DDL = `CREATE TABLE tenant_api_keys (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT '',
+  label TEXT NOT NULL DEFAULT '',
+  encrypted_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT 0
+)`;
+
 describe("auditCredentialEncryption", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
+  let db: ReturnType<typeof drizzle>;
 
   beforeEach(() => {
-    db = new BetterSqlite3(":memory:");
-    db.exec(`CREATE TABLE provider_credentials (
-      id TEXT PRIMARY KEY,
-      encrypted_value TEXT NOT NULL
-    )`);
+    sqlite = new BetterSqlite3(":memory:");
+    sqlite.exec(PROVIDER_CREDS_DDL);
+    db = drizzle(sqlite);
   });
 
-  afterEach(() => db.close());
+  afterEach(() => sqlite.close());
 
   it("returns empty array when all credentials are properly encrypted", () => {
     const key = generateInstanceKey();
     const encrypted = JSON.stringify(encrypt("sk-ant-test123", key));
-    db.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run("cred-1", encrypted);
+    sqlite.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run("cred-1", encrypted);
 
     const findings = auditCredentialEncryption(db);
     expect(findings).toEqual([]);
   });
 
   it("detects plaintext API keys", () => {
-    db.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run(
-      "cred-1",
-      "sk-ant-api12345678901234567890",
-    );
+    sqlite
+      .prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)")
+      .run("cred-1", "sk-ant-api12345678901234567890");
 
     const findings = auditCredentialEncryption(db);
     expect(findings).toHaveLength(1);
@@ -39,7 +62,7 @@ describe("auditCredentialEncryption", () => {
   });
 
   it("detects malformed encrypted payloads (missing fields)", () => {
-    db.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run(
+    sqlite.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run(
       "cred-1",
       JSON.stringify({ iv: "aa" }), // missing authTag and ciphertext
     );
@@ -60,16 +83,11 @@ describe("auditCredentialEncryption", () => {
   });
 
   it("detects plaintext in tenant_api_keys when table exists", () => {
-    db.exec(`CREATE TABLE tenant_api_keys (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      encrypted_key TEXT NOT NULL
-    )`);
-    db.prepare("INSERT INTO tenant_api_keys (id, tenant_id, encrypted_key) VALUES (?, ?, ?)").run(
-      "tk-1",
-      "tenant-a",
-      "sk-ant-api12345678901234567890",
-    );
+    sqlite.exec(TENANT_KEYS_DDL);
+    db = drizzle(sqlite);
+    sqlite
+      .prepare("INSERT INTO tenant_api_keys (id, tenant_id, encrypted_key) VALUES (?, ?, ?)")
+      .run("tk-1", "tenant-a", "sk-ant-api12345678901234567890");
 
     const findings = auditCredentialEncryption(db);
     expect(findings).toHaveLength(1);
@@ -79,23 +97,22 @@ describe("auditCredentialEncryption", () => {
 });
 
 describe("migratePlaintextCredentials", () => {
-  let db: BetterSqlite3.Database;
+  let sqlite: BetterSqlite3.Database;
+  let db: ReturnType<typeof drizzle>;
   let vaultKey: Buffer;
 
   beforeEach(() => {
-    db = new BetterSqlite3(":memory:");
+    sqlite = new BetterSqlite3(":memory:");
     vaultKey = generateInstanceKey();
-    db.exec(`CREATE TABLE provider_credentials (
-      id TEXT PRIMARY KEY,
-      encrypted_value TEXT NOT NULL
-    )`);
+    sqlite.exec(PROVIDER_CREDS_DDL);
+    db = drizzle(sqlite);
   });
 
-  afterEach(() => db.close());
+  afterEach(() => sqlite.close());
 
   it("skips already-encrypted rows", () => {
     const encrypted = JSON.stringify(encrypt("sk-ant-test", vaultKey));
-    db.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run("cred-1", encrypted);
+    sqlite.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run("cred-1", encrypted);
 
     const results = migratePlaintextCredentials(db, vaultKey, () => vaultKey);
     expect(results[0].migratedCount).toBe(0);
@@ -103,16 +120,15 @@ describe("migratePlaintextCredentials", () => {
   });
 
   it("encrypts plaintext rows", () => {
-    db.prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)").run(
-      "cred-1",
-      "sk-ant-plaintext-key-1234567890",
-    );
+    sqlite
+      .prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)")
+      .run("cred-1", "sk-ant-plaintext-key-1234567890");
 
     const results = migratePlaintextCredentials(db, vaultKey, () => vaultKey);
     expect(results[0].migratedCount).toBe(1);
 
     // Verify the value is now encrypted JSON
-    const row = db.prepare("SELECT encrypted_value FROM provider_credentials WHERE id = ?").get("cred-1") as {
+    const row = sqlite.prepare("SELECT encrypted_value FROM provider_credentials WHERE id = ?").get("cred-1") as {
       encrypted_value: string;
     };
     const parsed = JSON.parse(row.encrypted_value);
@@ -128,16 +144,11 @@ describe("migratePlaintextCredentials", () => {
   });
 
   it("migrates tenant_api_keys when table exists", () => {
-    db.exec(`CREATE TABLE tenant_api_keys (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      encrypted_key TEXT NOT NULL
-    )`);
-    db.prepare("INSERT INTO tenant_api_keys (id, tenant_id, encrypted_key) VALUES (?, ?, ?)").run(
-      "tk-1",
-      "tenant-a",
-      "sk-ant-plaintext-key-1234567890",
-    );
+    sqlite.exec(TENANT_KEYS_DDL);
+    db = drizzle(sqlite);
+    sqlite
+      .prepare("INSERT INTO tenant_api_keys (id, tenant_id, encrypted_key) VALUES (?, ?, ?)")
+      .run("tk-1", "tenant-a", "sk-ant-plaintext-key-1234567890");
 
     const results = migratePlaintextCredentials(db, vaultKey, () => vaultKey);
     const tenantResult = results.find((r) => r.table === "tenant_api_keys");
