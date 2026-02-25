@@ -124,7 +124,8 @@
         "src/monetization/drizzle-provider-health-repository.ts",
         "src/fleet/drizzle-fleet-event-repository.ts",
         "src/gateway/drizzle-circuit-breaker-repository.ts",
-        "src/observability/drizzle-metrics-repository.ts"
+        "src/observability/drizzle-metrics-repository.ts",
+        "src/security/two-factor-repository.ts"
       ],
       "linter": {
         "rules": {
@@ -195,7 +196,6 @@
         "src/admin/users/user-store.ts",
         "src/admin/analytics/analytics-store.ts",
         "src/gateway/spending-cap.ts",
-        "src/trpc/routers/two-factor.ts",
         "src/security/tenant-keys/capability-settings-store.ts"
       ],
       "linter": {
