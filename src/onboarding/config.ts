@@ -9,7 +9,7 @@ export interface OnboardingConfig {
 
 export function loadOnboardingConfig(): OnboardingConfig {
   return {
-    woprPort: Number(process.env.ONBOARDING_WOPR_PORT ?? 3847),
+    woprPort: Number(process.env.ONBOARDING_WOPR_PORT || 3847),
     llmProvider: process.env.ONBOARDING_LLM_PROVIDER ?? "anthropic",
     llmModel: process.env.ONBOARDING_LLM_MODEL ?? "claude-sonnet-4-20250514",
     budgetCapCents: Number(process.env.ONBOARDING_BUDGET_CAP_CENTS ?? 100),

@@ -58,6 +58,11 @@ export class DaemonManager implements IDaemonManager {
       this.process = null;
       this.ready = false;
     });
+    this.process.on("error", (err) => {
+      logger.error("[onboarding] WOPR daemon process error", { err });
+      this.process = null;
+      this.ready = false;
+    });
 
     await this.waitForReady();
 
