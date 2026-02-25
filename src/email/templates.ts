@@ -438,3 +438,32 @@ If you have questions, contact support@wopr.bot.${unsubscribeText(creditsUrl ? b
 
   return { subject: "Your bot data has been deleted", html, text };
 }
+
+// ---------------------------------------------------------------------------
+// Org Invite
+// ---------------------------------------------------------------------------
+
+export function orgInviteEmailTemplate(inviteUrl: string, orgName: string): TemplateResult {
+  const safeOrg = escapeHtml(orgName);
+  const safeUrl = escapeHtml(inviteUrl);
+
+  const html = wrapHtml(
+    `You're invited to join ${safeOrg}`,
+    [
+      heading(`Join ${safeOrg}`),
+      paragraph(
+        `You've been invited to join <strong>${safeOrg}</strong> on WOPR Network. Click the button below to accept the invitation.`,
+      ),
+      button(safeUrl, "Accept Invitation"),
+      footer("This invitation expires in 7 days. If you didn't expect this email, you can safely ignore it."),
+    ].join("\n"),
+  );
+
+  const text = `You're invited to join ${orgName} on WOPR Network.
+
+Accept the invitation: ${inviteUrl}
+
+This invitation expires in 7 days.`;
+
+  return { subject: `You're invited to join ${orgName}`, html, text };
+}

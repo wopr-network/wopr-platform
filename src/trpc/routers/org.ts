@@ -1,19 +1,21 @@
 /**
  * tRPC org router -- organization settings, member management, OAuth connections.
  *
- * All procedures require authentication. Stub implementations until the org
- * service layer is built — role/ownership enforcement is NOT yet wired.
+ * All procedures require authentication.
  */
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { OrgService } from "../../org/org-service.js";
 import { protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps
 // ---------------------------------------------------------------------------
 
-export type OrgRouterDeps = Record<never, never>;
+export type OrgRouterDeps = {
+  orgService: OrgService;
+};
 
 let _deps: OrgRouterDeps | null = null;
 
@@ -32,125 +34,117 @@ function deps(): OrgRouterDeps {
 }
 
 // ---------------------------------------------------------------------------
-// Types (match UI's Organization/OrgMember from wopr-platform-ui/src/lib/api.ts)
-// ---------------------------------------------------------------------------
-
-interface OrgMember {
-  id: string;
-  name: string;
-  email: string;
-  role: "owner" | "admin" | "viewer";
-  joinedAt: string;
-}
-
-interface Organization {
-  id: string;
-  name: string;
-  billingEmail: string;
-  members: OrgMember[];
-}
-
-// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 export const orgRouter = router({
-  /** Get the organization for the authenticated user. */
+  /** Get the organization for the authenticated user (personal tenant). */
   getOrganization: protectedProcedure.query(({ ctx }) => {
-    // WOP-815: wire to org service layer
-    deps();
-    return {
-      id: ctx.user.id,
-      name: "My Organization",
-      billingEmail: "",
-      members: [
-        {
-          id: ctx.user.id,
-          name: "You",
-          email: "",
-          role: "owner" as const,
-          joinedAt: new Date().toISOString(),
-        },
-      ],
-    } satisfies Organization;
+    const { orgService } = deps();
+    const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "User";
+    const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
+    const org = orgService.getOrCreatePersonalOrg(ctx.user.id, name);
+    // Enrich member rows with the current user's name/email when they match
+    const members = org.members.map((m) => {
+      if (m.userId === ctx.user.id) {
+        return { ...m, name, email };
+      }
+      return m;
+    });
+    return { ...org, members };
   }),
 
-  /** Update organization name and/or billing email. */
+  /** Update organization name and/or slug. */
   updateOrganization: protectedProcedure
     .input(
       z.object({
+        orgId: z.string().min(1),
         name: z.string().min(1).max(128).optional(),
-        billingEmail: z.string().email().optional(),
+        slug: z.string().min(3).max(48).optional(),
       }),
     )
     .mutation(({ input, ctx }) => {
-      // WOP-815: wire to org service layer
-      deps();
-      return {
-        id: ctx.user.id,
-        name: input.name ?? "My Organization",
-        billingEmail: input.billingEmail ?? "",
-        members: [
-          {
-            id: ctx.user.id,
-            name: "You",
-            email: "",
-            role: "owner" as const,
-            joinedAt: new Date().toISOString(),
-          },
-        ],
-      } satisfies Organization;
+      const { orgService } = deps();
+      return orgService.updateOrg(input.orgId, ctx.user.id, { name: input.name, slug: input.slug });
     }),
+
+  /** Delete an organization. Owner only. */
+  deleteOrganization: protectedProcedure.input(z.object({ orgId: z.string().min(1) })).mutation(({ input, ctx }) => {
+    const { orgService } = deps();
+    orgService.deleteOrg(input.orgId, ctx.user.id);
+    return { deleted: true };
+  }),
 
   /** Invite a new member to the organization. */
   inviteMember: protectedProcedure
     .input(
       z.object({
+        orgId: z.string().min(1),
         email: z.string().email(),
-        role: z.enum(["admin", "viewer"]),
+        role: z.enum(["admin", "member"]),
       }),
     )
-    .mutation(({ input }) => {
-      // WOP-815: wire to org service layer + email invitation
-      deps();
-      const id = `member-${Date.now()}`;
+    .mutation(({ input, ctx }) => {
+      const { orgService } = deps();
+      const invite = orgService.inviteMember(input.orgId, ctx.user.id, input.email, input.role);
       return {
-        id,
-        name: input.email.split("@")[0],
-        email: input.email,
-        role: input.role,
-        joinedAt: new Date().toISOString(),
-      } satisfies OrgMember;
+        id: invite.id,
+        email: invite.email,
+        role: invite.role,
+        invitedBy: invite.invitedBy,
+        expiresAt: new Date(invite.expiresAt).toISOString(),
+        createdAt: new Date(invite.createdAt).toISOString(),
+      };
     }),
 
-  /** Remove a member from the organization. Owner only. */
-  removeMember: protectedProcedure.input(z.object({ memberId: z.string().min(1) })).mutation(({ input }) => {
-    // WOP-815: role enforcement must be added when the org service layer is wired.
-    // Pattern to implement:
-    //   const org = await orgService.getOrg(ctx.user.id);
-    //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
-    //   if (input.memberId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove yourself" });
-    deps();
-    return { removed: true, memberId: input.memberId };
-  }),
+  /** Revoke a pending invite. Admin or owner only. */
+  revokeInvite: protectedProcedure
+    .input(z.object({ orgId: z.string().min(1), inviteId: z.string().min(1) }))
+    .mutation(({ input, ctx }) => {
+      const { orgService } = deps();
+      orgService.revokeInvite(input.orgId, ctx.user.id, input.inviteId);
+      return { revoked: true };
+    }),
+
+  /** Change a member's role (admin/member only — not owner). */
+  changeRole: protectedProcedure
+    .input(
+      z.object({
+        orgId: z.string().min(1),
+        userId: z.string().min(1),
+        role: z.enum(["admin", "member"]),
+      }),
+    )
+    .mutation(({ input, ctx }) => {
+      const { orgService } = deps();
+      orgService.changeRole(input.orgId, ctx.user.id, input.userId, input.role);
+      return { updated: true };
+    }),
+
+  /** Remove a member from the organization. Admin or owner only. */
+  removeMember: protectedProcedure
+    .input(z.object({ orgId: z.string().min(1), userId: z.string().min(1) }))
+    .mutation(({ input, ctx }) => {
+      const { orgService } = deps();
+      orgService.removeMember(input.orgId, ctx.user.id, input.userId);
+      return { removed: true };
+    }),
 
   /** Transfer organization ownership to another member. Owner only. */
-  transferOwnership: protectedProcedure.input(z.object({ memberId: z.string().min(1) })).mutation(({ input }) => {
-    // WOP-815: role enforcement must be added when the org service layer is wired.
-    // Pattern to implement:
-    //   const org = await orgService.getOrg(ctx.user.id);
-    //   if (org.ownerUserId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
-    //   await orgService.verifyMemberExists(org.id, input.memberId);
-    deps();
-    return { transferred: true, newOwnerId: input.memberId };
-  }),
+  transferOwnership: protectedProcedure
+    .input(z.object({ orgId: z.string().min(1), userId: z.string().min(1) }))
+    .mutation(({ input, ctx }) => {
+      const { orgService } = deps();
+      orgService.transferOwnership(input.orgId, ctx.user.id, input.userId);
+      return { transferred: true };
+    }),
 
   /** Connect an OAuth provider to the organization/user. */
   connectOauthProvider: protectedProcedure
     .input(z.object({ provider: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
-      // WOP-815: wire to better-auth OAuth linking
       deps();
+      // WOP-815: wire to better-auth OAuth linking
       return { connected: true, provider: input.provider };
     }),
 
@@ -158,8 +152,8 @@ export const orgRouter = router({
   disconnectOauthProvider: protectedProcedure
     .input(z.object({ provider: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
-      // WOP-815: wire to better-auth OAuth unlinking
       deps();
+      // WOP-815: wire to better-auth OAuth unlinking
       return { disconnected: true, provider: input.provider };
     }),
 });
