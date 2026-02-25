@@ -18,6 +18,7 @@
     "check": "biome check src/ && tsc --noEmit && npm run check:raw-sql",
     "check:raw-sql": "bash scripts/check-raw-sql.sh",
     "check:secrets": "bash scripts/check-hardcoded-secrets.sh",
+    "bench": "vitest bench",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

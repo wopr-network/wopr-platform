@@ -38,6 +38,9 @@ export default defineConfig({
         "src/trpc/routers/*.ts",
       ],
     },
+    bench: {
+      include: ["src/**/*.bench.ts"],
+    },
     reporters: ["default", "junit"],
     outputFile: {
       junit: "test-results/junit.xml",
