@@ -59,6 +59,32 @@ marketplaceRoutes.get("/plugins/:id", (c) => {
   return c.json(plugin);
 });
 
+/**
+ * GET /api/marketplace/plugins/:id/content
+ *
+ * Get the SUPERPOWER.md content (or fallback description) for a plugin.
+ */
+marketplaceRoutes.get("/plugins/:id/content", (c) => {
+  const user = c.get("user");
+  if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const id = c.req.param("id");
+  const plugin = pluginRegistry.find((p) => p.id === id);
+  if (!plugin) return c.json({ error: "Plugin not found" }, 404);
+
+  // TODO(WOP-1029): Once marketplace-content-repository is wired into services.ts,
+  // look up cached content first:
+  //   const cached = contentRepo.getByPluginId(id);
+  //   if (cached) return c.json({ markdown: cached.markdown, source: cached.source, version: cached.version });
+
+  // Fallback: return manifest description
+  return c.json({
+    markdown: plugin.description,
+    source: "manifest_description" as const,
+    version: plugin.version,
+  });
+});
+
 const installSchema = z.object({
   botId: z.string().uuid("botId must be a valid UUID"),
   config: z.record(z.string(), z.unknown()).default({}),
