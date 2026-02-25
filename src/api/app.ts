@@ -40,6 +40,7 @@ import { healthRoutes } from "./routes/health.js";
 import { internalGpuRoutes } from "./routes/internal-gpu.js";
 import { internalNodeRoutes } from "./routes/internal-nodes.js";
 import { marketplaceRoutes } from "./routes/marketplace.js";
+import { onboardingRoutes } from "./routes/onboarding.js";
 import { createOrgRoutes } from "./routes/orgs.js";
 import { publicPricingRoutes } from "./routes/public-pricing.js";
 import { quotaRoutes } from "./routes/quota.js";
@@ -290,6 +291,7 @@ app.route("/api/marketplace", marketplaceRoutes);
     }),
   );
 }
+app.route("/api/onboarding", onboardingRoutes);
 app.route("/auth", verifyEmailRoutes);
 app.route("/internal/nodes", internalNodeRoutes);
 app.route("/internal/gpu", internalGpuRoutes);

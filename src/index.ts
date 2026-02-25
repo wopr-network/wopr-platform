@@ -15,6 +15,7 @@ import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
 import { setFleetDeps } from "./api/routes/fleet.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
+import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
@@ -31,6 +32,7 @@ import {
   getCommandBus,
   getConnectionRegistry,
   getCreditLedger,
+  getDaemonManager,
   getDb,
   getDividendRepo,
   getFleetEventRepo,
@@ -39,6 +41,8 @@ import {
   getNodeRegistrar,
   getNodeRepo,
   getNotificationPrefsStore,
+  getOnboardingService,
+  getOnboardingSessionRepo,
   getOrgMembershipRepo,
   getOrgService,
   getRateLimitRepo,
@@ -755,6 +759,31 @@ if (process.env.NODE_ENV !== "test") {
     const { runAuthMigrations } = await import("./auth/better-auth.js");
     await runAuthMigrations();
     logger.info("better-auth migrations applied");
+  }
+
+  // Wire onboarding deps and start WOPR daemon if enabled (WOP-1020)
+  {
+    const { loadOnboardingConfig } = await import("./onboarding/config.js");
+    const onboardingCfg = loadOnboardingConfig();
+    setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo());
+    if (onboardingCfg.enabled) {
+      getDaemonManager()
+        .start()
+        .catch((err) => {
+          logger.error("[onboarding] WOPR daemon failed to start", { err });
+        });
+      // Graceful shutdown: stop daemon before process exits
+      const shutdownDaemon = () => {
+        getDaemonManager()
+          .stop()
+          .catch((err) => logger.error("[onboarding] daemon stop error", { err }));
+      };
+      process.on("SIGTERM", shutdownDaemon);
+      process.on("SIGINT", shutdownDaemon);
+      logger.info("[onboarding] WOPR daemon startup initiated");
+    } else {
+      logger.info("[onboarding] WOPR daemon disabled (ONBOARDING_ENABLED=false)");
+    }
   }
 
   const server = serve({ fetch: app.fetch, port }, () => {
