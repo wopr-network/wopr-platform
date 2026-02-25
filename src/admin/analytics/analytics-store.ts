@@ -85,6 +85,9 @@ export class AnalyticsStore {
   private readonly sqlite: Database.Database;
 
   constructor(db: DrizzleDb) {
+    // raw SQL: Drizzle cannot express the complex aggregations, multi-table UNIONs,
+    // integer epoch bucketing arithmetic, and CASE-based pivot queries used throughout
+    // this analytics store
     this.sqlite = db.$client;
   }
 

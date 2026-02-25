@@ -159,6 +159,8 @@ export class RateStore {
 
   /** Look up an active sell rate by capability and model. Returns null if not found. */
   getSellRateByModel(capability: string, model: string, unit?: string): SellRate | null {
+    // raw SQL: Drizzle cannot express the optional unit filter clause that is conditionally
+    // appended to the query depending on whether the unit parameter is provided
     const sqlite = this.db.$client;
     const unitClause = unit ? " AND unit = ?" : "";
     const params: unknown[] = unit ? [capability, model, unit] : [capability, model];

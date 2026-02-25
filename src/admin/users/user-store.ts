@@ -61,6 +61,8 @@ export class AdminUserStore {
 
   /** List users with pagination, filtering, and sorting. */
   list(filters: AdminUserFilters = {}): AdminUserListResponse {
+    // raw SQL: Drizzle cannot express dynamic ORDER BY with runtime column names from a
+    // whitelist map, or LIKE with ESCAPE clauses for safe wildcard search across multiple columns
     const sqlite = this.db.$client;
     const conditions: string[] = [];
     const params: unknown[] = [];
@@ -115,6 +117,7 @@ export class AdminUserStore {
 
   /** Full-text search across name, email, and tenant_id. */
   search(query: string): AdminUserSummary[] {
+    // raw SQL: Drizzle cannot express LIKE with ESCAPE clause for safe parameterized wildcard search
     const sqlite = this.db.$client;
     const pattern = `%${escapeLike(query)}%`;
     const querySql = `
