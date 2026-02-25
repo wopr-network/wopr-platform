@@ -56,12 +56,13 @@ function makeMockLedger(): ICreditLedger {
   const txns: ReturnType<ICreditLedger["credit"]>[] = [];
   return {
     credit(tenantId, amountCents, type, description) {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+      const balanceAfterCents = (balances.get(tenantId) ?? 0) + amountCents;
+      balances.set(tenantId, balanceAfterCents);
       const tx = {
         id: crypto.randomUUID(),
         tenantId,
         amountCents,
-        balanceAfterCents: balances.get(tenantId)!,
+        balanceAfterCents,
         type: type ?? "signup_grant",
         description: description ?? null,
         referenceId: null,
@@ -72,12 +73,13 @@ function makeMockLedger(): ICreditLedger {
       return tx;
     },
     debit(tenantId, amountCents, type, description) {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+      const balanceAfterCents = (balances.get(tenantId) ?? 0) - amountCents;
+      balances.set(tenantId, balanceAfterCents);
       const tx = {
         id: crypto.randomUUID(),
         tenantId,
         amountCents: -amountCents,
-        balanceAfterCents: balances.get(tenantId)!,
+        balanceAfterCents,
         type: type ?? "correction",
         description: description ?? null,
         referenceId: null,

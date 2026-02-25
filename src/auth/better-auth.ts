@@ -180,7 +180,8 @@ export function getAuth(): Auth {
 /** Get an IEmailVerifier backed by the auth database. */
 export function getEmailVerifier(): SqliteEmailVerifier {
   getAuth(); // ensure _authDb is initialized
-  return new SqliteEmailVerifier(_authDb!);
+  if (!_authDb) throw new Error("auth database not initialized");
+  return new SqliteEmailVerifier(_authDb);
 }
 
 /**

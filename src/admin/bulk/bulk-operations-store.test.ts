@@ -25,12 +25,13 @@ describe("BulkOperationsStore", () => {
     const balances = new Map<string, number>();
     creditStore = {
       credit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+        const balanceAfterCents = (balances.get(tenantId) ?? 0) + amountCents;
+        balances.set(tenantId, balanceAfterCents);
         return {
           id: "tx-1",
           tenantId,
           amountCents,
-          balanceAfterCents: balances.get(tenantId) ?? 0,
+          balanceAfterCents,
           type: "signup_grant",
           description: null,
           referenceId: null,
@@ -39,12 +40,13 @@ describe("BulkOperationsStore", () => {
         };
       },
       debit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+        const balanceAfterCents = (balances.get(tenantId) ?? 0) - amountCents;
+        balances.set(tenantId, balanceAfterCents);
         return {
           id: "tx-2",
           tenantId,
           amountCents: -amountCents,
-          balanceAfterCents: balances.get(tenantId) ?? 0,
+          balanceAfterCents,
           type: "correction",
           description: null,
           referenceId: null,
