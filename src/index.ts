@@ -39,6 +39,7 @@ import {
   getNodeRegistrar,
   getNodeRepo,
   getNotificationPrefsStore,
+  getOrgMembershipRepo,
   getOrgService,
   getRateLimitRepo,
   getRegistrationTokenStore,
@@ -505,18 +506,15 @@ if (process.env.NODE_ENV !== "test") {
   // Wire org-keys tRPC router deps (WOP-1003: org-scoped BYOK key resolution)
   {
     const { resolveApiKeyWithOrgFallback } = await import("./security/tenant-keys/org-key-resolution.js");
-    const { orgMemberships } = await import("./db/schema/org-memberships.js");
     const { RoleStore } = await import("./admin/roles/role-store.js");
     const { initTenantKeySchema: initTenantKeySchema2 } = await import("./security/tenant-keys/schema.js");
     const BetterSqlite2 = (await import("better-sqlite3")).default;
-    const { eq: eq2 } = await import("drizzle-orm");
-    const { drizzle: drizzle2 } = await import("drizzle-orm/better-sqlite3");
 
     const TENANT_KEYS_DB_PATH2 = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
     const orgKeysSqlite = new BetterSqlite2(TENANT_KEYS_DB_PATH2);
     applyPlatformPragmas(orgKeysSqlite);
     initTenantKeySchema2(orgKeysSqlite);
-    const orgKeysDb = drizzle2(orgKeysSqlite);
+    const orgKeysDb = createDb(orgKeysSqlite);
     const orgKeysTenantKeyStore = new TenantKeyStore(orgKeysSqlite);
     const roleStore = new RoleStore(getDb());
     const orgVaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
@@ -530,12 +528,7 @@ if (process.env.NODE_ENV !== "test") {
       deriveTenantKey: deriveTenantKey2,
       platformSecret: process.env.PLATFORM_SECRET,
       getOrgTenantIdForUser: (_userId: string, memberTenantId: string) => {
-        const row = orgKeysDb
-          .select({ orgTenantId: orgMemberships.orgTenantId })
-          .from(orgMemberships)
-          .where(eq2(orgMemberships.memberTenantId, memberTenantId))
-          .get();
-        return row?.orgTenantId ?? null;
+        return getOrgMembershipRepo().getOrgTenantIdForMember(memberTenantId);
       },
       getUserRoleInTenant: (userId: string, tenantId: string) => {
         return roleStore.getRole(userId, tenantId);
@@ -565,6 +558,7 @@ if (process.env.NODE_ENV !== "test") {
             createHmac("sha256", process.env.PLATFORM_SECRET ?? "")
               .update(`tenant:${tid}`)
               .digest(),
+          getOrgMembershipRepo(),
         );
         if (!resolved) {
           return { ok: false, error: "No API key configured for this provider" };

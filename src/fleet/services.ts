@@ -85,6 +85,8 @@ import { NodeRegistrar } from "./node-registrar.js";
 import type { INodeRepository } from "./node-repository.js";
 import type { IOrgMemberRepository } from "./org-member-repository.js";
 import { DrizzleOrgMemberRepository } from "./org-member-repository.js";
+import type { IOrgMembershipRepository } from "./org-membership-repository.js";
+import { DrizzleOrgMembershipRepository } from "./org-membership-repository.js";
 import { OrphanCleaner } from "./orphan-cleaner.js";
 import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
@@ -785,4 +787,13 @@ export function getOrgService(): OrgService {
     _orgService = new OrgService(getOrgRepo(), getOrgMemberRepo());
   }
   return _orgService;
+}
+
+let _orgMembershipRepo: IOrgMembershipRepository | null = null;
+
+export function getOrgMembershipRepo(): IOrgMembershipRepository {
+  if (!_orgMembershipRepo) {
+    _orgMembershipRepo = new DrizzleOrgMembershipRepository(getDb());
+  }
+  return _orgMembershipRepo;
 }

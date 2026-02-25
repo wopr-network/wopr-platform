@@ -1,6 +1,5 @@
-import { eq } from "drizzle-orm";
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { orgMemberships } from "../../db/schema/org-memberships.js";
+import type { IOrgMembershipRepository } from "../../fleet/org-membership-repository.js";
 import type { Provider } from "../types.js";
 import { resolveApiKey } from "./key-resolution.js";
 
@@ -29,6 +28,7 @@ export function resolveApiKeyWithOrgFallback(
   encryptionKey: Buffer,
   pooledKeys: Map<Provider, string>,
   deriveKey: (tenantId: string) => Buffer,
+  orgMembershipRepo: IOrgMembershipRepository,
 ): OrgResolvedKey | null {
   // 1. Check personal tenant key
   const personal = resolveApiKey(db, tenantId, provider, encryptionKey, new Map());
@@ -37,15 +37,11 @@ export function resolveApiKeyWithOrgFallback(
   }
 
   // 2. Check org membership and org key
-  const membership = db
-    .select({ orgTenantId: orgMemberships.orgTenantId })
-    .from(orgMemberships)
-    .where(eq(orgMemberships.memberTenantId, tenantId))
-    .get();
+  const orgTenantId = orgMembershipRepo.getOrgTenantIdForMember(tenantId);
 
-  if (membership) {
-    const orgEncKey = deriveKey(membership.orgTenantId);
-    const orgResult = resolveApiKey(db, membership.orgTenantId, provider, orgEncKey, new Map());
+  if (orgTenantId) {
+    const orgEncKey = deriveKey(orgTenantId);
+    const orgResult = resolveApiKey(db, orgTenantId, provider, orgEncKey, new Map());
     if (orgResult) {
       return { key: orgResult.key, source: "org", provider };
     }
