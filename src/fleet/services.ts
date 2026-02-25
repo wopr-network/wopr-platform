@@ -823,9 +823,9 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
 
 import { loadOnboardingConfig } from "../onboarding/config.js";
 import { DaemonManager, type IDaemonManager } from "../onboarding/daemon-manager.js";
+import type { IOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
+import { DrizzleOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
 import { OnboardingService } from "../onboarding/onboarding-service.js";
-import type { IOnboardingSessionRepository } from "../onboarding/onboarding-session-repository.js";
-import { DrizzleOnboardingSessionRepository } from "../onboarding/onboarding-session-repository.js";
 import { WoprClient } from "../onboarding/wopr-client.js";
 
 let _onboardingSessionRepo: IOnboardingSessionRepository | null = null;

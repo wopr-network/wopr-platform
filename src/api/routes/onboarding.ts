@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../auth/index.js";
+import type { IOnboardingSessionRepository } from "../../onboarding/drizzle-onboarding-session-repository.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
-import type { IOnboardingSessionRepository } from "../../onboarding/onboarding-session-repository.js";
 
 let _service: OnboardingService | null = null;
 
@@ -42,7 +42,8 @@ onboardingRoutes.get("/session/:id/history", async (c) => {
   const service = getService();
   const id = c.req.param("id");
   const limitParam = c.req.query("limit");
-  const limit = limitParam ? Number(limitParam) : 50;
+  const limitRaw = limitParam ? Number(limitParam) : 50;
+  const limit = Number.isNaN(limitRaw) ? 50 : Math.min(200, Math.max(1, limitRaw));
 
   try {
     const history = await service.getHistory(id, limit);

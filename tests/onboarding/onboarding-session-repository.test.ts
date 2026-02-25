@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { beforeEach, describe, expect, it } from "vitest";
 import * as schema from "../../src/db/schema/index.js";
-import { DrizzleOnboardingSessionRepository } from "../../src/onboarding/onboarding-session-repository.js";
+import { DrizzleOnboardingSessionRepository } from "../../src/onboarding/drizzle-onboarding-session-repository.js";
 
 function createTestDb() {
   const sqlite = new Database(":memory:");

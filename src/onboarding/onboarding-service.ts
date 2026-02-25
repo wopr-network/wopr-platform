@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { OnboardingConfig } from "./config.js";
 import type { IDaemonManager } from "./daemon-manager.js";
-import type { IOnboardingSessionRepository, OnboardingSession } from "./onboarding-session-repository.js";
+import type { IOnboardingSessionRepository, OnboardingSession } from "./drizzle-onboarding-session-repository.js";
 import type { ConversationEntry, IWoprClient } from "./wopr-client.js";
 
 export class OnboardingService {
@@ -76,6 +76,7 @@ export class OnboardingService {
     }
 
     const response = await this.client.inject(session.woprSessionName, message, { from: opts.from });
+    this.repo.updateBudgetUsed(sessionId, session.budgetUsedCents + 1);
     return response;
   }
 
