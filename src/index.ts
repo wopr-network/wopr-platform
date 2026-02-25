@@ -520,7 +520,10 @@ if (process.env.NODE_ENV !== "test") {
     const orgVaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const deriveTenantKey2 = (tenantId: string, platformSecret: string) =>
       createHmac("sha256", platformSecret).update(`tenant:${tenantId}`).digest();
-    const pooledKeys2 = (await import("./security/tenant-keys/key-resolution.js")).buildPooledKeysMap();
+    const { buildPooledKeysMap: buildPooledKeysMap2, resolveApiKey: resolveApiKey2 } = await import(
+      "./security/tenant-keys/key-resolution.js"
+    );
+    const pooledKeys2 = buildPooledKeysMap2();
 
     setOrgKeysRouterDeps({
       getTenantKeyStore: () => orgKeysTenantKeyStore as never,
@@ -549,7 +552,7 @@ if (process.env.NODE_ENV !== "test") {
           return { ok: false, error: `Unknown provider: ${provider}` };
         }
         const resolved = resolveApiKeyWithOrgFallback(
-          orgKeysDb,
+          (tid, prov, encKey) => resolveApiKey2(orgKeysDb, tid, prov, encKey, new Map())?.key ?? null,
           tenantId,
           validProvider,
           orgVaultEncKey,

@@ -5,6 +5,7 @@ import { orgMemberships } from "../../db/schema/org-memberships.js";
 import { DrizzleOrgMembershipRepository } from "../../fleet/org-membership-repository.js";
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import type { Provider } from "../types.js";
+import { resolveApiKey } from "./key-resolution.js";
 import { resolveApiKeyWithOrgFallback } from "./org-key-resolution.js";
 import { TenantKeyStore } from "./schema.js";
 
@@ -69,7 +70,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     store.upsert("org-1", "anthropic", orgEncrypted);
 
     const result = resolveApiKeyWithOrgFallback(
-      db,
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
       "member-1",
       "anthropic",
       encryptionKey,
@@ -96,7 +97,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     store.upsert("org-1", "anthropic", orgEncrypted);
 
     const result = resolveApiKeyWithOrgFallback(
-      db,
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
       "member-1",
       "anthropic",
       encryptionKey,
@@ -121,7 +122,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     const pooledKeys = new Map<Provider, string>([["anthropic", "sk-pooled"]]);
 
     const result = resolveApiKeyWithOrgFallback(
-      db,
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
       "member-1",
       "anthropic",
       encryptionKey,
@@ -136,7 +137,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
 
   it("returns null when no key exists anywhere", () => {
     const result = resolveApiKeyWithOrgFallback(
-      db,
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
       "member-1",
       "anthropic",
       encryptionKey,
@@ -152,7 +153,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     store.upsert("solo-tenant", "openai", encrypted);
 
     const result = resolveApiKeyWithOrgFallback(
-      db,
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
       "solo-tenant",
       "openai",
       encryptionKey,
@@ -185,23 +186,50 @@ describe("resolveApiKeyWithOrgFallback", () => {
     // Org key for openai
     store.upsert("org-1", "openai", encrypt("org-openai", orgKey));
 
+    const lookupKey = (tid: string, prov: Provider, encKey: Buffer) =>
+      resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null;
+
     // anthropic: personal wins
-    const r1 = resolveApiKeyWithOrgFallback(db, "m1", "anthropic", memberKey, pooledKeys, deriveKey, membershipRepo);
+    const r1 = resolveApiKeyWithOrgFallback(
+      lookupKey,
+      "m1",
+      "anthropic",
+      memberKey,
+      pooledKeys,
+      deriveKey,
+      membershipRepo,
+    );
     expect(r1?.source).toBe("tenant");
     expect(r1?.key).toBe("personal-anthropic");
 
     // openai: org fallback
-    const r2 = resolveApiKeyWithOrgFallback(db, "m1", "openai", memberKey, pooledKeys, deriveKey, membershipRepo);
+    const r2 = resolveApiKeyWithOrgFallback(
+      lookupKey,
+      "m1",
+      "openai",
+      memberKey,
+      pooledKeys,
+      deriveKey,
+      membershipRepo,
+    );
     expect(r2?.source).toBe("org");
     expect(r2?.key).toBe("org-openai");
 
     // discord: pooled fallback
-    const r3 = resolveApiKeyWithOrgFallback(db, "m1", "discord", memberKey, pooledKeys, deriveKey, membershipRepo);
+    const r3 = resolveApiKeyWithOrgFallback(
+      lookupKey,
+      "m1",
+      "discord",
+      memberKey,
+      pooledKeys,
+      deriveKey,
+      membershipRepo,
+    );
     expect(r3?.source).toBe("pooled");
     expect(r3?.key).toBe("pooled-discord");
 
     // google: null
-    const r4 = resolveApiKeyWithOrgFallback(db, "m1", "google", memberKey, new Map(), deriveKey, membershipRepo);
+    const r4 = resolveApiKeyWithOrgFallback(lookupKey, "m1", "google", memberKey, new Map(), deriveKey, membershipRepo);
     expect(r4).toBeNull();
   });
 });

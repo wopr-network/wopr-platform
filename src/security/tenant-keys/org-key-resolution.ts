@@ -1,7 +1,5 @@
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import type { IOrgMembershipRepository } from "../../fleet/org-membership-repository.js";
 import type { Provider } from "../types.js";
-import { resolveApiKey } from "./key-resolution.js";
 
 /** Extended resolution result that includes "org" as a source. */
 export interface OrgResolvedKey {
@@ -19,10 +17,11 @@ export interface OrgResolvedKey {
  * 3. Pooled platform key
  * 4. null
  *
+ * @param lookupKey - Callback to look up a decrypted key for a given tenantId, provider, and encryption key
  * @param deriveKey - Function to derive encryption key for a given tenantId
  */
 export function resolveApiKeyWithOrgFallback(
-  db: BetterSQLite3Database<Record<string, unknown>>,
+  lookupKey: (tenantId: string, provider: Provider, encKey: Buffer) => string | null,
   tenantId: string,
   provider: Provider,
   encryptionKey: Buffer,
@@ -31,9 +30,9 @@ export function resolveApiKeyWithOrgFallback(
   orgMembershipRepo: IOrgMembershipRepository,
 ): OrgResolvedKey | null {
   // 1. Check personal tenant key
-  const personal = resolveApiKey(db, tenantId, provider, encryptionKey, new Map());
+  const personal = lookupKey(tenantId, provider, encryptionKey);
   if (personal) {
-    return { key: personal.key, source: "tenant", provider };
+    return { key: personal, source: "tenant", provider };
   }
 
   // 2. Check org membership and org key
@@ -41,9 +40,9 @@ export function resolveApiKeyWithOrgFallback(
 
   if (orgTenantId) {
     const orgEncKey = deriveKey(orgTenantId);
-    const orgResult = resolveApiKey(db, orgTenantId, provider, orgEncKey, new Map());
+    const orgResult = lookupKey(orgTenantId, provider, orgEncKey);
     if (orgResult) {
-      return { key: orgResult.key, source: "org", provider };
+      return { key: orgResult, source: "org", provider };
     }
   }
 
