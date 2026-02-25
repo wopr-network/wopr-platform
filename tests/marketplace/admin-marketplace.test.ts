@@ -46,7 +46,7 @@ describe("admin marketplace routes", () => {
 
   beforeEach(() => {
     repo = makeMockRepo();
-    const routes = createAdminMarketplaceRoutes(repo);
+    const routes = createAdminMarketplaceRoutes(() => repo);
     app = new Hono();
     // Simulate admin auth middleware setting user
     app.use("*", async (c, next) => {

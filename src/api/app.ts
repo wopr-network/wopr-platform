@@ -5,7 +5,12 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { RoleStore } from "../admin/roles/role-store.js";
 import type { AuthUser } from "../auth/index.js";
-import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
+import {
+  buildTokenMetadataMap,
+  extractBearerToken,
+  resolveSessionUser,
+  scopedBearerAuthWithTenant,
+} from "../auth/index.js";
 import { logger } from "../config/logger.js";
 import { getDb, getMarketplacePluginRepo, getOrgRepo } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
@@ -254,17 +259,14 @@ app.route("/api/admin/gpu", adminGpuRoutes);
 app.route("/api/admin/migrate", adminMigrationRoutes);
 app.route("/api/admin/users", adminUsersApiRoutes);
 // Admin marketplace routes (WOP-1031)
-// Deferred init so DB is not opened at module load time (tests import app.ts without a live DB).
+// Deps factory defers getMarketplacePluginRepo() until first request so the DB
+// is not opened at module load time (tests import app.ts without a live DB).
 {
-  let _adminMarketplaceRoutes: ReturnType<typeof createAdminMarketplaceRoutes> | null = null;
-  const lazyAdminMarketplace = new Hono();
-  lazyAdminMarketplace.all("/*", async (c) => {
-    if (!_adminMarketplaceRoutes) {
-      _adminMarketplaceRoutes = createAdminMarketplaceRoutes(getMarketplacePluginRepo());
-    }
-    return _adminMarketplaceRoutes.fetch(c.req.raw, c.env);
-  });
-  app.route("/api/admin/marketplace", lazyAdminMarketplace);
+  const _marketplaceAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
+  const _adminMarketplace = new Hono();
+  _adminMarketplace.use("*", _marketplaceAdminAuth);
+  _adminMarketplace.route("/", createAdminMarketplaceRoutes(getMarketplacePluginRepo));
+  app.route("/api/admin/marketplace", _adminMarketplace);
 }
 app.route("/api/channel-oauth", channelOAuthRoutes);
 app.route("/api/channels", channelValidateRoutes);

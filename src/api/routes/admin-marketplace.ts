@@ -18,17 +18,23 @@ const updatePluginSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
-export function createAdminMarketplaceRoutes(repo: IMarketplacePluginRepository): Hono<AuthEnv> {
+export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePluginRepository): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
+
+  let _repo: IMarketplacePluginRepository | null = null;
+  const repo = (): IMarketplacePluginRepository => {
+    if (!_repo) _repo = repoFactory();
+    return _repo;
+  };
 
   // GET /plugins — list all marketplace plugins
   routes.get("/plugins", (c) => {
-    return c.json(repo.findAll());
+    return c.json(repo().findAll());
   });
 
   // GET /queue — list plugins pending review (enabled = false)
   routes.get("/queue", (c) => {
-    return c.json(repo.findPendingReview());
+    return c.json(repo().findPendingReview());
   });
 
   // POST /plugins — manually add a plugin by npm package name
@@ -40,12 +46,12 @@ export function createAdminMarketplaceRoutes(repo: IMarketplacePluginRepository)
     }
 
     const { npmPackage, version, category, notes } = parsed.data;
-    const existing = repo.findById(npmPackage);
+    const existing = repo().findById(npmPackage);
     if (existing) {
       return c.json({ error: "Plugin already exists" }, 409);
     }
 
-    const plugin = repo.insert({
+    const plugin = repo().insert({
       pluginId: npmPackage,
       npmPackage,
       version,
@@ -58,7 +64,7 @@ export function createAdminMarketplaceRoutes(repo: IMarketplacePluginRepository)
   // PATCH /plugins/:id — update plugin (enable/disable, feature, sort, notes)
   routes.patch("/plugins/:id", async (c) => {
     const id = c.req.param("id");
-    const existing = repo.findById(id);
+    const existing = repo().findById(id);
     if (!existing) {
       return c.json({ error: "Plugin not found" }, 404);
     }
@@ -76,7 +82,7 @@ export function createAdminMarketplaceRoutes(repo: IMarketplacePluginRepository)
       if (user) patch.enabledBy = user.id;
     }
 
-    const updated = repo.update(
+    const updated = repo().update(
       id,
       patch as Partial<import("../../marketplace/marketplace-repository-types.js").MarketplacePlugin>,
     );
@@ -86,11 +92,11 @@ export function createAdminMarketplaceRoutes(repo: IMarketplacePluginRepository)
   // DELETE /plugins/:id — remove a plugin from the registry
   routes.delete("/plugins/:id", (c) => {
     const id = c.req.param("id");
-    const existing = repo.findById(id);
+    const existing = repo().findById(id);
     if (!existing) {
       return c.json({ error: "Plugin not found" }, 404);
     }
-    repo.delete(id);
+    repo().delete(id);
     return c.body(null, 204);
   });
 
@@ -99,7 +105,7 @@ export function createAdminMarketplaceRoutes(repo: IMarketplacePluginRepository)
     const { discoverNpmPlugins } = await import("../../marketplace/npm-discovery.js");
     const { logger } = await import("../../config/logger.js");
     const result = await discoverNpmPlugins({
-      repo,
+      repo: repo(),
       notify: (msg: string) => {
         logger.info(`[Marketplace] ${msg}`);
       },
