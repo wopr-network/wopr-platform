@@ -52,17 +52,15 @@ export class OrgService {
    */
   getOrCreatePersonalOrg(userId: string, displayName: string): OrgWithMembers {
     const tenant = this.orgRepo.ensurePersonalTenant(userId, displayName);
-    // Ensure the owner member row exists
-    const existing = this.memberRepo.findMember(tenant.id, userId);
-    if (!existing) {
-      this.memberRepo.addMember({
-        id: crypto.randomUUID(),
-        orgId: tenant.id,
-        userId,
-        role: "owner",
-        joinedAt: Date.now(),
-      });
-    }
+    // Ensure the owner member row exists. Use addMember (which uses ON CONFLICT DO NOTHING)
+    // unconditionally to handle concurrent calls that may race past findMember.
+    this.memberRepo.addMember({
+      id: crypto.randomUUID(),
+      orgId: tenant.id,
+      userId,
+      role: "owner",
+      joinedAt: Date.now(),
+    });
     return this.buildOrgWithMembers(tenant);
   }
 
@@ -147,7 +145,7 @@ export class OrgService {
     if (!member) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
     }
-    if (member.role === "admin" || member.role === "owner") {
+    if (member.role === "admin") {
       const count = this.memberRepo.countAdminsAndOwners(orgId);
       if (count <= 1) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove the last admin" });

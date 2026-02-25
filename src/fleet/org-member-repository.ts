@@ -6,7 +6,7 @@
  * See: src/fleet/bot-instance-repository.ts
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { organizationInvites, organizationMembers } from "../db/schema/organization-members.js";
 
@@ -87,7 +87,7 @@ export class DrizzleOrgMemberRepository implements IOrgMemberRepository {
   }
 
   addMember(member: OrgMemberRow): void {
-    this.db.insert(organizationMembers).values(member).run();
+    this.db.insert(organizationMembers).values(member).onConflictDoNothing().run();
   }
 
   updateMemberRole(orgId: string, userId: string, role: "owner" | "admin" | "member"): void {
@@ -115,7 +115,11 @@ export class DrizzleOrgMemberRepository implements IOrgMemberRepository {
   }
 
   countAdminsAndOwners(orgId: string): number {
-    return this.listMembers(orgId).filter((m) => m.role === "admin" || m.role === "owner").length;
+    return this.db
+      .select()
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.orgId, orgId), inArray(organizationMembers.role, ["admin", "owner"])))
+      .all().length;
   }
 
   listInvites(orgId: string): OrgInviteRow[] {
@@ -123,9 +127,8 @@ export class DrizzleOrgMemberRepository implements IOrgMemberRepository {
     return this.db
       .select()
       .from(organizationInvites)
-      .where(eq(organizationInvites.orgId, orgId))
+      .where(and(eq(organizationInvites.orgId, orgId), gt(organizationInvites.expiresAt, now)))
       .all()
-      .filter((r) => r.expiresAt > now)
       .map(toInvite);
   }
 
