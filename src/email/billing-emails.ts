@@ -5,12 +5,9 @@
  * per tenant per day. All queries use Drizzle — zero raw SQL.
  */
 
-import crypto from "node:crypto";
-import { and, eq } from "drizzle-orm";
 import { logger } from "../config/logger.js";
-import type { DrizzleDb } from "../db/index.js";
-import { emailNotifications } from "../db/schema/email-notifications.js";
 import type { EmailClient } from "./client.js";
+import type { IBillingEmailRepository } from "./drizzle-billing-email-repository.js";
 import {
   botDestructionTemplate,
   botSuspendedTemplate,
@@ -22,59 +19,35 @@ import {
 export type BillingEmailType = "credit-purchase" | "low-balance" | "bot-suspended" | "bot-destruction" | "data-deleted";
 
 export interface BillingEmailServiceConfig {
-  db: DrizzleDb;
+  billingEmailRepo: IBillingEmailRepository;
   emailClient: EmailClient;
   /** Base URL for CTA links (e.g. "https://app.wopr.bot"). */
   appBaseUrl: string;
 }
 
 export class BillingEmailService {
-  private readonly db: DrizzleDb;
+  private readonly billingEmailRepo: IBillingEmailRepository;
   private readonly emailClient: EmailClient;
   private readonly appBaseUrl: string;
 
   constructor(config: BillingEmailServiceConfig) {
-    this.db = config.db;
+    this.billingEmailRepo = config.billingEmailRepo;
     this.emailClient = config.emailClient;
     this.appBaseUrl = config.appBaseUrl;
   }
 
   /**
    * Check if an email of this type was already sent today for this tenant.
-   * Uses Drizzle queries only — no raw SQL.
    */
   shouldSendEmail(tenantId: string, emailType: BillingEmailType): boolean {
-    const today = new Date().toISOString().split("T")[0];
-    const existing = this.db
-      .select({ id: emailNotifications.id })
-      .from(emailNotifications)
-      .where(
-        and(
-          eq(emailNotifications.tenantId, tenantId),
-          eq(emailNotifications.emailType, emailType),
-          eq(emailNotifications.sentDate, today),
-        ),
-      )
-      .limit(1)
-      .get();
-
-    return existing == null;
+    return this.billingEmailRepo.shouldSend(tenantId, emailType);
   }
 
   /**
-   * Record that an email was sent. Uses Drizzle insert — no raw SQL.
+   * Record that an email was sent.
    */
   recordEmailSent(tenantId: string, emailType: BillingEmailType): void {
-    const today = new Date().toISOString().split("T")[0];
-    this.db
-      .insert(emailNotifications)
-      .values({
-        id: crypto.randomUUID(),
-        tenantId,
-        emailType,
-        sentDate: today,
-      })
-      .run();
+    this.billingEmailRepo.recordSent(tenantId, emailType);
   }
 
   /**

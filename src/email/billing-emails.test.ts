@@ -4,6 +4,7 @@ import { createDb, type DrizzleDb } from "../db/index.js";
 import { emailNotifications } from "../db/schema/email-notifications.js";
 import { BillingEmailService } from "./billing-emails.js";
 import { EmailClient } from "./client.js";
+import { DrizzleBillingEmailRepository } from "./drizzle-billing-email-repository.js";
 
 vi.mock("resend", () => ({
   Resend: class MockResend {
@@ -47,7 +48,7 @@ describe("BillingEmailService", () => {
       from: "noreply@wopr.bot",
     });
     service = new BillingEmailService({
-      db,
+      billingEmailRepo: new DrizzleBillingEmailRepository(db),
       emailClient,
       appBaseUrl: "https://app.wopr.bot",
     });

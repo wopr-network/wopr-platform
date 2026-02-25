@@ -132,7 +132,10 @@
         "src/admin/rates/rate-store.ts",
         "src/admin/roles/role-store.ts",
         "src/admin/users/user-store.ts",
-        "src/admin/analytics/analytics-store.ts"
+        "src/admin/analytics/analytics-store.ts",
+        "src/email/notification-preferences-store.ts",
+        "src/email/notification-queue-store.ts",
+        "src/email/drizzle-billing-email-repository.ts"
       ],
       "linter": {
         "rules": {
@@ -159,9 +162,6 @@
       "includes": [
         "src/index.ts",
         "src/auth/better-auth.ts",
-        "src/email/notification-queue-store.ts",
-        "src/email/billing-emails.ts",
-        "src/email/notification-preferences-store.ts",
         "src/email/verification.ts",
         "src/email/require-verified.ts",
         "src/api/routes/activity.ts",

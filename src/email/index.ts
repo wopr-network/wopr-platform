@@ -13,6 +13,8 @@ export type { BillingEmailServiceConfig, BillingEmailType } from "./billing-emai
 export { BillingEmailService } from "./billing-emails.js";
 export type { EmailClientConfig, EmailSendResult, SendTemplateEmailOpts } from "./client.js";
 export { EmailClient, getEmailClient, resetEmailClient, setEmailClient } from "./client.js";
+export type { IBillingEmailRepository } from "./drizzle-billing-email-repository.js";
+export { DrizzleBillingEmailRepository } from "./drizzle-billing-email-repository.js";
 export type { INotificationPreferencesStore } from "./notification-preferences-store.js";
 export { NotificationPreferencesStore } from "./notification-preferences-store.js";
 export type { INotificationQueueStore } from "./notification-queue-store.js";
