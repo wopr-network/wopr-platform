@@ -8,6 +8,7 @@
 import BetterSqlite3 from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createDb } from "../db/index.js";
+import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
 import { setTwoFactorRouterDeps } from "../trpc/routers/two-factor.js";
@@ -49,7 +50,7 @@ function userCtx(tenantId = "t1"): TRPCContext {
 describe("twoFactor tRPC router", () => {
   beforeEach(() => {
     const db = createTestDb();
-    setTwoFactorRouterDeps({ getDb: () => db });
+    setTwoFactorRouterDeps({ twoFactorRepo: new DrizzleTwoFactorRepository(db) });
   });
 
   describe("getMandateStatus", () => {
@@ -62,7 +63,7 @@ describe("twoFactor tRPC router", () => {
 
     it("returns the stored mandate status", async () => {
       const db = createTestDb();
-      setTwoFactorRouterDeps({ getDb: () => db });
+      setTwoFactorRouterDeps({ twoFactorRepo: new DrizzleTwoFactorRepository(db) });
 
       // Set mandate via admin first
       const admin = createCaller(adminCtx("tenant-a"));
@@ -98,7 +99,7 @@ describe("twoFactor tRPC router", () => {
 
     it("upserts on conflict — second call overwrites first", async () => {
       const db = createTestDb();
-      setTwoFactorRouterDeps({ getDb: () => db });
+      setTwoFactorRouterDeps({ twoFactorRepo: new DrizzleTwoFactorRepository(db) });
       const caller = createCaller(adminCtx("tenant-d"));
       await caller.twoFactor.setMandateStatus({ tenantId: "tenant-d", requireTwoFactor: true });
       await caller.twoFactor.setMandateStatus({ tenantId: "tenant-d", requireTwoFactor: false });

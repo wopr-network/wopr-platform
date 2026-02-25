@@ -6,10 +6,8 @@
  */
 
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
-import type { DrizzleDb } from "../../db/index.js";
-import { tenantSecuritySettings } from "../../db/schema/security-settings.js";
+import type { ITwoFactorRepository } from "../../security/two-factor-repository.js";
 import { protectedProcedure, router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -17,7 +15,7 @@ import { protectedProcedure, router, tenantProcedure } from "../init.js";
 // ---------------------------------------------------------------------------
 
 export interface TwoFactorRouterDeps {
-  getDb: () => DrizzleDb;
+  twoFactorRepo: ITwoFactorRepository;
 }
 
 let _deps: TwoFactorRouterDeps | null = null;
@@ -49,16 +47,7 @@ function assertAdmin(user: { id: string; roles?: string[] }): void {
 export const twoFactorRouter = router({
   /** Get the 2FA mandate status for the authenticated tenant. */
   getMandateStatus: tenantProcedure.query(async ({ ctx }) => {
-    const db = deps().getDb();
-    const row = await db
-      .select()
-      .from(tenantSecuritySettings)
-      .where(eq(tenantSecuritySettings.tenantId, ctx.tenantId))
-      .get();
-    return {
-      tenantId: ctx.tenantId,
-      requireTwoFactor: row?.requireTwoFactor ?? false,
-    };
+    return deps().twoFactorRepo.getMandateStatus(ctx.tenantId);
   }),
 
   /** Enable or disable the 2FA mandate for the authenticated tenant. Admin only. */
@@ -66,15 +55,6 @@ export const twoFactorRouter = router({
     .input(z.object({ tenantId: z.string().min(1), requireTwoFactor: z.boolean() }))
     .mutation(async ({ input, ctx }) => {
       assertAdmin(ctx.user);
-      const db = deps().getDb();
-      const now = Date.now();
-      await db
-        .insert(tenantSecuritySettings)
-        .values({ tenantId: input.tenantId, requireTwoFactor: input.requireTwoFactor, updatedAt: now })
-        .onConflictDoUpdate({
-          target: tenantSecuritySettings.tenantId,
-          set: { requireTwoFactor: input.requireTwoFactor, updatedAt: now },
-        });
-      return { tenantId: input.tenantId, requireTwoFactor: input.requireTwoFactor };
+      return deps().twoFactorRepo.setMandateStatus(input.tenantId, input.requireTwoFactor);
     }),
 });
