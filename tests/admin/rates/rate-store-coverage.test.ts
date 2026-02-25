@@ -1,25 +1,21 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../../src/admin/rates/rate-store.js";
-import { initRateSchema } from "../../../src/admin/rates/schema.js";
-
-function createTestDb() {
-	const db = new BetterSqlite3(":memory:");
-	initRateSchema(db);
-	return db;
-}
+import type { DrizzleDb } from "../../../src/db/index.js";
+import { createTestDb as createMigratedTestDb } from "../../../src/test/db.js";
 
 describe("RateStore - Uniqueness Constraints Coverage", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = createTestDb();
+		({ db, sqlite } = createMigratedTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("allows multiple sell rates with different models for same capability", () => {
@@ -113,16 +109,17 @@ describe("RateStore - Uniqueness Constraints Coverage", () => {
 });
 
 describe("RateStore - listPublicRates Coverage", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = createTestDb();
+		({ db, sqlite } = createMigratedTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("returns only active sell rates", () => {
@@ -186,16 +183,17 @@ describe("RateStore - listPublicRates Coverage", () => {
 });
 
 describe("RateStore - Filter Coverage", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = createTestDb();
+		({ db, sqlite } = createMigratedTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("filters provider costs by adapter", () => {
@@ -346,16 +344,17 @@ describe("RateStore - Filter Coverage", () => {
 });
 
 describe("RateStore - Partial Updates", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = createTestDb();
+		({ db, sqlite } = createMigratedTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("updates sell rate individual fields", () => {

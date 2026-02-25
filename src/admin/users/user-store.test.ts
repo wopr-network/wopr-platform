@@ -2,6 +2,7 @@ import type BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminUsersApiRoutes } from "../../api/routes/admin-users.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb as createMigratedTestDb } from "../../test/db.js";
 import { AdminUserStore } from "./user-store.js";
 
@@ -9,13 +10,12 @@ import { AdminUserStore } from "./user-store.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createTestDb(): BetterSqlite3.Database {
-  const { sqlite } = createMigratedTestDb();
-  return sqlite;
+function createTestDb(): { db: DrizzleDb; sqlite: BetterSqlite3.Database } {
+  return createMigratedTestDb();
 }
 
 function insertUser(
-  db: BetterSqlite3.Database,
+  sqlite: BetterSqlite3.Database,
   overrides: Partial<{
     id: string;
     email: string;
@@ -42,21 +42,23 @@ function insertUser(
     created_at: Date.now(),
   };
   const row = { ...defaults, ...overrides };
-  db.prepare(
-    `INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, last_seen, created_at)
+  sqlite
+    .prepare(
+      `INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, last_seen, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    row.id,
-    row.email,
-    row.name,
-    row.tenant_id,
-    row.status,
-    row.role,
-    row.credit_balance_cents,
-    row.agent_count,
-    row.last_seen,
-    row.created_at,
-  );
+    )
+    .run(
+      row.id,
+      row.email,
+      row.name,
+      row.tenant_id,
+      row.status,
+      row.role,
+      row.credit_balance_cents,
+      row.agent_count,
+      row.last_seen,
+      row.created_at,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -65,116 +67,117 @@ function insertUser(
 
 describe("admin_users schema (via Drizzle migration)", () => {
   it("creates admin_users table", () => {
-    const db = createTestDb();
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_users'").all() as {
+    const { sqlite } = createTestDb();
+    const tables = sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_users'").all() as {
       name: string;
     }[];
     expect(tables).toHaveLength(1);
-    db.close();
+    sqlite.close();
   });
 
   it("creates expected indexes", () => {
-    const db = createTestDb();
-    const indexes = db
+    const { sqlite } = createTestDb();
+    const indexes = sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_admin_users_%'")
       .all() as { name: string }[];
     expect(indexes.length).toBeGreaterThanOrEqual(6);
-    db.close();
+    sqlite.close();
   });
 
   it("enforces status CHECK constraint", () => {
-    const db = createTestDb();
+    const { sqlite } = createTestDb();
     expect(() =>
-      db
+      sqlite
         .prepare(
           "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run("u1", "a@b.com", "t1", "invalid_status", "user", 0, 0, Date.now()),
     ).toThrow();
-    db.close();
+    sqlite.close();
   });
 
   it("enforces role CHECK constraint", () => {
-    const db = createTestDb();
+    const { sqlite } = createTestDb();
     expect(() =>
-      db
+      sqlite
         .prepare(
           "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run("u1", "a@b.com", "t1", "active", "invalid_role", 0, 0, Date.now()),
     ).toThrow();
-    db.close();
+    sqlite.close();
   });
 
   it("enforces NOT NULL on email", () => {
-    const db = createTestDb();
+    const { sqlite } = createTestDb();
     expect(() =>
-      db
+      sqlite
         .prepare(
           "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run("u1", null, "t1", "active", "user", 0, 0, Date.now()),
     ).toThrow();
-    db.close();
+    sqlite.close();
   });
 
   it("enforces NOT NULL on tenant_id", () => {
-    const db = createTestDb();
+    const { sqlite } = createTestDb();
     expect(() =>
-      db
+      sqlite
         .prepare(
           "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run("u1", "a@b.com", null, "active", "user", 0, 0, Date.now()),
     ).toThrow();
-    db.close();
+    sqlite.close();
   });
 
   it("enforces PRIMARY KEY uniqueness", () => {
-    const db = createTestDb();
-    db.prepare(
-      "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("dup", "a@b.com", "t1", "active", "user", 0, 0, Date.now());
+    const { sqlite } = createTestDb();
+    sqlite
+      .prepare(
+        "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("dup", "a@b.com", "t1", "active", "user", 0, 0, Date.now());
     expect(() =>
-      db
+      sqlite
         .prepare(
           "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run("dup", "b@b.com", "t2", "active", "user", 0, 0, Date.now()),
     ).toThrow();
-    db.close();
+    sqlite.close();
   });
 
   it("allows NULL for name and last_seen", () => {
-    const db = createTestDb();
-    db.prepare(
-      "INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, last_seen, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("u-null", "a@b.com", null, "t1", "active", "user", 0, 0, null, Date.now());
-    const row = db.prepare("SELECT name, last_seen FROM admin_users WHERE id = ?").get("u-null") as {
+    const { sqlite } = createTestDb();
+    sqlite
+      .prepare(
+        "INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, last_seen, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run("u-null", "a@b.com", null, "t1", "active", "user", 0, 0, null, Date.now());
+    const row = sqlite.prepare("SELECT name, last_seen FROM admin_users WHERE id = ?").get("u-null") as {
       name: string | null;
       last_seen: number | null;
     };
     expect(row.name).toBeNull();
     expect(row.last_seen).toBeNull();
-    db.close();
+    sqlite.close();
   });
 
   it("provides correct defaults", () => {
-    const db = createTestDb();
-    db.prepare("INSERT INTO admin_users (id, email, tenant_id, created_at) VALUES (?, ?, ?, ?)").run(
-      "u-defaults",
-      "a@b.com",
-      "t1",
-      Date.now(),
-    );
-    const row = db
+    const { sqlite } = createTestDb();
+    sqlite
+      .prepare("INSERT INTO admin_users (id, email, tenant_id, created_at) VALUES (?, ?, ?, ?)")
+      .run("u-defaults", "a@b.com", "t1", Date.now());
+    const row = sqlite
       .prepare("SELECT status, role, credit_balance_cents, agent_count FROM admin_users WHERE id = ?")
       .get("u-defaults") as { status: string; role: string; credit_balance_cents: number; agent_count: number };
     expect(row.status).toBe("active");
     expect(row.role).toBe("user");
     expect(row.credit_balance_cents).toBe(0);
     expect(row.agent_count).toBe(0);
-    db.close();
+    sqlite.close();
   });
 });
 
@@ -183,16 +186,19 @@ describe("admin_users schema (via Drizzle migration)", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.list", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let store: AdminUserStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     store = new AdminUserStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns empty list when no users", () => {
@@ -205,7 +211,7 @@ describe("AdminUserStore.list", () => {
 
   it("returns all users with default pagination", () => {
     for (let i = 0; i < 5; i++) {
-      insertUser(db, { id: `user-${i}` });
+      insertUser(sqlite, { id: `user-${i}` });
     }
     const result = store.list();
     expect(result.users).toHaveLength(5);
@@ -214,7 +220,7 @@ describe("AdminUserStore.list", () => {
 
   it("paginates with limit and offset", () => {
     for (let i = 0; i < 10; i++) {
-      insertUser(db, { id: `user-${i}`, created_at: Date.now() + i });
+      insertUser(sqlite, { id: `user-${i}`, created_at: Date.now() + i });
     }
     const page1 = store.list({ limit: 3, offset: 0 });
     expect(page1.users).toHaveLength(3);
@@ -229,16 +235,16 @@ describe("AdminUserStore.list", () => {
 
   it("caps limit at 100", () => {
     for (let i = 0; i < 5; i++) {
-      insertUser(db, { id: `user-${i}` });
+      insertUser(sqlite, { id: `user-${i}` });
     }
     const result = store.list({ limit: 999 });
     expect(result.limit).toBe(100);
   });
 
   it("filters by status", () => {
-    insertUser(db, { id: "active-1", status: "active" });
-    insertUser(db, { id: "suspended-1", status: "suspended" });
-    insertUser(db, { id: "dormant-1", status: "dormant" });
+    insertUser(sqlite, { id: "active-1", status: "active" });
+    insertUser(sqlite, { id: "suspended-1", status: "suspended" });
+    insertUser(sqlite, { id: "dormant-1", status: "dormant" });
 
     const result = store.list({ status: "suspended" });
     expect(result.users).toHaveLength(1);
@@ -247,9 +253,9 @@ describe("AdminUserStore.list", () => {
   });
 
   it("filters by role", () => {
-    insertUser(db, { id: "admin-1", role: "platform_admin" });
-    insertUser(db, { id: "user-1", role: "user" });
-    insertUser(db, { id: "tenant-admin-1", role: "tenant_admin" });
+    insertUser(sqlite, { id: "admin-1", role: "platform_admin" });
+    insertUser(sqlite, { id: "user-1", role: "user" });
+    insertUser(sqlite, { id: "tenant-admin-1", role: "tenant_admin" });
 
     const result = store.list({ role: "platform_admin" });
     expect(result.users).toHaveLength(1);
@@ -257,8 +263,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("filters by hasCredits", () => {
-    insertUser(db, { id: "rich", credit_balance_cents: 5000 });
-    insertUser(db, { id: "broke", credit_balance_cents: 0 });
+    insertUser(sqlite, { id: "rich", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "broke", credit_balance_cents: 0 });
 
     const result = store.list({ hasCredits: true });
     expect(result.users).toHaveLength(1);
@@ -266,8 +272,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("filters users with no credits when hasCredits is false", () => {
-    insertUser(db, { id: "rich", credit_balance_cents: 5000 });
-    insertUser(db, { id: "broke", credit_balance_cents: 0 });
+    insertUser(sqlite, { id: "rich", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "broke", credit_balance_cents: 0 });
 
     const result = store.list({ hasCredits: false });
     expect(result.users).toHaveLength(1);
@@ -275,9 +281,9 @@ describe("AdminUserStore.list", () => {
   });
 
   it("filters by lowBalance", () => {
-    insertUser(db, { id: "low", credit_balance_cents: 200 });
-    insertUser(db, { id: "high", credit_balance_cents: 5000 });
-    insertUser(db, { id: "zero", credit_balance_cents: 0 });
+    insertUser(sqlite, { id: "low", credit_balance_cents: 200 });
+    insertUser(sqlite, { id: "high", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "zero", credit_balance_cents: 0 });
 
     const result = store.list({ lowBalance: true });
     expect(result.users).toHaveLength(2);
@@ -287,9 +293,9 @@ describe("AdminUserStore.list", () => {
   });
 
   it("searches across name, email, and tenant_id", () => {
-    insertUser(db, { id: "u1", name: "Alice Smith", email: "alice@example.com", tenant_id: "acme" });
-    insertUser(db, { id: "u2", name: "Bob Jones", email: "bob@example.com", tenant_id: "globex" });
-    insertUser(db, { id: "u3", name: "Charlie", email: "charlie@acme.io", tenant_id: "other" });
+    insertUser(sqlite, { id: "u1", name: "Alice Smith", email: "alice@example.com", tenant_id: "acme" });
+    insertUser(sqlite, { id: "u2", name: "Bob Jones", email: "bob@example.com", tenant_id: "globex" });
+    insertUser(sqlite, { id: "u3", name: "Charlie", email: "charlie@acme.io", tenant_id: "other" });
 
     const result = store.list({ search: "acme" });
     expect(result.users).toHaveLength(2);
@@ -299,14 +305,14 @@ describe("AdminUserStore.list", () => {
   });
 
   it("search is case-insensitive (via LIKE)", () => {
-    insertUser(db, { id: "u1", name: "Alice Smith" });
+    insertUser(sqlite, { id: "u1", name: "Alice Smith" });
     const result = store.list({ search: "alice" });
     expect(result.users).toHaveLength(1);
   });
 
   it("search escapes LIKE wildcards", () => {
-    insertUser(db, { id: "u1", name: "100% complete" });
-    insertUser(db, { id: "u2", name: "not a match" });
+    insertUser(sqlite, { id: "u1", name: "100% complete" });
+    insertUser(sqlite, { id: "u2", name: "not a match" });
 
     const result = store.list({ search: "100%" });
     expect(result.users).toHaveLength(1);
@@ -314,8 +320,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("sorts by created_at descending by default", () => {
-    insertUser(db, { id: "old", created_at: 1000 });
-    insertUser(db, { id: "new", created_at: 2000 });
+    insertUser(sqlite, { id: "old", created_at: 1000 });
+    insertUser(sqlite, { id: "new", created_at: 2000 });
 
     const result = store.list();
     expect(result.users[0].id).toBe("new");
@@ -323,8 +329,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("sorts by created_at ascending", () => {
-    insertUser(db, { id: "old", created_at: 1000 });
-    insertUser(db, { id: "new", created_at: 2000 });
+    insertUser(sqlite, { id: "old", created_at: 1000 });
+    insertUser(sqlite, { id: "new", created_at: 2000 });
 
     const result = store.list({ sortBy: "created_at", sortOrder: "asc" });
     expect(result.users[0].id).toBe("old");
@@ -332,8 +338,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("sorts by balance", () => {
-    insertUser(db, { id: "low", credit_balance_cents: 100, created_at: 1000 });
-    insertUser(db, { id: "high", credit_balance_cents: 5000, created_at: 2000 });
+    insertUser(sqlite, { id: "low", credit_balance_cents: 100, created_at: 1000 });
+    insertUser(sqlite, { id: "high", credit_balance_cents: 5000, created_at: 2000 });
 
     const result = store.list({ sortBy: "balance", sortOrder: "desc" });
     expect(result.users[0].id).toBe("high");
@@ -341,8 +347,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("sorts by agent_count", () => {
-    insertUser(db, { id: "few", agent_count: 1, created_at: 1000 });
-    insertUser(db, { id: "many", agent_count: 10, created_at: 2000 });
+    insertUser(sqlite, { id: "few", agent_count: 1, created_at: 1000 });
+    insertUser(sqlite, { id: "many", agent_count: 10, created_at: 2000 });
 
     const result = store.list({ sortBy: "agent_count", sortOrder: "desc" });
     expect(result.users[0].id).toBe("many");
@@ -350,8 +356,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("sorts by last_seen", () => {
-    insertUser(db, { id: "recent", last_seen: 2000, created_at: 1000 });
-    insertUser(db, { id: "stale", last_seen: 1000, created_at: 2000 });
+    insertUser(sqlite, { id: "recent", last_seen: 2000, created_at: 1000 });
+    insertUser(sqlite, { id: "stale", last_seen: 1000, created_at: 2000 });
 
     const result = store.list({ sortBy: "last_seen", sortOrder: "desc" });
     expect(result.users[0].id).toBe("recent");
@@ -359,10 +365,10 @@ describe("AdminUserStore.list", () => {
   });
 
   it("combines multiple filters", () => {
-    insertUser(db, { id: "match", status: "active", role: "user", credit_balance_cents: 5000 });
-    insertUser(db, { id: "wrong-status", status: "suspended", role: "user", credit_balance_cents: 5000 });
-    insertUser(db, { id: "wrong-role", status: "active", role: "platform_admin", credit_balance_cents: 5000 });
-    insertUser(db, { id: "no-credits", status: "active", role: "user", credit_balance_cents: 0 });
+    insertUser(sqlite, { id: "match", status: "active", role: "user", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "wrong-status", status: "suspended", role: "user", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "wrong-role", status: "active", role: "platform_admin", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "no-credits", status: "active", role: "user", credit_balance_cents: 0 });
 
     const result = store.list({ status: "active", role: "user", hasCredits: true });
     expect(result.users).toHaveLength(1);
@@ -375,21 +381,24 @@ describe("AdminUserStore.list", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.search", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let store: AdminUserStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     store = new AdminUserStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("searches by name", () => {
-    insertUser(db, { id: "u1", name: "Alice Smith" });
-    insertUser(db, { id: "u2", name: "Bob Jones" });
+    insertUser(sqlite, { id: "u1", name: "Alice Smith" });
+    insertUser(sqlite, { id: "u2", name: "Bob Jones" });
 
     const results = store.search("Alice");
     expect(results).toHaveLength(1);
@@ -397,8 +406,8 @@ describe("AdminUserStore.search", () => {
   });
 
   it("searches by email", () => {
-    insertUser(db, { id: "u1", email: "alice@example.com" });
-    insertUser(db, { id: "u2", email: "bob@other.com" });
+    insertUser(sqlite, { id: "u1", email: "alice@example.com" });
+    insertUser(sqlite, { id: "u2", email: "bob@other.com" });
 
     const results = store.search("example.com");
     expect(results).toHaveLength(1);
@@ -406,8 +415,8 @@ describe("AdminUserStore.search", () => {
   });
 
   it("searches by tenant_id", () => {
-    insertUser(db, { id: "u1", tenant_id: "acme-corp" });
-    insertUser(db, { id: "u2", tenant_id: "globex" });
+    insertUser(sqlite, { id: "u1", tenant_id: "acme-corp" });
+    insertUser(sqlite, { id: "u2", tenant_id: "globex" });
 
     const results = store.search("acme");
     expect(results).toHaveLength(1);
@@ -415,14 +424,14 @@ describe("AdminUserStore.search", () => {
   });
 
   it("returns empty array when no matches", () => {
-    insertUser(db, { id: "u1", name: "Alice" });
+    insertUser(sqlite, { id: "u1", name: "Alice" });
     const results = store.search("nonexistent");
     expect(results).toHaveLength(0);
   });
 
   it("limits results to 50", () => {
     for (let i = 0; i < 60; i++) {
-      insertUser(db, { id: `user-${i}`, name: "Searchable Name" });
+      insertUser(sqlite, { id: `user-${i}`, name: "Searchable Name" });
     }
     const results = store.search("Searchable");
     expect(results).toHaveLength(50);
@@ -434,20 +443,23 @@ describe("AdminUserStore.search", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.getById", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let store: AdminUserStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     store = new AdminUserStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns user by ID", () => {
-    insertUser(db, {
+    insertUser(sqlite, {
       id: "user-1",
       email: "alice@example.com",
       name: "Alice",
@@ -485,19 +497,22 @@ describe("AdminUserStore.getById", () => {
 // ---------------------------------------------------------------------------
 
 describe("admin users API routes", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("GET / returns paginated user list", async () => {
     for (let i = 0; i < 5; i++) {
-      insertUser(db, { id: `user-${i}` });
+      insertUser(sqlite, { id: `user-${i}` });
     }
 
     const app = new Hono();
@@ -513,8 +528,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports search filter", async () => {
-    insertUser(db, { id: "u1", name: "Alice Smith" });
-    insertUser(db, { id: "u2", name: "Bob Jones" });
+    insertUser(sqlite, { id: "u1", name: "Alice Smith" });
+    insertUser(sqlite, { id: "u2", name: "Bob Jones" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -526,8 +541,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports status filter", async () => {
-    insertUser(db, { id: "active-1", status: "active" });
-    insertUser(db, { id: "suspended-1", status: "suspended" });
+    insertUser(sqlite, { id: "active-1", status: "active" });
+    insertUser(sqlite, { id: "suspended-1", status: "suspended" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -539,8 +554,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports role filter", async () => {
-    insertUser(db, { id: "admin-1", role: "platform_admin" });
-    insertUser(db, { id: "user-1", role: "user" });
+    insertUser(sqlite, { id: "admin-1", role: "platform_admin" });
+    insertUser(sqlite, { id: "user-1", role: "user" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -552,8 +567,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports hasCredits filter", async () => {
-    insertUser(db, { id: "rich", credit_balance_cents: 5000 });
-    insertUser(db, { id: "broke", credit_balance_cents: 0 });
+    insertUser(sqlite, { id: "rich", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "broke", credit_balance_cents: 0 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -565,8 +580,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports sorting", async () => {
-    insertUser(db, { id: "old", created_at: 1000 });
-    insertUser(db, { id: "new", created_at: 2000 });
+    insertUser(sqlite, { id: "old", created_at: 1000 });
+    insertUser(sqlite, { id: "new", created_at: 2000 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -579,7 +594,7 @@ describe("admin users API routes", () => {
 
   it("GET / supports pagination", async () => {
     for (let i = 0; i < 10; i++) {
-      insertUser(db, { id: `user-${i}` });
+      insertUser(sqlite, { id: `user-${i}` });
     }
 
     const app = new Hono();
@@ -593,7 +608,7 @@ describe("admin users API routes", () => {
   });
 
   it("GET / ignores invalid status filter", async () => {
-    insertUser(db, { id: "u1", status: "active" });
+    insertUser(sqlite, { id: "u1", status: "active" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -605,7 +620,7 @@ describe("admin users API routes", () => {
   });
 
   it("GET /:userId returns single user", async () => {
-    insertUser(db, { id: "user-42", email: "alice@example.com", name: "Alice" });
+    insertUser(sqlite, { id: "user-42", email: "alice@example.com", name: "Alice" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -629,8 +644,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports lowBalance filter", async () => {
-    insertUser(db, { id: "low", credit_balance_cents: 200 });
-    insertUser(db, { id: "high", credit_balance_cents: 5000 });
+    insertUser(sqlite, { id: "low", credit_balance_cents: 200 });
+    insertUser(sqlite, { id: "high", credit_balance_cents: 5000 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));

@@ -2,17 +2,12 @@ import BetterSqlite3 from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
-import { initRateSchema } from "../../admin/rates/schema.js";
+import type { DrizzleDb } from "../../db/index.js";
 import * as schema from "../../db/schema/index.js";
+import { createTestDb as createMigratedTestDb } from "../../test/db.js";
 import { DrizzleProviderHealthRepository } from "../drizzle-provider-health-repository.js";
 import type { IProviderHealthRepository } from "../provider-health-repository.js";
 import { ProviderRegistry } from "./provider-registry.js";
-
-function createTestDb() {
-  const db = new BetterSqlite3(":memory:");
-  initRateSchema(db);
-  return db;
-}
 
 function createTestHealthRepo(): IProviderHealthRepository {
   const sqlite = new BetterSqlite3(":memory:");
@@ -27,16 +22,19 @@ function createTestHealthRepo(): IProviderHealthRepository {
 }
 
 describe("ProviderRegistry", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let sqlite: BetterSqlite3.Database;
   let store: RateStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createMigratedTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
     store = new RateStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   function makeRegistry(cacheTtlMs = 30_000, unhealthyTtlMs = 60_000): ProviderRegistry {

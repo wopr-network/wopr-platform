@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { DrizzleDb } from "../../db/index.js";
 
 export interface DateRange {
   from: number; // unix epoch ms
@@ -81,7 +82,11 @@ export interface TimeSeriesPoint {
 const MAX_TIME_SERIES_POINTS = 1000;
 
 export class AnalyticsStore {
-  constructor(private db: Database.Database) {}
+  private readonly sqlite: Database.Database;
+
+  constructor(db: DrizzleDb) {
+    this.sqlite = db.$client;
+  }
 
   private toIsoRange(range: DateRange): { from: string; to: string } {
     return {
@@ -111,7 +116,7 @@ export class AnalyticsStore {
   getRevenueOverview(range: DateRange): RevenueOverview {
     const iso = this.toIsoRange(range);
 
-    const creditsSoldRow = this.db
+    const creditsSoldRow = this.sqlite
       .prepare(
         `SELECT COALESCE(SUM(amount_cents), 0) as total
          FROM credit_transactions
@@ -120,7 +125,7 @@ export class AnalyticsStore {
       )
       .get(iso.from, iso.to) as { total: number };
 
-    const revenueConsumedRow = this.db
+    const revenueConsumedRow = this.sqlite
       .prepare(
         `SELECT COALESCE(SUM(ABS(amount_cents)), 0) as total
          FROM credit_transactions
@@ -129,7 +134,7 @@ export class AnalyticsStore {
       )
       .get(iso.from, iso.to) as { total: number };
 
-    const providerCostRow = this.db
+    const providerCostRow = this.sqlite
       .prepare(
         `SELECT COALESCE(CAST(SUM(cost) * 100 AS INTEGER), 0) as total_cents
          FROM meter_events
@@ -158,7 +163,7 @@ export class AnalyticsStore {
    * are lifetime ratios, not period ratios.
    */
   getFloat(): FloatMetrics {
-    const floatRow = this.db
+    const floatRow = this.sqlite
       .prepare(
         `SELECT COUNT(*) as tenant_count, COALESCE(SUM(balance_cents), 0) as total_float
          FROM credit_balances
@@ -166,7 +171,7 @@ export class AnalyticsStore {
       )
       .get() as { tenant_count: number; total_float: number };
 
-    const soldRow = this.db
+    const soldRow = this.sqlite
       .prepare(
         `SELECT COALESCE(SUM(amount_cents), 0) as total_sold
          FROM credit_transactions
@@ -193,7 +198,7 @@ export class AnalyticsStore {
   getRevenueBreakdown(range: DateRange): RevenueBreakdownRow[] {
     const iso = this.toIsoRange(range);
 
-    const perUseRows = this.db
+    const perUseRows = this.sqlite
       .prepare(
         `SELECT
            'per_use' as category,
@@ -210,7 +215,7 @@ export class AnalyticsStore {
       revenue_cents: number;
     }>;
 
-    const monthlyRows = this.db
+    const monthlyRows = this.sqlite
       .prepare(
         `SELECT
            'monthly' as category,
@@ -254,7 +259,7 @@ export class AnalyticsStore {
   }
 
   getMarginByCapability(range: DateRange): MarginByCapability[] {
-    const rows = this.db
+    const rows = this.sqlite
       .prepare(
         `SELECT
            capability,
@@ -285,7 +290,7 @@ export class AnalyticsStore {
   }
 
   getProviderSpend(range: DateRange): ProviderSpendRow[] {
-    const rows = this.db
+    const rows = this.sqlite
       .prepare(
         `SELECT
            provider,
@@ -313,7 +318,7 @@ export class AnalyticsStore {
   getTenantHealth(): TenantHealthSummary {
     const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const totalRow = this.db
+    const totalRow = this.sqlite
       .prepare(
         `SELECT COUNT(*) as total FROM (
            SELECT tenant_id FROM credit_balances
@@ -323,7 +328,7 @@ export class AnalyticsStore {
       )
       .get() as { total: number };
 
-    const activeRow = this.db
+    const activeRow = this.sqlite
       .prepare(
         `SELECT COUNT(DISTINCT tenant_id) as active
          FROM credit_transactions
@@ -332,7 +337,7 @@ export class AnalyticsStore {
       )
       .get(thirtyDaysAgoIso) as { active: number };
 
-    const withBalanceRow = this.db
+    const withBalanceRow = this.sqlite
       .prepare(
         `SELECT COUNT(*) as with_balance
          FROM credit_balances
@@ -345,7 +350,7 @@ export class AnalyticsStore {
     const withBalance = withBalanceRow.with_balance;
     const dormant = totalTenants - activeTenants;
 
-    const atRiskRow = this.db
+    const atRiskRow = this.sqlite
       .prepare(
         `SELECT COUNT(*) as at_risk
          FROM credit_balances
@@ -370,7 +375,7 @@ export class AnalyticsStore {
   getAutoTopupMetrics(range: DateRange): AutoTopupMetrics {
     const iso = this.toIsoRange(range);
 
-    const row = this.db
+    const row = this.sqlite
       .prepare(
         `SELECT
            COUNT(*) as total_events,
@@ -405,7 +410,7 @@ export class AnalyticsStore {
     const minBucketMs = Math.ceil(rangeMs / MAX_TIME_SERIES_POINTS);
     const effectiveBucketMs = Math.max(bucketMs, minBucketMs);
 
-    const meterRows = this.db
+    const meterRows = this.sqlite
       .prepare(
         `SELECT
            (CAST(timestamp / ? AS INTEGER) * ?) as period_start,
@@ -423,7 +428,7 @@ export class AnalyticsStore {
     }>;
 
     const iso = this.toIsoRange(range);
-    const creditRows = this.db
+    const creditRows = this.sqlite
       .prepare(
         `SELECT
            (CAST(CAST(strftime('%s', created_at) AS INTEGER) * 1000 / ? AS INTEGER) * ?) as period_start,

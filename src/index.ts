@@ -17,7 +17,7 @@ import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
-import { applyPlatformPragmas } from "./db/index.js";
+import { applyPlatformPragmas, createDb } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
@@ -285,10 +285,10 @@ if (process.env.NODE_ENV !== "test") {
     });
     alertChecker.start();
 
-    const ratesDb = new Database(RATES_DB_PATH);
-    applyPlatformPragmas(ratesDb);
-    initRateSchema(ratesDb);
-    const rateStore = new RateStore(ratesDb);
+    const ratesSqlite = new Database(RATES_DB_PATH);
+    applyPlatformPragmas(ratesSqlite);
+    initRateSchema(ratesSqlite);
+    const rateStore = new RateStore(createDb(ratesSqlite));
 
     const meter = new MeterEmitter(getDb());
     const budgetChecker = new BudgetChecker(getDb());

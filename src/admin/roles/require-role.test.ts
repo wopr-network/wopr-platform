@@ -1,16 +1,15 @@
-import BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "../../api/routes/admin-roles.js";
 import type { AuthEnv, AuthUser } from "../../auth/index.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { requirePlatformAdmin, requireTenantAdmin } from "./require-role.js";
 import { RoleStore } from "./role-store.js";
-import { initRolesSchema } from "./schema.js";
 
-function createTestDb() {
-  const db = new BetterSqlite3(":memory:");
-  initRolesSchema(db);
-  return db;
+function createRoleTestDb(): { db: DrizzleDb; close: () => void } {
+  const { db, sqlite } = createTestDb();
+  return { db, close: () => sqlite.close() };
 }
 
 /** Helper to create a Hono app with a fake user injected. */
@@ -27,16 +26,19 @@ function appWithUser(user: AuthUser | null) {
 }
 
 describe("requirePlatformAdmin middleware", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let close: () => void;
   let store: RoleStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createRoleTestDb();
+    db = t.db;
+    close = t.close;
     store = new RoleStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    close();
   });
 
   it("allows platform admins", async () => {
@@ -70,16 +72,19 @@ describe("requirePlatformAdmin middleware", () => {
 });
 
 describe("requireTenantAdmin middleware", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let close: () => void;
   let store: RoleStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createRoleTestDb();
+    db = t.db;
+    close = t.close;
     store = new RoleStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    close();
   });
 
   it("allows platform admins for any tenant", async () => {
@@ -132,16 +137,19 @@ describe("requireTenantAdmin middleware", () => {
 });
 
 describe("admin roles API routes", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let close: () => void;
   let store: RoleStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createRoleTestDb();
+    db = t.db;
+    close = t.close;
     store = new RoleStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    close();
   });
 
   function buildApp(userId: string) {

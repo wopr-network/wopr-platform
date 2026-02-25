@@ -1,81 +1,38 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AnalyticsStore } from "../../../src/admin/analytics/analytics-store.js";
-import { initCreditSchema } from "../../../src/monetization/credits/schema.js";
-import { initMeterSchema } from "../../../src/monetization/metering/schema.js";
+import type { DrizzleDb } from "../../../src/db/index.js";
+import { createTestDb as createMigratedTestDb } from "../../../src/test/db.js";
 
-type TestDb = BetterSqlite3.Database;
-
-function initTenantStatusSchema(db: TestDb): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tenant_status (
-      tenant_id TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'active',
-      status_reason TEXT,
-      status_changed_at INTEGER,
-      status_changed_by TEXT,
-      grace_deadline TEXT,
-      data_delete_after TEXT,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-    )
-  `);
-}
-
-function initAutoTopupSchema(db: TestDb): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS credit_auto_topup (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      status TEXT NOT NULL,
-      failure_reason TEXT,
-      payment_reference TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_tenant ON credit_auto_topup(tenant_id)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_status ON credit_auto_topup(status)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_created ON credit_auto_topup(created_at)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_auto_topup_tenant_created ON credit_auto_topup(tenant_id, created_at)");
-}
+type TestSqlite = BetterSqlite3.Database;
 
 function seedAutoTopup(
-  db: TestDb,
+  sqlite: TestSqlite,
   tenantId: string,
   amountCents: number,
   status: "success" | "failed",
   createdAt: string,
   failureReason?: string,
 ): void {
-  db.prepare(
+  sqlite.prepare(
     "INSERT INTO credit_auto_topup (id, tenant_id, amount_cents, status, failure_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
   ).run(crypto.randomUUID(), tenantId, amountCents, status, failureReason ?? null, createdAt);
 }
 
-function createTestDb(): TestDb {
-  const db = new BetterSqlite3(":memory:");
-  initCreditSchema(db);
-  initMeterSchema(db);
-  initTenantStatusSchema(db);
-  initAutoTopupSchema(db);
-  return db;
-}
-
 function seedCredits(
-  db: TestDb,
+  sqlite: TestSqlite,
   tenantId: string,
   type: string,
   amountCents: number,
   createdAt: string,
 ): void {
-  db.prepare(
+  sqlite.prepare(
     "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
   ).run(crypto.randomUUID(), tenantId, amountCents, 0, type, createdAt);
 }
 
 function seedMeterEvent(
-  db: TestDb,
+  sqlite: TestSqlite,
   tenant: string,
   capability: string,
   provider: string,
@@ -83,13 +40,13 @@ function seedMeterEvent(
   charge: number,
   timestamp: number,
 ): void {
-  db.prepare(
+  sqlite.prepare(
     "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
   ).run(crypto.randomUUID(), tenant, cost, charge, capability, provider, timestamp);
 }
 
-function seedBalance(db: TestDb, tenantId: string, balanceCents: number): void {
-  db.prepare(
+function seedBalance(sqlite: TestSqlite, tenantId: string, balanceCents: number): void {
+  sqlite.prepare(
     "INSERT OR REPLACE INTO credit_balances (tenant_id, balance_cents, last_updated) VALUES (?, ?, datetime('now'))",
   ).run(tenantId, balanceCents);
 }
@@ -103,16 +60,17 @@ const THIRTY_DAYS_AGO_ISO = new Date(THIRTY_DAYS_AGO).toISOString();
 const SIXTY_DAYS_AGO_ISO = new Date(SIXTY_DAYS_AGO).toISOString();
 
 describe("AnalyticsStore — getRevenueOverview", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns all zeros for an empty database", () => {
@@ -130,12 +88,12 @@ describe("AnalyticsStore — getRevenueOverview", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Purchase: $100 in credits
-    seedCredits(db, "tenant-1", "purchase", 10000, NOW_ISO);
+    seedCredits(sqlite, "tenant-1", "purchase", 10000, NOW_ISO);
     // Consumed: $60 adapter_usage + $20 bot_runtime = $80
-    seedCredits(db, "tenant-1", "adapter_usage", -6000, NOW_ISO);
-    seedCredits(db, "tenant-1", "bot_runtime", -2000, NOW_ISO);
+    seedCredits(sqlite, "tenant-1", "adapter_usage", -6000, NOW_ISO);
+    seedCredits(sqlite, "tenant-1", "bot_runtime", -2000, NOW_ISO);
     // Provider cost: $30 → 3000 cents
-    seedMeterEvent(db, "tenant-1", "chat", "openai", 0.3, 0.6, NOW);
+    seedMeterEvent(sqlite, "tenant-1", "chat", "openai", 0.3, 0.6, NOW);
 
     const result = store.getRevenueOverview(range);
 
@@ -150,11 +108,11 @@ describe("AnalyticsStore — getRevenueOverview", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Old data outside range
-    seedCredits(db, "tenant-1", "purchase", 5000, SIXTY_DAYS_AGO_ISO);
-    seedMeterEvent(db, "tenant-1", "chat", "openai", 0.1, 0.2, SIXTY_DAYS_AGO);
+    seedCredits(sqlite, "tenant-1", "purchase", 5000, SIXTY_DAYS_AGO_ISO);
+    seedMeterEvent(sqlite, "tenant-1", "chat", "openai", 0.1, 0.2, SIXTY_DAYS_AGO);
 
     // Recent data within range
-    seedCredits(db, "tenant-1", "purchase", 2000, NOW_ISO);
+    seedCredits(sqlite, "tenant-1", "purchase", 2000, NOW_ISO);
 
     const result = store.getRevenueOverview(range);
 
@@ -164,16 +122,17 @@ describe("AnalyticsStore — getRevenueOverview", () => {
 });
 
 describe("AnalyticsStore — getFloat", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns zeros for an empty database", () => {
@@ -187,12 +146,12 @@ describe("AnalyticsStore — getFloat", () => {
   });
 
   it("calculates float correctly from credit balances", () => {
-    seedBalance(db, "tenant-1", 1000);
-    seedBalance(db, "tenant-2", 500);
-    seedBalance(db, "tenant-3", 0); // zero balance — not counted
+    seedBalance(sqlite, "tenant-1", 1000);
+    seedBalance(sqlite, "tenant-2", 500);
+    seedBalance(sqlite, "tenant-3", 0); // zero balance — not counted
 
-    seedCredits(db, "tenant-1", "purchase", 2000, NOW_ISO);
-    seedCredits(db, "tenant-2", "purchase", 1000, NOW_ISO);
+    seedCredits(sqlite, "tenant-1", "purchase", 2000, NOW_ISO);
+    seedCredits(sqlite, "tenant-2", "purchase", 1000, NOW_ISO);
 
     const result = store.getFloat();
 
@@ -205,28 +164,29 @@ describe("AnalyticsStore — getFloat", () => {
 });
 
 describe("AnalyticsStore — getRevenueBreakdown", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns per-use and monthly rows", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Per-use events
-    seedMeterEvent(db, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    seedMeterEvent(db, "t1", "image-generation", "replicate", 0.05, 0.10, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    seedMeterEvent(sqlite, "t1", "image-generation", "replicate", 0.05, 0.10, NOW);
 
     // Monthly credit transactions
-    seedCredits(db, "t1", "bot_runtime", -500, NOW_ISO);
-    seedCredits(db, "t1", "addon", -200, NOW_ISO);
+    seedCredits(sqlite, "t1", "bot_runtime", -500, NOW_ISO);
+    seedCredits(sqlite, "t1", "addon", -200, NOW_ISO);
 
     const result = store.getRevenueBreakdown(range);
 
@@ -247,25 +207,26 @@ describe("AnalyticsStore — getRevenueBreakdown", () => {
 });
 
 describe("AnalyticsStore — getMarginByCapability", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("calculates margin per capability correctly", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // chat: charge=0.20, cost=0.10 → margin=0.10 (50%)
-    seedMeterEvent(db, "t1", "chat", "openai", 0.10, 0.20, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, NOW);
     // image-generation: charge=0.50, cost=0.25 → margin=0.25 (50%)
-    seedMeterEvent(db, "t1", "image-generation", "replicate", 0.25, 0.50, NOW);
+    seedMeterEvent(sqlite, "t1", "image-generation", "replicate", 0.25, 0.50, NOW);
 
     const result = store.getMarginByCapability(range);
 
@@ -283,7 +244,7 @@ describe("AnalyticsStore — getMarginByCapability", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // cost=0.10, charge=0.00 → revenue=0, margin should be 0%, not NaN
-    seedMeterEvent(db, "t1", "chat", "openai", 0.10, 0.00, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.00, NOW);
 
     const result = store.getMarginByCapability(range);
 
@@ -295,25 +256,26 @@ describe("AnalyticsStore — getMarginByCapability", () => {
 });
 
 describe("AnalyticsStore — getProviderSpend", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("aggregates provider spend with call counts", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
-    seedMeterEvent(db, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    seedMeterEvent(db, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    seedMeterEvent(db, "t1", "image", "replicate", 0.05, 0.10, NOW);
-    seedMeterEvent(db, "t1", "tts", "elevenlabs", 0.02, 0.04, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    seedMeterEvent(sqlite, "t1", "image", "replicate", 0.05, 0.10, NOW);
+    seedMeterEvent(sqlite, "t1", "tts", "elevenlabs", 0.02, 0.04, NOW);
 
     const result = store.getProviderSpend(range);
 
@@ -333,22 +295,23 @@ describe("AnalyticsStore — getProviderSpend", () => {
 });
 
 describe("AnalyticsStore — getTenantHealth", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("counts tenants from both credit_balances and tenant_status", () => {
-    seedBalance(db, "tenant-a", 500);
-    seedBalance(db, "tenant-b", 0);
-    db.prepare("INSERT INTO tenant_status (tenant_id) VALUES (?)").run("tenant-c");
+    seedBalance(sqlite, "tenant-a", 500);
+    seedBalance(sqlite, "tenant-b", 0);
+    sqlite.prepare("INSERT INTO tenant_status (tenant_id) VALUES (?)").run("tenant-c");
 
     const result = store.getTenantHealth();
 
@@ -359,13 +322,13 @@ describe("AnalyticsStore — getTenantHealth", () => {
   });
 
   it("identifies active tenants by recent debit transactions", () => {
-    seedBalance(db, "tenant-a", 1000);
-    seedBalance(db, "tenant-b", 1000);
+    seedBalance(sqlite, "tenant-a", 1000);
+    seedBalance(sqlite, "tenant-b", 1000);
 
     // tenant-a: recent activity (within 30 days)
-    seedCredits(db, "tenant-a", "adapter_usage", -100, NOW_ISO);
+    seedCredits(sqlite, "tenant-a", "adapter_usage", -100, NOW_ISO);
     // tenant-b: old activity (older than 30 days)
-    seedCredits(db, "tenant-b", "adapter_usage", -100, SIXTY_DAYS_AGO_ISO);
+    seedCredits(sqlite, "tenant-b", "adapter_usage", -100, SIXTY_DAYS_AGO_ISO);
 
     const result = store.getTenantHealth();
 
@@ -375,16 +338,17 @@ describe("AnalyticsStore — getTenantHealth", () => {
 });
 
 describe("AnalyticsStore — getTimeSeries", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("buckets data into daily periods", () => {
@@ -398,13 +362,13 @@ describe("AnalyticsStore — getTimeSeries", () => {
     const day2Iso = new Date(day2 + 1000).toISOString();
     const day3Iso = new Date(day3 + 1000).toISOString();
 
-    seedMeterEvent(db, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
-    seedMeterEvent(db, "t1", "chat", "openai", 0.10, 0.20, day2 + 1000);
-    seedMeterEvent(db, "t1", "chat", "openai", 0.10, 0.20, day3 + 1000);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day2 + 1000);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day3 + 1000);
 
-    seedCredits(db, "t1", "purchase", 1000, day1Iso);
-    seedCredits(db, "t1", "purchase", 1000, day2Iso);
-    seedCredits(db, "t1", "purchase", 1000, day3Iso);
+    seedCredits(sqlite, "t1", "purchase", 1000, day1Iso);
+    seedCredits(sqlite, "t1", "purchase", 1000, day2Iso);
+    seedCredits(sqlite, "t1", "purchase", 1000, day3Iso);
 
     const range = { from: day1, to: day3 + DAY };
     const result = store.getTimeSeries(range, DAY);
@@ -436,12 +400,12 @@ describe("AnalyticsStore — getTimeSeries", () => {
     const day2 = now - 1 * DAY;
 
     // day1: meter event only (no credit transaction)
-    seedMeterEvent(db, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
 
     // day2: credit transaction only (no meter event) — exercises the else branch in getTimeSeries
     const day2Iso = new Date(day2 + 1000).toISOString();
-    seedCredits(db, "t1", "purchase", 500, day2Iso);
-    seedCredits(db, "t1", "bot_runtime", -100, day2Iso);
+    seedCredits(sqlite, "t1", "purchase", 500, day2Iso);
+    seedCredits(sqlite, "t1", "bot_runtime", -100, day2Iso);
 
     const range = { from: day1, to: day2 + DAY };
     const result = store.getTimeSeries(range, DAY);
@@ -464,16 +428,17 @@ describe("AnalyticsStore — getTimeSeries", () => {
 });
 
 describe("AnalyticsStore — exportCsv", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   const range = { from: THIRTY_DAYS_AGO, to: NOW };
@@ -488,7 +453,7 @@ describe("AnalyticsStore — exportCsv", () => {
   });
 
   it("exports revenue_breakdown as CSV", () => {
-    seedMeterEvent(db, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
     const csv = store.exportCsv(range, "revenue_breakdown");
     const lines = csv.split("\n");
 
@@ -499,7 +464,7 @@ describe("AnalyticsStore — exportCsv", () => {
   });
 
   it("exports margin_by_capability as CSV", () => {
-    seedMeterEvent(db, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
     const csv = store.exportCsv(range, "margin_by_capability");
     const lines = csv.split("\n");
 
@@ -508,7 +473,7 @@ describe("AnalyticsStore — exportCsv", () => {
   });
 
   it("exports provider_spend as CSV", () => {
-    seedMeterEvent(db, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
     const csv = store.exportCsv(range, "provider_spend");
     const lines = csv.split("\n");
 
@@ -535,7 +500,7 @@ describe("AnalyticsStore — exportCsv", () => {
   it("escapes values containing commas in CSV output", () => {
     // We can test this with a capability name containing a comma (unlikely in real data,
     // but the toCsv helper should handle it)
-    db.prepare(
+    sqlite.prepare(
       "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).run(crypto.randomUUID(), "t1", 0.01, 0.02, "chat,text", "openai", NOW);
 
@@ -546,7 +511,7 @@ describe("AnalyticsStore — exportCsv", () => {
   });
 
   it("escapes values containing double-quotes in CSV output", () => {
-    db.prepare(
+    sqlite.prepare(
       "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
     ).run(crypto.randomUUID(), "t1", 0.01, 0.02, 'chat"premium"', "openai", NOW);
 
@@ -563,7 +528,7 @@ describe("AnalyticsStore — exportCsv", () => {
   });
 
   it("exports auto_topup as CSV with correct headers", () => {
-    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
+    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
     const csv = store.exportCsv(range, "auto_topup");
     const lines = csv.split("\n");
 
@@ -575,16 +540,17 @@ describe("AnalyticsStore — exportCsv", () => {
 });
 
 describe("AnalyticsStore — getAutoTopupMetrics", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("returns all zeros for an empty database", () => {
@@ -601,10 +567,10 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
   it("calculates success/failure counts and revenue correctly", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
-    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
-    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
-    seedAutoTopup(db, "tenant-2", 3000, "success", NOW_ISO);
-    seedAutoTopup(db, "tenant-3", 5000, "failed", NOW_ISO, "card_declined");
+    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
+    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
+    seedAutoTopup(sqlite, "tenant-2", 3000, "success", NOW_ISO);
+    seedAutoTopup(sqlite, "tenant-3", 5000, "failed", NOW_ISO, "card_declined");
 
     const result = store.getAutoTopupMetrics(range);
 
@@ -619,9 +585,9 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Old data outside range
-    seedAutoTopup(db, "tenant-1", 5000, "success", SIXTY_DAYS_AGO_ISO);
+    seedAutoTopup(sqlite, "tenant-1", 5000, "success", SIXTY_DAYS_AGO_ISO);
     // Recent data within range
-    seedAutoTopup(db, "tenant-1", 3000, "success", NOW_ISO);
+    seedAutoTopup(sqlite, "tenant-1", 3000, "success", NOW_ISO);
 
     const result = store.getAutoTopupMetrics(range);
 
@@ -632,8 +598,8 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
   it("returns 0% failure rate when all events are successes", () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
-    seedAutoTopup(db, "tenant-1", 5000, "success", NOW_ISO);
-    seedAutoTopup(db, "tenant-2", 3000, "success", NOW_ISO);
+    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
+    seedAutoTopup(sqlite, "tenant-2", 3000, "success", NOW_ISO);
 
     const result = store.getAutoTopupMetrics(range);
 
@@ -642,26 +608,27 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
 });
 
 describe("AnalyticsStore — getTenantHealth (atRisk with auto-topup)", () => {
-  let db: TestDb;
+  let db: DrizzleDb;
+  let sqlite: TestSqlite;
   let store: AnalyticsStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    ({ db, sqlite } = createMigratedTestDb());
     store = new AnalyticsStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    sqlite.close();
   });
 
   it("counts tenants with low balance and no auto-topup as at-risk", () => {
     // tenant-a: low balance, NO auto-topup history -> at risk
-    seedBalance(db, "tenant-a", 200);
+    seedBalance(sqlite, "tenant-a", 200);
     // tenant-b: low balance, HAS auto-topup history -> NOT at risk
-    seedBalance(db, "tenant-b", 200);
-    seedAutoTopup(db, "tenant-b", 5000, "success", NOW_ISO);
+    seedBalance(sqlite, "tenant-b", 200);
+    seedAutoTopup(sqlite, "tenant-b", 5000, "success", NOW_ISO);
     // tenant-c: high balance, no auto-topup -> NOT at risk
-    seedBalance(db, "tenant-c", 10000);
+    seedBalance(sqlite, "tenant-c", 10000);
 
     const result = store.getTenantHealth();
 
@@ -669,8 +636,8 @@ describe("AnalyticsStore — getTenantHealth (atRisk with auto-topup)", () => {
   });
 
   it("returns 0 at-risk when all low-balance tenants have auto-topup", () => {
-    seedBalance(db, "tenant-a", 200);
-    seedAutoTopup(db, "tenant-a", 5000, "success", NOW_ISO);
+    seedBalance(sqlite, "tenant-a", 200);
+    seedAutoTopup(sqlite, "tenant-a", 5000, "success", NOW_ISO);
 
     const result = store.getTenantHealth();
 
@@ -678,8 +645,8 @@ describe("AnalyticsStore — getTenantHealth (atRisk with auto-topup)", () => {
   });
 
   it("returns 0 at-risk when no tenants have low balance", () => {
-    seedBalance(db, "tenant-a", 10000);
-    seedBalance(db, "tenant-b", 5000);
+    seedBalance(sqlite, "tenant-a", 10000);
+    seedBalance(sqlite, "tenant-b", 5000);
 
     const result = store.getTenantHealth();
 

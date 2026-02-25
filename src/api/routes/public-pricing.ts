@@ -1,19 +1,20 @@
-import type DatabaseType from "better-sqlite3";
 import Database from "better-sqlite3";
 import { Hono } from "hono";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import { initRateSchema } from "../../admin/rates/schema.js";
+import { createDb, type DrizzleDb } from "../../db/index.js";
 import { applyPlatformPragmas } from "../../db/pragmas.js";
 
 const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
 
 /** Lazy-initialized rates database (avoids opening DB at module load time). */
-let _ratesDb: DatabaseType.Database | null = null;
-function getRatesDb(): DatabaseType.Database {
+let _ratesDb: DrizzleDb | null = null;
+function getRatesDb(): DrizzleDb {
   if (!_ratesDb) {
-    _ratesDb = new Database(RATES_DB_PATH);
-    applyPlatformPragmas(_ratesDb);
-    initRateSchema(_ratesDb);
+    const sqlite = new Database(RATES_DB_PATH);
+    applyPlatformPragmas(sqlite);
+    initRateSchema(sqlite);
+    _ratesDb = createDb(sqlite);
   }
   return _ratesDb;
 }

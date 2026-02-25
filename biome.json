@@ -125,7 +125,14 @@
         "src/fleet/drizzle-fleet-event-repository.ts",
         "src/gateway/drizzle-circuit-breaker-repository.ts",
         "src/observability/drizzle-metrics-repository.ts",
-        "src/security/two-factor-repository.ts"
+        "src/security/two-factor-repository.ts",
+        "src/admin/notes/store.ts",
+        "src/admin/notifications/store.ts",
+        "src/admin/tenant-status/tenant-status-store.ts",
+        "src/admin/rates/rate-store.ts",
+        "src/admin/roles/role-store.ts",
+        "src/admin/users/user-store.ts",
+        "src/admin/analytics/analytics-store.ts"
       ],
       "linter": {
         "rules": {
@@ -163,8 +170,6 @@
         "src/api/routes/tenant-keys.ts",
         "src/api/routes/admin-credits.ts",
         "src/api/routes/admin-rates.ts",
-        "src/api/routes/admin-roles.ts",
-        "src/api/routes/admin-users.ts",
         "src/api/routes/audit.ts",
         "src/api/routes/public-pricing.ts",
         "src/api/routes/verify-email.ts",
@@ -183,18 +188,11 @@
         "src/security/tenant-keys/capability-settings-store.ts",
         "src/security/tenant-keys/key-resolution.ts",
         "src/security/tenant-keys/schema.ts",
-        "src/admin/notifications/store.ts",
-        "src/admin/notes/store.ts",
-        "src/admin/tenant-status/tenant-status-store.ts",
         "src/admin/credits/adjustment-store.ts",
         "src/admin/credits/schema.ts",
         "src/admin/notes/schema.ts",
-        "src/admin/rates/rate-store.ts",
         "src/admin/rates/schema.ts",
-        "src/admin/roles/role-store.ts",
         "src/admin/roles/schema.ts",
-        "src/admin/users/user-store.ts",
-        "src/admin/analytics/analytics-store.ts",
         "src/gateway/spending-cap.ts",
         "src/security/tenant-keys/capability-settings-store.ts"
       ],

@@ -1,21 +1,19 @@
-import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import { requirePlatformAdmin, requireTenantAdmin } from "../../admin/roles/require-role.js";
 import { isValidRole, RoleStore } from "../../admin/roles/role-store.js";
-import { initRolesSchema } from "../../admin/roles/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { getAdminAuditLog } from "../../fleet/services.js";
 
 export interface AdminRolesRouteDeps {
-  db: Database.Database;
+  db: DrizzleDb;
 }
 
 /**
  * Create admin role management API routes with an explicit database.
  * Used in tests to inject an in-memory database.
  */
-export function createAdminRolesRoutes(db: Database.Database): Hono<AuthEnv> {
-  initRolesSchema(db);
+export function createAdminRolesRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const roleStore = new RoleStore(db);
   const routes = new Hono<AuthEnv>();
 
@@ -107,8 +105,7 @@ export function createAdminRolesRoutes(db: Database.Database): Hono<AuthEnv> {
 /**
  * Create platform admin management routes with an explicit database.
  */
-export function createPlatformAdminRoutes(db: Database.Database): Hono<AuthEnv> {
-  initRolesSchema(db);
+export function createPlatformAdminRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const roleStore = new RoleStore(db);
   const routes = new Hono<AuthEnv>();
 

@@ -1,4 +1,6 @@
-import type Database from "better-sqlite3";
+import { and, count, eq, sql } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { userRoles } from "../../db/schema/index.js";
 
 export type Role = "platform_admin" | "tenant_admin" | "user";
 
@@ -18,26 +20,24 @@ export function isValidRole(role: string): role is Role {
 }
 
 /**
- * CRUD store for user roles backed by better-sqlite3.
+ * CRUD store for user roles backed by Drizzle ORM.
  *
  * Platform admins are stored with a special sentinel tenant_id ("*") so they
  * can be queried independently of any specific tenant.
  */
 export class RoleStore {
-  private readonly db: Database.Database;
-
   /** Sentinel tenant_id used for platform-wide admin roles. */
   static readonly PLATFORM_TENANT = "*";
 
-  constructor(db: Database.Database) {
-    this.db = db;
-  }
+  constructor(private readonly db: DrizzleDb) {}
 
   /** Get the role for a user in a specific tenant (or null if none). */
   getRole(userId: string, tenantId: string): Role | null {
     const row = this.db
-      .prepare("SELECT role FROM user_roles WHERE user_id = ? AND tenant_id = ?")
-      .get(userId, tenantId) as { role: string } | undefined;
+      .select({ role: userRoles.role })
+      .from(userRoles)
+      .where(and(eq(userRoles.userId, userId), eq(userRoles.tenantId, tenantId)))
+      .get();
     return row ? (row.role as Role) : null;
   }
 
@@ -48,50 +48,93 @@ export class RoleStore {
     }
 
     this.db
-      .prepare(
-        `INSERT INTO user_roles (user_id, tenant_id, role, granted_by, granted_at)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, tenant_id) DO UPDATE SET
-           role = excluded.role,
-           granted_by = excluded.granted_by,
-           granted_at = excluded.granted_at`,
-      )
-      .run(userId, tenantId, role, grantedBy, Date.now());
+      .insert(userRoles)
+      .values({
+        userId,
+        tenantId,
+        role,
+        grantedBy,
+        grantedAt: Date.now(),
+      })
+      .onConflictDoUpdate({
+        target: [userRoles.userId, userRoles.tenantId],
+        set: {
+          role,
+          grantedBy,
+          grantedAt: Date.now(),
+        },
+      })
+      .run();
   }
 
   /** Remove a user's role in a tenant. */
   removeRole(userId: string, tenantId: string): boolean {
-    const result = this.db.prepare("DELETE FROM user_roles WHERE user_id = ? AND tenant_id = ?").run(userId, tenantId);
+    const result = this.db
+      .delete(userRoles)
+      .where(and(eq(userRoles.userId, userId), eq(userRoles.tenantId, tenantId)))
+      .run();
     return result.changes > 0;
   }
 
   /** List all users with roles in a given tenant. */
   listByTenant(tenantId: string): UserRoleRow[] {
-    return this.db
-      .prepare("SELECT * FROM user_roles WHERE tenant_id = ? ORDER BY granted_at DESC")
-      .all(tenantId) as UserRoleRow[];
+    const rows = this.db
+      .select()
+      .from(userRoles)
+      .where(eq(userRoles.tenantId, tenantId))
+      .orderBy(sql`${userRoles.grantedAt} DESC`)
+      .all();
+    return rows.map(toRow);
   }
 
   /** List all platform admins (users with platform_admin role in the sentinel tenant). */
   listPlatformAdmins(): UserRoleRow[] {
-    return this.db
-      .prepare("SELECT * FROM user_roles WHERE tenant_id = ? AND role = 'platform_admin' ORDER BY granted_at DESC")
-      .all(RoleStore.PLATFORM_TENANT) as UserRoleRow[];
+    const rows = this.db
+      .select()
+      .from(userRoles)
+      .where(and(eq(userRoles.tenantId, RoleStore.PLATFORM_TENANT), eq(userRoles.role, "platform_admin")))
+      .orderBy(sql`${userRoles.grantedAt} DESC`)
+      .all();
+    return rows.map(toRow);
   }
 
   /** Check if a user is a platform admin. */
   isPlatformAdmin(userId: string): boolean {
     const row = this.db
-      .prepare("SELECT 1 FROM user_roles WHERE user_id = ? AND tenant_id = ? AND role = 'platform_admin'")
-      .get(userId, RoleStore.PLATFORM_TENANT);
+      .select({ userId: userRoles.userId })
+      .from(userRoles)
+      .where(
+        and(
+          eq(userRoles.userId, userId),
+          eq(userRoles.tenantId, RoleStore.PLATFORM_TENANT),
+          eq(userRoles.role, "platform_admin"),
+        ),
+      )
+      .get();
     return row != null;
   }
 
   /** Count the number of platform admins. */
   countPlatformAdmins(): number {
     const row = this.db
-      .prepare("SELECT COUNT(*) as count FROM user_roles WHERE tenant_id = ? AND role = 'platform_admin'")
-      .get(RoleStore.PLATFORM_TENANT) as { count: number };
-    return row.count;
+      .select({ count: count() })
+      .from(userRoles)
+      .where(and(eq(userRoles.tenantId, RoleStore.PLATFORM_TENANT), eq(userRoles.role, "platform_admin")))
+      .get();
+    return row?.count ?? 0;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Row mapper
+// ---------------------------------------------------------------------------
+
+function toRow(row: typeof userRoles.$inferSelect): UserRoleRow {
+  return {
+    user_id: row.userId,
+    tenant_id: row.tenantId,
+    role: row.role,
+    granted_by: row.grantedBy,
+    granted_at: row.grantedAt,
+  };
 }

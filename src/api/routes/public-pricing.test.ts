@@ -1,7 +1,8 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
-import { initRateSchema } from "../../admin/rates/schema.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 
 /**
  * Tests for the public-pricing route logic and RateStore.listPublicRates.
@@ -12,13 +13,15 @@ import { initRateSchema } from "../../admin/rates/schema.js";
  * the branch coverage we need in rate-store.ts while keeping tests fast.
  */
 describe("RateStore.listPublicRates (used by public pricing route)", () => {
+  let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
   let store: RateStore;
 
   beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initRateSchema(sqlite);
-    store = new RateStore(sqlite);
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
+    store = new RateStore(db);
   });
 
   afterEach(() => {
