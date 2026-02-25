@@ -29,7 +29,8 @@ function initTestSchema(sqlite: BetterSqlite3.Database): void {
       resource_tier TEXT NOT NULL DEFAULT 'standard',
       storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     )
   `);
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_bot_instances_tenant ON bot_instances(tenant_id)");
