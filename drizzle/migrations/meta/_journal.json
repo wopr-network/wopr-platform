@@ -225,6 +225,13 @@
       "when": 1771976591095,
       "tag": "0032_powerful_marvel_zombies",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1771990980113,
+      "tag": "0033_closed_drax",
+      "breakpoints": true
     }
   ]
 }
