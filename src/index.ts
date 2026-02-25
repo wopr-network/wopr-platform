@@ -13,10 +13,12 @@ import { DrizzleSigPenaltyRepository } from "./api/drizzle-sig-penalty-repositor
 import { setBillingDeps } from "./api/routes/billing.js";
 import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
+import { setChatDeps } from "./api/routes/chat.js";
 import { setFleetDeps } from "./api/routes/fleet.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
+import { EchoChatBackend } from "./chat/chat-backend.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { applyPlatformPragmas, createDb } from "./db/index.js";
@@ -766,6 +768,8 @@ if (process.env.NODE_ENV !== "test") {
     const { loadOnboardingConfig } = await import("./onboarding/config.js");
     const onboardingCfg = loadOnboardingConfig();
     setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo());
+    // Wire chat deps (echo backend until WOPR instance integration)
+    setChatDeps({ backend: new EchoChatBackend() });
     if (onboardingCfg.enabled) {
       getDaemonManager()
         .start()
