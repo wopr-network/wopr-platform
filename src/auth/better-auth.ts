@@ -15,7 +15,7 @@ import { logger } from "../config/logger.js";
 import { applyPlatformPragmas } from "../db/pragmas.js";
 import { getEmailClient } from "../email/client.js";
 import { passwordResetEmailTemplate, verifyEmailTemplate } from "../email/templates.js";
-import { generateVerificationToken, initVerificationSchema } from "../email/verification.js";
+import { generateVerificationToken, initVerificationSchema, SqliteEmailVerifier } from "../email/verification.js";
 
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "";
@@ -153,6 +153,7 @@ export async function runAuthMigrations(): Promise<void> {
 }
 
 let _auth: Auth | null = null;
+let _authDb: Database.Database | null = null;
 
 /**
  * Get or create the singleton better-auth instance.
@@ -160,9 +161,17 @@ let _auth: Auth | null = null;
  */
 export function getAuth(): Auth {
   if (!_auth) {
-    _auth = betterAuth(authOptions());
+    _authDb = new Database(AUTH_DB_PATH);
+    applyPlatformPragmas(_authDb);
+    _auth = betterAuth(authOptions(_authDb));
   }
   return _auth;
+}
+
+/** Get an IEmailVerifier backed by the auth database. */
+export function getEmailVerifier(): SqliteEmailVerifier {
+  getAuth(); // ensure _authDb is initialized
+  return new SqliteEmailVerifier(_authDb!);
 }
 
 /**

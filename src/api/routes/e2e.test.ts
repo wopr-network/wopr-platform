@@ -247,6 +247,13 @@ const { billingRoutes, setBillingDeps } = await import("./billing.js");
 const { quotaRoutes, setLedger } = await import("./quota.js");
 const { healthRoutes } = await import("./health.js");
 
+// Default deps for Bot deployment/management describe blocks (billing flow overrides in beforeEach)
+setFleetDeps({
+  creditLedger: { balance: vi.fn().mockReturnValue(10000) } as never,
+  botBilling: { registerBot: vi.fn(), getActiveBotCount: vi.fn().mockReturnValue(0) } as never,
+  emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
+});
+
 // ---------------------------------------------------------------------------
 // Build the full app — same as the real app.ts mounting
 // ---------------------------------------------------------------------------
@@ -552,6 +559,7 @@ describe("E2E: Billing flow (credit model)", () => {
         setStorageTier: vi.fn(),
         getStorageTierCostsForTenant: vi.fn().mockReturnValue(0),
       },
+      emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
     });
 
     app = buildApp();

@@ -180,6 +180,17 @@ vi.mock("../../src/backup/retention.js", () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Fleet route deps — must be set before POST /fleet/bots is exercised
+// ---------------------------------------------------------------------------
+
+const { setFleetDeps } = await import("../../src/api/routes/fleet.js");
+setFleetDeps({
+  creditLedger: { balance: vi.fn().mockReturnValue(10000) } as never,
+  botBilling: { registerBot: vi.fn(), getActiveBotCount: vi.fn().mockReturnValue(0) } as never,
+  emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
+});
+
+// ---------------------------------------------------------------------------
 // Database helper
 // ---------------------------------------------------------------------------
 

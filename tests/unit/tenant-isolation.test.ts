@@ -172,7 +172,13 @@ vi.mock("../../src/proxy/singleton.js", () => ({
 }));
 
 // Dynamic import AFTER all mocks and stubEnv calls
-const { fleetRoutes } = await import("../../src/api/routes/fleet.js");
+const { fleetRoutes, setFleetDeps } = await import("../../src/api/routes/fleet.js");
+
+setFleetDeps({
+  creditLedger: { balance: vi.fn().mockReturnValue(10000) } as never,
+  botBilling: { registerBot: vi.fn(), getActiveBotCount: vi.fn().mockReturnValue(0) } as never,
+  emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
+});
 
 const fleetApp = new Hono();
 fleetApp.route("/fleet", fleetRoutes);

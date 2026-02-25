@@ -10,6 +10,7 @@
 
 import crypto from "node:crypto";
 import type Database from "better-sqlite3";
+import type { IEmailVerifier } from "./require-verified.js";
 
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -130,4 +131,13 @@ export function isEmailVerified(db: Database.Database, userId: string): boolean 
 export function getUserEmail(db: Database.Database, userId: string): string | null {
   const row = db.prepare("SELECT email FROM user WHERE id = ?").get(userId) as { email: string } | undefined;
   return row?.email ?? null;
+}
+
+/** SQLite-backed implementation of IEmailVerifier for the auth database. */
+export class SqliteEmailVerifier implements IEmailVerifier {
+  constructor(private readonly db: Database.Database) {}
+
+  isVerified(userId: string): boolean {
+    return isEmailVerified(this.db, userId);
+  }
 }

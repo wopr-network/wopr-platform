@@ -158,7 +158,6 @@
         "src/email/require-verified.ts",
         "src/api/routes/activity.ts",
         "src/api/routes/bot-plugins.ts",
-        "src/api/routes/fleet.ts",
         "src/api/routes/quota.ts",
         "src/api/routes/tenant-keys.ts",
         "src/api/routes/admin-credits.ts",

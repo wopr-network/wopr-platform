@@ -199,6 +199,7 @@ describe("fleet routes", () => {
         setStorageTier: vi.fn(),
         getStorageTierCostsForTenant: vi.fn().mockReturnValue(0),
       },
+      emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
     });
   });
 
