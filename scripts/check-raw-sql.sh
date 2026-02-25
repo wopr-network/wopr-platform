@@ -73,7 +73,6 @@ TEMP_EXCLUDED_PATTERNS=(
   "src/admin/rates/schema\.ts"
   "src/admin/roles/role-store\.ts"
   "src/admin/roles/schema\.ts"
-  "src/admin/users/user-store\.ts"
   "src/admin/users/schema\.ts"
   "src/admin/bulk/bulk-operations-store\.ts"
   "src/admin/bulk/schema\.ts"
