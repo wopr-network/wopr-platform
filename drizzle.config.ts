@@ -50,6 +50,7 @@ export default defineConfig({
     "./src/db/schema/snapshots.ts",
     "./src/db/schema/stripe.ts",
     "./src/db/schema/tenant-status.ts",
+    "./src/db/schema/tenants.ts",
     "./src/db/schema/spending-limits.ts",
     "./src/db/schema/user-roles.ts",
     "./src/db/schema/affiliate.ts",

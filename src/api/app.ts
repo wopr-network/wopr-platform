@@ -3,9 +3,11 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { RoleStore } from "../admin/roles/role-store.js";
 import type { AuthUser } from "../auth/index.js";
 import { buildTokenMetadataMap, extractBearerToken, resolveSessionUser } from "../auth/index.js";
 import { logger } from "../config/logger.js";
+import { getDb, getOrgRepo } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
@@ -32,6 +34,7 @@ import { healthRoutes } from "./routes/health.js";
 import { internalGpuRoutes } from "./routes/internal-gpu.js";
 import { internalNodeRoutes } from "./routes/internal-nodes.js";
 import { marketplaceRoutes } from "./routes/marketplace.js";
+import { createOrgRoutes } from "./routes/orgs.js";
 import { publicPricingRoutes } from "./routes/public-pricing.js";
 import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
@@ -256,6 +259,21 @@ app.route("/api/v1/pricing", publicPricingRoutes);
 app.route("/api/activity", activityRoutes);
 app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
+// Org management routes (WOP-1000)
+// A deps factory defers getOrgRepo()/getDb() until first request so the DB
+// is not opened at module load time (tests import app.ts without a live DB).
+{
+  let _orgDeps: import("./routes/orgs.js").OrgRouteDeps | null = null;
+  app.route(
+    "/api/orgs",
+    createOrgRoutes(() => {
+      if (!_orgDeps) {
+        _orgDeps = { orgRepo: getOrgRepo(), roleStore: new RoleStore(getDb()) };
+      }
+      return _orgDeps;
+    }),
+  );
+}
 app.route("/auth", verifyEmailRoutes);
 app.route("/internal/nodes", internalNodeRoutes);
 app.route("/internal/gpu", internalGpuRoutes);
