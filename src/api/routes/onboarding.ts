@@ -1,7 +1,12 @@
 import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AuthEnv } from "../../auth/index.js";
 import type { IOnboardingSessionRepository } from "../../onboarding/drizzle-onboarding-session-repository.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
+
+const ANON_SESSION_COOKIE = "wopr_anon_session";
+const ANON_SESSION_MAX_AGE = 24 * 60 * 60; // 24 hours in seconds
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".wopr.bot";
 
 let _service: OnboardingService | null = null;
 
@@ -31,9 +36,55 @@ onboardingRoutes.post("/session", async (c) => {
 
   try {
     const session = await service.createSession({ userId, anonymousId });
+
+    // Set anonymous cookie when creating an anonymous session
+    if (!userId && session.anonymousId) {
+      setCookie(c, ANON_SESSION_COOKIE, session.anonymousId, {
+        path: "/",
+        domain: COOKIE_DOMAIN,
+        maxAge: ANON_SESSION_MAX_AGE,
+        httpOnly: true,
+        secure: true,
+        sameSite: "Lax",
+      });
+    }
+
     return c.json({ sessionId: session.id, woprSessionName: session.woprSessionName }, 201);
   } catch (err) {
     return c.json({ error: String(err) }, 500);
+  }
+});
+
+// POST /api/onboarding/session/handoff — claim anonymous session after auth
+// Must be registered before the :id routes to avoid route shadowing
+onboardingRoutes.post("/session/handoff", async (c) => {
+  const service = getService();
+  const userId = c.get("user")?.id as string | undefined;
+
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+
+  const anonymousId = getCookie(c, ANON_SESSION_COOKIE);
+  if (!anonymousId) {
+    return c.body(null, 204);
+  }
+
+  try {
+    const session = service.handoff(anonymousId, userId);
+
+    // Always clear the anonymous cookie after attempting handoff
+    deleteCookie(c, ANON_SESSION_COOKIE, { path: "/", domain: COOKIE_DOMAIN });
+
+    if (!session) {
+      return c.body(null, 204);
+    }
+
+    return c.json({ sessionId: session.id, woprSessionName: session.woprSessionName, resumed: true });
+  } catch (_err) {
+    // Graceful fallback: never block auth flow
+    deleteCookie(c, ANON_SESSION_COOKIE, { path: "/", domain: COOKIE_DOMAIN });
+    return c.body(null, 204);
   }
 });
 

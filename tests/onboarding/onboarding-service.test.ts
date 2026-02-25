@@ -24,6 +24,7 @@ function makeRepo(overrides: Partial<IOnboardingSessionRepository> = {}): IOnboa
     getById: vi.fn().mockReturnValue(null),
     getByUserId: vi.fn().mockReturnValue(null),
     getByAnonymousId: vi.fn().mockReturnValue(null),
+    getActiveByAnonymousId: vi.fn().mockReturnValue(null),
     create: vi.fn().mockImplementation((d) => makeSession({ ...d, createdAt: Date.now(), updatedAt: Date.now(), budgetUsedCents: 0 })),
     upgradeAnonymousToUser: vi.fn().mockReturnValue(null),
     updateBudgetUsed: vi.fn(),
@@ -172,6 +173,57 @@ describe("OnboardingService", () => {
       const result = service.upgradeAnonymousToUser("anon-1", "u2");
       expect(result).not.toBeNull();
       expect(result!.userId).toBe("u2");
+    });
+  });
+
+  describe("handoff", () => {
+    it("upgrades anonymous session to user when active session exists", () => {
+      const anonSession = makeSession({ userId: null, anonymousId: "anon-1" });
+      const upgraded = makeSession({ userId: "u1", anonymousId: "anon-1" });
+      (repo.getActiveByAnonymousId as ReturnType<typeof vi.fn>).mockReturnValue(anonSession);
+      (repo.upgradeAnonymousToUser as ReturnType<typeof vi.fn>).mockReturnValue(upgraded);
+
+      const result = service.handoff("anon-1", "u1");
+
+      expect(result).not.toBeNull();
+      expect(repo.getActiveByAnonymousId).toHaveBeenCalledWith("anon-1");
+      expect(repo.upgradeAnonymousToUser).toHaveBeenCalledWith("anon-1", "u1");
+    });
+
+    it("returns null when no active anonymous session exists", () => {
+      (repo.getActiveByAnonymousId as ReturnType<typeof vi.fn>).mockReturnValue(null);
+
+      const result = service.handoff("anon-1", "u1");
+
+      expect(result).toBeNull();
+      expect(repo.upgradeAnonymousToUser).not.toHaveBeenCalled();
+    });
+
+    it("skips merge and marks as transferred when user already has an active session", () => {
+      const anonSession = makeSession({ id: "s-anon", userId: null, anonymousId: "anon-1" });
+      const existingUserSession = makeSession({ id: "s-user", userId: "u1", anonymousId: null });
+      (repo.getActiveByAnonymousId as ReturnType<typeof vi.fn>).mockReturnValue(anonSession);
+      (repo.getByUserId as ReturnType<typeof vi.fn>).mockReturnValue(existingUserSession);
+
+      const result = service.handoff("anon-1", "u1");
+
+      expect(result).toBeNull();
+      expect(repo.setStatus).toHaveBeenCalledWith("s-anon", "transferred");
+      expect(repo.upgradeAnonymousToUser).not.toHaveBeenCalled();
+    });
+
+    it("does not skip merge when existing user session is not active", () => {
+      const anonSession = makeSession({ id: "s-anon", userId: null, anonymousId: "anon-1" });
+      const expiredUserSession = makeSession({ id: "s-user", userId: "u1", anonymousId: null, status: "expired" });
+      const upgraded = makeSession({ userId: "u1", anonymousId: "anon-1" });
+      (repo.getActiveByAnonymousId as ReturnType<typeof vi.fn>).mockReturnValue(anonSession);
+      (repo.getByUserId as ReturnType<typeof vi.fn>).mockReturnValue(expiredUserSession);
+      (repo.upgradeAnonymousToUser as ReturnType<typeof vi.fn>).mockReturnValue(upgraded);
+
+      const result = service.handoff("anon-1", "u1");
+
+      expect(result).not.toBeNull();
+      expect(repo.upgradeAnonymousToUser).toHaveBeenCalledWith("anon-1", "u1");
     });
   });
 });
