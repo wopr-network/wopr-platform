@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { onboardingSessions } from "../db/schema/index.js";
 
@@ -17,6 +17,7 @@ export interface IOnboardingSessionRepository {
   getById(id: string): OnboardingSession | null;
   getByUserId(userId: string): OnboardingSession | null;
   getByAnonymousId(anonymousId: string): OnboardingSession | null;
+  getActiveByAnonymousId(anonymousId: string): OnboardingSession | null;
   create(data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">): OnboardingSession;
   upgradeAnonymousToUser(anonymousId: string, userId: string): OnboardingSession | null;
   updateBudgetUsed(id: string, budgetUsedCents: number): void;
@@ -53,6 +54,22 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
 
   getByAnonymousId(anonymousId: string): OnboardingSession | null {
     const row = this.db.select().from(onboardingSessions).where(eq(onboardingSessions.anonymousId, anonymousId)).get();
+    return row ? toSession(row) : null;
+  }
+
+  getActiveByAnonymousId(anonymousId: string): OnboardingSession | null {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const row = this.db
+      .select()
+      .from(onboardingSessions)
+      .where(
+        and(
+          eq(onboardingSessions.anonymousId, anonymousId),
+          eq(onboardingSessions.status, "active"),
+          gt(onboardingSessions.createdAt, cutoff),
+        ),
+      )
+      .get();
     return row ? toSession(row) : null;
   }
 

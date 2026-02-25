@@ -83,4 +83,25 @@ export class OnboardingService {
   upgradeAnonymousToUser(anonymousId: string, userId: string): OnboardingSession | null {
     return this.repo.upgradeAnonymousToUser(anonymousId, userId);
   }
+
+  /**
+   * Attempt to hand off an anonymous onboarding session to an authenticated user.
+   * Returns the upgraded session, or null if handoff was skipped.
+   *
+   * Skips if: no active anonymous session, session is stale (>24h), or user
+   * already has an active session.
+   */
+  handoff(anonymousId: string, userId: string): OnboardingSession | null {
+    const anonSession = this.repo.getActiveByAnonymousId(anonymousId);
+    if (!anonSession) return null;
+
+    // If user already has an active session, mark anon as transferred but don't merge
+    const existingUserSession = this.repo.getByUserId(userId);
+    if (existingUserSession && existingUserSession.status === "active") {
+      this.repo.setStatus(anonSession.id, "transferred");
+      return null;
+    }
+
+    return this.repo.upgradeAnonymousToUser(anonymousId, userId);
+  }
 }
