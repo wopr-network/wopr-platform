@@ -69,6 +69,7 @@ export default defineConfig({
     "./src/db/schema/tenant-customers.ts",
     "./src/db/schema/plugin-marketplace-content.ts",
     "./src/db/schema/organization-members.ts",
+    "./src/db/schema/org-memberships.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "sqlite",

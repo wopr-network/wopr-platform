@@ -39,6 +39,7 @@ import {
   getNodeRegistrar,
   getNodeRepo,
   getNotificationPrefsStore,
+  getOrgMembershipRepo,
   getOrgService,
   getRateLimitRepo,
   getRegistrationTokenStore,
@@ -79,6 +80,7 @@ import {
   setFleetRouterDeps,
   setModelSelectionRouterDeps,
   setNodesRouterDeps,
+  setOrgKeysRouterDeps,
   setOrgRouterDeps,
   setProfileRouterDeps,
   setSettingsRouterDeps,
@@ -499,6 +501,86 @@ if (process.env.NODE_ENV !== "test") {
       },
     });
     logger.info("tRPC settings router initialized");
+  }
+
+  // Wire org-keys tRPC router deps (WOP-1003: org-scoped BYOK key resolution)
+  {
+    const { resolveApiKeyWithOrgFallback } = await import("./security/tenant-keys/org-key-resolution.js");
+    const { RoleStore } = await import("./admin/roles/role-store.js");
+    const { initTenantKeySchema: initTenantKeySchema2 } = await import("./security/tenant-keys/schema.js");
+    const BetterSqlite2 = (await import("better-sqlite3")).default;
+
+    const TENANT_KEYS_DB_PATH2 = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
+    const orgKeysSqlite = new BetterSqlite2(TENANT_KEYS_DB_PATH2);
+    applyPlatformPragmas(orgKeysSqlite);
+    initTenantKeySchema2(orgKeysSqlite);
+    const orgKeysDb = createDb(orgKeysSqlite);
+    const orgKeysTenantKeyStore = new TenantKeyStore(orgKeysSqlite);
+    const roleStore = new RoleStore(getDb());
+    const orgVaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
+    const deriveTenantKey2 = (tenantId: string, platformSecret: string) =>
+      createHmac("sha256", platformSecret).update(`tenant:${tenantId}`).digest();
+    const { buildPooledKeysMap: buildPooledKeysMap2, resolveApiKey: resolveApiKey2 } = await import(
+      "./security/tenant-keys/key-resolution.js"
+    );
+    const pooledKeys2 = buildPooledKeysMap2();
+
+    setOrgKeysRouterDeps({
+      getTenantKeyStore: () => orgKeysTenantKeyStore as never,
+      encrypt,
+      deriveTenantKey: deriveTenantKey2,
+      platformSecret: process.env.PLATFORM_SECRET,
+      getOrgTenantIdForUser: (_userId: string, memberTenantId: string) => {
+        return getOrgMembershipRepo().getOrgTenantIdForMember(memberTenantId);
+      },
+      getUserRoleInTenant: (userId: string, tenantId: string) => {
+        return roleStore.getRole(userId, tenantId);
+      },
+    });
+    logger.info("tRPC org-keys router initialized");
+
+    // Override settings testProvider to use org-aware key resolution
+    // This ensures org keys are checked when testing provider connectivity
+    const { validateProviderKey: validateProviderKey2, PROVIDER_ENDPOINTS: PROVIDER_ENDPOINTS2 } = await import(
+      "./security/key-validation.js"
+    );
+    setSettingsRouterDeps({
+      getNotificationPrefsStore,
+      testProvider: async (provider, tenantId) => {
+        const validProvider = provider as Parameters<typeof validateProviderKey2>[0];
+        if (!PROVIDER_ENDPOINTS2[validProvider]) {
+          return { ok: false, error: `Unknown provider: ${provider}` };
+        }
+        const resolved = resolveApiKeyWithOrgFallback(
+          (tid, prov, encKey) => resolveApiKey2(orgKeysDb, tid, prov, encKey, new Map())?.key ?? null,
+          tenantId,
+          validProvider,
+          orgVaultEncKey,
+          pooledKeys2,
+          (tid) =>
+            createHmac("sha256", process.env.PLATFORM_SECRET ?? "")
+              .update(`tenant:${tid}`)
+              .digest(),
+          getOrgMembershipRepo(),
+        );
+        if (!resolved) {
+          return { ok: false, error: "No API key configured for this provider" };
+        }
+        const start = Date.now();
+        try {
+          const result = await Promise.race([
+            validateProviderKey2(validProvider, resolved.key),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Provider test timed out")), 5_000)),
+          ]);
+          if (!result.valid) {
+            return { ok: false, error: result.error ?? "Provider returned invalid key" };
+          }
+          return { ok: true, latencyMs: Date.now() - start };
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : "Provider test failed" };
+        }
+      },
+    });
   }
 
   // Wire billing tRPC router deps

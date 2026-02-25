@@ -24,6 +24,7 @@ export * from "./nodes.js";
 export * from "./notification-preferences.js";
 export * from "./notification-queue.js";
 export * from "./oauth-states.js";
+export * from "./org-memberships.js";
 export * from "./organization-members.js";
 export * from "./payram.js";
 export * from "./plugin-marketplace-content.js";
