@@ -6,9 +6,12 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RoleStore } from "../../admin/roles/role-store.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
+import type { BotInstance } from "../../fleet/repository-types.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
 import { setFleetRouterDeps } from "./fleet.js";
@@ -63,6 +66,19 @@ const mockStatus = {
   stats: { cpuPercent: 5.2, memoryUsageMb: 128, memoryLimitMb: 512, memoryPercent: 25.0 },
 };
 
+const mockBotInstance: BotInstance = {
+  id: TEST_BOT_ID,
+  tenantId: "test-tenant",
+  name: "test-bot",
+  nodeId: null,
+  billingState: "active",
+  suspendedAt: null,
+  destroyAfter: null,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+  createdByUserId: "test-user",
+};
+
 const mockTemplates: ProfileTemplate[] = [
   {
     name: "default",
@@ -103,6 +119,19 @@ function createFleetMock() {
 
 let fleetMock: ReturnType<typeof createFleetMock>;
 
+const mockRoleStore: RoleStore = {
+  getRole: vi.fn().mockReturnValue("tenant_admin"),
+} as unknown as RoleStore;
+
+const mockBotInstanceRepo: IBotInstanceRepository = {
+  getById: vi.fn().mockReturnValue(mockBotInstance),
+  listByNode: vi.fn().mockReturnValue([]),
+  listByTenant: vi.fn().mockReturnValue([]),
+  upsert: vi.fn(),
+  updateBillingState: vi.fn(),
+  delete: vi.fn(),
+} as unknown as IBotInstanceRepository;
+
 beforeEach(() => {
   fleetMock = createFleetMock();
   setFleetRouterDeps({
@@ -110,6 +139,8 @@ beforeEach(() => {
     getTemplates: () => mockTemplates,
     getCreditLedger: () => null,
     getBotBilling: () => null,
+    getBotInstanceRepo: () => mockBotInstanceRepo,
+    getRoleStore: () => mockRoleStore,
   });
 });
 
@@ -368,7 +399,14 @@ describe("fleet.getSettings", () => {
     expect(result.identity.name).toBe("test-bot");
     expect(result.status).toBe("running");
     expect(result.installedPlugins).toEqual([
-      { id: "discord", name: "discord", description: "", icon: "", status: "active", capabilities: [] },
+      {
+        id: "discord",
+        name: "discord",
+        description: "",
+        icon: "",
+        status: "active",
+        capabilities: [],
+      },
     ]);
   });
 
@@ -631,5 +669,96 @@ describe("fleet.getStorageUsage", () => {
     expect(result.limitGb).toBe(50);
     expect(result.usedGb).toBe(10);
     expect(result.percentUsed).toBe(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// org-scoped bot ownership (WOP-1002)
+// ---------------------------------------------------------------------------
+
+describe("org-scoped bot ownership (WOP-1002)", () => {
+  function createBotInstanceRepoMock(overrides: Partial<BotInstance> = {}): IBotInstanceRepository {
+    return {
+      getById: vi.fn().mockReturnValue({ ...mockBotInstance, ...overrides }),
+      listByTenant: vi.fn().mockReturnValue([{ ...mockBotInstance, ...overrides }]),
+      listByNode: vi.fn().mockReturnValue([]),
+      create: vi.fn().mockReturnValue({ ...mockBotInstance, ...overrides }),
+      reassign: vi.fn(),
+      setBillingState: vi.fn(),
+      getResourceTier: vi.fn().mockReturnValue("standard"),
+      setResourceTier: vi.fn(),
+      getStorageTier: vi.fn().mockReturnValue("standard"),
+      setStorageTier: vi.fn(),
+    } as unknown as IBotInstanceRepository;
+  }
+
+  function createRoleStoreMock(role: string | null): RoleStore {
+    return { getRole: vi.fn().mockReturnValue(role) } as unknown as RoleStore;
+  }
+
+  it("user role member cannot control another user's bot", async () => {
+    const ctx = authedContext({ user: { id: "user-B", roles: ["user"] } });
+    const caller = createCaller(ctx);
+
+    const botRepo = createBotInstanceRepoMock({ createdByUserId: "user-A" });
+    const roleStore = createRoleStoreMock("user");
+
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotInstanceRepo: () => botRepo,
+      getRoleStore: () => roleStore,
+    });
+
+    await expect(caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "stop" })).rejects.toMatchObject({
+      message: "You do not have permission to manage this bot",
+    });
+  });
+
+  it("tenant_admin can control any org bot", async () => {
+    const ctx = authedContext({ user: { id: "admin-user", roles: ["admin"] } });
+    const caller = createCaller(ctx);
+
+    const botRepo = createBotInstanceRepoMock({ createdByUserId: "other-user" });
+    const roleStore = createRoleStoreMock("tenant_admin");
+
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotInstanceRepo: () => botRepo,
+      getRoleStore: () => roleStore,
+    });
+
+    const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "stop" });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("user can control their own bot", async () => {
+    const ctx = authedContext({ user: { id: "test-user", roles: ["user"] } });
+    const caller = createCaller(ctx);
+
+    const botRepo = createBotInstanceRepoMock({ createdByUserId: "test-user" });
+    const roleStore = createRoleStoreMock("user");
+
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotInstanceRepo: () => botRepo,
+      getRoleStore: () => roleStore,
+    });
+
+    const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "stop" });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("listInstances returns all org bots regardless of creator", async () => {
+    const ctx = authedContext({ user: { id: "user-B", roles: ["user"] } });
+    const caller = createCaller(ctx);
+    fleetMock.listByTenant.mockResolvedValue([mockStatus]);
+    const result = await caller.fleet.listInstances();
+    expect(result.bots).toHaveLength(1);
   });
 });

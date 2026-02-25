@@ -44,7 +44,8 @@ function setupTestDb() {
       resource_tier TEXT NOT NULL DEFAULT 'standard',
       storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
     CREATE TABLE IF NOT EXISTS tenant_customers (
       tenant TEXT PRIMARY KEY,
@@ -89,7 +90,8 @@ function setupTestDb() {
       discovery_json TEXT,
       description TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
   `);
 
@@ -138,7 +140,8 @@ function createTestDb() {
       resource_tier TEXT NOT NULL DEFAULT 'standard',
       storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
     CREATE TABLE tenant_customers (
       tenant TEXT PRIMARY KEY,
@@ -146,7 +149,8 @@ function createTestDb() {
       processor TEXT NOT NULL DEFAULT 'stripe',
       tier TEXT DEFAULT 'free',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
     CREATE TABLE recovery_events (
       id TEXT PRIMARY KEY,
@@ -187,7 +191,8 @@ function createTestDb() {
       discovery_json TEXT,
       description TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
   `);
 

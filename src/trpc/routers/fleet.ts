@@ -10,6 +10,8 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { RoleStore } from "../../admin/roles/role-store.js";
+import { canManageBot } from "../../fleet/bot-authorization.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
@@ -46,6 +48,7 @@ export interface FleetRouterDeps {
   getCreditLedger: () => CreditLedger | null;
   getBotBilling?: () => IBotBilling | null;
   getBotInstanceRepo?: () => IBotInstanceRepository | null;
+  getRoleStore?: () => RoleStore | null;
 }
 
 let _deps: FleetRouterDeps | null = null;
@@ -57,6 +60,29 @@ export function setFleetRouterDeps(deps: FleetRouterDeps): void {
 function deps(): FleetRouterDeps {
   if (!_deps) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Fleet not initialized" });
   return _deps;
+}
+
+/**
+ * Check if the current user can manage (mutate) a specific bot.
+ * Throws FORBIDDEN if not authorized. Does NOT apply to list/read operations.
+ */
+async function assertCanManageBot(ctx: { user: { id: string }; tenantId: string }, botId: string): Promise<void> {
+  const roleStore = deps().getRoleStore?.();
+  const botRepo = deps().getBotInstanceRepo?.();
+  if (!roleStore || !botRepo) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Bot management authorization unavailable" });
+  }
+
+  const userRole = roleStore.getRole(ctx.user.id, ctx.tenantId);
+  const botInstance = botRepo.getById(botId);
+  const createdBy = botInstance?.createdByUserId ?? null;
+
+  if (!canManageBot(userRole, ctx.user.id, createdBy)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "You do not have permission to manage this bot",
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +177,8 @@ export const fleetRouter = router({
       if (!profile || profile.tenantId !== ctx.tenantId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
       }
+      // Member-level authorization: check if user can manage this bot (WOP-1002)
+      await assertCanManageBot(ctx, input.id);
       // Payment gate (WOP-380): require minimum 17 cents to start a bot
       if (input.action === "start") {
         try {

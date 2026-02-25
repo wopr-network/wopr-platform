@@ -71,7 +71,8 @@ function setupDb() {
       resource_tier TEXT NOT NULL DEFAULT 'standard',
       storage_tier TEXT NOT NULL DEFAULT 'standard',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
   `);
 

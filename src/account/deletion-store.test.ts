@@ -17,7 +17,8 @@ function setupDb(): { db: DrizzleDb; sqlite: Database.Database } {
       completed_at TEXT,
       deletion_summary TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by_user_id TEXT
     );
     CREATE INDEX idx_acct_del_tenant ON account_deletion_requests(tenant_id);
     CREATE INDEX idx_acct_del_status ON account_deletion_requests(status);

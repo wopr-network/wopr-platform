@@ -37,11 +37,14 @@ export const botInstances = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     /** ISO timestamp of last update */
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    /** User who created this bot instance (null for legacy bots) */
+    createdByUserId: text("created_by_user_id"),
   },
   (table) => [
     index("idx_bot_instances_tenant").on(table.tenantId),
     index("idx_bot_instances_billing_state").on(table.billingState),
     index("idx_bot_instances_destroy_after").on(table.destroyAfter),
     index("idx_bot_instances_node").on(table.nodeId),
+    index("idx_bot_instances_created_by").on(table.createdByUserId),
   ],
 );
