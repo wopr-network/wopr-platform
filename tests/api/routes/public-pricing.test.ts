@@ -1,7 +1,8 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../../src/admin/rates/rate-store.js";
-import { initRateSchema } from "../../../src/admin/rates/schema.js";
+import type { DrizzleDb } from "../../../src/db/index.js";
+import { createTestDb } from "../../../src/test/db.js";
 import { publicPricingRoutes } from "../../../src/api/routes/public-pricing.js";
 
 describe("Public Pricing API Routes", () => {
@@ -38,17 +39,17 @@ describe("Public Pricing API Routes", () => {
 });
 
 describe("Public Pricing Data Structure", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = new BetterSqlite3(":memory:");
-		initRateSchema(db);
+		({ db, sqlite } = createTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("groups rates by capability with correct structure", () => {

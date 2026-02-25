@@ -2,8 +2,10 @@ import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../../src/admin/rates/rate-store.js";
 import { initRateSchema } from "../../../src/admin/rates/schema.js";
+import type { DrizzleDb } from "../../../src/db/index.js";
+import { createTestDb as createMigratedTestDb } from "../../../src/test/db.js";
 
-function createTestDb() {
+function createRawTestDb(): BetterSqlite3.Database {
 	const db = new BetterSqlite3(":memory:");
 	initRateSchema(db);
 	return db;
@@ -11,7 +13,7 @@ function createTestDb() {
 
 describe("RateStore - Schema Initialization", () => {
 	it("creates both sell_rates and provider_costs tables", () => {
-		const db = createTestDb();
+		const db = createRawTestDb();
 		const sellRatesTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='sell_rates'").get();
 		const providerCostsTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='provider_costs'").get();
 
@@ -21,7 +23,7 @@ describe("RateStore - Schema Initialization", () => {
 	});
 
 	it("creates all indexes", () => {
-		const db = createTestDb();
+		const db = createRawTestDb();
 		const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all() as Array<{ name: string }>;
 		const indexNames = indexes.map((idx) => idx.name);
 
@@ -46,16 +48,17 @@ describe("RateStore - Schema Initialization", () => {
 });
 
 describe("RateStore - Sell Rates", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = createTestDb();
+		({ db, sqlite } = createMigratedTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("creates a sell rate with generated UUID", () => {
@@ -340,16 +343,17 @@ describe("RateStore - Sell Rates", () => {
 });
 
 describe("RateStore - Provider Costs", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = createTestDb();
+		({ db, sqlite } = createMigratedTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("creates a provider cost with generated UUID", () => {
@@ -553,16 +557,17 @@ describe("RateStore - Provider Costs", () => {
 });
 
 describe("RateStore - Margin Report", () => {
-	let db: BetterSqlite3.Database;
+	let db: DrizzleDb;
+	let sqlite: BetterSqlite3.Database;
 	let store: RateStore;
 
 	beforeEach(() => {
-		db = createTestDb();
+		({ db, sqlite } = createMigratedTestDb());
 		store = new RateStore(db);
 	});
 
 	afterEach(() => {
-		db.close();
+		sqlite.close();
 	});
 
 	it("returns empty array when no data", () => {

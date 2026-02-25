@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { providerCosts, sellRates } from "../../db/schema/index.js";
 
 export interface SellRate {
   id: string;
@@ -68,7 +70,7 @@ const MAX_LIMIT = 250;
 const DEFAULT_LIMIT = 50;
 
 export class RateStore {
-  constructor(private db: Database.Database) {}
+  constructor(private readonly db: DrizzleDb) {}
 
   // ── Sell Rates ──
 
@@ -76,8 +78,10 @@ export class RateStore {
     // Check for existing NULL-model sell rate for this capability (application-level uniqueness)
     if (!input.model) {
       const existing = this.db
-        .prepare("SELECT id FROM sell_rates WHERE capability = ? AND model IS NULL")
-        .get(input.capability);
+        .select({ id: sellRates.id })
+        .from(sellRates)
+        .where(and(eq(sellRates.capability, input.capability), isNull(sellRates.model)))
+        .get();
       if (existing) {
         throw new Error(`A sell rate with capability '${input.capability}' and NULL model already exists`);
       }
@@ -89,25 +93,22 @@ export class RateStore {
     const sortOrder = input.sortOrder ?? 0;
 
     this.db
-      .prepare(
-        `INSERT INTO sell_rates (id, capability, display_name, unit, price_usd, model, is_active, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      .insert(sellRates)
+      .values({
         id,
-        input.capability,
-        input.displayName,
-        input.unit,
-        input.priceUsd,
-        input.model ?? null,
-        isActive ? 1 : 0,
+        capability: input.capability,
+        displayName: input.displayName,
+        unit: input.unit,
+        priceUsd: input.priceUsd,
+        model: input.model ?? null,
+        isActive: isActive ? 1 : 0,
         sortOrder,
-        now,
-        now,
-      );
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
 
-    const result = this.db.prepare("SELECT * FROM sell_rates WHERE id = ?").get(id) as SellRate;
-    return result;
+    return this.getSellRate(id) as SellRate;
   }
 
   updateSellRate(id: string, input: Partial<SellRateInput>): SellRate {
@@ -119,71 +120,51 @@ export class RateStore {
     // Check NULL-model uniqueness if changing model to NULL
     if ("model" in input && !input.model) {
       const duplicate = this.db
-        .prepare("SELECT id FROM sell_rates WHERE capability = ? AND model IS NULL AND id != ?")
-        .get(existing.capability, id);
+        .select({ id: sellRates.id })
+        .from(sellRates)
+        .where(
+          and(eq(sellRates.capability, existing.capability), isNull(sellRates.model), sql`${sellRates.id} != ${id}`),
+        )
+        .get();
       if (duplicate) {
         throw new Error(`A sell rate with capability '${existing.capability}' and NULL model already exists`);
       }
     }
 
-    const setClauses: string[] = [];
-    const values: unknown[] = [];
+    const setValues: Partial<typeof sellRates.$inferInsert> = {};
 
-    if (input.capability !== undefined) {
-      setClauses.push("capability = ?");
-      values.push(input.capability);
-    }
-    if (input.displayName !== undefined) {
-      setClauses.push("display_name = ?");
-      values.push(input.displayName);
-    }
-    if (input.unit !== undefined) {
-      setClauses.push("unit = ?");
-      values.push(input.unit);
-    }
-    if (input.priceUsd !== undefined) {
-      setClauses.push("price_usd = ?");
-      values.push(input.priceUsd);
-    }
-    if ("model" in input) {
-      setClauses.push("model = ?");
-      values.push(input.model ?? null);
-    }
-    if (input.isActive !== undefined) {
-      setClauses.push("is_active = ?");
-      values.push(input.isActive ? 1 : 0);
-    }
-    if (input.sortOrder !== undefined) {
-      setClauses.push("sort_order = ?");
-      values.push(input.sortOrder);
-    }
+    if (input.capability !== undefined) setValues.capability = input.capability;
+    if (input.displayName !== undefined) setValues.displayName = input.displayName;
+    if (input.unit !== undefined) setValues.unit = input.unit;
+    if (input.priceUsd !== undefined) setValues.priceUsd = input.priceUsd;
+    if ("model" in input) setValues.model = input.model ?? null;
+    if (input.isActive !== undefined) setValues.isActive = input.isActive ? 1 : 0;
+    if (input.sortOrder !== undefined) setValues.sortOrder = input.sortOrder;
+    setValues.updatedAt = new Date().toISOString();
 
-    setClauses.push("updated_at = ?");
-    values.push(new Date().toISOString());
+    this.db.update(sellRates).set(setValues).where(eq(sellRates.id, id)).run();
 
-    values.push(id);
-
-    this.db.prepare(`UPDATE sell_rates SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
-
-    const result = this.db.prepare("SELECT * FROM sell_rates WHERE id = ?").get(id) as SellRate;
-    return result;
+    return this.getSellRate(id) as SellRate;
   }
 
   deleteSellRate(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM sell_rates WHERE id = ?").run(id);
+    const result = this.db.delete(sellRates).where(eq(sellRates.id, id)).run();
     return result.changes > 0;
   }
 
   getSellRate(id: string): SellRate | null {
-    const result = this.db.prepare("SELECT * FROM sell_rates WHERE id = ?").get(id);
-    return (result as SellRate) ?? null;
+    const row = this.db.select().from(sellRates).where(eq(sellRates.id, id)).get();
+    return row ? toSellRate(row) : null;
   }
 
   /** Look up an active sell rate by capability and model. Returns null if not found. */
   getSellRateByModel(capability: string, model: string, unit?: string): SellRate | null {
+    // raw SQL: Drizzle cannot express the optional unit filter clause that is conditionally
+    // appended to the query depending on whether the unit parameter is provided
+    const sqlite = this.db.$client;
     const unitClause = unit ? " AND unit = ?" : "";
     const params: unknown[] = unit ? [capability, model, unit] : [capability, model];
-    const result = this.db
+    const result = sqlite
       .prepare(
         `SELECT * FROM sell_rates WHERE capability = ? AND model = ? AND is_active = 1${unitClause} ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
       )
@@ -192,41 +173,35 @@ export class RateStore {
   }
 
   listSellRates(filters?: RateFilters): { entries: SellRate[]; total: number } {
-    const whereClauses: string[] = [];
-    const whereValues: unknown[] = [];
+    const wheres = buildSellRateWheres(filters);
 
-    if (filters?.capability) {
-      whereClauses.push("capability = ?");
-      whereValues.push(filters.capability);
-    }
-    if (filters?.isActive !== undefined) {
-      whereClauses.push("is_active = ?");
-      whereValues.push(filters.isActive ? 1 : 0);
-    }
-
-    const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
-    const total = (
-      this.db.prepare(`SELECT COUNT(*) as count FROM sell_rates ${whereClause}`).get(...whereValues) as {
-        count: number;
-      }
-    ).count;
+    const countResult = this.db.select({ count: count() }).from(sellRates).where(wheres).get();
+    const total = countResult?.count ?? 0;
 
     const limit = Math.min(filters?.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     const offset = filters?.offset ?? 0;
 
-    const entries = this.db
-      .prepare(`SELECT * FROM sell_rates ${whereClause} ORDER BY capability, sort_order, display_name LIMIT ? OFFSET ?`)
-      .all(...whereValues, limit, offset) as SellRate[];
+    const rows = this.db
+      .select()
+      .from(sellRates)
+      .where(wheres)
+      .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder), asc(sellRates.displayName))
+      .limit(limit)
+      .offset(offset)
+      .all();
 
-    return { entries, total };
+    return { entries: rows.map(toSellRate), total };
   }
 
   /** List only active sell rates, ordered by capability + sort_order. For public pricing endpoint. */
   listPublicRates(): SellRate[] {
-    return this.db
-      .prepare("SELECT * FROM sell_rates WHERE is_active = 1 ORDER BY capability, sort_order, display_name")
-      .all() as SellRate[];
+    const rows = this.db
+      .select()
+      .from(sellRates)
+      .where(eq(sellRates.isActive, 1))
+      .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder), asc(sellRates.displayName))
+      .all();
+    return rows.map(toSellRate);
   }
 
   // ── Provider Costs ──
@@ -235,8 +210,16 @@ export class RateStore {
     // Check for existing NULL-model provider cost (application-level uniqueness)
     if (!input.model) {
       const existing = this.db
-        .prepare("SELECT id FROM provider_costs WHERE capability = ? AND adapter = ? AND model IS NULL")
-        .get(input.capability, input.adapter);
+        .select({ id: providerCosts.id })
+        .from(providerCosts)
+        .where(
+          and(
+            eq(providerCosts.capability, input.capability),
+            eq(providerCosts.adapter, input.adapter),
+            isNull(providerCosts.model),
+          ),
+        )
+        .get();
       if (existing) {
         throw new Error(
           `A provider cost with capability '${input.capability}', adapter '${input.adapter}', and NULL model already exists`,
@@ -251,26 +234,23 @@ export class RateStore {
     const latencyClass = input.latencyClass ?? "standard";
 
     this.db
-      .prepare(
-        `INSERT INTO provider_costs (id, capability, adapter, model, unit, cost_usd, priority, latency_class, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
+      .insert(providerCosts)
+      .values({
         id,
-        input.capability,
-        input.adapter,
-        input.model ?? null,
-        input.unit,
-        input.costUsd,
+        capability: input.capability,
+        adapter: input.adapter,
+        model: input.model ?? null,
+        unit: input.unit,
+        costUsd: input.costUsd,
         priority,
         latencyClass,
-        isActive ? 1 : 0,
-        now,
-        now,
-      );
+        isActive: isActive ? 1 : 0,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
 
-    const result = this.db.prepare("SELECT * FROM provider_costs WHERE id = ?").get(id) as ProviderCost;
-    return result;
+    return this.getProviderCost(id) as ProviderCost;
   }
 
   updateProviderCost(id: string, input: Partial<ProviderCostInput>): ProviderCost {
@@ -282,8 +262,17 @@ export class RateStore {
     // Check NULL-model uniqueness if changing model to NULL
     if ("model" in input && !input.model) {
       const duplicate = this.db
-        .prepare("SELECT id FROM provider_costs WHERE capability = ? AND adapter = ? AND model IS NULL AND id != ?")
-        .get(existing.capability, existing.adapter, id);
+        .select({ id: providerCosts.id })
+        .from(providerCosts)
+        .where(
+          and(
+            eq(providerCosts.capability, existing.capability),
+            eq(providerCosts.adapter, existing.adapter),
+            isNull(providerCosts.model),
+            sql`${providerCosts.id} != ${id}`,
+          ),
+        )
+        .get();
       if (duplicate) {
         throw new Error(
           `A provider cost with capability '${existing.capability}', adapter '${existing.adapter}', and NULL model already exists`,
@@ -291,96 +280,52 @@ export class RateStore {
       }
     }
 
-    const setClauses: string[] = [];
-    const values: unknown[] = [];
+    const setValues: Partial<typeof providerCosts.$inferInsert> = {};
 
-    if (input.capability !== undefined) {
-      setClauses.push("capability = ?");
-      values.push(input.capability);
-    }
-    if (input.adapter !== undefined) {
-      setClauses.push("adapter = ?");
-      values.push(input.adapter);
-    }
-    if ("model" in input) {
-      setClauses.push("model = ?");
-      values.push(input.model ?? null);
-    }
-    if (input.unit !== undefined) {
-      setClauses.push("unit = ?");
-      values.push(input.unit);
-    }
-    if (input.costUsd !== undefined) {
-      setClauses.push("cost_usd = ?");
-      values.push(input.costUsd);
-    }
-    if (input.priority !== undefined) {
-      setClauses.push("priority = ?");
-      values.push(input.priority);
-    }
-    if (input.latencyClass !== undefined) {
-      setClauses.push("latency_class = ?");
-      values.push(input.latencyClass);
-    }
-    if (input.isActive !== undefined) {
-      setClauses.push("is_active = ?");
-      values.push(input.isActive ? 1 : 0);
-    }
+    if (input.capability !== undefined) setValues.capability = input.capability;
+    if (input.adapter !== undefined) setValues.adapter = input.adapter;
+    if ("model" in input) setValues.model = input.model ?? null;
+    if (input.unit !== undefined) setValues.unit = input.unit;
+    if (input.costUsd !== undefined) setValues.costUsd = input.costUsd;
+    if (input.priority !== undefined) setValues.priority = input.priority;
+    if (input.latencyClass !== undefined) setValues.latencyClass = input.latencyClass;
+    if (input.isActive !== undefined) setValues.isActive = input.isActive ? 1 : 0;
+    setValues.updatedAt = new Date().toISOString();
 
-    setClauses.push("updated_at = ?");
-    values.push(new Date().toISOString());
+    this.db.update(providerCosts).set(setValues).where(eq(providerCosts.id, id)).run();
 
-    values.push(id);
-
-    this.db.prepare(`UPDATE provider_costs SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
-
-    const result = this.db.prepare("SELECT * FROM provider_costs WHERE id = ?").get(id) as ProviderCost;
-    return result;
+    return this.getProviderCost(id) as ProviderCost;
   }
 
   deleteProviderCost(id: string): boolean {
-    const result = this.db.prepare("DELETE FROM provider_costs WHERE id = ?").run(id);
+    const result = this.db.delete(providerCosts).where(eq(providerCosts.id, id)).run();
     return result.changes > 0;
   }
 
   getProviderCost(id: string): ProviderCost | null {
-    const result = this.db.prepare("SELECT * FROM provider_costs WHERE id = ?").get(id);
-    return (result as ProviderCost) ?? null;
+    const row = this.db.select().from(providerCosts).where(eq(providerCosts.id, id)).get();
+    return row ? toProviderCost(row) : null;
   }
 
   listProviderCosts(filters?: ProviderCostFilters): { entries: ProviderCost[]; total: number } {
-    const whereClauses: string[] = [];
-    const whereValues: unknown[] = [];
+    const wheres = buildProviderCostWheres(filters);
 
-    if (filters?.capability) {
-      whereClauses.push("capability = ?");
-      whereValues.push(filters.capability);
-    }
-    if (filters?.adapter) {
-      whereClauses.push("adapter = ?");
-      whereValues.push(filters.adapter);
-    }
-    if (filters?.isActive !== undefined) {
-      whereClauses.push("is_active = ?");
-      whereValues.push(filters.isActive ? 1 : 0);
-    }
-
-    const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
-    const total = (
-      this.db.prepare(`SELECT COUNT(*) as count FROM provider_costs ${whereClause}`).get(...whereValues) as {
-        count: number;
-      }
-    ).count;
+    const countResult = this.db.select({ count: count() }).from(providerCosts).where(wheres).get();
+    const total = countResult?.count ?? 0;
 
     const limit = Math.min(filters?.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     const offset = filters?.offset ?? 0;
 
-    const entries = this.db
-      .prepare(`SELECT * FROM provider_costs ${whereClause} ORDER BY capability, priority, adapter LIMIT ? OFFSET ?`)
-      .all(...whereValues, limit, offset) as ProviderCost[];
+    const rows = this.db
+      .select()
+      .from(providerCosts)
+      .where(wheres)
+      .orderBy(asc(providerCosts.capability), asc(providerCosts.priority), asc(providerCosts.adapter))
+      .limit(limit)
+      .offset(offset)
+      .all();
 
-    return { entries, total };
+    return { entries: rows.map(toProviderCost), total };
   }
 
   // ── Margin Reporting ──
@@ -392,33 +337,88 @@ export class RateStore {
     providerCosts: ProviderCost[];
     bestMarginPct: number;
   }> {
-    const whereClauses: string[] = [];
-    const whereValues: unknown[] = [];
+    const wheres = capability ? eq(sellRates.capability, capability) : undefined;
 
-    if (capability) {
-      whereClauses.push("sr.capability = ?");
-      whereValues.push(capability);
-    }
+    const allSellRates = this.db
+      .select()
+      .from(sellRates)
+      .where(wheres)
+      .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder))
+      .all();
 
-    const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    return allSellRates.map((sr) => {
+      const costs = this.db
+        .select()
+        .from(providerCosts)
+        .where(eq(providerCosts.capability, sr.capability))
+        .orderBy(asc(providerCosts.priority), asc(providerCosts.costUsd))
+        .all()
+        .map(toProviderCost);
 
-    const sellRatesQuery = `SELECT * FROM sell_rates sr ${whereClause} ORDER BY sr.capability, sr.sort_order`;
-    const sellRates = this.db.prepare(sellRatesQuery).all(...whereValues) as SellRate[];
-
-    return sellRates.map((sellRate) => {
-      const providerCosts = this.db
-        .prepare("SELECT * FROM provider_costs WHERE capability = ? ORDER BY priority, cost_usd")
-        .all(sellRate.capability) as ProviderCost[];
-
-      const minCost = providerCosts.length > 0 ? Math.min(...providerCosts.map((pc) => pc.cost_usd)) : 0;
+      const sellRate = toSellRate(sr);
+      const minCost = costs.length > 0 ? Math.min(...costs.map((pc) => pc.cost_usd)) : 0;
       const bestMarginPct = sellRate.price_usd > 0 ? ((sellRate.price_usd - minCost) / sellRate.price_usd) * 100 : 0;
 
       return {
         capability: sellRate.capability,
         sellRate,
-        providerCosts,
+        providerCosts: costs,
         bestMarginPct,
       };
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// WHERE clause builders
+// ---------------------------------------------------------------------------
+
+function buildSellRateWheres(filters?: RateFilters) {
+  const clauses = [];
+  if (filters?.capability) clauses.push(eq(sellRates.capability, filters.capability));
+  if (filters?.isActive !== undefined) clauses.push(eq(sellRates.isActive, filters.isActive ? 1 : 0));
+  return clauses.length > 0 ? and(...clauses) : undefined;
+}
+
+function buildProviderCostWheres(filters?: ProviderCostFilters) {
+  const clauses = [];
+  if (filters?.capability) clauses.push(eq(providerCosts.capability, filters.capability));
+  if (filters?.adapter) clauses.push(eq(providerCosts.adapter, filters.adapter));
+  if (filters?.isActive !== undefined) clauses.push(eq(providerCosts.isActive, filters.isActive ? 1 : 0));
+  return clauses.length > 0 ? and(...clauses) : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Row mappers
+// ---------------------------------------------------------------------------
+
+function toSellRate(row: typeof sellRates.$inferSelect): SellRate {
+  return {
+    id: row.id,
+    capability: row.capability,
+    display_name: row.displayName,
+    unit: row.unit,
+    price_usd: row.priceUsd,
+    model: row.model,
+    is_active: row.isActive,
+    sort_order: row.sortOrder,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
+}
+
+function toProviderCost(row: typeof providerCosts.$inferSelect): ProviderCost {
+  return {
+    id: row.id,
+    capability: row.capability,
+    adapter: row.adapter,
+    model: row.model,
+    unit: row.unit,
+    cost_usd: row.costUsd,
+    priority: row.priority,
+    latency_class: row.latencyClass,
+    is_active: row.isActive,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
 }

@@ -169,7 +169,7 @@ describe("tRPC appRouter", () => {
   describe("admin", () => {
     beforeEach(() => {
       const creditLedger = makeMockLedger();
-      const userStore = new AdminUserStore(sqlite);
+      const userStore = new AdminUserStore(db);
 
       const auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
       setAdminRouterDeps({

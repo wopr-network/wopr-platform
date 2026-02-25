@@ -1,5 +1,7 @@
-import BetterSqlite3 from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { createAdminRateApiRoutes } from "./admin-rates.js";
 
 /**
@@ -9,12 +11,15 @@ import { createAdminRateApiRoutes } from "./admin-rates.js";
  * exercising validation branches and error paths not covered elsewhere.
  */
 describe("admin rates routes", () => {
+  let db: DrizzleDb;
   let sqlite: BetterSqlite3.Database;
   let app: ReturnType<typeof createAdminRateApiRoutes>;
 
   beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    app = createAdminRateApiRoutes(sqlite);
+    const t = createTestDb();
+    db = t.db;
+    sqlite = t.sqlite;
+    app = createAdminRateApiRoutes(db);
   });
 
   afterEach(() => {

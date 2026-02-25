@@ -1,4 +1,6 @@
-import type Database from "better-sqlite3";
+import { eq } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { adminUsers } from "../../db/schema/index.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -55,14 +57,13 @@ const VALID_SORT_COLUMNS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 export class AdminUserStore {
-  private db: Database.Database;
-
-  constructor(db: Database.Database) {
-    this.db = db;
-  }
+  constructor(private readonly db: DrizzleDb) {}
 
   /** List users with pagination, filtering, and sorting. */
   list(filters: AdminUserFilters = {}): AdminUserListResponse {
+    // raw SQL: Drizzle cannot express dynamic ORDER BY with runtime column names from a
+    // whitelist map, or LIKE with ESCAPE clauses for safe wildcard search across multiple columns
+    const sqlite = this.db.$client;
     const conditions: string[] = [];
     const params: unknown[] = [];
 
@@ -96,7 +97,7 @@ export class AdminUserStore {
 
     // Count total matching rows
     const countSql = `SELECT COUNT(*) as count FROM admin_users ${where}`;
-    const countRow = this.db.prepare(countSql).get(...params) as { count: number };
+    const countRow = sqlite.prepare(countSql).get(...params) as { count: number };
     const total = countRow.count;
 
     // Sort
@@ -108,29 +109,42 @@ export class AdminUserStore {
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);
 
-    const sql = `SELECT * FROM admin_users ${where} ${orderBy} LIMIT ? OFFSET ?`;
-    const users = this.db.prepare(sql).all(...params, limit, offset) as AdminUserSummary[];
+    const querySql = `SELECT * FROM admin_users ${where} ${orderBy} LIMIT ? OFFSET ?`;
+    const users = sqlite.prepare(querySql).all(...params, limit, offset) as AdminUserSummary[];
 
     return { users, total, limit, offset };
   }
 
   /** Full-text search across name, email, and tenant_id. */
   search(query: string): AdminUserSummary[] {
+    // raw SQL: Drizzle cannot express LIKE with ESCAPE clause for safe parameterized wildcard search
+    const sqlite = this.db.$client;
     const pattern = `%${escapeLike(query)}%`;
-    const sql = `
+    const querySql = `
       SELECT * FROM admin_users
       WHERE name LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\' OR tenant_id LIKE ? ESCAPE '\\'
       ORDER BY created_at DESC
       LIMIT 50
     `;
-    return this.db.prepare(sql).all(pattern, pattern, pattern) as AdminUserSummary[];
+    return sqlite.prepare(querySql).all(pattern, pattern, pattern) as AdminUserSummary[];
   }
 
   /** Get a single user by ID. */
   getById(userId: string): AdminUserSummary | null {
-    const sql = "SELECT * FROM admin_users WHERE id = ?";
-    const row = this.db.prepare(sql).get(userId) as AdminUserSummary | undefined;
-    return row ?? null;
+    const row = this.db.select().from(adminUsers).where(eq(adminUsers.id, userId)).get();
+    if (!row) return null;
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      tenant_id: row.tenantId,
+      status: row.status,
+      role: row.role,
+      credit_balance_cents: row.creditBalanceCents,
+      agent_count: row.agentCount,
+      last_seen: row.lastSeen,
+      created_at: row.createdAt,
+    };
   }
 }
 

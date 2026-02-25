@@ -1,9 +1,9 @@
-import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import type { AdminUserFilters } from "../../admin/users/user-store.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 
 // ---------------------------------------------------------------------------
 // Deps / lazy init
@@ -13,7 +13,7 @@ const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 
 export interface AdminUsersRouteDeps {
-  db: Database.Database;
+  db: DrizzleDb;
 }
 
 let _userStore: AdminUserStore | null = null;
@@ -58,7 +58,7 @@ const VALID_SORT_ORDER = new Set(["asc", "desc"]);
  * Create admin user API routes with an explicit database.
  * Used in tests to inject an in-memory database.
  */
-export function createAdminUsersApiRoutes(db: Database.Database): Hono<AuthEnv> {
+export function createAdminUsersApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const userStore = new AdminUserStore(db);
   const routes = new Hono<AuthEnv>();
 

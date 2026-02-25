@@ -181,7 +181,7 @@ describe("admin tenant status tRPC routes", () => {
     setAdminRouterDeps({
       getAuditLog: () => auditLog,
       getCreditLedger: () => creditLedger,
-      getUserStore: () => new AdminUserStore(sqlite),
+      getUserStore: () => new AdminUserStore(db),
       getTenantStatusStore: () => statusStore,
       getBotBilling: () => botBilling,
     });

@@ -1,40 +1,12 @@
-import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { isValidRole, RoleStore } from "./role-store.js";
-import { initRolesSchema } from "./schema.js";
 
-function createTestDb() {
-  const db = new BetterSqlite3(":memory:");
-  initRolesSchema(db);
-  return db;
+function createRoleTestDb(): { db: DrizzleDb; close: () => void } {
+  const { db, sqlite } = createTestDb();
+  return { db, close: () => sqlite.close() };
 }
-
-describe("initRolesSchema", () => {
-  it("creates user_roles table", () => {
-    const db = createTestDb();
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_roles'").all() as {
-      name: string;
-    }[];
-    expect(tables).toHaveLength(1);
-    db.close();
-  });
-
-  it("creates indexes", () => {
-    const db = createTestDb();
-    const indexes = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_user_roles_%'")
-      .all() as { name: string }[];
-    expect(indexes.length).toBeGreaterThanOrEqual(2);
-    db.close();
-  });
-
-  it("is idempotent", () => {
-    const db = createTestDb();
-    initRolesSchema(db);
-    initRolesSchema(db);
-    db.close();
-  });
-});
 
 describe("isValidRole", () => {
   it("accepts valid roles", () => {
@@ -51,16 +23,19 @@ describe("isValidRole", () => {
 });
 
 describe("RoleStore", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
+  let close: () => void;
   let store: RoleStore;
 
   beforeEach(() => {
-    db = createTestDb();
+    const t = createRoleTestDb();
+    db = t.db;
+    close = t.close;
     store = new RoleStore(db);
   });
 
   afterEach(() => {
-    db.close();
+    close();
   });
 
   describe("setRole / getRole", () => {
@@ -81,7 +56,7 @@ describe("RoleStore", () => {
 
     it("stores granted_by and granted_at", () => {
       store.setRole("user-1", "tenant-1", "user", "admin-1");
-      const row = db
+      const row = db.$client
         .prepare("SELECT * FROM user_roles WHERE user_id = ? AND tenant_id = ?")
         .get("user-1", "tenant-1") as { granted_by: string; granted_at: number };
       expect(row.granted_by).toBe("admin-1");
@@ -90,7 +65,7 @@ describe("RoleStore", () => {
 
     it("handles null granted_by", () => {
       store.setRole("user-1", "tenant-1", "user", null);
-      const row = db
+      const row = db.$client
         .prepare("SELECT * FROM user_roles WHERE user_id = ? AND tenant_id = ?")
         .get("user-1", "tenant-1") as { granted_by: string | null };
       expect(row.granted_by).toBeNull();

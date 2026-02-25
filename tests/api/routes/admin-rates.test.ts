@@ -1,11 +1,14 @@
-import BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { createAdminRateApiRoutes } from "../../../src/api/routes/admin-rates.js";
 import type { AuthEnv } from "../../../src/auth/index.js";
+import { createTestDb } from "../../../src/test/db.js";
+
+let closeSqlite: (() => void) | undefined;
 
 function createTestApp(): Hono<AuthEnv> {
-	const db = new BetterSqlite3(":memory:");
+	const { db, sqlite } = createTestDb();
+	closeSqlite = () => sqlite.close();
 	return createAdminRateApiRoutes(db);
 }
 
@@ -14,6 +17,10 @@ describe("Admin Rate API Routes", () => {
 
 	beforeEach(() => {
 		app = createTestApp();
+	});
+
+	afterEach(() => {
+		closeSqlite?.();
 	});
 
 	describe("POST /sell - Create sell rate", () => {
