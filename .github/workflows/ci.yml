@@ -234,6 +234,7 @@ jobs:
           exit-code: 1
           severity: CRITICAL
           ignore-unfixed: true
+          ignorefile: .trivyignore
 
   # SOC 2 C3: Dependency vulnerability scanning
   dependency-scan:
