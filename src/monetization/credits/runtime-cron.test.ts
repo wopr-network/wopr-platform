@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RESOURCE_TIERS } from "../../fleet/resource-tiers.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 import { buildResourceTierCosts, DAILY_BOT_COST_CENTS, runRuntimeDeductions } from "./runtime-cron.js";
 
@@ -9,14 +9,18 @@ describe("runRuntimeDeductions", () => {
   let pool: PGlite;
   let ledger: CreditLedger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const { db, pool: p } = await createTestDb();
     pool = p;
     ledger = new CreditLedger(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("DAILY_BOT_COST_CENTS equals 17", () => {

@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { nodes } from "../db/schema/index.js";
 import { nodeTransitions } from "../db/schema/node-transitions.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { ConcurrentTransitionError, InvalidTransitionError, NodeNotFoundError } from "./node-state-machine.js";
 
@@ -23,13 +23,17 @@ describe("DrizzleNodeRepository — transition()", () => {
   let pool: PGlite;
   let repo: DrizzleNodeRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleNodeRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleNodeRepository(db);
   });
 
   it("returns node with new status on success", async () => {
@@ -143,13 +147,17 @@ describe("DrizzleNodeRepository — register()", () => {
   let pool: PGlite;
   let repo: DrizzleNodeRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleNodeRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleNodeRepository(db);
   });
 
   it("registers new node with provisioning -> active audit trail", async () => {
@@ -238,13 +246,17 @@ describe("DrizzleNodeRepository — other methods", () => {
   let pool: PGlite;
   let repo: DrizzleNodeRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleNodeRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleNodeRepository(db);
   });
 
   it("getById returns null for nonexistent node", async () => {

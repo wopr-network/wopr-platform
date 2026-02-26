@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleProviderHealthRepository } from "../drizzle-provider-health-repository.js";
 import type { IProviderHealthRepository } from "../provider-health-repository.js";
 import { ProviderRegistry } from "./provider-registry.js";
@@ -13,14 +13,18 @@ describe("ProviderRegistry", () => {
   let store: RateStore;
   let healthRepo: IProviderHealthRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new RateStore(db);
-    healthRepo = new DrizzleProviderHealthRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new RateStore(db);
+    healthRepo = new DrizzleProviderHealthRepository(db);
   });
 
   function makeRegistry(cacheTtlMs = 30_000, unhealthyTtlMs = 60_000): ProviderRegistry {

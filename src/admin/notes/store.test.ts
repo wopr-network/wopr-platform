@@ -1,18 +1,28 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminNotesApiRoutes } from "../../api/routes/admin-notes.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { AdminNotesStore } from "./store.js";
 
 describe("AdminNotesStore.create", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let store: AdminNotesStore;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AdminNotesStore(db);
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("creates a note and returns all fields populated", async () => {
@@ -51,12 +61,21 @@ describe("AdminNotesStore.create", () => {
 
 describe("AdminNotesStore.list", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let store: AdminNotesStore;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AdminNotesStore(db);
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("returns notes for the correct tenant only", async () => {
@@ -124,12 +143,21 @@ describe("AdminNotesStore.list", () => {
 
 describe("AdminNotesStore.update", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let store: AdminNotesStore;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AdminNotesStore(db);
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("modifies content", async () => {
@@ -166,12 +194,21 @@ describe("AdminNotesStore.update", () => {
 
 describe("AdminNotesStore.delete", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let store: AdminNotesStore;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AdminNotesStore(db);
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("removes the note and returns true", async () => {
@@ -200,12 +237,21 @@ describe("AdminNotesStore.delete", () => {
 
 describe("admin notes API routes", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let store: AdminNotesStore;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AdminNotesStore(db);
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("GET /:tenantId returns notes", async () => {

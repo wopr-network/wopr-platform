@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AnalyticsStore } from "../../../src/admin/analytics/analytics-store.js";
 import type { DrizzleDb } from "../../../src/db/index.js";
-import { createTestDb } from "../../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../../src/test/db.js";
 
 async function seedAutoTopup(
   pool: PGlite,
@@ -66,13 +66,17 @@ describe("AnalyticsStore — getRevenueOverview", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("returns all zeros for an empty database", async () => {
@@ -128,13 +132,17 @@ describe("AnalyticsStore — getFloat", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("returns zeros for an empty database", async () => {
@@ -170,13 +178,17 @@ describe("AnalyticsStore — getRevenueBreakdown", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("returns per-use and monthly rows", async () => {
@@ -213,13 +225,17 @@ describe("AnalyticsStore — getMarginByCapability", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("calculates margin per capability correctly", async () => {
@@ -262,13 +278,17 @@ describe("AnalyticsStore — getProviderSpend", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("aggregates provider spend with call counts", async () => {
@@ -301,13 +321,17 @@ describe("AnalyticsStore — getTenantHealth", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("counts tenants from both credit_balances and tenant_status", async () => {
@@ -344,13 +368,17 @@ describe("AnalyticsStore — getTimeSeries", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("buckets data into daily periods", async () => {
@@ -434,13 +462,17 @@ describe("AnalyticsStore — exportCsv", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   const range = { from: THIRTY_DAYS_AGO, to: NOW };
@@ -546,13 +578,17 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("returns all zeros for an empty database", async () => {
@@ -614,13 +650,17 @@ describe("AnalyticsStore — getTenantHealth (atRisk with auto-topup)", () => {
   let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new AnalyticsStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AnalyticsStore(db);
   });
 
   it("counts tenants with low balance and no auto-topup as at-risk", async () => {

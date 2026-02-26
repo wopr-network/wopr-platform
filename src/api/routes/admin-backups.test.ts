@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleBackupStatusRepository } from "../../backup/backup-status-repository.js";
 import { BackupStatusStore } from "../../backup/backup-status-store.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { createAdminBackupRoutes, isRemotePathOwnedBy } from "./admin-backups.js";
 
 describe("admin-backups routes", () => {
@@ -11,7 +11,7 @@ describe("admin-backups routes", () => {
   let store: BackupStatusStore;
   let app: ReturnType<typeof createAdminBackupRoutes>;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const { db, pool: p } = await createTestDb();
     pool = p;
     const repo = new DrizzleBackupStatusRepository(db);
@@ -19,8 +19,12 @@ describe("admin-backups routes", () => {
     app = createAdminBackupRoutes(store);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   describe("GET /", () => {

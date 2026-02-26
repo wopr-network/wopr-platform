@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
 import { CreditLedger } from "./credit-ledger.js";
 
@@ -13,14 +13,18 @@ describe("BotBilling", () => {
   let billing: BotBilling;
   let ledger: CreditLedger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    billing = new BotBilling(db);
-    ledger = new CreditLedger(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    billing = new BotBilling(db);
+    ledger = new CreditLedger(db);
   });
 
   describe("registerBot", () => {

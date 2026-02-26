@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 
 // Set env var BEFORE importing quota routes so bearer auth uses this token
 const TEST_TOKEN = "test-quota-token";
@@ -19,14 +19,18 @@ describe("quota routes", () => {
   let db: DrizzleDb;
   let ledger: CreditLedger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
-    setLedger(ledger);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
+    setLedger(ledger);
   });
 
   describe("authentication", () => {
