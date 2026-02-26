@@ -3,15 +3,18 @@ import type { Hono } from "hono";
 import type { PGlite } from "@electric-sql/pglite";
 import { createAdminRateApiRoutes } from "../../../src/api/routes/admin-rates.js";
 import type { AuthEnv } from "../../../src/auth/index.js";
+import type { DrizzleDb } from "../../../src/db/index.js";
 import { createTestDb, truncateAllTables } from "../../../src/test/db.js";
 
 describe("Admin Rate API Routes", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
+	let db: DrizzleDb;
 
 	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+		db = testDb.db;
 	});
 
 	afterAll(async () => {
@@ -20,7 +23,7 @@ describe("Admin Rate API Routes", () => {
 
 	beforeEach(async () => {
 	  await truncateAllTables(pool);
-		app = createAdminRateApiRoutes(testDb.db);
+		app = createAdminRateApiRoutes(db);
 	});
 
 
@@ -323,10 +326,12 @@ describe("Admin Rate API Routes", () => {
 describe("POST /provider - latencyClass validation", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
+	let db: DrizzleDb;
 
 	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+		db = testDb.db;
 	});
 
 	afterAll(async () => {
@@ -335,7 +340,7 @@ describe("POST /provider - latencyClass validation", () => {
 
 	beforeEach(async () => {
 	  await truncateAllTables(pool);
-		app = createAdminRateApiRoutes(testDb.db);
+		app = createAdminRateApiRoutes(db);
 	});
 
 
@@ -395,10 +400,12 @@ describe("POST /provider - latencyClass validation", () => {
 describe("PUT /provider/:id - latencyClass validation", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
+	let db: DrizzleDb;
 
 	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+		db = testDb.db;
 	});
 
 	afterAll(async () => {
@@ -407,7 +414,7 @@ describe("PUT /provider/:id - latencyClass validation", () => {
 
 	beforeEach(async () => {
 	  await truncateAllTables(pool);
-		app = createAdminRateApiRoutes(testDb.db);
+		app = createAdminRateApiRoutes(db);
 	});
 
 
@@ -462,10 +469,12 @@ describe("PUT /provider/:id - latencyClass validation", () => {
 describe("Error handling coverage", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
+	let db: DrizzleDb;
 
 	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+		db = testDb.db;
 	});
 
 	afterAll(async () => {
@@ -474,7 +483,7 @@ describe("Error handling coverage", () => {
 
 	beforeEach(async () => {
 	  await truncateAllTables(pool);
-		app = createAdminRateApiRoutes(testDb.db);
+		app = createAdminRateApiRoutes(db);
 	});
 
 
