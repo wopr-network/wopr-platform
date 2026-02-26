@@ -47,6 +47,7 @@ import { createOrgRoutes } from "./routes/orgs.js";
 import { publicPricingRoutes } from "./routes/public-pricing.js";
 import { quotaRoutes } from "./routes/quota.js";
 import { secretsRoutes } from "./routes/secrets.js";
+import { setupRoutes } from "./routes/setup.js";
 import { snapshotRoutes } from "./routes/snapshots.js";
 import { tenantKeyRoutes } from "./routes/tenant-keys.js";
 import { tenantProxyMiddleware } from "./routes/tenant-proxy.js";
@@ -280,6 +281,7 @@ app.route("/api/activity", activityRoutes);
 app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
 app.route("/api/chat", chatRoutes);
+app.route("/api/chat/setup", setupRoutes);
 // Org management routes (WOP-1000)
 // A deps factory defers getOrgRepo()/getDb() until first request so the DB
 // is not opened at module load time (tests import app.ts without a live DB).

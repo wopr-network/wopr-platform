@@ -857,3 +857,19 @@ export function getOnboardingService(): OnboardingService {
   }
   return _onboardingService;
 }
+
+// ---------------------------------------------------------------------------
+// Setup Session Repository (WOP-1034)
+// ---------------------------------------------------------------------------
+
+import type { ISetupSessionRepository } from "../setup/setup-session-repository.js";
+import { DrizzleSetupSessionRepository } from "../setup/setup-session-repository.js";
+
+let _setupSessionRepo: ISetupSessionRepository | null = null;
+
+export function getSetupSessionRepo(): ISetupSessionRepository {
+  if (!_setupSessionRepo) {
+    _setupSessionRepo = new DrizzleSetupSessionRepository(getDb());
+  }
+  return _setupSessionRepo;
+}
