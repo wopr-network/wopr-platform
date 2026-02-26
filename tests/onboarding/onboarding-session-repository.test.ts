@@ -7,10 +7,12 @@ import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 describe("DrizzleOnboardingSessionRepository", () => {
   let repo: DrizzleOnboardingSessionRepository;
   let pool: PGlite;
+  let db: DrizzleDb;
 
   beforeAll(async () => {
     const result = await createTestDb();
     pool = result.pool;
+    db = result.db;
   });
 
   afterAll(async () => {
@@ -19,7 +21,7 @@ describe("DrizzleOnboardingSessionRepository", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    repo = new DrizzleOnboardingSessionRepository(result.db as DrizzleDb);
+    repo = new DrizzleOnboardingSessionRepository(db);
   });
 
 
