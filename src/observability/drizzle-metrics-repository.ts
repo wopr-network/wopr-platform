@@ -22,7 +22,7 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { requests: sql`${gatewayMetrics.requests} + 1` },
       });
-    void this.pruneOld();
+    this.pruneOld().catch(() => {});
   }
 
   async recordGatewayError(capability: string): Promise<void> {
@@ -34,7 +34,7 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { errors: sql`${gatewayMetrics.errors} + 1` },
       });
-    void this.pruneOld();
+    this.pruneOld().catch(() => {});
   }
 
   async recordCreditDeductionFailure(): Promise<void> {
@@ -48,7 +48,7 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { creditFailures: sql`${gatewayMetrics.creditFailures} + 1` },
       });
-    void this.pruneOld();
+    this.pruneOld().catch(() => {});
   }
 
   async getWindow(minutes: number): Promise<WindowResult> {
@@ -101,11 +101,7 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
   }
 
   private async pruneOld(): Promise<void> {
-    try {
-      const cutoff = Date.now() - MAX_RETENTION_MINUTES * 60_000;
-      await this.db.delete(gatewayMetrics).where(lt(gatewayMetrics.minuteKey, cutoff));
-    } catch {
-      // Ignore — DB may be closed or unavailable (e.g. during test teardown)
-    }
+    const cutoff = Date.now() - MAX_RETENTION_MINUTES * 60_000;
+    await this.db.delete(gatewayMetrics).where(lt(gatewayMetrics.minuteKey, cutoff));
   }
 }

@@ -21,25 +21,17 @@ export class DrizzleProviderHealthRepository implements IProviderHealthRepositor
   }
 
   async markUnhealthy(adapter: string): Promise<void> {
-    try {
-      await this.db
-        .insert(providerHealthOverrides)
-        .values({ adapter, healthy: 0, markedAt: Date.now() })
-        .onConflictDoUpdate({
-          target: providerHealthOverrides.adapter,
-          set: { healthy: 0, markedAt: Date.now() },
-        });
-    } catch {
-      // Ignore — DB may be closed or unavailable (e.g. during test teardown)
-    }
+    await this.db
+      .insert(providerHealthOverrides)
+      .values({ adapter, healthy: 0, markedAt: Date.now() })
+      .onConflictDoUpdate({
+        target: providerHealthOverrides.adapter,
+        set: { healthy: 0, markedAt: Date.now() },
+      });
   }
 
   async markHealthy(adapter: string): Promise<void> {
-    try {
-      await this.db.delete(providerHealthOverrides).where(eq(providerHealthOverrides.adapter, adapter));
-    } catch {
-      // Ignore — DB may be closed or unavailable (e.g. during test teardown)
-    }
+    await this.db.delete(providerHealthOverrides).where(eq(providerHealthOverrides.adapter, adapter));
   }
 
   async purgeExpired(unhealthyTtlMs: number): Promise<number> {

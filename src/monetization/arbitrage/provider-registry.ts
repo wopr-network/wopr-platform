@@ -59,7 +59,7 @@ export class ProviderRegistry {
 
         // Auto-recovery: if unhealthy TTL has elapsed, clear the override
         if (!override.healthy && Date.now() - override.markedAt > this.unhealthyTtlMs) {
-          void this.healthRepo.markHealthy(entry.adapter);
+          this.healthRepo.markHealthy(entry.adapter).catch(() => {});
           return entry;
         }
 
@@ -70,12 +70,12 @@ export class ProviderRegistry {
 
   /** Mark a provider as unhealthy (called on 5xx errors). */
   markUnhealthy(adapter: string): void {
-    void this.healthRepo.markUnhealthy(adapter);
+    this.healthRepo.markUnhealthy(adapter).catch(() => {});
   }
 
   /** Mark a provider as healthy (called on successful responses or health probes). */
   markHealthy(adapter: string): void {
-    void this.healthRepo.markHealthy(adapter);
+    this.healthRepo.markHealthy(adapter).catch(() => {});
   }
 
   /** Force-refresh the cache from DB. */
