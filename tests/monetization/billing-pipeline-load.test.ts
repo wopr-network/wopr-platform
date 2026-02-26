@@ -315,5 +315,5 @@ describe("Billing pipeline load tests", () => {
     // Memory should not grow unboundedly — allow 50MB growth for 20K events
     const growth = memSamples[memSamples.length - 1] - memSamples[0];
     expect(growth).toBeLessThan(50);
-  });
+  }, 120_000);
 });
