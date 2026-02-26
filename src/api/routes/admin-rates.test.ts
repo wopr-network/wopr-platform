@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { createAdminRateApiRoutes } from "./admin-rates.js";
 
 /**
@@ -16,15 +16,19 @@ describe("admin rates routes", () => {
 
   let app: ReturnType<typeof createAdminRateApiRoutes>;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    app = createAdminRateApiRoutes(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    app = createAdminRateApiRoutes(db);
   });
 
   // ── GET / ──

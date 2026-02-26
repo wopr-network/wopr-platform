@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../admin/audit-log.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
@@ -11,7 +11,7 @@ import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
 import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { appRouter } from "./index.js";
 import type { TRPCContext } from "./init.js";
 import { setAdminRouterDeps } from "./routers/admin.js";
@@ -124,14 +124,18 @@ describe("tRPC appRouter", () => {
 
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createTestDb();
     pool = testDb.pool;
     db = testDb.db;
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   // -------------------------------------------------------------------------

@@ -6,8 +6,8 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
@@ -28,17 +28,21 @@ describe("handleWebhookEvent (credit model)", () => {
   let pool: PGlite;
   let db: import("../../db/index.js").DrizzleDb;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createTestDb();
     pool = testDb.pool;
     db = testDb.db;
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     tenantStore = new TenantCustomerStore(db);
     creditLedger = new CreditLedger(db);
     deps = { tenantStore, creditLedger };
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   // ---------------------------------------------------------------------------

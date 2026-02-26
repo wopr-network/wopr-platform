@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminAuditRoutes, createAuditRoutes } from "../api/routes/audit.js";
 import type { DrizzleDb } from "../db/index.js";
 import { auditLog } from "../db/schema/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleAuditLogRepository, type IAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { auditLog as auditLogMiddleware, extractResourceType } from "./middleware.js";
@@ -34,16 +34,20 @@ describe("AuditLogger", () => {
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    repo = new DrizzleAuditLogRepository(db);
-    logger = new AuditLogger(repo);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   it("inserts audit entries", async () => {
@@ -86,16 +90,20 @@ describe("queryAuditLog", () => {
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    repo = new DrizzleAuditLogRepository(db);
-    logger = new AuditLogger(repo);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   it("returns all entries without filters", async () => {
@@ -283,16 +291,20 @@ describe("countAuditLog", () => {
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    repo = new DrizzleAuditLogRepository(db);
-    logger = new AuditLogger(repo);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   it("counts all entries", async () => {
@@ -361,15 +373,19 @@ describe("retention", () => {
 
   let repo: IAuditLogRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    repo = new DrizzleAuditLogRepository(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAuditLogRepository(db);
   });
 
   it("returns correct retention days (flat 365)", async () => {
@@ -527,16 +543,20 @@ describe("auditLog middleware", () => {
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    repo = new DrizzleAuditLogRepository(db);
-    logger = new AuditLogger(repo);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   it("logs entry on successful response", async () => {
@@ -672,16 +692,20 @@ describe("audit API routes", () => {
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    repo = new DrizzleAuditLogRepository(db);
-    logger = new AuditLogger(repo);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAuditLogRepository(db);
+    logger = new AuditLogger(repo);
   });
 
   describe("GET /audit (user route)", () => {

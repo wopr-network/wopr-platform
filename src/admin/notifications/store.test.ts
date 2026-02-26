@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { NotificationQueueStore } from "./store.js";
 
 describe("NotificationQueueStore.enqueue", () => {
@@ -11,15 +11,19 @@ describe("NotificationQueueStore.enqueue", () => {
 
   let store: NotificationQueueStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new NotificationQueueStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new NotificationQueueStore(db);
   });
 
   it("creates a pending notification", async () => {
@@ -64,15 +68,19 @@ describe("NotificationQueueStore.getPending", () => {
 
   let store: NotificationQueueStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new NotificationQueueStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new NotificationQueueStore(db);
   });
 
   it("returns only pending notifications", async () => {
@@ -102,15 +110,19 @@ describe("NotificationQueueStore.markSent", () => {
 
   let store: NotificationQueueStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new NotificationQueueStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new NotificationQueueStore(db);
   });
 
   it("updates status to sent and sets sentAt", async () => {
@@ -129,15 +141,19 @@ describe("NotificationQueueStore.markFailed", () => {
 
   let store: NotificationQueueStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new NotificationQueueStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new NotificationQueueStore(db);
   });
 
   it("increments attempts and sets status to failed", async () => {
@@ -182,15 +198,19 @@ describe("NotificationQueueStore.countByStatus", () => {
 
   let store: NotificationQueueStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new NotificationQueueStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new NotificationQueueStore(db);
   });
 
   it("returns correct counts per status", async () => {

@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 
 /**
  * Tests for the public-pricing route logic and RateStore.listPublicRates.
@@ -18,15 +18,19 @@ describe("RateStore.listPublicRates (used by public pricing route)", () => {
 
   let store: RateStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new RateStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new RateStore(db);
   });
 
   it("returns empty array when no rates exist", async () => {

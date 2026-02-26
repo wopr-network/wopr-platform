@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import type {
   AdapterCapability,
   AdapterResult,
@@ -722,15 +722,19 @@ describe("AdapterSocket", () => {
     let budgetChecker: BudgetChecker;
     let budgetPool: import("@electric-sql/pglite").PGlite;
 
-    beforeEach(async () => {
+    beforeAll(async () => {
       const testDb = await createTestDb();
       db = testDb.db;
       budgetPool = testDb.pool;
-      budgetChecker = new BudgetChecker(db, { cacheTtlMs: 1000 });
     });
 
-    afterEach(async () => {
+    afterAll(async () => {
       await budgetPool?.close();
+    });
+
+    beforeEach(async () => {
+      await truncateAllTables(budgetPool);
+      budgetChecker = new BudgetChecker(db, { cacheTtlMs: 1000 });
     });
 
     it("allows requests when budget is under limit", async () => {

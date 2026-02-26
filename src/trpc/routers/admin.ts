@@ -16,10 +16,12 @@ import type { ITenantStatusRepository } from "../../admin/tenant-status/tenant-s
 import type { AdminUserStore } from "../../admin/users/user-store.js";
 import type { INotificationQueueStore } from "../../email/notification-queue-store.js";
 import type { NotificationService } from "../../email/notification-service.js";
+import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import { protectedProcedure, router } from "../init.js";
+import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -41,12 +43,16 @@ export interface AdminRouterDeps {
   getRestoreLogStore?: () => import("../../backup/restore-log-store.js").RestoreLogStore;
   getNotificationService?: () => NotificationService;
   getNotificationQueueStore?: () => INotificationQueueStore;
+  getSessionUsageRepo?: () => ISessionUsageRepository;
 }
 
 let _deps: AdminRouterDeps | null = null;
 
 export function setAdminRouterDeps(deps: AdminRouterDeps): void {
   _deps = deps;
+  if (deps.getSessionUsageRepo) {
+    setInferenceAdminDeps({ getSessionUsageRepo: deps.getSessionUsageRepo });
+  }
 }
 
 function deps(): AdminRouterDeps {
@@ -1471,4 +1477,7 @@ export const adminRouter = router({
       const { tenantId, ...opts } = input;
       return queueStore.listForTenant(tenantId, opts);
     }),
+
+  /** Inference cost tracking and cache analytics. */
+  inference: inferenceAdminRouter,
 });

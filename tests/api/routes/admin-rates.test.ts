@@ -1,23 +1,28 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import type { PGlite } from "@electric-sql/pglite";
 import { createAdminRateApiRoutes } from "../../../src/api/routes/admin-rates.js";
 import type { AuthEnv } from "../../../src/auth/index.js";
-import { createTestDb } from "../../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../../src/test/db.js";
 
 describe("Admin Rate API Routes", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+	});
+
+	afterAll(async () => {
+	  await pool.close();
+	});
+
+	beforeEach(async () => {
+	  await truncateAllTables(pool);
 		app = createAdminRateApiRoutes(testDb.db);
 	});
 
-	afterEach(async () => {
-		await pool.close();
-	});
 
 	describe("POST /sell - Create sell rate", () => {
 		it("creates a sell rate and returns 201", async () => {
@@ -28,9 +33,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					displayName: "GPT-4",
 					unit: "1M tokens",
-					priceUsd: 10.0,
-				}),
-			});
+					priceUsd: 10.0})});
 
 			expect(response.status).toBe(201);
 			const data = await response.json();
@@ -43,9 +46,7 @@ describe("Admin Rate API Routes", () => {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					capability: "text-generation",
-				}),
-			});
+					capability: "text-generation"})});
 
 			expect(response.status).toBe(400);
 			const data = await response.json();
@@ -60,9 +61,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					displayName: "GPT-4",
 					unit: "1M tokens",
-					priceUsd: -10.0,
-				}),
-			});
+					priceUsd: -10.0})});
 
 			expect(response.status).toBe(400);
 			const data = await response.json();
@@ -80,17 +79,14 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					displayName: "GPT-4",
 					unit: "1M tokens",
-					priceUsd: 10.0,
-				}),
-			});
+					priceUsd: 10.0})});
 			const created = await createResponse.json();
 
 			// Update
 			const updateResponse = await app.request(`/sell/${created.id}`, {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ priceUsd: 12.0 }),
-			});
+				body: JSON.stringify({ priceUsd: 12.0 })});
 
 			expect(updateResponse.status).toBe(200);
 			const updated = await updateResponse.json();
@@ -101,8 +97,7 @@ describe("Admin Rate API Routes", () => {
 			const response = await app.request("/sell/non-existent-id", {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ priceUsd: 12.0 }),
-			});
+				body: JSON.stringify({ priceUsd: 12.0 })});
 
 			expect(response.status).toBe(404);
 		});
@@ -118,15 +113,12 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					displayName: "GPT-4",
 					unit: "1M tokens",
-					priceUsd: 10.0,
-				}),
-			});
+					priceUsd: 10.0})});
 			const created = await createResponse.json();
 
 			// Delete
 			const deleteResponse = await app.request(`/sell/${created.id}`, {
-				method: "DELETE",
-			});
+				method: "DELETE"});
 
 			expect(deleteResponse.status).toBe(200);
 			const data = await deleteResponse.json();
@@ -135,8 +127,7 @@ describe("Admin Rate API Routes", () => {
 
 		it("returns 404 for non-existent ID", async () => {
 			const response = await app.request("/sell/non-existent-id", {
-				method: "DELETE",
-			});
+				method: "DELETE"});
 
 			expect(response.status).toBe(404);
 		});
@@ -152,9 +143,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					displayName: "GPT-4",
 					unit: "1M tokens",
-					priceUsd: 10.0,
-				}),
-			});
+					priceUsd: 10.0})});
 
 			// Create provider cost
 			await app.request("/provider", {
@@ -164,9 +153,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					adapter: "openrouter",
 					unit: "1M tokens",
-					costUsd: 8.0,
-				}),
-			});
+					costUsd: 8.0})});
 
 			const response = await app.request("/", { method: "GET" });
 
@@ -185,9 +172,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					displayName: "GPT-4",
 					unit: "1M tokens",
-					priceUsd: 10.0,
-				}),
-			});
+					priceUsd: 10.0})});
 
 			await app.request("/sell", {
 				method: "POST",
@@ -196,9 +181,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "tts",
 					displayName: "TTS",
 					unit: "1K chars",
-					priceUsd: 0.2,
-				}),
-			});
+					priceUsd: 0.2})});
 
 			const response = await app.request("/?capability=tts", { method: "GET" });
 
@@ -218,9 +201,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					adapter: "openrouter",
 					unit: "1M tokens",
-					costUsd: 8.0,
-				}),
-			});
+					costUsd: 8.0})});
 
 			expect(response.status).toBe(201);
 			const data = await response.json();
@@ -234,9 +215,7 @@ describe("Admin Rate API Routes", () => {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					capability: "text-generation",
-				}),
-			});
+					capability: "text-generation"})});
 
 			expect(response.status).toBe(400);
 			const data = await response.json();
@@ -254,17 +233,14 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					adapter: "openrouter",
 					unit: "1M tokens",
-					costUsd: 8.0,
-				}),
-			});
+					costUsd: 8.0})});
 			const created = await createResponse.json();
 
 			// Update
 			const updateResponse = await app.request(`/provider/${created.id}`, {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ costUsd: 9.0 }),
-			});
+				body: JSON.stringify({ costUsd: 9.0 })});
 
 			expect(updateResponse.status).toBe(200);
 			const updated = await updateResponse.json();
@@ -275,8 +251,7 @@ describe("Admin Rate API Routes", () => {
 			const response = await app.request("/provider/non-existent-id", {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ costUsd: 9.0 }),
-			});
+				body: JSON.stringify({ costUsd: 9.0 })});
 
 			expect(response.status).toBe(404);
 		});
@@ -292,15 +267,12 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					adapter: "openrouter",
 					unit: "1M tokens",
-					costUsd: 8.0,
-				}),
-			});
+					costUsd: 8.0})});
 			const created = await createResponse.json();
 
 			// Delete
 			const deleteResponse = await app.request(`/provider/${created.id}`, {
-				method: "DELETE",
-			});
+				method: "DELETE"});
 
 			expect(deleteResponse.status).toBe(200);
 			const data = await deleteResponse.json();
@@ -309,8 +281,7 @@ describe("Admin Rate API Routes", () => {
 
 		it("returns 404 for non-existent ID", async () => {
 			const response = await app.request("/provider/non-existent-id", {
-				method: "DELETE",
-			});
+				method: "DELETE"});
 
 			expect(response.status).toBe(404);
 		});
@@ -326,9 +297,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					displayName: "GPT-4",
 					unit: "1M tokens",
-					priceUsd: 10.0,
-				}),
-			});
+					priceUsd: 10.0})});
 
 			// Create provider cost
 			await app.request("/provider", {
@@ -338,9 +307,7 @@ describe("Admin Rate API Routes", () => {
 					capability: "text-generation",
 					adapter: "openrouter",
 					unit: "1M tokens",
-					costUsd: 8.0,
-				}),
-			});
+					costUsd: 8.0})});
 
 			const response = await app.request("/margins", { method: "GET" });
 
@@ -357,15 +324,20 @@ describe("POST /provider - latencyClass validation", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+	});
+
+	afterAll(async () => {
+	  await pool.close();
+	});
+
+	beforeEach(async () => {
+	  await truncateAllTables(pool);
 		app = createAdminRateApiRoutes(testDb.db);
 	});
 
-	afterEach(async () => {
-		await pool.close();
-	});
 
 	it("accepts valid latencyClass values (fast, standard, batch)", async () => {
 		const validClasses = ["fast", "standard", "batch"];
@@ -379,9 +351,7 @@ describe("POST /provider - latencyClass validation", () => {
 					adapter: "openrouter",
 					unit: "1M tokens",
 					costUsd: 8.0,
-					latencyClass,
-				}),
-			});
+					latencyClass})});
 
 			expect(response.status).toBe(201);
 			const data = await response.json();
@@ -397,9 +367,7 @@ describe("POST /provider - latencyClass validation", () => {
 				capability: "latency-default-test",
 				adapter: "openrouter",
 				unit: "1M tokens",
-				costUsd: 8.0,
-			}),
-		});
+				costUsd: 8.0})});
 
 		expect(response.status).toBe(201);
 		const data = await response.json();
@@ -416,8 +384,7 @@ describe("POST /provider - latencyClass validation", () => {
 				unit: "1M tokens",
 				costUsd: 8.0,
 				latencyClass: 123, // Invalid: number instead of string
-			}),
-		});
+			})});
 
 		expect(response.status).toBe(400);
 		const data = await response.json();
@@ -429,15 +396,20 @@ describe("PUT /provider/:id - latencyClass validation", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+	});
+
+	afterAll(async () => {
+	  await pool.close();
+	});
+
+	beforeEach(async () => {
+	  await truncateAllTables(pool);
 		app = createAdminRateApiRoutes(testDb.db);
 	});
 
-	afterEach(async () => {
-		await pool.close();
-	});
 
 	it("updates latencyClass when valid string is provided", async () => {
 		// Create first
@@ -449,17 +421,14 @@ describe("PUT /provider/:id - latencyClass validation", () => {
 				adapter: "openrouter",
 				unit: "1M tokens",
 				costUsd: 8.0,
-				latencyClass: "standard",
-			}),
-		});
+				latencyClass: "standard"})});
 		const created = await createResponse.json();
 
 		// Update
 		const updateResponse = await app.request(`/provider/${created.id}`, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ latencyClass: "fast" }),
-		});
+			body: JSON.stringify({ latencyClass: "fast" })});
 
 		expect(updateResponse.status).toBe(200);
 		const updated = await updateResponse.json();
@@ -475,17 +444,14 @@ describe("PUT /provider/:id - latencyClass validation", () => {
 				capability: "latency-update-invalid-test",
 				adapter: "openrouter",
 				unit: "1M tokens",
-				costUsd: 8.0,
-			}),
-		});
+				costUsd: 8.0})});
 		const created = await createResponse.json();
 
 		// Update with invalid latencyClass
 		const updateResponse = await app.request(`/provider/${created.id}`, {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ latencyClass: 999 }),
-		});
+			body: JSON.stringify({ latencyClass: 999 })});
 
 		expect(updateResponse.status).toBe(400);
 		const data = await updateResponse.json();
@@ -497,22 +463,26 @@ describe("Error handling coverage", () => {
 	let app: Hono<AuthEnv>;
 	let pool: PGlite;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		const testDb = await createTestDb();
 		pool = testDb.pool;
+	});
+
+	afterAll(async () => {
+	  await pool.close();
+	});
+
+	beforeEach(async () => {
+	  await truncateAllTables(pool);
 		app = createAdminRateApiRoutes(testDb.db);
 	});
 
-	afterEach(async () => {
-		await pool.close();
-	});
 
 	it("POST /provider returns 400 for invalid JSON", async () => {
 		const response = await app.request("/provider", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: "invalid json {{{",
-		});
+			body: "invalid json {{{"});
 
 		expect(response.status).toBe(400);
 		const data = await response.json();
@@ -524,8 +494,7 @@ describe("Error handling coverage", () => {
 		const response = await app.request("/provider/some-id", {
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
-			body: "not valid json",
-		});
+			body: "not valid json"});
 
 		expect(response.status).toBe(400);
 		const data = await response.json();
@@ -537,8 +506,7 @@ describe("Error handling coverage", () => {
 		// Since the store is in-memory and simple, we can't easily trigger internal errors
 		// but we can at least exercise the delete path with a non-existent ID
 		const response = await app.request("/provider/nonexistent-id-for-coverage", {
-			method: "DELETE",
-		});
+			method: "DELETE"});
 
 		// This will hit the "not found" branch which returns 404
 		expect([404, 500]).toContain(response.status);
@@ -548,8 +516,7 @@ describe("Error handling coverage", () => {
 		// For coverage of the catch block, we'll just call it normally
 		// The in-memory DB won't error, but this exercises the path
 		const response = await app.request("/margins", {
-			method: "GET",
-		});
+			method: "GET"});
 
 		// Should succeed with empty margins or return 500
 		expect([200, 500]).toContain(response.status);

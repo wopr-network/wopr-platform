@@ -1,22 +1,27 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { DrizzleOnboardingSessionRepository } from "../../src/onboarding/drizzle-onboarding-session-repository.js";
-import { createTestDb } from "../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 
 describe("DrizzleOnboardingSessionRepository", () => {
   let repo: DrizzleOnboardingSessionRepository;
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const result = await createTestDb();
     pool = result.pool;
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     repo = new DrizzleOnboardingSessionRepository(result.db as DrizzleDb);
   });
 
-  afterEach(async () => {
-    await pool.close();
-  });
 
   it("creates and retrieves a session by id", async () => {
     const session = await repo.create({
@@ -24,8 +29,7 @@ describe("DrizzleOnboardingSessionRepository", () => {
       userId: "u1",
       anonymousId: null,
       woprSessionName: "onboarding-u1",
-      status: "active",
-    });
+      status: "active"});
     expect(session.id).toBe("s1");
     expect(session.userId).toBe("u1");
     expect(session.budgetUsedCents).toBe(0);
@@ -82,8 +86,7 @@ describe("DrizzleOnboardingSessionRepository", () => {
         userId: null,
         anonymousId: "anon-fresh",
         woprSessionName: "onboarding-s10",
-        status: "active",
-      });
+        status: "active"});
       const result = await repo.getActiveByAnonymousId("anon-fresh");
       expect(result).not.toBeNull();
       expect(result!.id).toBe("s10");
@@ -95,8 +98,7 @@ describe("DrizzleOnboardingSessionRepository", () => {
         userId: null,
         anonymousId: "anon-stale",
         woprSessionName: "onboarding-s11",
-        status: "active",
-      });
+        status: "active"});
       // Backdate createdAt to 25 hours ago via direct db update
       const { onboardingSessions } = await import("../../src/db/schema/index.js");
       const { eq } = await import("drizzle-orm");
@@ -115,8 +117,7 @@ describe("DrizzleOnboardingSessionRepository", () => {
         userId: null,
         anonymousId: "anon-expired",
         woprSessionName: "onboarding-s12",
-        status: "active",
-      });
+        status: "active"});
       await repo.setStatus("s12", "expired");
       const result = await repo.getActiveByAnonymousId("anon-expired");
       expect(result).toBeNull();

@@ -1,5 +1,5 @@
 import { unlinkSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { DrizzleBudgetChecker, type SpendLimits } from "../../src/monetization/budget/budget-checker.js";
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
@@ -7,7 +7,7 @@ import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
 import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import type { MeterEvent } from "../../src/monetization/metering/types.js";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { createTestDb } from "../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 import {
   type LoadTestResult,
   formatResult,

@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { eq, inArray } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { tenantStatus } from "../../db/schema/tenant-status.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { TenantStatusStore } from "./tenant-status-store.js";
 
 describe("TenantStatusStore", () => {
@@ -11,15 +11,19 @@ describe("TenantStatusStore", () => {
   let db: DrizzleDb;
   let store: TenantStatusStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new TenantStatusStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new TenantStatusStore(db);
   });
 
   // ---------------------------------------------------------------------------

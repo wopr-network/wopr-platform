@@ -9,7 +9,7 @@ import type { PGlite } from "@electric-sql/pglite";
  * - tenantStatus: query current status
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
@@ -22,7 +22,7 @@ import type {
   HistoryOptions,
   ICreditLedger,
 } from "../../monetization/credits/credit-ledger.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { appRouter } from "../../trpc/index.js";
 import type { TRPCContext } from "../../trpc/init.js";
 import { setAdminRouterDeps } from "../../trpc/routers/admin.js";
@@ -128,10 +128,18 @@ describe("admin tenant status tRPC routes", () => {
   let creditLedger: ICreditLedger;
   let botBilling: BotBilling;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     statusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     creditLedger = makeMockLedger();
@@ -144,10 +152,6 @@ describe("admin tenant status tRPC routes", () => {
       getTenantStatusStore: () => statusStore,
       getBotBilling: () => botBilling,
     });
-  });
-
-  afterEach(() => {
-    pool.close();
   });
 
   // -------------------------------------------------------------------------
