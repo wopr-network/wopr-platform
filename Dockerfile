@@ -38,24 +38,22 @@ WORKDIR /app
 RUN addgroup -S wopr && adduser -S wopr -G wopr
 
 # Production node_modules (with native better-sqlite3 already compiled)
-COPY --from=deps /app/node_modules ./node_modules
+COPY --chown=wopr:wopr --from=deps /app/node_modules ./node_modules
 
 # Compiled output
-COPY --from=build /app/dist ./dist
+COPY --chown=wopr:wopr --from=build /app/dist ./dist
 
 # Migration SQL files for drizzle-orm migrator
-COPY drizzle/migrations/ ./drizzle/migrations/
+COPY --chown=wopr:wopr drizzle/migrations/ ./drizzle/migrations/
 
 # Package manifest (needed by Node for ESM resolution)
-COPY package.json ./
+COPY --chown=wopr:wopr package.json ./
 
 # Profile templates loaded at runtime by fleet module
-COPY templates/ ./templates/
-# Migration files for schema versioning
-COPY drizzle/ ./drizzle/
+COPY --chown=wopr:wopr templates/ ./templates/
 
-# Ownership
-RUN chown -R wopr:wopr /app
+# Migration files for schema versioning
+COPY --chown=wopr:wopr drizzle/ ./drizzle/
 
 USER wopr
 
