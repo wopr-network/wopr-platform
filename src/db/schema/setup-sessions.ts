@@ -1,4 +1,4 @@
-import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, index, pgTable, text, unique } from "drizzle-orm/pg-core";
 
 export const setupSessions = pgTable(
   "setup_sessions",
@@ -12,5 +12,9 @@ export const setupSessions = pgTable(
     startedAt: bigint("started_at", { mode: "number" }).notNull(),
     completedAt: bigint("completed_at", { mode: "number" }),
   },
-  (t) => [index("setup_sessions_session_id_idx").on(t.sessionId), index("setup_sessions_plugin_id_idx").on(t.pluginId)],
+  (t) => [
+    index("setup_sessions_session_id_idx").on(t.sessionId),
+    index("setup_sessions_plugin_id_idx").on(t.pluginId),
+    unique("setup_sessions_session_in_progress_uniq").on(t.sessionId, t.status),
+  ],
 );

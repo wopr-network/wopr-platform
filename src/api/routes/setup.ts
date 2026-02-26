@@ -47,21 +47,35 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       return c.json({ error: "Setup already in progress for this session", setupSessionId: existing.id }, 409);
     }
 
-    // 3. Create setup session record
-    const setupId = randomUUID();
-    const setupSession = await deps.setupSessionRepo.insert({
-      id: setupId,
-      sessionId,
-      pluginId,
-      status: "in_progress",
-      startedAt: Date.now(),
-    });
-
-    // 4. Build and inject system message
-    const schemaJson = JSON.stringify(manifest.configSchema, null, 2);
+    // 3. Determine npm package name — prefer explicit manifest entry, fall back to
+    //    convention-based name derived from the plugin ID so manifests that omit
+    //    `install` still work (e.g. thin plugins bundled at a known package name).
     const npmPackage =
       manifest.install?.[0] ??
       `@wopr-network/wopr-plugin-${pluginId.replace(/-channel$/, "").replace(/-provider$/, "")}`;
+
+    // 4. Create setup session record (unique constraint on (sessionId, status='in_progress')
+    //    means a concurrent race will produce a unique violation — map that to 409)
+    const setupId = randomUUID();
+    let setupSession: Awaited<ReturnType<typeof deps.setupSessionRepo.insert>>;
+    try {
+      setupSession = await deps.setupSessionRepo.insert({
+        id: setupId,
+        sessionId,
+        pluginId,
+        status: "in_progress",
+        startedAt: Date.now(),
+      });
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("setup_sessions_session_in_progress_uniq") || msg.includes("unique")) {
+        return c.json({ error: "Setup already in progress for this session" }, 409);
+      }
+      throw err;
+    }
+
+    // 5. Build and inject system message
+    const schemaJson = JSON.stringify(manifest.configSchema, null, 2);
     const systemMessage = [
       `You are now setting up ${npmPackage}.`,
       `Plugin: ${manifest.name} — ${manifest.description}`,
@@ -78,10 +92,11 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       await deps.onboardingService.inject(sessionId, systemMessage, { from: "system" });
     } catch (err) {
       logger.error("Failed to inject setup context into WOPR session", { sessionId, pluginId, err });
+      await deps.setupSessionRepo.markRolledBack(setupId);
       return c.json({ error: `Failed to inject setup context: ${String(err)}` }, 500);
     }
 
-    // 5. Return success — bot's response comes via SSE stream
+    // 6. Return success — bot's response comes via SSE stream
     return c.json({ ok: true, setupSessionId: setupSession.id });
   });
 
