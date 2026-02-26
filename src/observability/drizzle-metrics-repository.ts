@@ -101,7 +101,11 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
   }
 
   private async pruneOld(): Promise<void> {
-    const cutoff = Date.now() - MAX_RETENTION_MINUTES * 60_000;
-    await this.db.delete(gatewayMetrics).where(lt(gatewayMetrics.minuteKey, cutoff));
+    try {
+      const cutoff = Date.now() - MAX_RETENTION_MINUTES * 60_000;
+      await this.db.delete(gatewayMetrics).where(lt(gatewayMetrics.minuteKey, cutoff));
+    } catch {
+      // Ignore — DB may be closed or unavailable (e.g. during test teardown)
+    }
   }
 }
