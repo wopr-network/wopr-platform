@@ -1,4 +1,5 @@
 import { gt, lt, sql } from "drizzle-orm";
+import { logger } from "../config/logger.js";
 import type { DrizzleDb } from "../db/index.js";
 import { gatewayMetrics } from "../db/schema/index.js";
 import type { IMetricsRepository, WindowResult } from "./metrics-repository.js";
@@ -22,7 +23,7 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { requests: sql`${gatewayMetrics.requests} + 1` },
       });
-    this.pruneOld().catch(() => {});
+    this.pruneOld().catch((err) => logger.warn("Failed to prune old gateway metrics", { err }));
   }
 
   async recordGatewayError(capability: string): Promise<void> {
@@ -34,7 +35,7 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { errors: sql`${gatewayMetrics.errors} + 1` },
       });
-    this.pruneOld().catch(() => {});
+    this.pruneOld().catch((err) => logger.warn("Failed to prune old gateway metrics", { err }));
   }
 
   async recordCreditDeductionFailure(): Promise<void> {
@@ -48,7 +49,7 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { creditFailures: sql`${gatewayMetrics.creditFailures} + 1` },
       });
-    this.pruneOld().catch(() => {});
+    this.pruneOld().catch((err) => logger.warn("Failed to prune old gateway metrics", { err }));
   }
 
   async getWindow(minutes: number): Promise<WindowResult> {

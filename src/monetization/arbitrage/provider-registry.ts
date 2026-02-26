@@ -6,6 +6,7 @@
  */
 
 import type { ProviderCost, RateStore } from "../../admin/rates/rate-store.js";
+import { logger } from "../../config/logger.js";
 import type { IProviderHealthRepository } from "../provider-health-repository.js";
 import type { ModelProviderEntry } from "./types.js";
 
@@ -59,7 +60,9 @@ export class ProviderRegistry {
 
         // Auto-recovery: if unhealthy TTL has elapsed, clear the override
         if (!override.healthy && Date.now() - override.markedAt > this.unhealthyTtlMs) {
-          this.healthRepo.markHealthy(entry.adapter).catch(() => {});
+          this.healthRepo
+            .markHealthy(entry.adapter)
+            .catch((err) => logger.warn("Failed to clear health override", { adapter: entry.adapter, err }));
           return entry;
         }
 
@@ -70,12 +73,16 @@ export class ProviderRegistry {
 
   /** Mark a provider as unhealthy (called on 5xx errors). */
   markUnhealthy(adapter: string): void {
-    this.healthRepo.markUnhealthy(adapter).catch(() => {});
+    this.healthRepo
+      .markUnhealthy(adapter)
+      .catch((err) => logger.warn("Failed to persist unhealthy state", { adapter, err }));
   }
 
   /** Mark a provider as healthy (called on successful responses or health probes). */
   markHealthy(adapter: string): void {
-    this.healthRepo.markHealthy(adapter).catch(() => {});
+    this.healthRepo
+      .markHealthy(adapter)
+      .catch((err) => logger.warn("Failed to persist healthy state", { adapter, err }));
   }
 
   /** Force-refresh the cache from DB. */
