@@ -49,14 +49,14 @@ class InMemorySetupSessionRepository implements ISetupSessionRepository {
 
   async markComplete(id: string): Promise<void> {
     const existing = this.sessions.get(id);
-    if (existing)
-      this.sessions.set(id, { ...existing, status: "complete", completedAt: Date.now() });
+    if (!existing) throw new Error(`SetupSession not found: ${id}`);
+    this.sessions.set(id, { ...existing, status: "complete", completedAt: Date.now() });
   }
 
   async markRolledBack(id: string): Promise<void> {
     const existing = this.sessions.get(id);
-    if (existing)
-      this.sessions.set(id, { ...existing, status: "rolled_back", completedAt: Date.now() });
+    if (!existing) throw new Error(`SetupSession not found: ${id}`);
+    this.sessions.set(id, { ...existing, status: "rolled_back", completedAt: Date.now() });
   }
 }
 
@@ -162,6 +162,24 @@ describe("ISetupSessionRepository contract", () => {
 
     const found = await repo.findById(id);
     expect(found!.collected).toBe(JSON.stringify({ botToken: "test-token" }));
+  });
+
+  it("update throws when session id does not exist", async () => {
+    const repo = new InMemorySetupSessionRepository();
+    const nonExistentId = randomUUID();
+    await expect(repo.update(nonExistentId, { collected: "{}" })).rejects.toThrow(nonExistentId);
+  });
+
+  it("markComplete throws when session id does not exist", async () => {
+    const repo = new InMemorySetupSessionRepository();
+    const nonExistentId = randomUUID();
+    await expect(repo.markComplete(nonExistentId)).rejects.toThrow(nonExistentId);
+  });
+
+  it("markRolledBack throws when session id does not exist", async () => {
+    const repo = new InMemorySetupSessionRepository();
+    const nonExistentId = randomUUID();
+    await expect(repo.markRolledBack(nonExistentId)).rejects.toThrow(nonExistentId);
   });
 
   it("findStale returns sessions older than threshold", async () => {

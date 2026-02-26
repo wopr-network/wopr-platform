@@ -47,12 +47,11 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       return c.json({ error: "Setup already in progress for this session", setupSessionId: existing.id }, 409);
     }
 
-    // 3. Determine npm package name — prefer explicit manifest entry, fall back to
-    //    convention-based name derived from the plugin ID so manifests that omit
-    //    `install` still work (e.g. thin plugins bundled at a known package name).
-    const npmPackage =
-      manifest.install?.[0] ??
-      `@wopr-network/wopr-plugin-${pluginId.replace(/-channel$/, "").replace(/-provider$/, "")}`;
+    // 3. Determine npm package name from manifest
+    const npmPackage = manifest.install?.[0];
+    if (!npmPackage) {
+      return c.json({ error: `Plugin manifest missing install package specification: ${pluginId}` }, 500);
+    }
 
     // 4. Create setup session record (unique constraint on (sessionId, status='in_progress')
     //    means a concurrent race will produce a unique violation — map that to 409)
@@ -111,6 +110,7 @@ let _deps: SetupRouteDeps | null = null;
 
 export function setSetupDeps(deps: SetupRouteDeps): void {
   _deps = deps;
+  _setupRoutesInner = null; // Reset so next request uses new deps
 }
 
 function getDeps(): SetupRouteDeps {

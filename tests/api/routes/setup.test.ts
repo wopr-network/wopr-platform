@@ -15,7 +15,7 @@ const discordManifest: PluginManifest = {
   tags: ["channel"],
   capabilities: ["channel"],
   requires: [],
-  install: [],
+  install: ["@wopr-network/wopr-plugin-discord"],
   configSchema: [
     { key: "botToken", label: "Bot Token", type: "string", required: true, secret: true },
   ],
@@ -147,6 +147,40 @@ describe("POST /api/chat/setup", () => {
       body: JSON.stringify({ sessionId: "abc-123", pluginId: "discord-channel" }),
     });
     expect(res.status).toBe(409);
+  });
+
+  it("returns 409 if insert throws a unique constraint violation", async () => {
+    const deps = makeDeps({
+      setupSessionRepo: {
+        ...makeDeps().setupSessionRepo,
+        insert: vi.fn().mockRejectedValue(new Error("duplicate key value violates unique constraint")),
+      },
+    });
+    const app = new Hono();
+    app.route("/", createSetupRoutes(deps));
+
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "abc-123", pluginId: "discord-channel" }),
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it("returns 500 if plugin manifest has no install package", async () => {
+    const manifestWithNoInstall = { ...discordManifest, install: [] };
+    const deps = makeDeps({ pluginRegistry: [manifestWithNoInstall] });
+    const app = new Hono();
+    app.route("/", createSetupRoutes(deps));
+
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "abc-123", pluginId: "discord-channel" }),
+    });
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toContain("missing install package specification");
   });
 
   it("returns 500 if onboardingService.inject throws", async () => {

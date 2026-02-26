@@ -101,16 +101,20 @@ export class DrizzleSetupSessionRepository implements ISetupSessionRepository {
   }
 
   async markComplete(id: string): Promise<void> {
-    await this.db
+    const rows = await this.db
       .update(setupSessions)
       .set({ status: "complete", completedAt: Date.now() })
-      .where(eq(setupSessions.id, id));
+      .where(eq(setupSessions.id, id))
+      .returning({ id: setupSessions.id });
+    if (!rows[0]) throw new Error(`SetupSession not found: ${id}`);
   }
 
   async markRolledBack(id: string): Promise<void> {
-    await this.db
+    const rows = await this.db
       .update(setupSessions)
       .set({ status: "rolled_back", completedAt: Date.now() })
-      .where(eq(setupSessions.id, id));
+      .where(eq(setupSessions.id, id))
+      .returning({ id: setupSessions.id });
+    if (!rows[0]) throw new Error(`SetupSession not found: ${id}`);
   }
 }
