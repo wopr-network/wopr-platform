@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import Database, { type Database as SqliteDatabase } from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AuthEnv } from "../auth/index.js";
@@ -6,7 +6,7 @@ import { requireEmailVerified } from "./require-verified.js";
 import { initVerificationSchema, isEmailVerified } from "./verification.js";
 
 describe("requireEmailVerified middleware", () => {
-  let db: Database.Database;
+  let db: SqliteDatabase;
   let app: Hono<AuthEnv>;
 
   beforeEach(() => {

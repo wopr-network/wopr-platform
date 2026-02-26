@@ -1,17 +1,9 @@
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
-import { createDb } from "../../db/index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDb } from "../../test/db.js";
 import { detachPaymentMethod } from "./payment-methods.js";
-import { initStripeSchema } from "./schema.js";
 import { TenantCustomerStore } from "./tenant-store.js";
-
-function setupDb() {
-  const sqlite = new BetterSqlite3(":memory:");
-  initStripeSchema(sqlite);
-  const db = createDb(sqlite);
-  return { sqlite, db };
-}
 
 function mockStripe(
   overrides: { paymentMethodRetrieve?: ReturnType<typeof vi.fn>; paymentMethodDetach?: ReturnType<typeof vi.fn> } = {},
@@ -30,10 +22,21 @@ function mockStripe(
 }
 
 describe("detachPaymentMethod", () => {
+  let pool: PGlite;
+  let store: TenantCustomerStore;
+
+  beforeEach(async () => {
+    const { db, pool: p } = await createTestDb();
+    pool = p;
+    store = new TenantCustomerStore(db);
+  });
+
+  afterEach(async () => {
+    await pool.close();
+  });
+
   it("calls stripe.paymentMethods.detach with the correct ID", async () => {
-    const { db } = setupDb();
-    const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
+    await store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const stripe = mockStripe();
     await detachPaymentMethod(stripe, store, {
@@ -46,8 +49,6 @@ describe("detachPaymentMethod", () => {
   });
 
   it("throws when tenant has no Stripe customer mapping", async () => {
-    const { db } = setupDb();
-    const store = new TenantCustomerStore(db);
     const stripe = mockStripe();
 
     await expect(
@@ -59,9 +60,7 @@ describe("detachPaymentMethod", () => {
   });
 
   it("throws when payment method belongs to a different customer (cross-tenant guard)", async () => {
-    const { db } = setupDb();
-    const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
+    await store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const paymentMethodRetrieve = vi.fn().mockResolvedValue({
       id: "pm_other",

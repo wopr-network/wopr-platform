@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import type * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
 import {
   botInstances,
   botProfiles,
@@ -71,15 +70,11 @@ export interface RecoveryItem {
  * 6. Notify admin
  */
 export class RecoveryManager {
-  private readonly db: BetterSQLite3Database<typeof schema>;
+  private readonly db: DrizzleDb;
   private readonly nodeConnections: NodeConnectionManager;
   private readonly notifier: AdminNotifier;
 
-  constructor(
-    db: BetterSQLite3Database<typeof schema>,
-    nodeConnections: NodeConnectionManager,
-    notifier: AdminNotifier,
-  ) {
+  constructor(db: DrizzleDb, nodeConnections: NodeConnectionManager, notifier: AdminNotifier) {
     this.db = db;
     this.nodeConnections = nodeConnections;
     this.notifier = notifier;
@@ -89,8 +84,8 @@ export class RecoveryManager {
    * Get tenants assigned to a node with tier priority sorting
    * Priority: enterprise > pro > starter > free
    */
-  private getTenantsWithTierPriority(nodeId: string): TenantAssignment[] {
-    const instances = this.db
+  private async getTenantsWithTierPriority(nodeId: string): Promise<TenantAssignment[]> {
+    const instances = await this.db
       .select({
         id: botInstances.id,
         tenantId: botInstances.tenantId,
@@ -108,13 +103,12 @@ export class RecoveryManager {
           ELSE 4
         END`,
         botInstances.id,
-      )
-      .all();
+      );
 
     return instances.map((inst) => ({
-      id: inst.id,
-      tenantId: inst.tenantId,
-      name: inst.name,
+      id: inst.id as string,
+      tenantId: inst.tenantId as string,
+      name: inst.name as string,
       containerName: `tenant_${inst.tenantId}`,
       estimatedMb: 100, // Default estimate; can be refined from heartbeat data
     }));
@@ -130,28 +124,25 @@ export class RecoveryManager {
     logger.info(`Starting recovery for node ${deadNodeId}`, { eventId, trigger });
 
     // 1. Mark node as "recovering"
-    this.db.update(nodes).set({ status: "recovering" }).where(eq(nodes.id, deadNodeId)).run();
+    await this.db.update(nodes).set({ status: "recovering" }).where(eq(nodes.id, deadNodeId));
 
     // 2. Get all tenants assigned to this node with tier priority
-    const tenants = this.getTenantsWithTierPriority(deadNodeId);
+    const tenants = await this.getTenantsWithTierPriority(deadNodeId);
 
     // 3. Create recovery_events record
-    this.db
-      .insert(recoveryEvents)
-      .values({
-        id: eventId,
-        nodeId: deadNodeId,
-        trigger,
-        status: "in_progress",
-        tenantsTotal: tenants.length,
-        tenantsRecovered: 0,
-        tenantsFailed: 0,
-        tenantsWaiting: 0,
-        startedAt: now,
-        completedAt: null,
-        reportJson: null,
-      })
-      .run();
+    await this.db.insert(recoveryEvents).values({
+      id: eventId,
+      nodeId: deadNodeId,
+      trigger,
+      status: "in_progress",
+      tenantsTotal: tenants.length,
+      tenantsRecovered: 0,
+      tenantsFailed: 0,
+      tenantsWaiting: 0,
+      startedAt: now,
+      completedAt: null,
+      reportJson: null,
+    });
 
     // 4. Attempt recovery for each tenant
     const report: RecoveryReport = {
@@ -166,11 +157,11 @@ export class RecoveryManager {
     }
 
     // 5. Mark dead node as offline
-    this.db.update(nodes).set({ status: "offline" }).where(eq(nodes.id, deadNodeId)).run();
+    await this.db.update(nodes).set({ status: "offline" }).where(eq(nodes.id, deadNodeId));
 
     // 6. Finalize recovery event
     const finalStatus = report.waiting.length > 0 ? "partial" : "completed";
-    this.db
+    await this.db
       .update(recoveryEvents)
       .set({
         status: finalStatus,
@@ -180,8 +171,7 @@ export class RecoveryManager {
         completedAt: Math.floor(Date.now() / 1000),
         reportJson: JSON.stringify(report),
       })
-      .where(eq(recoveryEvents.id, eventId))
-      .run();
+      .where(eq(recoveryEvents.id, eventId));
 
     // 7. Notify admin
     await this.notifier.nodeRecoveryComplete(deadNodeId, report);
@@ -216,12 +206,12 @@ export class RecoveryManager {
     logger.info(`Recovering tenant ${tenant.name} (${tenant.tenantId})`, { eventId, itemId });
 
     // a. Find best target node (most free capacity, status=active)
-    const target = this.nodeConnections.findBestTarget(deadNodeId, tenant.estimatedMb);
+    const target = await this.nodeConnections.findBestTarget(deadNodeId, tenant.estimatedMb);
 
     if (!target) {
       logger.warn(`No capacity available for tenant ${tenant.name}`, { eventId, itemId });
       report.waiting.push({ tenant: tenant.id, reason: "no_capacity" });
-      this.recordItem(eventId, itemId, tenant, deadNodeId, null, "waiting", "no_capacity", now, retryCount);
+      await this.recordItem(eventId, itemId, tenant, deadNodeId, null, "waiting", "no_capacity", now, retryCount);
       return;
     }
 
@@ -241,16 +231,16 @@ export class RecoveryManager {
       let image = "ghcr.io/wopr-network/wopr:latest";
       let env: Record<string, string> = {};
 
-      const profile = this.db
+      const profileRows = await this.db
         .select({ image: botProfiles.image, env: botProfiles.env })
         .from(botProfiles)
-        .where(eq(botProfiles.id, tenant.id))
-        .get();
+        .where(eq(botProfiles.id, tenant.id));
+      const profile = profileRows[0];
 
       if (profile) {
-        image = profile.image;
+        image = profile.image as string;
         try {
-          env = JSON.parse(profile.env);
+          env = JSON.parse(profile.env as string);
         } catch {
           logger.warn(`Corrupt env JSON for bot ${tenant.id}, using empty env`, { eventId, itemId });
         }
@@ -276,73 +266,70 @@ export class RecoveryManager {
       });
 
       // e. Update routing (reassign tenant to new node)
-      this.nodeConnections.reassignTenant(tenant.id, target.id);
+      await this.nodeConnections.reassignTenant(tenant.id, target.id);
 
       // f. Update target node used_mb
-      this.nodeConnections.addNodeCapacity(target.id, tenant.estimatedMb);
+      await this.nodeConnections.addNodeCapacity(target.id, tenant.estimatedMb);
 
       logger.info(`Recovered tenant ${tenant.name} to node ${target.id}`, { eventId, itemId });
       report.recovered.push({ tenant: tenant.id, target: target.id });
-      this.recordItem(eventId, itemId, tenant, deadNodeId, target.id, "recovered", null, now, retryCount);
+      await this.recordItem(eventId, itemId, tenant, deadNodeId, target.id, "recovered", null, now, retryCount);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.error(`Failed to recover tenant ${tenant.name}`, { eventId, itemId, err: reason });
       report.failed.push({ tenant: tenant.id, reason });
-      this.recordItem(eventId, itemId, tenant, deadNodeId, target?.id, "failed", reason, now, retryCount);
+      await this.recordItem(eventId, itemId, tenant, deadNodeId, target?.id, "failed", reason, now, retryCount);
     }
   }
 
   /**
    * Record a recovery item in the database
    */
-  private recordItem(
+  private async recordItem(
     eventId: string,
     itemId: string,
     tenant: TenantAssignment,
     sourceNodeId: string,
-    targetNodeId: string | null,
+    targetNodeId: string | null | undefined,
     status: string,
     reason: string | null,
     startedAt: number,
     retryCount = 0,
-  ): void {
+  ): Promise<void> {
     const backupKey = `latest/${tenant.containerName}/latest.tar.gz`;
 
-    this.db
-      .insert(recoveryItems)
-      .values({
-        id: itemId,
-        recoveryEventId: eventId,
-        tenant: tenant.tenantId,
-        sourceNode: sourceNodeId,
-        targetNode: targetNodeId,
-        backupKey,
-        status,
-        reason,
-        retryCount,
-        startedAt,
-        completedAt: status !== "waiting" ? Math.floor(Date.now() / 1000) : null,
-      })
-      .run();
+    await this.db.insert(recoveryItems).values({
+      id: itemId,
+      recoveryEventId: eventId,
+      tenant: tenant.tenantId,
+      sourceNode: sourceNodeId,
+      targetNode: targetNodeId ?? null,
+      backupKey,
+      status,
+      reason,
+      retryCount,
+      startedAt,
+      completedAt: status !== "waiting" ? Math.floor(Date.now() / 1000) : null,
+    });
   }
 
   /**
    * Retry recovery for waiting tenants (after new capacity added)
    */
   async retryWaiting(recoveryEventId: string): Promise<RecoveryReport> {
-    const event = this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, recoveryEventId)).get();
+    const eventRows = await this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, recoveryEventId));
+    const event = eventRows[0];
 
     if (!event) {
       throw new Error(`Recovery event ${recoveryEventId} not found`);
     }
 
     // Get all waiting items
-    const waitingItems = this.db
+    const allItems = await this.db
       .select()
       .from(recoveryItems)
-      .where(eq(recoveryItems.recoveryEventId, recoveryEventId))
-      .all()
-      .filter((item) => item.status === "waiting");
+      .where(eq(recoveryItems.recoveryEventId, recoveryEventId));
+    const waitingItems = allItems.filter((item) => item.status === "waiting");
 
     logger.info(`Retrying ${waitingItems.length} waiting tenants for event ${recoveryEventId}`);
 
@@ -355,11 +342,11 @@ export class RecoveryManager {
 
     for (const item of waitingItems) {
       // Look up the actual bot instance to get the correct ID
-      const botInstance = this.db
+      const botInstanceRows = await this.db
         .select()
         .from(botInstances)
-        .where(and(eq(botInstances.tenantId, item.tenant), eq(botInstances.nodeId, item.sourceNode)))
-        .get();
+        .where(and(eq(botInstances.tenantId, item.tenant), eq(botInstances.nodeId, item.sourceNode)));
+      const botInstance = botInstanceRows[0];
 
       if (!botInstance) {
         report.failed.push({ tenant: item.tenant, reason: "bot_instance_not_found" });
@@ -377,15 +364,14 @@ export class RecoveryManager {
       await this.recoverTenant(recoveryEventId, event.nodeId, tenant, report, item.retryCount + 1);
 
       // Mark waiting item as processed
-      this.db
+      await this.db
         .update(recoveryItems)
         .set({ status: "retried", retryCount: sql`retry_count + 1`, completedAt: Math.floor(Date.now() / 1000) })
-        .where(eq(recoveryItems.id, item.id))
-        .run();
+        .where(eq(recoveryItems.id, item.id));
     }
 
     // Update event with new counts
-    this.db
+    await this.db
       .update(recoveryEvents)
       .set({
         tenantsRecovered: (event.tenantsRecovered ?? 0) + report.recovered.length,
@@ -394,8 +380,7 @@ export class RecoveryManager {
         status: report.waiting.length > 0 ? "partial" : "completed",
         completedAt: report.waiting.length === 0 ? Math.floor(Date.now() / 1000) : event.completedAt,
       })
-      .where(eq(recoveryEvents.id, recoveryEventId))
-      .run();
+      .where(eq(recoveryEvents.id, recoveryEventId));
 
     return report;
   }
@@ -410,20 +395,18 @@ export class RecoveryManager {
     const now = Math.floor(Date.now() / 1000);
 
     // Find all events with status "in_progress" or "partial"
-    const openEvents = this.db
+    const openEvents = await this.db
       .select()
       .from(recoveryEvents)
-      .where(inArray(recoveryEvents.status, ["in_progress", "partial"]))
-      .all();
+      .where(inArray(recoveryEvents.status, ["in_progress", "partial"]));
 
     for (const event of openEvents) {
       try {
         // Get waiting items for this event
-        const waitingItems = this.db
+        const waitingItems = await this.db
           .select()
           .from(recoveryItems)
-          .where(and(eq(recoveryItems.recoveryEventId, event.id), eq(recoveryItems.status, "waiting")))
-          .all();
+          .where(and(eq(recoveryItems.recoveryEventId, event.id), eq(recoveryItems.status, "waiting")));
 
         if (waitingItems.length === 0) continue;
 
@@ -448,7 +431,7 @@ export class RecoveryManager {
         }
 
         // After retry, check if event is now fully resolved
-        this.finalizeEventIfComplete(event.id);
+        await this.finalizeEventIfComplete(event.id);
       } catch (err) {
         logger.error(`Auto-retry check failed for event ${event.id}`, {
           err: err instanceof Error ? err.message : String(err),
@@ -468,27 +451,26 @@ export class RecoveryManager {
     const now = Math.floor(Date.now() / 1000);
 
     for (const item of items) {
-      this.db
+      await this.db
         .update(recoveryItems)
         .set({
           status: "failed",
           reason,
           completedAt: now,
         })
-        .where(eq(recoveryItems.id, item.id))
-        .run();
+        .where(eq(recoveryItems.id, item.id));
     }
 
     // Update event failed count and recalculate waiting count
-    const event = this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId)).get();
+    const eventRows = await this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId));
+    const event = eventRows[0];
     if (event) {
-      const remainingWaiting = this.db
+      const remainingWaiting = await this.db
         .select()
         .from(recoveryItems)
-        .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")))
-        .all();
+        .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")));
 
-      this.db
+      await this.db
         .update(recoveryEvents)
         .set({
           tenantsFailed: (event.tenantsFailed ?? 0) + items.length,
@@ -496,8 +478,7 @@ export class RecoveryManager {
           status: remainingWaiting.length > 0 ? "partial" : "completed",
           completedAt: remainingWaiting.length === 0 ? now : event.completedAt,
         })
-        .where(eq(recoveryEvents.id, eventId))
-        .run();
+        .where(eq(recoveryEvents.id, eventId));
     }
 
     await this.notifier.waitingTenantsExpired(eventId, items.length, reason);
@@ -508,25 +489,24 @@ export class RecoveryManager {
   /**
    * Check if all items in an event are resolved and mark event as "completed" if so.
    */
-  private finalizeEventIfComplete(eventId: string): void {
-    const remainingWaiting = this.db
+  private async finalizeEventIfComplete(eventId: string): Promise<void> {
+    const remainingWaiting = await this.db
       .select()
       .from(recoveryItems)
-      .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")))
-      .all();
+      .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")));
 
     if (remainingWaiting.length === 0) {
-      const event = this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId)).get();
+      const eventRows = await this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId));
+      const event = eventRows[0];
       if (event && event.status !== "completed") {
-        this.db
+        await this.db
           .update(recoveryEvents)
           .set({
             status: "completed",
             tenantsWaiting: 0,
             completedAt: Math.floor(Date.now() / 1000),
           })
-          .where(eq(recoveryEvents.id, eventId))
-          .run();
+          .where(eq(recoveryEvents.id, eventId));
       }
     }
   }
@@ -534,17 +514,20 @@ export class RecoveryManager {
   /**
    * Get recovery event history
    */
-  listEvents(limit = 50): RecoveryEvent[] {
-    return this.db.select().from(recoveryEvents).limit(limit).all();
+  async listEvents(limit = 50): Promise<RecoveryEvent[]> {
+    return this.db.select().from(recoveryEvents).limit(limit) as unknown as Promise<RecoveryEvent[]>;
   }
 
   /**
    * Get recovery items for a specific event
    */
-  getEventDetails(eventId: string): { event: RecoveryEvent | undefined; items: RecoveryItem[] } {
-    const event = this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId)).get();
-    const items = this.db.select().from(recoveryItems).where(eq(recoveryItems.recoveryEventId, eventId)).all();
+  async getEventDetails(eventId: string): Promise<{ event: RecoveryEvent | undefined; items: RecoveryItem[] }> {
+    const eventRows = await this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, eventId));
+    const items = await this.db.select().from(recoveryItems).where(eq(recoveryItems.recoveryEventId, eventId));
 
-    return { event, items };
+    return {
+      event: eventRows[0] as unknown as RecoveryEvent | undefined,
+      items: items as unknown as RecoveryItem[],
+    };
   }
 }

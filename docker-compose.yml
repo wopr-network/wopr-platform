@@ -9,6 +9,21 @@
 ##   docker compose --env-file .env up -d
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=wopr
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=wopr_platform
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wopr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   caddy:
     build:
       context: ./caddy
@@ -35,13 +50,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - platform_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      - BILLING_DB_PATH=/data/platform/billing.db
-      - QUOTA_DB_PATH=/data/platform/quotas.db
-      - AUDIT_DB_PATH=/data/platform/audit.db
-      - CREDITS_DB_PATH=/data/platform/credits.db
-      - SNAPSHOT_DB_PATH=/data/snapshots.db
-      - TENANT_KEYS_DB_PATH=/data/platform/tenant-keys.db
+      - DATABASE_URL=postgresql://wopr:${POSTGRES_PASSWORD}@postgres:5432/wopr_platform
       - METER_WAL_PATH=/data/meter-wal.jsonl
       - METER_DLQ_PATH=/data/meter-dlq.jsonl
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
@@ -51,11 +64,9 @@ services:
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-noreply@wopr.network}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - BETTER_AUTH_URL=https://api.${DOMAIN}
-      - AUTH_DB_PATH=/data/auth.db
       - UI_ORIGIN=https://${DOMAIN},https://app.${DOMAIN}
       - PLATFORM_DOMAIN=${DOMAIN}
       - WOPR_BOT_IMAGE=${WOPR_BOT_IMAGE:-ghcr.io/wopr-network/wopr:latest}
-      - BACKUP_DB_PATH=/data/platform/backup-status.db
       - S3_BUCKET=${S3_BUCKET:-wopr-backups}
       - DO_SPACES_REGION=${DO_SPACES_REGION}
       - DO_SPACES_ACCESS_KEY=${DO_SPACES_ACCESS_KEY}
@@ -85,6 +96,7 @@ volumes:
   caddy_data:
   caddy_config:
   platform_data:
+  postgres_data:
 
 networks:
   default:

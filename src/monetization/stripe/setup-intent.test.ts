@@ -1,17 +1,9 @@
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
-import { describe, expect, it, vi } from "vitest";
-import { createDb } from "../../db/index.js";
-import { initStripeSchema } from "./schema.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTestDb } from "../../test/db.js";
 import { createSetupIntent } from "./setup-intent.js";
 import { TenantCustomerStore } from "./tenant-store.js";
-
-function setupDb() {
-  const sqlite = new BetterSqlite3(":memory:");
-  initStripeSchema(sqlite);
-  const db = createDb(sqlite);
-  return { sqlite, db };
-}
 
 function mockStripe(overrides: { setupIntentCreate?: ReturnType<typeof vi.fn> } = {}) {
   return {
@@ -27,10 +19,21 @@ function mockStripe(overrides: { setupIntentCreate?: ReturnType<typeof vi.fn> } 
 }
 
 describe("createSetupIntent", () => {
+  let pool: PGlite;
+  let store: TenantCustomerStore;
+
+  beforeEach(async () => {
+    const { db, pool: p } = await createTestDb();
+    pool = p;
+    store = new TenantCustomerStore(db);
+  });
+
+  afterEach(async () => {
+    await pool.close();
+  });
+
   it("calls stripe.setupIntents.create with correct customer ID", async () => {
-    const { db } = setupDb();
-    const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
+    await store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const stripe = mockStripe();
     const result = await createSetupIntent(stripe, store, { tenant: "t-1" });
@@ -43,8 +46,6 @@ describe("createSetupIntent", () => {
   });
 
   it("throws when tenant has no Stripe customer mapping", async () => {
-    const { db } = setupDb();
-    const store = new TenantCustomerStore(db);
     const stripe = mockStripe();
 
     await expect(createSetupIntent(stripe, store, { tenant: "t-unknown" })).rejects.toThrow(
@@ -53,9 +54,7 @@ describe("createSetupIntent", () => {
   });
 
   it("omits payment_method_types to allow dynamic payment methods", async () => {
-    const { db } = setupDb();
-    const store = new TenantCustomerStore(db);
-    store.upsert({ tenant: "t-2", processorCustomerId: "cus_def456" });
+    await store.upsert({ tenant: "t-2", processorCustomerId: "cus_def456" });
 
     const setupIntentCreate = vi.fn().mockResolvedValue({
       id: "seti_test_456",
@@ -66,7 +65,6 @@ describe("createSetupIntent", () => {
     await createSetupIntent(stripe, store, { tenant: "t-2" });
 
     const callArgs = setupIntentCreate.mock.calls[0][0];
-    // payment_method_types should NOT be set - allows Stripe to use dynamic methods
     expect(callArgs.payment_method_types).toBeUndefined();
     expect(callArgs.metadata).toEqual({ wopr_tenant: "t-2" });
   });

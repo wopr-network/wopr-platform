@@ -1,6 +1,6 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, real, text, uniqueIndex } from "drizzle-orm/pg-core";
 
-export const meterEvents = sqliteTable(
+export const meterEvents = pgTable(
   "meter_events",
   {
     id: text("id").primaryKey(),
@@ -9,7 +9,7 @@ export const meterEvents = sqliteTable(
     charge: real("charge").notNull(),
     capability: text("capability").notNull(),
     provider: text("provider").notNull(),
-    timestamp: integer("timestamp").notNull(),
+    timestamp: bigint("timestamp", { mode: "number" }).notNull(),
     sessionId: text("session_id"),
     duration: integer("duration"),
     usageUnits: real("usage_units"),
@@ -27,7 +27,7 @@ export const meterEvents = sqliteTable(
   ],
 );
 
-export const usageSummaries = sqliteTable(
+export const usageSummaries = pgTable(
   "usage_summaries",
   {
     id: text("id").primaryKey(),
@@ -38,8 +38,8 @@ export const usageSummaries = sqliteTable(
     totalCost: real("total_cost").notNull(),
     totalCharge: real("total_charge").notNull(),
     totalDuration: integer("total_duration").notNull().default(0),
-    windowStart: integer("window_start").notNull(),
-    windowEnd: integer("window_end").notNull(),
+    windowStart: bigint("window_start", { mode: "number" }).notNull(),
+    windowEnd: bigint("window_end", { mode: "number" }).notNull(),
   },
   (table) => [
     index("idx_summary_tenant").on(table.tenant, table.windowStart),
@@ -47,7 +47,7 @@ export const usageSummaries = sqliteTable(
   ],
 );
 
-export const billingPeriodSummaries = sqliteTable(
+export const billingPeriodSummaries = pgTable(
   "billing_period_summaries",
   {
     id: text("id").primaryKey(),
@@ -58,9 +58,9 @@ export const billingPeriodSummaries = sqliteTable(
     totalCost: real("total_cost").notNull(),
     totalCharge: real("total_charge").notNull(),
     totalDuration: integer("total_duration").notNull().default(0),
-    periodStart: integer("period_start").notNull(),
-    periodEnd: integer("period_end").notNull(),
-    updatedAt: integer("updated_at").notNull(),
+    periodStart: bigint("period_start", { mode: "number" }).notNull(),
+    periodEnd: bigint("period_end", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   },
   (table) => [
     uniqueIndex("idx_billing_period_unique").on(table.tenant, table.capability, table.provider, table.periodStart),

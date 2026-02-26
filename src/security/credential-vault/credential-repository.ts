@@ -1,6 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import type * as schema from "../../db/schema/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials } from "../../db/schema/index.js";
 
 // ---------------------------------------------------------------------------
@@ -52,15 +51,15 @@ export interface InsertCredentialRow {
 
 /** Pure storage repository for provider credentials. No encryption logic. */
 export interface ICredentialRepository {
-  insert(data: InsertCredentialRow): void;
-  getFullById(id: string): CredentialRow | null;
-  getSummaryById(id: string): CredentialSummaryRow | null;
-  list(provider?: string): CredentialSummaryRow[];
-  listActiveForProvider(provider: string): CredentialRow[];
-  updateEncryptedValue(id: string, encryptedValue: string): boolean;
-  setActive(id: string, isActive: boolean): boolean;
-  markValidated(id: string): boolean;
-  deleteById(id: string): boolean;
+  insert(data: InsertCredentialRow): Promise<void>;
+  getFullById(id: string): Promise<CredentialRow | null>;
+  getSummaryById(id: string): Promise<CredentialSummaryRow | null>;
+  list(provider?: string): Promise<CredentialSummaryRow[]>;
+  listActiveForProvider(provider: string): Promise<CredentialRow[]>;
+  updateEncryptedValue(id: string, encryptedValue: string): Promise<boolean>;
+  setActive(id: string, isActive: boolean): Promise<boolean>;
+  markValidated(id: string): Promise<boolean>;
+  deleteById(id: string): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,50 +67,48 @@ export interface ICredentialRepository {
 // ---------------------------------------------------------------------------
 
 export class DrizzleCredentialRepository implements ICredentialRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: DrizzleDb) {}
 
-  insert(data: InsertCredentialRow): void {
-    this.db
-      .insert(providerCredentials)
-      .values({
-        id: data.id,
-        provider: data.provider,
-        keyName: data.keyName,
-        encryptedValue: data.encryptedValue,
-        authType: data.authType,
-        authHeader: data.authHeader,
-        isActive: 1,
-        createdBy: data.createdBy,
-      })
-      .run();
+  async insert(data: InsertCredentialRow): Promise<void> {
+    await this.db.insert(providerCredentials).values({
+      id: data.id,
+      provider: data.provider,
+      keyName: data.keyName,
+      encryptedValue: data.encryptedValue,
+      authType: data.authType,
+      authHeader: data.authHeader,
+      isActive: 1,
+      createdBy: data.createdBy,
+    });
   }
 
-  getFullById(id: string): CredentialRow | null {
-    const row = this.db.select().from(providerCredentials).where(eq(providerCredentials.id, id)).get();
+  async getFullById(id: string): Promise<CredentialRow | null> {
+    const row = (await this.db.select().from(providerCredentials).where(eq(providerCredentials.id, id)))[0];
     return row ? toFullRow(row) : null;
   }
 
-  getSummaryById(id: string): CredentialSummaryRow | null {
-    const row = this.db
-      .select({
-        id: providerCredentials.id,
-        provider: providerCredentials.provider,
-        keyName: providerCredentials.keyName,
-        authType: providerCredentials.authType,
-        authHeader: providerCredentials.authHeader,
-        isActive: providerCredentials.isActive,
-        lastValidated: providerCredentials.lastValidated,
-        createdAt: providerCredentials.createdAt,
-        rotatedAt: providerCredentials.rotatedAt,
-        createdBy: providerCredentials.createdBy,
-      })
-      .from(providerCredentials)
-      .where(eq(providerCredentials.id, id))
-      .get();
+  async getSummaryById(id: string): Promise<CredentialSummaryRow | null> {
+    const row = (
+      await this.db
+        .select({
+          id: providerCredentials.id,
+          provider: providerCredentials.provider,
+          keyName: providerCredentials.keyName,
+          authType: providerCredentials.authType,
+          authHeader: providerCredentials.authHeader,
+          isActive: providerCredentials.isActive,
+          lastValidated: providerCredentials.lastValidated,
+          createdAt: providerCredentials.createdAt,
+          rotatedAt: providerCredentials.rotatedAt,
+          createdBy: providerCredentials.createdBy,
+        })
+        .from(providerCredentials)
+        .where(eq(providerCredentials.id, id))
+    )[0];
     return row ?? null;
   }
 
-  list(provider?: string): CredentialSummaryRow[] {
+  async list(provider?: string): Promise<CredentialSummaryRow[]> {
     const where = provider ? eq(providerCredentials.provider, provider) : undefined;
     return this.db
       .select({
@@ -128,49 +125,50 @@ export class DrizzleCredentialRepository implements ICredentialRepository {
       })
       .from(providerCredentials)
       .where(where)
-      .orderBy(desc(providerCredentials.createdAt))
-      .all();
+      .orderBy(desc(providerCredentials.createdAt));
   }
 
-  listActiveForProvider(provider: string): CredentialRow[] {
-    return this.db
+  async listActiveForProvider(provider: string): Promise<CredentialRow[]> {
+    const rows = await this.db
       .select()
       .from(providerCredentials)
-      .where(and(eq(providerCredentials.provider, provider), eq(providerCredentials.isActive, 1)))
-      .all()
-      .map(toFullRow);
+      .where(and(eq(providerCredentials.provider, provider), eq(providerCredentials.isActive, 1)));
+    return rows.map(toFullRow);
   }
 
-  updateEncryptedValue(id: string, encryptedValue: string): boolean {
-    const result = this.db
+  async updateEncryptedValue(id: string, encryptedValue: string): Promise<boolean> {
+    const result = await this.db
       .update(providerCredentials)
       .set({ encryptedValue, rotatedAt: new Date().toISOString() })
       .where(eq(providerCredentials.id, id))
-      .run();
-    return result.changes > 0;
+      .returning({ id: providerCredentials.id });
+    return result.length > 0;
   }
 
-  setActive(id: string, isActive: boolean): boolean {
-    const result = this.db
+  async setActive(id: string, isActive: boolean): Promise<boolean> {
+    const result = await this.db
       .update(providerCredentials)
       .set({ isActive: isActive ? 1 : 0 })
       .where(eq(providerCredentials.id, id))
-      .run();
-    return result.changes > 0;
+      .returning({ id: providerCredentials.id });
+    return result.length > 0;
   }
 
-  markValidated(id: string): boolean {
-    const result = this.db
+  async markValidated(id: string): Promise<boolean> {
+    const result = await this.db
       .update(providerCredentials)
       .set({ lastValidated: new Date().toISOString() })
       .where(eq(providerCredentials.id, id))
-      .run();
-    return result.changes > 0;
+      .returning({ id: providerCredentials.id });
+    return result.length > 0;
   }
 
-  deleteById(id: string): boolean {
-    const result = this.db.delete(providerCredentials).where(eq(providerCredentials.id, id)).run();
-    return result.changes > 0;
+  async deleteById(id: string): Promise<boolean> {
+    const result = await this.db
+      .delete(providerCredentials)
+      .where(eq(providerCredentials.id, id))
+      .returning({ id: providerCredentials.id });
+    return result.length > 0;
   }
 }
 

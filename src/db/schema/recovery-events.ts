@@ -1,10 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Recovery events table — tracks node failure recovery operations.
  * Each event represents one recovery process for a failed node.
  */
-export const recoveryEvents = sqliteTable(
+export const recoveryEvents = pgTable(
   "recovery_events",
   {
     /** Recovery event UUID */
@@ -24,9 +24,9 @@ export const recoveryEvents = sqliteTable(
     /** Number of tenants waiting for capacity */
     tenantsWaiting: integer("tenants_waiting"),
     /** Unix epoch seconds when recovery started */
-    startedAt: integer("started_at").notNull(),
+    startedAt: bigint("started_at", { mode: "number" }).notNull(),
     /** Unix epoch seconds when recovery completed */
-    completedAt: integer("completed_at"),
+    completedAt: bigint("completed_at", { mode: "number" }),
     /** Full recovery report as JSON */
     reportJson: text("report_json"),
   },
@@ -37,7 +37,7 @@ export const recoveryEvents = sqliteTable(
  * Recovery items table — tracks per-tenant recovery status.
  * Each item represents one tenant being recovered during a recovery event.
  */
-export const recoveryItems = sqliteTable(
+export const recoveryItems = pgTable(
   "recovery_items",
   {
     /** Recovery item UUID */
@@ -59,9 +59,9 @@ export const recoveryItems = sqliteTable(
     /** Number of recovery retry attempts for this item */
     retryCount: integer("retry_count").notNull().default(0),
     /** Unix epoch seconds when item recovery started */
-    startedAt: integer("started_at"),
+    startedAt: bigint("started_at", { mode: "number" }),
     /** Unix epoch seconds when item recovery completed */
-    completedAt: integer("completed_at"),
+    completedAt: bigint("completed_at", { mode: "number" }),
   },
   (table) => [
     index("idx_recovery_items_event").on(table.recoveryEventId),

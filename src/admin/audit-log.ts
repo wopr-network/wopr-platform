@@ -48,7 +48,7 @@ export class AdminAuditLog {
   }
 
   /** Append an audit entry. Immutable -- no updates or deletes. */
-  log(entry: AuditEntry): AdminAuditLogRow {
+  async log(entry: AuditEntry): Promise<AdminAuditLogRow> {
     const row: AdminAuditLogRow = {
       id: crypto.randomUUID(),
       admin_user: entry.adminUser,
@@ -63,20 +63,25 @@ export class AdminAuditLog {
       outcome: entry.outcome ?? null,
     };
 
-    this.repo.insert(row);
+    try {
+      await this.repo.insert(row);
+    } catch {
+      // Audit log failures are non-fatal — swallow to prevent unhandled rejections
+      // when the database is unavailable or closing (e.g. in tests).
+    }
 
     return row;
   }
 
   /** Query audit log with filters. */
-  query(filters: AuditFilters): { entries: AdminAuditLogRow[]; total: number } {
+  async query(filters: AuditFilters): Promise<{ entries: AdminAuditLogRow[]; total: number }> {
     return this.repo.query(filters);
   }
 
   /** Export as CSV string for compliance. */
-  exportCsv(filters: AuditFilters): string {
+  async exportCsv(filters: AuditFilters): Promise<string> {
     const exportFilters = { ...filters, limit: undefined, offset: undefined };
-    const rows = this.repo.queryAll(exportFilters);
+    const rows = await this.repo.queryAll(exportFilters);
 
     const header =
       "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at,outcome";

@@ -28,10 +28,10 @@ export class NodeDrainer {
     logger.info(`Starting drain of node ${nodeId}`);
 
     // 1. Transition node to draining (prevents new placements)
-    this.nodeRepo.transition(nodeId, "draining", "node_drain", "migration_orchestrator");
+    await this.nodeRepo.transition(nodeId, "draining", "node_drain", "migration_orchestrator");
 
     // 2. Get all tenants on this node
-    const tenants = this.botInstanceRepo.listByNode(nodeId);
+    const tenants = await this.botInstanceRepo.listByNode(nodeId);
     logger.info(`Draining ${tenants.length} tenants from node ${nodeId}`);
 
     const migrated: MigrationResult[] = [];
@@ -49,7 +49,7 @@ export class NodeDrainer {
 
     // 4. Transition to offline if all succeeded, stay draining if some failed
     if (failed.length === 0) {
-      this.nodeRepo.transition(nodeId, "offline", "drain_complete", "migration_orchestrator");
+      await this.nodeRepo.transition(nodeId, "offline", "drain_complete", "migration_orchestrator");
     }
 
     // 5. Notify admin on failures

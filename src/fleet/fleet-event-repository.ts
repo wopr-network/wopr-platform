@@ -1,5 +1,5 @@
 export interface IFleetEventRepository {
-  fireFleetStop(): void;
-  clearFleetStop(): void;
-  isFleetStopFired(): boolean;
+  fireFleetStop(): Promise<void>;
+  clearFleetStop(): Promise<void>;
+  isFleetStopFired(): Promise<boolean>;
 }

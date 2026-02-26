@@ -8,7 +8,7 @@ export interface CriticalAlertDeps {
   /** Returns true if auth service is functional. */
   authHealthCheck: () => boolean;
   /** Returns gateway health status. */
-  gatewayHealthCheck: () => { healthy: boolean; latencyMs: number };
+  gatewayHealthCheck: () => { healthy: boolean; latencyMs: number } | Promise<{ healthy: boolean; latencyMs: number }>;
 }
 
 /**
@@ -23,8 +23,8 @@ export function buildCriticalAlerts(deps: CriticalAlertDeps): AlertDefinition[] 
   return [
     {
       name: "sev1-billing-pipeline",
-      check: () => {
-        const window = deps.metrics.getWindow(5);
+      check: async () => {
+        const window = await deps.metrics.getWindow(5);
         const failures = window.creditDeductionFailures;
         const threshold = 20;
         const firing = failures > threshold;
@@ -40,8 +40,8 @@ export function buildCriticalAlerts(deps: CriticalAlertDeps): AlertDefinition[] 
     },
     {
       name: "sev1-payment-processing",
-      check: () => {
-        const window = deps.metrics.getWindow(5);
+      check: async () => {
+        const window = await deps.metrics.getWindow(5);
         const threshold = 0.1;
         const firing = window.totalRequests > 0 && window.errorRate > threshold;
         return {
@@ -56,7 +56,7 @@ export function buildCriticalAlerts(deps: CriticalAlertDeps): AlertDefinition[] 
     },
     {
       name: "sev1-auth-failure",
-      check: () => {
+      check: async () => {
         const healthy = deps.authHealthCheck();
         return {
           firing: !healthy,
@@ -68,7 +68,7 @@ export function buildCriticalAlerts(deps: CriticalAlertDeps): AlertDefinition[] 
     },
     {
       name: "sev1-database-unavailable",
-      check: () => {
+      check: async () => {
         const healthy = deps.dbHealthCheck();
         return {
           firing: !healthy,
@@ -80,8 +80,8 @@ export function buildCriticalAlerts(deps: CriticalAlertDeps): AlertDefinition[] 
     },
     {
       name: "sev1-inference-gateway-down",
-      check: () => {
-        const status = deps.gatewayHealthCheck();
+      check: async () => {
+        const status = await deps.gatewayHealthCheck();
         return {
           firing: !status.healthy,
           value: status.latencyMs,

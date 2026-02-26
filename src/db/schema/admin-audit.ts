@@ -1,6 +1,7 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
-export const adminAuditLog = sqliteTable(
+export const adminAuditLog = pgTable(
   "admin_audit_log",
   {
     id: text("id").primaryKey(),
@@ -12,7 +13,9 @@ export const adminAuditLog = sqliteTable(
     details: text("details").notNull().default("{}"),
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
-    createdAt: integer("created_at").notNull(),
+    createdAt: bigint("created_at", { mode: "number" })
+      .notNull()
+      .default(sql`(extract(epoch from now()) * 1000)::bigint`),
     outcome: text("outcome"),
   },
   (table) => [

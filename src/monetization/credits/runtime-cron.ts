@@ -54,13 +54,13 @@ export interface RuntimeCronResult {
  */
 export function buildResourceTierCosts(
   botInstanceRepo: IBotInstanceRepository,
-  getBotBillingActiveIds: (tenantId: string) => string[],
-): (tenantId: string) => number {
-  return (tenantId: string): number => {
-    const botIds = getBotBillingActiveIds(tenantId);
+  getBotBillingActiveIds: (tenantId: string) => Promise<string[]>,
+): (tenantId: string) => Promise<number> {
+  return async (tenantId: string): Promise<number> => {
+    const botIds = await getBotBillingActiveIds(tenantId);
     let total = 0;
     for (const botId of botIds) {
-      const tier = botInstanceRepo.getResourceTier(botId) ?? "standard";
+      const tier = (await botInstanceRepo.getResourceTier(botId)) ?? "standard";
       const tierKey = tier in RESOURCE_TIERS ? (tier as keyof typeof RESOURCE_TIERS) : "standard";
       total += RESOURCE_TIERS[tierKey].dailyCostCents;
     }
@@ -83,7 +83,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
     errors: [],
   };
 
-  const tenants = cfg.ledger.tenantsWithBalance();
+  const tenants = await cfg.ledger.tenantsWithBalance();
 
   for (const { tenantId, balanceCents } of tenants) {
     try {
@@ -94,7 +94,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
 
       if (balanceCents >= totalCost) {
         // Full deduction
-        cfg.ledger.debit(
+        await cfg.ledger.debit(
           tenantId,
           totalCost,
           "bot_runtime",
@@ -105,11 +105,11 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
         if (cfg.getResourceTierCosts) {
           const tierCost = await cfg.getResourceTierCosts(tenantId);
           if (tierCost > 0) {
-            const balanceAfterRuntime = cfg.ledger.balance(tenantId);
+            const balanceAfterRuntime = await cfg.ledger.balance(tenantId);
             if (balanceAfterRuntime >= tierCost) {
-              cfg.ledger.debit(tenantId, tierCost, "resource_upgrade", "Daily resource tier surcharge");
+              await cfg.ledger.debit(tenantId, tierCost, "resource_upgrade", "Daily resource tier surcharge");
             } else if (balanceAfterRuntime > 0) {
-              cfg.ledger.debit(
+              await cfg.ledger.debit(
                 tenantId,
                 balanceAfterRuntime,
                 "resource_upgrade",
@@ -119,7 +119,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           }
         }
 
-        const newBalance = cfg.ledger.balance(tenantId);
+        const newBalance = await cfg.ledger.balance(tenantId);
 
         // Fire onLowBalance if balance crossed below threshold from above
         if (
@@ -140,13 +140,13 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
         if (cfg.getStorageTierCosts) {
           const storageCost = await cfg.getStorageTierCosts(tenantId);
           if (storageCost > 0) {
-            const currentBalance = cfg.ledger.balance(tenantId);
+            const currentBalance = await cfg.ledger.balance(tenantId);
             if (currentBalance >= storageCost) {
-              cfg.ledger.debit(tenantId, storageCost, "storage_upgrade", "Daily storage tier surcharge");
+              await cfg.ledger.debit(tenantId, storageCost, "storage_upgrade", "Daily storage tier surcharge");
             } else {
               // Partial debit — take what's left, then suspend
               if (currentBalance > 0) {
-                cfg.ledger.debit(
+                await cfg.ledger.debit(
                   tenantId,
                   currentBalance,
                   "storage_upgrade",
@@ -161,7 +161,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
       } else {
         // Partial deduction — debit remaining balance, then suspend
         if (balanceCents > 0) {
-          cfg.ledger.debit(
+          await cfg.ledger.debit(
             tenantId,
             balanceCents,
             "bot_runtime",

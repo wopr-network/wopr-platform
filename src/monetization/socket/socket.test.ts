@@ -719,18 +719,18 @@ describe("AdapterSocket", () => {
 
   describe("execute -- budget check", () => {
     let db: DrizzleDb;
-    let sqlite: import("better-sqlite3").Database;
     let budgetChecker: BudgetChecker;
+    let budgetPool: import("@electric-sql/pglite").PGlite;
 
-    beforeEach(() => {
-      const testDb = createTestDb();
+    beforeEach(async () => {
+      const testDb = await createTestDb();
       db = testDb.db;
-      sqlite = testDb.sqlite;
+      budgetPool = testDb.pool;
       budgetChecker = new BudgetChecker(db, { cacheTtlMs: 1000 });
     });
 
-    afterEach(() => {
-      sqlite.close();
+    afterEach(async () => {
+      await budgetPool?.close();
     });
 
     it("allows requests when budget is under limit", async () => {
@@ -752,17 +752,15 @@ describe("AdapterSocket", () => {
     it("blocks requests when hourly budget is exceeded", async () => {
       // Add events to exceed hourly limit ($0.50)
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "t-1",
-          cost: 0.3,
-          charge: 0.6,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "t-1",
+        cost: 0.3,
+        charge: 0.6,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -784,17 +782,15 @@ describe("AdapterSocket", () => {
       // Add old events to exceed monthly limit but not hourly ($5.00)
       const now = Date.now();
       const twoHoursAgo = now - 2 * 60 * 60 * 1000;
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "t-monthly",
-          cost: 2.5,
-          charge: 5.0,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: twoHoursAgo,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "t-monthly",
+        cost: 2.5,
+        charge: 5.0,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: twoHoursAgo,
+      });
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -815,17 +811,15 @@ describe("AdapterSocket", () => {
     it("skips budget check when spendLimits is not provided", async () => {
       // Even though budget is exceeded, no limits means no check
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "t-1",
-          cost: 3.0,
-          charge: 6.0,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "t-1",
+        cost: 3.0,
+        charge: 6.0,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -845,17 +839,15 @@ describe("AdapterSocket", () => {
     it("skips budget check when byok is true", async () => {
       // BYOK users bypass budget checks
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "t-1",
-          cost: 3.0,
-          charge: 6.0,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "t-1",
+        cost: 3.0,
+        charge: 6.0,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });
@@ -890,17 +882,15 @@ describe("AdapterSocket", () => {
 
     it("includes httpStatus in error when budget exceeded", async () => {
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "t-1",
-          cost: 0.3,
-          charge: 0.6,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "t-1",
+        cost: 0.3,
+        charge: 0.6,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
       const meter = stubMeter();
       const socket = new AdapterSocket({ meter, budgetChecker });

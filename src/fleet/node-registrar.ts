@@ -8,16 +8,16 @@ import type {
 
 /** Subset of INodeRepository used by NodeRegistrar. */
 export interface NodeRegistrarNodeRepo {
-  register(data: NodeRegistration): DrizzleNode;
-  registerSelfHosted(data: SelfHostedNodeRegistration): DrizzleNode;
+  register(data: NodeRegistration): Promise<DrizzleNode>;
+  registerSelfHosted(data: SelfHostedNodeRegistration): Promise<DrizzleNode>;
 }
 
 export type { SelfHostedNodeRegistration };
 
 /** Subset of IRecoveryRepository used by NodeRegistrar. */
 export interface NodeRegistrarRecoveryRepo {
-  listOpenEvents(): RecoveryEvent[];
-  getWaitingItems(eventId: string): RecoveryItem[];
+  listOpenEvents(): Promise<RecoveryEvent[]>;
+  getWaitingItems(eventId: string): Promise<RecoveryItem[]>;
 }
 
 export interface NodeRegistrarOptions {
@@ -42,17 +42,17 @@ export class NodeRegistrar {
     this.onRetryWaiting = options?.onRetryWaiting;
   }
 
-  register(data: NodeRegistration): DrizzleNode {
-    const node = this.nodeRepo.register(data);
+  async register(data: NodeRegistration): Promise<DrizzleNode> {
+    const node = await this.nodeRepo.register(data);
 
     if (node.status === "returning" && this.onReturning) {
       this.onReturning(node.id);
     }
 
     if (this.onRetryWaiting) {
-      const openEvents = this.recoveryRepo.listOpenEvents();
+      const openEvents = await this.recoveryRepo.listOpenEvents();
       for (const event of openEvents) {
-        const waiting = this.recoveryRepo.getWaitingItems(event.id);
+        const waiting = await this.recoveryRepo.getWaitingItems(event.id);
         if (waiting.length > 0) {
           this.onRetryWaiting(event.id);
         }
@@ -62,13 +62,13 @@ export class NodeRegistrar {
     return node;
   }
 
-  registerSelfHosted(data: SelfHostedNodeRegistration): DrizzleNode {
-    const node = this.nodeRepo.registerSelfHosted(data);
+  async registerSelfHosted(data: SelfHostedNodeRegistration): Promise<DrizzleNode> {
+    const node = await this.nodeRepo.registerSelfHosted(data);
 
     if (this.onRetryWaiting) {
-      const openEvents = this.recoveryRepo.listOpenEvents();
+      const openEvents = await this.recoveryRepo.listOpenEvents();
       for (const event of openEvents) {
-        const waiting = this.recoveryRepo.getWaitingItems(event.id);
+        const waiting = await this.recoveryRepo.getWaitingItems(event.id);
         if (waiting.length > 0) {
           this.onRetryWaiting(event.id);
         }

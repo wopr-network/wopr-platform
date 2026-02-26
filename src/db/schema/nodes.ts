@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Nodes table — tracks registered compute nodes in the platform.
  * Each node runs the wopr-node-agent daemon that sends heartbeats and executes commands.
  */
-export const nodes = sqliteTable(
+export const nodes = pgTable(
   "nodes",
   {
     /** Node ID (e.g. "node-1", "node-2") */
@@ -21,11 +21,13 @@ export const nodes = sqliteTable(
     /** Version of the node agent daemon */
     agentVersion: text("agent_version"),
     /** Unix epoch seconds of last heartbeat */
-    lastHeartbeatAt: integer("last_heartbeat_at"),
+    lastHeartbeatAt: bigint("last_heartbeat_at", { mode: "number" }),
     /** Unix epoch seconds when node was registered */
-    registeredAt: integer("registered_at").notNull().default(sql`(unixepoch())`),
+    registeredAt: bigint("registered_at", { mode: "number" })
+      .notNull()
+      .default(sql`(extract(epoch from now()))::bigint`),
     /** Unix epoch seconds when node was last updated */
-    updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull().default(sql`(extract(epoch from now()))::bigint`),
     /** DigitalOcean droplet ID (null for manually registered nodes) */
     dropletId: text("droplet_id"),
     /** DO region slug (e.g. "nyc1") */

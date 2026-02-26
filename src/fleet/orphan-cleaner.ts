@@ -35,7 +35,7 @@ export class OrphanCleaner {
     });
 
     // 1. Get all bot instances assigned to this node
-    const assigned = this.botInstanceRepo.listByNode(nodeId);
+    const assigned = await this.botInstanceRepo.listByNode(nodeId);
     const assignedTenantIds = new Set(assigned.map((b) => b.tenantId));
 
     const stopped: string[] = [];
@@ -81,7 +81,7 @@ export class OrphanCleaner {
     }
 
     // 3. Transition node to active via state machine
-    this.nodeRepo.transition(nodeId, "active", "cleanup_complete", "orphan_cleaner");
+    await this.nodeRepo.transition(nodeId, "active", "cleanup_complete", "orphan_cleaner");
 
     logger.info(`OrphanCleaner: cleanup complete on node ${nodeId}`, {
       stopped: stopped.length,

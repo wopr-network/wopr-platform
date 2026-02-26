@@ -23,8 +23,8 @@ export interface TenantMandateStatus {
 // ---------------------------------------------------------------------------
 
 export interface ITwoFactorRepository {
-  getMandateStatus(tenantId: string): TenantMandateStatus;
-  setMandateStatus(tenantId: string, requireTwoFactor: boolean): TenantMandateStatus;
+  getMandateStatus(tenantId: string): Promise<TenantMandateStatus>;
+  setMandateStatus(tenantId: string, requireTwoFactor: boolean): Promise<TenantMandateStatus>;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,25 +34,22 @@ export interface ITwoFactorRepository {
 export class DrizzleTwoFactorRepository implements ITwoFactorRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  getMandateStatus(tenantId: string): TenantMandateStatus {
-    const row = this.db
-      .select()
-      .from(tenantSecuritySettings)
-      .where(eq(tenantSecuritySettings.tenantId, tenantId))
-      .get();
+  async getMandateStatus(tenantId: string): Promise<TenantMandateStatus> {
+    const row = (
+      await this.db.select().from(tenantSecuritySettings).where(eq(tenantSecuritySettings.tenantId, tenantId))
+    )[0];
     return { tenantId, requireTwoFactor: row?.requireTwoFactor ?? false };
   }
 
-  setMandateStatus(tenantId: string, requireTwoFactor: boolean): TenantMandateStatus {
+  async setMandateStatus(tenantId: string, requireTwoFactor: boolean): Promise<TenantMandateStatus> {
     const now = Date.now();
-    this.db
+    await this.db
       .insert(tenantSecuritySettings)
       .values({ tenantId, requireTwoFactor, updatedAt: now })
       .onConflictDoUpdate({
         target: tenantSecuritySettings.tenantId,
         set: { requireTwoFactor, updatedAt: now },
-      })
-      .run();
+      });
     return { tenantId, requireTwoFactor };
   }
 }

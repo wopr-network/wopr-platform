@@ -73,7 +73,7 @@ export interface ICreditLedger {
     referenceId?: string,
     fundingSource?: string,
     attributedUserId?: string,
-  ): CreditTransaction;
+  ): Promise<CreditTransaction>;
 
   debit(
     tenantId: string,
@@ -83,13 +83,13 @@ export interface ICreditLedger {
     referenceId?: string,
     allowNegative?: boolean,
     attributedUserId?: string,
-  ): CreditTransaction;
+  ): Promise<CreditTransaction>;
 
-  balance(tenantId: string): number;
-  hasReferenceId(referenceId: string): boolean;
-  history(tenantId: string, opts?: HistoryOptions): CreditTransaction[];
-  tenantsWithBalance(): Array<{ tenantId: string; balanceCents: number }>;
-  memberUsage(tenantId: string): MemberUsageSummary[];
+  balance(tenantId: string): Promise<number>;
+  hasReferenceId(referenceId: string): Promise<boolean>;
+  history(tenantId: string, opts?: HistoryOptions): Promise<CreditTransaction[]>;
+  tenantsWithBalance(): Promise<Array<{ tenantId: string; balanceCents: number }>>;
+  memberUsage(tenantId: string): Promise<MemberUsageSummary[]>;
 }
 
 /**
@@ -106,7 +106,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
    * Add credits to a tenant's balance.
    * @returns The created transaction record.
    */
-  credit(
+  async credit(
     tenantId: string,
     amountCents: number,
     type: CreditType,
@@ -114,38 +114,35 @@ export class DrizzleCreditLedger implements ICreditLedger {
     referenceId?: string,
     fundingSource?: string,
     attributedUserId?: string,
-  ): CreditTransaction {
+  ): Promise<CreditTransaction> {
     if (amountCents <= 0) {
       throw new Error("amountCents must be positive for credits");
     }
 
-    return this.db.transaction((tx) => {
+    return this.db.transaction(async (tx) => {
       // Upsert balance row
-      const existing = tx
+      const existing = await tx
         .select({ balanceCents: creditBalances.balanceCents })
         .from(creditBalances)
-        .where(eq(creditBalances.tenantId, tenantId))
-        .get();
+        .where(eq(creditBalances.tenantId, tenantId));
 
-      const currentBalance = existing?.balanceCents ?? 0;
+      const currentBalance = existing[0]?.balanceCents ?? 0;
       const newBalance = currentBalance + amountCents;
 
-      if (existing) {
-        tx.update(creditBalances)
+      if (existing[0]) {
+        await tx
+          .update(creditBalances)
           .set({
             balanceCents: newBalance,
-            lastUpdated: sql`(datetime('now'))`,
+            lastUpdated: sql`(now())`,
           })
-          .where(eq(creditBalances.tenantId, tenantId))
-          .run();
+          .where(eq(creditBalances.tenantId, tenantId));
       } else {
-        tx.insert(creditBalances)
-          .values({
-            tenantId,
-            balanceCents: newBalance,
-            lastUpdated: sql`(datetime('now'))`,
-          })
-          .run();
+        await tx.insert(creditBalances).values({
+          tenantId,
+          balanceCents: newBalance,
+          lastUpdated: sql`(now())`,
+        });
       }
 
       // Insert transaction record
@@ -162,7 +159,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         attributedUserId: attributedUserId ?? null,
       };
 
-      tx.insert(creditTransactions).values(txn).run();
+      await tx.insert(creditTransactions).values(txn);
 
       return {
         id,
@@ -185,7 +182,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
    * @param allowNegative - If true, allow balance to go negative (for grace buffer debits). Default: false.
    * @returns The created transaction record.
    */
-  debit(
+  async debit(
     tenantId: string,
     amountCents: number,
     type: DebitType,
@@ -193,19 +190,18 @@ export class DrizzleCreditLedger implements ICreditLedger {
     referenceId?: string,
     allowNegative?: boolean,
     attributedUserId?: string,
-  ): CreditTransaction {
+  ): Promise<CreditTransaction> {
     if (amountCents <= 0) {
       throw new Error("amountCents must be positive for debits");
     }
 
-    return this.db.transaction((tx) => {
-      const existing = tx
+    return this.db.transaction(async (tx) => {
+      const existing = await tx
         .select({ balanceCents: creditBalances.balanceCents })
         .from(creditBalances)
-        .where(eq(creditBalances.tenantId, tenantId))
-        .get();
+        .where(eq(creditBalances.tenantId, tenantId));
 
-      const currentBalance = existing?.balanceCents ?? 0;
+      const currentBalance = existing[0]?.balanceCents ?? 0;
 
       if (!allowNegative && currentBalance < amountCents) {
         throw new InsufficientBalanceError(currentBalance, amountCents);
@@ -213,23 +209,21 @@ export class DrizzleCreditLedger implements ICreditLedger {
 
       const newBalance = currentBalance - amountCents;
 
-      if (existing) {
-        tx.update(creditBalances)
+      if (existing[0]) {
+        await tx
+          .update(creditBalances)
           .set({
             balanceCents: newBalance,
-            lastUpdated: sql`(datetime('now'))`,
+            lastUpdated: sql`(now())`,
           })
-          .where(eq(creditBalances.tenantId, tenantId))
-          .run();
+          .where(eq(creditBalances.tenantId, tenantId));
       } else {
         // allowNegative=true with no existing row — insert negative balance row
-        tx.insert(creditBalances)
-          .values({
-            tenantId,
-            balanceCents: newBalance,
-            lastUpdated: sql`(datetime('now'))`,
-          })
-          .run();
+        await tx.insert(creditBalances).values({
+          tenantId,
+          balanceCents: newBalance,
+          lastUpdated: sql`(now())`,
+        });
       }
 
       const id = crypto.randomUUID();
@@ -245,7 +239,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         attributedUserId: attributedUserId ?? null,
       };
 
-      tx.insert(creditTransactions).values(txn).run();
+      await tx.insert(creditTransactions).values(txn);
 
       return {
         id,
@@ -263,30 +257,28 @@ export class DrizzleCreditLedger implements ICreditLedger {
   }
 
   /** Get current balance in cents for a tenant. Returns 0 if tenant has no balance row. */
-  balance(tenantId: string): number {
-    const row = this.db
+  async balance(tenantId: string): Promise<number> {
+    const rows = await this.db
       .select({ balanceCents: creditBalances.balanceCents })
       .from(creditBalances)
-      .where(eq(creditBalances.tenantId, tenantId))
-      .get();
+      .where(eq(creditBalances.tenantId, tenantId));
 
-    return row?.balanceCents ?? 0;
+    return rows[0]?.balanceCents ?? 0;
   }
 
   /** Check if a reference ID has already been used (for idempotency). */
-  hasReferenceId(referenceId: string): boolean {
-    const row = this.db
+  async hasReferenceId(referenceId: string): Promise<boolean> {
+    const rows = await this.db
       .select({ id: creditTransactions.id })
       .from(creditTransactions)
       .where(eq(creditTransactions.referenceId, referenceId))
-      .limit(1)
-      .get();
+      .limit(1);
 
-    return row != null;
+    return rows.length > 0;
   }
 
   /** Get transaction history for a tenant with optional filtering and pagination. */
-  history(tenantId: string, opts: HistoryOptions = {}): CreditTransaction[] {
+  async history(tenantId: string, opts: HistoryOptions = {}): Promise<CreditTransaction[]> {
     const limit = Math.min(Math.max(1, opts.limit ?? 50), 250);
     const offset = Math.max(0, opts.offset ?? 0);
 
@@ -301,13 +293,12 @@ export class DrizzleCreditLedger implements ICreditLedger {
       .where(and(...conditions))
       .orderBy(desc(creditTransactions.createdAt))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
   }
 
   /** Aggregate debit totals per attributed user for a tenant. */
-  memberUsage(tenantId: string): MemberUsageSummary[] {
-    const rows = this.db
+  async memberUsage(tenantId: string): Promise<MemberUsageSummary[]> {
+    const rows = await this.db
       .select({
         userId: creditTransactions.attributedUserId,
         totalDebitCents: sql<number>`COALESCE(SUM(ABS(${creditTransactions.amountCents})), 0)`,
@@ -321,8 +312,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
           sql`${creditTransactions.amountCents} < 0`,
         ),
       )
-      .groupBy(creditTransactions.attributedUserId)
-      .all();
+      .groupBy(creditTransactions.attributedUserId);
 
     return rows
       .filter((r): r is typeof r & { userId: string } => r.userId != null)
@@ -334,15 +324,14 @@ export class DrizzleCreditLedger implements ICreditLedger {
   }
 
   /** List all tenants with positive balance (for cron deduction). */
-  tenantsWithBalance(): Array<{ tenantId: string; balanceCents: number }> {
+  async tenantsWithBalance(): Promise<Array<{ tenantId: string; balanceCents: number }>> {
     return this.db
       .select({
         tenantId: creditBalances.tenantId,
         balanceCents: creditBalances.balanceCents,
       })
       .from(creditBalances)
-      .where(sql`${creditBalances.balanceCents} > 0`)
-      .all();
+      .where(sql`${creditBalances.balanceCents} > 0`);
   }
 }
 

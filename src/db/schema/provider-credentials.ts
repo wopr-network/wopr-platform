@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Provider credentials table — stores encrypted platform-level API keys
@@ -8,7 +8,7 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
  * Keys are encrypted at rest with AES-256-GCM. Multiple keys per provider
  * are supported for rotation and load distribution.
  */
-export const providerCredentials = sqliteTable(
+export const providerCredentials = pgTable(
   "provider_credentials",
   {
     id: text("id").primaryKey(),
@@ -27,7 +27,7 @@ export const providerCredentials = sqliteTable(
     /** ISO timestamp of last successful validation */
     lastValidated: text("last_validated"),
     /** ISO timestamp of record creation */
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
     /** ISO timestamp of last key rotation */
     rotatedAt: text("rotated_at"),
     /** Admin user ID who created/last modified this credential */

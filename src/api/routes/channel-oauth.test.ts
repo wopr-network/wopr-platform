@@ -1,40 +1,17 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthEnv, AuthUser } from "../../auth/index.js";
-import * as schema from "../../db/schema/index.js";
+import { createTestDb } from "../../test/db.js";
 import { DrizzleOAuthStateRepository } from "../drizzle-oauth-state-repository.js";
 import { createChannelOAuthRoutes } from "./channel-oauth.js";
-
-// ---------------------------------------------------------------------------
-// Test DB factory — creates a fresh in-memory DB with the oauth_states table
-// ---------------------------------------------------------------------------
-
-function makeDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS oauth_states (
-      state TEXT PRIMARY KEY,
-      provider TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      redirect_uri TEXT NOT NULL,
-      token TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states (expires_at);
-  `);
-  return drizzle(sqlite, { schema });
-}
 
 // ---------------------------------------------------------------------------
 // Test app — wraps createChannelOAuthRoutes with controllable session injection
 // ---------------------------------------------------------------------------
 
-function createTestApp(user?: AuthUser) {
-  const repo = new DrizzleOAuthStateRepository(makeDb());
+async function createTestApp(user?: AuthUser) {
+  const { db } = await createTestDb();
+  const repo = new DrizzleOAuthStateRepository(db);
   const routes = createChannelOAuthRoutes(repo);
   const app = new Hono<AuthEnv>();
 
@@ -55,8 +32,9 @@ function createTestApp(user?: AuthUser) {
 // Shared repo for tests that need to share state (e.g. initiate then poll)
 // ---------------------------------------------------------------------------
 
-function createSharedApp(user?: AuthUser) {
-  const repo = new DrizzleOAuthStateRepository(makeDb());
+async function createSharedApp(user?: AuthUser) {
+  const { db } = await createTestDb();
+  const repo = new DrizzleOAuthStateRepository(db);
   const routes = createChannelOAuthRoutes(repo);
 
   const app = new Hono<AuthEnv>();
@@ -88,7 +66,7 @@ afterEach(() => {
 
 describe("POST /initiate", () => {
   it("returns 401 without session", async () => {
-    const app = unauthedApp();
+    const app = await unauthedApp();
     const res = await app.request("/initiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -100,7 +78,7 @@ describe("POST /initiate", () => {
   });
 
   it("returns 400 for unknown provider", async () => {
-    const app = authedApp();
+    const app = await authedApp();
     const res = await app.request("/initiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -112,7 +90,7 @@ describe("POST /initiate", () => {
   });
 
   it("returns 400 when Slack env vars not set", async () => {
-    const app = authedApp();
+    const app = await authedApp();
     const savedId = process.env.SLACK_CLIENT_ID;
     const savedSecret = process.env.SLACK_CLIENT_SECRET;
     delete process.env.SLACK_CLIENT_ID;
@@ -134,7 +112,7 @@ describe("POST /initiate", () => {
   });
 
   it("returns authorizeUrl and state for Slack when env vars are set", async () => {
-    const app = authedApp();
+    const app = await authedApp();
     process.env.SLACK_CLIENT_ID = "test-client-id";
     process.env.SLACK_CLIENT_SECRET = "test-client-secret";
 
@@ -158,7 +136,7 @@ describe("POST /initiate", () => {
   });
 
   it("returns 400 for invalid JSON body", async () => {
-    const app = authedApp();
+    const app = await authedApp();
     const res = await app.request("/initiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -174,7 +152,7 @@ describe("POST /initiate", () => {
 
 describe("GET /callback", () => {
   it("returns error HTML for missing code and state", async () => {
-    const app = unauthedApp(); // callback has no auth check
+    const app = await unauthedApp();
     const res = await app.request("/callback");
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -184,7 +162,7 @@ describe("GET /callback", () => {
   });
 
   it("returns error HTML for error query param", async () => {
-    const app = unauthedApp();
+    const app = await unauthedApp();
     const res = await app.request("/callback?error=access_denied");
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -193,7 +171,7 @@ describe("GET /callback", () => {
   });
 
   it("returns error HTML for invalid state", async () => {
-    const app = unauthedApp();
+    const app = await unauthedApp();
     const res = await app.request("/callback?code=some-code&state=00000000-0000-0000-0000-000000000000");
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -206,7 +184,7 @@ describe("GET /callback", () => {
     process.env.SLACK_CLIENT_SECRET = "test-client-secret";
 
     // Use shared app so initiate and callback share the same repo
-    const app = createSharedApp({ id: "test-user-id", roles: ["user"] });
+    const app = await createSharedApp({ id: "test-user-id", roles: ["user"] });
     const initiateRes = await app.request("/initiate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -246,13 +224,13 @@ describe("GET /callback", () => {
 
 describe("GET /poll", () => {
   it("returns 401 without session", async () => {
-    const app = unauthedApp();
+    const app = await unauthedApp();
     const res = await app.request("/poll?state=00000000-0000-0000-0000-000000000000");
     expect(res.status).toBe(401);
   });
 
   it("returns 400 when state param is missing", async () => {
-    const app = authedApp();
+    const app = await authedApp();
     const res = await app.request("/poll");
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -260,7 +238,7 @@ describe("GET /poll", () => {
   });
 
   it("returns pending for unknown state", async () => {
-    const app = authedApp();
+    const app = await authedApp();
     const res = await app.request("/poll?state=00000000-0000-0000-0000-000000000000");
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -271,7 +249,7 @@ describe("GET /poll", () => {
     process.env.SLACK_CLIENT_ID = "test-client-id";
     process.env.SLACK_CLIENT_SECRET = "test-client-secret";
 
-    const app = createSharedApp({ id: "test-user-id", roles: ["user"] });
+    const app = await createSharedApp({ id: "test-user-id", roles: ["user"] });
 
     // Create pending state
     const initiateRes = await app.request("/initiate", {
@@ -320,7 +298,7 @@ describe("state isolation", () => {
   it("state from one app does not leak to another (each has its own in-memory DB)", async () => {
     process.env.SLACK_CLIENT_ID = "id";
     process.env.SLACK_CLIENT_SECRET = "secret";
-    const app1 = createSharedApp({ id: "test-user-id", roles: ["user"] });
+    const app1 = await createSharedApp({ id: "test-user-id", roles: ["user"] });
 
     // Create some state in app1
     await app1.request("/initiate", {
@@ -330,7 +308,7 @@ describe("state isolation", () => {
     });
 
     // app2 has a fresh DB — polling for any state returns pending
-    const app2 = createSharedApp({ id: "test-user-id", roles: ["user"] });
+    const app2 = await createSharedApp({ id: "test-user-id", roles: ["user"] });
     const res = await app2.request("/poll?state=00000000-0000-0000-0000-000000000000");
     const body = await res.json();
     expect(body).toMatchObject({ status: "pending" });

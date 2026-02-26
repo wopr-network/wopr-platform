@@ -65,7 +65,7 @@ export class ArbitrageRouter {
    * Returns the AdapterResult plus the name of the provider that served the request.
    */
   async route<T>(request: ArbitrageRequest): Promise<AdapterResult<T> & { provider: string }> {
-    const decision = this.selectProvider(request.capability, request.model);
+    const decision = await this.selectProvider(request.capability, request.model);
     const orderedCandidates = this.buildFailoverChain(decision);
 
     for (const entry of orderedCandidates) {
@@ -117,8 +117,8 @@ export class ArbitrageRouter {
    * Select the best provider without executing.
    * Useful for cost estimation and admin dashboards.
    */
-  selectProvider(capability: string, _model?: string): RoutingDecision {
-    const allProviders = this.registry.getProviders(capability);
+  async selectProvider(capability: string, _model?: string): Promise<RoutingDecision> {
+    const allProviders = await this.registry.getProviders(capability);
     // Filter to enabled + healthy only
     const candidates = allProviders.filter((p) => p.enabled && p.healthy);
 

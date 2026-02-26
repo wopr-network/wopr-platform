@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
 
 /**
  * User role assignments — maps users to roles within tenants.
@@ -6,14 +6,14 @@ import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlit
  * Platform-wide admins use tenant_id = "*" (sentinel value).
  * Roles: platform_admin, tenant_admin, user.
  */
-export const userRoles = sqliteTable(
+export const userRoles = pgTable(
   "user_roles",
   {
     userId: text("user_id").notNull(),
     tenantId: text("tenant_id").notNull(),
     role: text("role").notNull(),
     grantedBy: text("granted_by"),
-    grantedAt: integer("granted_at").notNull(),
+    grantedAt: bigint("granted_at", { mode: "number" }).notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.userId, table.tenantId] }),

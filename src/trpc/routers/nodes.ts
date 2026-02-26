@@ -32,9 +32,9 @@ export const nodesRouter = router({
         label: z.string().max(100).optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const store = deps().getRegistrationTokenStore();
-      const { token, expiresAt } = store.create(ctx.user.id, input.label);
+      const { token, expiresAt } = await store.create(ctx.user.id, input.label);
 
       return {
         token,
@@ -45,10 +45,10 @@ export const nodesRouter = router({
     }),
 
   /** List nodes owned by the current user with live connection status. */
-  list: protectedProcedure.query(({ ctx }) => {
+  list: protectedProcedure.query(async ({ ctx }) => {
     const nodeRepo = deps().getNodeRepo();
     const registry = deps().getConnectionRegistry();
-    const allNodes = nodeRepo.list();
+    const allNodes = await nodeRepo.list();
 
     const isAdmin = ctx.user.roles.includes("platform_admin");
     const userNodes = isAdmin ? allNodes : allNodes.filter((n) => n.ownerUserId === ctx.user.id);
@@ -68,11 +68,11 @@ export const nodesRouter = router({
   }),
 
   /** Get detailed status of a specific node. */
-  get: protectedProcedure.input(z.object({ nodeId: z.string().min(1) })).query(({ input, ctx }) => {
+  get: protectedProcedure.input(z.object({ nodeId: z.string().min(1) })).query(async ({ input, ctx }) => {
     const nodeRepo = deps().getNodeRepo();
     const registry = deps().getConnectionRegistry();
     const botInstanceRepo = deps().getBotInstanceRepo();
-    const node = nodeRepo.getById(input.nodeId);
+    const node = await nodeRepo.getById(input.nodeId);
 
     if (!node) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
@@ -90,16 +90,16 @@ export const nodesRouter = router({
       ...node,
       isConnected: registry.isConnected(input.nodeId),
       lastSeenAgoS: lastSeenAgo,
-      tenants: botInstanceRepo.listByNode(input.nodeId),
+      tenants: await botInstanceRepo.listByNode(input.nodeId),
     };
   }),
 
   /** Remove a self-hosted node (deregister). */
-  remove: protectedProcedure.input(z.object({ nodeId: z.string().min(1) })).mutation(({ input, ctx }) => {
+  remove: protectedProcedure.input(z.object({ nodeId: z.string().min(1) })).mutation(async ({ input, ctx }) => {
     const nodeRepo = deps().getNodeRepo();
     const registry = deps().getConnectionRegistry();
     const botInstanceRepo = deps().getBotInstanceRepo();
-    const node = nodeRepo.getById(input.nodeId);
+    const node = await nodeRepo.getById(input.nodeId);
 
     if (!node) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Node not found" });
@@ -109,7 +109,7 @@ export const nodesRouter = router({
       throw new TRPCError({ code: "FORBIDDEN", message: "Not your node" });
     }
 
-    const tenants = botInstanceRepo.listByNode(input.nodeId);
+    const tenants = await botInstanceRepo.listByNode(input.nodeId);
     if (tenants.length > 0) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
@@ -118,12 +118,12 @@ export const nodesRouter = router({
     }
 
     registry.close(input.nodeId);
-    nodeRepo.delete(input.nodeId);
+    await nodeRepo.delete(input.nodeId);
     return { success: true };
   }),
 
   /** List active (unused, unexpired) registration tokens. */
-  listTokens: protectedProcedure.query(({ ctx }) => {
+  listTokens: protectedProcedure.query(async ({ ctx }) => {
     const store = deps().getRegistrationTokenStore();
     return store.listActive(ctx.user.id);
   }),

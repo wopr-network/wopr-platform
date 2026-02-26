@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import { Pool } from "pg";
 import type { IDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
 import { DrizzleDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
 import type { IDeletionRepository } from "../account/deletion-repository.js";
@@ -23,7 +23,7 @@ import { SnapshotManager } from "../backup/snapshot-manager.js";
 import { DrizzleSnapshotRepository } from "../backup/snapshot-repository.js";
 import { SpacesClient } from "../backup/spaces-client.js";
 import { logger } from "../config/logger.js";
-import { applyPlatformPragmas, createDb, type DrizzleDb } from "../db/index.js";
+import { createDb, type DrizzleDb } from "../db/index.js";
 import type { INotificationPreferencesStore } from "../email/notification-preferences-store.js";
 import { DrizzleNotificationPreferencesStore } from "../email/notification-preferences-store.js";
 import type { INotificationQueueStore } from "../email/notification-queue-store.js";
@@ -97,10 +97,6 @@ import { DrizzleSpendingCapStore } from "./spending-cap-repository.js";
 import type { IVpsRepository } from "./vps-repository.js";
 import { DrizzleVpsRepository } from "./vps-repository.js";
 
-const PLATFORM_DB_PATH = process.env.PLATFORM_DB_PATH || "/data/platform/platform.db";
-const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
-const BACKUP_DB_PATH = process.env.BACKUP_DB_PATH || "/data/platform/backup-status.db";
-const SNAPSHOT_DB_PATH = process.env.SNAPSHOT_DB_PATH || "/data/snapshots.db";
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 
 /**
@@ -111,10 +107,8 @@ const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
  * Nothing runs at import time — all initialization is deferred to first call.
  */
 
-let _sqlite: Database.Database | null = null;
+let _pool: Pool | null = null;
 let _db: DrizzleDb | null = null;
-let _auditSqlite: Database.Database | null = null;
-let _auditDb: DrizzleDb | null = null;
 let _registrationTokenStore: RegistrationTokenStore | null = null;
 let _adminNotifier: AdminNotifier | null = null;
 
@@ -172,36 +166,27 @@ let _restoreService: RestoreService | null = null;
 let _backupStatusStore: BackupStatusStore | null = null;
 let _snapshotManager: SnapshotManager | null = null;
 
-// Separate DB instances for backup/snapshot (different files from platform DB)
-let _backupSqlite: Database.Database | null = null;
-let _snapshotSqlite: Database.Database | null = null;
-
 const S3_BUCKET = process.env.S3_BUCKET || "wopr-backups";
 
-export function getDb() {
+export function getPool(): Pool {
+  if (!_pool) {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) throw new Error("DATABASE_URL environment variable is required");
+    _pool = new Pool({ connectionString });
+  }
+  return _pool;
+}
+
+export function getDb(): DrizzleDb {
   if (!_db) {
-    _sqlite = new Database(PLATFORM_DB_PATH);
-    applyPlatformPragmas(_sqlite);
-    _db = createDb(_sqlite);
+    _db = createDb(getPool());
   }
   return _db;
 }
 
-/** Returns the raw better-sqlite3 instance backing the platform DB. */
-export function getSqliteDb(): Database.Database {
-  getDb(); // ensure initialized
-  if (!_sqlite) throw new Error("SQLite database not initialized");
-  return _sqlite;
-}
-
-/** Lazy-initialized audit database singleton. */
+/** Alias for audit DB — same PostgreSQL database in the pg migration. */
 export function getAuditDb(): DrizzleDb {
-  if (!_auditDb) {
-    _auditSqlite = new Database(AUDIT_DB_PATH);
-    applyPlatformPragmas(_auditSqlite);
-    _auditDb = createDb(_auditSqlite);
-  }
-  return _auditDb;
+  return getDb();
 }
 
 export function getRegistrationTokenStore(): RegistrationTokenStore {
@@ -288,8 +273,7 @@ export function getTenantStatusRepo(): ITenantStatusRepository {
 
 export function getBulkOpsRepo(): IBulkOperationsRepository {
   if (!_bulkOpsRepo) {
-    if (!_sqlite) throw new Error("SQLite not initialized");
-    _bulkOpsRepo = new DrizzleBulkOperationsRepository(getDb(), _sqlite);
+    _bulkOpsRepo = new DrizzleBulkOperationsRepository(getDb());
   }
   return _bulkOpsRepo;
 }
@@ -386,11 +370,12 @@ export function getRecoveryOrchestrator(): RecoveryOrchestrator {
       getRecoveryRepo(),
       getCommandBus(),
       getAdminNotifier(),
-      (deadNodeId: string) => {
+      async (deadNodeId: string) => {
         // Returns tenants on this node sorted by tier (enterprise > pro > starter > free)
         // DrizzleBotInstanceRepository.listByNode returns all instances; tier sorting is
         // handled here via a join-style approach using the raw list.
-        return botInstanceRepo.listByNode(deadNodeId).map((inst) => ({
+        const instances = await botInstanceRepo.listByNode(deadNodeId);
+        return instances.map((inst) => ({
           botId: inst.id,
           tenantId: inst.tenantId,
           name: inst.name,
@@ -399,14 +384,14 @@ export function getRecoveryOrchestrator(): RecoveryOrchestrator {
           tier: null,
         }));
       },
-      (excludeNodeId: string, requiredMb: number) => {
-        return nodeRepo.findBestTarget(excludeNodeId, requiredMb) as import("./repository-types.js").Node | null;
+      async (excludeNodeId: string, requiredMb: number) => {
+        return nodeRepo.findBestTarget(excludeNodeId, requiredMb);
       },
-      (botId: string, targetNodeId: string) => {
-        getBotInstanceRepo().reassign(botId, targetNodeId);
+      async (botId: string, targetNodeId: string) => {
+        await getBotInstanceRepo().reassign(botId, targetNodeId);
       },
-      (nodeId: string, deltaMb: number) => {
-        getNodeRepo().addCapacity(nodeId, deltaMb);
+      async (nodeId: string, deltaMb: number) => {
+        await getNodeRepo().addCapacity(nodeId, deltaMb);
       },
     );
   }
@@ -547,10 +532,7 @@ export function getRestoreLogStore(): RestoreLogStore {
 
 export function getBackupStatusStore(): BackupStatusStore {
   if (!_backupStatusStore) {
-    _backupSqlite = new Database(BACKUP_DB_PATH);
-    applyPlatformPragmas(_backupSqlite);
-    const db = createDb(_backupSqlite);
-    const repo = new DrizzleBackupStatusRepository(db);
+    const repo = new DrizzleBackupStatusRepository(getDb());
     _backupStatusStore = new BackupStatusStore(repo);
   }
   return _backupStatusStore;
@@ -558,10 +540,7 @@ export function getBackupStatusStore(): BackupStatusStore {
 
 export function getSnapshotManager(): SnapshotManager {
   if (!_snapshotManager) {
-    _snapshotSqlite = new Database(SNAPSHOT_DB_PATH);
-    applyPlatformPragmas(_snapshotSqlite);
-    const db = createDb(_snapshotSqlite);
-    const repo = new DrizzleSnapshotRepository(db);
+    const repo = new DrizzleSnapshotRepository(getDb());
     _snapshotManager = new SnapshotManager({
       snapshotDir: SNAPSHOT_DIR,
       repo,
@@ -596,12 +575,14 @@ export function initFleet(): void {
   const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour — matches the longest window in platformRateLimitRules
   setInterval(
     () => {
-      try {
-        const removed = getRateLimitRepo().purgeStale(RATE_LIMIT_WINDOW_MS);
-        if (removed > 0) logger.debug("Purged stale rate-limit rows", { removed });
-      } catch (err) {
-        logger.warn("Rate-limit purge failed", { err });
-      }
+      getRateLimitRepo()
+        .purgeStale(RATE_LIMIT_WINDOW_MS)
+        .then((removed) => {
+          if (removed > 0) logger.debug("Purged stale rate-limit rows", { removed });
+        })
+        .catch((err) => {
+          logger.warn("Rate-limit purge failed", { err });
+        });
     },
     5 * 60 * 1000,
   ).unref();
@@ -611,12 +592,14 @@ export function initFleet(): void {
   // stay until they self-reset after pauseDurationMs.
   const CIRCUIT_BREAKER_STALE_MS = 60 * 1000; // 1 minute
   setInterval(() => {
-    try {
-      const removed = getCircuitBreakerRepo().purgeStale(CIRCUIT_BREAKER_STALE_MS);
-      if (removed > 0) logger.debug("Purged stale circuit-breaker rows", { removed });
-    } catch (err) {
-      logger.warn("Circuit-breaker purge failed", { err });
-    }
+    getCircuitBreakerRepo()
+      .purgeStale(CIRCUIT_BREAKER_STALE_MS)
+      .then((removed) => {
+        if (removed > 0) logger.debug("Purged stale circuit-breaker rows", { removed });
+      })
+      .catch((err) => {
+        logger.warn("Circuit-breaker purge failed", { err });
+      });
   }, 60 * 1000).unref();
 }
 
@@ -727,9 +710,7 @@ export function getDeletionRepo(): IDeletionRepository {
 
 export function getDeletionExecutorRepo(): IDeletionExecutorRepository {
   if (!_deletionExecutorRepo) {
-    const db = getDb(); // ensures _sqlite is initialized
-    if (!_sqlite) throw new Error("SQLite connection not initialized");
-    _deletionExecutorRepo = new DrizzleDeletionExecutorRepository(db, _sqlite);
+    _deletionExecutorRepo = new DrizzleDeletionExecutorRepository(getDb(), getPool());
   }
   return _deletionExecutorRepo;
 }

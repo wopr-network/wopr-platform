@@ -24,9 +24,7 @@ function makeMockDb(rows: Record<string, unknown>[]) {
         where: vi.fn().mockReturnValue({
           orderBy: vi.fn().mockReturnValue({
             limit: vi.fn().mockReturnValue({
-              offset: vi.fn().mockReturnValue({
-                all: vi.fn().mockReturnValue(rows),
-              }),
+              offset: vi.fn().mockResolvedValue(rows),
             }),
           }),
         }),
@@ -98,9 +96,7 @@ describe("GET /api/activity", () => {
 
   it("respects ?limit= query param", async () => {
     const limitSpy = vi.fn().mockReturnValue({
-      offset: vi.fn().mockReturnValue({
-        all: vi.fn().mockReturnValue([]),
-      }),
+      offset: vi.fn().mockResolvedValue([]),
     });
     const mockDb = {
       select: vi.fn().mockReturnValue({
@@ -122,9 +118,7 @@ describe("GET /api/activity", () => {
 
   it("clamps limit to 100 maximum", async () => {
     const limitSpy = vi.fn().mockReturnValue({
-      offset: vi.fn().mockReturnValue({
-        all: vi.fn().mockReturnValue([]),
-      }),
+      offset: vi.fn().mockResolvedValue([]),
     });
     const mockDb = {
       select: vi.fn().mockReturnValue({
@@ -146,9 +140,7 @@ describe("GET /api/activity", () => {
 
   it("defaults limit to 20 when not specified", async () => {
     const limitSpy = vi.fn().mockReturnValue({
-      offset: vi.fn().mockReturnValue({
-        all: vi.fn().mockReturnValue([]),
-      }),
+      offset: vi.fn().mockResolvedValue([]),
     });
     const mockDb = {
       select: vi.fn().mockReturnValue({

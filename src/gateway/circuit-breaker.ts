@@ -63,14 +63,14 @@ export function circuitBreaker(config: CircuitBreakerConfig): MiddlewareHandler 
     const instanceId = tenant?.instanceId ?? tenantId;
 
     const now = Date.now();
-    const state = cfg.repo.get(instanceId);
+    const state = await cfg.repo.get(instanceId);
 
     // Check if circuit is currently tripped
     if (state?.trippedAt !== null && state?.trippedAt !== undefined) {
       const elapsed = now - state.trippedAt;
       if (elapsed >= cfg.pauseDurationMs) {
         // Auto-reset: circuit closes, start fresh window
-        cfg.repo.reset(instanceId);
+        await cfg.repo.reset(instanceId);
       } else {
         // Still paused — reject request
         const remainingMs = cfg.pauseDurationMs - elapsed;
@@ -92,13 +92,13 @@ export function circuitBreaker(config: CircuitBreakerConfig): MiddlewareHandler 
     }
 
     // Increment count (resets if window expired)
-    const updated = cfg.repo.incrementOrReset(instanceId, cfg.windowMs);
+    const updated = await cfg.repo.incrementOrReset(instanceId, cfg.windowMs);
 
     // Check if we've exceeded the threshold → trip the circuit.
     // We allow exactly maxRequestsPerWindow requests per window;
     // the (maxRequestsPerWindow + 1)th request triggers the trip.
     if (updated.count > cfg.maxRequestsPerWindow) {
-      cfg.repo.trip(instanceId);
+      await cfg.repo.trip(instanceId);
 
       // Fire onTrip callback exactly once per trip
       cfg.onTrip?.(tenantId, instanceId, updated.count);
@@ -131,13 +131,13 @@ export function circuitBreaker(config: CircuitBreakerConfig): MiddlewareHandler 
  *
  * Returns a Map of instanceId -> { count, trippedAt, remainingPauseMs }.
  */
-export function getCircuitStates(
+export async function getCircuitStates(
   repo: ICircuitBreakerRepository,
   pauseDurationMs = DEFAULT_CIRCUIT_BREAKER_CONFIG.pauseDurationMs,
-): Map<string, { count: number; trippedAt: number | null; remainingPauseMs: number }> {
+): Promise<Map<string, { count: number; trippedAt: number | null; remainingPauseMs: number }>> {
   const now = Date.now();
   const result = new Map<string, { count: number; trippedAt: number | null; remainingPauseMs: number }>();
-  for (const entry of repo.getAll()) {
+  for (const entry of await repo.getAll()) {
     const remainingPauseMs = entry.trippedAt !== null ? Math.max(0, pauseDurationMs - (now - entry.trippedAt)) : 0;
     result.set(entry.instanceId, {
       count: entry.count,

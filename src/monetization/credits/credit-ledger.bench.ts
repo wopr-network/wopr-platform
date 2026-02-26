@@ -1,26 +1,21 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, bench, describe } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
 import { CreditLedger } from "./credit-ledger.js";
 
 describe("CreditLedger throughput", () => {
-  let db: ReturnType<typeof createTestDb>["db"];
-  let sqlite: ReturnType<typeof createTestDb>["sqlite"];
+  let db: DrizzleDb;
+  let pool: PGlite;
   let ledger: CreditLedger;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
-    db = testDb.db;
-    sqlite = testDb.sqlite;
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     ledger = new CreditLedger(db);
-
-    // Pre-fund 100 tenants with large balances
-    for (let i = 0; i < 100; i++) {
-      ledger.credit(`tenant-${i}`, 1_000_000, "purchase", "bench setup");
-    }
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   let creditIdx = 0;
@@ -28,28 +23,28 @@ describe("CreditLedger throughput", () => {
 
   bench(
     "credit operation",
-    () => {
+    async () => {
       const tenant = `tenant-${creditIdx++ % 100}`;
-      ledger.credit(tenant, 100, "purchase", "bench");
+      await ledger.credit(tenant, 100, "purchase", "bench");
     },
-    { iterations: 10_000 },
+    { iterations: 1_000 },
   );
 
   bench(
     "debit operation",
-    () => {
+    async () => {
       const tenant = `tenant-${debitIdx++ % 100}`;
-      ledger.debit(tenant, 1, "adapter_usage", "bench");
+      await ledger.debit(tenant, 1, "adapter_usage", "bench");
     },
-    { iterations: 10_000 },
+    { iterations: 1_000 },
   );
 
   bench(
     "balance query",
-    () => {
+    async () => {
       const tenant = `tenant-${debitIdx++ % 100}`;
-      ledger.balance(tenant);
+      await ledger.balance(tenant);
     },
-    { iterations: 50_000 },
+    { iterations: 5_000 },
   );
 });

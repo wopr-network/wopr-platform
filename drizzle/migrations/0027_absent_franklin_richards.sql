@@ -1,1 +1,0 @@
-ALTER TABLE `bot_instances` ADD `resource_tier` text DEFAULT 'standard' NOT NULL;

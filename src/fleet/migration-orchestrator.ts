@@ -29,7 +29,7 @@ export class MigrationOrchestrator {
     const startTime = Date.now();
 
     // 1. Look up bot instance
-    const instance = this.botInstanceRepo.getById(botId);
+    const instance = await this.botInstanceRepo.getById(botId);
     if (!instance) {
       return {
         success: false,
@@ -57,7 +57,7 @@ export class MigrationOrchestrator {
     let resolvedTarget = targetNodeId;
     if (!resolvedTarget) {
       const requiredMb = estimatedMb ?? 100;
-      const placement = this.nodeRepo.findBestTarget(sourceNodeId, requiredMb);
+      const placement = await this.nodeRepo.findBestTarget(sourceNodeId, requiredMb);
       if (!placement) {
         return {
           success: false,
@@ -68,7 +68,18 @@ export class MigrationOrchestrator {
           error: "No node with sufficient capacity",
         };
       }
-      resolvedTarget = placement.id;
+      resolvedTarget = placement.id as string;
+    }
+
+    if (!resolvedTarget) {
+      return {
+        success: false,
+        botId,
+        sourceNodeId,
+        targetNodeId: "unknown",
+        downtimeMs: 0,
+        error: "No target node resolved",
+      };
     }
 
     if (resolvedTarget === sourceNodeId) {
@@ -134,7 +145,7 @@ export class MigrationOrchestrator {
         });
 
         // 9. Update routing — DOWNTIME ENDS
-        this.botInstanceRepo.reassign(botId, resolvedTarget);
+        await this.botInstanceRepo.reassign(botId, resolvedTarget);
       } catch (migrationErr) {
         // Rollback: restart source container
         logger.error(`[migrate] Migration failed after stop for bot ${botId}, attempting source restart`, {

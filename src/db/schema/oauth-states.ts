@@ -1,6 +1,6 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
-export const oauthStates = sqliteTable(
+export const oauthStates = pgTable(
   "oauth_states",
   {
     state: text("state").primaryKey(),
@@ -9,8 +9,8 @@ export const oauthStates = sqliteTable(
     redirectUri: text("redirect_uri").notNull(),
     token: text("token"),
     status: text("status").notNull().default("pending"),
-    createdAt: integer("created_at").notNull(),
-    expiresAt: integer("expires_at").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
   },
   (table) => [index("idx_oauth_states_expires").on(table.expiresAt)],
 );

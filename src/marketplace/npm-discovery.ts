@@ -50,13 +50,13 @@ export async function discoverNpmPlugins(options: DiscoveryOptions): Promise<Dis
 
   for (const obj of data.objects) {
     const pkg = obj.package;
-    const existing = repo.findById(pkg.name);
+    const existing = await repo.findById(pkg.name);
     if (existing) {
       skipped++;
       continue;
     }
 
-    repo.insert({
+    await repo.insert({
       pluginId: pkg.name,
       npmPackage: pkg.name,
       version: pkg.version,

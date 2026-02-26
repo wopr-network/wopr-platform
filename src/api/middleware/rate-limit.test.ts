@@ -1,8 +1,8 @@
-import BetterSqlite3 from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { type Context, Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as schema from "../../db/schema/index.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { DrizzleRateLimitRepository } from "../drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../rate-limit-repository.js";
 import {
@@ -20,18 +20,9 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeRateLimitRepo(): { repo: IRateLimitRepository; sqlite: BetterSqlite3.Database } {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS rate_limit_entries (
-      key TEXT NOT NULL,
-      scope TEXT NOT NULL,
-      count INTEGER NOT NULL DEFAULT 0,
-      window_start INTEGER NOT NULL,
-      PRIMARY KEY (key, scope)
-    );
-  `);
-  return { repo: new DrizzleRateLimitRepository(drizzle(sqlite, { schema })), sqlite };
+async function makeRateLimitRepo(): Promise<{ repo: IRateLimitRepository; db: DrizzleDb; pool: PGlite }> {
+  const { db, pool } = await createTestDb();
+  return { repo: new DrizzleRateLimitRepository(db), db, pool };
 }
 
 /** Build a Hono app with a single rate-limited GET /test route. */
@@ -61,17 +52,17 @@ function postReq(path: string, ip = "127.0.0.1") {
 
 describe("rateLimit", () => {
   let repo: IRateLimitRepository;
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
-    const r = makeRateLimitRepo();
+    const r = await makeRateLimitRepo();
     repo = r.repo;
-    sqlite = r.sqlite;
+    pool = r.pool;
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   it("allows requests within the limit", async () => {
@@ -125,7 +116,6 @@ describe("rateLimit", () => {
     const res2 = await app.request(req());
     expect(res2.status).toBe(429);
 
-    // Advance time past the window
     vi.advanceTimersByTime(10_001);
 
     const res3 = await app.request(req());
@@ -133,7 +123,6 @@ describe("rateLimit", () => {
   });
 
   it("tracks different IPs independently", async () => {
-    // Use explicit keyGenerator since test env has no real socket (XFF untrusted by default)
     const app = new Hono();
     app.use(
       "/test",
@@ -147,7 +136,6 @@ describe("rateLimit", () => {
     const res2 = await app.request(req("/test", "10.0.0.2"));
     expect(res2.status).toBe(200);
 
-    // First IP is now rate limited
     const res3 = await app.request(req("/test", "10.0.0.1"));
     expect(res3.status).toBe(429);
   });
@@ -187,17 +175,17 @@ describe("rateLimit", () => {
 
 describe("rateLimitByRoute", () => {
   let repo: IRateLimitRepository;
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
-    const r = makeRateLimitRepo();
+    const r = await makeRateLimitRepo();
     repo = r.repo;
-    sqlite = r.sqlite;
+    pool = r.pool;
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   it("applies rule-specific limits based on path prefix", async () => {
@@ -207,11 +195,8 @@ describe("rateLimitByRoute", () => {
     app.post("/strict", (c) => c.json({ ok: true }));
     app.get("/lenient", (c) => c.json({ ok: true }));
 
-    // Strict route: 1 allowed, then 429
     expect((await app.request(postReq("/strict"))).status).toBe(200);
     expect((await app.request(postReq("/strict"))).status).toBe(429);
-
-    // Lenient route: still allowed (separate scope)
     expect((await app.request(req("/lenient"))).status).toBe(200);
   });
 
@@ -238,15 +223,10 @@ describe("rateLimitByRoute", () => {
     app.get("/get-only", (c) => c.json({ ok: true }));
     app.post("/get-only", (c) => c.json({ ok: true }));
 
-    // Wildcard matches both GET and POST — shared scope means same counter
     expect((await app.request(req("/any-method"))).status).toBe(200);
     expect((await app.request(postReq("/any-method"))).status).toBe(429);
-
-    // GET-only rule matches GET but not POST
     expect((await app.request(req("/get-only"))).status).toBe(200);
     expect((await app.request(req("/get-only"))).status).toBe(429);
-
-    // POST to /get-only falls through to default (max: 100)
     expect((await app.request(postReq("/get-only"))).status).toBe(200);
   });
 
@@ -271,23 +251,22 @@ describe("rateLimitByRoute", () => {
 
 describe("platform rate limit rules", () => {
   let repo: IRateLimitRepository;
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
-    const r = makeRateLimitRepo();
+    const r = await makeRateLimitRepo();
     repo = r.repo;
-    sqlite = r.sqlite;
+    pool = r.pool;
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   function buildPlatformApp() {
     const app = new Hono();
     app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
-    // Register routes that match the platform layout
     app.post("/api/validate-key", (c) => c.json({ ok: true }));
     app.post("/api/billing/checkout", (c) => c.json({ ok: true }));
     app.post("/api/billing/portal", (c) => c.json({ ok: true }));
@@ -324,7 +303,6 @@ describe("platform rate limit rules", () => {
 
   it("webhook endpoint is limited to 30 req/min", async () => {
     const app = buildPlatformApp();
-    // Register the webhook route
     app.post("/api/billing/webhook", (c) => c.json({ ok: true }));
     for (let i = 0; i < 30; i++) {
       expect((await app.request(postReq("/api/billing/webhook"))).status).toBe(200);
@@ -358,7 +336,6 @@ describe("platform rate limit rules", () => {
 
   it("429 response includes Retry-After header", async () => {
     const app = buildPlatformApp();
-    // Exhaust secrets validation limit (5)
     for (let i = 0; i < 5; i++) {
       await app.request(postReq("/api/validate-key"));
     }
@@ -375,23 +352,22 @@ describe("platform rate limit rules", () => {
 
 describe("auth endpoint rate limits (WOP-839)", () => {
   let repo: IRateLimitRepository;
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
-    const r = makeRateLimitRepo();
+    const r = await makeRateLimitRepo();
     repo = r.repo;
-    sqlite = r.sqlite;
+    pool = r.pool;
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   function buildPlatformApp() {
     const app = new Hono();
     app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
-    // Auth routes
     app.post("/api/auth/sign-in/email", (c) => c.json({ ok: true }));
     app.post("/api/auth/sign-up/email", (c) => c.json({ ok: true }));
     app.post("/api/auth/request-password-reset", (c) => c.json({ ok: true }));
@@ -436,14 +412,12 @@ describe("auth endpoint rate limits (WOP-839)", () => {
     }
     expect((await app.request(postReq("/api/auth/sign-in/email"))).status).toBe(429);
 
-    // Advance past the 15-minute window
     vi.advanceTimersByTime(15 * 60 * 1000 + 1);
 
     expect((await app.request(postReq("/api/auth/sign-in/email"))).status).toBe(200);
   });
 
   it("tracks login attempts per IP independently", async () => {
-    // Use explicit keyGenerator since test env has no real socket (XFF untrusted by default)
     const xffKeyGen = (c: Context) => c.req.header("x-forwarded-for") ?? "unknown";
     const rulesWithKeyGen = platformRateLimitRules.map((rule) =>
       rule.scope === "auth:login" ? { ...rule, config: { ...rule.config, keyGenerator: xffKeyGen } } : rule,
@@ -452,13 +426,10 @@ describe("auth endpoint rate limits (WOP-839)", () => {
     app.use("*", rateLimitByRoute(rulesWithKeyGen, platformDefaultLimit, repo));
     app.post("/api/auth/sign-in/email", (c) => c.json({ ok: true }));
 
-    // Exhaust limit for IP 10.0.0.1
     for (let i = 0; i < 5; i++) {
       await app.request(postReq("/api/auth/sign-in/email", "10.0.0.1"));
     }
     expect((await app.request(postReq("/api/auth/sign-in/email", "10.0.0.1"))).status).toBe(429);
-
-    // Different IP should still be allowed
     expect((await app.request(postReq("/api/auth/sign-in/email", "10.0.0.2"))).status).toBe(200);
   });
 
@@ -485,17 +456,17 @@ describe("auth endpoint rate limits (WOP-839)", () => {
 
 describe("trusted proxy validation (WOP-656)", () => {
   let repo: IRateLimitRepository;
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
-    const r = makeRateLimitRepo();
+    const r = await makeRateLimitRepo();
     repo = r.repo;
-    sqlite = r.sqlite;
+    pool = r.pool;
   });
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   it("ignores X-Forwarded-For when TRUSTED_PROXY_IPS is not set", () => {

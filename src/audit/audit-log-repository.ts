@@ -8,15 +8,15 @@ import type { AuditEntry } from "./schema.js";
 /** Repository interface for user-facing audit log operations. */
 export interface IAuditLogRepository {
   /** Insert a new audit entry. */
-  insert(entry: AuditEntry): void;
+  insert(entry: AuditEntry): Promise<void>;
   /** Query entries with filters. Returns matching entries. */
-  query(filters: AuditQueryFilters): AuditEntry[];
+  query(filters: AuditQueryFilters): Promise<AuditEntry[]>;
   /** Count entries matching filters. */
-  count(filters: Omit<AuditQueryFilters, "limit" | "offset">): number;
+  count(filters: Omit<AuditQueryFilters, "limit" | "offset">): Promise<number>;
   /** Delete entries older than cutoff timestamp. Returns number deleted. */
-  purgeOlderThan(cutoffTimestamp: number): number;
+  purgeOlderThan(cutoffTimestamp: number): Promise<number>;
   /** Delete entries for a specific user older than cutoff timestamp. Returns number deleted. */
-  purgeOlderThanForUser(cutoffTimestamp: number, userId: string): number;
+  purgeOlderThanForUser(cutoffTimestamp: number, userId: string): Promise<number>;
 }
 
 const MAX_LIMIT = 250;
@@ -77,57 +77,56 @@ function toEntry(r: typeof auditLog.$inferSelect): AuditEntry {
 export class DrizzleAuditLogRepository implements IAuditLogRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  insert(entry: AuditEntry): void {
-    this.db
-      .insert(auditLog)
-      .values({
-        id: entry.id,
-        timestamp: entry.timestamp,
-        userId: entry.user_id,
-        authMethod: entry.auth_method,
-        action: entry.action,
-        resourceType: entry.resource_type,
-        resourceId: entry.resource_id,
-        details: entry.details,
-        ipAddress: entry.ip_address,
-        userAgent: entry.user_agent,
-      })
-      .run();
+  async insert(entry: AuditEntry): Promise<void> {
+    await this.db.insert(auditLog).values({
+      id: entry.id,
+      timestamp: entry.timestamp,
+      userId: entry.user_id,
+      authMethod: entry.auth_method,
+      action: entry.action,
+      resourceType: entry.resource_type,
+      resourceId: entry.resource_id,
+      details: entry.details,
+      ipAddress: entry.ip_address,
+      userAgent: entry.user_agent,
+    });
   }
 
-  query(filters: AuditQueryFilters): AuditEntry[] {
+  async query(filters: AuditQueryFilters): Promise<AuditEntry[]> {
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);
     const where = buildConditions(filters);
 
-    const rows = this.db
+    const rows = await this.db
       .select()
       .from(auditLog)
       .where(where)
       .orderBy(desc(auditLog.timestamp))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     return rows.map(toEntry);
   }
 
-  count(filters: Omit<AuditQueryFilters, "limit" | "offset">): number {
+  async count(filters: Omit<AuditQueryFilters, "limit" | "offset">): Promise<number> {
     const where = buildConditions(filters);
-    const result = this.db.select({ count: count() }).from(auditLog).where(where).get();
+    const result = (await this.db.select({ count: count() }).from(auditLog).where(where))[0];
     return result?.count ?? 0;
   }
 
-  purgeOlderThan(cutoffTimestamp: number): number {
-    const result = this.db.delete(auditLog).where(lt(auditLog.timestamp, cutoffTimestamp)).run();
-    return result.changes;
+  async purgeOlderThan(cutoffTimestamp: number): Promise<number> {
+    const result = await this.db
+      .delete(auditLog)
+      .where(lt(auditLog.timestamp, cutoffTimestamp))
+      .returning({ id: auditLog.id });
+    return result.length;
   }
 
-  purgeOlderThanForUser(cutoffTimestamp: number, userId: string): number {
-    const result = this.db
+  async purgeOlderThanForUser(cutoffTimestamp: number, userId: string): Promise<number> {
+    const result = await this.db
       .delete(auditLog)
       .where(and(eq(auditLog.userId, userId), lt(auditLog.timestamp, cutoffTimestamp)))
-      .run();
-    return result.changes;
+      .returning({ id: auditLog.id });
+    return result.length;
   }
 }

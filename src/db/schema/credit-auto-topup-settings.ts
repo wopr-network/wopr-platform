@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Per-tenant auto-topup configuration.
  * Two independent modes: usage-based (after spend) and schedule-based (cron).
  */
-export const creditAutoTopupSettings = sqliteTable(
+export const creditAutoTopupSettings = pgTable(
   "credit_auto_topup_settings",
   {
     tenantId: text("tenant_id").primaryKey(),
@@ -22,8 +22,8 @@ export const creditAutoTopupSettings = sqliteTable(
     scheduleNextAt: text("schedule_next_at"),
     scheduleConsecutiveFailures: integer("schedule_consecutive_failures").notNull().default(0),
     // Metadata
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_auto_topup_settings_usage").on(table.usageEnabled),

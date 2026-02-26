@@ -20,27 +20,27 @@ export interface OrgResolvedKey {
  * @param lookupKey - Callback to look up a decrypted key for a given tenantId, provider, and encryption key
  * @param deriveKey - Function to derive encryption key for a given tenantId
  */
-export function resolveApiKeyWithOrgFallback(
-  lookupKey: (tenantId: string, provider: Provider, encKey: Buffer) => string | null,
+export async function resolveApiKeyWithOrgFallback(
+  lookupKey: (tenantId: string, provider: Provider, encKey: Buffer) => Promise<string | null>,
   tenantId: string,
   provider: Provider,
   encryptionKey: Buffer,
   pooledKeys: Map<Provider, string>,
   deriveKey: (tenantId: string) => Buffer,
   orgMembershipRepo: IOrgMembershipRepository,
-): OrgResolvedKey | null {
+): Promise<OrgResolvedKey | null> {
   // 1. Check personal tenant key
-  const personal = lookupKey(tenantId, provider, encryptionKey);
+  const personal = await lookupKey(tenantId, provider, encryptionKey);
   if (personal) {
     return { key: personal, source: "tenant", provider };
   }
 
   // 2. Check org membership and org key
-  const orgTenantId = orgMembershipRepo.getOrgTenantIdForMember(tenantId);
+  const orgTenantId = await orgMembershipRepo.getOrgTenantIdForMember(tenantId);
 
   if (orgTenantId) {
     const orgEncKey = deriveKey(orgTenantId);
-    const orgResult = lookupKey(orgTenantId, provider, orgEncKey);
+    const orgResult = await lookupKey(orgTenantId, provider, orgEncKey);
     if (orgResult) {
       return { key: orgResult, source: "org", provider };
     }

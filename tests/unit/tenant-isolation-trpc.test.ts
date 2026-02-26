@@ -15,12 +15,11 @@
  * - settings.*: use tenantProcedure — ctx.tenantId only, never user input → safe
  */
 
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDb, type DrizzleDb } from "../../src/db/index.js";
+import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "../../src/db/index.js";
 import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { initMeterSchema } from "../../src/monetization/metering/schema.js";
-import { initStripeSchema } from "../../src/monetization/stripe/schema.js";
 import { CapabilitySettingsStore } from "../../src/security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "../../src/security/tenant-keys/schema.js";
 import { appRouter } from "../../src/trpc/index.js";
@@ -47,33 +46,24 @@ function ctxForTenant(tenantId: string): TRPCContext {
   };
 }
 
-function createTestDb() {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.pragma("journal_mode = WAL");
-  initMeterSchema(sqlite);
-  initStripeSchema(sqlite);
-  const db = createDb(sqlite);
-  return { sqlite, db };
-}
-
 // ---------------------------------------------------------------------------
 // Describe blocks
 // ---------------------------------------------------------------------------
 
 describe("tRPC tenant isolation — billing router (WOP-822)", () => {
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
   let db: DrizzleDb;
 
   beforeEach(async () => {
-    ({ sqlite, db } = createTestDb());
+    ({ db, pool } = await createTestDb());
 
     const creditLedger: ICreditLedger = {
-      credit(tenantId, amountCents) { return { id: "t", tenantId, amountCents, balanceAfterCents: 0, type: "signup_grant", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }; },
-      debit(tenantId, amountCents) { return { id: "t", tenantId, amountCents: -amountCents, balanceAfterCents: 0, type: "correction", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }; },
-      balance() { return 0; },
-      hasReferenceId() { return false; },
-      history() { return []; },
-      tenantsWithBalance() { return []; },
+      credit(tenantId, amountCents) { return Promise.resolve({ id: "t", tenantId, amountCents, balanceAfterCents: 0, type: "signup_grant", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }); },
+      debit(tenantId, amountCents) { return Promise.resolve({ id: "t", tenantId, amountCents: -amountCents, balanceAfterCents: 0, type: "correction", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }); },
+      balance() { return Promise.resolve(0); },
+      hasReferenceId() { return Promise.resolve(false); },
+      history() { return Promise.resolve([]); },
+      tenantsWithBalance() { return Promise.resolve([]); },
     };
     const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
     const meterAggregator = new MeterAggregator(db);
@@ -89,15 +79,15 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
       meterAggregator,
       priceMap: undefined,
       dividendRepo: {
-        getStats: () => ({ poolCents: 0, activeUsers: 0, perUserCents: 0, nextDistributionAt: new Date().toISOString(), userEligible: false, userLastPurchaseAt: null, userWindowExpiresAt: null }),
-        getHistory: () => [],
-        getLifetimeTotalCents: () => 0,
+        getStats: () => Promise.resolve({ poolCents: 0, activeUsers: 0, perUserCents: 0, nextDistributionAt: new Date().toISOString(), userEligible: false, userLastPurchaseAt: null, userWindowExpiresAt: null }),
+        getHistory: () => Promise.resolve([]),
+        getLifetimeTotalCents: () => Promise.resolve(0),
       },
     });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   // -------------------------------------------------------------------------
@@ -206,14 +196,15 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
 // ---------------------------------------------------------------------------
 
 describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
+  let db: DrizzleDb;
   let store: TenantKeyStore;
   let capStore: CapabilitySettingsStore;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    store = new TenantKeyStore(sqlite);
-    capStore = new CapabilitySettingsStore(sqlite);
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    store = new TenantKeyStore(db);
+    capStore = new CapabilitySettingsStore(db);
 
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => store,
@@ -225,13 +216,13 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
     });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("listKeys returns only caller's own tenant keys", async () => {
     // Store a key directly for TENANT_B
-    store.upsert(TENANT_B, "openai", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
+    await store.upsert(TENANT_B, "openai", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
 
     // Caller for TENANT_A should see empty list
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
@@ -246,7 +237,7 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
 
   it("getKey returns NOT_FOUND for other tenant's key", async () => {
     // Store a key for TENANT_B
-    store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Anthropic");
+    await store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Anthropic");
 
     // TENANT_A caller tries to get TENANT_B's key
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
@@ -258,28 +249,28 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
     await callerA.capabilities.storeKey({ provider: "openai", apiKey: "sk-alpha-key", label: "A Key" });
 
     // Key should exist for TENANT_A
-    const recordA = store.get(TENANT_A, "openai");
+    const recordA = await store.get(TENANT_A, "openai");
     expect(recordA).toBeDefined();
 
     // Key should NOT exist for TENANT_B
-    const recordB = store.get(TENANT_B, "openai");
+    const recordB = await store.get(TENANT_B, "openai");
     expect(recordB).toBeUndefined();
   });
 
   it("deleteKey cannot delete other tenant's key", async () => {
     // Store a key for TENANT_B
-    store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
+    await store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
 
     // TENANT_A caller tries to delete it — should get NOT_FOUND (not B's key)
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
     await expect(callerA.capabilities.deleteKey({ provider: "anthropic" })).rejects.toThrow("No key stored");
 
     // B's key should still be intact
-    const record = store.get(TENANT_B, "anthropic");
+    const record = await store.get(TENANT_B, "anthropic");
     expect(record).toBeDefined();
   });
 
-  it("each tenant's keys are stored independently across concurrent operations", async () => {
+  it("each tenant's keys are stored and retrieved independently across concurrent operations", async () => {
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
     const callerB = appRouter.createCaller(ctxForTenant(TENANT_B));
 
@@ -304,28 +295,21 @@ describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
 // ---------------------------------------------------------------------------
 
 describe("tRPC tenant isolation — settings router (WOP-822)", () => {
+  let pool: PGlite;
+  let db: DrizzleDb;
+
   beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     const { NotificationPreferencesStore } = await import(
       "../../src/email/notification-preferences-store.js"
     );
-    const sqlite = new BetterSqlite3(":memory:");
-    sqlite.exec(`
-      CREATE TABLE notification_preferences (
-        tenant_id TEXT PRIMARY KEY,
-        billing_low_balance INTEGER NOT NULL DEFAULT 1,
-        billing_receipts INTEGER NOT NULL DEFAULT 1,
-        billing_auto_topup INTEGER NOT NULL DEFAULT 1,
-        agent_channel_disconnect INTEGER NOT NULL DEFAULT 1,
-        agent_status_changes INTEGER NOT NULL DEFAULT 0,
-        account_role_changes INTEGER NOT NULL DEFAULT 1,
-        account_team_invites INTEGER NOT NULL DEFAULT 1,
-        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-      )
-    `);
-    const db = createDb(sqlite);
     const notifStore = new NotificationPreferencesStore(db);
 
     setSettingsRouterDeps({ getNotificationPrefsStore: () => notifStore });
+  });
+
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("tenantConfig returns caller's own tenantId", async () => {

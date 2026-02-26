@@ -4,72 +4,67 @@ import { vpsSubscriptions } from "../db/schema/vps-subscriptions.js";
 import type { NewVpsSubscription, VpsStatus, VpsSubscription } from "./repository-types.js";
 
 export interface IVpsRepository {
-  getByBotId(botId: string): VpsSubscription | null;
-  getBySubscriptionId(subId: string): VpsSubscription | null;
-  listByTenant(tenantId: string): VpsSubscription[];
-  create(sub: NewVpsSubscription): void;
-  updateStatus(botId: string, status: VpsStatus): void;
-  setSshPublicKey(botId: string, key: string): void;
-  setTunnelId(botId: string, tunnelId: string): void;
-  delete(botId: string): void;
+  getByBotId(botId: string): Promise<VpsSubscription | null>;
+  getBySubscriptionId(subId: string): Promise<VpsSubscription | null>;
+  listByTenant(tenantId: string): Promise<VpsSubscription[]>;
+  create(sub: NewVpsSubscription): Promise<void>;
+  updateStatus(botId: string, status: VpsStatus): Promise<void>;
+  setSshPublicKey(botId: string, key: string): Promise<void>;
+  setTunnelId(botId: string, tunnelId: string): Promise<void>;
+  delete(botId: string): Promise<void>;
 }
 
 export class DrizzleVpsRepository implements IVpsRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  getByBotId(botId: string): VpsSubscription | null {
-    const row = this.db.select().from(vpsSubscriptions).where(eq(vpsSubscriptions.botId, botId)).get();
-    return row ? mapRow(row) : null;
+  async getByBotId(botId: string): Promise<VpsSubscription | null> {
+    const rows = await this.db.select().from(vpsSubscriptions).where(eq(vpsSubscriptions.botId, botId));
+    return rows[0] ? mapRow(rows[0]) : null;
   }
 
-  getBySubscriptionId(subId: string): VpsSubscription | null {
-    const row = this.db.select().from(vpsSubscriptions).where(eq(vpsSubscriptions.stripeSubscriptionId, subId)).get();
-    return row ? mapRow(row) : null;
+  async getBySubscriptionId(subId: string): Promise<VpsSubscription | null> {
+    const rows = await this.db.select().from(vpsSubscriptions).where(eq(vpsSubscriptions.stripeSubscriptionId, subId));
+    return rows[0] ? mapRow(rows[0]) : null;
   }
 
-  listByTenant(tenantId: string): VpsSubscription[] {
-    return this.db.select().from(vpsSubscriptions).where(eq(vpsSubscriptions.tenantId, tenantId)).all().map(mapRow);
+  async listByTenant(tenantId: string): Promise<VpsSubscription[]> {
+    const rows = await this.db.select().from(vpsSubscriptions).where(eq(vpsSubscriptions.tenantId, tenantId));
+    return rows.map(mapRow);
   }
 
-  create(sub: NewVpsSubscription): void {
-    this.db
-      .insert(vpsSubscriptions)
-      .values({
-        botId: sub.botId,
-        tenantId: sub.tenantId,
-        stripeSubscriptionId: sub.stripeSubscriptionId,
-        stripeCustomerId: sub.stripeCustomerId,
-        hostname: sub.hostname,
-      })
-      .run();
+  async create(sub: NewVpsSubscription): Promise<void> {
+    await this.db.insert(vpsSubscriptions).values({
+      botId: sub.botId,
+      tenantId: sub.tenantId,
+      stripeSubscriptionId: sub.stripeSubscriptionId,
+      stripeCustomerId: sub.stripeCustomerId,
+      hostname: sub.hostname,
+    });
   }
 
-  updateStatus(botId: string, status: VpsStatus): void {
-    this.db
+  async updateStatus(botId: string, status: VpsStatus): Promise<void> {
+    await this.db
       .update(vpsSubscriptions)
       .set({ status, updatedAt: new Date().toISOString() })
-      .where(eq(vpsSubscriptions.botId, botId))
-      .run();
+      .where(eq(vpsSubscriptions.botId, botId));
   }
 
-  setSshPublicKey(botId: string, key: string): void {
-    this.db
+  async setSshPublicKey(botId: string, key: string): Promise<void> {
+    await this.db
       .update(vpsSubscriptions)
       .set({ sshPublicKey: key, updatedAt: new Date().toISOString() })
-      .where(eq(vpsSubscriptions.botId, botId))
-      .run();
+      .where(eq(vpsSubscriptions.botId, botId));
   }
 
-  setTunnelId(botId: string, tunnelId: string): void {
-    this.db
+  async setTunnelId(botId: string, tunnelId: string): Promise<void> {
+    await this.db
       .update(vpsSubscriptions)
       .set({ cloudflareTunnelId: tunnelId, updatedAt: new Date().toISOString() })
-      .where(eq(vpsSubscriptions.botId, botId))
-      .run();
+      .where(eq(vpsSubscriptions.botId, botId));
   }
 
-  delete(botId: string): void {
-    this.db.delete(vpsSubscriptions).where(eq(vpsSubscriptions.botId, botId)).run();
+  async delete(botId: string): Promise<void> {
+    await this.db.delete(vpsSubscriptions).where(eq(vpsSubscriptions.botId, botId));
   }
 }
 

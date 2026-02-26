@@ -1,75 +1,11 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../../db/schema/index.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
 import { DrizzleNodeRepository } from "../../fleet/drizzle-node-repository.js";
 import { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
 import { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
+import { createTestDb } from "../../test/db.js";
 import { nodesRouter, setNodesRouterDeps } from "./nodes.js";
-
-function makeDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS node_registration_tokens (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      label TEXT,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      expires_at INTEGER NOT NULL,
-      used INTEGER NOT NULL DEFAULT 0,
-      node_id TEXT,
-      used_at INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS nodes (
-      id TEXT PRIMARY KEY,
-      host TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'active',
-      capacity_mb INTEGER NOT NULL,
-      used_mb INTEGER NOT NULL DEFAULT 0,
-      agent_version TEXT,
-      last_heartbeat_at INTEGER,
-      registered_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      droplet_id TEXT,
-      region TEXT,
-      size TEXT,
-      monthly_cost_cents INTEGER,
-      provision_stage TEXT,
-      last_error TEXT,
-      drain_status TEXT,
-      drain_migrated INTEGER,
-      drain_total INTEGER,
-      owner_user_id TEXT,
-      node_secret TEXT,
-      label TEXT
-    );
-    CREATE TABLE IF NOT EXISTS node_transitions (
-      id TEXT PRIMARY KEY,
-      node_id TEXT NOT NULL,
-      from_status TEXT NOT NULL,
-      to_status TEXT NOT NULL,
-      reason TEXT NOT NULL,
-      triggered_by TEXT NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch())
-    );
-    CREATE TABLE IF NOT EXISTS bot_instances (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      node_id TEXT,
-      billing_state TEXT NOT NULL DEFAULT 'active',
-      suspended_at TEXT,
-      destroy_after TEXT,
-      resource_tier TEXT NOT NULL DEFAULT 'standard',
-      storage_tier TEXT NOT NULL DEFAULT 'standard',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      created_by_user_id TEXT
-    );
-  `);
-  return drizzle(sqlite, { schema });
-}
 
 function makeCtx(userId: string, roles: string[] = []) {
   return {
@@ -87,9 +23,12 @@ describe("nodesRouter", () => {
   let nodeRepo: DrizzleNodeRepository;
   let registry: NodeConnectionRegistry;
   let botInstanceRepo: DrizzleBotInstanceRepository;
+  let pool: PGlite;
 
-  beforeEach(() => {
-    const db = makeDb();
+  beforeEach(async () => {
+    const testDb = await createTestDb();
+    pool = testDb.pool;
+    const db = testDb.db;
     tokenStore = new RegistrationTokenStore(db);
     nodeRepo = new DrizzleNodeRepository(db);
     registry = new NodeConnectionRegistry();
@@ -101,6 +40,10 @@ describe("nodesRouter", () => {
       getConnectionRegistry: () => registry,
       getBotInstanceRepo: () => botInstanceRepo,
     });
+  });
+
+  afterEach(async () => {
+    await pool.close();
   });
 
   describe("createRegistrationToken", () => {
@@ -118,7 +61,7 @@ describe("nodesRouter", () => {
       const caller = makeCaller(makeCtx("user-42"));
       const result = await caller.createRegistrationToken({});
 
-      const active = tokenStore.listActive("user-42");
+      const active = await tokenStore.listActive("user-42");
       expect(active).toHaveLength(1);
       expect(active[0].id).toBe(result.token);
     });
@@ -132,7 +75,7 @@ describe("nodesRouter", () => {
     });
 
     it("returns only nodes owned by the current user (non-admin)", async () => {
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-aaa111",
         host: "192.168.1.1",
         capacityMb: 8192,
@@ -141,7 +84,7 @@ describe("nodesRouter", () => {
         label: "Node A",
         nodeSecretHash: "hash-aaa",
       });
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-bbb222",
         host: "192.168.1.2",
         capacityMb: 4096,
@@ -159,7 +102,7 @@ describe("nodesRouter", () => {
     });
 
     it("returns all nodes for platform_admin", async () => {
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-aaa111",
         host: "192.168.1.1",
         capacityMb: 8192,
@@ -168,7 +111,7 @@ describe("nodesRouter", () => {
         label: "Node A",
         nodeSecretHash: "hash-aaa",
       });
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-bbb222",
         host: "192.168.1.2",
         capacityMb: 4096,
@@ -185,7 +128,7 @@ describe("nodesRouter", () => {
     });
 
     it("includes connection status and required fields", async () => {
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-ccc333",
         host: "10.0.0.1",
         capacityMb: 16384,
@@ -211,7 +154,7 @@ describe("nodesRouter", () => {
 
   describe("get", () => {
     it("returns node detail for owner", async () => {
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-ddd444",
         host: "192.168.1.5",
         capacityMb: 8192,
@@ -234,7 +177,7 @@ describe("nodesRouter", () => {
     });
 
     it("throws NOT_FOUND when accessing another user's node", async () => {
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-eee555",
         host: "192.168.1.6",
         capacityMb: 8192,
@@ -251,7 +194,7 @@ describe("nodesRouter", () => {
 
   describe("remove", () => {
     it("removes a node successfully when no tenants", async () => {
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-fff666",
         host: "192.168.1.7",
         capacityMb: 8192,
@@ -266,12 +209,12 @@ describe("nodesRouter", () => {
 
       expect(result.success).toBe(true);
       // Node should be deleted from the DB after removal
-      const node = nodeRepo.getById("self-fff666");
+      const node = await nodeRepo.getById("self-fff666");
       expect(node).toBeNull();
     });
 
     it("throws FORBIDDEN when removing another user's node", async () => {
-      nodeRepo.registerSelfHosted({
+      await nodeRepo.registerSelfHosted({
         nodeId: "self-ggg777",
         host: "192.168.1.8",
         capacityMb: 8192,
@@ -293,9 +236,9 @@ describe("nodesRouter", () => {
 
   describe("listTokens", () => {
     it("returns active tokens for the current user", async () => {
-      tokenStore.create("user-1", "Token A");
-      tokenStore.create("user-1", "Token B");
-      tokenStore.create("user-2", "Token C");
+      await tokenStore.create("user-1", "Token A");
+      await tokenStore.create("user-1", "Token B");
+      await tokenStore.create("user-2", "Token C");
 
       const caller = makeCaller(makeCtx("user-1"));
       const result = await caller.listTokens();

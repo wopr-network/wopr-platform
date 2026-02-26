@@ -10,15 +10,15 @@ export const SIGNUP_GRANT_CENTS = 500;
  *
  * @returns true if the grant was applied, false if already granted.
  */
-export function grantSignupCredits(ledger: CreditLedger, tenantId: string): boolean {
+export async function grantSignupCredits(ledger: CreditLedger, tenantId: string): Promise<boolean> {
   const refId = `signup:${tenantId}`;
 
   // Idempotency check
-  if (ledger.hasReferenceId(refId)) {
+  if (await ledger.hasReferenceId(refId)) {
     return false;
   }
 
-  ledger.credit(
+  await ledger.credit(
     tenantId,
     SIGNUP_GRANT_CENTS,
     "signup_grant",

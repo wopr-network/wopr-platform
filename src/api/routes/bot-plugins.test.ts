@@ -57,9 +57,16 @@ vi.mock("./fleet.js", () => ({
 }));
 
 // Mock fleet services (DB + NodeConnectionManager)
+const mockBotInstance = {
+  id: TEST_BOT_ID,
+  tenantId: TEST_TENANT_ID,
+  name: "test-bot",
+  nodeId: TEST_NODE_ID,
+};
+
 const mockDbChain = {
   from: vi.fn().mockReturnThis(),
-  where: vi.fn().mockReturnThis(),
+  where: vi.fn().mockResolvedValue([mockBotInstance]),
   get: vi.fn(),
 };
 
@@ -100,19 +107,12 @@ describe("bot-plugin routes", () => {
     fleetMock.update.mockResolvedValue(undefined);
     vaultMock.getActiveForProvider.mockReturnValue([]);
     meterMock.emit.mockReturnValue(undefined);
-    // Default: bot is deployed to TEST_NODE_ID
-    mockDbChain.get.mockReturnValue({
-      id: TEST_BOT_ID,
-      tenantId: TEST_TENANT_ID,
-      name: "test-bot",
-      nodeId: TEST_NODE_ID,
-    });
     mockNodeConnections.send.mockResolvedValue({ success: true });
     mockNodeConnections.isConnected.mockReturnValue(true);
-    // Reset the chain mock
+    // Reset the chain mock — where() returns a Promise resolving to array (PG Drizzle style)
     mockDb.select.mockReturnValue(mockDbChain);
     mockDbChain.from.mockReturnThis();
-    mockDbChain.where.mockReturnThis();
+    mockDbChain.where.mockResolvedValue([mockBotInstance]);
   });
 
   describe("POST /fleet/bots/:botId/plugins/:pluginId", () => {

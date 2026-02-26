@@ -18,29 +18,32 @@ export interface PayRamWebhookDeps {
  * Uses the PayRam reference_id mapped to the stored charge record
  * for tenant resolution and idempotency.
  */
-export function handlePayRamWebhook(deps: PayRamWebhookDeps, payload: PayRamWebhookPayload): PayRamWebhookResult {
+export async function handlePayRamWebhook(
+  deps: PayRamWebhookDeps,
+  payload: PayRamWebhookPayload,
+): Promise<PayRamWebhookResult> {
   const { chargeStore, creditLedger } = deps;
 
   // Replay guard: deduplicate by reference_id + status combination.
   const dedupeKey = `${payload.reference_id}:${payload.status}`;
-  if (deps.replayGuard?.isDuplicate(dedupeKey, "payram")) {
+  if (await deps.replayGuard?.isDuplicate(dedupeKey, "payram")) {
     return { handled: true, status: payload.status, duplicate: true };
   }
 
   // Look up the charge record to find the tenant.
-  const charge = chargeStore.getByReferenceId(payload.reference_id);
+  const charge = await chargeStore.getByReferenceId(payload.reference_id);
   if (!charge) {
     return { handled: false, status: payload.status };
   }
 
   // Update charge status regardless of payment state.
-  chargeStore.updateStatus(payload.reference_id, payload.status, payload.currency, payload.filled_amount);
+  await chargeStore.updateStatus(payload.reference_id, payload.status, payload.currency, payload.filled_amount);
 
   let result: PayRamWebhookResult;
 
   if (payload.status === "FILLED" || payload.status === "OVER_FILLED") {
     // Idempotency: skip if already credited.
-    if (chargeStore.isCredited(payload.reference_id)) {
+    if (await chargeStore.isCredited(payload.reference_id)) {
       result = {
         handled: true,
         status: payload.status,
@@ -53,7 +56,7 @@ export function handlePayRamWebhook(deps: PayRamWebhookDeps, payload: PayRamWebh
       // overpayment stays in the PayRam wallet as a buffer.
       const creditCents = charge.amountUsdCents;
 
-      creditLedger.credit(
+      await creditLedger.credit(
         charge.tenantId,
         creditCents,
         "purchase",
@@ -62,12 +65,12 @@ export function handlePayRamWebhook(deps: PayRamWebhookDeps, payload: PayRamWebh
         "payram",
       );
 
-      chargeStore.markCredited(payload.reference_id);
+      await chargeStore.markCredited(payload.reference_id);
 
       // Reactivate suspended bots (same as Stripe webhook, WOP-447).
       let reactivatedBots: string[] | undefined;
       if (deps.botBilling) {
-        reactivatedBots = deps.botBilling.checkReactivation(charge.tenantId, creditLedger);
+        reactivatedBots = await deps.botBilling.checkReactivation(charge.tenantId, creditLedger);
         if (reactivatedBots.length === 0) reactivatedBots = undefined;
       }
 
@@ -88,6 +91,6 @@ export function handlePayRamWebhook(deps: PayRamWebhookDeps, payload: PayRamWebh
     };
   }
 
-  deps.replayGuard?.markSeen(dedupeKey, "payram");
+  await deps.replayGuard?.markSeen(dedupeKey, "payram");
   return result;
 }

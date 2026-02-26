@@ -1,47 +1,14 @@
 import crypto from "node:crypto";
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb, type DrizzleDb } from "../../db/index.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
+import { createTestDb } from "../../test/db.js";
 import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
 import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import { DrizzleAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import { CreditLedger } from "./credit-ledger.js";
-
-interface TopupLogRow {
-  id: string;
-  tenant_id: string;
-  amount_cents: number;
-  status: string;
-  failure_reason: string | null;
-  payment_reference: string | null;
-  created_at: string;
-}
-
-function initTestSchema(sqlite: BetterSqlite3.Database): void {
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS credit_transactions (
-      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, amount_cents INTEGER NOT NULL,
-      balance_after_cents INTEGER NOT NULL, type TEXT NOT NULL, description TEXT,
-      reference_id TEXT UNIQUE, funding_source TEXT,
-      attributed_user_id TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS credit_balances (
-      tenant_id TEXT PRIMARY KEY, balance_cents INTEGER NOT NULL DEFAULT 0,
-      last_updated TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS credit_auto_topup (
-      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, amount_cents INTEGER NOT NULL,
-      status TEXT NOT NULL, failure_reason TEXT, payment_reference TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-}
 
 function mockStripe(overrides?: { paymentIntentId?: string; shouldFail?: boolean; failMessage?: string }) {
   const piId = overrides?.paymentIntentId ?? `pi_${crypto.randomUUID()}`;
@@ -60,24 +27,22 @@ function mockStripe(overrides?: { paymentIntentId?: string; shouldFail?: boolean
 
 function mockTenantStore(stripeCustomerId = "cus_123") {
   return {
-    getByTenant: vi.fn().mockReturnValue({ tenant: "t1", processor_customer_id: stripeCustomerId }),
+    getByTenant: vi.fn().mockResolvedValue({ tenant: "t1", processor_customer_id: stripeCustomerId }),
   };
 }
 
 describe("chargeAutoTopup", () => {
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
   let db: DrizzleDb;
   let ledger: CreditLedger;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initTestSchema(sqlite);
-    db = createDb(sqlite);
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     ledger = new CreditLedger(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("charges Stripe and credits ledger on success", async () => {
@@ -94,8 +59,8 @@ describe("chargeAutoTopup", () => {
 
     expect(result.success).toBe(true);
     expect(result.paymentReference).toBeDefined();
-    expect(ledger.balance("t1")).toBe(500);
-    const history = ledger.history("t1");
+    expect(await ledger.balance("t1")).toBe(500);
+    const history = await ledger.history("t1");
     expect(history[0].type).toBe("purchase");
     expect(history[0].fundingSource).toBe("stripe");
   });
@@ -112,10 +77,13 @@ describe("chargeAutoTopup", () => {
 
     await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
 
-    const events = sqlite.prepare("SELECT * FROM credit_auto_topup WHERE tenant_id = ?").all("t1") as TopupLogRow[];
+    const events = await db
+      .select()
+      .from(creditAutoTopup)
+      .where((await import("drizzle-orm")).eq(creditAutoTopup.tenantId, "t1"));
     expect(events).toHaveLength(1);
     expect(events[0].status).toBe("success");
-    expect(events[0].amount_cents).toBe(500);
+    expect(events[0].amountCents).toBe(500);
   });
 
   it("returns failure result and writes failure event on Stripe error", async () => {
@@ -132,15 +100,18 @@ describe("chargeAutoTopup", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("card_declined");
-    expect(ledger.balance("t1")).toBe(0);
-    const events = sqlite.prepare("SELECT * FROM credit_auto_topup WHERE tenant_id = ?").all("t1") as TopupLogRow[];
+    expect(await ledger.balance("t1")).toBe(0);
+    const events = await db
+      .select()
+      .from(creditAutoTopup)
+      .where((await import("drizzle-orm")).eq(creditAutoTopup.tenantId, "t1"));
     expect(events).toHaveLength(1);
     expect(events[0].status).toBe("failed");
   });
 
   it("returns failure when tenant has no Stripe customer", async () => {
     const stripe = mockStripe();
-    const tenantStore = { getByTenant: vi.fn().mockReturnValue(null) };
+    const tenantStore = { getByTenant: vi.fn().mockResolvedValue(null) };
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
       tenantStore: tenantStore as unknown as ITenantCustomerStore,
@@ -183,8 +154,8 @@ describe("chargeAutoTopup", () => {
     };
 
     await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
-    expect(ledger.balance("t1")).toBe(500);
-    expect(ledger.hasReferenceId(piId)).toBe(true);
+    expect(await ledger.balance("t1")).toBe(500);
+    expect(await ledger.hasReferenceId(piId)).toBe(true);
   });
 
   it("exports MAX_CONSECUTIVE_FAILURES as 3", () => {

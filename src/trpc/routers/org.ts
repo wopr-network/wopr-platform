@@ -39,11 +39,11 @@ function deps(): OrgRouterDeps {
 
 export const orgRouter = router({
   /** Get the organization for the authenticated user (personal tenant). */
-  getOrganization: protectedProcedure.query(({ ctx }) => {
+  getOrganization: protectedProcedure.query(async ({ ctx }) => {
     const { orgService } = deps();
     const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "User";
     const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
-    const org = orgService.getOrCreatePersonalOrg(ctx.user.id, name);
+    const org = await orgService.getOrCreatePersonalOrg(ctx.user.id, name);
     // Enrich member rows with the current user's name/email when they match
     const members = org.members.map((m) => {
       if (m.userId === ctx.user.id) {
@@ -69,11 +69,13 @@ export const orgRouter = router({
     }),
 
   /** Delete an organization. Owner only. */
-  deleteOrganization: protectedProcedure.input(z.object({ orgId: z.string().min(1) })).mutation(({ input, ctx }) => {
-    const { orgService } = deps();
-    orgService.deleteOrg(input.orgId, ctx.user.id);
-    return { deleted: true };
-  }),
+  deleteOrganization: protectedProcedure
+    .input(z.object({ orgId: z.string().min(1) }))
+    .mutation(async ({ input, ctx }) => {
+      const { orgService } = deps();
+      await orgService.deleteOrg(input.orgId, ctx.user.id);
+      return { deleted: true };
+    }),
 
   /** Invite a new member to the organization. */
   inviteMember: protectedProcedure
@@ -84,9 +86,9 @@ export const orgRouter = router({
         role: z.enum(["admin", "member"]),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
-      const invite = orgService.inviteMember(input.orgId, ctx.user.id, input.email, input.role);
+      const invite = await orgService.inviteMember(input.orgId, ctx.user.id, input.email, input.role);
       return {
         id: invite.id,
         email: invite.email,
@@ -100,9 +102,9 @@ export const orgRouter = router({
   /** Revoke a pending invite. Admin or owner only. */
   revokeInvite: protectedProcedure
     .input(z.object({ orgId: z.string().min(1), inviteId: z.string().min(1) }))
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
-      orgService.revokeInvite(input.orgId, ctx.user.id, input.inviteId);
+      await orgService.revokeInvite(input.orgId, ctx.user.id, input.inviteId);
       return { revoked: true };
     }),
 
@@ -115,27 +117,27 @@ export const orgRouter = router({
         role: z.enum(["admin", "member"]),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
-      orgService.changeRole(input.orgId, ctx.user.id, input.userId, input.role);
+      await orgService.changeRole(input.orgId, ctx.user.id, input.userId, input.role);
       return { updated: true };
     }),
 
   /** Remove a member from the organization. Admin or owner only. */
   removeMember: protectedProcedure
     .input(z.object({ orgId: z.string().min(1), userId: z.string().min(1) }))
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
-      orgService.removeMember(input.orgId, ctx.user.id, input.userId);
+      await orgService.removeMember(input.orgId, ctx.user.id, input.userId);
       return { removed: true };
     }),
 
   /** Transfer organization ownership to another member. Owner only. */
   transferOwnership: protectedProcedure
     .input(z.object({ orgId: z.string().min(1), userId: z.string().min(1) }))
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
-      orgService.transferOwnership(input.orgId, ctx.user.id, input.userId);
+      await orgService.transferOwnership(input.orgId, ctx.user.id, input.userId);
       return { transferred: true };
     }),
 

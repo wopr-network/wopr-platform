@@ -1,7 +1,8 @@
-import BetterSqlite3 from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
 import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
+import { createTestDb } from "../../test/db.js";
 
 const TEST_TENANT = "ACME";
 const TEST_TOKEN = `write:wopr_write_test123`;
@@ -18,17 +19,17 @@ const app = new Hono();
 app.route("/api/tenant-keys", tenantKeyRoutes);
 
 describe("tenant-keys routes", () => {
-  let db: BetterSqlite3.Database;
+  let db: DrizzleDb;
   let store: TenantKeyStore;
 
-  beforeEach(() => {
-    db = new BetterSqlite3(":memory:");
+  beforeEach(async () => {
+    ({ db } = await createTestDb());
     store = new TenantKeyStore(db);
     setStore(store);
   });
 
   afterEach(() => {
-    db.close();
+    // PGlite cleans up automatically
   });
 
   describe("authentication", () => {
@@ -65,7 +66,7 @@ describe("tenant-keys routes", () => {
       expect(body.id).toBeTruthy();
 
       // Verify stored in DB
-      const record = store.get(TEST_TENANT, "anthropic");
+      const record = await store.get(TEST_TENANT, "anthropic");
       expect(record).toBeDefined();
       expect(record?.label).toBe("My Anthropic Key");
     });
@@ -86,7 +87,7 @@ describe("tenant-keys routes", () => {
       });
 
       expect(res.status).toBe(200);
-      const record = store.get(TEST_TENANT, "openai");
+      const record = await store.get(TEST_TENANT, "openai");
       expect(record?.label).toBe("Updated");
     });
 
@@ -238,7 +239,7 @@ describe("tenant-keys routes", () => {
       expect(body.ok).toBe(true);
 
       // Verify gone
-      expect(store.get(TEST_TENANT, "anthropic")).toBeUndefined();
+      expect(await store.get(TEST_TENANT, "anthropic")).toBeUndefined();
     });
 
     it("rejects invalid provider", async () => {

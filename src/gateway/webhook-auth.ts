@@ -49,7 +49,7 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
     const now = Date.now();
 
     // Check if this IP is currently in penalty backoff
-    const penalty = config.sigPenaltyRepo.get(ip, "twilio");
+    const penalty = await config.sigPenaltyRepo.get(ip, "twilio");
     if (penalty && now < penalty.blockedUntil) {
       const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
       c.header("Retry-After", String(retryAfterSec));
@@ -119,7 +119,7 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
 
     if (!valid) {
       // Track signature failure for exponential backoff
-      const updated = config.sigPenaltyRepo.recordFailure(ip, "twilio");
+      const updated = await config.sigPenaltyRepo.recordFailure(ip, "twilio");
 
       logger.error("Twilio webhook signature verification failed", {
         ip,
@@ -130,7 +130,7 @@ export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
     }
 
     // Clear any stale penalties on successful verification
-    config.sigPenaltyRepo.clear(ip, "twilio");
+    await config.sigPenaltyRepo.clear(ip, "twilio");
 
     // Resolve tenant from webhook context
     const tenant = config.resolveTenantFromWebhook(c);

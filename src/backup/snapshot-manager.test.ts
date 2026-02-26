@@ -1,9 +1,7 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../db/schema/index.js";
+import { createTestDb } from "../test/db.js";
 import { SnapshotManager, SnapshotNotFoundError } from "./snapshot-manager.js";
 import { DrizzleSnapshotRepository } from "./snapshot-repository.js";
 
@@ -11,41 +9,7 @@ const TEST_DIR = join(import.meta.dirname, "../../.test-snapshots");
 const SNAPSHOT_DIR = join(TEST_DIR, "snapshots");
 const INSTANCES_DIR = join(TEST_DIR, "instances");
 
-/** Create an in-memory Drizzle DB with the snapshots table. */
-function createMemoryDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS snapshots (
-      id TEXT PRIMARY KEY,
-      tenant TEXT NOT NULL DEFAULT '',
-      instance_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      name TEXT,
-      type TEXT NOT NULL DEFAULT 'on-demand' CHECK (type IN ('nightly', 'on-demand', 'pre-restore')),
-      s3_key TEXT,
-      size_mb REAL NOT NULL DEFAULT 0,
-      size_bytes INTEGER,
-      node_id TEXT,
-      trigger TEXT NOT NULL CHECK (trigger IN ('manual', 'scheduled', 'pre_update')),
-      plugins TEXT NOT NULL DEFAULT '[]',
-      config_hash TEXT NOT NULL DEFAULT '',
-      storage_path TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      expires_at INTEGER,
-      deleted_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_snapshots_instance ON snapshots (instance_id, created_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_snapshots_user ON snapshots (user_id);
-    CREATE INDEX IF NOT EXISTS idx_snapshots_tenant ON snapshots (tenant);
-    CREATE INDEX IF NOT EXISTS idx_snapshots_type ON snapshots (type);
-    CREATE INDEX IF NOT EXISTS idx_snapshots_expires ON snapshots (expires_at);
-  `);
-  const db = drizzle(sqlite, { schema });
-  return { db, sqlite };
-}
-
 describe("SnapshotManager", () => {
-  let sqlite: Database.Database;
   let manager: SnapshotManager;
   let woprHomePath: string;
 
@@ -53,9 +17,8 @@ describe("SnapshotManager", () => {
     await rm(TEST_DIR, { recursive: true, force: true });
     await mkdir(TEST_DIR, { recursive: true });
 
-    const testDb = createMemoryDb();
-    sqlite = testDb.sqlite;
-    const repo = new DrizzleSnapshotRepository(testDb.db);
+    const { db } = await createTestDb();
+    const repo = new DrizzleSnapshotRepository(db);
     manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, repo });
 
     // Create a fake WOPR_HOME with some files
@@ -66,7 +29,6 @@ describe("SnapshotManager", () => {
   }, 30000);
 
   afterEach(async () => {
-    sqlite.close();
     await rm(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -117,14 +79,14 @@ describe("SnapshotManager", () => {
         trigger: "manual",
       });
 
-      const found = manager.get(created.id);
+      const found = await manager.get(created.id);
       expect(found).not.toBeNull();
       expect(found?.id).toBe(created.id);
       expect(found?.instanceId).toBe("inst-1");
     });
 
-    it("returns null for unknown id", () => {
-      expect(manager.get("nonexistent")).toBeNull();
+    it("returns null for unknown id", async () => {
+      expect(await manager.get("nonexistent")).toBeNull();
     });
   });
 
@@ -134,14 +96,14 @@ describe("SnapshotManager", () => {
       await manager.create({ instanceId: "inst-1", userId: "user-1", woprHomePath, trigger: "scheduled" });
       await manager.create({ instanceId: "inst-2", userId: "user-1", woprHomePath, trigger: "manual" });
 
-      const list = manager.list("inst-1");
+      const list = await manager.list("inst-1");
       expect(list).toHaveLength(2);
       // Newest first
       expect(new Date(list[0].createdAt).getTime()).toBeGreaterThanOrEqual(new Date(list[1].createdAt).getTime());
     });
 
-    it("returns empty array for instance with no snapshots", () => {
-      expect(manager.list("no-such-instance")).toEqual([]);
+    it("returns empty array for instance with no snapshots", async () => {
+      expect(await manager.list("no-such-instance")).toEqual([]);
     });
   });
 
@@ -158,16 +120,16 @@ describe("SnapshotManager", () => {
       expect(deleted).toBe(true);
 
       // Soft-deleted: still retrievable by id, but not in list/count
-      const found = manager.get(snapshot.id);
+      const found = await manager.get(snapshot.id);
       expect(found).not.toBeNull();
       expect(found?.deletedAt).not.toBeNull();
 
       // Not in list
-      const listed = manager.list("inst-1");
+      const listed = await manager.list("inst-1");
       expect(listed.find((s) => s.id === snapshot.id)).toBeUndefined();
 
       // Not counted
-      expect(manager.count("inst-1")).toBe(0);
+      expect(await manager.count("inst-1")).toBe(0);
     });
 
     it("returns false for unknown snapshot", async () => {
@@ -187,7 +149,7 @@ describe("SnapshotManager", () => {
       const deleted = await manager.hardDelete(snapshot.id);
       expect(deleted).toBe(true);
 
-      expect(manager.get(snapshot.id)).toBeNull();
+      expect(await manager.get(snapshot.id)).toBeNull();
     }, 30_000);
 
     it("returns false for unknown snapshot", async () => {
@@ -228,8 +190,8 @@ describe("SnapshotManager", () => {
       await manager.create({ instanceId: "inst-1", userId: "user-1", woprHomePath, trigger: "manual" });
       await manager.create({ instanceId: "inst-1", userId: "user-1", woprHomePath, trigger: "manual" });
 
-      expect(manager.count("inst-1")).toBe(2);
-      expect(manager.count("inst-2")).toBe(0);
+      expect(await manager.count("inst-1")).toBe(2);
+      expect(await manager.count("inst-2")).toBe(0);
     });
   });
 
@@ -239,7 +201,7 @@ describe("SnapshotManager", () => {
       await manager.create({ instanceId: "inst-1", userId: "user-1", woprHomePath, trigger: "manual" });
       await manager.create({ instanceId: "inst-1", userId: "user-1", woprHomePath, trigger: "manual" });
 
-      const oldest = manager.getOldest("inst-1", 2);
+      const oldest = await manager.getOldest("inst-1", 2);
       expect(oldest).toHaveLength(2);
       expect(new Date(oldest[0].createdAt).getTime()).toBeLessThanOrEqual(new Date(oldest[1].createdAt).getTime());
     });
@@ -269,7 +231,7 @@ describe("SnapshotManager", () => {
         tenant: "tenant-b",
       });
 
-      const list = manager.listByTenant("tenant-a");
+      const list = await manager.listByTenant("tenant-a");
       expect(list).toHaveLength(2);
       expect(list.every((s) => s.tenant === "tenant-a")).toBe(true);
     });
@@ -292,7 +254,7 @@ describe("SnapshotManager", () => {
         type: "nightly",
       });
 
-      const onDemand = manager.listByTenant("tenant-a", "on-demand");
+      const onDemand = await manager.listByTenant("tenant-a", "on-demand");
       expect(onDemand).toHaveLength(1);
       expect(onDemand[0].type).toBe("on-demand");
     });
@@ -325,8 +287,8 @@ describe("SnapshotManager", () => {
         type: "on-demand",
       });
 
-      expect(manager.countByTenant("tenant-a", "on-demand")).toBe(1);
-      expect(manager.countByTenant("tenant-b", "on-demand")).toBe(1);
+      expect(await manager.countByTenant("tenant-a", "on-demand")).toBe(1);
+      expect(await manager.countByTenant("tenant-b", "on-demand")).toBe(1);
     });
 
     it("excludes soft-deleted snapshots from count", async () => {
@@ -340,7 +302,7 @@ describe("SnapshotManager", () => {
       });
       await manager.delete(snap.id);
 
-      expect(manager.countByTenant("tenant-a", "on-demand")).toBe(0);
+      expect(await manager.countByTenant("tenant-a", "on-demand")).toBe(0);
     });
   });
 
@@ -371,7 +333,7 @@ describe("SnapshotManager", () => {
         type: "nightly",
       });
 
-      const active = manager.listAllActive("on-demand");
+      const active = await manager.listAllActive("on-demand");
       expect(active).toHaveLength(2);
       expect(active.every((s) => s.type === "on-demand")).toBe(true);
     });
@@ -401,7 +363,7 @@ describe("SnapshotManager", () => {
         expiresAt: futureExpiry,
       });
 
-      const expired = manager.listExpired(Date.now());
+      const expired = await manager.listExpired(Date.now());
       expect(expired.some((s) => s.id === s1.id)).toBe(true);
       expect(expired.some((s) => s.id === s2.id)).toBe(false);
     });

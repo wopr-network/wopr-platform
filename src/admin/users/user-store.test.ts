@@ -1,8 +1,9 @@
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminUsersApiRoutes } from "../../api/routes/admin-users.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { adminUsers } from "../../db/schema/admin-users.js";
 import { createTestDb as createMigratedTestDb } from "../../test/db.js";
 import { AdminUserStore } from "./user-store.js";
 
@@ -10,55 +11,38 @@ import { AdminUserStore } from "./user-store.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createTestDb(): { db: DrizzleDb; sqlite: BetterSqlite3.Database } {
+async function createTestDb(): Promise<{ db: DrizzleDb; pool: PGlite }> {
   return createMigratedTestDb();
 }
 
-function insertUser(
-  sqlite: BetterSqlite3.Database,
+async function insertUser(
+  db: DrizzleDb,
   overrides: Partial<{
     id: string;
     email: string;
     name: string | null;
-    tenant_id: string;
+    tenantId: string;
     status: string;
     role: string;
-    credit_balance_cents: number;
-    agent_count: number;
-    last_seen: number | null;
-    created_at: number;
+    creditBalanceCents: number;
+    agentCount: number;
+    lastSeen: number | null;
+    createdAt: number;
   }> = {},
-): void {
+): Promise<void> {
   const defaults = {
     id: `user-${Math.random().toString(36).slice(2, 8)}`,
     email: `user-${Math.random().toString(36).slice(2, 8)}@example.com`,
     name: "Test User",
-    tenant_id: "tenant-1",
+    tenantId: "tenant-1",
     status: "active",
     role: "user",
-    credit_balance_cents: 1000,
-    agent_count: 2,
-    last_seen: Date.now(),
-    created_at: Date.now(),
+    creditBalanceCents: 1000,
+    agentCount: 2,
+    lastSeen: Date.now(),
+    createdAt: Date.now(),
   };
-  const row = { ...defaults, ...overrides };
-  sqlite
-    .prepare(
-      `INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, last_seen, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      row.id,
-      row.email,
-      row.name,
-      row.tenant_id,
-      row.status,
-      row.role,
-      row.credit_balance_cents,
-      row.agent_count,
-      row.last_seen,
-      row.created_at,
-    );
+  await db.insert(adminUsers).values({ ...defaults, ...overrides });
 }
 
 // ---------------------------------------------------------------------------
@@ -66,118 +50,84 @@ function insertUser(
 // ---------------------------------------------------------------------------
 
 describe("admin_users schema (via Drizzle migration)", () => {
-  it("creates admin_users table", () => {
-    const { sqlite } = createTestDb();
-    const tables = sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='admin_users'").all() as {
-      name: string;
-    }[];
-    expect(tables).toHaveLength(1);
-    sqlite.close();
+  it("creates admin_users table and enforces status CHECK constraint", async () => {
+    const { db, pool } = await createTestDb();
+    await expect(
+      db.insert(adminUsers).values({
+        id: "u1",
+        email: "a@b.com",
+        tenantId: "t1",
+        status: "invalid_status",
+        role: "user",
+        creditBalanceCents: 0,
+        agentCount: 0,
+        createdAt: Date.now(),
+      }),
+    ).rejects.toThrow();
+    await pool.close();
   });
 
-  it("creates expected indexes", () => {
-    const { sqlite } = createTestDb();
-    const indexes = sqlite
-      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_admin_users_%'")
-      .all() as { name: string }[];
-    expect(indexes.length).toBeGreaterThanOrEqual(6);
-    sqlite.close();
+  it("enforces role CHECK constraint", async () => {
+    const { db, pool } = await createTestDb();
+    await expect(
+      db.insert(adminUsers).values({
+        id: "u1",
+        email: "a@b.com",
+        tenantId: "t1",
+        status: "active",
+        role: "invalid_role",
+        creditBalanceCents: 0,
+        agentCount: 0,
+        createdAt: Date.now(),
+      }),
+    ).rejects.toThrow();
+    await pool.close();
   });
 
-  it("enforces status CHECK constraint", () => {
-    const { sqlite } = createTestDb();
-    expect(() =>
-      sqlite
-        .prepare(
-          "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("u1", "a@b.com", "t1", "invalid_status", "user", 0, 0, Date.now()),
-    ).toThrow();
-    sqlite.close();
+  it("enforces PRIMARY KEY uniqueness", async () => {
+    const { db, pool } = await createTestDb();
+    await db.insert(adminUsers).values({ id: "dup", email: "a@b.com", tenantId: "t1", createdAt: Date.now() });
+    await expect(
+      db.insert(adminUsers).values({ id: "dup", email: "b@b.com", tenantId: "t2", createdAt: Date.now() }),
+    ).rejects.toThrow();
+    await pool.close();
   });
 
-  it("enforces role CHECK constraint", () => {
-    const { sqlite } = createTestDb();
-    expect(() =>
-      sqlite
-        .prepare(
-          "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("u1", "a@b.com", "t1", "active", "invalid_role", 0, 0, Date.now()),
-    ).toThrow();
-    sqlite.close();
+  it("allows NULL for name and last_seen", async () => {
+    const { db, pool } = await createTestDb();
+    await db.insert(adminUsers).values({
+      id: "u-null",
+      email: "a@b.com",
+      name: null,
+      tenantId: "t1",
+      createdAt: Date.now(),
+    });
+    const rows = await db
+      .select({ name: adminUsers.name, lastSeen: adminUsers.lastSeen })
+      .from(adminUsers)
+      .where(((t) => require("drizzle-orm").eq(t.id, "u-null"))(adminUsers));
+    expect(rows[0].name).toBeNull();
+    expect(rows[0].lastSeen).toBeNull();
+    await pool.close();
   });
 
-  it("enforces NOT NULL on email", () => {
-    const { sqlite } = createTestDb();
-    expect(() =>
-      sqlite
-        .prepare(
-          "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("u1", null, "t1", "active", "user", 0, 0, Date.now()),
-    ).toThrow();
-    sqlite.close();
-  });
-
-  it("enforces NOT NULL on tenant_id", () => {
-    const { sqlite } = createTestDb();
-    expect(() =>
-      sqlite
-        .prepare(
-          "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("u1", "a@b.com", null, "active", "user", 0, 0, Date.now()),
-    ).toThrow();
-    sqlite.close();
-  });
-
-  it("enforces PRIMARY KEY uniqueness", () => {
-    const { sqlite } = createTestDb();
-    sqlite
-      .prepare(
-        "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run("dup", "a@b.com", "t1", "active", "user", 0, 0, Date.now());
-    expect(() =>
-      sqlite
-        .prepare(
-          "INSERT INTO admin_users (id, email, tenant_id, status, role, credit_balance_cents, agent_count, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("dup", "b@b.com", "t2", "active", "user", 0, 0, Date.now()),
-    ).toThrow();
-    sqlite.close();
-  });
-
-  it("allows NULL for name and last_seen", () => {
-    const { sqlite } = createTestDb();
-    sqlite
-      .prepare(
-        "INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, last_seen, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run("u-null", "a@b.com", null, "t1", "active", "user", 0, 0, null, Date.now());
-    const row = sqlite.prepare("SELECT name, last_seen FROM admin_users WHERE id = ?").get("u-null") as {
-      name: string | null;
-      last_seen: number | null;
-    };
-    expect(row.name).toBeNull();
-    expect(row.last_seen).toBeNull();
-    sqlite.close();
-  });
-
-  it("provides correct defaults", () => {
-    const { sqlite } = createTestDb();
-    sqlite
-      .prepare("INSERT INTO admin_users (id, email, tenant_id, created_at) VALUES (?, ?, ?, ?)")
-      .run("u-defaults", "a@b.com", "t1", Date.now());
-    const row = sqlite
-      .prepare("SELECT status, role, credit_balance_cents, agent_count FROM admin_users WHERE id = ?")
-      .get("u-defaults") as { status: string; role: string; credit_balance_cents: number; agent_count: number };
-    expect(row.status).toBe("active");
-    expect(row.role).toBe("user");
-    expect(row.credit_balance_cents).toBe(0);
-    expect(row.agent_count).toBe(0);
-    sqlite.close();
+  it("provides correct defaults", async () => {
+    const { db, pool } = await createTestDb();
+    await db.insert(adminUsers).values({ id: "u-defaults", email: "a@b.com", tenantId: "t1", createdAt: Date.now() });
+    const rows = await db
+      .select({
+        status: adminUsers.status,
+        role: adminUsers.role,
+        creditBalanceCents: adminUsers.creditBalanceCents,
+        agentCount: adminUsers.agentCount,
+      })
+      .from(adminUsers)
+      .where(((t) => require("drizzle-orm").eq(t.id, "u-defaults"))(adminUsers));
+    expect(rows[0].status).toBe("active");
+    expect(rows[0].role).toBe("user");
+    expect(rows[0].creditBalanceCents).toBe(0);
+    expect(rows[0].agentCount).toBe(0);
+    await pool.close();
   });
 });
 
@@ -186,191 +136,191 @@ describe("admin_users schema (via Drizzle migration)", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.list", () => {
+  let pool: PGlite;
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
   let store: AdminUserStore;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     store = new AdminUserStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("returns empty list when no users", () => {
-    const result = store.list();
+  it("returns empty list when no users", async () => {
+    const result = await store.list();
     expect(result.users).toHaveLength(0);
     expect(result.total).toBe(0);
     expect(result.limit).toBe(25);
     expect(result.offset).toBe(0);
   });
 
-  it("returns all users with default pagination", () => {
+  it("returns all users with default pagination", async () => {
     for (let i = 0; i < 5; i++) {
-      insertUser(sqlite, { id: `user-${i}` });
+      await insertUser(db, { id: `user-${i}` });
     }
-    const result = store.list();
+    const result = await store.list();
     expect(result.users).toHaveLength(5);
     expect(result.total).toBe(5);
   });
 
-  it("paginates with limit and offset", () => {
+  it("paginates with limit and offset", async () => {
     for (let i = 0; i < 10; i++) {
-      insertUser(sqlite, { id: `user-${i}`, created_at: Date.now() + i });
+      await insertUser(db, { id: `user-${i}`, createdAt: Date.now() + i });
     }
-    const page1 = store.list({ limit: 3, offset: 0 });
+    const page1 = await store.list({ limit: 3, offset: 0 });
     expect(page1.users).toHaveLength(3);
     expect(page1.total).toBe(10);
     expect(page1.limit).toBe(3);
     expect(page1.offset).toBe(0);
 
-    const page2 = store.list({ limit: 3, offset: 3 });
+    const page2 = await store.list({ limit: 3, offset: 3 });
     expect(page2.users).toHaveLength(3);
     expect(page2.users[0].id).not.toBe(page1.users[0].id);
   });
 
-  it("caps limit at 100", () => {
+  it("caps limit at 100", async () => {
     for (let i = 0; i < 5; i++) {
-      insertUser(sqlite, { id: `user-${i}` });
+      await insertUser(db, { id: `user-${i}` });
     }
-    const result = store.list({ limit: 999 });
+    const result = await store.list({ limit: 999 });
     expect(result.limit).toBe(100);
   });
 
-  it("filters by status", () => {
-    insertUser(sqlite, { id: "active-1", status: "active" });
-    insertUser(sqlite, { id: "suspended-1", status: "suspended" });
-    insertUser(sqlite, { id: "dormant-1", status: "dormant" });
+  it("filters by status", async () => {
+    await insertUser(db, { id: "active-1", status: "active" });
+    await insertUser(db, { id: "suspended-1", status: "suspended" });
+    await insertUser(db, { id: "dormant-1", status: "dormant" });
 
-    const result = store.list({ status: "suspended" });
+    const result = await store.list({ status: "suspended" });
     expect(result.users).toHaveLength(1);
     expect(result.users[0].id).toBe("suspended-1");
     expect(result.total).toBe(1);
   });
 
-  it("filters by role", () => {
-    insertUser(sqlite, { id: "admin-1", role: "platform_admin" });
-    insertUser(sqlite, { id: "user-1", role: "user" });
-    insertUser(sqlite, { id: "tenant-admin-1", role: "tenant_admin" });
+  it("filters by role", async () => {
+    await insertUser(db, { id: "admin-1", role: "platform_admin" });
+    await insertUser(db, { id: "user-1", role: "user" });
+    await insertUser(db, { id: "tenant-admin-1", role: "tenant_admin" });
 
-    const result = store.list({ role: "platform_admin" });
+    const result = await store.list({ role: "platform_admin" });
     expect(result.users).toHaveLength(1);
     expect(result.users[0].id).toBe("admin-1");
   });
 
-  it("filters by hasCredits", () => {
-    insertUser(sqlite, { id: "rich", credit_balance_cents: 5000 });
-    insertUser(sqlite, { id: "broke", credit_balance_cents: 0 });
+  it("filters by hasCredits", async () => {
+    await insertUser(db, { id: "rich", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "broke", creditBalanceCents: 0 });
 
-    const result = store.list({ hasCredits: true });
+    const result = await store.list({ hasCredits: true });
     expect(result.users).toHaveLength(1);
     expect(result.users[0].id).toBe("rich");
   });
 
-  it("filters users with no credits when hasCredits is false", () => {
-    insertUser(sqlite, { id: "rich", credit_balance_cents: 5000 });
-    insertUser(sqlite, { id: "broke", credit_balance_cents: 0 });
+  it("filters users with no credits when hasCredits is false", async () => {
+    await insertUser(db, { id: "rich", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "broke", creditBalanceCents: 0 });
 
-    const result = store.list({ hasCredits: false });
+    const result = await store.list({ hasCredits: false });
     expect(result.users).toHaveLength(1);
     expect(result.users[0].id).toBe("broke");
   });
 
-  it("filters by lowBalance", () => {
-    insertUser(sqlite, { id: "low", credit_balance_cents: 200 });
-    insertUser(sqlite, { id: "high", credit_balance_cents: 5000 });
-    insertUser(sqlite, { id: "zero", credit_balance_cents: 0 });
+  it("filters by lowBalance", async () => {
+    await insertUser(db, { id: "low", creditBalanceCents: 200 });
+    await insertUser(db, { id: "high", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "zero", creditBalanceCents: 0 });
 
-    const result = store.list({ lowBalance: true });
+    const result = await store.list({ lowBalance: true });
     expect(result.users).toHaveLength(2);
     const ids = result.users.map((u) => u.id);
     expect(ids).toContain("low");
     expect(ids).toContain("zero");
   });
 
-  it("searches across name, email, and tenant_id", () => {
-    insertUser(sqlite, { id: "u1", name: "Alice Smith", email: "alice@example.com", tenant_id: "acme" });
-    insertUser(sqlite, { id: "u2", name: "Bob Jones", email: "bob@example.com", tenant_id: "globex" });
-    insertUser(sqlite, { id: "u3", name: "Charlie", email: "charlie@acme.io", tenant_id: "other" });
+  it("searches across name, email, and tenant_id", async () => {
+    await insertUser(db, { id: "u1", name: "Alice Smith", email: "alice@example.com", tenantId: "acme" });
+    await insertUser(db, { id: "u2", name: "Bob Jones", email: "bob@example.com", tenantId: "globex" });
+    await insertUser(db, { id: "u3", name: "Charlie", email: "charlie@acme.io", tenantId: "other" });
 
-    const result = store.list({ search: "acme" });
+    const result = await store.list({ search: "acme" });
     expect(result.users).toHaveLength(2);
     const ids = result.users.map((u) => u.id);
     expect(ids).toContain("u1"); // tenant_id match
     expect(ids).toContain("u3"); // email match
   });
 
-  it("search is case-insensitive (via LIKE)", () => {
-    insertUser(sqlite, { id: "u1", name: "Alice Smith" });
-    const result = store.list({ search: "alice" });
+  it("search is case-insensitive (via LIKE)", async () => {
+    await insertUser(db, { id: "u1", name: "Alice Smith" });
+    const result = await store.list({ search: "alice" });
     expect(result.users).toHaveLength(1);
   });
 
-  it("search escapes LIKE wildcards", () => {
-    insertUser(sqlite, { id: "u1", name: "100% complete" });
-    insertUser(sqlite, { id: "u2", name: "not a match" });
+  it("search escapes LIKE wildcards", async () => {
+    await insertUser(db, { id: "u1", name: "100% complete" });
+    await insertUser(db, { id: "u2", name: "not a match" });
 
-    const result = store.list({ search: "100%" });
+    const result = await store.list({ search: "100%" });
     expect(result.users).toHaveLength(1);
     expect(result.users[0].id).toBe("u1");
   });
 
-  it("sorts by created_at descending by default", () => {
-    insertUser(sqlite, { id: "old", created_at: 1000 });
-    insertUser(sqlite, { id: "new", created_at: 2000 });
+  it("sorts by created_at descending by default", async () => {
+    await insertUser(db, { id: "old", createdAt: 1000 });
+    await insertUser(db, { id: "new", createdAt: 2000 });
 
-    const result = store.list();
+    const result = await store.list();
     expect(result.users[0].id).toBe("new");
     expect(result.users[1].id).toBe("old");
   });
 
-  it("sorts by created_at ascending", () => {
-    insertUser(sqlite, { id: "old", created_at: 1000 });
-    insertUser(sqlite, { id: "new", created_at: 2000 });
+  it("sorts by created_at ascending", async () => {
+    await insertUser(db, { id: "old", createdAt: 1000 });
+    await insertUser(db, { id: "new", createdAt: 2000 });
 
-    const result = store.list({ sortBy: "created_at", sortOrder: "asc" });
+    const result = await store.list({ sortBy: "created_at", sortOrder: "asc" });
     expect(result.users[0].id).toBe("old");
     expect(result.users[1].id).toBe("new");
   });
 
-  it("sorts by balance", () => {
-    insertUser(sqlite, { id: "low", credit_balance_cents: 100, created_at: 1000 });
-    insertUser(sqlite, { id: "high", credit_balance_cents: 5000, created_at: 2000 });
+  it("sorts by balance", async () => {
+    await insertUser(db, { id: "low", creditBalanceCents: 100, createdAt: 1000 });
+    await insertUser(db, { id: "high", creditBalanceCents: 5000, createdAt: 2000 });
 
-    const result = store.list({ sortBy: "balance", sortOrder: "desc" });
+    const result = await store.list({ sortBy: "balance", sortOrder: "desc" });
     expect(result.users[0].id).toBe("high");
     expect(result.users[1].id).toBe("low");
   });
 
-  it("sorts by agent_count", () => {
-    insertUser(sqlite, { id: "few", agent_count: 1, created_at: 1000 });
-    insertUser(sqlite, { id: "many", agent_count: 10, created_at: 2000 });
+  it("sorts by agent_count", async () => {
+    await insertUser(db, { id: "few", agentCount: 1, createdAt: 1000 });
+    await insertUser(db, { id: "many", agentCount: 10, createdAt: 2000 });
 
-    const result = store.list({ sortBy: "agent_count", sortOrder: "desc" });
+    const result = await store.list({ sortBy: "agent_count", sortOrder: "desc" });
     expect(result.users[0].id).toBe("many");
     expect(result.users[1].id).toBe("few");
   });
 
-  it("sorts by last_seen", () => {
-    insertUser(sqlite, { id: "recent", last_seen: 2000, created_at: 1000 });
-    insertUser(sqlite, { id: "stale", last_seen: 1000, created_at: 2000 });
+  it("sorts by last_seen", async () => {
+    await insertUser(db, { id: "recent", lastSeen: 2000, createdAt: 1000 });
+    await insertUser(db, { id: "stale", lastSeen: 1000, createdAt: 2000 });
 
-    const result = store.list({ sortBy: "last_seen", sortOrder: "desc" });
+    const result = await store.list({ sortBy: "last_seen", sortOrder: "desc" });
     expect(result.users[0].id).toBe("recent");
     expect(result.users[1].id).toBe("stale");
   });
 
-  it("combines multiple filters", () => {
-    insertUser(sqlite, { id: "match", status: "active", role: "user", credit_balance_cents: 5000 });
-    insertUser(sqlite, { id: "wrong-status", status: "suspended", role: "user", credit_balance_cents: 5000 });
-    insertUser(sqlite, { id: "wrong-role", status: "active", role: "platform_admin", credit_balance_cents: 5000 });
-    insertUser(sqlite, { id: "no-credits", status: "active", role: "user", credit_balance_cents: 0 });
+  it("combines multiple filters", async () => {
+    await insertUser(db, { id: "match", status: "active", role: "user", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "wrong-status", status: "suspended", role: "user", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "wrong-role", status: "active", role: "platform_admin", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "no-credits", status: "active", role: "user", creditBalanceCents: 0 });
 
-    const result = store.list({ status: "active", role: "user", hasCredits: true });
+    const result = await store.list({ status: "active", role: "user", hasCredits: true });
     expect(result.users).toHaveLength(1);
     expect(result.users[0].id).toBe("match");
   });
@@ -381,59 +331,59 @@ describe("AdminUserStore.list", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.search", () => {
+  let pool: PGlite;
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
   let store: AdminUserStore;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     store = new AdminUserStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("searches by name", () => {
-    insertUser(sqlite, { id: "u1", name: "Alice Smith" });
-    insertUser(sqlite, { id: "u2", name: "Bob Jones" });
+  it("searches by name", async () => {
+    await insertUser(db, { id: "u1", name: "Alice Smith" });
+    await insertUser(db, { id: "u2", name: "Bob Jones" });
 
-    const results = store.search("Alice");
+    const results = await store.search("Alice");
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("u1");
   });
 
-  it("searches by email", () => {
-    insertUser(sqlite, { id: "u1", email: "alice@example.com" });
-    insertUser(sqlite, { id: "u2", email: "bob@other.com" });
+  it("searches by email", async () => {
+    await insertUser(db, { id: "u1", email: "alice@example.com" });
+    await insertUser(db, { id: "u2", email: "bob@other.com" });
 
-    const results = store.search("example.com");
+    const results = await store.search("example.com");
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("u1");
   });
 
-  it("searches by tenant_id", () => {
-    insertUser(sqlite, { id: "u1", tenant_id: "acme-corp" });
-    insertUser(sqlite, { id: "u2", tenant_id: "globex" });
+  it("searches by tenant_id", async () => {
+    await insertUser(db, { id: "u1", tenantId: "acme-corp" });
+    await insertUser(db, { id: "u2", tenantId: "globex" });
 
-    const results = store.search("acme");
+    const results = await store.search("acme");
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("u1");
   });
 
-  it("returns empty array when no matches", () => {
-    insertUser(sqlite, { id: "u1", name: "Alice" });
-    const results = store.search("nonexistent");
+  it("returns empty array when no matches", async () => {
+    await insertUser(db, { id: "u1", name: "Alice" });
+    const results = await store.search("nonexistent");
     expect(results).toHaveLength(0);
   });
 
-  it("limits results to 50", () => {
+  it("limits results to 50", async () => {
     for (let i = 0; i < 60; i++) {
-      insertUser(sqlite, { id: `user-${i}`, name: "Searchable Name" });
+      await insertUser(db, { id: `user-${i}`, name: "Searchable Name" });
     }
-    const results = store.search("Searchable");
+    const results = await store.search("Searchable");
     expect(results).toHaveLength(50);
   });
 });
@@ -443,36 +393,36 @@ describe("AdminUserStore.search", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.getById", () => {
+  let pool: PGlite;
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
   let store: AdminUserStore;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     store = new AdminUserStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("returns user by ID", () => {
-    insertUser(sqlite, {
+  it("returns user by ID", async () => {
+    await insertUser(db, {
       id: "user-1",
       email: "alice@example.com",
       name: "Alice",
-      tenant_id: "acme",
+      tenantId: "acme",
       status: "active",
       role: "user",
-      credit_balance_cents: 1500,
-      agent_count: 3,
-      last_seen: 1700000000000,
-      created_at: 1600000000000,
+      creditBalanceCents: 1500,
+      agentCount: 3,
+      lastSeen: 1700000000000,
+      createdAt: 1600000000000,
     });
 
-    const user = store.getById("user-1");
+    const user = await store.getById("user-1");
     expect(user).not.toBeNull();
     expect(user?.id).toBe("user-1");
     expect(user?.email).toBe("alice@example.com");
@@ -486,8 +436,8 @@ describe("AdminUserStore.getById", () => {
     expect(user?.created_at).toBe(1600000000000);
   });
 
-  it("returns null for nonexistent user", () => {
-    const user = store.getById("nonexistent");
+  it("returns null for nonexistent user", async () => {
+    const user = await store.getById("nonexistent");
     expect(user).toBeNull();
   });
 });
@@ -497,22 +447,22 @@ describe("AdminUserStore.getById", () => {
 // ---------------------------------------------------------------------------
 
 describe("admin users API routes", () => {
+  let pool: PGlite;
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("GET / returns paginated user list", async () => {
     for (let i = 0; i < 5; i++) {
-      insertUser(sqlite, { id: `user-${i}` });
+      await insertUser(db, { id: `user-${i}` });
     }
 
     const app = new Hono();
@@ -528,8 +478,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports search filter", async () => {
-    insertUser(sqlite, { id: "u1", name: "Alice Smith" });
-    insertUser(sqlite, { id: "u2", name: "Bob Jones" });
+    await insertUser(db, { id: "u1", name: "Alice Smith" });
+    await insertUser(db, { id: "u2", name: "Bob Jones" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -541,8 +491,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports status filter", async () => {
-    insertUser(sqlite, { id: "active-1", status: "active" });
-    insertUser(sqlite, { id: "suspended-1", status: "suspended" });
+    await insertUser(db, { id: "active-1", status: "active" });
+    await insertUser(db, { id: "suspended-1", status: "suspended" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -554,8 +504,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports role filter", async () => {
-    insertUser(sqlite, { id: "admin-1", role: "platform_admin" });
-    insertUser(sqlite, { id: "user-1", role: "user" });
+    await insertUser(db, { id: "admin-1", role: "platform_admin" });
+    await insertUser(db, { id: "user-1", role: "user" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -567,8 +517,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports hasCredits filter", async () => {
-    insertUser(sqlite, { id: "rich", credit_balance_cents: 5000 });
-    insertUser(sqlite, { id: "broke", credit_balance_cents: 0 });
+    await insertUser(db, { id: "rich", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "broke", creditBalanceCents: 0 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -580,8 +530,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports sorting", async () => {
-    insertUser(sqlite, { id: "old", created_at: 1000 });
-    insertUser(sqlite, { id: "new", created_at: 2000 });
+    await insertUser(db, { id: "old", createdAt: 1000 });
+    await insertUser(db, { id: "new", createdAt: 2000 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -594,7 +544,7 @@ describe("admin users API routes", () => {
 
   it("GET / supports pagination", async () => {
     for (let i = 0; i < 10; i++) {
-      insertUser(sqlite, { id: `user-${i}` });
+      await insertUser(db, { id: `user-${i}` });
     }
 
     const app = new Hono();
@@ -608,19 +558,18 @@ describe("admin users API routes", () => {
   });
 
   it("GET / ignores invalid status filter", async () => {
-    insertUser(sqlite, { id: "u1", status: "active" });
+    await insertUser(db, { id: "u1", status: "active" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
 
     const res = await app.request("/admin/users?status=invalid");
     const body = (await res.json()) as { users: unknown[] };
-    // Invalid status is ignored, returns all users
     expect(body.users).toHaveLength(1);
   });
 
   it("GET /:userId returns single user", async () => {
-    insertUser(sqlite, { id: "user-42", email: "alice@example.com", name: "Alice" });
+    await insertUser(db, { id: "user-42", email: "alice@example.com", name: "Alice" });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -644,8 +593,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports lowBalance filter", async () => {
-    insertUser(sqlite, { id: "low", credit_balance_cents: 200 });
-    insertUser(sqlite, { id: "high", credit_balance_cents: 5000 });
+    await insertUser(db, { id: "low", creditBalanceCents: 200 });
+    await insertUser(db, { id: "high", creditBalanceCents: 5000 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));

@@ -8,16 +8,17 @@ import { rowToSnapshot } from "./types.js";
 export class DrizzleSnapshotRepository implements ISnapshotRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  insert(row: NewSnapshotRow): void {
-    this.db.insert(snapshots).values(row).run();
+  async insert(row: NewSnapshotRow): Promise<void> {
+    await this.db.insert(snapshots).values(row);
   }
 
-  getById(id: string): Snapshot | null {
-    const row = this.db.select().from(snapshots).where(eq(snapshots.id, id)).get();
+  async getById(id: string): Promise<Snapshot | null> {
+    const rows = await this.db.select().from(snapshots).where(eq(snapshots.id, id));
+    const row = rows[0];
     return row ? rowToSnapshot(mapDrizzleRow(row)) : null;
   }
 
-  list(instanceId: string, type?: string): Snapshot[] {
+  async list(instanceId: string, type?: string): Promise<Snapshot[]> {
     const conditions = type
       ? and(
           eq(snapshots.instanceId, instanceId),
@@ -26,16 +27,11 @@ export class DrizzleSnapshotRepository implements ISnapshotRepository {
         )
       : and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt));
 
-    return this.db
-      .select()
-      .from(snapshots)
-      .where(conditions)
-      .orderBy(desc(snapshots.createdAt))
-      .all()
-      .map((r) => rowToSnapshot(mapDrizzleRow(r)));
+    const rows = await this.db.select().from(snapshots).where(conditions).orderBy(desc(snapshots.createdAt));
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
 
-  listByTenant(tenant: string, type?: string): Snapshot[] {
+  async listByTenant(tenant: string, type?: string): Promise<Snapshot[]> {
     const conditions = type
       ? and(
           eq(snapshots.tenant, tenant),
@@ -44,68 +40,58 @@ export class DrizzleSnapshotRepository implements ISnapshotRepository {
         )
       : and(eq(snapshots.tenant, tenant), isNull(snapshots.deletedAt));
 
-    return this.db
-      .select()
-      .from(snapshots)
-      .where(conditions)
-      .orderBy(desc(snapshots.createdAt))
-      .all()
-      .map((r) => rowToSnapshot(mapDrizzleRow(r)));
+    const rows = await this.db.select().from(snapshots).where(conditions).orderBy(desc(snapshots.createdAt));
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
 
-  countByTenant(tenant: string, type: "on-demand"): number {
-    const row = this.db
+  async countByTenant(tenant: string, type: "on-demand"): Promise<number> {
+    const rows = await this.db
       .select({ cnt: count() })
       .from(snapshots)
-      .where(and(eq(snapshots.tenant, tenant), eq(snapshots.type, type), isNull(snapshots.deletedAt)))
-      .get();
-    return row?.cnt ?? 0;
+      .where(and(eq(snapshots.tenant, tenant), eq(snapshots.type, type), isNull(snapshots.deletedAt)));
+    return rows[0]?.cnt ?? 0;
   }
 
-  listAllActive(type: "on-demand"): Snapshot[] {
-    return this.db
+  async listAllActive(type: "on-demand"): Promise<Snapshot[]> {
+    const rows = await this.db
       .select()
       .from(snapshots)
-      .where(and(eq(snapshots.type, type), isNull(snapshots.deletedAt)))
-      .all()
-      .map((r) => rowToSnapshot(mapDrizzleRow(r)));
+      .where(and(eq(snapshots.type, type), isNull(snapshots.deletedAt)));
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
 
-  listExpired(now: number): Snapshot[] {
-    return this.db
+  async listExpired(now: number): Promise<Snapshot[]> {
+    const rows = await this.db
       .select()
       .from(snapshots)
-      .where(and(isNull(snapshots.deletedAt), lt(snapshots.expiresAt, now)))
-      .all()
-      .map((r) => rowToSnapshot(mapDrizzleRow(r)));
+      .where(and(isNull(snapshots.deletedAt), lt(snapshots.expiresAt, now)));
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
 
-  softDelete(id: string): void {
-    this.db.update(snapshots).set({ deletedAt: Date.now() }).where(eq(snapshots.id, id)).run();
+  async softDelete(id: string): Promise<void> {
+    await this.db.update(snapshots).set({ deletedAt: Date.now() }).where(eq(snapshots.id, id));
   }
 
-  hardDelete(id: string): void {
-    this.db.delete(snapshots).where(eq(snapshots.id, id)).run();
+  async hardDelete(id: string): Promise<void> {
+    await this.db.delete(snapshots).where(eq(snapshots.id, id));
   }
 
-  count(instanceId: string): number {
-    const row = this.db
+  async count(instanceId: string): Promise<number> {
+    const rows = await this.db
       .select({ cnt: count() })
       .from(snapshots)
-      .where(and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt)))
-      .get();
-    return row?.cnt ?? 0;
+      .where(and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt)));
+    return rows[0]?.cnt ?? 0;
   }
 
-  getOldest(instanceId: string, limit: number): Snapshot[] {
-    return this.db
+  async getOldest(instanceId: string, limit: number): Promise<Snapshot[]> {
+    const rows = await this.db
       .select()
       .from(snapshots)
       .where(and(eq(snapshots.instanceId, instanceId), isNull(snapshots.deletedAt)))
       .orderBy(asc(snapshots.createdAt))
-      .limit(limit)
-      .all()
-      .map((r) => rowToSnapshot(mapDrizzleRow(r)));
+      .limit(limit);
+    return rows.map((r) => rowToSnapshot(mapDrizzleRow(r)));
   }
 }
 

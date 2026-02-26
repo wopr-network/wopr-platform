@@ -21,7 +21,7 @@ export const DEFAULT_TOKEN_RATES: TokenRates = {
  * Abstracts the DB dependency so streaming.ts doesn't import RateStore directly.
  * Optional `unit` parameter allows filtering to a specific unit (e.g., "1K-input-tokens").
  */
-export type SellRateLookupFn = (capability: string, model: string, unit?: string) => SellRate | null;
+export type SellRateLookupFn = (capability: string, model: string, unit?: string) => Promise<SellRate | null>;
 
 /**
  * Create a cached sell-rate lookup function.
@@ -41,13 +41,13 @@ export function createCachedRateLookup(rawLookup: SellRateLookupFn, ttlMs = 5 * 
     ttl: ttlMs,
   });
 
-  return (capability: string, model: string, unit?: string): SellRate | null => {
+  return async (capability: string, model: string, unit?: string): Promise<SellRate | null> => {
     const key = `${capability}:${model}:${unit ?? ""}`;
     if (cache.has(key)) {
       const cached = cache.get(key);
       return cached === MISS || cached === undefined ? null : cached;
     }
-    const result = rawLookup(capability, model, unit);
+    const result = await rawLookup(capability, model, unit);
     cache.set(key, result ?? MISS);
     return result;
   };
@@ -70,16 +70,16 @@ export function createCachedRateLookup(rawLookup: SellRateLookupFn, ttlMs = 5 * 
  * @param model - e.g., "anthropic/claude-3.5-sonnet"
  * @returns Token rates for metering
  */
-export function resolveTokenRates(
+export async function resolveTokenRates(
   lookupFn: SellRateLookupFn,
   capability: string,
   model: string | undefined,
-): TokenRates {
+): Promise<TokenRates> {
   if (!model) return DEFAULT_TOKEN_RATES;
 
   // Perform two independent lookups so models with separate input/output rows are handled correctly.
-  const inputRate = lookupFn(capability, model, "1K-input-tokens");
-  const outputRate = lookupFn(capability, model, "1K-output-tokens");
+  const inputRate = await lookupFn(capability, model, "1K-input-tokens");
+  const outputRate = await lookupFn(capability, model, "1K-output-tokens");
 
   if (inputRate || outputRate) {
     if (!inputRate) {
@@ -103,7 +103,7 @@ export function resolveTokenRates(
   }
 
   // Fall back to a blended rate row (no unit filter).
-  const blended = lookupFn(capability, model);
+  const blended = await lookupFn(capability, model);
   if (!blended) {
     logger.warn("No sell rate found for model — using default fallback rates", {
       capability,

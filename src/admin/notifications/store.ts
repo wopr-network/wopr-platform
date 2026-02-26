@@ -17,11 +17,11 @@ export type {
 
 /** Repository interface for the admin notification queue. */
 export interface IAdminNotificationQueueStore {
-  enqueue(input: NotificationInput): NotificationRow;
-  getPending(limit?: number): NotificationRow[];
-  markSent(id: string): void;
-  markFailed(id: string, error: string): void;
-  countByStatus(): Record<string, number>;
+  enqueue(input: NotificationInput): Promise<NotificationRow>;
+  getPending(limit?: number): Promise<NotificationRow[]>;
+  markSent(id: string): Promise<void>;
+  markFailed(id: string, error: string): Promise<void>;
+  countByStatus(): Promise<Record<string, number>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -32,27 +32,25 @@ export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQue
   constructor(private readonly db: DrizzleDb) {}
 
   /** Enqueue a notification. */
-  enqueue(input: NotificationInput): NotificationRow {
+  async enqueue(input: NotificationInput): Promise<NotificationRow> {
     const id = crypto.randomUUID();
-    this.db
-      .insert(notificationQueue)
-      .values({
-        id,
-        tenantId: input.tenantId,
-        emailType: input.emailType,
-        recipientEmail: input.recipientEmail,
-        payload: JSON.stringify(input.payload ?? {}),
-        maxAttempts: input.maxAttempts ?? 3,
-      })
-      .run();
+    await this.db.insert(notificationQueue).values({
+      id,
+      tenantId: input.tenantId,
+      emailType: input.emailType,
+      recipientEmail: input.recipientEmail,
+      payload: JSON.stringify(input.payload ?? {}),
+      maxAttempts: input.maxAttempts ?? 3,
+    });
 
-    return this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id)).get() as NotificationRow;
+    const rows = await this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id));
+    return rows[0] as NotificationRow;
   }
 
   /** Get pending notifications ready for sending. */
-  getPending(limit = 10): NotificationRow[] {
+  async getPending(limit = 10): Promise<NotificationRow[]> {
     const now = Date.now();
-    return this.db
+    const rows = await this.db
       .select()
       .from(notificationQueue)
       .where(
@@ -61,18 +59,18 @@ export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQue
           or(isNull(notificationQueue.retryAfter), lte(notificationQueue.retryAfter, now)),
         ),
       )
-      .limit(limit)
-      .all() as NotificationRow[];
+      .limit(limit);
+    return rows as NotificationRow[];
   }
 
   /** Mark a notification as sent. */
-  markSent(id: string): void {
-    const row = this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id)).get();
-
+  async markSent(id: string): Promise<void> {
+    const rows = await this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id));
+    const row = rows[0];
     if (!row) return;
 
     const now = Date.now();
-    this.db
+    await this.db
       .update(notificationQueue)
       .set({
         status: "sent",
@@ -80,14 +78,13 @@ export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQue
         lastAttemptAt: now,
         attempts: row.attempts + 1,
       })
-      .where(eq(notificationQueue.id, id))
-      .run();
+      .where(eq(notificationQueue.id, id));
   }
 
   /** Mark a notification as failed with retry logic. */
-  markFailed(id: string, error: string): void {
-    const row = this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id)).get();
-
+  async markFailed(id: string, error: string): Promise<void> {
+    const rows = await this.db.select().from(notificationQueue).where(eq(notificationQueue.id, id));
+    const row = rows[0];
     if (!row) return;
 
     const now = Date.now();
@@ -98,7 +95,7 @@ export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQue
     const backoffMinutes = 4 ** (newAttempts - 1);
     const retryAfter = isDeadLetter ? null : now + backoffMinutes * 60 * 1000;
 
-    this.db
+    await this.db
       .update(notificationQueue)
       .set({
         status: isDeadLetter ? "dead_letter" : "failed",
@@ -107,20 +104,18 @@ export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQue
         lastError: error,
         retryAfter,
       })
-      .where(eq(notificationQueue.id, id))
-      .run();
+      .where(eq(notificationQueue.id, id));
   }
 
   /** Count notifications by status. */
-  countByStatus(): Record<string, number> {
-    const rows = this.db
+  async countByStatus(): Promise<Record<string, number>> {
+    const rows = await this.db
       .select({
         status: notificationQueue.status,
         count: count(),
       })
       .from(notificationQueue)
-      .groupBy(notificationQueue.status)
-      .all();
+      .groupBy(notificationQueue.status);
 
     const result: Record<string, number> = {};
     for (const row of rows) {

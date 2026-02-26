@@ -5,11 +5,14 @@ import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import type { UsageSummary } from "./types.js";
 
 export interface IMeterAggregator {
-  aggregate(now?: number): number;
+  aggregate(now?: number): Promise<number>;
   start(intervalMs?: number): void;
   stop(): void;
-  querySummaries(tenant: string, opts?: { since?: number; until?: number; limit?: number }): UsageSummary[];
-  getTenantTotal(tenant: string, since: number): { totalCost: number; totalCharge: number; eventCount: number };
+  querySummaries(tenant: string, opts?: { since?: number; until?: number; limit?: number }): Promise<UsageSummary[]>;
+  getTenantTotal(
+    tenant: string,
+    since: number,
+  ): Promise<{ totalCost: number; totalCharge: number; eventCount: number }>;
 }
 
 /**
@@ -34,12 +37,9 @@ export class DrizzleMeterAggregator implements IMeterAggregator {
    * Aggregate all events in completed windows up to `now`.
    * Returns the number of summary rows inserted.
    */
-  aggregate(now: number = Date.now()): number {
+  async aggregate(now: number = Date.now()): Promise<number> {
     // Find the latest window_end already aggregated.
-    const lastRow = this.db
-      .select({ lastEnd: max(usageSummaries.windowEnd) })
-      .from(usageSummaries)
-      .get();
+    const lastRow = (await this.db.select({ lastEnd: max(usageSummaries.windowEnd) }).from(usageSummaries))[0];
 
     let lastEnd = lastRow?.lastEnd ?? 0;
 
@@ -58,30 +58,28 @@ export class DrizzleMeterAggregator implements IMeterAggregator {
     // before currentWindowStart so we don't create thousands of empty sentinels.
     if (lastEnd === 0) {
       // Find earliest event to anchor the first window.
-      const earliest = this.db
-        .select({ ts: min(meterEvents.timestamp) })
-        .from(meterEvents)
-        .where(lt(meterEvents.timestamp, currentWindowStart))
-        .get();
+      const earliest = (
+        await this.db
+          .select({ ts: min(meterEvents.timestamp) })
+          .from(meterEvents)
+          .where(lt(meterEvents.timestamp, currentWindowStart))
+      )[0];
       if (earliest?.ts != null) {
         lastEnd = Math.floor(earliest.ts / this.windowMs) * this.windowMs;
       } else {
         // No events at all -- insert a single sentinel to mark we've processed up to now.
-        this.db
-          .insert(usageSummaries)
-          .values({
-            id: crypto.randomUUID(),
-            tenant: "__sentinel__",
-            capability: "__none__",
-            provider: "__none__",
-            eventCount: 0,
-            totalCost: 0,
-            totalCharge: 0,
-            totalDuration: 0,
-            windowStart: 0,
-            windowEnd: currentWindowStart,
-          })
-          .run();
+        await this.db.insert(usageSummaries).values({
+          id: crypto.randomUUID(),
+          tenant: "__sentinel__",
+          capability: "__none__",
+          provider: "__none__",
+          eventCount: 0,
+          totalCost: 0,
+          totalCharge: 0,
+          totalDuration: 0,
+          windowStart: 0,
+          windowEnd: currentWindowStart,
+        });
         return 0;
       }
     }
@@ -91,7 +89,7 @@ export class DrizzleMeterAggregator implements IMeterAggregator {
       const windowEnd = Math.min(lastEnd + this.windowMs, currentWindowStart);
 
       // Group events by tenant + capability + provider within this single window.
-      const rows = this.db
+      const rows = await this.db
         .select({
           tenant: meterEvents.tenant,
           capability: meterEvents.capability,
@@ -103,43 +101,37 @@ export class DrizzleMeterAggregator implements IMeterAggregator {
         })
         .from(meterEvents)
         .where(and(gte(meterEvents.timestamp, windowStart), lt(meterEvents.timestamp, windowEnd)))
-        .groupBy(meterEvents.tenant, meterEvents.capability, meterEvents.provider)
-        .all();
+        .groupBy(meterEvents.tenant, meterEvents.capability, meterEvents.provider);
 
       if (rows.length === 0) {
         // Advance past this empty window by inserting a sentinel with zero counts.
-        this.db
-          .insert(usageSummaries)
-          .values({
-            id: crypto.randomUUID(),
-            tenant: "__sentinel__",
-            capability: "__none__",
-            provider: "__none__",
-            eventCount: 0,
-            totalCost: 0,
-            totalCharge: 0,
-            totalDuration: 0,
-            windowStart,
-            windowEnd,
-          })
-          .run();
+        await this.db.insert(usageSummaries).values({
+          id: crypto.randomUUID(),
+          tenant: "__sentinel__",
+          capability: "__none__",
+          provider: "__none__",
+          eventCount: 0,
+          totalCost: 0,
+          totalCharge: 0,
+          totalDuration: 0,
+          windowStart,
+          windowEnd,
+        });
       } else {
-        this.db.transaction((tx) => {
+        await this.db.transaction(async (tx) => {
           for (const s of rows) {
-            tx.insert(usageSummaries)
-              .values({
-                id: crypto.randomUUID(),
-                tenant: s.tenant,
-                capability: s.capability,
-                provider: s.provider,
-                eventCount: s.eventCount,
-                totalCost: Number(s.totalCost),
-                totalCharge: Number(s.totalCharge),
-                totalDuration: s.totalDuration,
-                windowStart,
-                windowEnd,
-              })
-              .run();
+            await tx.insert(usageSummaries).values({
+              id: crypto.randomUUID(),
+              tenant: s.tenant,
+              capability: s.capability,
+              provider: s.provider,
+              eventCount: s.eventCount,
+              totalCost: Number(s.totalCost),
+              totalCharge: Number(s.totalCharge),
+              totalDuration: s.totalDuration,
+              windowStart,
+              windowEnd,
+            });
           }
         });
         totalInserted += rows.length;
@@ -172,7 +164,10 @@ export class DrizzleMeterAggregator implements IMeterAggregator {
   }
 
   /** Query usage summaries for a tenant within a time range. */
-  querySummaries(tenant: string, opts: { since?: number; until?: number; limit?: number } = {}): UsageSummary[] {
+  async querySummaries(
+    tenant: string,
+    opts: { since?: number; until?: number; limit?: number } = {},
+  ): Promise<UsageSummary[]> {
     const conditions = [eq(usageSummaries.tenant, tenant)];
 
     if (opts.since != null) {
@@ -184,7 +179,7 @@ export class DrizzleMeterAggregator implements IMeterAggregator {
 
     const limit = Math.min(Math.max(1, opts.limit ?? 100), 1000);
 
-    const rows = this.db
+    const rows = await this.db
       .select({
         tenant: usageSummaries.tenant,
         capability: usageSummaries.capability,
@@ -199,23 +194,26 @@ export class DrizzleMeterAggregator implements IMeterAggregator {
       .from(usageSummaries)
       .where(and(...conditions))
       .orderBy(desc(usageSummaries.windowStart))
-      .limit(limit)
-      .all();
+      .limit(limit);
 
     return rows;
   }
 
   /** Get a tenant's total usage across all capabilities since a given time. */
-  getTenantTotal(tenant: string, since: number): { totalCost: number; totalCharge: number; eventCount: number } {
-    const row = this.db
-      .select({
-        totalCost: sql<number>`COALESCE(SUM(${usageSummaries.totalCost}), 0)`,
-        totalCharge: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-        eventCount: sql<number>`COALESCE(SUM(${usageSummaries.eventCount}), 0)`,
-      })
-      .from(usageSummaries)
-      .where(and(eq(usageSummaries.tenant, tenant), gte(usageSummaries.windowStart, since)))
-      .get();
+  async getTenantTotal(
+    tenant: string,
+    since: number,
+  ): Promise<{ totalCost: number; totalCharge: number; eventCount: number }> {
+    const row = (
+      await this.db
+        .select({
+          totalCost: sql<number>`COALESCE(SUM(${usageSummaries.totalCost}), 0)`,
+          totalCharge: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+          eventCount: sql<number>`COALESCE(SUM(${usageSummaries.eventCount}), 0)`,
+        })
+        .from(usageSummaries)
+        .where(and(eq(usageSummaries.tenant, tenant), gte(usageSummaries.windowStart, since)))
+    )[0];
 
     return {
       totalCost: row?.totalCost ?? 0,

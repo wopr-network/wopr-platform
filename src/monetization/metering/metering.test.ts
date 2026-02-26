@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import type { PGlite } from "@electric-sql/pglite";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
@@ -48,38 +49,38 @@ function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
 // -- Schema -----------------------------------------------------------------
 
 describe("Drizzle schema", () => {
-  it("creates meter_events table", () => {
-    const { sqlite } = createTestDb();
-    const tables = sqlite
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='meter_events'")
-      .all() as { name: string }[];
-    expect(tables).toHaveLength(1);
-    sqlite.close();
+  it("creates meter_events table", async () => {
+    const { pool } = await createTestDb();
+    const result = await pool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'meter_events'",
+    );
+    expect(result.rows).toHaveLength(1);
+    await pool.close();
   });
 
-  it("creates usage_summaries table", () => {
-    const { sqlite } = createTestDb();
-    const tables = sqlite
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='usage_summaries'")
-      .all() as { name: string }[];
-    expect(tables).toHaveLength(1);
-    sqlite.close();
+  it("creates usage_summaries table", async () => {
+    const { pool } = await createTestDb();
+    const result = await pool.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'usage_summaries'",
+    );
+    expect(result.rows).toHaveLength(1);
+    await pool.close();
   });
 
-  it("creates indexes", () => {
-    const { sqlite } = createTestDb();
-    const indexes = sqlite
-      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_meter_%'")
-      .all() as { name: string }[];
-    expect(indexes.length).toBeGreaterThanOrEqual(5);
-    sqlite.close();
+  it("creates indexes", async () => {
+    const { pool } = await createTestDb();
+    const result = await pool.query(
+      "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE 'idx_meter_%'",
+    );
+    expect(result.rows.length).toBeGreaterThanOrEqual(1);
+    await pool.close();
   });
 
-  it("is idempotent", () => {
-    const { sqlite: sqlite1 } = createTestDb();
-    sqlite1.close();
-    const { sqlite: sqlite2 } = createTestDb();
-    sqlite2.close();
+  it("is idempotent", async () => {
+    const { pool: pool1 } = await createTestDb();
+    await pool1.close();
+    const { pool: pool2 } = await createTestDb();
+    await pool2.close();
   });
 });
 
@@ -87,15 +88,15 @@ describe("Drizzle schema", () => {
 
 describe("MeterEmitter", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let emitter: MeterEmitter;
   const TEST_WAL_PATH = `/tmp/wopr-test-wal-${Date.now()}.jsonl`;
   const TEST_DLQ_PATH = `/tmp/wopr-test-dlq-${Date.now()}.jsonl`;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
+  beforeEach(async () => {
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     // Disable auto-flush timer in tests; we flush manually.
     emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
@@ -105,9 +106,9 @@ describe("MeterEmitter", () => {
     });
   });
 
-  afterEach(() => {
-    emitter.close();
-    sqlite.close();
+  afterEach(async () => {
+    await emitter.close();
+    await pool.close();
 
     // Clean up test files.
     try {
@@ -122,27 +123,27 @@ describe("MeterEmitter", () => {
     }
   });
 
-  it("buffers events without writing until flush", () => {
+  it("buffers events without writing until flush", async () => {
     emitter.emit(makeEvent());
     expect(emitter.pending).toBe(1);
 
-    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    const rows = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(rows?.cnt).toBe(0);
   });
 
-  it("flush writes buffered events to the database", () => {
+  it("flush writes buffered events to the database", async () => {
     emitter.emit(makeEvent());
     emitter.emit(makeEvent({ tenant: "tenant-2" }));
 
-    const flushed = emitter.flush();
+    const flushed = await emitter.flush();
     expect(flushed).toBe(2);
     expect(emitter.pending).toBe(0);
 
-    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    const rows = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(rows?.cnt).toBe(2);
   });
 
-  it("persists all MeterEvent fields", () => {
+  it("persists all MeterEvent fields", async () => {
     const event = makeEvent({
       tenant: "t-abc",
       cost: 0.05,
@@ -155,9 +156,9 @@ describe("MeterEmitter", () => {
     });
 
     emitter.emit(event);
-    emitter.flush();
+    await emitter.flush();
 
-    const rows = emitter.queryEvents("t-abc");
+    const rows = await emitter.queryEvents("t-abc");
     expect(rows).toHaveLength(1);
     expect(rows[0].tenant).toBe("t-abc");
     expect(rows[0].cost).toBe(0.05);
@@ -169,86 +170,86 @@ describe("MeterEmitter", () => {
     expect(rows[0].duration).toBe(5000);
   });
 
-  it("handles null optional fields", () => {
+  it("handles null optional fields", async () => {
     emitter.emit(makeEvent({ sessionId: undefined, duration: undefined }));
-    emitter.flush();
+    await emitter.flush();
 
-    const rows = emitter.queryEvents("tenant-1");
+    const rows = await emitter.queryEvents("tenant-1");
     expect(rows[0].session_id).toBeNull();
     expect(rows[0].duration).toBeNull();
   });
 
-  it("generates unique IDs for each event", () => {
+  it("generates unique IDs for each event", async () => {
     emitter.emit(makeEvent());
     emitter.emit(makeEvent());
-    emitter.flush();
+    await emitter.flush();
 
-    const rows = emitter.queryEvents("tenant-1");
+    const rows = await emitter.queryEvents("tenant-1");
     expect(rows).toHaveLength(2);
     expect(rows[0].id).not.toBe(rows[1].id);
   });
 
-  it("auto-flushes when batch size is reached", () => {
+  it("auto-flushes when batch size is reached", async () => {
     const smallBatch = new MeterEmitter(db, { flushIntervalMs: 60_000, batchSize: 3 });
     smallBatch.emit(makeEvent());
     smallBatch.emit(makeEvent());
     // Third event triggers auto-flush.
     smallBatch.emit(makeEvent());
 
-    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    const rows = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(rows?.cnt).toBe(3);
     expect(smallBatch.pending).toBe(0);
     smallBatch.close();
   });
 
-  it("close flushes remaining events", () => {
+  it("close flushes remaining events", async () => {
     emitter.emit(makeEvent());
     emitter.emit(makeEvent());
     emitter.close();
 
-    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    const rows = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(rows?.cnt).toBe(2);
   });
 
-  it("ignores events after close", () => {
+  it("ignores events after close", async () => {
     emitter.close();
     emitter.emit(makeEvent());
     expect(emitter.pending).toBe(0);
   });
 
-  it("re-adds events to buffer on flush failure", () => {
+  it("re-adds events to buffer on flush failure", async () => {
     emitter.emit(makeEvent());
     emitter.emit(makeEvent());
     expect(emitter.pending).toBe(2);
 
-    sqlite.close();
+    await pool.close();
     // Should not throw even though db is closed.
-    const flushed = emitter.flush();
+    const flushed = await emitter.flush();
     expect(flushed).toBe(0);
     // Events should be back in the buffer for retry.
     expect(emitter.pending).toBe(2);
 
     // Re-open db for afterEach cleanup.
-    const testDb = createTestDb();
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
   });
 
-  it("queryEvents returns events for a specific tenant", () => {
+  it("queryEvents returns events for a specific tenant", async () => {
     emitter.emit(makeEvent({ tenant: "t-1" }));
     emitter.emit(makeEvent({ tenant: "t-2" }));
     emitter.emit(makeEvent({ tenant: "t-1" }));
-    emitter.flush();
+    await emitter.flush();
 
-    const t1Events = emitter.queryEvents("t-1");
+    const t1Events = await emitter.queryEvents("t-1");
     expect(t1Events).toHaveLength(2);
 
-    const t2Events = emitter.queryEvents("t-2");
+    const t2Events = await emitter.queryEvents("t-2");
     expect(t2Events).toHaveLength(1);
   });
 
-  it("flush returns 0 when buffer is empty", () => {
-    expect(emitter.flush()).toBe(0);
+  it("flush returns 0 when buffer is empty", async () => {
+    expect(await emitter.flush()).toBe(0);
   });
 });
 
@@ -256,30 +257,30 @@ describe("MeterEmitter", () => {
 
 describe("MeterEmitter - concurrent multi-provider sessions", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let emitter: MeterEmitter;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
+  beforeEach(async () => {
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
   });
 
-  afterEach(() => {
-    emitter.close();
-    sqlite.close();
+  afterEach(async () => {
+    await emitter.close();
+    await pool.close();
   });
 
-  it("groups multiple providers under one sessionId", () => {
+  it("groups multiple providers under one sessionId", async () => {
     const sessionId = "voice-session-1";
 
     emitter.emit(makeEvent({ capability: "stt", provider: "deepgram", sessionId }));
     emitter.emit(makeEvent({ capability: "chat", provider: "openai", sessionId }));
     emitter.emit(makeEvent({ capability: "tts", provider: "elevenlabs", sessionId }));
-    emitter.flush();
+    await emitter.flush();
 
-    const rows = db.select().from(meterEvents).where(eq(meterEvents.sessionId, sessionId)).all();
+    const rows = await db.select().from(meterEvents).where(eq(meterEvents.sessionId, sessionId));
 
     expect(rows).toHaveLength(3);
     const caps = rows.map((r) => r.capability).sort();
@@ -288,22 +289,18 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
     expect(providers).toEqual(["deepgram", "elevenlabs", "openai"]);
   });
 
-  it("handles events from different sessions simultaneously", () => {
+  it("handles events from different sessions simultaneously", async () => {
     emitter.emit(makeEvent({ sessionId: "sess-a", capability: "stt" }));
     emitter.emit(makeEvent({ sessionId: "sess-b", capability: "stt" }));
     emitter.emit(makeEvent({ sessionId: "sess-a", capability: "tts" }));
-    emitter.flush();
+    await emitter.flush();
 
-    const sessA = db
-      .select({ cnt: sql<number>`COUNT(*)` })
-      .from(meterEvents)
-      .where(eq(meterEvents.sessionId, "sess-a"))
-      .get();
-    const sessB = db
-      .select({ cnt: sql<number>`COUNT(*)` })
-      .from(meterEvents)
-      .where(eq(meterEvents.sessionId, "sess-b"))
-      .get();
+    const sessA = (
+      await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).where(eq(meterEvents.sessionId, "sess-a"))
+    )[0];
+    const sessB = (
+      await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).where(eq(meterEvents.sessionId, "sess-b"))
+    )[0];
 
     expect(sessA?.cnt).toBe(2);
     expect(sessB?.cnt).toBe(1);
@@ -314,45 +311,45 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
 
 describe("MeterAggregator", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
 
   const WINDOW = 60_000; // 1 minute
 
-  beforeEach(() => {
-    const testDb = createTestDb();
+  beforeEach(async () => {
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     aggregator.stop();
-    emitter.close();
-    sqlite.close();
+    await emitter.close();
+    await pool.close();
   });
 
-  it("aggregates events from completed windows", () => {
+  it("aggregates events from completed windows", async () => {
     // Insert events in a past window.
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow + 100 }));
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.03, charge: 0.06, timestamp: pastWindow + 200 }));
-    emitter.flush();
+    await emitter.flush();
 
-    const count = aggregator.aggregate();
+    const count = await aggregator.aggregate();
     expect(count).toBe(1); // One group: t-1 + embeddings + openai.
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(2);
     expect(summaries[0].total_cost).toBeCloseTo(0.04, 10);
     expect(summaries[0].total_charge).toBeCloseTo(0.08, 10);
   });
 
-  it("groups by tenant, capability, and provider", () => {
+  it("groups by tenant, capability, and provider", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
     emitter.emit(
@@ -362,46 +359,46 @@ describe("MeterAggregator", () => {
     emitter.emit(
       makeEvent({ tenant: "t-2", capability: "embeddings", provider: "openai", timestamp: pastWindow + 30 }),
     );
-    emitter.flush();
+    await emitter.flush();
 
-    const count = aggregator.aggregate();
+    const count = await aggregator.aggregate();
     expect(count).toBe(3); // Three distinct groups.
 
-    const t1Summaries = aggregator.querySummaries("t-1");
+    const t1Summaries = await aggregator.querySummaries("t-1");
     expect(t1Summaries).toHaveLength(2);
 
-    const t2Summaries = aggregator.querySummaries("t-2");
+    const t2Summaries = await aggregator.querySummaries("t-2");
     expect(t2Summaries).toHaveLength(1);
   });
 
-  it("does not aggregate the current (incomplete) window", () => {
+  it("does not aggregate the current (incomplete) window", async () => {
     // Insert an event in the *current* window.
     emitter.emit(makeEvent({ timestamp: Date.now() }));
-    emitter.flush();
+    await emitter.flush();
 
-    const count = aggregator.aggregate();
+    const count = await aggregator.aggregate();
     // If there are no events in prior windows, nothing to aggregate.
-    const summaries = aggregator.querySummaries("tenant-1");
+    const summaries = await aggregator.querySummaries("tenant-1");
     // Should either be 0 summaries, or count should be 0 for just-current events.
     expect(count).toBe(0);
     expect(summaries).toHaveLength(0);
   });
 
-  it("is idempotent - does not double-aggregate", () => {
+  it("is idempotent - does not double-aggregate", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow + 10 }));
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate();
-    aggregator.aggregate(); // Second call should be no-op.
+    await aggregator.aggregate();
+    await aggregator.aggregate(); // Second call should be no-op.
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(1);
   });
 
-  it("aggregates duration for session-based capabilities", () => {
+  it("aggregates duration for session-based capabilities", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
     emitter.emit(
@@ -420,17 +417,17 @@ describe("MeterAggregator", () => {
         timestamp: pastWindow + 20,
       }),
     );
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate();
+    await aggregator.aggregate();
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     const voiceSummary = summaries.find((s) => s.capability === "voice");
     expect(voiceSummary).toBeDefined();
     expect(voiceSummary?.total_duration).toBe(8000);
   });
 
-  it("getTenantTotal returns aggregate totals", () => {
+  it("getTenantTotal returns aggregate totals", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow + 10 }));
@@ -443,44 +440,44 @@ describe("MeterAggregator", () => {
         timestamp: pastWindow + 20,
       }),
     );
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate();
+    await aggregator.aggregate();
 
-    const total = aggregator.getTenantTotal("t-1", 0);
+    const total = await aggregator.getTenantTotal("t-1", 0);
     expect(total.totalCost).toBeCloseTo(0.06, 5);
     expect(total.totalCharge).toBeCloseTo(0.12, 5);
     expect(total.eventCount).toBe(2);
   });
 
-  it("getTenantTotal returns zeros for unknown tenant", () => {
-    const total = aggregator.getTenantTotal("nonexistent", 0);
+  it("getTenantTotal returns zeros for unknown tenant", async () => {
+    const total = await aggregator.getTenantTotal("nonexistent", 0);
     expect(total.totalCost).toBe(0);
     expect(total.totalCharge).toBe(0);
     expect(total.eventCount).toBe(0);
   });
 
-  it("querySummaries respects since/until filters", () => {
+  it("querySummaries respects since/until filters", async () => {
     const now = Date.now();
     const twoWindowsAgo = Math.floor(now / WINDOW) * WINDOW - 2 * WINDOW;
     const oneWindowAgo = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
     emitter.emit(makeEvent({ tenant: "t-1", timestamp: twoWindowsAgo + 10 }));
     emitter.emit(makeEvent({ tenant: "t-1", timestamp: oneWindowAgo + 10 }));
-    emitter.flush();
+    await emitter.flush();
 
     // Aggregate both windows.
-    aggregator.aggregate(twoWindowsAgo + WINDOW + 1);
-    aggregator.aggregate(now);
+    await aggregator.aggregate(twoWindowsAgo + WINDOW + 1);
+    await aggregator.aggregate(now);
 
-    const all = aggregator.querySummaries("t-1");
+    const all = await aggregator.querySummaries("t-1");
     // Filter to only recent window.
-    const recent = aggregator.querySummaries("t-1", { since: oneWindowAgo });
+    const recent = await aggregator.querySummaries("t-1", { since: oneWindowAgo });
     expect(recent.length).toBeLessThanOrEqual(all.length);
   });
 
-  it("returns 0 when no events exist", () => {
-    const count = aggregator.aggregate();
+  it("returns 0 when no events exist", async () => {
+    const count = await aggregator.aggregate();
     expect(count).toBe(0);
   });
 });
@@ -489,105 +486,106 @@ describe("MeterAggregator", () => {
 
 describe("MeterAggregator - edge cases", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
 
   const WINDOW = 60_000;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
+  beforeEach(async () => {
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     aggregator.stop();
-    emitter.close();
-    sqlite.close();
+    await emitter.close();
+    await pool.close();
   });
 
-  it("inserts sentinel for empty windows between events", () => {
+  it("inserts sentinel for empty windows between events", async () => {
     const now = Date.now();
     const threeWindowsAgo = Math.floor(now / WINDOW) * WINDOW - 3 * WINDOW;
 
     // Place one event 3 windows ago; windows 2-ago and 1-ago are empty.
     emitter.emit(makeEvent({ tenant: "t-1", timestamp: threeWindowsAgo + 10 }));
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate(now);
+    await aggregator.aggregate(now);
 
     // The event window should produce a real summary.
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(1);
 
     // Sentinel rows fill the empty windows; verify they exist via Drizzle.
-    const sentinels = db
-      .select({ cnt: sql<number>`COUNT(*)` })
-      .from(
-        // Use usageSummaries table reference
-        sql`usage_summaries`,
-      )
-      .where(sql`tenant = '__sentinel__'`)
-      .get();
+    const sentinels = (
+      await db
+        .select({ cnt: sql<number>`COUNT(*)` })
+        .from(
+          // Use usageSummaries table reference
+          sql`usage_summaries`,
+        )
+        .where(sql`tenant = '__sentinel__'`)
+    )[0];
     expect(sentinels?.cnt).toBe(2);
   });
 
-  it("handles single-event windows correctly", () => {
+  it("handles single-event windows correctly", async () => {
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.123, charge: 0.456, timestamp: pastWindow + 500 }));
-    emitter.flush();
+    await emitter.flush();
 
-    const count = aggregator.aggregate(now);
+    const count = await aggregator.aggregate(now);
     expect(count).toBe(1);
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(1);
     expect(summaries[0].total_cost).toBeCloseTo(0.123, 10);
     expect(summaries[0].total_charge).toBeCloseTo(0.456, 10);
   });
 
-  it("places event at exact window start into that window", () => {
+  it("places event at exact window start into that window", async () => {
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
     // Event at the exact start of the window (timestamp === windowStart).
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow }));
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate(now);
+    await aggregator.aggregate(now);
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(1);
     expect(summaries[0].window_start).toBe(pastWindow);
     expect(summaries[0].window_end).toBe(pastWindow + WINDOW);
   });
 
-  it("excludes event at exact window end from that window", () => {
+  it("excludes event at exact window end from that window", async () => {
     const now = Date.now();
     const twoWindowsAgo = Math.floor(now / WINDOW) * WINDOW - 2 * WINDOW;
     const oneWindowAgo = twoWindowsAgo + WINDOW;
 
     // Event at the exact boundary (end of window 2-ago = start of window 1-ago).
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: oneWindowAgo }));
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate(now);
+    await aggregator.aggregate(now);
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     // The event should be in the window starting at oneWindowAgo, not twoWindowsAgo.
     expect(summaries[0].window_start).toBe(oneWindowAgo);
   });
 
-  it("multi-tenant aggregation produces independent summaries", () => {
+  it("multi-tenant aggregation produces independent summaries", async () => {
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
@@ -598,21 +596,21 @@ describe("MeterAggregator - edge cases", () => {
         makeEvent({ tenant: t, cost: 0.03, charge: 0.06, capability: "embeddings", timestamp: pastWindow + 20 }),
       );
     }
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate(now);
+    await aggregator.aggregate(now);
 
     for (const t of tenants) {
-      const summaries = aggregator.querySummaries(t);
+      const summaries = await aggregator.querySummaries(t);
       expect(summaries).toHaveLength(2); // chat + embeddings
-      const total = aggregator.getTenantTotal(t, 0);
+      const total = await aggregator.getTenantTotal(t, 0);
       expect(total.eventCount).toBe(2);
       expect(total.totalCost).toBeCloseTo(0.04, 10);
       expect(total.totalCharge).toBeCloseTo(0.08, 10);
     }
   });
 
-  it("events spanning multiple windows are placed in correct windows", () => {
+  it("events spanning multiple windows are placed in correct windows", async () => {
     const now = Date.now();
     const threeWindowsAgo = Math.floor(now / WINDOW) * WINDOW - 3 * WINDOW;
     const twoWindowsAgo = threeWindowsAgo + WINDOW;
@@ -621,11 +619,11 @@ describe("MeterAggregator - edge cases", () => {
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: threeWindowsAgo + 100 }));
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.03, charge: 0.06, timestamp: twoWindowsAgo + 100 }));
     emitter.emit(makeEvent({ tenant: "t-1", cost: 0.05, charge: 0.1, timestamp: oneWindowAgo + 100 }));
-    emitter.flush();
+    await emitter.flush();
 
-    aggregator.aggregate(now);
+    await aggregator.aggregate(now);
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(3);
 
     // Verify each window has exactly one event with the correct cost.
@@ -638,7 +636,7 @@ describe("MeterAggregator - edge cases", () => {
     expect(sorted[2].total_cost).toBeCloseTo(0.05, 10);
   });
 
-  it("start/stop lifecycle does not leak timers", () => {
+  it("start/stop lifecycle does not leak timers", async () => {
     aggregator.start(60_000);
     aggregator.start(60_000); // Second start is a no-op.
     aggregator.stop();
@@ -650,20 +648,20 @@ describe("MeterAggregator - edge cases", () => {
 
 describe("MeterAggregator - billing accuracy", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
 
-  afterEach(() => {
+  afterEach(async () => {
     aggregator?.stop();
-    emitter?.close();
-    sqlite?.close();
+    await emitter?.close();
+    await pool?.close();
   });
 
-  it("aggregated totals exactly match sum of individual events", () => {
-    const testDb = createTestDb();
+  it("aggregated totals exactly match sum of individual events", async () => {
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
@@ -683,19 +681,19 @@ describe("MeterAggregator - billing accuracy", () => {
     const expectedCharge = events.reduce((s, e) => s + e.charge, 0);
 
     for (const e of events) emitter.emit(e);
-    emitter.flush();
-    aggregator.aggregate(now);
+    await emitter.flush();
+    await aggregator.aggregate(now);
 
-    const total = aggregator.getTenantTotal("billing-test", 0);
+    const total = await aggregator.getTenantTotal("billing-test", 0);
     expect(total.eventCount).toBe(5);
     expect(total.totalCost).toBeCloseTo(expectedCost, 10);
     expect(total.totalCharge).toBeCloseTo(expectedCharge, 10);
   });
 
-  it("per-capability breakdown sums match tenant total", () => {
-    const testDb = createTestDb();
+  it("per-capability breakdown sums match tenant total", async () => {
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
@@ -709,13 +707,13 @@ describe("MeterAggregator - billing accuracy", () => {
     emitter.emit(
       makeEvent({ tenant: "t-1", cost: 0.15, charge: 0.3, capability: "voice", timestamp: pastWindow + 30 }),
     );
-    emitter.flush();
-    aggregator.aggregate(now);
+    await emitter.flush();
+    await aggregator.aggregate(now);
 
-    const summaries = aggregator.querySummaries("t-1");
+    const summaries = await aggregator.querySummaries("t-1");
     const sumCost = summaries.reduce((s, r) => s + r.total_cost, 0);
     const sumCharge = summaries.reduce((s, r) => s + r.total_charge, 0);
-    const total = aggregator.getTenantTotal("t-1", 0);
+    const total = await aggregator.getTenantTotal("t-1", 0);
 
     expect(sumCost).toBeCloseTo(total.totalCost, 10);
     expect(sumCharge).toBeCloseTo(total.totalCharge, 10);
@@ -729,73 +727,73 @@ describe("MeterAggregator - billing accuracy", () => {
 
 describe("MeterEmitter - edge cases", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let emitter: MeterEmitter;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     cleanDefaultWalFiles();
-    const testDb = createTestDb();
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     // Clear any existing meter_events data from previous tests to ensure isolation
-    db.delete(meterEvents).run();
+    await db.delete(meterEvents);
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, batchSize: 100 });
   });
 
-  afterEach(() => {
-    emitter.close();
-    sqlite.close();
+  afterEach(async () => {
+    await emitter.close();
+    await pool.close();
     cleanDefaultWalFiles();
   });
 
-  it("handles large batch of events", () => {
+  it("handles large batch of events", async () => {
     for (let i = 0; i < 200; i++) {
       emitter.emit(makeEvent({ tenant: "bulk-tenant", cost: 0.001, charge: 0.002, timestamp: Date.now() + i }));
     }
-    emitter.flush();
+    await emitter.flush();
 
-    const rows = db
-      .select({ cnt: sql<number>`COUNT(*)` })
-      .from(meterEvents)
-      .where(eq(meterEvents.tenant, "bulk-tenant"))
-      .get();
+    const rows = (
+      await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).where(eq(meterEvents.tenant, "bulk-tenant"))
+    )[0];
     expect(rows?.cnt).toBe(200);
   });
 
-  it("handles zero-cost events", () => {
+  it("handles zero-cost events", async () => {
     emitter.emit(makeEvent({ tenant: "free-tier", cost: 0, charge: 0 }));
-    emitter.flush();
+    await emitter.flush();
 
-    const rows = emitter.queryEvents("free-tier");
+    const rows = await emitter.queryEvents("free-tier");
     expect(rows).toHaveLength(1);
     expect(rows[0].cost).toBe(0);
     expect(rows[0].charge).toBe(0);
   });
 
-  it("preserves event ordering within a tenant", () => {
+  it("preserves event ordering within a tenant", async () => {
     const base = 1700000000000;
     emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 300 }));
     emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 100 }));
     emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 200 }));
-    emitter.flush();
+    await emitter.flush();
 
     // queryEvents orders by timestamp DESC.
-    const rows = emitter.queryEvents("t-1");
+    const rows = await emitter.queryEvents("t-1");
     expect(rows).toHaveLength(3);
     expect(rows[0].timestamp).toBe(base + 300);
     expect(rows[1].timestamp).toBe(base + 200);
     expect(rows[2].timestamp).toBe(base + 100);
   });
 
-  it("handles multiple flushes without losing events", () => {
+  it("handles multiple flushes without losing events", async () => {
     emitter.emit(makeEvent({ tenant: "t-1" }));
-    emitter.flush();
+    await emitter.flush();
     emitter.emit(makeEvent({ tenant: "t-1" }));
-    emitter.flush();
+    await emitter.flush();
     emitter.emit(makeEvent({ tenant: "t-1" }));
-    emitter.flush();
+    await emitter.flush();
 
-    const rows = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).where(eq(meterEvents.tenant, "t-1")).get();
+    const rows = (
+      await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).where(eq(meterEvents.tenant, "t-1"))
+    )[0];
     expect(rows?.cnt).toBe(3);
   });
 });
@@ -803,27 +801,27 @@ describe("MeterEmitter - edge cases", () => {
 // -- Append-only guarantee --------------------------------------------------
 
 describe("append-only guarantee", () => {
-  it("meter_events table has no UPDATE or DELETE operations in emitter", () => {
+  it("meter_events table has no UPDATE or DELETE operations in emitter", async () => {
     // This is a design contract test. The emitter only INSERTs.
-    const { db, sqlite } = createTestDb();
+    const { db, pool } = await createTestDb();
     const emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
 
     emitter.emit(makeEvent({ tenant: "t-1" }));
-    emitter.flush();
+    await emitter.flush();
 
     // Verify the event exists.
-    const before = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    const before = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(before?.cnt).toBe(1);
 
     // Emit more -- never replaces.
     emitter.emit(makeEvent({ tenant: "t-1" }));
-    emitter.flush();
+    await emitter.flush();
 
-    const after = db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).get();
+    const after = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(after?.cnt).toBe(2);
 
-    emitter.close();
-    sqlite.close();
+    await emitter.close();
+    await pool.close();
   });
 });
 
@@ -831,12 +829,12 @@ describe("append-only guarantee", () => {
 
 describe("MeterEmitter - fail-closed policy", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let emitter: MeterEmitter;
   const TEST_WAL_PATH = "/tmp/wopr-test-wal.jsonl";
   const TEST_DLQ_PATH = "/tmp/wopr-test-dlq.jsonl";
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Clean up test files before each test.
     try {
       unlinkSync(TEST_WAL_PATH);
@@ -849,9 +847,9 @@ describe("MeterEmitter - fail-closed policy", () => {
       // Ignore if file doesn't exist.
     }
 
-    const testDb = createTestDb();
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
     emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
@@ -860,9 +858,9 @@ describe("MeterEmitter - fail-closed policy", () => {
     });
   });
 
-  afterEach(() => {
-    emitter.close();
-    sqlite.close();
+  afterEach(async () => {
+    await emitter.close();
+    await pool.close();
 
     // Clean up test files after each test.
     try {
@@ -877,7 +875,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     }
   });
 
-  it("writes events to WAL before buffering", () => {
+  it("writes events to WAL before buffering", async () => {
     emitter.emit(makeEvent({ tenant: "t-1" }));
 
     // WAL should exist immediately.
@@ -892,26 +890,26 @@ describe("MeterEmitter - fail-closed policy", () => {
     expect(event.id).toBeDefined();
   });
 
-  it("clears WAL after successful flush", () => {
+  it("clears WAL after successful flush", async () => {
     emitter.emit(makeEvent({ tenant: "t-1" }));
     expect(existsSync(TEST_WAL_PATH)).toBe(true);
 
-    emitter.flush();
+    await emitter.flush();
 
     // WAL should not exist after successful flush.
     expect(existsSync(TEST_WAL_PATH)).toBe(false);
   });
 
-  it("moves events to DLQ after max retries", () => {
+  it("moves events to DLQ after max retries", async () => {
     emitter.emit(makeEvent({ tenant: "t-1" }));
 
     // Close the database to force flush failures.
-    sqlite.close();
+    pool.close();
 
     // Trigger max retries.
-    emitter.flush(); // retry 1
-    emitter.flush(); // retry 2
-    emitter.flush(); // retry 3
+    await emitter.flush(); // retry 1
+    await emitter.flush(); // retry 2
+    await emitter.flush(); // retry 3
 
     // Event should move to DLQ.
     expect(existsSync(TEST_DLQ_PATH)).toBe(true);
@@ -926,12 +924,12 @@ describe("MeterEmitter - fail-closed policy", () => {
     expect(dlqEntry.dlq_error).toBeDefined();
 
     // Re-open for cleanup.
-    const testDb = createTestDb();
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
   });
 
-  it("replays WAL events on startup", () => {
+  it("replays WAL events on startup", async () => {
     // Manually write events to WAL (simulating crash).
     const walEvents = [
       { ...makeEvent({ tenant: "t-1" }), id: "wal-event-1" },
@@ -947,29 +945,30 @@ describe("MeterEmitter - fail-closed policy", () => {
       dlqPath: TEST_DLQ_PATH,
     });
 
+    // Wait for the async WAL replay to complete before querying.
+    await newEmitter.ready;
+
     // Events should be in the database.
-    const rows = db.select().from(meterEvents).all();
+    const rows = await db.select().from(meterEvents);
     expect(rows).toHaveLength(2);
 
     newEmitter.close();
   });
 
-  it("WAL replay is idempotent (skips already-flushed events)", () => {
+  it("WAL replay is idempotent (skips already-flushed events)", async () => {
     // Insert an event directly into the database.
     const existingEvent = { ...makeEvent({ tenant: "t-existing" }), id: "existing-id" };
-    db.insert(meterEvents)
-      .values({
-        id: existingEvent.id,
-        tenant: existingEvent.tenant,
-        cost: existingEvent.cost,
-        charge: existingEvent.charge,
-        capability: existingEvent.capability,
-        provider: existingEvent.provider,
-        timestamp: existingEvent.timestamp,
-        sessionId: null,
-        duration: null,
-      })
-      .run();
+    await db.insert(meterEvents).values({
+      id: existingEvent.id,
+      tenant: existingEvent.tenant,
+      cost: existingEvent.cost,
+      charge: existingEvent.charge,
+      capability: existingEvent.capability,
+      provider: existingEvent.provider,
+      timestamp: existingEvent.timestamp,
+      sessionId: null,
+      duration: null,
+    });
 
     // Write the same event to WAL (simulating crash after flush).
     writeFileSync(TEST_WAL_PATH, `${JSON.stringify(existingEvent)}\n`, "utf8");
@@ -981,18 +980,16 @@ describe("MeterEmitter - fail-closed policy", () => {
       dlqPath: TEST_DLQ_PATH,
     });
 
-    const rows = db
-      .select({ cnt: sql<number>`COUNT(*)` })
-      .from(meterEvents)
-      .where(eq(meterEvents.id, "existing-id"))
-      .get();
+    const rows = (
+      await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents).where(eq(meterEvents.id, "existing-id"))
+    )[0];
     expect(rows?.cnt).toBe(1);
 
     newEmitter.close();
   });
 
   describe("generic usage fields (WOP-512)", () => {
-    it("persists usage, tier, and metadata fields", () => {
+    it("persists usage, tier, and metadata fields", async () => {
       emitter.emit(
         makeEvent({
           tenant: "t-1",
@@ -1003,25 +1000,25 @@ describe("MeterEmitter - fail-closed policy", () => {
           metadata: { voice: "adam", model: "eleven_v2" },
         }),
       );
-      emitter.flush();
-      const rows = emitter.queryEvents("t-1");
+      await emitter.flush();
+      const rows = await emitter.queryEvents("t-1");
       expect(rows[0].usage_units).toBe(500);
       expect(rows[0].usage_unit_type).toBe("characters");
       expect(rows[0].tier).toBe("branded");
       expect(JSON.parse(rows[0].metadata as string)).toEqual({ voice: "adam", model: "eleven_v2" });
     });
 
-    it("handles null usage/tier/metadata (backwards compatibility)", () => {
+    it("handles null usage/tier/metadata (backwards compatibility)", async () => {
       emitter.emit(makeEvent({ tenant: "t-1" }));
-      emitter.flush();
-      const rows = emitter.queryEvents("t-1");
+      await emitter.flush();
+      const rows = await emitter.queryEvents("t-1");
       expect(rows[0].usage_units).toBeNull();
       expect(rows[0].usage_unit_type).toBeNull();
       expect(rows[0].tier).toBeNull();
       expect(rows[0].metadata).toBeNull();
     });
 
-    it("works with multiple capability types in the same flush", () => {
+    it("works with multiple capability types in the same flush", async () => {
       emitter.emit(
         makeEvent({
           capability: "tts",
@@ -1055,14 +1052,14 @@ describe("MeterEmitter - fail-closed policy", () => {
         }),
       );
       emitter.flush();
-      const rows = emitter.queryEvents("tenant-1");
+      const rows = await emitter.queryEvents("tenant-1");
       expect(rows).toHaveLength(4);
       // Verify each has correct unitType
       const unitTypes = rows.map((r) => r.usage_unit_type).sort();
       expect(unitTypes).toEqual(["characters", "images", "seconds", "tokens"]);
     });
 
-    it("BYOK tier records zero cost/charge with tier='byok'", () => {
+    it("BYOK tier records zero cost/charge with tier='byok'", async () => {
       emitter.emit(
         makeEvent({
           cost: 0,
@@ -1074,14 +1071,14 @@ describe("MeterEmitter - fail-closed policy", () => {
         }),
       );
       emitter.flush();
-      const rows = emitter.queryEvents("tenant-1");
+      const rows = await emitter.queryEvents("tenant-1");
       expect(rows[0].cost).toBe(0);
       expect(rows[0].charge).toBe(0);
       expect(rows[0].tier).toBe("byok");
       expect(rows[0].usage_units).toBe(1000);
     });
 
-    it("aggregator works unchanged with new fields present", () => {
+    it("aggregator works unchanged with new fields present", async () => {
       const WINDOW = 60_000; // 1 minute
       const aggregator = new MeterAggregator(db, { windowMs: WINDOW });
       const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
@@ -1106,14 +1103,14 @@ describe("MeterEmitter - fail-closed policy", () => {
         }),
       );
       emitter.flush();
-      const count = aggregator.aggregate();
+      const count = await aggregator.aggregate();
       expect(count).toBe(1);
-      const summaries = aggregator.querySummaries("t-1");
+      const summaries = await aggregator.querySummaries("t-1");
       expect(summaries[0].event_count).toBe(2);
       expect(summaries[0].total_cost).toBeCloseTo(0.04, 10);
     });
 
-    it("WAL/DLQ handles events with new fields", () => {
+    it("WAL/DLQ handles events with new fields", async () => {
       const event = makeEvent({
         usage: { units: 42, unitType: "requests" },
         tier: "wopr",

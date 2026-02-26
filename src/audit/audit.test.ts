@@ -1,4 +1,4 @@
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAdminAuditRoutes, createAuditRoutes } from "../api/routes/audit.js";
@@ -28,24 +28,26 @@ function makeInput(overrides: Partial<AuditEntryInput> = {}): AuditEntryInput {
 
 describe("AuditLogger", () => {
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
+
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
-  it("inserts audit entries", () => {
-    const entry = logger.log(makeInput());
+  it("inserts audit entries", async () => {
+    const entry = await logger.log(makeInput());
     expect(entry.id).toBeTruthy();
     expect(entry.user_id).toBe("user-1");
     expect(entry.action).toBe("instance.create");
@@ -56,507 +58,485 @@ describe("AuditLogger", () => {
     expect(entry.timestamp).toBeGreaterThan(0);
   });
 
-  it("serializes details as JSON", () => {
-    const entry = logger.log(makeInput({ details: { foo: "bar", count: 42 } }));
+  it("serializes details as JSON", async () => {
+    const entry = await logger.log(makeInput({ details: { foo: "bar", count: 42 } }));
     expect(entry.details).toBe('{"foo":"bar","count":42}');
   });
 
-  it("handles null optional fields", () => {
-    const entry = logger.log(makeInput({ resourceId: null, details: null, ipAddress: null, userAgent: null }));
+  it("handles null optional fields", async () => {
+    const entry = await logger.log(makeInput({ resourceId: null, details: null, ipAddress: null, userAgent: null }));
     expect(entry.resource_id).toBeNull();
     expect(entry.details).toBeNull();
     expect(entry.ip_address).toBeNull();
     expect(entry.user_agent).toBeNull();
   });
 
-  it("generates unique IDs", () => {
-    const e1 = logger.log(makeInput());
-    const e2 = logger.log(makeInput());
+  it("generates unique IDs", async () => {
+    const e1 = await logger.log(makeInput());
+    const e2 = await logger.log(makeInput());
     expect(e1.id).not.toBe(e2.id);
   });
 });
 
 describe("queryAuditLog", () => {
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
+
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
-  it("returns all entries without filters", () => {
-    logger.log(makeInput());
-    logger.log(makeInput({ action: "instance.destroy" }));
+  it("returns all entries without filters", async () => {
+    await logger.log(makeInput());
+    await logger.log(makeInput({ action: "instance.destroy" }));
 
-    const results = queryAuditLog(repo, {});
+    const results = await queryAuditLog(repo, {});
     expect(results).toHaveLength(2);
   });
 
-  it("filters by userId", () => {
-    logger.log(makeInput({ userId: "user-1" }));
-    logger.log(makeInput({ userId: "user-2" }));
+  it("filters by userId", async () => {
+    await logger.log(makeInput({ userId: "user-1" }));
+    await logger.log(makeInput({ userId: "user-2" }));
 
-    const results = queryAuditLog(repo, { userId: "user-1" });
+    const results = await queryAuditLog(repo, { userId: "user-1" });
     expect(results).toHaveLength(1);
     expect(results[0].user_id).toBe("user-1");
   });
 
-  it("filters by exact action", () => {
-    logger.log(makeInput({ action: "instance.create" }));
-    logger.log(makeInput({ action: "instance.destroy" }));
-    logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
+  it("filters by exact action", async () => {
+    await logger.log(makeInput({ action: "instance.create" }));
+    await logger.log(makeInput({ action: "instance.destroy" }));
+    await logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
 
-    const results = queryAuditLog(repo, { action: "instance.create" });
+    const results = await queryAuditLog(repo, { action: "instance.create" });
     expect(results).toHaveLength(1);
   });
 
-  it("filters by wildcard action", () => {
-    logger.log(makeInput({ action: "instance.create" }));
-    logger.log(makeInput({ action: "instance.destroy" }));
-    logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
+  it("filters by wildcard action", async () => {
+    await logger.log(makeInput({ action: "instance.create" }));
+    await logger.log(makeInput({ action: "instance.destroy" }));
+    await logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
 
-    const results = queryAuditLog(repo, { action: "instance.*" });
+    const results = await queryAuditLog(repo, { action: "instance.*" });
     expect(results).toHaveLength(2);
   });
 
-  it("filters by resourceType", () => {
-    logger.log(makeInput({ resourceType: "instance" }));
-    logger.log(makeInput({ resourceType: "plugin", action: "plugin.install" }));
+  it("filters by resourceType", async () => {
+    await logger.log(makeInput({ resourceType: "instance" }));
+    await logger.log(makeInput({ resourceType: "plugin", action: "plugin.install" }));
 
-    const results = queryAuditLog(repo, { resourceType: "instance" });
+    const results = await queryAuditLog(repo, { resourceType: "instance" });
     expect(results).toHaveLength(1);
   });
 
-  it("filters by resourceId", () => {
-    logger.log(makeInput({ resourceId: "inst-1" }));
-    logger.log(makeInput({ resourceId: "inst-2" }));
+  it("filters by resourceId", async () => {
+    await logger.log(makeInput({ resourceId: "inst-1" }));
+    await logger.log(makeInput({ resourceId: "inst-2" }));
 
-    const results = queryAuditLog(repo, { resourceId: "inst-1" });
+    const results = await queryAuditLog(repo, { resourceId: "inst-1" });
     expect(results).toHaveLength(1);
   });
 
-  it("filters by time range", () => {
+  it("filters by time range", async () => {
     const now = Date.now();
-    db.insert(auditLog)
-      .values({
-        id: "old",
-        timestamp: now - 10000,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
-    db.insert(auditLog)
-      .values({
-        id: "new",
-        timestamp: now,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.destroy",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "old",
+      timestamp: now - 10000,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
+    await db.insert(auditLog).values({
+      id: "new",
+      timestamp: now,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.destroy",
+      resourceType: "instance",
+    });
 
-    const results = queryAuditLog(repo, { since: now - 5000 });
+    const results = await queryAuditLog(repo, { since: now - 5000 });
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("new");
   });
 
-  it("filters by until time boundary", () => {
+  it("filters by until time boundary", async () => {
     const now = Date.now();
-    db.insert(auditLog)
-      .values({
-        id: "old",
-        timestamp: now - 10000,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
-    db.insert(auditLog)
-      .values({
-        id: "new",
-        timestamp: now,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.destroy",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "old",
+      timestamp: now - 10000,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
+    await db.insert(auditLog).values({
+      id: "new",
+      timestamp: now,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.destroy",
+      resourceType: "instance",
+    });
 
-    const results = queryAuditLog(repo, { until: now - 5000 });
+    const results = await queryAuditLog(repo, { until: now - 5000 });
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("old");
   });
 
-  it("combines multiple filters", () => {
-    logger.log(makeInput({ userId: "user-1", action: "instance.create", resourceType: "instance" }));
-    logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
-    logger.log(makeInput({ userId: "user-2", action: "instance.create", resourceType: "instance" }));
+  it("combines multiple filters", async () => {
+    await logger.log(makeInput({ userId: "user-1", action: "instance.create", resourceType: "instance" }));
+    await logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
+    await logger.log(makeInput({ userId: "user-2", action: "instance.create", resourceType: "instance" }));
 
-    const results = queryAuditLog(repo, { userId: "user-1", resourceType: "instance" });
+    const results = await queryAuditLog(repo, { userId: "user-1", resourceType: "instance" });
     expect(results).toHaveLength(1);
     expect(results[0].action).toBe("instance.create");
     expect(results[0].user_id).toBe("user-1");
   });
 
-  it("returns empty array when no entries match", () => {
-    const results = queryAuditLog(repo, { userId: "nonexistent" });
+  it("returns empty array when no entries match", async () => {
+    const results = await queryAuditLog(repo, { userId: "nonexistent" });
     expect(results).toHaveLength(0);
   });
 
-  it("enforces minimum limit of 1", () => {
-    logger.log(makeInput());
-    logger.log(makeInput());
+  it("enforces minimum limit of 1", async () => {
+    await logger.log(makeInput());
+    await logger.log(makeInput());
 
-    const results = queryAuditLog(repo, { limit: 0 });
+    const results = await queryAuditLog(repo, { limit: 0 });
     expect(results).toHaveLength(1);
   });
 
-  it("respects limit", () => {
+  it("respects limit", async () => {
     for (let i = 0; i < 10; i++) {
-      logger.log(makeInput());
+      await logger.log(makeInput());
     }
 
-    const results = queryAuditLog(repo, { limit: 3 });
+    const results = await queryAuditLog(repo, { limit: 3 });
     expect(results).toHaveLength(3);
   });
 
-  it("respects offset", () => {
+  it("respects offset", async () => {
     for (let i = 0; i < 5; i++) {
-      logger.log(makeInput());
+      await logger.log(makeInput());
     }
 
-    const all = queryAuditLog(repo, {});
-    const offset = queryAuditLog(repo, { offset: 2 });
+    const all = await queryAuditLog(repo, {});
+    const offset = await queryAuditLog(repo, { offset: 2 });
     expect(offset).toHaveLength(3);
     expect(offset[0].id).toBe(all[2].id);
   });
 
-  it("orders by timestamp descending", () => {
+  it("orders by timestamp descending", async () => {
     const now = Date.now();
-    db.insert(auditLog)
-      .values({
-        id: "first",
-        timestamp: now - 1000,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
-    db.insert(auditLog)
-      .values({
-        id: "second",
-        timestamp: now,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.destroy",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "first",
+      timestamp: now - 1000,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
+    await db.insert(auditLog).values({
+      id: "second",
+      timestamp: now,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.destroy",
+      resourceType: "instance",
+    });
 
-    const results = queryAuditLog(repo, {});
+    const results = await queryAuditLog(repo, {});
     expect(results[0].id).toBe("second");
     expect(results[1].id).toBe("first");
   });
 
-  it("caps limit at 250", () => {
+  it("caps limit at 250", async () => {
     for (let i = 0; i < 5; i++) {
-      logger.log(makeInput());
+      await logger.log(makeInput());
     }
 
-    const results = queryAuditLog(repo, { limit: 999 });
+    const results = await queryAuditLog(repo, { limit: 999 });
     expect(results).toHaveLength(5);
   });
 });
 
 describe("countAuditLog", () => {
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
+
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
-  it("counts all entries", () => {
-    logger.log(makeInput());
-    logger.log(makeInput());
-    expect(countAuditLog(repo, {})).toBe(2);
+  it("counts all entries", async () => {
+    await logger.log(makeInput());
+    await logger.log(makeInput());
+    expect(await countAuditLog(repo, {})).toBe(2);
   });
 
-  it("counts with filters", () => {
-    logger.log(makeInput({ userId: "user-1" }));
-    logger.log(makeInput({ userId: "user-2" }));
-    expect(countAuditLog(repo, { userId: "user-1" })).toBe(1);
+  it("counts with filters", async () => {
+    await logger.log(makeInput({ userId: "user-1" }));
+    await logger.log(makeInput({ userId: "user-2" }));
+    expect(await countAuditLog(repo, { userId: "user-1" })).toBe(1);
   });
 
-  it("counts with wildcard action filter", () => {
-    logger.log(makeInput({ action: "instance.create" }));
-    logger.log(makeInput({ action: "instance.destroy" }));
-    logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
-    expect(countAuditLog(repo, { action: "instance.*" })).toBe(2);
+  it("counts with wildcard action filter", async () => {
+    await logger.log(makeInput({ action: "instance.create" }));
+    await logger.log(makeInput({ action: "instance.destroy" }));
+    await logger.log(makeInput({ action: "plugin.install", resourceType: "plugin" }));
+    expect(await countAuditLog(repo, { action: "instance.*" })).toBe(2);
   });
 
-  it("counts with time range filter", () => {
+  it("counts with time range filter", async () => {
     const now = Date.now();
-    db.insert(auditLog)
-      .values({
-        id: "old",
-        timestamp: now - 10000,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
-    db.insert(auditLog)
-      .values({
-        id: "new",
-        timestamp: now,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.destroy",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "old",
+      timestamp: now - 10000,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
+    await db.insert(auditLog).values({
+      id: "new",
+      timestamp: now,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.destroy",
+      resourceType: "instance",
+    });
 
-    expect(countAuditLog(repo, { since: now - 5000 })).toBe(1);
-    expect(countAuditLog(repo, { until: now - 5000 })).toBe(1);
-    expect(countAuditLog(repo, { since: now - 15000, until: now + 1000 })).toBe(2);
+    expect(await countAuditLog(repo, { since: now - 5000 })).toBe(1);
+    expect(await countAuditLog(repo, { until: now - 5000 })).toBe(1);
+    expect(await countAuditLog(repo, { since: now - 15000, until: now + 1000 })).toBe(2);
   });
 
-  it("counts with resourceType and resourceId filters", () => {
-    logger.log(makeInput({ resourceType: "instance", resourceId: "inst-1" }));
-    logger.log(makeInput({ resourceType: "instance", resourceId: "inst-2" }));
-    logger.log(makeInput({ resourceType: "plugin", resourceId: "plug-1", action: "plugin.install" }));
+  it("counts with resourceType and resourceId filters", async () => {
+    await logger.log(makeInput({ resourceType: "instance", resourceId: "inst-1" }));
+    await logger.log(makeInput({ resourceType: "instance", resourceId: "inst-2" }));
+    await logger.log(makeInput({ resourceType: "plugin", resourceId: "plug-1", action: "plugin.install" }));
 
-    expect(countAuditLog(repo, { resourceType: "instance" })).toBe(2);
-    expect(countAuditLog(repo, { resourceId: "inst-1" })).toBe(1);
-    expect(countAuditLog(repo, { resourceType: "plugin", resourceId: "plug-1" })).toBe(1);
+    expect(await countAuditLog(repo, { resourceType: "instance" })).toBe(2);
+    expect(await countAuditLog(repo, { resourceId: "inst-1" })).toBe(1);
+    expect(await countAuditLog(repo, { resourceType: "plugin", resourceId: "plug-1" })).toBe(1);
   });
 
-  it("returns zero for no matches", () => {
-    expect(countAuditLog(repo, {})).toBe(0);
-    expect(countAuditLog(repo, { userId: "nonexistent" })).toBe(0);
+  it("returns zero for no matches", async () => {
+    expect(await countAuditLog(repo, {})).toBe(0);
+    expect(await countAuditLog(repo, { userId: "nonexistent" })).toBe(0);
   });
 });
 
 describe("retention", () => {
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
+
   let repo: IAuditLogRepository;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     repo = new DrizzleAuditLogRepository(db);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
-  it("returns correct retention days (flat 365)", () => {
+  it("returns correct retention days (flat 365)", async () => {
     expect(getRetentionDays()).toBe(365);
   });
 
-  it("purges entries older than retention period", () => {
+  it("purges entries older than retention period", async () => {
     const now = Date.now();
     const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
     const oneDayAgo = now - 1 * 24 * 60 * 60 * 1000;
 
-    db.insert(auditLog)
-      .values({
-        id: "old",
-        timestamp: thirtyOneDaysAgo,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
-    db.insert(auditLog)
-      .values({
-        id: "recent",
-        timestamp: oneDayAgo,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.destroy",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "old",
+      timestamp: thirtyOneDaysAgo,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
+    await db.insert(auditLog).values({
+      id: "recent",
+      timestamp: oneDayAgo,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.destroy",
+      resourceType: "instance",
+    });
 
-    const deleted = purgeExpiredEntries(repo);
+    const deleted = await purgeExpiredEntries(repo);
     expect(deleted).toBe(1);
 
-    const remaining = db.select().from(auditLog).all();
+    const remaining = await db.select().from(auditLog);
     expect(remaining).toHaveLength(1);
     expect(remaining[0].id).toBe("recent");
   });
 
-  it("does not purge recent entries", () => {
+  it("does not purge recent entries", async () => {
     const logger = new AuditLogger(repo);
-    logger.log(makeInput());
+    await logger.log(makeInput());
 
-    const deleted = purgeExpiredEntries(repo);
+    const deleted = await purgeExpiredEntries(repo);
     expect(deleted).toBe(0);
   });
 
-  it("purges per user for user-scoped retention", () => {
+  it("purges per user for user-scoped retention", async () => {
     const now = Date.now();
     const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
 
-    db.insert(auditLog)
-      .values({
-        id: "u1-old",
-        timestamp: thirtyOneDaysAgo,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
-    db.insert(auditLog)
-      .values({
-        id: "u2-old",
-        timestamp: thirtyOneDaysAgo,
-        userId: "user-2",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "u1-old",
+      timestamp: thirtyOneDaysAgo,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
+    await db.insert(auditLog).values({
+      id: "u2-old",
+      timestamp: thirtyOneDaysAgo,
+      userId: "user-2",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
 
-    const deleted = purgeExpiredEntriesForUser(repo, "user-1");
+    const deleted = await purgeExpiredEntriesForUser(repo, "user-1");
     expect(deleted).toBe(1);
 
-    const remaining = db.select().from(auditLog).all();
+    const remaining = await db.select().from(auditLog);
     expect(remaining).toHaveLength(1);
     expect(remaining[0].id).toBe("u2-old");
   });
 
-  it("does not purge entries within retention period", () => {
+  it("does not purge entries within retention period", async () => {
     const now = Date.now();
     const twentyDaysAgo = now - 20 * 24 * 60 * 60 * 1000;
 
-    db.insert(auditLog)
-      .values({
-        id: "within-retention",
-        timestamp: twentyDaysAgo,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "within-retention",
+      timestamp: twentyDaysAgo,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
 
-    const deleted = purgeExpiredEntries(repo);
+    const deleted = await purgeExpiredEntries(repo);
     expect(deleted).toBe(0);
   });
 
-  it("purgeExpiredEntriesForUser does not affect other users", () => {
+  it("purgeExpiredEntriesForUser does not affect other users", async () => {
     const now = Date.now();
     const recentTime = now - 1000;
 
-    db.insert(auditLog)
-      .values({
-        id: "u1-recent",
-        timestamp: recentTime,
-        userId: "user-1",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
-    db.insert(auditLog)
-      .values({
-        id: "u2-recent",
-        timestamp: recentTime,
-        userId: "user-2",
-        authMethod: "session",
-        action: "instance.create",
-        resourceType: "instance",
-      })
-      .run();
+    await db.insert(auditLog).values({
+      id: "u1-recent",
+      timestamp: recentTime,
+      userId: "user-1",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
+    await db.insert(auditLog).values({
+      id: "u2-recent",
+      timestamp: recentTime,
+      userId: "user-2",
+      authMethod: "session",
+      action: "instance.create",
+      resourceType: "instance",
+    });
 
-    const deleted = purgeExpiredEntriesForUser(repo, "user-1");
+    const deleted = await purgeExpiredEntriesForUser(repo, "user-1");
     expect(deleted).toBe(0);
 
-    const remaining = db.select().from(auditLog).all();
+    const remaining = await db.select().from(auditLog);
     expect(remaining).toHaveLength(2);
   });
 });
 
 describe("extractResourceType", () => {
-  it("extracts instance from path", () => {
+  it("extracts instance from path", async () => {
     expect(extractResourceType("/api/instance/abc")).toBe("instance");
   });
 
-  it("extracts plugin from path", () => {
+  it("extracts plugin from path", async () => {
     expect(extractResourceType("/api/plugin/xyz")).toBe("plugin");
   });
 
-  it("extracts api_key from path", () => {
+  it("extracts api_key from path", async () => {
     expect(extractResourceType("/api/key/k-1")).toBe("api_key");
   });
 
-  it("extracts user from auth path", () => {
+  it("extracts user from auth path", async () => {
     expect(extractResourceType("/api/auth/login")).toBe("user");
   });
 
-  it("extracts config from path", () => {
+  it("extracts config from path", async () => {
     expect(extractResourceType("/api/config/settings")).toBe("config");
   });
 
-  it("extracts tier from path", () => {
+  it("extracts tier from path", async () => {
     expect(extractResourceType("/api/tier/upgrade")).toBe("tier");
   });
 
-  it("defaults to instance for unknown path", () => {
+  it("defaults to instance for unknown path", async () => {
     expect(extractResourceType("/api/unknown")).toBe("instance");
   });
 });
 
 describe("auditLog middleware", () => {
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
+
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
   it("logs entry on successful response", async () => {
@@ -574,7 +554,7 @@ describe("auditLog middleware", () => {
       headers: { "x-forwarded-for": "10.0.0.1", "user-agent": "TestClient/1.0" },
     });
 
-    const entries = queryAuditLog(repo, {});
+    const entries = await queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].user_id).toBe("user-1");
     expect(entries[0].action).toBe("instance.create");
@@ -595,7 +575,7 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(repo, {});
+    const entries = await queryAuditLog(repo, {});
     expect(entries).toHaveLength(0);
   });
 
@@ -606,7 +586,7 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(repo, {});
+    const entries = await queryAuditLog(repo, {});
     expect(entries).toHaveLength(0);
   });
 
@@ -622,7 +602,7 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(repo, {});
+    const entries = await queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].auth_method).toBe("api_key");
   });
@@ -642,7 +622,7 @@ describe("auditLog middleware", () => {
       headers: { "x-forwarded-for": "10.0.0.1, 192.168.1.1, 172.16.0.1" },
     });
 
-    const entries = queryAuditLog(repo, {});
+    const entries = await queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].ip_address).toBe("10.0.0.1");
   });
@@ -659,17 +639,16 @@ describe("auditLog middleware", () => {
 
     await app.request("/instance/inst-1", { method: "POST" });
 
-    const entries = queryAuditLog(repo, {});
+    const entries = await queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
     expect(entries[0].ip_address).toBeNull();
     expect(entries[0].user_agent).toBeNull();
   });
 
   it("does not break the request on logging error", async () => {
-    const badSqlite = new BetterSqlite3(":memory:");
-    const badTestDb = createTestDb();
+    const badTestDb = await createTestDb();
     const badLogger = new AuditLogger(new DrizzleAuditLogRepository(badTestDb.db));
-    badTestDb.sqlite.close();
+    await badTestDb.pool.close();
 
     const app = new Hono<AuditEnv>();
     app.use("*", async (c, next) => {
@@ -682,32 +661,33 @@ describe("auditLog middleware", () => {
 
     const res = await app.request("/instance/inst-1", { method: "POST" });
     expect(res.status).toBe(200);
-    badSqlite.close();
   });
 });
 
 describe("audit API routes", () => {
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
+
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
   describe("GET /audit (user route)", () => {
     it("returns user's own entries", async () => {
-      logger.log(makeInput({ userId: "user-1" }));
-      logger.log(makeInput({ userId: "user-2" }));
+      await logger.log(makeInput({ userId: "user-1" }));
+      await logger.log(makeInput({ userId: "user-2" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -726,8 +706,8 @@ describe("audit API routes", () => {
     });
 
     it("filters by action query param", async () => {
-      logger.log(makeInput({ userId: "user-1", action: "instance.create" }));
-      logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
+      await logger.log(makeInput({ userId: "user-1", action: "instance.create" }));
+      await logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -746,17 +726,15 @@ describe("audit API routes", () => {
     it("defaults to retention cleanup on query", async () => {
       const now = Date.now();
       const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
-      db.insert(auditLog)
-        .values({
-          id: "old-no-tier",
-          timestamp: thirtyOneDaysAgo,
-          userId: "user-1",
-          authMethod: "session",
-          action: "instance.create",
-          resourceType: "instance",
-        })
-        .run();
-      logger.log(makeInput({ userId: "user-1" }));
+      await db.insert(auditLog).values({
+        id: "old-no-tier",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      });
+      await logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -774,7 +752,7 @@ describe("audit API routes", () => {
 
     it("supports limit and offset query params", async () => {
       for (let i = 0; i < 5; i++) {
-        logger.log(makeInput({ userId: "user-1" }));
+        await logger.log(makeInput({ userId: "user-1" }));
       }
 
       const app = new Hono<AuditEnv>();
@@ -791,8 +769,8 @@ describe("audit API routes", () => {
     });
 
     it("filters by resourceType query param", async () => {
-      logger.log(makeInput({ userId: "user-1", resourceType: "instance" }));
-      logger.log(makeInput({ userId: "user-1", resourceType: "plugin", action: "plugin.install" }));
+      await logger.log(makeInput({ userId: "user-1", resourceType: "instance" }));
+      await logger.log(makeInput({ userId: "user-1", resourceType: "plugin", action: "plugin.install" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -809,8 +787,8 @@ describe("audit API routes", () => {
     });
 
     it("filters by resourceId query param", async () => {
-      logger.log(makeInput({ userId: "user-1", resourceId: "inst-1" }));
-      logger.log(makeInput({ userId: "user-1", resourceId: "inst-2" }));
+      await logger.log(makeInput({ userId: "user-1", resourceId: "inst-1" }));
+      await logger.log(makeInput({ userId: "user-1", resourceId: "inst-2" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -828,17 +806,15 @@ describe("audit API routes", () => {
 
     it("filters by time range query params", async () => {
       const now = Date.now();
-      db.insert(auditLog)
-        .values({
-          id: "old-time",
-          timestamp: now - 100000,
-          userId: "user-1",
-          authMethod: "session",
-          action: "instance.create",
-          resourceType: "instance",
-        })
-        .run();
-      logger.log(makeInput({ userId: "user-1" }));
+      await db.insert(auditLog).values({
+        id: "old-time",
+        timestamp: now - 100000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      });
+      await logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -857,17 +833,15 @@ describe("audit API routes", () => {
     it("applies retention cleanup on query", async () => {
       const now = Date.now();
       const thirtyOneDaysAgo = now - 366 * 24 * 60 * 60 * 1000;
-      db.insert(auditLog)
-        .values({
-          id: "old-entry",
-          timestamp: thirtyOneDaysAgo,
-          userId: "user-1",
-          authMethod: "session",
-          action: "instance.create",
-          resourceType: "instance",
-        })
-        .run();
-      logger.log(makeInput({ userId: "user-1" }));
+      await db.insert(auditLog).values({
+        id: "old-entry",
+        timestamp: thirtyOneDaysAgo,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      });
+      await logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -899,8 +873,8 @@ describe("audit API routes", () => {
     });
 
     it("returns all entries for admin", async () => {
-      logger.log(makeInput({ userId: "user-1" }));
-      logger.log(makeInput({ userId: "user-2" }));
+      await logger.log(makeInput({ userId: "user-1" }));
+      await logger.log(makeInput({ userId: "user-2" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -917,8 +891,8 @@ describe("audit API routes", () => {
     });
 
     it("filters by userId", async () => {
-      logger.log(makeInput({ userId: "user-1" }));
-      logger.log(makeInput({ userId: "user-2" }));
+      await logger.log(makeInput({ userId: "user-1" }));
+      await logger.log(makeInput({ userId: "user-2" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -936,17 +910,15 @@ describe("audit API routes", () => {
 
     it("filters by time range", async () => {
       const now = Date.now();
-      db.insert(auditLog)
-        .values({
-          id: "old",
-          timestamp: now - 100000,
-          userId: "user-1",
-          authMethod: "session",
-          action: "instance.create",
-          resourceType: "instance",
-        })
-        .run();
-      logger.log(makeInput({ userId: "user-1" }));
+      await db.insert(auditLog).values({
+        id: "old",
+        timestamp: now - 100000,
+        userId: "user-1",
+        authMethod: "session",
+        action: "instance.create",
+        resourceType: "instance",
+      });
+      await logger.log(makeInput({ userId: "user-1" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -963,8 +935,8 @@ describe("audit API routes", () => {
     });
 
     it("filters by action", async () => {
-      logger.log(makeInput({ userId: "user-1", action: "instance.create" }));
-      logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
+      await logger.log(makeInput({ userId: "user-1", action: "instance.create" }));
+      await logger.log(makeInput({ userId: "user-1", action: "plugin.install", resourceType: "plugin" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -981,8 +953,8 @@ describe("audit API routes", () => {
     });
 
     it("filters by resourceType and resourceId", async () => {
-      logger.log(makeInput({ resourceType: "instance", resourceId: "inst-1" }));
-      logger.log(makeInput({ resourceType: "plugin", resourceId: "plug-1", action: "plugin.install" }));
+      await logger.log(makeInput({ resourceType: "instance", resourceId: "inst-1" }));
+      await logger.log(makeInput({ resourceType: "plugin", resourceId: "plug-1", action: "plugin.install" }));
 
       const app = new Hono<AuditEnv>();
       app.use("*", async (c, next) => {
@@ -1001,7 +973,7 @@ describe("audit API routes", () => {
 
     it("supports limit and offset", async () => {
       for (let i = 0; i < 5; i++) {
-        logger.log(makeInput());
+        await logger.log(makeInput());
       }
 
       const app = new Hono<AuditEnv>();

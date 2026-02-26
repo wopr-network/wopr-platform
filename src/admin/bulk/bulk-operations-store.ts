@@ -90,14 +90,16 @@ export class BulkOperationsStore {
 
   // --- Dry Run ---
 
-  dryRun(tenantIds: string[]): Array<{ tenantId: string; name: string | null; email: string; status: string }> {
+  async dryRun(
+    tenantIds: string[],
+  ): Promise<Array<{ tenantId: string; name: string | null; email: string; status: string }>> {
     this.validateTenantIds(tenantIds);
     return this.repo.lookupTenants(tenantIds);
   }
 
   // --- Mass Grant ---
 
-  bulkGrant(input: BulkGrantInput, adminUser: string): BulkGrantResult {
+  async bulkGrant(input: BulkGrantInput, adminUser: string): Promise<BulkGrantResult> {
     this.validateTenantIds(input.tenantIds);
     const operationId = crypto.randomUUID();
     const errors: Array<{ tenantId: string; error: string }> = [];
@@ -105,24 +107,20 @@ export class BulkOperationsStore {
 
     const succeededIds: string[] = [];
 
-    // Wrapped in a transaction for batch performance — individual errors are
-    // caught so partial success is expected (this is NOT all-or-nothing).
-    this.repo.transaction(() => {
-      for (const tenantId of input.tenantIds) {
-        try {
-          this.creditStore.credit(tenantId, input.amountCents, "signup_grant", input.reason);
-          succeeded++;
-          succeededIds.push(tenantId);
-        } catch (err) {
-          errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
-        }
+    for (const tenantId of input.tenantIds) {
+      try {
+        await this.creditStore.credit(tenantId, input.amountCents, "signup_grant", input.reason);
+        succeeded++;
+        succeededIds.push(tenantId);
+      } catch (err) {
+        errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
       }
-    });
+    }
 
     const now = Date.now();
     const undoDeadline = now + UNDO_WINDOW_MS;
 
-    this.repo.insertUndoableGrant({
+    await this.repo.insertUndoableGrant({
       operationId,
       tenantIds: JSON.stringify(succeededIds),
       amountCents: input.amountCents,
@@ -132,7 +130,7 @@ export class BulkOperationsStore {
       undone: false,
     });
 
-    this.auditLog.log({
+    void this.auditLog.log({
       adminUser,
       action: "bulk.grant",
       category: "bulk",
@@ -162,8 +160,8 @@ export class BulkOperationsStore {
 
   // --- Undo Grant ---
 
-  undoGrant(operationId: string, adminUser: string): BulkResult {
-    const grant = this.repo.getUndoableGrant(operationId);
+  async undoGrant(operationId: string, adminUser: string): Promise<BulkResult> {
+    const grant = await this.repo.getUndoableGrant(operationId);
 
     if (!grant) throw new Error("Grant operation not found");
     if (grant.undone) throw new Error("Grant operation has already been undone");
@@ -173,21 +171,20 @@ export class BulkOperationsStore {
     const errors: Array<{ tenantId: string; error: string }> = [];
     let succeeded = 0;
 
-    this.repo.transaction(() => {
-      for (const tenantId of tenantIds) {
-        try {
-          this.creditStore.debit(tenantId, grant.amountCents, "correction", `Undo bulk grant ${operationId}`);
-          succeeded++;
-        } catch (err) {
-          errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
-        }
+    for (const tenantId of tenantIds) {
+      try {
+        await this.creditStore.debit(tenantId, grant.amountCents, "correction", `Undo bulk grant ${operationId}`);
+        succeeded++;
+      } catch (err) {
+        errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
       }
-      if (errors.length === 0) {
-        this.repo.markGrantUndone(operationId);
-      }
-    });
+    }
 
-    this.auditLog.log({
+    if (errors.length === 0) {
+      await this.repo.markGrantUndone(operationId);
+    }
+
+    void this.auditLog.log({
       adminUser,
       action: "bulk.grant.undo",
       category: "bulk",
@@ -212,7 +209,7 @@ export class BulkOperationsStore {
 
   // --- Mass Suspend ---
 
-  bulkSuspend(input: BulkSuspendInput, adminUser: string): BulkResult {
+  async bulkSuspend(input: BulkSuspendInput, adminUser: string): Promise<BulkResult> {
     this.validateTenantIds(input.tenantIds);
     const operationId = crypto.randomUUID();
     const errors: Array<{ tenantId: string; error: string }> = [];
@@ -220,7 +217,7 @@ export class BulkOperationsStore {
 
     for (const tenantId of input.tenantIds) {
       try {
-        const current = this.tenantStatusStore.getStatus(tenantId);
+        const current = await this.tenantStatusStore.getStatus(tenantId);
         if (current === "banned") {
           errors.push({ tenantId, error: "Cannot suspend a banned account" });
           continue;
@@ -229,14 +226,14 @@ export class BulkOperationsStore {
           errors.push({ tenantId, error: "Already suspended" });
           continue;
         }
-        this.tenantStatusStore.suspend(tenantId, input.reason, adminUser);
+        await this.tenantStatusStore.suspend(tenantId, input.reason, adminUser);
         succeeded++;
       } catch (err) {
         errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
       }
     }
 
-    this.auditLog.log({
+    void this.auditLog.log({
       adminUser,
       action: "bulk.suspend",
       category: "bulk",
@@ -263,7 +260,7 @@ export class BulkOperationsStore {
 
   // --- Mass Reactivate ---
 
-  bulkReactivate(input: BulkReactivateInput, adminUser: string): BulkResult {
+  async bulkReactivate(input: BulkReactivateInput, adminUser: string): Promise<BulkResult> {
     this.validateTenantIds(input.tenantIds);
     const operationId = crypto.randomUUID();
     const errors: Array<{ tenantId: string; error: string }> = [];
@@ -271,7 +268,7 @@ export class BulkOperationsStore {
 
     for (const tenantId of input.tenantIds) {
       try {
-        const current = this.tenantStatusStore.getStatus(tenantId);
+        const current = await this.tenantStatusStore.getStatus(tenantId);
         if (current === "banned") {
           errors.push({ tenantId, error: "Cannot reactivate a banned account" });
           continue;
@@ -280,14 +277,14 @@ export class BulkOperationsStore {
           errors.push({ tenantId, error: "Already active" });
           continue;
         }
-        this.tenantStatusStore.reactivate(tenantId, adminUser);
+        await this.tenantStatusStore.reactivate(tenantId, adminUser);
         succeeded++;
       } catch (err) {
         errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
       }
     }
 
-    this.auditLog.log({
+    void this.auditLog.log({
       adminUser,
       action: "bulk.reactivate",
       category: "bulk",
@@ -312,12 +309,12 @@ export class BulkOperationsStore {
 
   // --- Export CSV ---
 
-  bulkExport(input: BulkExportInput, adminUser: string): BulkExportResult {
+  async bulkExport(input: BulkExportInput, adminUser: string): Promise<BulkExportResult> {
     this.validateTenantIds(input.tenantIds);
     const operationId = crypto.randomUUID();
 
     const enabledKeys = new Set(input.fields.filter((f) => f.enabled).map((f) => f.key));
-    const rows = this.repo.lookupTenantsForExport(input.tenantIds);
+    const rows = await this.repo.lookupTenantsForExport(input.tenantIds);
 
     const headers: string[] = ["tenant_id"];
     if (enabledKeys.has("account_info")) headers.push("name", "email", "status", "role");
@@ -327,7 +324,8 @@ export class BulkOperationsStore {
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
 
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-    const lines = rows.map((r) => {
+    const lines: string[] = [];
+    for (const r of rows) {
       const fields: string[] = [csvEscape(String(r.tenantId ?? ""))];
       if (enabledKeys.has("account_info")) {
         fields.push(
@@ -340,16 +338,16 @@ export class BulkOperationsStore {
       if (enabledKeys.has("credit_balance")) fields.push(String(r.creditBalanceCents ?? 0));
       if (enabledKeys.has("monthly_products")) fields.push(String(r.agentCount ?? 0));
       if (enabledKeys.has("lifetime_spend")) {
-        const spend = this.creditStore.balance(String(r.tenantId));
+        const spend = await this.creditStore.balance(String(r.tenantId));
         fields.push(String(spend));
       }
       if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));
-      return fields.join(",");
-    });
+      lines.push(fields.join(","));
+    }
 
     const csv = [headers.join(","), ...lines].join("\n");
 
-    this.auditLog.log({
+    void this.auditLog.log({
       adminUser,
       action: "bulk.export",
       category: "bulk",
@@ -366,13 +364,13 @@ export class BulkOperationsStore {
 
   // --- Select All Matching Filters ---
 
-  listMatchingTenantIds(filters: {
+  async listMatchingTenantIds(filters: {
     search?: string;
     status?: string;
     role?: string;
     hasCredits?: boolean;
     lowBalance?: boolean;
-  }): string[] {
+  }): Promise<string[]> {
     return this.repo.listMatchingTenantIds(filters);
   }
 }

@@ -1,5 +1,11 @@
-import type Database from "better-sqlite3";
+import { sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
+
+type QueryResult = { rows: Array<Record<string, unknown>> };
+
+async function exec(db: DrizzleDb, query: Parameters<DrizzleDb["execute"]>[0]): Promise<QueryResult> {
+  return db.execute(query) as Promise<QueryResult>;
+}
 
 export interface DateRange {
   from: number; // unix epoch ms
@@ -82,13 +88,10 @@ export interface TimeSeriesPoint {
 const MAX_TIME_SERIES_POINTS = 1000;
 
 export class AnalyticsStore {
-  private readonly sqlite: Database.Database;
+  private readonly db: DrizzleDb;
 
   constructor(db: DrizzleDb) {
-    // raw SQL: Drizzle cannot express the complex aggregations, multi-table UNIONs,
-    // integer epoch bucketing arithmetic, and CASE-based pivot queries used throughout
-    // this analytics store
-    this.sqlite = db.$client;
+    this.db = db;
   }
 
   private toIsoRange(range: DateRange): { from: string; to: string } {
@@ -116,38 +119,37 @@ export class AnalyticsStore {
     return lines.join("\n");
   }
 
-  getRevenueOverview(range: DateRange): RevenueOverview {
+  async getRevenueOverview(range: DateRange): Promise<RevenueOverview> {
     const iso = this.toIsoRange(range);
 
-    const creditsSoldRow = this.sqlite
-      .prepare(
-        `SELECT COALESCE(SUM(amount_cents), 0) as total
-         FROM credit_transactions
-         WHERE type = 'purchase' AND amount_cents > 0
-           AND created_at >= ? AND created_at <= ?`,
-      )
-      .get(iso.from, iso.to) as { total: number };
+    const creditsSoldResult = await exec(
+      this.db,
+      sql`SELECT COALESCE(SUM(amount_cents), 0)::bigint as total
+          FROM credit_transactions
+          WHERE type = 'purchase' AND amount_cents > 0
+            AND created_at >= ${iso.from} AND created_at <= ${iso.to}`,
+    );
 
-    const revenueConsumedRow = this.sqlite
-      .prepare(
-        `SELECT COALESCE(SUM(ABS(amount_cents)), 0) as total
-         FROM credit_transactions
-         WHERE type IN ('bot_runtime', 'adapter_usage', 'addon')
-           AND created_at >= ? AND created_at <= ?`,
-      )
-      .get(iso.from, iso.to) as { total: number };
+    const revenueConsumedResult = await exec(
+      this.db,
+      sql`SELECT COALESCE(SUM(ABS(amount_cents)), 0)::bigint as total
+          FROM credit_transactions
+          WHERE type IN ('bot_runtime', 'adapter_usage', 'addon')
+            AND created_at >= ${iso.from} AND created_at <= ${iso.to}`,
+    );
 
-    const providerCostRow = this.sqlite
-      .prepare(
-        `SELECT COALESCE(CAST(SUM(cost) * 100 AS INTEGER), 0) as total_cents
-         FROM meter_events
-         WHERE timestamp >= ? AND timestamp <= ?`,
-      )
-      .get(range.from, range.to) as { total_cents: number };
+    const providerCostResult = await exec(
+      this.db,
+      sql`SELECT CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as total_cents
+          FROM meter_events
+          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}`,
+    );
 
-    const creditsSoldCents = creditsSoldRow.total;
-    const revenueConsumedCents = revenueConsumedRow.total;
-    const providerCostCents = providerCostRow.total_cents;
+    const creditsSoldCents = Number((creditsSoldResult.rows[0] as { total: string | number })?.total ?? 0);
+    const revenueConsumedCents = Number((revenueConsumedResult.rows[0] as { total: string | number })?.total ?? 0);
+    const providerCostCents = Number(
+      (providerCostResult.rows[0] as { total_cents: string | number })?.total_cents ?? 0,
+    );
     const grossMarginCents = revenueConsumedCents - providerCostCents;
     const grossMarginPct = revenueConsumedCents > 0 ? (grossMarginCents / revenueConsumedCents) * 100 : 0;
 
@@ -165,26 +167,27 @@ export class AnalyticsStore {
    * credits sold.  Neither figure is date-range-scoped; consumedPct/floatPct
    * are lifetime ratios, not period ratios.
    */
-  getFloat(): FloatMetrics {
-    const floatRow = this.sqlite
-      .prepare(
-        `SELECT COUNT(*) as tenant_count, COALESCE(SUM(balance_cents), 0) as total_float
-         FROM credit_balances
-         WHERE balance_cents > 0`,
-      )
-      .get() as { tenant_count: number; total_float: number };
+  async getFloat(): Promise<FloatMetrics> {
+    const floatResult = await exec(
+      this.db,
+      sql`SELECT COUNT(*)::bigint as tenant_count, COALESCE(SUM(balance_cents), 0)::bigint as total_float
+          FROM credit_balances
+          WHERE balance_cents > 0`,
+    );
 
-    const soldRow = this.sqlite
-      .prepare(
-        `SELECT COALESCE(SUM(amount_cents), 0) as total_sold
-         FROM credit_transactions
-         WHERE type = 'purchase' AND amount_cents > 0`,
-      )
-      .get() as { total_sold: number };
+    const soldResult = await exec(
+      this.db,
+      sql`SELECT COALESCE(SUM(amount_cents), 0)::bigint as total_sold
+          FROM credit_transactions
+          WHERE type = 'purchase' AND amount_cents > 0`,
+    );
 
-    const totalFloatCents = floatRow.total_float;
-    const totalCreditsSoldCents = soldRow.total_sold;
-    const tenantCount = floatRow.tenant_count;
+    const floatRow = floatResult.rows[0] as { tenant_count: string | number; total_float: string | number };
+    const soldRow = soldResult.rows[0] as { total_sold: string | number };
+
+    const totalFloatCents = Number(floatRow?.total_float ?? 0);
+    const totalCreditsSoldCents = Number(soldRow?.total_sold ?? 0);
+    const tenantCount = Number(floatRow?.tenant_count ?? 0);
 
     const floatPct = totalCreditsSoldCents > 0 ? (totalFloatCents / totalCreditsSoldCents) * 100 : 0;
     const consumedPct = 100 - floatPct;
@@ -198,173 +201,166 @@ export class AnalyticsStore {
     };
   }
 
-  getRevenueBreakdown(range: DateRange): RevenueBreakdownRow[] {
+  async getRevenueBreakdown(range: DateRange): Promise<RevenueBreakdownRow[]> {
     const iso = this.toIsoRange(range);
 
-    const perUseRows = this.sqlite
-      .prepare(
-        `SELECT
-           'per_use' as category,
-           capability,
-           CAST(COALESCE(SUM(charge) * 100, 0) AS INTEGER) as revenue_cents
-         FROM meter_events
-         WHERE timestamp >= ? AND timestamp <= ?
-         GROUP BY capability
-         ORDER BY revenue_cents DESC`,
-      )
-      .all(range.from, range.to) as Array<{
-      category: string;
-      capability: string;
-      revenue_cents: number;
-    }>;
+    const perUseResult = await exec(
+      this.db,
+      sql`SELECT
+            'per_use' as category,
+            capability,
+            CAST(COALESCE(SUM(charge) * 100, 0) AS BIGINT) as revenue_cents
+          FROM meter_events
+          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
+          GROUP BY capability
+          ORDER BY revenue_cents DESC`,
+    );
 
-    const monthlyRows = this.sqlite
-      .prepare(
-        `SELECT
-           'monthly' as category,
-           CASE
-             WHEN type = 'bot_runtime' THEN 'agent_seat'
-             WHEN type = 'addon' THEN 'addon'
-             ELSE type
-           END as capability,
-           COALESCE(SUM(ABS(amount_cents)), 0) as revenue_cents
-         FROM credit_transactions
-         WHERE type IN ('bot_runtime', 'addon')
-           AND created_at >= ? AND created_at <= ?
-         GROUP BY capability
-         ORDER BY revenue_cents DESC`,
-      )
-      .all(iso.from, iso.to) as Array<{
-      category: string;
-      capability: string;
-      revenue_cents: number;
-    }>;
+    const monthlyResult = await exec(
+      this.db,
+      sql`SELECT
+            'monthly' as category,
+            CASE
+              WHEN type = 'bot_runtime' THEN 'agent_seat'
+              WHEN type = 'addon' THEN 'addon'
+              ELSE type
+            END as capability,
+            COALESCE(SUM(ABS(amount_cents)), 0)::bigint as revenue_cents
+          FROM credit_transactions
+          WHERE type IN ('bot_runtime', 'addon')
+            AND created_at >= ${iso.from} AND created_at <= ${iso.to}
+          GROUP BY capability
+          ORDER BY revenue_cents DESC`,
+    );
 
     const result: RevenueBreakdownRow[] = [];
 
-    for (const row of perUseRows) {
+    for (const row of perUseResult.rows as Array<{
+      category: string;
+      capability: string;
+      revenue_cents: string | number;
+    }>) {
       result.push({
         category: "per_use",
         capability: row.capability,
-        revenueCents: row.revenue_cents,
+        revenueCents: Number(row.revenue_cents),
       });
     }
 
-    for (const row of monthlyRows) {
+    for (const row of monthlyResult.rows as Array<{
+      category: string;
+      capability: string;
+      revenue_cents: string | number;
+    }>) {
       result.push({
         category: "monthly",
         capability: row.capability,
-        revenueCents: row.revenue_cents,
+        revenueCents: Number(row.revenue_cents),
       });
     }
 
     return result;
   }
 
-  getMarginByCapability(range: DateRange): MarginByCapability[] {
-    const rows = this.sqlite
-      .prepare(
-        `SELECT
-           capability,
-           CAST(COALESCE(SUM(charge) * 100, 0) AS INTEGER) as revenue_cents,
-           CAST(COALESCE(SUM(cost) * 100, 0) AS INTEGER) as cost_cents
-         FROM meter_events
-         WHERE timestamp >= ? AND timestamp <= ?
-         GROUP BY capability
-         ORDER BY revenue_cents DESC`,
-      )
-      .all(range.from, range.to) as Array<{
-      capability: string;
-      revenue_cents: number;
-      cost_cents: number;
-    }>;
+  async getMarginByCapability(range: DateRange): Promise<MarginByCapability[]> {
+    const result = await exec(
+      this.db,
+      sql`SELECT
+            capability,
+            CAST(COALESCE(SUM(charge) * 100, 0) AS BIGINT) as revenue_cents,
+            CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as cost_cents
+          FROM meter_events
+          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
+          GROUP BY capability
+          ORDER BY revenue_cents DESC`,
+    );
 
-    return rows.map((row) => {
-      const marginCents = row.revenue_cents - row.cost_cents;
-      const marginPct = row.revenue_cents > 0 ? (marginCents / row.revenue_cents) * 100 : 0;
+    return (
+      result.rows as Array<{ capability: string; revenue_cents: string | number; cost_cents: string | number }>
+    ).map((row) => {
+      const revenueCents = Number(row.revenue_cents);
+      const costCents = Number(row.cost_cents);
+      const marginCents = revenueCents - costCents;
+      const marginPct = revenueCents > 0 ? (marginCents / revenueCents) * 100 : 0;
       return {
         capability: row.capability,
-        revenueCents: row.revenue_cents,
-        costCents: row.cost_cents,
+        revenueCents,
+        costCents,
         marginCents,
         marginPct,
       };
     });
   }
 
-  getProviderSpend(range: DateRange): ProviderSpendRow[] {
-    const rows = this.sqlite
-      .prepare(
-        `SELECT
-           provider,
-           COUNT(*) as call_count,
-           CAST(COALESCE(SUM(cost) * 100, 0) AS INTEGER) as spend_cents
-         FROM meter_events
-         WHERE timestamp >= ? AND timestamp <= ?
-         GROUP BY provider
-         ORDER BY spend_cents DESC`,
-      )
-      .all(range.from, range.to) as Array<{
-      provider: string;
-      call_count: number;
-      spend_cents: number;
-    }>;
+  async getProviderSpend(range: DateRange): Promise<ProviderSpendRow[]> {
+    const result = await exec(
+      this.db,
+      sql`SELECT
+            provider,
+            COUNT(*)::bigint as call_count,
+            CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as spend_cents
+          FROM meter_events
+          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
+          GROUP BY provider
+          ORDER BY spend_cents DESC`,
+    );
 
-    return rows.map((row) => ({
-      provider: row.provider,
-      callCount: row.call_count,
-      spendCents: row.spend_cents,
-      avgCostPerCallCents: row.call_count > 0 ? Math.round(row.spend_cents / row.call_count) : 0,
-    }));
+    return (result.rows as Array<{ provider: string; call_count: string | number; spend_cents: string | number }>).map(
+      (row) => {
+        const callCount = Number(row.call_count);
+        const spendCents = Number(row.spend_cents);
+        return {
+          provider: row.provider,
+          callCount,
+          spendCents,
+          avgCostPerCallCents: callCount > 0 ? Math.round(spendCents / callCount) : 0,
+        };
+      },
+    );
   }
 
-  getTenantHealth(): TenantHealthSummary {
+  async getTenantHealth(): Promise<TenantHealthSummary> {
     const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const totalRow = this.sqlite
-      .prepare(
-        `SELECT COUNT(*) as total FROM (
-           SELECT tenant_id FROM credit_balances
-           UNION
-           SELECT tenant_id FROM tenant_status
-         )`,
-      )
-      .get() as { total: number };
+    const totalResult = await exec(
+      this.db,
+      sql`SELECT COUNT(*)::bigint as total FROM (
+            SELECT tenant_id FROM credit_balances
+            UNION
+            SELECT tenant_id FROM tenant_status
+          ) t`,
+    );
 
-    const activeRow = this.sqlite
-      .prepare(
-        `SELECT COUNT(DISTINCT tenant_id) as active
-         FROM credit_transactions
-         WHERE amount_cents < 0
-           AND created_at >= ?`,
-      )
-      .get(thirtyDaysAgoIso) as { active: number };
+    const activeResult = await exec(
+      this.db,
+      sql`SELECT COUNT(DISTINCT tenant_id)::bigint as active
+          FROM credit_transactions
+          WHERE amount_cents < 0
+            AND created_at >= ${thirtyDaysAgoIso}`,
+    );
 
-    const withBalanceRow = this.sqlite
-      .prepare(
-        `SELECT COUNT(*) as with_balance
-         FROM credit_balances
-         WHERE balance_cents > 0`,
-      )
-      .get() as { with_balance: number };
+    const withBalanceResult = await exec(
+      this.db,
+      sql`SELECT COUNT(*)::bigint as with_balance
+          FROM credit_balances
+          WHERE balance_cents > 0`,
+    );
 
-    const totalTenants = totalRow.total;
-    const activeTenants = activeRow.active;
-    const withBalance = withBalanceRow.with_balance;
+    const atRiskResult = await exec(
+      this.db,
+      sql`SELECT COUNT(*)::bigint as at_risk
+          FROM credit_balances
+          WHERE balance_cents > 0 AND balance_cents < 500
+            AND tenant_id NOT IN (
+              SELECT DISTINCT tenant_id FROM credit_auto_topup WHERE status = 'success'
+            )`,
+    );
+
+    const totalTenants = Number((totalResult.rows[0] as { total: string | number })?.total ?? 0);
+    const activeTenants = Number((activeResult.rows[0] as { active: string | number })?.active ?? 0);
+    const withBalance = Number((withBalanceResult.rows[0] as { with_balance: string | number })?.with_balance ?? 0);
     const dormant = totalTenants - activeTenants;
-
-    const atRiskRow = this.sqlite
-      .prepare(
-        `SELECT COUNT(*) as at_risk
-         FROM credit_balances
-         WHERE balance_cents > 0 AND balance_cents < 500
-           AND tenant_id NOT IN (
-             SELECT DISTINCT tenant_id FROM credit_auto_topup WHERE status = 'success'
-           )`,
-      )
-      .get() as { at_risk: number };
-
-    const atRisk = atRiskRow.at_risk;
+    const atRisk = Number((atRiskResult.rows[0] as { at_risk: string | number })?.at_risk ?? 0);
 
     return {
       totalTenants,
@@ -375,109 +371,109 @@ export class AnalyticsStore {
     };
   }
 
-  getAutoTopupMetrics(range: DateRange): AutoTopupMetrics {
+  async getAutoTopupMetrics(range: DateRange): Promise<AutoTopupMetrics> {
     const iso = this.toIsoRange(range);
 
-    const row = this.sqlite
-      .prepare(
-        `SELECT
-           COUNT(*) as total_events,
-           COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0) as success_count,
-           COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed_count,
-           COALESCE(SUM(CASE WHEN status = 'success' THEN amount_cents ELSE 0 END), 0) as revenue_cents
-         FROM credit_auto_topup
-         WHERE created_at >= ? AND created_at <= ?`,
-      )
-      .get(iso.from, iso.to) as {
-      total_events: number;
-      success_count: number;
-      failed_count: number;
-      revenue_cents: number;
+    const result = await exec(
+      this.db,
+      sql`SELECT
+            COUNT(*)::bigint as total_events,
+            COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0)::bigint as success_count,
+            COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0)::bigint as failed_count,
+            COALESCE(SUM(CASE WHEN status = 'success' THEN amount_cents ELSE 0 END), 0)::bigint as revenue_cents
+          FROM credit_auto_topup
+          WHERE created_at >= ${iso.from} AND created_at <= ${iso.to}`,
+    );
+
+    const row = result.rows[0] as {
+      total_events: string | number;
+      success_count: string | number;
+      failed_count: string | number;
+      revenue_cents: string | number;
     };
 
-    const totalEvents = row.total_events;
-    const failureRate = totalEvents > 0 ? (row.failed_count / totalEvents) * 100 : 0;
+    const totalEvents = Number(row?.total_events ?? 0);
+    const failureRate = totalEvents > 0 ? (Number(row?.failed_count ?? 0) / totalEvents) * 100 : 0;
 
     return {
       totalEvents,
-      successCount: row.success_count,
-      failedCount: row.failed_count,
-      revenueCents: row.revenue_cents,
+      successCount: Number(row?.success_count ?? 0),
+      failedCount: Number(row?.failed_count ?? 0),
+      revenueCents: Number(row?.revenue_cents ?? 0),
       failureRate,
     };
   }
 
-  getTimeSeries(range: DateRange, bucketMs: number): TimeSeriesPoint[] {
+  async getTimeSeries(range: DateRange, bucketMs: number): Promise<TimeSeriesPoint[]> {
     // Cap at MAX_TIME_SERIES_POINTS by auto-adjusting bucket size
     const rangeMs = range.to - range.from;
     const minBucketMs = Math.ceil(rangeMs / MAX_TIME_SERIES_POINTS);
     const effectiveBucketMs = Math.max(bucketMs, minBucketMs);
 
-    const meterRows = this.sqlite
-      .prepare(
-        `SELECT
-           (CAST(timestamp / ? AS INTEGER) * ?) as period_start,
-           CAST(COALESCE(SUM(charge) * 100, 0) AS INTEGER) as per_use_revenue_cents,
-           CAST(COALESCE(SUM(cost) * 100, 0) AS INTEGER) as provider_cost_cents
-         FROM meter_events
-         WHERE timestamp >= ? AND timestamp <= ?
-         GROUP BY period_start
-         ORDER BY period_start`,
-      )
-      .all(effectiveBucketMs, effectiveBucketMs, range.from, range.to) as Array<{
-      period_start: number;
-      per_use_revenue_cents: number;
-      provider_cost_cents: number;
-    }>;
-
     const iso = this.toIsoRange(range);
-    const creditRows = this.sqlite
-      .prepare(
-        `SELECT
-           (CAST(CAST(strftime('%s', created_at) AS INTEGER) * 1000 / ? AS INTEGER) * ?) as period_start,
-           COALESCE(SUM(CASE WHEN type = 'purchase' AND amount_cents > 0 THEN amount_cents ELSE 0 END), 0) as credits_sold_cents,
-           COALESCE(SUM(CASE WHEN type IN ('bot_runtime', 'addon') THEN ABS(amount_cents) ELSE 0 END), 0) as monthly_revenue_cents
-         FROM credit_transactions
-         WHERE created_at >= ? AND created_at <= ?
-         GROUP BY period_start
-         ORDER BY period_start`,
-      )
-      .all(effectiveBucketMs, effectiveBucketMs, iso.from, iso.to) as Array<{
-      period_start: number;
-      credits_sold_cents: number;
-      monthly_revenue_cents: number;
-    }>;
+
+    const meterResult = await exec(
+      this.db,
+      sql`SELECT
+            (FLOOR(timestamp::numeric / ${effectiveBucketMs})::bigint * ${effectiveBucketMs}) as period_start,
+            CAST(COALESCE(SUM(charge) * 100, 0) AS BIGINT) as per_use_revenue_cents,
+            CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as provider_cost_cents
+          FROM meter_events
+          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
+          GROUP BY period_start
+          ORDER BY period_start`,
+    );
+
+    const creditResult = await exec(
+      this.db,
+      sql`SELECT
+            (FLOOR(EXTRACT(EPOCH FROM created_at::timestamptz) * 1000 / ${effectiveBucketMs})::bigint * ${effectiveBucketMs}) as period_start,
+            COALESCE(SUM(CASE WHEN type = 'purchase' AND amount_cents > 0 THEN amount_cents ELSE 0 END), 0)::bigint as credits_sold_cents,
+            COALESCE(SUM(CASE WHEN type IN ('bot_runtime', 'addon') THEN ABS(amount_cents) ELSE 0 END), 0)::bigint as monthly_revenue_cents
+          FROM credit_transactions
+          WHERE created_at >= ${iso.from} AND created_at <= ${iso.to}
+          GROUP BY period_start
+          ORDER BY period_start`,
+    );
 
     // Merge by period_start
     const pointMap = new Map<number, TimeSeriesPoint>();
 
-    for (const row of meterRows) {
-      const ps = row.period_start;
+    for (const row of meterResult.rows as Array<{
+      period_start: string | number;
+      per_use_revenue_cents: string | number;
+      provider_cost_cents: string | number;
+    }>) {
+      const ps = Number(row.period_start);
       pointMap.set(ps, {
         periodStart: ps,
         periodEnd: ps + effectiveBucketMs,
         creditsSoldCents: 0,
-        revenueConsumedCents: row.per_use_revenue_cents,
-        providerCostCents: row.provider_cost_cents,
-        marginCents: row.per_use_revenue_cents - row.provider_cost_cents,
+        revenueConsumedCents: Number(row.per_use_revenue_cents),
+        providerCostCents: Number(row.provider_cost_cents),
+        marginCents: Number(row.per_use_revenue_cents) - Number(row.provider_cost_cents),
       });
     }
 
-    for (const row of creditRows) {
-      const ps = row.period_start;
+    for (const row of creditResult.rows as Array<{
+      period_start: string | number;
+      credits_sold_cents: string | number;
+      monthly_revenue_cents: string | number;
+    }>) {
+      const ps = Number(row.period_start);
       const existing = pointMap.get(ps);
       if (existing) {
-        existing.creditsSoldCents = row.credits_sold_cents;
-        existing.revenueConsumedCents += row.monthly_revenue_cents;
+        existing.creditsSoldCents = Number(row.credits_sold_cents);
+        existing.revenueConsumedCents += Number(row.monthly_revenue_cents);
         existing.marginCents = existing.revenueConsumedCents - existing.providerCostCents;
       } else {
         pointMap.set(ps, {
           periodStart: ps,
           periodEnd: ps + effectiveBucketMs,
-          creditsSoldCents: row.credits_sold_cents,
-          revenueConsumedCents: row.monthly_revenue_cents,
+          creditsSoldCents: Number(row.credits_sold_cents),
+          revenueConsumedCents: Number(row.monthly_revenue_cents),
           providerCostCents: 0,
-          marginCents: row.monthly_revenue_cents,
+          marginCents: Number(row.monthly_revenue_cents),
         });
       }
     }
@@ -485,52 +481,52 @@ export class AnalyticsStore {
     return Array.from(pointMap.values()).sort((a, b) => a.periodStart - b.periodStart);
   }
 
-  exportCsv(range: DateRange, section: string): string {
+  async exportCsv(range: DateRange, section: string): Promise<string> {
     switch (section) {
       case "revenue_overview": {
-        const overview = this.getRevenueOverview(range);
+        const overview = await this.getRevenueOverview(range);
         return this.toCsv(
           ["creditsSoldCents", "revenueConsumedCents", "providerCostCents", "grossMarginCents", "grossMarginPct"],
           [overview as unknown as Record<string, unknown>],
         );
       }
       case "revenue_breakdown": {
-        const breakdown = this.getRevenueBreakdown(range);
+        const breakdown = await this.getRevenueBreakdown(range);
         return this.toCsv(
           ["category", "capability", "revenueCents"],
           breakdown as unknown as Record<string, unknown>[],
         );
       }
       case "margin_by_capability": {
-        const margins = this.getMarginByCapability(range);
+        const margins = await this.getMarginByCapability(range);
         return this.toCsv(
           ["capability", "revenueCents", "costCents", "marginCents", "marginPct"],
           margins as unknown as Record<string, unknown>[],
         );
       }
       case "provider_spend": {
-        const providers = this.getProviderSpend(range);
+        const providers = await this.getProviderSpend(range);
         return this.toCsv(
           ["provider", "callCount", "spendCents", "avgCostPerCallCents"],
           providers as unknown as Record<string, unknown>[],
         );
       }
       case "tenant_health": {
-        const health = this.getTenantHealth();
+        const health = await this.getTenantHealth();
         return this.toCsv(
           ["totalTenants", "activeTenants", "withBalance", "dormant", "atRisk"],
           [health as unknown as Record<string, unknown>],
         );
       }
       case "time_series": {
-        const series = this.getTimeSeries(range, 86_400_000);
+        const series = await this.getTimeSeries(range, 86_400_000);
         return this.toCsv(
           ["periodStart", "periodEnd", "creditsSoldCents", "revenueConsumedCents", "providerCostCents", "marginCents"],
           series as unknown as Record<string, unknown>[],
         );
       }
       case "auto_topup": {
-        const metrics = this.getAutoTopupMetrics(range);
+        const metrics = await this.getAutoTopupMetrics(range);
         return this.toCsv(
           ["totalEvents", "successCount", "failedCount", "revenueCents", "failureRate"],
           [metrics as unknown as Record<string, unknown>],

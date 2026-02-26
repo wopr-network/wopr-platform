@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
-export const vpsSubscriptions = sqliteTable(
+export const vpsSubscriptions = pgTable(
   "vps_subscriptions",
   {
     /** Bot instance UUID (FK to bot_instances.id) */
@@ -22,8 +22,8 @@ export const vpsSubscriptions = sqliteTable(
     hostname: text("hostname"),
     /** Disk size in GB */
     diskSizeGb: integer("disk_size_gb").notNull().default(20),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_vps_sub_tenant").on(table.tenantId),

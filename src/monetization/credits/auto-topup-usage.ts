@@ -19,36 +19,36 @@ export interface UsageTopupDeps {
  */
 export async function maybeTriggerUsageTopup(deps: UsageTopupDeps, tenantId: string): Promise<void> {
   // 1. Look up settings
-  const settings = deps.settingsRepo.getByTenant(tenantId);
+  const settings = await deps.settingsRepo.getByTenant(tenantId);
   if (!settings || !settings.usageEnabled) return;
 
   // 2. Check in-flight guard (idempotency)
   if (settings.usageChargeInFlight) return;
 
   // 3. Check balance vs threshold
-  const balance = deps.creditLedger.balance(tenantId);
+  const balance = await deps.creditLedger.balance(tenantId);
   if (balance >= settings.usageThresholdCents) return;
 
   // 4. Set in-flight flag
-  deps.settingsRepo.setUsageChargeInFlight(tenantId, true);
+  await deps.settingsRepo.setUsageChargeInFlight(tenantId, true);
 
   try {
     // 5. Execute charge
     const result = await deps.chargeAutoTopup(tenantId, settings.usageTopupCents, "auto_topup_usage");
 
     if (result.success) {
-      deps.settingsRepo.resetUsageFailures(tenantId);
+      await deps.settingsRepo.resetUsageFailures(tenantId);
     } else {
-      const failureCount = deps.settingsRepo.incrementUsageFailures(tenantId);
+      const failureCount = await deps.settingsRepo.incrementUsageFailures(tenantId);
       if (failureCount >= MAX_CONSECUTIVE_FAILURES) {
-        deps.settingsRepo.disableUsage(tenantId);
+        await deps.settingsRepo.disableUsage(tenantId);
         logger.warn("Usage auto-topup disabled after consecutive failures", { tenantId, failureCount });
       }
     }
   } catch (err) {
-    const failureCount = deps.settingsRepo.incrementUsageFailures(tenantId);
+    const failureCount = await deps.settingsRepo.incrementUsageFailures(tenantId);
     if (failureCount >= MAX_CONSECUTIVE_FAILURES) {
-      deps.settingsRepo.disableUsage(tenantId);
+      await deps.settingsRepo.disableUsage(tenantId);
     }
     logger.error("Usage auto-topup unexpected error", {
       tenantId,
@@ -56,6 +56,6 @@ export async function maybeTriggerUsageTopup(deps: UsageTopupDeps, tenantId: str
     });
   } finally {
     // 6. Clear in-flight flag
-    deps.settingsRepo.setUsageChargeInFlight(tenantId, false);
+    await deps.settingsRepo.setUsageChargeInFlight(tenantId, false);
   }
 }

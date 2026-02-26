@@ -73,11 +73,16 @@ vi.mock("../../backup/retention.js", () => {
 });
 
 // Import AFTER mocks
-const { snapshotRoutes } = await import("./snapshots.js");
+const { snapshotRoutes, setSnapshotManagerForTest } = await import("./snapshots.js");
+const { SnapshotManager } = await import("../../backup/snapshot-manager.js");
 
 // Mount under the same path pattern as app.ts
 const app = new Hono();
 app.route("/api/instances/:id/snapshots", snapshotRoutes);
+
+// Inject mock manager so routes don't call getPool() (which requires DATABASE_URL)
+const mockManagerInstance = new SnapshotManager({} as never);
+setSnapshotManagerForTest(mockManagerInstance);
 
 describe("snapshot routes", () => {
   beforeEach(() => {

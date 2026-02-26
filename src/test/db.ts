@@ -1,10 +1,12 @@
-import Database from "better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { createDb, type DrizzleDb } from "../db/index.js";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+import type { DrizzleDb } from "../db/index.js";
+import * as schema from "../db/schema/index.js";
 
-export function createTestDb(): { db: DrizzleDb; sqlite: Database.Database } {
-  const sqlite = new Database(":memory:");
-  const db = createDb(sqlite);
-  migrate(db, { migrationsFolder: "./drizzle/migrations" });
-  return { db, sqlite };
+export async function createTestDb(): Promise<{ db: DrizzleDb; pool: PGlite }> {
+  const pool = new PGlite();
+  const db = drizzle(pool, { schema }) as unknown as DrizzleDb;
+  await migrate(drizzle(pool, { schema }), { migrationsFolder: "./drizzle/migrations" });
+  return { db, pool };
 }

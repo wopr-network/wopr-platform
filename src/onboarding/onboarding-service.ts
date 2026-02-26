@@ -15,13 +15,13 @@ export class OnboardingService {
   async createSession(opts: { userId?: string; anonymousId?: string }): Promise<OnboardingSession> {
     // Return existing session if one already exists for this user/anon
     if (opts.userId) {
-      const existing = this.repo.getByUserId(opts.userId);
+      const existing = await this.repo.getByUserId(opts.userId);
       if (existing && existing.status === "active") {
         return existing;
       }
     }
     if (opts.anonymousId) {
-      const existing = this.repo.getByAnonymousId(opts.anonymousId);
+      const existing = await this.repo.getByAnonymousId(opts.anonymousId);
       if (existing && existing.status === "active") {
         return existing;
       }
@@ -47,7 +47,7 @@ export class OnboardingService {
   }
 
   async getHistory(sessionId: string, limit = 50): Promise<ConversationEntry[]> {
-    const session = this.repo.getById(sessionId);
+    const session = await this.repo.getById(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
     }
@@ -58,7 +58,7 @@ export class OnboardingService {
   }
 
   async inject(sessionId: string, message: string, opts: { from?: string } = {}): Promise<string> {
-    const session = this.repo.getById(sessionId);
+    const session = await this.repo.getById(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
     }
@@ -76,11 +76,11 @@ export class OnboardingService {
     }
 
     const response = await this.client.inject(session.woprSessionName, message, { from: opts.from });
-    this.repo.updateBudgetUsed(sessionId, session.budgetUsedCents + 1);
+    await this.repo.updateBudgetUsed(sessionId, session.budgetUsedCents + 1);
     return response;
   }
 
-  upgradeAnonymousToUser(anonymousId: string, userId: string): OnboardingSession | null {
+  async upgradeAnonymousToUser(anonymousId: string, userId: string): Promise<OnboardingSession | null> {
     return this.repo.upgradeAnonymousToUser(anonymousId, userId);
   }
 
@@ -91,14 +91,14 @@ export class OnboardingService {
    * Skips if: no active anonymous session, session is stale (>24h), or user
    * already has an active session.
    */
-  handoff(anonymousId: string, userId: string): OnboardingSession | null {
-    const anonSession = this.repo.getActiveByAnonymousId(anonymousId);
+  async handoff(anonymousId: string, userId: string): Promise<OnboardingSession | null> {
+    const anonSession = await this.repo.getActiveByAnonymousId(anonymousId);
     if (!anonSession) return null;
 
     // If user already has an active session, mark anon as transferred but don't merge
-    const existingUserSession = this.repo.getByUserId(userId);
+    const existingUserSession = await this.repo.getByUserId(userId);
     if (existingUserSession && existingUserSession.status === "active") {
-      this.repo.setStatus(anonSession.id, "transferred");
+      await this.repo.setStatus(anonSession.id, "transferred");
       return null;
     }
 

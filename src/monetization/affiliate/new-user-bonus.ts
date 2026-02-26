@@ -23,13 +23,13 @@ export interface NewUserBonusResult {
  * Idempotent: uses `affiliate-bonus:<tenantId>` as referenceId.
  * No-op if tenant is not referred, already received bonus, or bonus rounds to 0.
  */
-export function grantNewUserBonus(params: NewUserBonusParams): NewUserBonusResult {
+export async function grantNewUserBonus(params: NewUserBonusParams): Promise<NewUserBonusResult> {
   const { ledger, affiliateRepo, referredTenantId, purchaseAmountCents } = params;
   const rate = params.bonusRate ?? DEFAULT_BONUS_RATE;
   const SKIP: NewUserBonusResult = { granted: false, bonusCents: 0 };
 
   // 1. Look up referral — skip if not referred
-  const referral = affiliateRepo.getReferral(referredTenantId);
+  const referral = await affiliateRepo.getReferral(referredTenantId);
   if (!referral) {
     return SKIP;
   }
@@ -41,7 +41,7 @@ export function grantNewUserBonus(params: NewUserBonusParams): NewUserBonusResul
 
   // 3. Idempotency: skip if bonus already credited
   const refId = `affiliate-bonus:${referredTenantId}`;
-  if (ledger.hasReferenceId(refId)) {
+  if (await ledger.hasReferenceId(refId)) {
     return SKIP;
   }
 
@@ -52,10 +52,10 @@ export function grantNewUserBonus(params: NewUserBonusParams): NewUserBonusResul
   }
 
   // 5. Mark first purchase on the referral row (no-op if already set)
-  affiliateRepo.markFirstPurchase(referredTenantId);
+  await affiliateRepo.markFirstPurchase(referredTenantId);
 
   // 6. Credit the bonus
-  ledger.credit(
+  await ledger.credit(
     referredTenantId,
     bonusCents,
     "affiliate_bonus",

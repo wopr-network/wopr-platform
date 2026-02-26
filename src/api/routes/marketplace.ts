@@ -20,7 +20,7 @@ export const marketplaceRoutes = new Hono<AuditEnv>();
  *   - category: filter by plugin category
  *   - search: search by name/description/tags
  */
-marketplaceRoutes.get("/plugins", (c) => {
+marketplaceRoutes.get("/plugins", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
@@ -29,8 +29,9 @@ marketplaceRoutes.get("/plugins", (c) => {
   let plugins: typeof pluginRegistry;
   try {
     const repo = getMarketplacePluginRepo();
-    plugins = pluginRegistry.filter((p) => {
-      const dbRecord = repo.findById(p.id);
+    const dbRecords = await Promise.all(pluginRegistry.map((p) => repo.findById(p.id)));
+    plugins = pluginRegistry.filter((_, i) => {
+      const dbRecord = dbRecords[i];
       return dbRecord ? dbRecord.enabled : true;
     });
   } catch {

@@ -1,4 +1,4 @@
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../../src/admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../../src/db/index.js";
@@ -10,7 +10,7 @@ describe("Public Pricing API Routes", () => {
 		// Since publicPricingRoutes uses a lazy singleton, we can't easily inject a test DB.
 		// We'll test the route as-is (it will use the real DB path or fail gracefully).
 		// For better testing, we'd need to refactor publicPricingRoutes to accept a factory.
-		
+
 		const response = await publicPricingRoutes.request("/", {
 			method: "GET",
 		});
@@ -40,20 +40,20 @@ describe("Public Pricing API Routes", () => {
 
 describe("Public Pricing Data Structure", () => {
 	let db: DrizzleDb;
-	let sqlite: BetterSqlite3.Database;
+	let pool: PGlite;
 	let store: RateStore;
 
-	beforeEach(() => {
-		({ db, sqlite } = createTestDb());
+	beforeEach(async () => {
+		({ db, pool } = await createTestDb());
 		store = new RateStore(db);
 	});
 
-	afterEach(() => {
-		sqlite.close();
+	afterEach(async () => {
+		await pool.close();
 	});
 
-	it("groups rates by capability with correct structure", () => {
-		store.createSellRate({
+	it("groups rates by capability with correct structure", async () => {
+		await store.createSellRate({
 			capability: "text-gen-1",
 			displayName: "GPT-4",
 			unit: "1M tokens",
@@ -61,7 +61,7 @@ describe("Public Pricing Data Structure", () => {
 			isActive: true,
 		});
 
-		store.createSellRate({
+		await store.createSellRate({
 			capability: "text-gen-2",
 			displayName: "GPT-3.5",
 			unit: "1M tokens",
@@ -69,7 +69,7 @@ describe("Public Pricing Data Structure", () => {
 			isActive: true,
 		});
 
-		store.createSellRate({
+		await store.createSellRate({
 			capability: "tts-1",
 			displayName: "ElevenLabs",
 			unit: "1K chars",
@@ -77,7 +77,7 @@ describe("Public Pricing Data Structure", () => {
 			isActive: true,
 		});
 
-		const rates = store.listPublicRates();
+		const rates = await store.listPublicRates();
 
 		// Group by capability
 		const grouped: Record<string, Array<{ name: string; unit: string; price: number }>> = {};
@@ -97,8 +97,8 @@ describe("Public Pricing Data Structure", () => {
 		expect(grouped["text-gen-1"][0]).toHaveProperty("price");
 	});
 
-	it("excludes inactive rates from public pricing", () => {
-		store.createSellRate({
+	it("excludes inactive rates from public pricing", async () => {
+		await store.createSellRate({
 			capability: "text-gen-active",
 			displayName: "GPT-4",
 			unit: "1M tokens",
@@ -106,7 +106,7 @@ describe("Public Pricing Data Structure", () => {
 			isActive: true,
 		});
 
-		store.createSellRate({
+		await store.createSellRate({
 			capability: "text-gen-inactive",
 			displayName: "Old Model",
 			unit: "1M tokens",
@@ -114,7 +114,7 @@ describe("Public Pricing Data Structure", () => {
 			isActive: false,
 		});
 
-		const rates = store.listPublicRates();
+		const rates = await store.listPublicRates();
 
 		expect(rates).toHaveLength(1);
 		expect(rates[0].display_name).toBe("GPT-4");

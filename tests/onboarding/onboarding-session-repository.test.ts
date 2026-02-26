@@ -1,26 +1,25 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../../src/db/schema/index.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../src/db/index.js";
 import { DrizzleOnboardingSessionRepository } from "../../src/onboarding/drizzle-onboarding-session-repository.js";
-
-function createTestDb() {
-  const sqlite = new Database(":memory:");
-  const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: "drizzle/migrations" });
-  return db;
-}
+import { createTestDb } from "../../src/test/db.js";
 
 describe("DrizzleOnboardingSessionRepository", () => {
   let repo: DrizzleOnboardingSessionRepository;
+  let pool: PGlite;
 
-  beforeEach(() => {
-    repo = new DrizzleOnboardingSessionRepository(createTestDb());
+  beforeEach(async () => {
+    const result = await createTestDb();
+    pool = result.pool;
+    repo = new DrizzleOnboardingSessionRepository(result.db as DrizzleDb);
   });
 
-  it("creates and retrieves a session by id", () => {
-    const session = repo.create({
+  afterEach(async () => {
+    await pool.close();
+  });
+
+  it("creates and retrieves a session by id", async () => {
+    const session = await repo.create({
       id: "s1",
       userId: "u1",
       anonymousId: null,
@@ -31,67 +30,67 @@ describe("DrizzleOnboardingSessionRepository", () => {
     expect(session.userId).toBe("u1");
     expect(session.budgetUsedCents).toBe(0);
 
-    const found = repo.getById("s1");
+    const found = await repo.getById("s1");
     expect(found).not.toBeNull();
     expect(found!.woprSessionName).toBe("onboarding-u1");
   });
 
-  it("retrieves by userId", () => {
-    repo.create({ id: "s2", userId: "u2", anonymousId: null, woprSessionName: "onboarding-u2", status: "active" });
-    const found = repo.getByUserId("u2");
+  it("retrieves by userId", async () => {
+    await repo.create({ id: "s2", userId: "u2", anonymousId: null, woprSessionName: "onboarding-u2", status: "active" });
+    const found = await repo.getByUserId("u2");
     expect(found).not.toBeNull();
     expect(found!.id).toBe("s2");
   });
 
-  it("retrieves by anonymousId", () => {
-    repo.create({ id: "s3", userId: null, anonymousId: "anon-1", woprSessionName: "onboarding-anon-1", status: "active" });
-    const found = repo.getByAnonymousId("anon-1");
+  it("retrieves by anonymousId", async () => {
+    await repo.create({ id: "s3", userId: null, anonymousId: "anon-1", woprSessionName: "onboarding-anon-1", status: "active" });
+    const found = await repo.getByAnonymousId("anon-1");
     expect(found).not.toBeNull();
     expect(found!.id).toBe("s3");
   });
 
-  it("upgrades anonymous to user", () => {
-    repo.create({ id: "s4", userId: null, anonymousId: "anon-2", woprSessionName: "onboarding-anon-2", status: "active" });
-    const upgraded = repo.upgradeAnonymousToUser("anon-2", "u3");
+  it("upgrades anonymous to user", async () => {
+    await repo.create({ id: "s4", userId: null, anonymousId: "anon-2", woprSessionName: "onboarding-anon-2", status: "active" });
+    const upgraded = await repo.upgradeAnonymousToUser("anon-2", "u3");
     expect(upgraded).not.toBeNull();
     expect(upgraded!.userId).toBe("u3");
     expect(upgraded!.anonymousId).toBe("anon-2");
   });
 
-  it("updates budget used", () => {
-    repo.create({ id: "s5", userId: "u4", anonymousId: null, woprSessionName: "onboarding-u4", status: "active" });
-    repo.updateBudgetUsed("s5", 50);
-    const found = repo.getById("s5");
+  it("updates budget used", async () => {
+    await repo.create({ id: "s5", userId: "u4", anonymousId: null, woprSessionName: "onboarding-u4", status: "active" });
+    await repo.updateBudgetUsed("s5", 50);
+    const found = await repo.getById("s5");
     expect(found!.budgetUsedCents).toBe(50);
   });
 
-  it("sets status", () => {
-    repo.create({ id: "s6", userId: "u5", anonymousId: null, woprSessionName: "onboarding-u5", status: "active" });
-    repo.setStatus("s6", "transferred");
-    const found = repo.getById("s6");
+  it("sets status", async () => {
+    await repo.create({ id: "s6", userId: "u5", anonymousId: null, woprSessionName: "onboarding-u5", status: "active" });
+    await repo.setStatus("s6", "transferred");
+    const found = await repo.getById("s6");
     expect(found!.status).toBe("transferred");
   });
 
-  it("returns null for missing id", () => {
-    expect(repo.getById("nonexistent")).toBeNull();
+  it("returns null for missing id", async () => {
+    expect(await repo.getById("nonexistent")).toBeNull();
   });
 
   describe("getActiveByAnonymousId", () => {
-    it("returns active session created within 24h", () => {
-      repo.create({
+    it("returns active session created within 24h", async () => {
+      await repo.create({
         id: "s10",
         userId: null,
         anonymousId: "anon-fresh",
         woprSessionName: "onboarding-s10",
         status: "active",
       });
-      const result = repo.getActiveByAnonymousId("anon-fresh");
+      const result = await repo.getActiveByAnonymousId("anon-fresh");
       expect(result).not.toBeNull();
       expect(result!.id).toBe("s10");
     });
 
     it("returns null for session older than 24h", async () => {
-      repo.create({
+      await repo.create({
         id: "s11",
         userId: null,
         anonymousId: "anon-stale",
@@ -99,34 +98,32 @@ describe("DrizzleOnboardingSessionRepository", () => {
         status: "active",
       });
       // Backdate createdAt to 25 hours ago via direct db update
-      const db = (repo as unknown as { db: ReturnType<typeof import("drizzle-orm/better-sqlite3").drizzle> }).db;
       const { onboardingSessions } = await import("../../src/db/schema/index.js");
       const { eq } = await import("drizzle-orm");
-      (db as ReturnType<typeof import("drizzle-orm/better-sqlite3").drizzle>)
+      await (repo as any).db
         .update(onboardingSessions)
         .set({ createdAt: Date.now() - 25 * 60 * 60 * 1000 })
-        .where(eq(onboardingSessions.id, "s11"))
-        .run();
+        .where(eq(onboardingSessions.id, "s11"));
 
-      const result = repo.getActiveByAnonymousId("anon-stale");
+      const result = await repo.getActiveByAnonymousId("anon-stale");
       expect(result).toBeNull();
     });
 
-    it("returns null for non-active session", () => {
-      repo.create({
+    it("returns null for non-active session", async () => {
+      await repo.create({
         id: "s12",
         userId: null,
         anonymousId: "anon-expired",
         woprSessionName: "onboarding-s12",
         status: "active",
       });
-      repo.setStatus("s12", "expired");
-      const result = repo.getActiveByAnonymousId("anon-expired");
+      await repo.setStatus("s12", "expired");
+      const result = await repo.getActiveByAnonymousId("anon-expired");
       expect(result).toBeNull();
     });
 
-    it("returns null for unknown anonymousId", () => {
-      const result = repo.getActiveByAnonymousId("nonexistent-anon");
+    it("returns null for unknown anonymousId", async () => {
+      const result = await repo.getActiveByAnonymousId("nonexistent-anon");
       expect(result).toBeNull();
     });
   });

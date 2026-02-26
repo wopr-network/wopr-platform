@@ -1,16 +1,21 @@
-// biome-ignore lint/style/useImportType: Database namespace needed for Database.Database type reference
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { drizzle } from "drizzle-orm/node-postgres";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import type { Pool } from "pg";
 import * as schema from "./schema/index.js";
 
-export type DrizzleDb = ReturnType<typeof createDb>;
+/** The schema type shared across all db instances. */
+export type Schema = typeof schema;
 
-/** Create a Drizzle database instance wrapping the given better-sqlite3 database. */
-export function createDb(sqlite: Database.Database) {
-  return drizzle(sqlite, { schema });
+/**
+ * Structural DrizzleDb type — satisfied by both NodePgDatabase (production)
+ * and PgliteDatabase (tests). Repositories accept this type.
+ */
+export type DrizzleDb = PgDatabase<PgQueryResultHKT, Schema>;
+
+/** Create a Drizzle database instance wrapping the given pg.Pool. */
+export function createDb(pool: Pool): DrizzleDb {
+  return drizzle(pool, { schema }) as unknown as DrizzleDb;
 }
 
 export { schema };
-// Custom column types (WOP-983)
 export { creditColumn } from "./credit-column.js";
-export { applyPlatformPragmas } from "./pragmas.js";

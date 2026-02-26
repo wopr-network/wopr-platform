@@ -23,10 +23,10 @@ function createCaller(ctx: TRPCContext) {
 function makeInMemoryRepo(): ITenantModelSelectionRepository {
   const store = new Map<string, string>();
   return {
-    getDefaultModel(tenantId: string): string {
+    async getDefaultModel(tenantId: string): Promise<string> {
       return store.get(tenantId) ?? "openrouter/auto";
     },
-    setDefaultModel(tenantId: string, defaultModel: string): void {
+    async setDefaultModel(tenantId: string, defaultModel: string): Promise<void> {
       store.set(tenantId, defaultModel);
     },
   };

@@ -60,7 +60,9 @@ export class HeartbeatWatchdog {
     });
 
     this.timer = setInterval(() => {
-      this.check();
+      this.check().catch((err) => {
+        logger.error("Heartbeat watchdog check failed", { err });
+      });
     }, this.CHECK_INTERVAL_MS);
   }
 
@@ -78,9 +80,9 @@ export class HeartbeatWatchdog {
   /**
    * Check all active/unhealthy nodes for missing heartbeats
    */
-  private check(): void {
+  private async check(): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    const activeNodes = this.nodeRepo.list(["active", "unhealthy"]);
+    const activeNodes = await this.nodeRepo.list(["active", "unhealthy"]);
 
     for (const node of activeNodes) {
       // Skip nodes that have never sent a heartbeat (just registered)
@@ -96,7 +98,7 @@ export class HeartbeatWatchdog {
           elapsed,
         });
 
-        this.nodeRepo.transition(node.id, "offline", "heartbeat_timeout", "heartbeat_watchdog");
+        await this.nodeRepo.transition(node.id, "offline", "heartbeat_timeout", "heartbeat_watchdog");
 
         this.onNodeStatusChange(node.id, "offline");
 
@@ -112,7 +114,7 @@ export class HeartbeatWatchdog {
           elapsed,
         });
 
-        this.nodeRepo.transition(node.id, "unhealthy", "heartbeat_timeout", "heartbeat_watchdog");
+        await this.nodeRepo.transition(node.id, "unhealthy", "heartbeat_timeout", "heartbeat_watchdog");
 
         this.onNodeStatusChange(node.id, "unhealthy");
       }

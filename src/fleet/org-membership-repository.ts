@@ -20,7 +20,7 @@ import { orgMemberships } from "../db/schema/org-memberships.js";
 
 export interface IOrgMembershipRepository {
   /** Return the org tenant ID for the given member tenant, or null if not a member. */
-  getOrgTenantIdForMember(memberTenantId: string): string | null;
+  getOrgTenantIdForMember(memberTenantId: string): Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,12 +30,11 @@ export interface IOrgMembershipRepository {
 export class DrizzleOrgMembershipRepository implements IOrgMembershipRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  getOrgTenantIdForMember(memberTenantId: string): string | null {
-    const row = this.db
+  async getOrgTenantIdForMember(memberTenantId: string): Promise<string | null> {
+    const rows = await this.db
       .select({ orgTenantId: orgMemberships.orgTenantId })
       .from(orgMemberships)
-      .where(eq(orgMemberships.memberTenantId, memberTenantId))
-      .get();
-    return row?.orgTenantId ?? null;
+      .where(eq(orgMemberships.memberTenantId, memberTenantId));
+    return rows[0]?.orgTenantId ?? null;
   }
 }

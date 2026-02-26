@@ -34,11 +34,11 @@ const CAPABILITY_PROVIDER: Record<string, string> = {
 
 export interface CapabilitiesRouterDeps {
   getTenantKeyStore: () => {
-    listForTenant: (tenantId: string) => unknown[];
+    listForTenant: (tenantId: string) => Promise<unknown[]>;
     get: (
       tenantId: string,
       provider: string,
-    ) =>
+    ) => Promise<
       | {
           id: string;
           tenant_id: string;
@@ -47,9 +47,10 @@ export interface CapabilitiesRouterDeps {
           created_at: number;
           updated_at: number;
         }
-      | undefined;
-    upsert: (tenantId: string, provider: string, encryptedPayload: EncryptedPayload, label: string) => string;
-    delete: (tenantId: string, provider: string) => boolean;
+      | undefined
+    >;
+    upsert: (tenantId: string, provider: string, encryptedPayload: EncryptedPayload, label: string) => Promise<string>;
+    delete: (tenantId: string, provider: string) => Promise<boolean>;
   };
   getCapabilitySettingsStore: () => CapabilitySettingsStore;
   encrypt: (plaintext: string, key: Buffer) => EncryptedPayload;
@@ -71,25 +72,21 @@ function deps(): CapabilitiesRouterDeps {
 }
 
 // ---------------------------------------------------------------------------
-// Capability-to-provider mapping
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 export const capabilitiesRouter = router({
   /** List all stored API keys for the authenticated tenant (metadata only). */
-  listKeys: tenantProcedure.query(({ ctx }) => {
+  listKeys: tenantProcedure.query(async ({ ctx }) => {
     const { getTenantKeyStore } = deps();
-    const keys = getTenantKeyStore().listForTenant(ctx.tenantId);
+    const keys = await getTenantKeyStore().listForTenant(ctx.tenantId);
     return { keys };
   }),
 
   /** Check whether a key is stored for a specific provider. */
-  getKey: tenantProcedure.input(z.object({ provider: providerSchema })).query(({ input, ctx }) => {
+  getKey: tenantProcedure.input(z.object({ provider: providerSchema })).query(async ({ input, ctx }) => {
     const { getTenantKeyStore } = deps();
-    const record = getTenantKeyStore().get(ctx.tenantId, input.provider);
+    const record = await getTenantKeyStore().get(ctx.tenantId, input.provider);
     if (!record) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No key stored for this provider" });
     }
@@ -112,7 +109,7 @@ export const capabilitiesRouter = router({
         label: z.string().max(100).optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { getTenantKeyStore, encrypt, deriveTenantKey, platformSecret } = deps();
       if (!platformSecret) {
         throw new TRPCError({
@@ -123,15 +120,15 @@ export const capabilitiesRouter = router({
 
       const tenantKey = deriveTenantKey(ctx.tenantId, platformSecret);
       const encryptedPayload = encrypt(input.apiKey, tenantKey);
-      const id = getTenantKeyStore().upsert(ctx.tenantId, input.provider, encryptedPayload, input.label ?? "");
+      const id = await getTenantKeyStore().upsert(ctx.tenantId, input.provider, encryptedPayload, input.label ?? "");
 
       return { ok: true as const, id, provider: input.provider };
     }),
 
   /** Delete a stored API key. */
-  deleteKey: tenantProcedure.input(z.object({ provider: providerSchema })).mutation(({ input, ctx }) => {
+  deleteKey: tenantProcedure.input(z.object({ provider: providerSchema })).mutation(async ({ input, ctx }) => {
     const { getTenantKeyStore } = deps();
-    const deleted = getTenantKeyStore().delete(ctx.tenantId, input.provider);
+    const deleted = await getTenantKeyStore().delete(ctx.tenantId, input.provider);
     if (!deleted) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No key stored for this provider" });
     }
@@ -151,38 +148,40 @@ export const capabilitiesRouter = router({
     }),
 
   /** List capability settings for the authenticated tenant. */
-  listCapabilitySettings: tenantProcedure.query(({ ctx }) => {
+  listCapabilitySettings: tenantProcedure.query(async ({ ctx }) => {
     const { getTenantKeyStore, getCapabilitySettingsStore } = deps();
     const keyStore = getTenantKeyStore();
     const capStore = getCapabilitySettingsStore();
-    const settings = capStore.listForTenant(ctx.tenantId);
+    const settings = await capStore.listForTenant(ctx.tenantId);
     const settingsMap = new Map(settings.map((s) => [s.capability, s.mode]));
 
-    return ALL_CAPABILITIES.map((capability) => {
-      const mode = settingsMap.get(capability) ?? "hosted";
-      const provider = CAPABILITY_PROVIDER[capability] ?? null;
-      const hostedOnly = HOSTED_ONLY_CAPABILITIES.has(capability);
+    return Promise.all(
+      ALL_CAPABILITIES.map(async (capability) => {
+        const mode = settingsMap.get(capability) ?? "hosted";
+        const provider = CAPABILITY_PROVIDER[capability] ?? null;
+        const hostedOnly = HOSTED_ONLY_CAPABILITIES.has(capability);
 
-      if (mode === "hosted" || hostedOnly) {
+        if (mode === "hosted" || hostedOnly) {
+          return {
+            capability,
+            mode: "hosted" as const,
+            provider: hostedOnly ? null : provider,
+            maskedKey: null,
+            keyStatus: null,
+          };
+        }
+
+        // byok mode
+        const keyRecord = provider ? await keyStore.get(ctx.tenantId, provider) : undefined;
         return {
           capability,
-          mode: "hosted" as const,
-          provider: hostedOnly ? null : provider,
-          maskedKey: null,
-          keyStatus: null,
+          mode: "byok" as const,
+          provider,
+          maskedKey: keyRecord ? (keyRecord as { label: string }).label : null,
+          keyStatus: keyRecord ? ("unchecked" as const) : null,
         };
-      }
-
-      // byok mode
-      const keyRecord = provider ? keyStore.get(ctx.tenantId, provider) : undefined;
-      return {
-        capability,
-        mode: "byok" as const,
-        provider,
-        maskedKey: keyRecord ? (keyRecord as { label: string }).label : null,
-        keyStatus: keyRecord ? ("unchecked" as const) : null,
-      };
-    });
+      }),
+    );
   }),
 
   /** Update capability mode (hosted vs byok) and optionally store a new key. */
@@ -194,7 +193,7 @@ export const capabilitiesRouter = router({
         key: z.string().min(1).optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { getTenantKeyStore, getCapabilitySettingsStore, encrypt, deriveTenantKey, platformSecret } = deps();
 
       if (input.mode === "byok" && HOSTED_ONLY_CAPABILITIES.has(input.capability)) {
@@ -205,7 +204,7 @@ export const capabilitiesRouter = router({
       }
 
       const capStore = getCapabilitySettingsStore();
-      capStore.upsert(ctx.tenantId, input.capability, input.mode);
+      await capStore.upsert(ctx.tenantId, input.capability, input.mode);
 
       if (input.mode === "hosted") {
         return {
@@ -230,7 +229,7 @@ export const capabilitiesRouter = router({
         const tenantKey = deriveTenantKey(ctx.tenantId, platformSecret);
         const encryptedPayload = encrypt(input.key, tenantKey);
         const maskedKey = `...${input.key.slice(-4)}`;
-        keyStore.upsert(ctx.tenantId, provider, encryptedPayload, maskedKey);
+        await keyStore.upsert(ctx.tenantId, provider, encryptedPayload, maskedKey);
         return {
           capability: input.capability,
           mode: "byok" as const,
@@ -240,7 +239,7 @@ export const capabilitiesRouter = router({
         };
       }
 
-      const keyRecord = provider ? keyStore.get(ctx.tenantId, provider) : undefined;
+      const keyRecord = provider ? await keyStore.get(ctx.tenantId, provider) : undefined;
       return {
         capability: input.capability,
         mode: "byok" as const,

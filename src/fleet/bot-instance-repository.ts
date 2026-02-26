@@ -9,12 +9,12 @@ export type { BillingState, BotInstance, NewBotInstance };
 
 /** Repository interface for bot instance operations. */
 export interface IBotInstanceRepository {
-  getById(id: string): BotInstance | null;
-  listByNode(nodeId: string): BotInstance[];
-  listByTenant(tenantId: string): BotInstance[];
-  create(data: NewBotInstance): BotInstance;
-  reassign(id: string, nodeId: string): BotInstance;
-  setBillingState(id: string, state: BillingState): BotInstance;
-  getResourceTier(botId: string): string | null;
-  setResourceTier(botId: string, tier: string): void;
+  getById(id: string): Promise<BotInstance | null>;
+  listByNode(nodeId: string): Promise<BotInstance[]>;
+  listByTenant(tenantId: string): Promise<BotInstance[]>;
+  create(data: NewBotInstance): Promise<BotInstance>;
+  reassign(id: string, nodeId: string): Promise<BotInstance>;
+  setBillingState(id: string, state: BillingState): Promise<BotInstance>;
+  getResourceTier(botId: string): Promise<string | null>;
+  setResourceTier(botId: string, tier: string): Promise<void>;
 }

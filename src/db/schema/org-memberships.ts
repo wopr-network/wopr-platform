@@ -1,16 +1,16 @@
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { bigint, index, pgTable, primaryKey, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Org membership — maps member tenants to their parent org tenant.
  * A member tenant can belong to at most one org (unique on member_tenant_id).
  * Created by org management flows (WOP-1006). Read-only for this feature.
  */
-export const orgMemberships = sqliteTable(
+export const orgMemberships = pgTable(
   "org_memberships",
   {
     orgTenantId: text("org_tenant_id").notNull(),
     memberTenantId: text("member_tenant_id").notNull(),
-    createdAt: integer("created_at").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.orgTenantId, table.memberTenantId] }),

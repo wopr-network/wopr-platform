@@ -38,18 +38,18 @@ export interface OrgInviteRow {
 // ---------------------------------------------------------------------------
 
 export interface IOrgMemberRepository {
-  listMembers(orgId: string): OrgMemberRow[];
-  addMember(member: OrgMemberRow): void;
-  updateMemberRole(orgId: string, userId: string, role: "owner" | "admin" | "member"): void;
-  removeMember(orgId: string, userId: string): void;
-  findMember(orgId: string, userId: string): OrgMemberRow | null;
-  countAdminsAndOwners(orgId: string): number;
+  listMembers(orgId: string): Promise<OrgMemberRow[]>;
+  addMember(member: OrgMemberRow): Promise<void>;
+  updateMemberRole(orgId: string, userId: string, role: "owner" | "admin" | "member"): Promise<void>;
+  removeMember(orgId: string, userId: string): Promise<void>;
+  findMember(orgId: string, userId: string): Promise<OrgMemberRow | null>;
+  countAdminsAndOwners(orgId: string): Promise<number>;
 
-  listInvites(orgId: string): OrgInviteRow[];
-  createInvite(invite: OrgInviteRow): void;
-  findInviteById(inviteId: string): OrgInviteRow | null;
-  findInviteByToken(token: string): OrgInviteRow | null;
-  deleteInvite(inviteId: string): void;
+  listInvites(orgId: string): Promise<OrgInviteRow[]>;
+  createInvite(invite: OrgInviteRow): Promise<void>;
+  findInviteById(inviteId: string): Promise<OrgInviteRow | null>;
+  findInviteByToken(token: string): Promise<OrgInviteRow | null>;
+  deleteInvite(inviteId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,71 +82,68 @@ function toInvite(row: typeof organizationInvites.$inferSelect): OrgInviteRow {
 export class DrizzleOrgMemberRepository implements IOrgMemberRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  listMembers(orgId: string): OrgMemberRow[] {
-    return this.db.select().from(organizationMembers).where(eq(organizationMembers.orgId, orgId)).all().map(toMember);
+  async listMembers(orgId: string): Promise<OrgMemberRow[]> {
+    const rows = await this.db.select().from(organizationMembers).where(eq(organizationMembers.orgId, orgId));
+    return rows.map(toMember);
   }
 
-  addMember(member: OrgMemberRow): void {
-    this.db.insert(organizationMembers).values(member).onConflictDoNothing().run();
+  async addMember(member: OrgMemberRow): Promise<void> {
+    await this.db.insert(organizationMembers).values(member).onConflictDoNothing();
   }
 
-  updateMemberRole(orgId: string, userId: string, role: "owner" | "admin" | "member"): void {
-    this.db
+  async updateMemberRole(orgId: string, userId: string, role: "owner" | "admin" | "member"): Promise<void> {
+    await this.db
       .update(organizationMembers)
       .set({ role })
-      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
-      .run();
+      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)));
   }
 
-  removeMember(orgId: string, userId: string): void {
-    this.db
+  async removeMember(orgId: string, userId: string): Promise<void> {
+    await this.db
       .delete(organizationMembers)
-      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
-      .run();
+      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)));
   }
 
-  findMember(orgId: string, userId: string): OrgMemberRow | null {
-    const row = this.db
+  async findMember(orgId: string, userId: string): Promise<OrgMemberRow | null> {
+    const rows = await this.db
       .select()
       .from(organizationMembers)
-      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)))
-      .get();
-    return row ? toMember(row) : null;
+      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.userId, userId)));
+    return rows[0] ? toMember(rows[0]) : null;
   }
 
-  countAdminsAndOwners(orgId: string): number {
-    return this.db
+  async countAdminsAndOwners(orgId: string): Promise<number> {
+    const rows = await this.db
       .select()
       .from(organizationMembers)
-      .where(and(eq(organizationMembers.orgId, orgId), inArray(organizationMembers.role, ["admin", "owner"])))
-      .all().length;
+      .where(and(eq(organizationMembers.orgId, orgId), inArray(organizationMembers.role, ["admin", "owner"])));
+    return rows.length;
   }
 
-  listInvites(orgId: string): OrgInviteRow[] {
+  async listInvites(orgId: string): Promise<OrgInviteRow[]> {
     const now = Date.now();
-    return this.db
+    const rows = await this.db
       .select()
       .from(organizationInvites)
-      .where(and(eq(organizationInvites.orgId, orgId), gt(organizationInvites.expiresAt, now)))
-      .all()
-      .map(toInvite);
+      .where(and(eq(organizationInvites.orgId, orgId), gt(organizationInvites.expiresAt, now)));
+    return rows.map(toInvite);
   }
 
-  createInvite(invite: OrgInviteRow): void {
-    this.db.insert(organizationInvites).values(invite).run();
+  async createInvite(invite: OrgInviteRow): Promise<void> {
+    await this.db.insert(organizationInvites).values(invite);
   }
 
-  findInviteById(inviteId: string): OrgInviteRow | null {
-    const row = this.db.select().from(organizationInvites).where(eq(organizationInvites.id, inviteId)).get();
-    return row ? toInvite(row) : null;
+  async findInviteById(inviteId: string): Promise<OrgInviteRow | null> {
+    const rows = await this.db.select().from(organizationInvites).where(eq(organizationInvites.id, inviteId));
+    return rows[0] ? toInvite(rows[0]) : null;
   }
 
-  findInviteByToken(token: string): OrgInviteRow | null {
-    const row = this.db.select().from(organizationInvites).where(eq(organizationInvites.token, token)).get();
-    return row ? toInvite(row) : null;
+  async findInviteByToken(token: string): Promise<OrgInviteRow | null> {
+    const rows = await this.db.select().from(organizationInvites).where(eq(organizationInvites.token, token));
+    return rows[0] ? toInvite(rows[0]) : null;
   }
 
-  deleteInvite(inviteId: string): void {
-    this.db.delete(organizationInvites).where(eq(organizationInvites.id, inviteId)).run();
+  async deleteInvite(inviteId: string): Promise<void> {
+    await this.db.delete(organizationInvites).where(eq(organizationInvites.id, inviteId));
   }
 }

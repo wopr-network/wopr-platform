@@ -14,22 +14,19 @@ export class AdminNotesStore implements IAdminNotesRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Add a new note. */
-  create(input: AdminNoteInput): AdminNote {
+  async create(input: AdminNoteInput): Promise<AdminNote> {
     const id = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
 
-    this.db
-      .insert(adminNotes)
-      .values({
-        id,
-        tenantId: input.tenantId,
-        authorId: input.authorId,
-        content: input.content,
-        isPinned: input.isPinned ? 1 : 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    await this.db.insert(adminNotes).values({
+      id,
+      tenantId: input.tenantId,
+      authorId: input.authorId,
+      content: input.content,
+      isPinned: input.isPinned ? 1 : 0,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     return {
       id,
@@ -43,23 +40,22 @@ export class AdminNotesStore implements IAdminNotesRepository {
   }
 
   /** List notes for a tenant, pinned first, then by recency. */
-  list(filters: AdminNoteFilters): { entries: AdminNote[]; total: number } {
+  async list(filters: AdminNoteFilters): Promise<{ entries: AdminNote[]; total: number }> {
     const where = eq(adminNotes.tenantId, filters.tenantId);
 
-    const countResult = this.db.select({ count: count() }).from(adminNotes).where(where).get();
-    const total = countResult?.count ?? 0;
+    const countResult = await this.db.select({ count: count() }).from(adminNotes).where(where);
+    const total = countResult[0]?.count ?? 0;
 
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);
 
-    const rows = this.db
+    const rows = await this.db
       .select()
       .from(adminNotes)
       .where(where)
       .orderBy(desc(adminNotes.isPinned), desc(adminNotes.createdAt))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     return {
       entries: rows.map((r) => ({
@@ -76,8 +72,13 @@ export class AdminNotesStore implements IAdminNotesRepository {
   }
 
   /** Update a note's content or pinned status. Returns null if not found or tenantId mismatch. */
-  update(noteId: string, tenantId: string, updates: { content?: string; isPinned?: boolean }): AdminNote | null {
-    const existing = this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId)).get();
+  async update(
+    noteId: string,
+    tenantId: string,
+    updates: { content?: string; isPinned?: boolean },
+  ): Promise<AdminNote | null> {
+    const existingRows = await this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId));
+    const existing = existingRows[0];
 
     if (!existing) return null;
     if (existing.tenantId !== tenantId) return null;
@@ -88,9 +89,10 @@ export class AdminNotesStore implements IAdminNotesRepository {
     if (updates.content !== undefined) setValues.content = updates.content;
     if (updates.isPinned !== undefined) setValues.isPinned = updates.isPinned ? 1 : 0;
 
-    this.db.update(adminNotes).set(setValues).where(eq(adminNotes.id, noteId)).run();
+    await this.db.update(adminNotes).set(setValues).where(eq(adminNotes.id, noteId));
 
-    const updated = this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId)).get();
+    const updatedRows = await this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId));
+    const updated = updatedRows[0];
 
     if (!updated) return null;
 
@@ -106,13 +108,14 @@ export class AdminNotesStore implements IAdminNotesRepository {
   }
 
   /** Delete a note by ID. Returns false if not found or tenantId mismatch. */
-  delete(noteId: string, tenantId: string): boolean {
-    const existing = this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId)).get();
+  async delete(noteId: string, tenantId: string): Promise<boolean> {
+    const existingRows = await this.db.select().from(adminNotes).where(eq(adminNotes.id, noteId));
+    const existing = existingRows[0];
 
     if (!existing) return false;
     if (existing.tenantId !== tenantId) return false;
 
-    const result = this.db.delete(adminNotes).where(eq(adminNotes.id, noteId)).run();
-    return result.changes > 0;
+    const result = await this.db.delete(adminNotes).where(eq(adminNotes.id, noteId)).returning({ id: adminNotes.id });
+    return result.length > 0;
   }
 }

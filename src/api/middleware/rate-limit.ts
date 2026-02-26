@@ -127,7 +127,7 @@ export function rateLimit(cfg: RateLimitConfig): MiddlewareHandler {
     const now = Date.now();
     const key = keyGen(c);
 
-    const entry = cfg.repo.increment(key, scope, windowMs);
+    const entry = await cfg.repo.increment(key, scope, windowMs);
     const windowStart = entry.windowStart;
     const count = entry.count;
 
@@ -193,7 +193,7 @@ export function rateLimitByRoute(
     const now = Date.now();
     const key = keyGen(c);
 
-    const entry = repo.increment(key, scope, windowMs);
+    const entry = await repo.increment(key, scope, windowMs);
     const windowStart = entry.windowStart;
     const count = entry.count;
 

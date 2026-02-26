@@ -123,7 +123,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
     const callbackUrl = `${process.env.BETTER_AUTH_URL || "http://localhost:3100"}/api/channel-oauth/callback`;
     const state = randomUUID();
     const now = Date.now();
-    oauthRepo.create({
+    await oauthRepo.create({
       state,
       provider,
       userId: user.id,
@@ -169,7 +169,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       return c.html(callbackHtml("error", "Missing code or state parameter"));
     }
 
-    const pending = oauthRepo.consumePending(state);
+    const pending = await oauthRepo.consumePending(state);
     if (!pending) {
       return c.html(callbackHtml("error", "Invalid or expired OAuth state"));
     }
@@ -225,7 +225,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       }
 
       // Store the completed token keyed by state for frontend polling
-      oauthRepo.completeWithToken(state, accessToken, pending.userId);
+      await oauthRepo.completeWithToken(state, accessToken, pending.userId);
 
       return c.html(callbackHtml("success", state));
     } catch (err) {
@@ -262,7 +262,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       return c.json({ error: "Missing state parameter" }, 400);
     }
 
-    const result = oauthRepo.consumeCompleted(state, user.id);
+    const result = await oauthRepo.consumeCompleted(state, user.id);
     if (!result) {
       return c.json({ status: "pending" });
     }

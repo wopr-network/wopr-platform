@@ -1,20 +1,15 @@
-import BetterSqlite3 from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb, type DrizzleDb } from "../../db/index.js";
-import * as schema from "../../db/schema/index.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { meterEvents } from "../../db/schema/meter-events.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import { initAffiliateSchema } from "../../monetization/affiliate/schema.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import { initMeterSchema } from "../../monetization/metering/schema.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
 import { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
-import { initPayRamSchema } from "../../monetization/payram/schema.js";
-import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+import { createTestDb } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
@@ -33,30 +28,12 @@ const tenantUnknownAuthHeader = { Authorization: `Bearer ${TEST_TENANT_UNKNOWN_T
 // Import AFTER env stub
 const { billingRoutes, setBillingDeps } = await import("./billing.js");
 
-function createTestSigPenaltyRepo(): ISigPenaltyRepository {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS webhook_sig_penalties (
-      ip TEXT NOT NULL,
-      source TEXT NOT NULL,
-      failures INTEGER NOT NULL DEFAULT 0,
-      blocked_until INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (ip, source)
-    );
-  `);
-  return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
+function createTestSigPenaltyRepo(db: DrizzleDb): ISigPenaltyRepository {
+  return new DrizzleSigPenaltyRepository(db);
 }
 
-function createBillingTestDb() {
-  const sqlite = new BetterSqlite3(":memory:");
-  initMeterSchema(sqlite);
-  initStripeSchema(sqlite);
-  initCreditSchema(sqlite);
-  initPayRamSchema(sqlite);
-  initAffiliateSchema(sqlite);
-  const db = createDb(sqlite);
-  return { sqlite, db };
+async function createBillingTestDb(): Promise<{ db: DrizzleDb; pool: PGlite }> {
+  return createTestDb();
 }
 
 function createMockProcessor(
@@ -98,19 +75,19 @@ function createMockProcessor(
 }
 
 describe("billing routes", () => {
-  let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
+  let pool: PGlite;
   let processor: IPaymentProcessor;
   let tenantStore: TenantCustomerStore;
   let sigPenaltyRepo: ISigPenaltyRepository;
 
-  beforeEach(() => {
-    const testDb = createBillingTestDb();
-    sqlite = testDb.sqlite;
+  beforeEach(async () => {
+    const testDb = await createBillingTestDb();
+    pool = testDb.pool;
     db = testDb.db;
     processor = createMockProcessor();
     tenantStore = new TenantCustomerStore(db);
-    sigPenaltyRepo = createTestSigPenaltyRepo();
+    sigPenaltyRepo = createTestSigPenaltyRepo(db);
     setBillingDeps({
       processor,
       creditLedger: new CreditLedger(db),
@@ -120,8 +97,8 @@ describe("billing routes", () => {
     });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   // -- Authentication -------------------------------------------------------
@@ -281,7 +258,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ createCheckoutSession }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -313,7 +290,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ createPortalSession }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -360,7 +337,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ supportsPortal: false }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
       const res = await billingRoutes.request("/portal", {
@@ -385,7 +362,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ createPortalSession }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -424,7 +401,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -450,7 +427,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -473,7 +450,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -510,7 +487,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -544,7 +521,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -564,7 +541,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -582,7 +559,7 @@ describe("billing routes", () => {
 
     it("returns 429 when IP has too many signature failures (exponential backoff)", async () => {
       const handleWebhook = vi.fn().mockRejectedValue(new Error("Webhook signature verification failed"));
-      const sharedSigPenaltyRepo = createTestSigPenaltyRepo();
+      const sharedSigPenaltyRepo = createTestSigPenaltyRepo(db);
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
@@ -611,7 +588,7 @@ describe("billing routes", () => {
 
     it("does not penalize different IPs for another IP's failures", async () => {
       const handleWebhook = vi.fn().mockRejectedValue(new Error("sig fail"));
-      const sharedSigPenaltyRepo = createTestSigPenaltyRepo();
+      const sharedSigPenaltyRepo = createTestSigPenaltyRepo(db);
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
@@ -644,23 +621,33 @@ describe("billing routes", () => {
       const now = Date.now();
       const windowStart = Math.floor(now / 60_000) * 60_000;
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-1", "t-1", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "t-1",
+        capability: "chat",
+        provider: "openai",
+        cost: 0.01,
+        charge: 0.015,
+        timestamp: windowStart + 1000,
+        sessionId: null,
+        duration: null,
+      });
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-2", "t-1", "embeddings", "openai", 0.001, 0.0015, windowStart + 2000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-2",
+        tenant: "t-1",
+        capability: "embeddings",
+        provider: "openai",
+        cost: 0.001,
+        charge: 0.0015,
+        timestamp: windowStart + 2000,
+        sessionId: null,
+        duration: null,
+      });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
       const aggregator = new MeterAggregator(db);
-      aggregator.aggregate(windowStart + 60_000);
+      await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-1`, {
         method: "GET",
@@ -679,23 +666,33 @@ describe("billing routes", () => {
       const now = Date.now();
       const windowStart = Math.floor(now / 60_000) * 60_000;
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-3", "t-2", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-3",
+        tenant: "t-2",
+        capability: "chat",
+        provider: "openai",
+        cost: 0.01,
+        charge: 0.015,
+        timestamp: windowStart + 1000,
+        sessionId: null,
+        duration: null,
+      });
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-4", "t-2", "voice", "elevenlabs", 0.02, 0.03, windowStart + 2000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-4",
+        tenant: "t-2",
+        capability: "voice",
+        provider: "elevenlabs",
+        cost: 0.02,
+        charge: 0.03,
+        timestamp: windowStart + 2000,
+        sessionId: null,
+        duration: null,
+      });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
       const aggregator = new MeterAggregator(db);
-      aggregator.aggregate(windowStart + 60_000);
+      await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-2&capability=chat`, {
         method: "GET",
@@ -712,23 +709,33 @@ describe("billing routes", () => {
       const now = Date.now();
       const windowStart = Math.floor(now / 60_000) * 60_000;
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-5", "t-3", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-5",
+        tenant: "t-3",
+        capability: "chat",
+        provider: "openai",
+        cost: 0.01,
+        charge: 0.015,
+        timestamp: windowStart + 1000,
+        sessionId: null,
+        duration: null,
+      });
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-6", "t-3", "chat", "anthropic", 0.02, 0.03, windowStart + 2000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-6",
+        tenant: "t-3",
+        capability: "chat",
+        provider: "anthropic",
+        cost: 0.02,
+        charge: 0.03,
+        timestamp: windowStart + 2000,
+        sessionId: null,
+        duration: null,
+      });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
       const aggregator = new MeterAggregator(db);
-      aggregator.aggregate(windowStart + 60_000);
+      await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-3&provider=anthropic`, {
         method: "GET",
@@ -746,23 +753,33 @@ describe("billing routes", () => {
       const window1 = Math.floor(now / 60_000) * 60_000;
       const window2 = window1 + 60_000;
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-7", "t-4", "chat", "openai", 0.01, 0.015, window1 + 1000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-7",
+        tenant: "t-4",
+        capability: "chat",
+        provider: "openai",
+        cost: 0.01,
+        charge: 0.015,
+        timestamp: window1 + 1000,
+        sessionId: null,
+        duration: null,
+      });
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-8", "t-4", "chat", "openai", 0.02, 0.03, window2 + 1000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-8",
+        tenant: "t-4",
+        capability: "chat",
+        provider: "openai",
+        cost: 0.02,
+        charge: 0.03,
+        timestamp: window2 + 1000,
+        sessionId: null,
+        duration: null,
+      });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
       const aggregator = new MeterAggregator(db);
-      aggregator.aggregate(window2 + 60_000);
+      await aggregator.aggregate(window2 + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-4&startDate=${window1}&endDate=${window1 + 60_000}`, {
         method: "GET",
@@ -814,23 +831,33 @@ describe("billing routes", () => {
       const now = Date.now();
       const windowStart = Math.floor(now / 60_000) * 60_000;
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-s1", "t-sum-1", "chat", "openai", 0.01, 0.015, windowStart + 1000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-s1",
+        tenant: "t-sum-1",
+        capability: "chat",
+        provider: "openai",
+        cost: 0.01,
+        charge: 0.015,
+        timestamp: windowStart + 1000,
+        sessionId: null,
+        duration: null,
+      });
 
-      sqlite
-        .prepare(
-          `INSERT INTO meter_events (id, tenant, capability, provider, cost, charge, timestamp, session_id, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run("evt-s2", "t-sum-1", "embeddings", "openai", 0.005, 0.0075, windowStart + 2000, null, null);
+      await db.insert(meterEvents).values({
+        id: "evt-s2",
+        tenant: "t-sum-1",
+        capability: "embeddings",
+        provider: "openai",
+        cost: 0.005,
+        charge: 0.0075,
+        timestamp: windowStart + 2000,
+        sessionId: null,
+        duration: null,
+      });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
       const aggregator = new MeterAggregator(db);
-      aggregator.aggregate(windowStart + 60_000);
+      await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage/summary?tenant=t-sum-1&startDate=${windowStart}`, {
         method: "GET",
@@ -841,8 +868,8 @@ describe("billing routes", () => {
       const body = await res.json();
       expect(body.tenant).toBe("t-sum-1");
       expect(body.period_start).toBe(windowStart);
-      expect(body.total_cost).toBe(0.015);
-      expect(body.total_charge).toBe(0.0225);
+      expect(body.total_cost).toBeCloseTo(0.015, 8);
+      expect(body.total_charge).toBeCloseTo(0.0225, 8);
       expect(body.event_count).toBe(2);
     });
 
@@ -915,7 +942,7 @@ describe("billing routes", () => {
         processor: createMockProcessor(),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeStore: new DrizzlePayRamChargeStore(db),
       });
@@ -931,7 +958,7 @@ describe("billing routes", () => {
         processor: createMockProcessor(),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -980,7 +1007,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -1036,7 +1063,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -1056,7 +1083,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -1081,7 +1108,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ detachPaymentMethod }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -1120,7 +1147,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ detachPaymentMethod }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -1140,7 +1167,7 @@ describe("billing routes", () => {
         processor: createMockProcessor({ detachPaymentMethod }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 

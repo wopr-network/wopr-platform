@@ -120,7 +120,7 @@ export function createCreditGate(cfg: CreditGateConfig) {
         return c.json({ error: "Authentication required" }, 401);
       }
 
-      const balance = cfg.ledger.balance(tenantId);
+      const balance = await cfg.ledger.balance(tenantId);
 
       if (balance < minCents) {
         return c.json(

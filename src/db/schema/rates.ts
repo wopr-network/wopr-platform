@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, real, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Sell rates — what users pay. This is the public-facing price list.
  * Completely decoupled from provider costs.
  */
-export const sellRates = sqliteTable(
+export const sellRates = pgTable(
   "sell_rates",
   {
     id: text("id").primaryKey(),
@@ -23,8 +23,8 @@ export const sellRates = sqliteTable(
     isActive: integer("is_active").notNull().default(1),
     /** Sort order within capability group */
     sortOrder: integer("sort_order").notNull().default(0),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_sell_rates_capability").on(table.capability),
@@ -38,7 +38,7 @@ export const sellRates = sqliteTable(
  * Multiple providers can serve the same capability; priority + latency class
  * feed the provider arbitrage router.
  */
-export const providerCosts = sqliteTable(
+export const providerCosts = pgTable(
   "provider_costs",
   {
     id: text("id").primaryKey(),
@@ -58,8 +58,8 @@ export const providerCosts = sqliteTable(
     latencyClass: text("latency_class").notNull().default("standard"),
     /** Whether this provider is active and eligible for routing */
     isActive: integer("is_active").notNull().default(1),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_provider_costs_capability").on(table.capability),

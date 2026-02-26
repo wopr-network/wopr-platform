@@ -22,7 +22,7 @@ export class MetricsCollector {
   }
 
   /** Aggregate metrics across the last N minutes. */
-  getWindow(minutes: number): WindowResult {
+  async getWindow(minutes: number): Promise<WindowResult> {
     return this.repo.getWindow(minutes);
   }
 }

@@ -57,12 +57,12 @@ function makeTestApp(ledger: CreditLedger): Hono<GatewayAuthEnv> {
 // ---------------------------------------------------------------------------
 
 describe("creditBalanceCheck", () => {
-  it("returns null when credit ledger is not configured", () => {
+  it("returns null when credit ledger is not configured", async () => {
     const app = makeTestApp(new StubCreditLedger(1000));
     const c = app.request("/", { method: "GET" }) as unknown as Parameters<typeof creditBalanceCheck>[0];
     const deps: CreditGateDeps = { topUpUrl: "/credits" };
 
-    const result = creditBalanceCheck(c, deps, 100);
+    const result = await creditBalanceCheck(c, deps, 100);
     expect(result).toBeNull();
   });
 
@@ -75,8 +75,8 @@ describe("creditBalanceCheck", () => {
       topUpUrl: "/credits",
     };
 
-    app.get("/check-sufficient", (c) => {
-      const err = creditBalanceCheck(c, deps, 500);
+    app.get("/check-sufficient", async (c) => {
+      const err = await creditBalanceCheck(c, deps, 500);
       if (err) {
         return c.json({ error: err }, 402);
       }
@@ -96,8 +96,8 @@ describe("creditBalanceCheck", () => {
       topUpUrl: "/credits",
     };
 
-    app.get("/check-insufficient", (c) => {
-      const err = creditBalanceCheck(c, deps, 500); // Need 500 cents
+    app.get("/check-insufficient", async (c) => {
+      const err = await creditBalanceCheck(c, deps, 500); // Need 500 cents
       if (err) {
         return c.json({ error: err }, 402);
       }
@@ -137,8 +137,8 @@ describe("creditBalanceCheck", () => {
       topUpUrl: "/credits",
     };
 
-    app.get("/check-subcent", (c) => {
-      const err = creditBalanceCheck(c, deps, 0); // Sub-cent operation (0 cents estimated)
+    app.get("/check-subcent", async (c) => {
+      const err = await creditBalanceCheck(c, deps, 0); // Sub-cent operation (0 cents estimated)
       if (err) {
         return c.json({ error: err }, 402);
       }
@@ -209,7 +209,7 @@ describe("credit gate integration with streaming", () => {
 
     // Simulate streaming path
     app.post("/stream", async (c) => {
-      const creditErr = creditBalanceCheck(c, deps, 0);
+      const creditErr = await creditBalanceCheck(c, deps, 0);
       if (creditErr) {
         return c.json({ error: creditErr }, 402);
       }

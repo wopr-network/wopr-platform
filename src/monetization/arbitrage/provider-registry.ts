@@ -6,6 +6,7 @@
  */
 
 import type { ProviderCost, RateStore } from "../../admin/rates/rate-store.js";
+import { logger } from "../../config/logger.js";
 import type { IProviderHealthRepository } from "../provider-health-repository.js";
 import type { ModelProviderEntry } from "./types.js";
 
@@ -45,41 +46,49 @@ export class ProviderRegistry {
   }
 
   /** Get all providers for a capability, with health status applied. */
-  getProviders(capability: string): ModelProviderEntry[] {
+  async getProviders(capability: string): Promise<ModelProviderEntry[]> {
     if (Date.now() - this.lastRefresh > this.cacheTtlMs) {
-      this.refresh();
+      await this.refresh();
     }
 
     const entries = this.cache.get(capability) ?? [];
 
-    return entries.map((entry) => {
-      const override = this.healthRepo.get(entry.adapter);
-      if (!override) return entry;
+    return Promise.all(
+      entries.map(async (entry) => {
+        const override = await this.healthRepo.get(entry.adapter);
+        if (!override) return entry;
 
-      // Auto-recovery: if unhealthy TTL has elapsed, clear the override
-      if (!override.healthy && Date.now() - override.markedAt > this.unhealthyTtlMs) {
-        this.healthRepo.markHealthy(entry.adapter);
-        return entry;
-      }
+        // Auto-recovery: if unhealthy TTL has elapsed, clear the override
+        if (!override.healthy && Date.now() - override.markedAt > this.unhealthyTtlMs) {
+          this.healthRepo
+            .markHealthy(entry.adapter)
+            .catch((err) => logger.warn("Failed to clear health override", { adapter: entry.adapter, err }));
+          return entry;
+        }
 
-      return { ...entry, healthy: override.healthy };
-    });
+        return { ...entry, healthy: override.healthy };
+      }),
+    );
   }
 
   /** Mark a provider as unhealthy (called on 5xx errors). */
   markUnhealthy(adapter: string): void {
-    this.healthRepo.markUnhealthy(adapter);
+    this.healthRepo
+      .markUnhealthy(adapter)
+      .catch((err) => logger.warn("Failed to persist unhealthy state", { adapter, err }));
   }
 
   /** Mark a provider as healthy (called on successful responses or health probes). */
   markHealthy(adapter: string): void {
-    this.healthRepo.markHealthy(adapter);
+    this.healthRepo
+      .markHealthy(adapter)
+      .catch((err) => logger.warn("Failed to persist healthy state", { adapter, err }));
   }
 
   /** Force-refresh the cache from DB. */
-  refresh(): void {
+  async refresh(): Promise<void> {
     // Load all active provider costs grouped by capability
-    const { entries } = this.rateStore.listProviderCosts({ isActive: true, limit: 250 });
+    const { entries } = await this.rateStore.listProviderCosts({ isActive: true, limit: 250 });
 
     // Group by capability
     const byCapability = new Map<string, ModelProviderEntry[]>();

@@ -1,7 +1,7 @@
 import { desc, sql } from "drizzle-orm";
-import { check, index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, check, index, integer, pgTable, real, text } from "drizzle-orm/pg-core";
 
-export const snapshots = sqliteTable(
+export const snapshots = pgTable(
   "snapshots",
   {
     id: text("id").primaryKey(),
@@ -20,9 +20,9 @@ export const snapshots = sqliteTable(
     plugins: text("plugins").notNull().default("[]"),
     configHash: text("config_hash").notNull().default(""),
     storagePath: text("storage_path").notNull(),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    expiresAt: integer("expires_at"),
-    deletedAt: integer("deleted_at"),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
+    expiresAt: bigint("expires_at", { mode: "number" }),
+    deletedAt: bigint("deleted_at", { mode: "number" }),
   },
   (table) => [
     index("idx_snapshots_instance").on(table.instanceId, desc(table.createdAt)),

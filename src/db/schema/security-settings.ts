@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, boolean, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Per-tenant security settings.
@@ -7,8 +7,8 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
  * all users in the tenant must have 2FA enabled before they can access
  * protected resources.
  */
-export const tenantSecuritySettings = sqliteTable("tenant_security_settings", {
+export const tenantSecuritySettings = pgTable("tenant_security_settings", {
   tenantId: text("tenant_id").primaryKey(),
-  requireTwoFactor: integer("require_two_factor", { mode: "boolean" }).notNull().default(false),
-  updatedAt: integer("updated_at").notNull(),
+  requireTwoFactor: boolean("require_two_factor").notNull().default(false),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });

@@ -34,9 +34,9 @@ export interface NewRestoreLogEntry {
 }
 
 export interface IRestoreLogRepository {
-  insert(entry: NewRestoreLogEntry): void;
-  getById(id: string): RestoreLogEntry | null;
-  listByTenant(tenant: string, limit: number): RestoreLogEntry[];
+  insert(entry: NewRestoreLogEntry): Promise<void>;
+  getById(id: string): Promise<RestoreLogEntry | null>;
+  listByTenant(tenant: string, limit: number): Promise<RestoreLogEntry[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,11 +58,11 @@ export interface BackupStatusRow {
 }
 
 export interface IBackupStatusRepository {
-  upsertSuccess(containerId: string, nodeId: string, sizeMb: number, remotePath: string): void;
-  upsertFailure(containerId: string, nodeId: string, error: string): void;
-  getByContainerId(containerId: string): BackupStatusRow | null;
-  listAll(): BackupStatusRow[];
-  count(): number;
+  upsertSuccess(containerId: string, nodeId: string, sizeMb: number, remotePath: string): Promise<void>;
+  upsertFailure(containerId: string, nodeId: string, error: string): Promise<void>;
+  getByContainerId(containerId: string): Promise<BackupStatusRow | null>;
+  listAll(): Promise<BackupStatusRow[]>;
+  count(): Promise<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,15 +90,15 @@ export interface NewSnapshotRow {
 }
 
 export interface ISnapshotRepository {
-  insert(row: NewSnapshotRow): void;
-  getById(id: string): Snapshot | null;
-  list(instanceId: string, type?: string): Snapshot[];
-  listByTenant(tenant: string, type?: string): Snapshot[];
-  countByTenant(tenant: string, type: "on-demand"): number;
-  listAllActive(type: "on-demand"): Snapshot[];
-  listExpired(now: number): Snapshot[];
-  softDelete(id: string): void;
-  hardDelete(id: string): void;
-  count(instanceId: string): number;
-  getOldest(instanceId: string, limit: number): Snapshot[];
+  insert(row: NewSnapshotRow): Promise<void>;
+  getById(id: string): Promise<Snapshot | null>;
+  list(instanceId: string, type?: string): Promise<Snapshot[]>;
+  listByTenant(tenant: string, type?: string): Promise<Snapshot[]>;
+  countByTenant(tenant: string, type: "on-demand"): Promise<number>;
+  listAllActive(type: "on-demand"): Promise<Snapshot[]>;
+  listExpired(now: number): Promise<Snapshot[]>;
+  softDelete(id: string): Promise<void>;
+  hardDelete(id: string): Promise<void>;
+  count(instanceId: string): Promise<number>;
+  getOldest(instanceId: string, limit: number): Promise<Snapshot[]>;
 }

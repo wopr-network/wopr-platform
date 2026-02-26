@@ -1,4 +1,4 @@
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
@@ -7,19 +7,20 @@ import { checkTenantStatus, createTenantStatusGate } from "./tenant-status-middl
 import { TenantStatusStore } from "./tenant-status-store.js";
 
 describe("createTenantStatusGate", () => {
-  let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
   let store: TenantStatusStore;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     store = new TenantStatusStore(db);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
   function createApp(tenantId: string | undefined) {
@@ -34,7 +35,7 @@ describe("createTenantStatusGate", () => {
   }
 
   it("allows active tenant through", async () => {
-    store.ensureExists("tenant-1");
+    await store.ensureExists("tenant-1");
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(200);
@@ -49,14 +50,14 @@ describe("createTenantStatusGate", () => {
   });
 
   it("allows grace_period tenant through", async () => {
-    store.setGracePeriod("tenant-1");
+    await store.setGracePeriod("tenant-1");
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(200);
   });
 
   it("blocks suspended tenant with 403", async () => {
-    store.suspend("tenant-1", "testing", "admin-1");
+    await store.suspend("tenant-1", "testing", "admin-1");
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(403);
@@ -65,7 +66,7 @@ describe("createTenantStatusGate", () => {
   });
 
   it("blocks banned tenant with 403", async () => {
-    store.ban("tenant-1", "tos violation", "admin-1");
+    await store.ban("tenant-1", "tos violation", "admin-1");
     const app = createApp("tenant-1");
     const res = await app.request("/test");
     expect(res.status).toBe(403);
@@ -81,45 +82,46 @@ describe("createTenantStatusGate", () => {
 });
 
 describe("checkTenantStatus", () => {
-  let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pool: PGlite;
   let store: TenantStatusStore;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     store = new TenantStatusStore(db);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
-  it("returns null for active tenant", () => {
-    store.ensureExists("tenant-1");
-    expect(checkTenantStatus(store, "tenant-1")).toBeNull();
+  it("returns null for active tenant", async () => {
+    await store.ensureExists("tenant-1");
+    expect(await checkTenantStatus(store, "tenant-1")).toBeNull();
   });
 
-  it("returns null for unknown tenant", () => {
-    expect(checkTenantStatus(store, "unknown")).toBeNull();
+  it("returns null for unknown tenant", async () => {
+    expect(await checkTenantStatus(store, "unknown")).toBeNull();
   });
 
-  it("returns null for grace_period tenant", () => {
-    store.setGracePeriod("tenant-1");
-    expect(checkTenantStatus(store, "tenant-1")).toBeNull();
+  it("returns null for grace_period tenant", async () => {
+    await store.setGracePeriod("tenant-1");
+    expect(await checkTenantStatus(store, "tenant-1")).toBeNull();
   });
 
-  it("returns error for suspended tenant", () => {
-    store.suspend("tenant-1", "reason", "admin-1");
-    const result = checkTenantStatus(store, "tenant-1");
+  it("returns error for suspended tenant", async () => {
+    await store.suspend("tenant-1", "reason", "admin-1");
+    const result = await checkTenantStatus(store, "tenant-1");
     expect(result).not.toBeNull();
     expect(result?.error).toBe("account_suspended");
   });
 
-  it("returns error for banned tenant", () => {
-    store.ban("tenant-1", "reason", "admin-1");
-    const result = checkTenantStatus(store, "tenant-1");
+  it("returns error for banned tenant", async () => {
+    await store.ban("tenant-1", "reason", "admin-1");
+    const result = await checkTenantStatus(store, "tenant-1");
     expect(result).not.toBeNull();
     expect(result?.error).toBe("account_banned");
   });

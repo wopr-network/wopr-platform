@@ -315,7 +315,7 @@ billingRoutes.post("/webhook", async (c) => {
   const now = Date.now();
 
   // Check if this IP is currently in penalty backoff
-  const penalty = sigPenaltyRepo.get(ip, "stripe");
+  const penalty = await sigPenaltyRepo.get(ip, "stripe");
   if (penalty && now < penalty.blockedUntil) {
     const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
     c.header("Retry-After", String(retryAfterSec));
@@ -332,7 +332,7 @@ billingRoutes.post("/webhook", async (c) => {
   try {
     const result = await processor.handleWebhook(Buffer.from(body), signature);
     // Clear any stale penalties on successful verification (WOP-477)
-    sigPenaltyRepo.clear(ip, "stripe");
+    await sigPenaltyRepo.clear(ip, "stripe");
 
     if (result.duplicate) {
       logger.warn("Webhook replay attempt detected", {
@@ -345,7 +345,7 @@ billingRoutes.post("/webhook", async (c) => {
     return c.json({ ...rest, event_type: eventType }, 200);
   } catch (err) {
     // Track signature failure for exponential backoff (WOP-477)
-    const updated = sigPenaltyRepo.recordFailure(ip, "stripe");
+    const updated = await sigPenaltyRepo.recordFailure(ip, "stripe");
 
     logger.error("Webhook signature verification failed", {
       error: err instanceof Error ? err.message : String(err),
@@ -433,7 +433,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   if (!chargeStore2) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
-  const result = handlePayRamWebhook(
+  const result = await handlePayRamWebhook(
     {
       chargeStore: chargeStore2,
       creditLedger,
@@ -486,7 +486,7 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
   const { tenant, startDate, endDate, limit } = parsed.data;
 
   try {
-    const summaries = aggregator.querySummaries(tenant, {
+    const summaries = await aggregator.querySummaries(tenant, {
       since: startDate,
       until: endDate,
       limit,
@@ -539,7 +539,7 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
   try {
     // Default to start of current billing period (beginning of current hour)
     const since = startDate ?? Math.floor(Date.now() / 3_600_000) * 3_600_000;
-    const total = aggregator.getTenantTotal(tenant, since);
+    const total = await aggregator.getTenantTotal(tenant, since);
 
     return c.json({
       tenant,
@@ -570,7 +570,7 @@ const recordReferralBodySchema = z.object({
  * Lazily generates a code on first request.
  * Query param: tenant (required)
  */
-billingRoutes.get("/affiliate", adminAuth, (c) => {
+billingRoutes.get("/affiliate", adminAuth, async (c) => {
   const tokenTenantId = c.get("tokenTenantId");
   const tenant = tokenTenantId ?? c.req.query("tenant");
 
@@ -585,7 +585,7 @@ billingRoutes.get("/affiliate", adminAuth, (c) => {
 
   try {
     const repo = getDeps().affiliateRepo;
-    const stats = repo.getStats(parsedTenant.data);
+    const stats = await repo.getStats(parsedTenant.data);
     return c.json(stats);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to get affiliate info";
@@ -617,12 +617,12 @@ billingRoutes.post("/affiliate/record-referral", adminAuth, async (c) => {
 
   try {
     const repo = getDeps().affiliateRepo;
-    const codeRecord = repo.getByCode(code);
+    const codeRecord = await repo.getByCode(code);
     if (!codeRecord) {
       return c.json({ error: "Invalid referral code" }, 404);
     }
 
-    const isNew = repo.recordReferral(codeRecord.tenantId, referredTenantId, code);
+    const isNew = await repo.recordReferral(codeRecord.tenantId, referredTenantId, code);
     return c.json({ recorded: isNew, referrer: codeRecord.tenantId });
   } catch (err) {
     if (err instanceof Error && err.message.includes("Self-referral")) {

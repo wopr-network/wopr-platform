@@ -49,7 +49,7 @@ function makeMockOrgService(): OrgService {
     getOrCreatePersonalOrg: vi.fn().mockReturnValue(MOCK_ORG),
     updateOrg: vi.fn().mockReturnValue(MOCK_ORG),
     deleteOrg: vi.fn(),
-    inviteMember: vi.fn().mockReturnValue({
+    inviteMember: vi.fn().mockResolvedValue({
       id: "inv-1",
       orgId: "org-1",
       email: "new@example.com",
@@ -133,7 +133,7 @@ describe("tRPC org router", () => {
     });
 
     it("accepts admin role", async () => {
-      vi.mocked(mockOrgService.inviteMember).mockReturnValue({
+      vi.mocked(mockOrgService.inviteMember).mockResolvedValue({
         id: "inv-2",
         orgId: "org-1",
         email: "admin@example.com",

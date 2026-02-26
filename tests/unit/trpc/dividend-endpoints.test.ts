@@ -1,54 +1,18 @@
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb, type DrizzleDb } from "../../../src/db/index.js";
+import type { DrizzleDb } from "../../../src/db/index.js";
+import { createTestDb } from "../../../src/test/db.js";
 import { DrizzleDividendRepository } from "../../../src/monetization/credits/dividend-repository.js";
 import { appRouter } from "../../../src/trpc/index.js";
 import { setBillingRouterDeps } from "../../../src/trpc/routers/billing.js";
 
-function initTestSchema(sqlite: BetterSqlite3.Database): void {
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS credit_transactions (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      balance_after_cents INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      description TEXT,
-      reference_id TEXT UNIQUE,
-      funding_source TEXT,
-      attributed_user_id TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS credit_balances (
-      tenant_id TEXT PRIMARY KEY,
-      balance_cents INTEGER NOT NULL DEFAULT 0,
-      last_updated TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS dividend_distributions (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      pool_cents INTEGER NOT NULL,
-      active_users INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-}
-
 describe("billing.dividend* tRPC procedures", () => {
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
   let db: DrizzleDb;
   let caller: ReturnType<typeof appRouter.createCaller>;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initTestSchema(sqlite);
-    db = createDb(sqlite);
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     const dividendRepo = new DrizzleDividendRepository(db);
 
     setBillingRouterDeps({
@@ -57,24 +21,30 @@ describe("billing.dividend* tRPC procedures", () => {
         billingPortal: { sessions: { create: vi.fn() } },
       } as never,
       tenantStore: {} as never,
-      creditStore: {
-        getBalance: vi.fn().mockReturnValue(0),
-        listTransactions: vi.fn().mockReturnValue([]),
+      creditLedger: {
+        balance: vi.fn().mockResolvedValue(0),
+        history: vi.fn().mockResolvedValue([]),
+        credit: vi.fn(),
+        debit: vi.fn(),
+        hasReferenceId: vi.fn(),
+        tenantsWithBalance: vi.fn(),
       } as never,
       meterAggregator: {
-        getTenantTotal: vi.fn().mockReturnValue({ totalCharge: 0, totalCost: 0, eventCount: 0 }),
-        querySummaries: vi.fn().mockReturnValue([]),
+        getTenantTotal: vi.fn().mockResolvedValue({ totalCharge: 0, totalCost: 0, eventCount: 0 }),
+        querySummaries: vi.fn().mockResolvedValue([]),
       } as never,
-      usageReporter: { queryReports: vi.fn().mockReturnValue([]) } as never,
       priceMap: undefined,
       dividendRepo,
+      autoTopupSettingsStore: {} as never,
+      spendingLimitsRepo: {} as never,
+      affiliateRepo: {} as never,
     });
 
     caller = appRouter.createCaller({ user: { id: "u-1", roles: ["admin"] }, tenantId: "t-1" });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   describe("dividendStats", () => {
@@ -92,13 +62,12 @@ describe("billing.dividend* tRPC procedures", () => {
     it("returns eligibility when user purchased recently", async () => {
       const recentDate = new Date();
       recentDate.setUTCDate(recentDate.getUTCDate() - 1);
-      const dateStr = recentDate.toISOString().replace("T", " ").replace("Z", "").split(".")[0];
+      const dateStr = recentDate.toISOString();
 
-      sqlite
-        .prepare(
-          "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("tx-1", "t-1", 500, 500, "purchase", dateStr);
+      await pool.query(
+        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["tx-1", "t-1", 500, 500, "purchase", dateStr],
+      );
 
       const result = await caller.billing.dividendStats({});
       expect(result.user_eligible).toBe(true);
@@ -118,16 +87,14 @@ describe("billing.dividend* tRPC procedures", () => {
     });
 
     it("returns distributions for the tenant", async () => {
-      sqlite
-        .prepare(
-          "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("d-1", "t-1", "2026-02-19", 8, 6000, 750);
-      sqlite
-        .prepare(
-          "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("d-2", "t-1", "2026-02-20", 10, 7000, 700);
+      await pool.query(
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["d-1", "t-1", "2026-02-19", 8, 6000, 750],
+      );
+      await pool.query(
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["d-2", "t-1", "2026-02-20", 10, 7000, 700],
+      );
 
       const result = await caller.billing.dividendHistory({});
       expect(result.dividends).toHaveLength(2);
@@ -146,16 +113,14 @@ describe("billing.dividend* tRPC procedures", () => {
     });
 
     it("sums all distributions for the tenant", async () => {
-      sqlite
-        .prepare(
-          "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("d-1", "t-1", "2026-02-19", 8, 6000, 750);
-      sqlite
-        .prepare(
-          "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("d-2", "t-1", "2026-02-20", 10, 7000, 700);
+      await pool.query(
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["d-1", "t-1", "2026-02-19", 8, 6000, 750],
+      );
+      await pool.query(
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["d-2", "t-1", "2026-02-20", 10, 7000, 700],
+      );
 
       const result = await caller.billing.dividendLifetime({});
       expect(result.total_cents).toBe(18);

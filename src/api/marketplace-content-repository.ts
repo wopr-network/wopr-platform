@@ -11,19 +11,19 @@ export interface PluginMarketplaceContentRow {
 }
 
 export interface IMarketplaceContentRepository {
-  getByPluginId(pluginId: string): PluginMarketplaceContentRow | null;
-  upsert(row: PluginMarketplaceContentRow): void;
+  getByPluginId(pluginId: string): Promise<PluginMarketplaceContentRow | null>;
+  upsert(row: PluginMarketplaceContentRow): Promise<void>;
 }
 
 export class DrizzleMarketplaceContentRepository implements IMarketplaceContentRepository {
   constructor(private db: DrizzleDb) {}
 
-  getByPluginId(pluginId: string): PluginMarketplaceContentRow | null {
-    const row = this.db
+  async getByPluginId(pluginId: string): Promise<PluginMarketplaceContentRow | null> {
+    const rows = await this.db
       .select()
       .from(pluginMarketplaceContent)
-      .where(eq(pluginMarketplaceContent.pluginId, pluginId))
-      .get();
+      .where(eq(pluginMarketplaceContent.pluginId, pluginId));
+    const row = rows[0];
     if (!row) return null;
     return {
       pluginId: row.pluginId,
@@ -34,8 +34,8 @@ export class DrizzleMarketplaceContentRepository implements IMarketplaceContentR
     };
   }
 
-  upsert(row: PluginMarketplaceContentRow): void {
-    this.db
+  async upsert(row: PluginMarketplaceContentRow): Promise<void> {
+    await this.db
       .insert(pluginMarketplaceContent)
       .values({
         pluginId: row.pluginId,
@@ -52,7 +52,6 @@ export class DrizzleMarketplaceContentRepository implements IMarketplaceContentR
           source: row.source,
           updatedAt: row.updatedAt,
         },
-      })
-      .run();
+      });
   }
 }

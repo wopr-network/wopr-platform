@@ -31,17 +31,14 @@ function makeDoClient(overrides: Partial<DOClient> = {}): DOClient {
 }
 
 function makeDb(nodeRow: Record<string, unknown> | undefined = undefined) {
+  const nodeRows = nodeRow ? [nodeRow] : [];
   return {
-    insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ run: vi.fn() }) }),
-    update: vi
-      .fn()
-      .mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ run: vi.fn() }) }) }),
-    delete: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ run: vi.fn() }) }),
+    insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
+    update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+    delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          get: vi.fn().mockReturnValue(nodeRow),
-        }),
+        where: vi.fn().mockResolvedValue(nodeRows),
       }),
     }),
   };

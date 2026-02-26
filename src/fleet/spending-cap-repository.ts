@@ -36,21 +36,21 @@ function getMonthStart(now: number): number {
 export class DrizzleSpendingCapStore implements ISpendingCapStore {
   constructor(private readonly db: DrizzleDb) {}
 
-  querySpend(tenant: string, now: number): SpendingCapRecord {
+  async querySpend(tenant: string, now: number): Promise<SpendingCapRecord> {
     const dayStart = getDayStart(now);
     const monthStart = getMonthStart(now);
 
     // Daily spend from meter_events
-    const dailyEvents = this.db
+    const dailyEventsRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
       })
       .from(meterEvents)
-      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, dayStart)))
-      .get();
+      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, dayStart)));
+    const dailyEvents = dailyEventsRows[0];
 
     // Daily spend from usage_summaries (may overlap — conservative to sum both)
-    const dailySummaries = this.db
+    const dailySummariesRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
       })
@@ -61,22 +61,22 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
           gte(usageSummaries.windowEnd, dayStart),
           lte(usageSummaries.windowStart, now),
         ),
-      )
-      .get();
+      );
+    const dailySummaries = dailySummariesRows[0];
 
     const dailySpend = (dailyEvents?.total ?? 0) + (dailySummaries?.total ?? 0);
 
     // Monthly spend from meter_events
-    const monthlyEvents = this.db
+    const monthlyEventsRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
       })
       .from(meterEvents)
-      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)))
-      .get();
+      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)));
+    const monthlyEvents = monthlyEventsRows[0];
 
     // Monthly spend from usage_summaries
-    const monthlySummaries = this.db
+    const monthlySummariesRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
       })
@@ -87,8 +87,8 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
           gte(usageSummaries.windowEnd, monthStart),
           lte(usageSummaries.windowStart, now),
         ),
-      )
-      .get();
+      );
+    const monthlySummaries = monthlySummariesRows[0];
 
     const monthlySpend = (monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0);
 

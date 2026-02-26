@@ -29,7 +29,7 @@ export async function extractPluginContent(
   adapters: FsAdapters = defaultAdapters,
 ): Promise<void> {
   // Skip if already cached at this version
-  const existing = repo.getByPluginId(pluginId);
+  const existing = await repo.getByPluginId(pluginId);
   if (existing && existing.version === version) return;
 
   const npmPkgName = `@wopr-network/wopr-plugin-${pluginId}`;
@@ -49,7 +49,7 @@ export async function extractPluginContent(
     source = "manifest_description";
   }
 
-  repo.upsert({
+  await repo.upsert({
     pluginId,
     version,
     markdown,

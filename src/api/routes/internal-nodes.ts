@@ -100,9 +100,9 @@ internalNodeRoutes.post("/register", async (c) => {
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidPattern.test(bearer)) {
     // Might be a per-node secret (wopr_node_ prefix or similar non-UUID format)
-    const existingNode = nodeRepo.getBySecret(bearer);
+    const existingNode = await nodeRepo.getBySecret(bearer);
     if (existingNode) {
-      registrar.register({ ...registration, nodeId: existingNode.id });
+      await registrar.register({ ...registration, nodeId: existingNode.id });
       logger.info(`Node re-registered via per-node secret: ${existingNode.id}`);
       return c.json({ success: true });
     }
@@ -112,7 +112,7 @@ internalNodeRoutes.post("/register", async (c) => {
   // Path 3: One-time registration token (UUID format = registration token)
   const tokenStore = getRegistrationTokenStore();
   const nodeId = `self-${randomUUID().slice(0, 8)}`;
-  const consumed = tokenStore.consume(bearer, nodeId);
+  const consumed = await tokenStore.consume(bearer, nodeId);
 
   if (!consumed) {
     return c.json({ success: false, error: "Invalid or expired token" }, 401);

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Notification queue — queues system emails with retry support.
@@ -9,7 +9,7 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
  *
  * All timestamps are unix epoch milliseconds (integer) to match admin_notes.
  */
-export const notificationQueue = sqliteTable(
+export const notificationQueue = pgTable(
   "notification_queue",
   {
     id: text("id").primaryKey(),
@@ -26,13 +26,15 @@ export const notificationQueue = sqliteTable(
     /** Max retry attempts before dead-lettering */
     maxAttempts: integer("max_attempts").notNull().default(3),
     /** Unix epoch ms of last attempt */
-    lastAttemptAt: integer("last_attempt_at"),
+    lastAttemptAt: bigint("last_attempt_at", { mode: "number" }),
     /** Error message from last failed attempt */
     lastError: text("last_error"),
     /** When to next retry (unix epoch ms). Null = immediately eligible. */
-    retryAfter: integer("retry_after"),
-    createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
-    sentAt: integer("sent_at"),
+    retryAfter: bigint("retry_after", { mode: "number" }),
+    createdAt: bigint("created_at", { mode: "number" })
+      .notNull()
+      .default(sql`(extract(epoch from now()) * 1000)::bigint`),
+    sentAt: bigint("sent_at", { mode: "number" }),
   },
   (table) => [
     index("idx_notif_queue_tenant").on(table.tenantId),

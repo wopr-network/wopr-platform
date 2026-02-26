@@ -44,15 +44,15 @@ export interface CreditError {
  * we prefer fire-and-forget debits (logged but not failing the response) over locking.
  * Reconciliation via ledger queries catches discrepancies.
  */
-export function creditBalanceCheck(
+export async function creditBalanceCheck(
   c: Context<GatewayAuthEnv>,
   deps: CreditGateDeps,
   estimatedCostCents: number = 0,
-): CreditError | null {
+): Promise<CreditError | null> {
   if (!deps.creditLedger) return null;
 
   const tenant = c.get("gatewayTenant");
-  const balance = deps.creditLedger.balance(tenant.id);
+  const balance = await deps.creditLedger.balance(tenant.id);
   const required = Math.max(0, estimatedCostCents);
   const graceBuffer = deps.graceBufferCents ?? 50; // default -$0.50
 
@@ -90,7 +90,7 @@ export function creditBalanceCheck(
 /**
  * Post-call credit debit. Fire-and-forget — never fails the response.
  */
-export function debitCredits(
+export async function debitCredits(
   deps: CreditGateDeps,
   tenantId: string,
   costUsd: number,
@@ -98,7 +98,7 @@ export function debitCredits(
   capability: string,
   provider: string,
   attributedUserId?: string,
-): void {
+): Promise<void> {
   if (!deps.creditLedger) return;
 
   const chargeUsd = withMargin(costUsd, margin);
@@ -107,7 +107,7 @@ export function debitCredits(
   if (chargeCents <= 0) return;
 
   try {
-    deps.creditLedger.debit(
+    await deps.creditLedger.debit(
       tenantId,
       chargeCents,
       "adapter_usage",
@@ -119,7 +119,7 @@ export function debitCredits(
 
     // Only fire on first zero-crossing (balance was positive before, now ≤ 0)
     if (deps.onBalanceExhausted) {
-      const newBalance = deps.creditLedger.balance(tenantId);
+      const newBalance = await deps.creditLedger.balance(tenantId);
       const balanceBefore = newBalance + chargeCents;
       if (balanceBefore > 0 && newBalance <= 0) {
         deps.onBalanceExhausted(tenantId, newBalance);

@@ -8,15 +8,15 @@ import type { GpuNode, GpuNodeStatus, NewGpuNode } from "./repository-types.js";
 // ---------------------------------------------------------------------------
 
 export interface IGpuNodeRepository {
-  insert(node: NewGpuNode): GpuNode;
-  getById(id: string): GpuNode | null;
-  list(statuses?: GpuNodeStatus[]): GpuNode[];
-  updateStage(id: string, provisionStage: string): void;
-  updateStatus(id: string, status: GpuNodeStatus): void;
-  updateHost(id: string, host: string, dropletId: string, monthlyCostCents: number): void;
-  updateServiceHealth(id: string, serviceHealth: Record<string, "ok" | "down">, lastHealthAt: number): void;
-  setError(id: string, lastError: string): void;
-  delete(id: string): void;
+  insert(node: NewGpuNode): Promise<GpuNode>;
+  getById(id: string): Promise<GpuNode | null>;
+  list(statuses?: GpuNodeStatus[]): Promise<GpuNode[]>;
+  updateStage(id: string, provisionStage: string): Promise<void>;
+  updateStatus(id: string, status: GpuNodeStatus): Promise<void>;
+  updateHost(id: string, host: string, dropletId: string, monthlyCostCents: number): Promise<void>;
+  updateServiceHealth(id: string, serviceHealth: Record<string, "ok" | "down">, lastHealthAt: number): Promise<void>;
+  setError(id: string, lastError: string): Promise<void>;
+  delete(id: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,62 +48,73 @@ function toGpuNode(row: typeof gpuNodes.$inferSelect): GpuNode {
 export class DrizzleGpuNodeRepository implements IGpuNodeRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  insert(node: NewGpuNode): GpuNode {
+  async insert(node: NewGpuNode): Promise<GpuNode> {
     const now = Math.floor(Date.now() / 1000);
-    this.db
-      .insert(gpuNodes)
-      .values({
-        id: node.id,
-        region: node.region,
-        size: node.size,
-        status: "provisioning",
-        provisionStage: "pending",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-    const created = this.getById(node.id);
+    await this.db.insert(gpuNodes).values({
+      id: node.id,
+      region: node.region,
+      size: node.size,
+      status: "provisioning",
+      provisionStage: "pending",
+      createdAt: now,
+      updatedAt: now,
+    });
+    const created = await this.getById(node.id);
     if (!created) throw new Error(`GPU node not found after insert: ${node.id}`);
     return created;
   }
 
-  getById(id: string): GpuNode | null {
-    const row = this.db.select().from(gpuNodes).where(eq(gpuNodes.id, id)).get();
-    return row ? toGpuNode(row) : null;
+  async getById(id: string): Promise<GpuNode | null> {
+    const rows = await this.db.select().from(gpuNodes).where(eq(gpuNodes.id, id));
+    return rows[0] ? toGpuNode(rows[0]) : null;
   }
 
-  list(statuses?: GpuNodeStatus[]): GpuNode[] {
+  async list(statuses?: GpuNodeStatus[]): Promise<GpuNode[]> {
     if (statuses && statuses.length > 0) {
-      return this.db.select().from(gpuNodes).where(inArray(gpuNodes.status, statuses)).all().map(toGpuNode);
+      const rows = await this.db.select().from(gpuNodes).where(inArray(gpuNodes.status, statuses));
+      return rows.map(toGpuNode);
     }
-    return this.db.select().from(gpuNodes).all().map(toGpuNode);
+    const rows = await this.db.select().from(gpuNodes);
+    return rows.map(toGpuNode);
   }
 
-  updateStage(id: string, provisionStage: string): void {
+  async updateStage(id: string, provisionStage: string): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    const result = this.db.update(gpuNodes).set({ provisionStage, updatedAt: now }).where(eq(gpuNodes.id, id)).run();
-    if (result.changes === 0) throw new Error(`GPU node not found: ${id}`);
+    const result = await this.db
+      .update(gpuNodes)
+      .set({ provisionStage, updatedAt: now })
+      .where(eq(gpuNodes.id, id))
+      .returning({ id: gpuNodes.id });
+    if (result.length === 0) throw new Error(`GPU node not found: ${id}`);
   }
 
-  updateStatus(id: string, status: GpuNodeStatus): void {
+  async updateStatus(id: string, status: GpuNodeStatus): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    const result = this.db.update(gpuNodes).set({ status, updatedAt: now }).where(eq(gpuNodes.id, id)).run();
-    if (result.changes === 0) throw new Error(`GPU node not found: ${id}`);
+    const result = await this.db
+      .update(gpuNodes)
+      .set({ status, updatedAt: now })
+      .where(eq(gpuNodes.id, id))
+      .returning({ id: gpuNodes.id });
+    if (result.length === 0) throw new Error(`GPU node not found: ${id}`);
   }
 
-  updateHost(id: string, host: string, dropletId: string, monthlyCostCents: number): void {
+  async updateHost(id: string, host: string, dropletId: string, monthlyCostCents: number): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    const result = this.db
+    const result = await this.db
       .update(gpuNodes)
       .set({ host, dropletId, monthlyCostCents, updatedAt: now })
       .where(eq(gpuNodes.id, id))
-      .run();
-    if (result.changes === 0) throw new Error(`GPU node not found: ${id}`);
+      .returning({ id: gpuNodes.id });
+    if (result.length === 0) throw new Error(`GPU node not found: ${id}`);
   }
 
-  updateServiceHealth(id: string, serviceHealth: Record<string, "ok" | "down">, lastHealthAt: number): void {
+  async updateServiceHealth(
+    id: string,
+    serviceHealth: Record<string, "ok" | "down">,
+    lastHealthAt: number,
+  ): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    const result = this.db
+    const result = await this.db
       .update(gpuNodes)
       .set({
         serviceHealth: JSON.stringify(serviceHealth),
@@ -111,18 +122,22 @@ export class DrizzleGpuNodeRepository implements IGpuNodeRepository {
         updatedAt: now,
       })
       .where(eq(gpuNodes.id, id))
-      .run();
-    if (result.changes === 0) throw new Error(`GPU node not found: ${id}`);
+      .returning({ id: gpuNodes.id });
+    if (result.length === 0) throw new Error(`GPU node not found: ${id}`);
   }
 
-  setError(id: string, lastError: string): void {
+  async setError(id: string, lastError: string): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    const result = this.db.update(gpuNodes).set({ lastError, updatedAt: now }).where(eq(gpuNodes.id, id)).run();
-    if (result.changes === 0) throw new Error(`GPU node not found: ${id}`);
+    const result = await this.db
+      .update(gpuNodes)
+      .set({ lastError, updatedAt: now })
+      .where(eq(gpuNodes.id, id))
+      .returning({ id: gpuNodes.id });
+    if (result.length === 0) throw new Error(`GPU node not found: ${id}`);
   }
 
-  delete(id: string): void {
-    const result = this.db.delete(gpuNodes).where(eq(gpuNodes.id, id)).run();
-    if (result.changes === 0) throw new Error(`GPU node not found: ${id}`);
+  async delete(id: string): Promise<void> {
+    const result = await this.db.delete(gpuNodes).where(eq(gpuNodes.id, id)).returning({ id: gpuNodes.id });
+    if (result.length === 0) throw new Error(`GPU node not found: ${id}`);
   }
 }

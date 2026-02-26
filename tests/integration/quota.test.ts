@@ -2,33 +2,32 @@
  * Integration tests for /api/quota/* routes.
  *
  * Tests quota endpoints through the full composed Hono app with
- * real bearer auth middleware and in-memory SQLite credit ledger.
+ * real bearer auth middleware and in-memory PGlite credit ledger.
  */
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
+import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "../../src/db/index.js";
 
 const { app } = await import("../../src/api/app.js");
 const { setLedger } = await import("../../src/api/routes/quota.js");
-const { createDb } = await import("../../src/db/index.js");
 const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
-const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
 
 describe("integration: quota routes", () => {
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
+  let db: DrizzleDb;
   let ledger: InstanceType<typeof CreditLedger>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    sqlite = new BetterSqlite3(":memory:");
-    initCreditSchema(sqlite);
-    const db = createDb(sqlite);
+    ({ db, pool } = await createTestDb());
     ledger = new CreditLedger(db);
     setLedger(ledger);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   // -- Authentication -------------------------------------------------------
@@ -61,7 +60,7 @@ describe("integration: quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      ledger.credit("t-1", 5000, "purchase", "test");
+      await ledger.credit("t-1", 5000, "purchase", "test");
       const res = await app.request("/api/quota?tenant=t-1&activeInstances=2", {
         headers: AUTH_HEADER,
       });
@@ -99,7 +98,7 @@ describe("integration: quota routes", () => {
     });
 
     it("allows when tenant has positive balance (200)", async () => {
-      ledger.credit("t-1", 1000, "purchase", "test");
+      await ledger.credit("t-1", 1000, "purchase", "test");
       const res = await app.request("/api/quota/check", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -134,7 +133,7 @@ describe("integration: quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      ledger.credit("t-1", 2500, "purchase", "test purchase");
+      await ledger.credit("t-1", 2500, "purchase", "test purchase");
       const res = await app.request("/api/quota/balance/t-1", {
         headers: AUTH_HEADER,
       });
@@ -157,8 +156,8 @@ describe("integration: quota routes", () => {
     });
 
     it("returns transaction history", async () => {
-      ledger.credit("t-1", 1000, "purchase", "first");
-      ledger.credit("t-1", 500, "signup_grant", "welcome");
+      await ledger.credit("t-1", 1000, "purchase", "first");
+      await ledger.credit("t-1", 500, "signup_grant", "welcome");
 
       const res = await app.request("/api/quota/history/t-1", {
         headers: AUTH_HEADER,

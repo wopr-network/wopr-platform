@@ -78,7 +78,7 @@ export function spendingCapCheck(store: ISpendingCapStore, config?: Partial<Spen
     let spend = cache.get(tenant.id);
 
     if (!spend) {
-      spend = store.querySpend(tenant.id, now);
+      spend = await store.querySpend(tenant.id, now);
       cache.set(tenant.id, spend);
     }
 

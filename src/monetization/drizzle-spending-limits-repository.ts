@@ -13,15 +13,17 @@ const DEFAULT_LIMITS: SpendingLimitsData = {
 };
 
 export interface ISpendingLimitsRepository {
-  get(tenantId: string): SpendingLimitsData;
-  upsert(tenantId: string, data: SpendingLimitsData): void;
+  get(tenantId: string): Promise<SpendingLimitsData>;
+  upsert(tenantId: string, data: SpendingLimitsData): Promise<void>;
 }
 
 export class DrizzleSpendingLimitsRepository implements ISpendingLimitsRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  get(tenantId: string): SpendingLimitsData {
-    const row = this.db.select().from(tenantSpendingLimits).where(eq(tenantSpendingLimits.tenantId, tenantId)).get();
+  async get(tenantId: string): Promise<SpendingLimitsData> {
+    const row = (
+      await this.db.select().from(tenantSpendingLimits).where(eq(tenantSpendingLimits.tenantId, tenantId))
+    )[0];
 
     if (!row) return { ...DEFAULT_LIMITS, global: { ...DEFAULT_LIMITS.global } };
 
@@ -40,9 +42,9 @@ export class DrizzleSpendingLimitsRepository implements ISpendingLimitsRepositor
     };
   }
 
-  upsert(tenantId: string, data: SpendingLimitsData): void {
+  async upsert(tenantId: string, data: SpendingLimitsData): Promise<void> {
     const now = Date.now();
-    this.db
+    await this.db
       .insert(tenantSpendingLimits)
       .values({
         tenantId,
@@ -59,7 +61,6 @@ export class DrizzleSpendingLimitsRepository implements ISpendingLimitsRepositor
           perCapabilityJson: JSON.stringify(data.perCapability),
           updatedAt: now,
         },
-      })
-      .run();
+      });
   }
 }

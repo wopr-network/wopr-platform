@@ -1,10 +1,10 @@
 import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db";
-import Database from "better-sqlite3";
+import Database, { type Database as SqliteDatabase } from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("Forgot password flow (e2e)", () => {
-  let db: Database.Database;
+  let db: SqliteDatabase;
   let auth: ReturnType<typeof betterAuth>;
   let capturedResetUrl: string | null;
   let capturedResetToken: string | null;

@@ -3,9 +3,8 @@
  * This file will be deleted once callers are updated (WOP-879, WOP-880).
  */
 import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import type * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes } from "../db/schema/index.js";
 import type { AdminNotifier } from "./admin-notifier.js";
 import type { NodeConnectionManager } from "./node-connection-manager.js";
@@ -45,7 +44,7 @@ export interface DrainResult {
  */
 export class MigrationManager {
   constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>,
+    private readonly db: DrizzleDb,
     private readonly nodeConnections: NodeConnectionManager,
     private readonly notifier: AdminNotifier,
   ) {}
@@ -58,7 +57,8 @@ export class MigrationManager {
     const startTime = Date.now();
 
     // 1. Look up bot instance to find current node
-    const instance = this.db.select().from(botInstances).where(eq(botInstances.id, botId)).get();
+    const instanceRows = await this.db.select().from(botInstances).where(eq(botInstances.id, botId));
+    const instance = instanceRows[0];
 
     if (!instance) {
       return {
@@ -86,7 +86,7 @@ export class MigrationManager {
     // 2. Determine target node
     let resolvedTarget = targetNodeId;
     if (!resolvedTarget) {
-      const allNodes = this.db.select().from(nodes).all();
+      const allNodes = await this.db.select().from(nodes);
       const placement = findPlacementExcluding(allNodes, [sourceNodeId], estimatedMb);
       if (!placement) {
         return {
@@ -168,19 +168,18 @@ export class MigrationManager {
         });
 
         // 9. Update routing table — DOWNTIME ENDS
-        this.nodeConnections.reassignTenant(botId, resolvedTarget);
+        await this.nodeConnections.reassignTenant(botId, resolvedTarget);
 
         // 9b. Persist node assignment to DB so routing survives platform restart
-        this.db
+        await this.db
           .update(botInstances)
           .set({ nodeId: resolvedTarget, updatedAt: new Date().toISOString() })
-          .where(eq(botInstances.id, botId))
-          .run();
+          .where(eq(botInstances.id, botId));
 
         // 10. Update node capacity tracking
         const memoryMb = estimatedMb ?? 100;
-        this.nodeConnections.addNodeCapacity(resolvedTarget, memoryMb);
-        this.nodeConnections.addNodeCapacity(sourceNodeId, -memoryMb);
+        await this.nodeConnections.addNodeCapacity(resolvedTarget, memoryMb);
+        await this.nodeConnections.addNodeCapacity(sourceNodeId, -memoryMb);
       } catch (migrationErr) {
         // Attempt to restart the source container to restore service before re-throwing
         logger.error(`[migrate] Migration failed after stop for bot ${botId}, attempting source restart`, {
@@ -236,14 +235,13 @@ export class MigrationManager {
     logger.info(`Starting drain of node ${nodeId}`);
 
     // Mark node as draining (prevents new placements)
-    this.db
+    await this.db
       .update(nodes)
       .set({ status: "draining", updatedAt: Math.floor(Date.now() / 1000) })
-      .where(eq(nodes.id, nodeId))
-      .run();
+      .where(eq(nodes.id, nodeId));
 
     // Get all tenants on this node
-    const tenants = this.nodeConnections.getNodeTenants(nodeId);
+    const tenants = await this.nodeConnections.getNodeTenants(nodeId);
     logger.info(`Draining ${tenants.length} tenants from node ${nodeId}`);
 
     const migrated: MigrationResult[] = [];
@@ -260,11 +258,10 @@ export class MigrationManager {
 
     // Mark node as offline (all tenants migrated or failed)
     const finalStatus = failed.length === 0 ? "offline" : "draining";
-    this.db
+    await this.db
       .update(nodes)
       .set({ status: finalStatus, updatedAt: Math.floor(Date.now() / 1000) })
-      .where(eq(nodes.id, nodeId))
-      .run();
+      .where(eq(nodes.id, nodeId));
 
     if (failed.length > 0) {
       await this.notifier.capacityOverflow(nodeId, failed.length, tenants.length);

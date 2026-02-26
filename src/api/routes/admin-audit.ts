@@ -40,7 +40,7 @@ export function createAdminAuditApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   const routes = new Hono<AuthEnv>();
 
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const filters = {
       admin: c.req.query("admin") ?? undefined,
       action: c.req.query("action") ?? undefined,
@@ -53,14 +53,14 @@ export function createAdminAuditApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
     };
 
     try {
-      const result = auditLog.query(filters);
+      const result = await auditLog.query(filters);
       return c.json(result);
     } catch {
       return c.json({ error: "Internal server error" }, 500);
     }
   });
 
-  routes.get("/export", (c) => {
+  routes.get("/export", async (c) => {
     const filters = {
       admin: c.req.query("admin") ?? undefined,
       action: c.req.query("action") ?? undefined,
@@ -71,7 +71,7 @@ export function createAdminAuditApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
     };
 
     try {
-      const csv = auditLog.exportCsv(filters);
+      const csv = await auditLog.exportCsv(filters);
       return new Response(csv, {
         headers: {
           "Content-Type": "text/csv",
@@ -91,7 +91,7 @@ export const adminAuditApiRoutes = new Hono<AuthEnv>();
 
 adminAuditApiRoutes.use("*", adminAuth);
 
-adminAuditApiRoutes.get("/", (c) => {
+adminAuditApiRoutes.get("/", async (c) => {
   const auditLog = getAuditLog();
   const filters = {
     admin: c.req.query("admin") ?? undefined,
@@ -105,14 +105,14 @@ adminAuditApiRoutes.get("/", (c) => {
   };
 
   try {
-    const result = auditLog.query(filters);
+    const result = await auditLog.query(filters);
     return c.json(result);
   } catch {
     return c.json({ error: "Internal server error" }, 500);
   }
 });
 
-adminAuditApiRoutes.get("/export", (c) => {
+adminAuditApiRoutes.get("/export", async (c) => {
   const auditLog = getAuditLog();
   const filters = {
     admin: c.req.query("admin") ?? undefined,
@@ -124,7 +124,7 @@ adminAuditApiRoutes.get("/export", (c) => {
   };
 
   try {
-    const csv = auditLog.exportCsv(filters);
+    const csv = await auditLog.exportCsv(filters);
     return new Response(csv, {
       headers: {
         "Content-Type": "text/csv",

@@ -53,7 +53,7 @@ interface CachedBudgetData {
 }
 
 export interface IBudgetChecker {
-  check(tenant: string, limits: SpendLimits): BudgetCheckResult;
+  check(tenant: string, limits: SpendLimits): Promise<BudgetCheckResult>;
   invalidate(tenant: string): void;
   clearCache(): void;
 }
@@ -94,7 +94,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
    * @param limits - Spend limits for this tenant
    * @returns BudgetCheckResult indicating whether the call is allowed
    */
-  check(tenant: string, limits: SpendLimits): BudgetCheckResult {
+  async check(tenant: string, limits: SpendLimits): Promise<BudgetCheckResult> {
     const label = limits.label ?? "current";
 
     // Try to get cached data
@@ -104,7 +104,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     if (!cached) {
       // Cache miss -- query DB
       try {
-        cached = this.queryBudgetData(tenant, limits);
+        cached = await this.queryBudgetData(tenant, limits);
         this.cache.set(cacheKey, cached);
       } catch (err) {
         logger.error("Budget check query failed", { tenant, error: err });
@@ -160,58 +160,62 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
    * Query current budget data from the DB.
    * Combines data from meter_events buffer + usage_summaries.
    */
-  private queryBudgetData(tenant: string, limits: SpendLimits): CachedBudgetData {
+  private async queryBudgetData(tenant: string, limits: SpendLimits): Promise<CachedBudgetData> {
     const now = Date.now();
     const oneHourAgo = now - 60 * 60 * 1000;
     const monthStart = this.getMonthStart(now);
 
     // Query hourly spend from both meter_events (unbuffered) and usage_summaries (aggregated)
-    const hourlyEvents = this.db
-      .select({
-        total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
-      })
-      .from(meterEvents)
-      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, oneHourAgo)))
-      .get();
+    const hourlyEvents = (
+      await this.db
+        .select({
+          total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
+        })
+        .from(meterEvents)
+        .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, oneHourAgo)))
+    )[0];
 
-    const hourlySummaries = this.db
-      .select({
-        total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-      })
-      .from(usageSummaries)
-      .where(
-        and(
-          eq(usageSummaries.tenant, tenant),
-          gte(usageSummaries.windowEnd, oneHourAgo),
-          lte(usageSummaries.windowStart, now),
-        ),
-      )
-      .get();
+    const hourlySummaries = (
+      await this.db
+        .select({
+          total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+        })
+        .from(usageSummaries)
+        .where(
+          and(
+            eq(usageSummaries.tenant, tenant),
+            gte(usageSummaries.windowEnd, oneHourAgo),
+            lte(usageSummaries.windowStart, now),
+          ),
+        )
+    )[0];
 
     const hourlySpend = (hourlyEvents?.total ?? 0) + (hourlySummaries?.total ?? 0);
 
     // Query monthly spend
-    const monthlyEvents = this.db
-      .select({
-        total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
-      })
-      .from(meterEvents)
-      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)))
-      .get();
+    const monthlyEvents = (
+      await this.db
+        .select({
+          total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
+        })
+        .from(meterEvents)
+        .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)))
+    )[0];
 
-    const monthlySummaries = this.db
-      .select({
-        total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-      })
-      .from(usageSummaries)
-      .where(
-        and(
-          eq(usageSummaries.tenant, tenant),
-          gte(usageSummaries.windowEnd, monthStart),
-          lte(usageSummaries.windowStart, now),
-        ),
-      )
-      .get();
+    const monthlySummaries = (
+      await this.db
+        .select({
+          total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+        })
+        .from(usageSummaries)
+        .where(
+          and(
+            eq(usageSummaries.tenant, tenant),
+            gte(usageSummaries.windowEnd, monthStart),
+            lte(usageSummaries.windowStart, now),
+          ),
+        )
+    )[0];
 
     const monthlySpend = (monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0);
 

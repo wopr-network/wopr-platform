@@ -99,7 +99,7 @@ export function capabilityRateLimit(
     const scope = `cap:${category}`;
     const now = Date.now();
 
-    const entry = repo.increment(tenantId, scope, DEFAULT_WINDOW_MS);
+    const entry = await repo.increment(tenantId, scope, DEFAULT_WINDOW_MS);
     const windowStart = entry.windowStart;
     const count = entry.count;
 

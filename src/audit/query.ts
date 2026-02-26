@@ -14,11 +14,14 @@ export interface AuditQueryFilters {
 }
 
 /** Query audit log entries with optional filters. */
-export function queryAuditLog(repo: IAuditLogRepository, filters: AuditQueryFilters): AuditEntry[] {
+export async function queryAuditLog(repo: IAuditLogRepository, filters: AuditQueryFilters): Promise<AuditEntry[]> {
   return repo.query(filters);
 }
 
 /** Count audit log entries matching optional filters. */
-export function countAuditLog(repo: IAuditLogRepository, filters: Omit<AuditQueryFilters, "limit" | "offset">): number {
+export async function countAuditLog(
+  repo: IAuditLogRepository,
+  filters: Omit<AuditQueryFilters, "limit" | "offset">,
+): Promise<number> {
   return repo.count(filters);
 }

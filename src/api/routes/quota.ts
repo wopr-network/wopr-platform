@@ -1,13 +1,11 @@
-import Database from "better-sqlite3";
 import { Hono } from "hono";
 import { buildTokenMap, scopedBearerAuth } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { createDb } from "../../db/index.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { getCreditLedger } from "../../fleet/services.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
 
-const DB_PATH = process.env.BILLING_DB_PATH || "/data/platform/billing.db";
 const quotaTokenMap = buildTokenMap();
 
 // BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
@@ -22,20 +20,18 @@ if (quotaTokenMap.size === 0) {
 }
 quotaRoutes.use("/*", scopedBearerAuth(quotaTokenMap, "admin"));
 
-let ledger: CreditLedger | null = null;
+let _ledger: ICreditLedger | null = null;
 
-function getLedger(): CreditLedger {
-  if (!ledger) {
-    const db = new Database(DB_PATH);
-    db.pragma("journal_mode = WAL");
-    ledger = new CreditLedger(createDb(db));
+function getLedger(): ICreditLedger {
+  if (!_ledger) {
+    _ledger = getCreditLedger();
   }
-  return ledger;
+  return _ledger;
 }
 
 /** Inject a CreditLedger for testing */
-export function setLedger(l: CreditLedger): void {
-  ledger = l;
+export function setLedger(l: ICreditLedger): void {
+  _ledger = l;
 }
 
 /**
@@ -47,7 +43,7 @@ export function setLedger(l: CreditLedger): void {
  *   - tenant: tenant ID (required)
  *   - activeInstances: current instance count (temporary — will come from fleet DB)
  */
-quotaRoutes.get("/", (c) => {
+quotaRoutes.get("/", async (c) => {
   const tenantId = c.req.query("tenant");
   if (!tenantId) {
     return c.json({ error: "tenant query param is required" }, 400);
@@ -60,7 +56,7 @@ quotaRoutes.get("/", (c) => {
     return c.json({ error: "Invalid activeInstances parameter" }, 400);
   }
 
-  const balance = getLedger().balance(tenantId);
+  const balance = await getLedger().balance(tenantId);
 
   return c.json({
     balanceCents: balance,
@@ -103,7 +99,7 @@ quotaRoutes.post("/check", async (c) => {
   }
 
   // Check credit balance
-  const balance = getLedger().balance(tenantId);
+  const balance = await getLedger().balance(tenantId);
   if (balance <= 0) {
     return c.json(
       {
@@ -130,9 +126,9 @@ quotaRoutes.post("/check", async (c) => {
  *
  * Get a tenant's credit balance.
  */
-quotaRoutes.get("/balance/:tenant", (c) => {
+quotaRoutes.get("/balance/:tenant", async (c) => {
   const tenantId = c.req.param("tenant");
-  const balance = getLedger().balance(tenantId);
+  const balance = await getLedger().balance(tenantId);
   return c.json({ tenantId, balanceCents: balance });
 });
 
@@ -141,7 +137,7 @@ quotaRoutes.get("/balance/:tenant", (c) => {
  *
  * Get a tenant's credit transaction history.
  */
-quotaRoutes.get("/history/:tenant", (c) => {
+quotaRoutes.get("/history/:tenant", async (c) => {
   const tenantId = c.req.param("tenant");
   const limitRaw = c.req.query("limit");
   const offsetRaw = c.req.query("offset");
@@ -150,7 +146,7 @@ quotaRoutes.get("/history/:tenant", (c) => {
   const limit = limitRaw != null ? Number.parseInt(limitRaw, 10) : 50;
   const offset = offsetRaw != null ? Number.parseInt(offsetRaw, 10) : 0;
 
-  const transactions = getLedger().history(tenantId, { limit, offset, type: type || undefined });
+  const transactions = await getLedger().history(tenantId, { limit, offset, type: type || undefined });
   return c.json({ transactions });
 });
 

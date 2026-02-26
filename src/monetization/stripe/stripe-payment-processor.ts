@@ -99,7 +99,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   async handleWebhook(payload: Buffer, signature: string): Promise<WebhookResult> {
     const event = this.stripe.webhooks.constructEvent(payload, signature, this.webhookSecret);
 
-    const result = handleWebhookEvent(
+    const result = await handleWebhookEvent(
       {
         tenantStore: this.tenantStore as Parameters<typeof handleWebhookEvent>[0]["tenantStore"],
         creditLedger: this.creditLedger as Parameters<typeof handleWebhookEvent>[0]["creditLedger"],
@@ -148,7 +148,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async listPaymentMethods(tenant: string): Promise<SavedPaymentMethod[]> {
-    const mapping = this.tenantStore.getByTenant(tenant);
+    const mapping = await this.tenantStore.getByTenant(tenant);
     if (!mapping) {
       return [];
     }
@@ -163,7 +163,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async detachPaymentMethod(tenant: string, paymentMethodId: string): Promise<void> {
-    const mapping = this.tenantStore.getByTenant(tenant);
+    const mapping = await this.tenantStore.getByTenant(tenant);
     if (!mapping) {
       throw new Error(`No Stripe customer found for tenant: ${tenant}`);
     }

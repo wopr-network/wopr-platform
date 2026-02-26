@@ -38,17 +38,17 @@ function makeSnapshot(overrides: Partial<Snapshot> = {}): Snapshot {
 
 function makeManager(overrides: Record<string, unknown> = {}): SnapshotManager {
   return {
-    countByTenant: vi.fn().mockReturnValue(0),
+    countByTenant: vi.fn().mockResolvedValue(0),
     create: vi.fn().mockResolvedValue(makeSnapshot()),
-    get: vi.fn().mockReturnValue(null),
+    get: vi.fn().mockResolvedValue(null),
     delete: vi.fn().mockResolvedValue(true),
-    list: vi.fn().mockReturnValue([]),
+    list: vi.fn().mockResolvedValue([]),
     ...overrides,
   } as unknown as SnapshotManager;
 }
 
 function makeLedger(balanceCents = 100): CreditLedger {
-  return { balance: vi.fn().mockReturnValue(balanceCents) } as unknown as CreditLedger;
+  return { balance: vi.fn().mockResolvedValue(balanceCents) } as unknown as CreditLedger;
 }
 
 function makeService(managerOverrides: Record<string, unknown> = {}, balanceCents = 100) {
@@ -62,40 +62,40 @@ function makeService(managerOverrides: Record<string, unknown> = {}, balanceCent
 
 describe("OnDemandSnapshotService", () => {
   describe("checkQuota", () => {
-    it("returns allowed when under limit", () => {
-      const { service } = makeService({ countByTenant: vi.fn().mockReturnValue(0) });
-      const result = service.checkQuota("tenant-a", "free");
+    it("returns allowed when under limit", async () => {
+      const { service } = makeService({ countByTenant: vi.fn().mockResolvedValue(0) });
+      const result = await service.checkQuota("tenant-a", "free");
       expect(result.allowed).toBe(true);
       expect(result.current).toBe(0);
       expect(result.max).toBe(SNAPSHOT_TIER_POLICIES.free.onDemandMax);
     });
 
-    it("returns denied when at limit for free tier", () => {
+    it("returns denied when at limit for free tier", async () => {
       const max = SNAPSHOT_TIER_POLICIES.free.onDemandMax;
-      const { service } = makeService({ countByTenant: vi.fn().mockReturnValue(max) });
-      const result = service.checkQuota("tenant-a", "free");
+      const { service } = makeService({ countByTenant: vi.fn().mockResolvedValue(max) });
+      const result = await service.checkQuota("tenant-a", "free");
       expect(result.allowed).toBe(false);
       expect(result.current).toBe(max);
       expect(result.reason).toContain("limit reached");
     });
 
-    it("returns denied when at limit for starter tier", () => {
+    it("returns denied when at limit for starter tier", async () => {
       const max = SNAPSHOT_TIER_POLICIES.starter.onDemandMax;
-      const { service } = makeService({ countByTenant: vi.fn().mockReturnValue(max) });
-      const result = service.checkQuota("tenant-a", "starter");
+      const { service } = makeService({ countByTenant: vi.fn().mockResolvedValue(max) });
+      const result = await service.checkQuota("tenant-a", "starter");
       expect(result.allowed).toBe(false);
     });
 
-    it("returns denied when at limit for pro tier", () => {
+    it("returns denied when at limit for pro tier", async () => {
       const max = SNAPSHOT_TIER_POLICIES.pro.onDemandMax;
-      const { service } = makeService({ countByTenant: vi.fn().mockReturnValue(max) });
-      const result = service.checkQuota("tenant-a", "pro");
+      const { service } = makeService({ countByTenant: vi.fn().mockResolvedValue(max) });
+      const result = await service.checkQuota("tenant-a", "pro");
       expect(result.allowed).toBe(false);
     });
 
-    it("enterprise tier allows unlimited snapshots", () => {
-      const { service } = makeService({ countByTenant: vi.fn().mockReturnValue(10000) });
-      const result = service.checkQuota("tenant-a", "enterprise");
+    it("enterprise tier allows unlimited snapshots", async () => {
+      const { service } = makeService({ countByTenant: vi.fn().mockResolvedValue(10000) });
+      const result = await service.checkQuota("tenant-a", "enterprise");
       expect(result.allowed).toBe(true);
     });
   });
@@ -169,48 +169,54 @@ describe("OnDemandSnapshotService", () => {
 
     it("throws SnapshotQuotaExceededError when quota full", async () => {
       const max = SNAPSHOT_TIER_POLICIES.free.onDemandMax;
-      const { service } = makeService({ countByTenant: vi.fn().mockReturnValue(max) });
+      const { service } = makeService({ countByTenant: vi.fn().mockResolvedValue(max) });
       await expect(service.create(createParams)).rejects.toThrow(SnapshotQuotaExceededError);
     });
   });
 
   describe("delete", () => {
     it("returns false for nonexistent snapshot", async () => {
-      const { service } = makeService({ get: vi.fn().mockReturnValue(null) });
+      const { service } = makeService({ get: vi.fn().mockResolvedValue(null) });
       const result = await service.delete("snap-missing", "tenant-a");
       expect(result).toBe(false);
     });
 
     it("returns false for snapshot owned by different tenant", async () => {
       const snap = makeSnapshot({ tenant: "tenant-b" });
-      const { service } = makeService({ get: vi.fn().mockReturnValue(snap) });
+      const { service } = makeService({ get: vi.fn().mockResolvedValue(snap) });
       const result = await service.delete("snap-1", "tenant-a");
       expect(result).toBe(false);
     });
 
     it("throws for nightly type snapshot", async () => {
       const snap = makeSnapshot({ type: "nightly", tenant: "tenant-a" });
-      const { service } = makeService({ get: vi.fn().mockReturnValue(snap) });
+      const { service } = makeService({ get: vi.fn().mockResolvedValue(snap) });
       await expect(service.delete("snap-1", "tenant-a")).rejects.toThrow("Only on-demand snapshots");
     });
 
     it("deletes successfully for on-demand snapshot owned by tenant", async () => {
       const snap = makeSnapshot({ type: "on-demand", tenant: "tenant-a" });
-      const { service } = makeService({ get: vi.fn().mockReturnValue(snap), delete: vi.fn().mockResolvedValue(true) });
+      const { service } = makeService({
+        get: vi.fn().mockResolvedValue(snap),
+        delete: vi.fn().mockResolvedValue(true),
+      });
       const result = await service.delete("snap-1", "tenant-a");
       expect(result).toBe(true);
     });
   });
 
   describe("list", () => {
-    it("filters by tenant and excludes soft-deleted", () => {
+    it("filters by tenant and excludes soft-deleted", async () => {
       const snaps: Snapshot[] = [
         makeSnapshot({ id: "s1", tenant: "tenant-a", deletedAt: null }),
         makeSnapshot({ id: "s2", tenant: "tenant-a", deletedAt: Date.now() }), // soft-deleted
         makeSnapshot({ id: "s3", tenant: "tenant-b", deletedAt: null }), // different tenant
       ];
-      const { service } = makeService({ list: vi.fn().mockReturnValue(snaps) });
-      const result = service.list("tenant-a", "bot-1");
+      const { service } = makeService({
+        list: vi.fn().mockResolvedValue(snaps),
+        countByTenant: vi.fn().mockResolvedValue(0),
+      });
+      const result = await service.list("tenant-a", "bot-1");
 
       // Should only include s1 (not soft-deleted, correct tenant)
       expect(result).toHaveLength(1);

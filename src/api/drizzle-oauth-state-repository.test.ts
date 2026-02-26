@@ -1,36 +1,25 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../db/schema/index.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { DrizzleOAuthStateRepository } from "./drizzle-oauth-state-repository.js";
 
-function makeDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS oauth_states (
-      state TEXT PRIMARY KEY,
-      provider TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      redirect_uri TEXT NOT NULL,
-      token TEXT,
-      status TEXT NOT NULL DEFAULT 'pending',
-      created_at INTEGER NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_oauth_states_expires ON oauth_states (expires_at);
-  `);
-  return drizzle(sqlite, { schema });
-}
-
 describe("DrizzleOAuthStateRepository", () => {
+  let db: DrizzleDb;
+  let pool: PGlite;
   let repo: DrizzleOAuthStateRepository;
 
-  beforeEach(() => {
-    repo = new DrizzleOAuthStateRepository(makeDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    repo = new DrizzleOAuthStateRepository(db);
   });
 
-  it("creates and consumes a pending state", () => {
-    repo.create({
+  afterEach(async () => {
+    await pool.close();
+  });
+
+  it("creates and consumes a pending state", async () => {
+    await repo.create({
       state: "test-uuid",
       provider: "slack",
       userId: "user-1",
@@ -39,16 +28,16 @@ describe("DrizzleOAuthStateRepository", () => {
       expiresAt: Date.now() + 600_000,
     });
 
-    const consumed = repo.consumePending("test-uuid");
+    const consumed = await repo.consumePending("test-uuid");
     expect(consumed).not.toBeNull();
     expect(consumed?.provider).toBe("slack");
 
-    const again = repo.consumePending("test-uuid");
+    const again = await repo.consumePending("test-uuid");
     expect(again).toBeNull();
   });
 
-  it("stores and retrieves completed token", () => {
-    repo.create({
+  it("stores and retrieves completed token", async () => {
+    await repo.create({
       state: "s1",
       provider: "slack",
       userId: "user-1",
@@ -57,18 +46,18 @@ describe("DrizzleOAuthStateRepository", () => {
       expiresAt: Date.now() + 600_000,
     });
 
-    repo.completeWithToken("s1", "tok_abc", "user-1");
+    await repo.completeWithToken("s1", "tok_abc", "user-1");
 
-    const result = repo.consumeCompleted("s1", "user-1");
+    const result = await repo.consumeCompleted("s1", "user-1");
     expect(result).not.toBeNull();
     expect(result?.token).toBe("tok_abc");
 
-    const again = repo.consumeCompleted("s1", "user-1");
+    const again = await repo.consumeCompleted("s1", "user-1");
     expect(again).toBeNull();
   });
 
-  it("returns null for expired state", () => {
-    repo.create({
+  it("returns null for expired state", async () => {
+    await repo.create({
       state: "expired",
       provider: "slack",
       userId: "user-1",
@@ -77,7 +66,7 @@ describe("DrizzleOAuthStateRepository", () => {
       expiresAt: Date.now() - 100_000,
     });
 
-    const result = repo.consumePending("expired");
+    const result = await repo.consumePending("expired");
     expect(result).toBeNull();
   });
 });

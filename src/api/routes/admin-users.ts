@@ -62,15 +62,15 @@ export function createAdminUsersApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const userStore = new AdminUserStore(db);
   const routes = new Hono<AuthEnv>();
 
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const filters = buildFilters(c);
-    const result = userStore.list(filters);
+    const result = await userStore.list(filters);
     return c.json(result);
   });
 
-  routes.get("/:userId", (c) => {
+  routes.get("/:userId", async (c) => {
     const userId = c.req.param("userId");
-    const user = userStore.getById(userId);
+    const user = await userStore.getById(userId);
     if (!user) {
       return c.json({ error: "User not found" }, 404);
     }
@@ -88,17 +88,17 @@ export const adminUsersApiRoutes = new Hono<AuthEnv>();
 
 adminUsersApiRoutes.use("*", adminAuth);
 
-adminUsersApiRoutes.get("/", (c) => {
+adminUsersApiRoutes.get("/", async (c) => {
   const store = getUserStore();
   const filters = buildFilters(c);
-  const result = store.list(filters);
+  const result = await store.list(filters);
   return c.json(result);
 });
 
-adminUsersApiRoutes.get("/:userId", (c) => {
+adminUsersApiRoutes.get("/:userId", async (c) => {
   const store = getUserStore();
   const userId = c.req.param("userId");
-  const user = store.getById(userId);
+  const user = await store.getById(userId);
   if (!user) {
     return c.json({ error: "User not found" }, 404);
   }

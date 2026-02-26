@@ -7,9 +7,9 @@ export interface WindowResult {
 }
 
 export interface IMetricsRepository {
-  recordGatewayRequest(capability: string): void;
-  recordGatewayError(capability: string): void;
-  recordCreditDeductionFailure(): void;
-  getWindow(minutes: number): WindowResult;
-  prune(maxRetentionMinutes: number): number;
+  recordGatewayRequest(capability: string): Promise<void>;
+  recordGatewayError(capability: string): Promise<void>;
+  recordCreditDeductionFailure(): Promise<void>;
+  getWindow(minutes: number): Promise<WindowResult>;
+  prune(maxRetentionMinutes: number): Promise<number>;
 }

@@ -13,14 +13,14 @@ export type { NotificationStatus, QueuedNotification } from "./notification-repo
 
 /** Repository interface for the email notification queue. */
 export interface INotificationQueueStore {
-  enqueue(tenantId: string, template: string, data: Record<string, unknown>): string;
-  fetchPending(limit?: number): QueuedNotification[];
-  markSent(id: string): void;
-  markFailed(id: string, attempts: number): void;
+  enqueue(tenantId: string, template: string, data: Record<string, unknown>): Promise<string>;
+  fetchPending(limit?: number): Promise<QueuedNotification[]>;
+  markSent(id: string): Promise<void>;
+  markFailed(id: string, attempts: number): Promise<void>;
   listForTenant(
     tenantId: string,
     opts?: { limit?: number; offset?: number; status?: NotificationStatus },
-  ): { entries: QueuedNotification[]; total: number };
+  ): Promise<{ entries: QueuedNotification[]; total: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -31,30 +31,25 @@ export class DrizzleNotificationQueueStore implements INotificationQueueStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Enqueue a notification for async delivery. Returns the new row ID. */
-  enqueue(tenantId: string, template: string, data: Record<string, unknown>): string {
+  async enqueue(tenantId: string, template: string, data: Record<string, unknown>): Promise<string> {
     const id = crypto.randomUUID();
-    // emailType stores the template name; payload stores the JSON data;
-    // recipientEmail is stored inside the payload but also required by schema.
     const recipientEmail = (data.email as string | undefined) ?? "";
-    this.db
-      .insert(notificationQueue)
-      .values({
-        id,
-        tenantId,
-        emailType: template,
-        recipientEmail,
-        payload: JSON.stringify(data),
-        status: "pending",
-        attempts: 0,
-      })
-      .run();
+    await this.db.insert(notificationQueue).values({
+      id,
+      tenantId,
+      emailType: template,
+      recipientEmail,
+      payload: JSON.stringify(data),
+      status: "pending",
+      attempts: 0,
+    });
     return id;
   }
 
   /** Fetch up to `limit` notifications ready to send. */
-  fetchPending(limit = 10): QueuedNotification[] {
+  async fetchPending(limit = 10): Promise<QueuedNotification[]> {
     const now = Date.now();
-    const rows = this.db
+    const rows = await this.db
       .select()
       .from(notificationQueue)
       .where(
@@ -63,8 +58,7 @@ export class DrizzleNotificationQueueStore implements INotificationQueueStore {
           or(sql`${notificationQueue.retryAfter} IS NULL`, lte(notificationQueue.retryAfter, now)),
         ),
       )
-      .limit(limit)
-      .all();
+      .limit(limit);
 
     return rows.map((r) => ({
       id: r.id,
@@ -80,35 +74,33 @@ export class DrizzleNotificationQueueStore implements INotificationQueueStore {
   }
 
   /** Mark a notification as sent. */
-  markSent(id: string): void {
-    this.db
+  async markSent(id: string): Promise<void> {
+    await this.db
       .update(notificationQueue)
       .set({ status: "sent", sentAt: Date.now() })
-      .where(eq(notificationQueue.id, id))
-      .run();
+      .where(eq(notificationQueue.id, id));
   }
 
   /** Mark a notification as failed with exponential backoff retry. */
-  markFailed(id: string, attempts: number): void {
+  async markFailed(id: string, attempts: number): Promise<void> {
     const maxAttempts = 5;
     const isPermanentFail = attempts >= maxAttempts;
     const backoffMs = Math.min(60_000 * 2 ** attempts, 3_600_000); // max 1 hour
-    this.db
+    await this.db
       .update(notificationQueue)
       .set({
         status: isPermanentFail ? "failed" : "pending",
         attempts,
         retryAfter: isPermanentFail ? null : Date.now() + backoffMs,
       })
-      .where(eq(notificationQueue.id, id))
-      .run();
+      .where(eq(notificationQueue.id, id));
   }
 
   /** List notifications for a tenant (for admin view). Paginated. */
-  listForTenant(
+  async listForTenant(
     tenantId: string,
     opts: { limit?: number; offset?: number; status?: NotificationStatus } = {},
-  ): { entries: QueuedNotification[]; total: number } {
+  ): Promise<{ entries: QueuedNotification[]; total: number }> {
     const conditions: ReturnType<typeof eq>[] = [eq(notificationQueue.tenantId, tenantId)];
     if (opts.status) {
       conditions.push(eq(notificationQueue.status, opts.status));
@@ -116,17 +108,16 @@ export class DrizzleNotificationQueueStore implements INotificationQueueStore {
 
     const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
 
-    const totalRow = this.db.select({ count: sql<number>`count(*)` }).from(notificationQueue).where(whereClause).get();
-    const total = totalRow?.count ?? 0;
+    const totalRows = await this.db.select({ count: sql<number>`count(*)` }).from(notificationQueue).where(whereClause);
+    const total = totalRows[0]?.count ?? 0;
 
-    const rows = this.db
+    const rows = await this.db
       .select()
       .from(notificationQueue)
       .where(whereClause)
       .orderBy(desc(notificationQueue.createdAt))
       .limit(opts.limit ?? 50)
-      .offset(opts.offset ?? 0)
-      .all();
+      .offset(opts.offset ?? 0);
 
     const entries = rows.map((r) => ({
       id: r.id,

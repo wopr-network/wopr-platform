@@ -60,9 +60,9 @@ export interface WebhookDeps {
  * All other event types are acknowledged but not processed.
  * Credit-based events use mode: "payment"; VPS subscription events use mode: "subscription".
  */
-export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): WebhookResult {
+export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Promise<WebhookResult> {
   // Replay guard: reject duplicate event IDs within the TTL window.
-  if (deps.replayGuard?.isDuplicate(event.id, "stripe")) {
+  if (await deps.replayGuard?.isDuplicate(event.id, "stripe")) {
     return { handled: true, event_type: event.type, duplicate: true };
   }
 
@@ -82,7 +82,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       const customerId = typeof session.customer === "string" ? session.customer : session.customer.id;
 
       // Upsert tenant-to-customer mapping (no subscription).
-      deps.tenantStore.upsert({
+      await deps.tenantStore.upsert({
         tenant,
         processorCustomerId: customerId,
       });
@@ -96,7 +96,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
 
       // Idempotency: skip if this session was already processed.
       const stripeSessionId = session.id ?? "unknown";
-      if (deps.creditLedger.hasReferenceId(stripeSessionId)) {
+      if (await deps.creditLedger.hasReferenceId(stripeSessionId)) {
         result = { handled: true, event_type: event.type, tenant, creditedCents: 0 };
         break;
       }
@@ -120,7 +120,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       }
 
       // Credit the ledger with session ID as reference for idempotency.
-      deps.creditLedger.credit(
+      await deps.creditLedger.credit(
         tenant,
         creditCents,
         "purchase",
@@ -133,7 +133,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       // Must run before credit match so markFirstPurchase hasn't been called yet.
       let affiliateBonusCents: number | undefined;
       if (deps.affiliateRepo) {
-        const bonusResult = grantNewUserBonus({
+        const bonusResult = await grantNewUserBonus({
           ledger: deps.creditLedger,
           affiliateRepo: deps.affiliateRepo,
           referredTenantId: tenant,
@@ -146,14 +146,14 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
 
       // Affiliate credit match — grant referrer matching credits on first purchase (WOP-949).
       if (deps.affiliateRepo) {
-        const matchResult = processAffiliateCreditMatch({
+        const matchResult = await processAffiliateCreditMatch({
           tenantId: tenant,
           purchaseAmountCents: creditCents,
           ledger: deps.creditLedger,
           affiliateRepo: deps.affiliateRepo,
         });
         if (matchResult && deps.notificationService && deps.getEmailForTenant) {
-          const referrerEmail = deps.getEmailForTenant(matchResult.referrerTenantId);
+          const referrerEmail = await deps.getEmailForTenant(matchResult.referrerTenantId);
           if (referrerEmail) {
             const amountDollars = (matchResult.matchAmountCents / 100).toFixed(2);
             deps.notificationService.notifyAffiliateCreditMatch(
@@ -168,7 +168,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       // Reactivate suspended bots now that balance is positive (WOP-447).
       let reactivatedBots: string[] | undefined;
       if (deps.botBilling) {
-        reactivatedBots = deps.botBilling.checkReactivation(tenant, deps.creditLedger);
+        reactivatedBots = await deps.botBilling.checkReactivation(tenant, deps.creditLedger);
         if (reactivatedBots.length === 0) reactivatedBots = undefined;
       }
 
@@ -198,12 +198,12 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
       const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
       // Upsert tenant-customer mapping.
-      deps.tenantStore.upsert({ tenant, processorCustomerId: customerId });
+      await deps.tenantStore.upsert({ tenant, processorCustomerId: customerId });
 
-      const existing = deps.vpsRepo.getByBotId(botId);
+      const existing = await deps.vpsRepo.getByBotId(botId);
       if (subscription.status === "active") {
         if (!existing) {
-          deps.vpsRepo.create({
+          await deps.vpsRepo.create({
             botId,
             tenantId: tenant,
             stripeSubscriptionId: subscription.id,
@@ -211,15 +211,15 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
             hostname: `${tenant}.bot.wopr.bot`,
           });
         } else {
-          deps.vpsRepo.updateStatus(botId, "active");
+          await deps.vpsRepo.updateStatus(botId, "active");
         }
       } else if (subscription.status === "canceled") {
         if (existing) {
-          deps.vpsRepo.updateStatus(botId, "canceled");
+          await deps.vpsRepo.updateStatus(botId, "canceled");
         }
       } else if (subscription.cancel_at_period_end) {
         if (existing) {
-          deps.vpsRepo.updateStatus(botId, "canceling");
+          await deps.vpsRepo.updateStatus(botId, "canceling");
         }
       }
 
@@ -236,9 +236,9 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
         break;
       }
 
-      const existing = deps.vpsRepo.getByBotId(botId);
-      if (existing) {
-        deps.vpsRepo.updateStatus(botId, "canceled");
+      const existing2 = await deps.vpsRepo.getByBotId(botId);
+      if (existing2) {
+        await deps.vpsRepo.updateStatus(botId, "canceled");
       }
 
       result = {
@@ -257,7 +257,7 @@ export function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Webh
   // Mark event as seen AFTER processing (success or failure) to prevent infinite retries.
   // This ensures that if processing throws an exception, the event can be retried,
   // but if processing completes (even with handled:false), duplicates are blocked.
-  deps.replayGuard?.markSeen(event.id, "stripe");
+  await deps.replayGuard?.markSeen(event.id, "stripe");
 
   return result;
 }

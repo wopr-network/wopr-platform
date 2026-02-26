@@ -39,15 +39,15 @@ export class BillingEmailService {
   /**
    * Check if an email of this type was already sent today for this tenant.
    */
-  shouldSendEmail(tenantId: string, emailType: BillingEmailType): boolean {
+  async shouldSendEmail(tenantId: string, emailType: BillingEmailType): Promise<boolean> {
     return this.billingEmailRepo.shouldSend(tenantId, emailType);
   }
 
   /**
    * Record that an email was sent.
    */
-  recordEmailSent(tenantId: string, emailType: BillingEmailType): void {
-    this.billingEmailRepo.recordSent(tenantId, emailType);
+  async recordEmailSent(tenantId: string, emailType: BillingEmailType): Promise<void> {
+    await this.billingEmailRepo.recordSent(tenantId, emailType);
   }
 
   /**
@@ -69,7 +69,7 @@ export class BillingEmailService {
         templateName: "credit-purchase",
       });
 
-      this.recordEmailSent(tenantId, "credit-purchase");
+      await this.recordEmailSent(tenantId, "credit-purchase");
       return true;
     } catch (err) {
       logger.error("Failed to send purchase receipt", {
@@ -89,7 +89,7 @@ export class BillingEmailService {
     balanceDollars: string,
     estimatedDaysRemaining: number,
   ): Promise<boolean> {
-    if (!this.shouldSendEmail(tenantId, "low-balance")) {
+    if (!(await this.shouldSendEmail(tenantId, "low-balance"))) {
       return false;
     }
 
@@ -102,7 +102,7 @@ export class BillingEmailService {
         templateName: "low-balance",
       });
 
-      this.recordEmailSent(tenantId, "low-balance");
+      await this.recordEmailSent(tenantId, "low-balance");
       return true;
     } catch (err) {
       logger.error("Failed to send low balance warning", {
@@ -117,7 +117,7 @@ export class BillingEmailService {
    * Send a bot suspended notification. Deduped: max once per day.
    */
   async sendBotSuspendedNotice(email: string, tenantId: string, botNames: string[]): Promise<boolean> {
-    if (!this.shouldSendEmail(tenantId, "bot-suspended")) {
+    if (!(await this.shouldSendEmail(tenantId, "bot-suspended"))) {
       return false;
     }
 
@@ -131,7 +131,7 @@ export class BillingEmailService {
         templateName: "bot-suspended",
       });
 
-      this.recordEmailSent(tenantId, "bot-suspended");
+      await this.recordEmailSent(tenantId, "bot-suspended");
       return true;
     } catch (err) {
       logger.error("Failed to send bot suspended notice", {
@@ -146,7 +146,7 @@ export class BillingEmailService {
    * Send a destruction warning (5 days left). Deduped: max once per day.
    */
   async sendDestructionWarning(email: string, tenantId: string, botNames: string[]): Promise<boolean> {
-    if (!this.shouldSendEmail(tenantId, "bot-destruction")) {
+    if (!(await this.shouldSendEmail(tenantId, "bot-destruction"))) {
       return false;
     }
 
@@ -160,7 +160,7 @@ export class BillingEmailService {
         templateName: "bot-destruction",
       });
 
-      this.recordEmailSent(tenantId, "bot-destruction");
+      await this.recordEmailSent(tenantId, "bot-destruction");
       return true;
     } catch (err) {
       logger.error("Failed to send destruction warning", {
@@ -175,7 +175,7 @@ export class BillingEmailService {
    * Send a data deleted confirmation. Deduped: max once per day.
    */
   async sendDataDeletedNotice(email: string, tenantId: string): Promise<boolean> {
-    if (!this.shouldSendEmail(tenantId, "data-deleted")) {
+    if (!(await this.shouldSendEmail(tenantId, "data-deleted"))) {
       return false;
     }
 
@@ -188,7 +188,7 @@ export class BillingEmailService {
         templateName: "data-deleted",
       });
 
-      this.recordEmailSent(tenantId, "data-deleted");
+      await this.recordEmailSent(tenantId, "data-deleted");
       return true;
     } catch (err) {
       logger.error("Failed to send data deleted notice", {

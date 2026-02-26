@@ -18,9 +18,9 @@ import type { BillingEmailType } from "./billing-emails.js";
 /** Repository interface for billing email deduplication records. */
 export interface IBillingEmailRepository {
   /** Returns true if no email of this type was sent to this tenant today. */
-  shouldSend(tenantId: string, emailType: BillingEmailType): boolean;
+  shouldSend(tenantId: string, emailType: BillingEmailType): Promise<boolean>;
   /** Records that an email was sent. */
-  recordSent(tenantId: string, emailType: BillingEmailType): void;
+  recordSent(tenantId: string, emailType: BillingEmailType): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,9 +30,9 @@ export interface IBillingEmailRepository {
 export class DrizzleBillingEmailRepository implements IBillingEmailRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  shouldSend(tenantId: string, emailType: BillingEmailType): boolean {
+  async shouldSend(tenantId: string, emailType: BillingEmailType): Promise<boolean> {
     const today = new Date().toISOString().split("T")[0];
-    const existing = this.db
+    const rows = await this.db
       .select({ id: emailNotifications.id })
       .from(emailNotifications)
       .where(
@@ -42,22 +42,18 @@ export class DrizzleBillingEmailRepository implements IBillingEmailRepository {
           eq(emailNotifications.sentDate, today),
         ),
       )
-      .limit(1)
-      .get();
+      .limit(1);
 
-    return existing == null;
+    return rows.length === 0;
   }
 
-  recordSent(tenantId: string, emailType: BillingEmailType): void {
+  async recordSent(tenantId: string, emailType: BillingEmailType): Promise<void> {
     const today = new Date().toISOString().split("T")[0];
-    this.db
-      .insert(emailNotifications)
-      .values({
-        id: crypto.randomUUID(),
-        tenantId,
-        emailType,
-        sentDate: today,
-      })
-      .run();
+    await this.db.insert(emailNotifications).values({
+      id: crypto.randomUUID(),
+      tenantId,
+      emailType,
+      sentDate: today,
+    });
   }
 }

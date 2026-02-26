@@ -7,9 +7,9 @@ export interface AdminHealthDeps {
   metrics: MetricsCollector;
   alertChecker: AlertChecker;
   /** Query active bot instances count. Should not throw (caller wraps). */
-  queryActiveBots: () => number;
+  queryActiveBots: () => number | Promise<number>;
   /** Query total credits consumed in last 24 hours (cents). Should not throw (caller wraps). */
-  queryCreditsConsumed24h: () => number;
+  queryCreditsConsumed24h: () => number | Promise<number>;
   /** Optional payment health probe — runs probePaymentHealth if provided. */
   probePaymentHealth?: () => Promise<PaymentHealthStatus>;
 }
@@ -22,13 +22,13 @@ export function createAdminHealthHandler(deps: AdminHealthDeps): Hono {
   const app = new Hono();
 
   app.get("/", async (c) => {
-    const last5m = deps.metrics.getWindow(5);
-    const last60m = deps.metrics.getWindow(60);
+    const last5m = await deps.metrics.getWindow(5);
+    const last60m = await deps.metrics.getWindow(60);
 
     // Safely query fleet data
     let activeBots: number | null = null;
     try {
-      activeBots = deps.queryActiveBots();
+      activeBots = await deps.queryActiveBots();
     } catch {
       // DB unavailable — return null
     }
@@ -36,7 +36,7 @@ export function createAdminHealthHandler(deps: AdminHealthDeps): Hono {
     // Safely query billing data
     let creditsConsumed24h: number | null = null;
     try {
-      creditsConsumed24h = deps.queryCreditsConsumed24h();
+      creditsConsumed24h = await deps.queryCreditsConsumed24h();
     } catch {
       // DB unavailable — return null
     }

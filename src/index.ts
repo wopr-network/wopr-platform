@@ -2,11 +2,9 @@ import { createHmac } from "node:crypto";
 import { serve } from "@hono/node-server";
 import Database from "better-sqlite3";
 import { eq, gte, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
 import { RateStore } from "./admin/rates/rate-store.js";
-import { initRateSchema } from "./admin/rates/schema.js";
 import { app } from "./api/app.js";
 import { DrizzleOAuthStateRepository } from "./api/drizzle-oauth-state-repository.js";
 import { DrizzleSigPenaltyRepository } from "./api/drizzle-sig-penalty-repository.js";
@@ -21,7 +19,6 @@ import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.
 import { EchoChatBackend } from "./chat/chat-backend.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
-import { applyPlatformPragmas, createDb } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
@@ -47,6 +44,7 @@ import {
   getOnboardingSessionRepo,
   getOrgMembershipRepo,
   getOrgService,
+  getPool,
   getRateLimitRepo,
   getRegistrationTokenStore,
   getSystemResourceMonitor,
@@ -78,7 +76,7 @@ import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credenti
 import { encrypt } from "./security/encryption.js";
 import { validateProviderKey } from "./security/key-validation.js";
 import { CapabilitySettingsStore } from "./security/tenant-keys/capability-settings-store.js";
-import { initCapabilitySettingsSchema, TenantKeyStore } from "./security/tenant-keys/schema.js";
+import { TenantKeyStore } from "./security/tenant-keys/schema.js";
 import type { Provider } from "./security/types.js";
 import {
   setBillingRouterDeps,
@@ -91,9 +89,6 @@ import {
   setProfileRouterDeps,
   setSettingsRouterDeps,
 } from "./trpc/index.js";
-
-const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
-const TENANT_KEYS_DB_PATH = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
 
 /**
  * Validate critical environment variables at startup.
@@ -234,14 +229,9 @@ function acceptAndWireWebSocket(nodeId: string, ws: WebSocket): void {
 // Only start the server if not imported by tests
 if (process.env.NODE_ENV !== "test") {
   logger.info(`wopr-platform starting on port ${port}`);
-
-  // Apply pending migrations before any DB access.
-  {
-    const migrationDb = getDb();
-    logger.info("Applying pending database migrations...");
-    runMigrations(migrationDb);
-    logger.info("Database migrations complete");
-  }
+  logger.info("Applying pending database migrations...");
+  await runMigrations(getPool());
+  logger.info("Database migrations complete");
 
   // ── Gateway wiring ──────────────────────────────────────────────────────────
   // Mount /v1/* gateway routes. Must be done before serve() so routes are
@@ -262,8 +252,9 @@ if (process.env.NODE_ENV !== "test") {
       metrics,
       dbHealthCheck: () => {
         try {
-          getDb().run(sql`SELECT 1`);
-          return true;
+          // pg pool health: check if pool is not ended
+          const pool = getPool();
+          return !pool.ended;
         } catch {
           return false;
         }
@@ -272,9 +263,9 @@ if (process.env.NODE_ENV !== "test") {
         // Auth is co-located — if platform is running, auth is up.
         return true;
       },
-      gatewayHealthCheck: () => {
-        const window = metrics.getWindow(1);
-        const last5m = metrics.getWindow(5);
+      gatewayHealthCheck: async () => {
+        const window = await metrics.getWindow(1);
+        const last5m = await metrics.getWindow(5);
         const healthy = window.totalRequests > 0 || last5m.totalRequests === 0;
         return { healthy, latencyMs: 0 };
       },
@@ -296,10 +287,7 @@ if (process.env.NODE_ENV !== "test") {
     });
     alertChecker.start();
 
-    const ratesSqlite = new Database(RATES_DB_PATH);
-    applyPlatformPragmas(ratesSqlite);
-    initRateSchema(ratesSqlite);
-    const rateStore = new RateStore(createDb(ratesSqlite));
+    const rateStore = new RateStore(getDb());
 
     const meter = new MeterEmitter(getDb());
     const budgetChecker = new BudgetChecker(getDb());
@@ -382,23 +370,23 @@ if (process.env.NODE_ENV !== "test") {
     const adminHealth = createAdminHealthHandler({
       metrics,
       alertChecker,
-      queryActiveBots: () => {
-        const rows = getDb()
+      queryActiveBots: async () => {
+        const rows = await getDb()
           .select({ id: schema.botInstances.id })
           .from(schema.botInstances)
-          .where(eq(schema.botInstances.billingState, "active"))
-          .all();
+          .where(eq(schema.botInstances.billingState, "active"));
         return rows.length;
       },
-      queryCreditsConsumed24h: () => {
+      queryCreditsConsumed24h: async () => {
         const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-        const row = getDb()
-          .select({
-            total: sql<number>`COALESCE(SUM(${schema.meterEvents.charge}), 0)`,
-          })
-          .from(schema.meterEvents)
-          .where(gte(schema.meterEvents.timestamp, cutoff))
-          .get();
+        const row = (
+          await getDb()
+            .select({
+              total: sql<number>`COALESCE(SUM(${schema.meterEvents.charge}), 0)`,
+            })
+            .from(schema.meterEvents)
+            .where(gte(schema.meterEvents.timestamp, cutoff))
+        )[0];
         return Math.round((row?.total ?? 0) * 100);
       },
     });
@@ -423,12 +411,8 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire capabilities tRPC router deps (WOP-915: +listCapabilitySettings, +updateCapabilitySettings)
   {
-    const tenantKeysSqlite = new Database(TENANT_KEYS_DB_PATH);
-    applyPlatformPragmas(tenantKeysSqlite);
-    initCapabilitySettingsSchema(tenantKeysSqlite);
-    const tenantKeysDb = drizzle(tenantKeysSqlite);
-    const tenantKeyStore = new TenantKeyStore(tenantKeysSqlite);
-    const capabilitySettingsStore = new CapabilitySettingsStore(tenantKeysDb);
+    const tenantKeyStore = new TenantKeyStore(getDb());
+    const capabilitySettingsStore = new CapabilitySettingsStore(getDb());
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => tenantKeyStore as never,
       getCapabilitySettingsStore: () => capabilitySettingsStore,
@@ -446,7 +430,6 @@ if (process.env.NODE_ENV !== "test") {
     const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
     const AUTH_DB_PATH_LOCAL = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
     const authDb = new Database(AUTH_DB_PATH_LOCAL);
-    applyPlatformPragmas(authDb);
     const authUserRepo = new BetterAuthUserRepository(authDb);
     setProfileRouterDeps({
       getUser: (userId) => authUserRepo.getUser(userId),
@@ -469,14 +452,6 @@ if (process.env.NODE_ENV !== "test") {
   {
     const { resolveApiKey, buildPooledKeysMap } = await import("./security/tenant-keys/key-resolution.js");
     const { validateProviderKey, PROVIDER_ENDPOINTS } = await import("./security/key-validation.js");
-    const { initTenantKeySchema } = await import("./security/tenant-keys/schema.js");
-    const BetterSqlite = (await import("better-sqlite3")).default;
-
-    const TENANT_KEYS_DB_PATH = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
-    const tenantKeysSqlite2 = new BetterSqlite(TENANT_KEYS_DB_PATH);
-    applyPlatformPragmas(tenantKeysSqlite2);
-    initTenantKeySchema(tenantKeysSqlite2);
-    const tenantKeysDb2 = drizzle(tenantKeysSqlite2);
     const vaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const pooledKeys = buildPooledKeysMap();
 
@@ -487,7 +462,7 @@ if (process.env.NODE_ENV !== "test") {
         if (!PROVIDER_ENDPOINTS[validProvider]) {
           return { ok: false, error: `Unknown provider: ${provider}` };
         }
-        const resolved = resolveApiKey(tenantKeysDb2, tenantId, validProvider, vaultEncKey, pooledKeys);
+        const resolved = await resolveApiKey(getDb(), tenantId, validProvider, vaultEncKey, pooledKeys);
         if (!resolved) {
           return { ok: false, error: "No API key configured for this provider" };
         }
@@ -513,15 +488,7 @@ if (process.env.NODE_ENV !== "test") {
   {
     const { resolveApiKeyWithOrgFallback } = await import("./security/tenant-keys/org-key-resolution.js");
     const { RoleStore } = await import("./admin/roles/role-store.js");
-    const { initTenantKeySchema: initTenantKeySchema2 } = await import("./security/tenant-keys/schema.js");
-    const BetterSqlite2 = (await import("better-sqlite3")).default;
-
-    const TENANT_KEYS_DB_PATH2 = process.env.TENANT_KEYS_DB_PATH || "/data/platform/tenant-keys.db";
-    const orgKeysSqlite = new BetterSqlite2(TENANT_KEYS_DB_PATH2);
-    applyPlatformPragmas(orgKeysSqlite);
-    initTenantKeySchema2(orgKeysSqlite);
-    const orgKeysDb = createDb(orgKeysSqlite);
-    const orgKeysTenantKeyStore = new TenantKeyStore(orgKeysSqlite);
+    const orgKeysTenantKeyStore = new TenantKeyStore(getDb());
     const roleStore = new RoleStore(getDb());
     const orgVaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const deriveTenantKey2 = (tenantId: string, platformSecret: string) =>
@@ -557,8 +524,8 @@ if (process.env.NODE_ENV !== "test") {
         if (!PROVIDER_ENDPOINTS2[validProvider]) {
           return { ok: false, error: `Unknown provider: ${provider}` };
         }
-        const resolved = resolveApiKeyWithOrgFallback(
-          (tid, prov, encKey) => resolveApiKey2(orgKeysDb, tid, prov, encKey, new Map())?.key ?? null,
+        const resolved = await resolveApiKeyWithOrgFallback(
+          async (tid, prov, encKey) => (await resolveApiKey2(getDb(), tid, prov, encKey, new Map()))?.key ?? null,
           tenantId,
           validProvider,
           orgVaultEncKey,
@@ -726,18 +693,18 @@ if (process.env.NODE_ENV !== "test") {
   {
     const cronLedger = new CreditLedger(getDb());
     const botInstanceRepo = getBotInstanceRepo();
-    const getResourceTierCosts = buildResourceTierCosts(botInstanceRepo, (tenantId) =>
-      botInstanceRepo
-        .listByTenant(tenantId)
-        .filter((b) => b.billingState === "active")
-        .map((b) => b.id),
-    );
+    const getResourceTierCosts = buildResourceTierCosts(botInstanceRepo, async (tenantId) => {
+      const bots = await botInstanceRepo.listByTenant(tenantId);
+      return bots.filter((b) => b.billingState === "active").map((b) => b.id);
+    });
     const DAILY_MS = 24 * 60 * 60 * 1000;
     setInterval(() => {
       void runRuntimeDeductions({
         ledger: cronLedger,
-        getActiveBotCount: (tenantId) =>
-          botInstanceRepo.listByTenant(tenantId).filter((b) => b.billingState === "active").length,
+        getActiveBotCount: async (tenantId) => {
+          const bots = await botInstanceRepo.listByTenant(tenantId);
+          return bots.filter((b) => b.billingState === "active").length;
+        },
         getResourceTierCosts,
         onSuspend: (tenantId) => {
           logger.warn("Tenant suspended due to insufficient credits", { tenantId });
@@ -798,50 +765,52 @@ if (process.env.NODE_ENV !== "test") {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req, socket, head) => {
-    try {
-      const url = new URL(req.url || "", `http://${req.headers.host}`);
-      const pathname = url.pathname;
-      const match = pathname.match(/^\/internal\/nodes\/([^/]+)\/ws$/);
+    void (async () => {
+      try {
+        const url = new URL(req.url || "", `http://${req.headers.host}`);
+        const pathname = url.pathname;
+        const match = pathname.match(/^\/internal\/nodes\/([^/]+)\/ws$/);
 
-      if (match) {
-        const nodeId = match[1];
-        const authHeader = req.headers.authorization;
-        const bearer = authHeader?.replace(/^Bearer\s+/i, "");
+        if (match) {
+          const nodeId = match[1];
+          const authHeader = req.headers.authorization;
+          const bearer = authHeader?.replace(/^Bearer\s+/i, "");
 
-        // Path 1: Static NODE_SECRET (backwards-compatible)
-        const staticAuthResult = validateNodeAuth(authHeader);
-        if (staticAuthResult === true) {
-          wss.handleUpgrade(req, socket, head, (ws) => {
-            acceptAndWireWebSocket(nodeId, ws);
-          });
-          return;
-        }
-
-        // Path 2: Per-node persistent secret for self-hosted nodes
-        if (bearer) {
-          const nodeBySecret = getNodeRepo().getBySecret(bearer);
-          if (nodeBySecret && nodeBySecret.id === nodeId) {
+          // Path 1: Static NODE_SECRET (backwards-compatible)
+          const staticAuthResult = validateNodeAuth(authHeader);
+          if (staticAuthResult === true) {
             wss.handleUpgrade(req, socket, head, (ws) => {
               acceptAndWireWebSocket(nodeId, ws);
             });
             return;
           }
-        }
 
-        // No valid auth found
-        if (staticAuthResult === null && !bearer) {
-          // NODE_SECRET not configured and no bearer provided
-          socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+          // Path 2: Per-node persistent secret for self-hosted nodes
+          if (bearer) {
+            const nodeBySecret = await getNodeRepo().getBySecret(bearer);
+            if (nodeBySecret && nodeBySecret.id === nodeId) {
+              wss.handleUpgrade(req, socket, head, (ws) => {
+                acceptAndWireWebSocket(nodeId, ws);
+              });
+              return;
+            }
+          }
+
+          // No valid auth found
+          if (staticAuthResult === null && !bearer) {
+            // NODE_SECRET not configured and no bearer provided
+            socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
+          } else {
+            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          }
+          socket.destroy();
         } else {
-          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+          socket.destroy();
         }
-        socket.destroy();
-      } else {
+      } catch (err) {
+        logger.error("WebSocket upgrade error", { err });
         socket.destroy();
       }
-    } catch (err) {
-      logger.error("WebSocket upgrade error", { err });
-      socket.destroy();
-    }
+    })();
   });
 }

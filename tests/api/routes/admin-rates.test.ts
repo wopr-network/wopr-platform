@@ -1,26 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
+import type { PGlite } from "@electric-sql/pglite";
 import { createAdminRateApiRoutes } from "../../../src/api/routes/admin-rates.js";
 import type { AuthEnv } from "../../../src/auth/index.js";
 import { createTestDb } from "../../../src/test/db.js";
 
-let closeSqlite: (() => void) | undefined;
-
-function createTestApp(): Hono<AuthEnv> {
-	const { db, sqlite } = createTestDb();
-	closeSqlite = () => sqlite.close();
-	return createAdminRateApiRoutes(db);
-}
-
 describe("Admin Rate API Routes", () => {
 	let app: Hono<AuthEnv>;
+	let pool: PGlite;
 
-	beforeEach(() => {
-		app = createTestApp();
+	beforeEach(async () => {
+		const testDb = await createTestDb();
+		pool = testDb.pool;
+		app = createAdminRateApiRoutes(testDb.db);
 	});
 
-	afterEach(() => {
-		closeSqlite?.();
+	afterEach(async () => {
+		await pool.close();
 	});
 
 	describe("POST /sell - Create sell rate", () => {
@@ -359,9 +355,16 @@ describe("Admin Rate API Routes", () => {
 
 describe("POST /provider - latencyClass validation", () => {
 	let app: Hono<AuthEnv>;
+	let pool: PGlite;
 
-	beforeEach(() => {
-		app = createTestApp();
+	beforeEach(async () => {
+		const testDb = await createTestDb();
+		pool = testDb.pool;
+		app = createAdminRateApiRoutes(testDb.db);
+	});
+
+	afterEach(async () => {
+		await pool.close();
 	});
 
 	it("accepts valid latencyClass values (fast, standard, batch)", async () => {
@@ -424,9 +427,16 @@ describe("POST /provider - latencyClass validation", () => {
 
 describe("PUT /provider/:id - latencyClass validation", () => {
 	let app: Hono<AuthEnv>;
+	let pool: PGlite;
 
-	beforeEach(() => {
-		app = createTestApp();
+	beforeEach(async () => {
+		const testDb = await createTestDb();
+		pool = testDb.pool;
+		app = createAdminRateApiRoutes(testDb.db);
+	});
+
+	afterEach(async () => {
+		await pool.close();
 	});
 
 	it("updates latencyClass when valid string is provided", async () => {
@@ -485,9 +495,16 @@ describe("PUT /provider/:id - latencyClass validation", () => {
 
 describe("Error handling coverage", () => {
 	let app: Hono<AuthEnv>;
+	let pool: PGlite;
 
-	beforeEach(() => {
-		app = createTestApp();
+	beforeEach(async () => {
+		const testDb = await createTestDb();
+		pool = testDb.pool;
+		app = createAdminRateApiRoutes(testDb.db);
+	});
+
+	afterEach(async () => {
+		await pool.close();
 	});
 
 	it("POST /provider returns 400 for invalid JSON", async () => {

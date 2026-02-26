@@ -12,8 +12,8 @@ function createMockNodeRepo(
   nodes: Array<{ id: string; status: string; lastHeartbeatAt: number | null }> = [],
 ): MockNodeRepo {
   return {
-    list: vi.fn().mockReturnValue(nodes),
-    transition: vi.fn(),
+    list: vi.fn().mockResolvedValue(nodes),
+    transition: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -49,14 +49,14 @@ describe("HeartbeatWatchdog", () => {
     vi.restoreAllMocks();
   });
 
-  it("transitions active node to unhealthy after 90s no heartbeat", () => {
+  it("transitions active node to unhealthy after 90s no heartbeat", async () => {
     const now = Math.floor(Date.now() / 1000);
 
     // Node last heartbeat was 100 seconds ago (> 90s threshold)
-    nodeRepo.list.mockReturnValue([{ id: "node-1", status: "active", lastHeartbeatAt: now - 100 }]);
+    nodeRepo.list.mockResolvedValue([{ id: "node-1", status: "active", lastHeartbeatAt: now - 100 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs as number);
+    await vi.advanceTimersByTimeAsync(1000);
 
     // Should have called transition to "unhealthy"
     expect(nodeRepo.transition).toHaveBeenCalledWith("node-1", "unhealthy", "heartbeat_timeout", "heartbeat_watchdog");
@@ -68,14 +68,14 @@ describe("HeartbeatWatchdog", () => {
     expect(onRecovery).not.toHaveBeenCalled();
   });
 
-  it("transitions unhealthy node to offline after 300s no heartbeat", () => {
+  it("transitions unhealthy node to offline after 300s no heartbeat", async () => {
     const now = Math.floor(Date.now() / 1000);
 
     // Node last heartbeat was 350 seconds ago (> 300s threshold)
-    nodeRepo.list.mockReturnValue([{ id: "node-2", status: "unhealthy", lastHeartbeatAt: now - 350 }]);
+    nodeRepo.list.mockResolvedValue([{ id: "node-2", status: "unhealthy", lastHeartbeatAt: now - 350 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs as number);
+    await vi.advanceTimersByTimeAsync(1000);
 
     // Should have called transition to "offline"
     expect(nodeRepo.transition).toHaveBeenCalledWith("node-2", "offline", "heartbeat_timeout", "heartbeat_watchdog");
@@ -87,46 +87,46 @@ describe("HeartbeatWatchdog", () => {
     expect(onRecovery).toHaveBeenCalledWith("node-2");
   });
 
-  it("skips nodes that have never sent a heartbeat", () => {
-    nodeRepo.list.mockReturnValue([{ id: "node-new", status: "active", lastHeartbeatAt: null }]);
+  it("skips nodes that have never sent a heartbeat", async () => {
+    nodeRepo.list.mockResolvedValue([{ id: "node-new", status: "active", lastHeartbeatAt: null }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs as number);
+    await vi.advanceTimersByTimeAsync(1000);
 
     expect(nodeRepo.transition).not.toHaveBeenCalled();
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 
-  it("does not transition active node within 90s threshold", () => {
+  it("does not transition active node within 90s threshold", async () => {
     const now = Math.floor(Date.now() / 1000);
 
     // Node last heartbeat was 30 seconds ago (< 90s threshold)
-    nodeRepo.list.mockReturnValue([{ id: "node-1", status: "active", lastHeartbeatAt: now - 30 }]);
+    nodeRepo.list.mockResolvedValue([{ id: "node-1", status: "active", lastHeartbeatAt: now - 30 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs as number);
+    await vi.advanceTimersByTimeAsync(1000);
 
     expect(nodeRepo.transition).not.toHaveBeenCalled();
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 
-  it("does not transition unhealthy node within 300s threshold", () => {
+  it("does not transition unhealthy node within 300s threshold", async () => {
     const now = Math.floor(Date.now() / 1000);
 
     // Node last heartbeat was 150 seconds ago (> 90s but < 300s)
-    nodeRepo.list.mockReturnValue([{ id: "node-1", status: "unhealthy", lastHeartbeatAt: now - 150 }]);
+    nodeRepo.list.mockResolvedValue([{ id: "node-1", status: "unhealthy", lastHeartbeatAt: now - 150 }]);
 
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs as number);
+    await vi.advanceTimersByTimeAsync(1000);
 
     // Should NOT transition (already unhealthy, not yet at 300s)
     expect(nodeRepo.transition).not.toHaveBeenCalled();
     expect(onStatusChange).not.toHaveBeenCalled();
   });
 
-  it("calls nodeRepo.list with ['active', 'unhealthy'] statuses", () => {
+  it("calls nodeRepo.list with ['active', 'unhealthy'] statuses", async () => {
     watchdog.start();
-    vi.advanceTimersByTime(config.checkIntervalMs as number);
+    await vi.advanceTimersByTimeAsync(1000);
 
     expect(nodeRepo.list).toHaveBeenCalledWith(["active", "unhealthy"]);
   });

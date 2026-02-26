@@ -5,8 +5,8 @@ import type { BotProfile } from "./types.js";
  * Replaces the YAML-based ProfileStore.
  */
 export interface IBotProfileRepository {
-  get(id: string): BotProfile | null;
-  save(profile: BotProfile): BotProfile; // upsert
-  delete(id: string): boolean;
-  list(): BotProfile[];
+  get(id: string): Promise<BotProfile | null>;
+  save(profile: BotProfile): Promise<BotProfile>; // upsert
+  delete(id: string): Promise<boolean>;
+  list(): Promise<BotProfile[]>;
 }

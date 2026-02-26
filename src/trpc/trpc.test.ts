@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../admin/audit-log.js";
@@ -9,9 +9,7 @@ import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-af
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
-import { initMeterSchema } from "../monetization/metering/schema.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
-import { initStripeSchema } from "../monetization/stripe/schema.js";
 import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { createTestDb } from "../test/db.js";
 import { appRouter } from "./index.js";
@@ -53,11 +51,20 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
 
 function makeMockLedger(): ICreditLedger {
   const balances = new Map<string, number>();
-  const txns: ReturnType<ICreditLedger["credit"]>[] = [];
+  const txns: Array<{
+    id: string;
+    tenantId: string;
+    amountCents: number;
+    balanceAfterCents: number;
+    type: string;
+    description: string | null;
+    referenceId: null;
+    fundingSource: null;
+    createdAt: string;
+  }> = [];
   return {
-    credit(tenantId, amountCents, type, description) {
-      const balanceAfterCents = (balances.get(tenantId) ?? 0) + amountCents;
-      balances.set(tenantId, balanceAfterCents);
+    async credit(tenantId, amountCents, type, description) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
       const tx = {
         id: crypto.randomUUID(),
         tenantId,
@@ -67,15 +74,13 @@ function makeMockLedger(): ICreditLedger {
         description: description ?? null,
         referenceId: null,
         fundingSource: null,
-        attributedUserId: null,
         createdAt: new Date().toISOString(),
       };
-      txns.push(tx);
-      return tx;
+      txns.push(tx as never);
+      return tx as never;
     },
-    debit(tenantId, amountCents, type, description) {
-      const balanceAfterCents = (balances.get(tenantId) ?? 0) - amountCents;
-      balances.set(tenantId, balanceAfterCents);
+    async debit(tenantId, amountCents, type, description) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
       const tx = {
         id: crypto.randomUUID(),
         tenantId,
@@ -85,27 +90,26 @@ function makeMockLedger(): ICreditLedger {
         description: description ?? null,
         referenceId: null,
         fundingSource: null,
-        attributedUserId: null,
         createdAt: new Date().toISOString(),
       };
-      txns.push(tx);
-      return tx;
+      txns.push(tx as never);
+      return tx as never;
     },
-    balance(tenantId) {
+    async balance(tenantId) {
       return balances.get(tenantId) ?? 0;
     },
-    hasReferenceId() {
+    async hasReferenceId() {
       return false;
     },
-    history(tenantId, opts) {
+    async history(tenantId, opts) {
       return txns
         .filter((t) => t.tenantId === tenantId)
-        .slice(opts?.offset ?? 0, (opts?.offset ?? 0) + (opts?.limit ?? 50));
+        .slice(opts?.offset ?? 0, (opts?.offset ?? 0) + (opts?.limit ?? 50)) as never;
     },
-    tenantsWithBalance() {
+    async tenantsWithBalance() {
       return [];
     },
-    memberUsage() {
+    async memberUsage(_tenantId: string) {
       return [];
     },
   };
@@ -116,19 +120,18 @@ function makeMockLedger(): ICreditLedger {
 // ---------------------------------------------------------------------------
 
 describe("tRPC appRouter", () => {
-  let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
-    sqlite = testDb.sqlite;
+  let pool: PGlite;
+
+  beforeEach(async () => {
+    const testDb = await createTestDb();
+    pool = testDb.pool;
     db = testDb.db;
-    initMeterSchema(sqlite);
-    initStripeSchema(sqlite);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   // -------------------------------------------------------------------------
@@ -174,7 +177,7 @@ describe("tRPC appRouter", () => {
   // -------------------------------------------------------------------------
 
   describe("admin", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       const creditLedger = makeMockLedger();
       const userStore = new AdminUserStore(db);
 
@@ -273,7 +276,7 @@ describe("tRPC appRouter", () => {
         priceMap: undefined,
         autoTopupSettingsStore,
         dividendRepo: {
-          getStats: () => ({
+          getStats: async () => ({
             poolCents: 0,
             activeUsers: 0,
             perUserCents: 0,
@@ -282,10 +285,10 @@ describe("tRPC appRouter", () => {
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
-          getHistory: () => [],
-          getLifetimeTotalCents: () => 0,
-          getDigestTenantAggregates: () => [],
-          getTenantEmail: () => undefined,
+          getHistory: async () => [],
+          getLifetimeTotalCents: async () => 0,
+          getDigestTenantAggregates: async () => [],
+          getTenantEmail: async () => undefined,
         },
         spendingLimitsRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -613,7 +616,7 @@ describe("tRPC appRouter", () => {
           priceMap: undefined,
           autoTopupSettingsStore,
           dividendRepo: {
-            getStats: () => ({
+            getStats: async () => ({
               poolCents: 0,
               activeUsers: 0,
               perUserCents: 0,
@@ -622,10 +625,10 @@ describe("tRPC appRouter", () => {
               userLastPurchaseAt: null,
               userWindowExpiresAt: null,
             }),
-            getHistory: () => [],
-            getLifetimeTotalCents: () => 0,
-            getDigestTenantAggregates: () => [],
-            getTenantEmail: () => undefined,
+            getHistory: async () => [],
+            getLifetimeTotalCents: async () => 0,
+            getDigestTenantAggregates: async () => [],
+            getTenantEmail: async () => undefined,
           },
           spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -675,7 +678,7 @@ describe("tRPC appRouter", () => {
           priceMap: undefined,
           autoTopupSettingsStore,
           dividendRepo: {
-            getStats: () => ({
+            getStats: async () => ({
               poolCents: 0,
               activeUsers: 0,
               perUserCents: 0,
@@ -684,10 +687,10 @@ describe("tRPC appRouter", () => {
               userLastPurchaseAt: null,
               userWindowExpiresAt: null,
             }),
-            getHistory: () => [],
-            getLifetimeTotalCents: () => 0,
-            getDigestTenantAggregates: () => [],
-            getTenantEmail: () => undefined,
+            getHistory: async () => [],
+            getLifetimeTotalCents: async () => 0,
+            getDigestTenantAggregates: async () => [],
+            getTenantEmail: async () => undefined,
           },
           spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -725,7 +728,7 @@ describe("tRPC appRouter", () => {
           priceMap: undefined,
           autoTopupSettingsStore,
           dividendRepo: {
-            getStats: () => ({
+            getStats: async () => ({
               poolCents: 0,
               activeUsers: 0,
               perUserCents: 0,
@@ -734,10 +737,10 @@ describe("tRPC appRouter", () => {
               userLastPurchaseAt: null,
               userWindowExpiresAt: null,
             }),
-            getHistory: () => [],
-            getLifetimeTotalCents: () => 0,
-            getDigestTenantAggregates: () => [],
-            getTenantEmail: () => undefined,
+            getHistory: async () => [],
+            getLifetimeTotalCents: async () => 0,
+            getDigestTenantAggregates: async () => [],
+            getTenantEmail: async () => undefined,
           },
           spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -809,7 +812,7 @@ describe("tRPC appRouter", () => {
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         dividendRepo: {
-          getStats: () => ({
+          getStats: async () => ({
             poolCents: 0,
             activeUsers: 0,
             perUserCents: 0,
@@ -818,10 +821,10 @@ describe("tRPC appRouter", () => {
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
-          getHistory: () => [],
-          getLifetimeTotalCents: () => 0,
-          getDigestTenantAggregates: () => [],
-          getTenantEmail: () => undefined,
+          getHistory: async () => [],
+          getLifetimeTotalCents: async () => 0,
+          getDigestTenantAggregates: async () => [],
+          getTenantEmail: async () => undefined,
         },
         spendingLimitsRepo: spendingLimitsRepo1,
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -879,7 +882,7 @@ describe("tRPC appRouter", () => {
         priceMap: loadCreditPriceMap(),
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         dividendRepo: {
-          getStats: () => ({
+          getStats: async () => ({
             poolCents: 0,
             activeUsers: 0,
             perUserCents: 0,
@@ -888,10 +891,10 @@ describe("tRPC appRouter", () => {
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
-          getHistory: () => [],
-          getLifetimeTotalCents: () => 0,
-          getDigestTenantAggregates: () => [],
-          getTenantEmail: () => undefined,
+          getHistory: async () => [],
+          getLifetimeTotalCents: async () => 0,
+          getDigestTenantAggregates: async () => [],
+          getTenantEmail: async () => undefined,
         },
         spendingLimitsRepo: spendingLimitsRepo2,
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -920,7 +923,7 @@ describe("tRPC appRouter", () => {
         priceMap: undefined,
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         dividendRepo: {
-          getStats: () => ({
+          getStats: async () => ({
             poolCents: 0,
             activeUsers: 0,
             perUserCents: 0,
@@ -929,10 +932,10 @@ describe("tRPC appRouter", () => {
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
-          getHistory: () => [],
-          getLifetimeTotalCents: () => 0,
-          getDigestTenantAggregates: () => [],
-          getTenantEmail: () => undefined,
+          getHistory: async () => [],
+          getLifetimeTotalCents: async () => 0,
+          getDigestTenantAggregates: async () => [],
+          getTenantEmail: async () => undefined,
         },
         spendingLimitsRepo: spendingLimitsRepo3,
         affiliateRepo: new DrizzleAffiliateRepository(db),

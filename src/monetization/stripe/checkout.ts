@@ -16,7 +16,7 @@ export async function createCreditCheckoutSession(
   tenantStore: TenantCustomerStore,
   opts: CreditCheckoutOpts,
 ): Promise<Stripe.Checkout.Session> {
-  const existing = tenantStore.getByTenant(opts.tenant);
+  const existing = await tenantStore.getByTenant(opts.tenant);
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
@@ -54,7 +54,7 @@ export async function createVpsCheckoutSession(
   tenantStore: ITenantCustomerStore,
   opts: VpsCheckoutOpts,
 ): Promise<Stripe.Checkout.Session> {
-  const existing = tenantStore.getByTenant(opts.tenant);
+  const existing = await tenantStore.getByTenant(opts.tenant);
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",

@@ -30,7 +30,7 @@ export const activityRoutes = new Hono<AuditEnv>();
  * Query params:
  *   - limit: max results (default 20, max 100)
  */
-activityRoutes.get("/", (c) => {
+activityRoutes.get("/", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
@@ -38,7 +38,7 @@ activityRoutes.get("/", (c) => {
   const limit = Math.min(Math.max(1, limitRaw ? Number.parseInt(limitRaw, 10) : 20), 100);
 
   const db = resolveDb();
-  const rows = queryAuditLog(new DrizzleAuditLogRepository(db), { userId: user.id, limit });
+  const rows = await queryAuditLog(new DrizzleAuditLogRepository(db), { userId: user.id, limit });
 
   const events = rows.map((row) => ({
     id: row.id,

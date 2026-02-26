@@ -7,24 +7,28 @@ import type { IWebhookSeenRepository } from "./webhook-seen-repository.js";
 export class DrizzleWebhookSeenRepository implements IWebhookSeenRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  isDuplicate(eventId: string, source: string): boolean {
-    const row = this.db
-      .select()
-      .from(webhookSeenEvents)
-      .where(and(eq(webhookSeenEvents.eventId, eventId), eq(webhookSeenEvents.source, source)))
-      .get();
+  async isDuplicate(eventId: string, source: string): Promise<boolean> {
+    const row = (
+      await this.db
+        .select()
+        .from(webhookSeenEvents)
+        .where(and(eq(webhookSeenEvents.eventId, eventId), eq(webhookSeenEvents.source, source)))
+    )[0];
     return row !== undefined;
   }
 
-  markSeen(eventId: string, source: string): WebhookSeenEvent {
+  async markSeen(eventId: string, source: string): Promise<WebhookSeenEvent> {
     const seenAt = Date.now();
-    this.db.insert(webhookSeenEvents).values({ eventId, source, seenAt }).onConflictDoNothing().run();
+    await this.db.insert(webhookSeenEvents).values({ eventId, source, seenAt }).onConflictDoNothing();
     return { eventId, source, seenAt };
   }
 
-  purgeExpired(ttlMs: number): number {
+  async purgeExpired(ttlMs: number): Promise<number> {
     const cutoff = Date.now() - ttlMs;
-    const result = this.db.delete(webhookSeenEvents).where(lt(webhookSeenEvents.seenAt, cutoff)).run();
-    return result.changes;
+    const result = await this.db
+      .delete(webhookSeenEvents)
+      .where(lt(webhookSeenEvents.seenAt, cutoff))
+      .returning({ id: webhookSeenEvents.eventId });
+    return result.length;
   }
 }

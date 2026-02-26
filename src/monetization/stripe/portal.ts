@@ -13,7 +13,7 @@ export async function createPortalSession(
   tenantStore: TenantCustomerStore,
   opts: PortalSessionOpts,
 ): Promise<Stripe.BillingPortal.Session> {
-  const mapping = tenantStore.getByTenant(opts.tenant);
+  const mapping = await tenantStore.getByTenant(opts.tenant);
   if (!mapping) {
     throw new Error(`No Stripe customer found for tenant: ${opts.tenant}`);
   }

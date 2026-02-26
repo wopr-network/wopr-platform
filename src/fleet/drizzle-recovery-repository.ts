@@ -39,7 +39,7 @@ function toItem(row: typeof recoveryItems.$inferSelect): RecoveryItem {
 export class DrizzleRecoveryRepository implements IRecoveryRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  createEvent(data: NewRecoveryEvent): RecoveryEvent {
+  async createEvent(data: NewRecoveryEvent): Promise<RecoveryEvent> {
     const now = Math.floor(Date.now() / 1000);
     const row = {
       id: data.id,
@@ -54,29 +54,28 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
       completedAt: null,
       reportJson: null,
     };
-    this.db.insert(recoveryEvents).values(row).run();
+    await this.db.insert(recoveryEvents).values(row);
     return toEvent(row as typeof recoveryEvents.$inferSelect);
   }
 
-  updateEvent(id: string, data: Partial<Omit<RecoveryEvent, "id" | "nodeId">>): RecoveryEvent {
-    const rows = this.db
+  async updateEvent(id: string, data: Partial<Omit<RecoveryEvent, "id" | "nodeId">>): Promise<RecoveryEvent> {
+    const rows = await this.db
       .update(recoveryEvents)
       .set(data as Record<string, unknown>)
       .where(eq(recoveryEvents.id, id))
-      .returning()
-      .all();
+      .returning();
     if (rows.length === 0) {
       throw new Error(`RecoveryEvent not found: ${id}`);
     }
     return toEvent(rows[0]);
   }
 
-  getEvent(id: string): RecoveryEvent | null {
-    const row = this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, id)).get();
-    return row ? toEvent(row) : null;
+  async getEvent(id: string): Promise<RecoveryEvent | null> {
+    const rows = await this.db.select().from(recoveryEvents).where(eq(recoveryEvents.id, id));
+    return rows[0] ? toEvent(rows[0]) : null;
   }
 
-  createItem(data: NewRecoveryItem): RecoveryItem {
+  async createItem(data: NewRecoveryItem): Promise<RecoveryItem> {
     const now = Math.floor(Date.now() / 1000);
     const row = {
       id: data.id,
@@ -91,52 +90,52 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
       startedAt: now,
       completedAt: null,
     };
-    this.db.insert(recoveryItems).values(row).run();
+    await this.db.insert(recoveryItems).values(row);
     return toItem(row as typeof recoveryItems.$inferSelect);
   }
 
-  updateItem(id: string, data: Partial<Omit<RecoveryItem, "id">>): RecoveryItem {
-    const rows = this.db
+  async updateItem(id: string, data: Partial<Omit<RecoveryItem, "id">>): Promise<RecoveryItem> {
+    const rows = await this.db
       .update(recoveryItems)
       .set(data as Record<string, unknown>)
       .where(eq(recoveryItems.id, id))
-      .returning()
-      .all();
+      .returning();
     if (rows.length === 0) {
       throw new Error(`RecoveryItem not found: ${id}`);
     }
     return toItem(rows[0]);
   }
 
-  listOpenEvents(): RecoveryEvent[] {
-    return this.db
+  async listOpenEvents(): Promise<RecoveryEvent[]> {
+    const rows = await this.db
       .select()
       .from(recoveryEvents)
-      .where(inArray(recoveryEvents.status, ["in_progress", "partial"]))
-      .all()
-      .map(toEvent);
-  }
-
-  listEvents(limit: number, status?: RecoveryEvent["status"]): RecoveryEvent[] {
-    const query = this.db.select().from(recoveryEvents);
-    const rows = status ? query.where(eq(recoveryEvents.status, status)).limit(limit).all() : query.limit(limit).all();
+      .where(inArray(recoveryEvents.status, ["in_progress", "partial"]));
     return rows.map(toEvent);
   }
 
-  getWaitingItems(eventId: string): RecoveryItem[] {
-    return this.db
-      .select()
-      .from(recoveryItems)
-      .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")))
-      .all()
-      .map(toItem);
+  async listEvents(limit: number, status?: RecoveryEvent["status"]): Promise<RecoveryEvent[]> {
+    let rows: (typeof recoveryEvents.$inferSelect)[] | undefined;
+    if (status) {
+      rows = await this.db.select().from(recoveryEvents).where(eq(recoveryEvents.status, status)).limit(limit);
+    } else {
+      rows = await this.db.select().from(recoveryEvents).limit(limit);
+    }
+    return rows.map(toEvent);
   }
 
-  incrementRetryCount(itemId: string): void {
-    this.db
+  async getWaitingItems(eventId: string): Promise<RecoveryItem[]> {
+    const rows = await this.db
+      .select()
+      .from(recoveryItems)
+      .where(and(eq(recoveryItems.recoveryEventId, eventId), eq(recoveryItems.status, "waiting")));
+    return rows.map(toItem);
+  }
+
+  async incrementRetryCount(itemId: string): Promise<void> {
+    await this.db
       .update(recoveryItems)
       .set({ retryCount: sql`${recoveryItems.retryCount} + 1` })
-      .where(eq(recoveryItems.id, itemId))
-      .run();
+      .where(eq(recoveryItems.id, itemId));
   }
 }

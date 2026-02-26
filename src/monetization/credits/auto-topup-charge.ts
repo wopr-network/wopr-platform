@@ -35,10 +35,10 @@ export async function chargeAutoTopup(
   source: string,
 ): Promise<AutoTopupChargeResult> {
   // 1. Look up Stripe customer
-  const mapping = deps.tenantStore.getByTenant(tenantId);
+  const mapping = await deps.tenantStore.getByTenant(tenantId);
   if (!mapping) {
     const error = `No Stripe customer for tenant ${tenantId}`;
-    deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
+    await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
     return { success: false, error };
   }
 
@@ -50,13 +50,13 @@ export async function chargeAutoTopup(
     const methods = await deps.stripe.customers.listPaymentMethods(customerId, { limit: 1 });
     if (!methods.data.length) {
       const error = `No payment method on file for tenant ${tenantId}`;
-      deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
+      await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
       return { success: false, error };
     }
     paymentMethodId = methods.data[0].id;
   } catch (err) {
     const error = `Failed to list payment methods: ${err instanceof Error ? err.message : String(err)}`;
-    deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
+    await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
     return { success: false, error };
   }
 
@@ -77,7 +77,7 @@ export async function chargeAutoTopup(
     });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
+    await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
     logger.warn("Auto-topup Stripe charge failed", { tenantId, amountCents, source, error });
     return { success: false, error };
   }
@@ -85,7 +85,7 @@ export async function chargeAutoTopup(
   // 4. Verify payment succeeded (could be requires_action for 3DS)
   if (paymentIntent.status !== "succeeded") {
     const error = `PaymentIntent status: ${paymentIntent.status}`;
-    deps.eventLogRepo.writeEvent({
+    await deps.eventLogRepo.writeEvent({
       tenantId,
       amountCents,
       status: "failed",
@@ -97,12 +97,19 @@ export async function chargeAutoTopup(
   }
 
   // 5. Credit the ledger (idempotent via referenceId = PI ID)
-  if (!deps.creditLedger.hasReferenceId(paymentIntent.id)) {
-    deps.creditLedger.credit(tenantId, amountCents, "purchase", `Auto-topup (${source})`, paymentIntent.id, "stripe");
+  if (!(await deps.creditLedger.hasReferenceId(paymentIntent.id))) {
+    await deps.creditLedger.credit(
+      tenantId,
+      amountCents,
+      "purchase",
+      `Auto-topup (${source})`,
+      paymentIntent.id,
+      "stripe",
+    );
   }
 
   // 6. Write success event
-  deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "success", paymentReference: paymentIntent.id });
+  await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "success", paymentReference: paymentIntent.id });
   logger.info("Auto-topup charge succeeded", { tenantId, amountCents, source, piId: paymentIntent.id });
 
   return { success: true, paymentReference: paymentIntent.id };

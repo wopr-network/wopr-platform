@@ -71,7 +71,7 @@ onboardingRoutes.post("/session/handoff", async (c) => {
   }
 
   try {
-    const session = service.handoff(anonymousId, userId);
+    const session = await service.handoff(anonymousId, userId);
 
     // Always clear the anonymous cookie after attempting handoff
     deleteCookie(c, ANON_SESSION_COOKIE, { path: "/", domain: COOKIE_DOMAIN });
@@ -122,7 +122,7 @@ onboardingRoutes.post("/session/:id/upgrade", async (c) => {
   }
 
   try {
-    const session = service.upgradeAnonymousToUser(anonymousId, userId);
+    const session = await service.upgradeAnonymousToUser(anonymousId, userId);
     if (!session) {
       return c.json({ error: "Anonymous session not found" }, 404);
     }

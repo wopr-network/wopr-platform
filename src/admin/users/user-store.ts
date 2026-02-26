@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, lt, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, ilike, lt, or } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/index.js";
 
@@ -53,8 +53,10 @@ export class AdminUserStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** List users with pagination, filtering, and sorting. */
-  list(filters: AdminUserFilters = {}): AdminUserListResponse {
-    const conditions: SQL[] = [];
+  async list(filters: AdminUserFilters = {}): Promise<AdminUserListResponse> {
+    // Build Drizzle conditions array
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const conditions: ReturnType<typeof eq>[] = [];
 
     if (filters.search) {
       // raw SQL: Drizzle's like() has no ESCAPE clause support; ESCAPE '\\' is required
@@ -62,10 +64,10 @@ export class AdminUserStore {
       const pattern = `%${escapeLike(filters.search)}%`;
       conditions.push(
         or(
-          sql`${adminUsers.name} LIKE ${pattern} ESCAPE '\\'`,
-          sql`${adminUsers.email} LIKE ${pattern} ESCAPE '\\'`,
-          sql`${adminUsers.tenantId} LIKE ${pattern} ESCAPE '\\'`,
-        ) as SQL,
+          ilike(adminUsers.name, pattern),
+          ilike(adminUsers.email, pattern),
+          ilike(adminUsers.tenantId, pattern),
+        ) as ReturnType<typeof eq>,
       );
     }
 
@@ -87,45 +89,95 @@ export class AdminUserStore {
       conditions.push(lt(adminUsers.creditBalanceCents, 500));
     }
 
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const sortCol = SORT_COLUMN_MAP[filters.sortBy ?? "created_at"];
-    const orderExpr = filters.sortOrder === "asc" ? asc(sortCol) : desc(sortCol);
+    // Count total matching rows
+    const countRows = await this.db.select({ count: count() }).from(adminUsers).where(whereClause);
+    const total = Number(countRows[0]?.count ?? 0);
 
+    // Sort
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);
 
-    const [{ total }] = this.db.select({ total: count() }).from(adminUsers).where(where).all();
+    type SortableColumn =
+      | typeof adminUsers.lastSeen
+      | typeof adminUsers.createdAt
+      | typeof adminUsers.creditBalanceCents
+      | typeof adminUsers.agentCount;
 
-    const rows = this.db.select().from(adminUsers).where(where).orderBy(orderExpr).limit(limit).offset(offset).all();
+    const sortColumnMap: Record<string, SortableColumn> = {
+      last_seen: adminUsers.lastSeen,
+      created_at: adminUsers.createdAt,
+      balance: adminUsers.creditBalanceCents,
+      agent_count: adminUsers.agentCount,
+    };
+    const sortCol = sortColumnMap[filters.sortBy ?? "created_at"] ?? adminUsers.createdAt;
+    const orderFn = filters.sortOrder === "asc" ? asc : desc;
 
-    return { users: rows.map(toSummary), total, limit, offset };
+    const rows = await this.db
+      .select()
+      .from(adminUsers)
+      .where(whereClause)
+      .orderBy(orderFn(sortCol))
+      .limit(limit)
+      .offset(offset);
+
+    const users: AdminUserSummary[] = rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      tenant_id: row.tenantId,
+      status: row.status,
+      role: row.role,
+      credit_balance_cents: row.creditBalanceCents,
+      agent_count: row.agentCount,
+      last_seen: row.lastSeen,
+      created_at: row.createdAt,
+    }));
+
+    return { users, total, limit, offset };
   }
 
   /** Full-text search across name, email, and tenant_id. */
-  search(query: string): AdminUserSummary[] {
-    // raw SQL: Drizzle's like() has no ESCAPE clause support
+  async search(query: string): Promise<AdminUserSummary[]> {
     const pattern = `%${escapeLike(query)}%`;
-    return this.db
+    const rows = await this.db
       .select()
       .from(adminUsers)
-      .where(
-        or(
-          sql`${adminUsers.name} LIKE ${pattern} ESCAPE '\\'`,
-          sql`${adminUsers.email} LIKE ${pattern} ESCAPE '\\'`,
-          sql`${adminUsers.tenantId} LIKE ${pattern} ESCAPE '\\'`,
-        ),
-      )
+      .where(or(ilike(adminUsers.name, pattern), ilike(adminUsers.email, pattern), ilike(adminUsers.tenantId, pattern)))
       .orderBy(desc(adminUsers.createdAt))
-      .limit(50)
-      .all()
-      .map(toSummary);
+      .limit(50);
+    return rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      tenant_id: row.tenantId,
+      status: row.status,
+      role: row.role,
+      credit_balance_cents: row.creditBalanceCents,
+      agent_count: row.agentCount,
+      last_seen: row.lastSeen,
+      created_at: row.createdAt,
+    }));
   }
 
   /** Get a single user by ID. */
-  getById(userId: string): AdminUserSummary | null {
-    const row = this.db.select().from(adminUsers).where(eq(adminUsers.id, userId)).get();
-    return row ? toSummary(row) : null;
+  async getById(userId: string): Promise<AdminUserSummary | null> {
+    const rows = await this.db.select().from(adminUsers).where(eq(adminUsers.id, userId));
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      tenant_id: row.tenantId,
+      status: row.status,
+      role: row.role,
+      credit_balance_cents: row.creditBalanceCents,
+      agent_count: row.agentCount,
+      last_seen: row.lastSeen,
+      created_at: row.createdAt,
+    };
   }
 }
 
@@ -133,29 +185,7 @@ export class AdminUserStore {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SORT_COLUMN_MAP = {
-  last_seen: adminUsers.lastSeen,
-  created_at: adminUsers.createdAt,
-  balance: adminUsers.creditBalanceCents,
-  agent_count: adminUsers.agentCount,
-} as const;
-
 /** Escape LIKE special characters for safe parameterized queries. */
 function escapeLike(input: string): string {
   return input.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-}
-
-function toSummary(row: typeof adminUsers.$inferSelect): AdminUserSummary {
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    tenant_id: row.tenantId,
-    status: row.status,
-    role: row.role,
-    credit_balance_cents: row.creditBalanceCents,
-    agent_count: row.agentCount,
-    last_seen: row.lastSeen,
-    created_at: row.createdAt,
-  };
 }

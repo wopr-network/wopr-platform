@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Internal admin notes per tenant — visible only to platform operators.
  * Not user-facing. Supports pinning important notes to the top.
  */
-export const adminNotes = sqliteTable(
+export const adminNotes = pgTable(
   "admin_notes",
   {
     id: text("id").primaryKey(),
@@ -13,8 +13,8 @@ export const adminNotes = sqliteTable(
     authorId: text("author_id").notNull(),
     content: text("content").notNull(),
     isPinned: integer("is_pinned").notNull().default(0),
-    createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
-    updatedAt: integer("updated_at").notNull().default(sql`(unixepoch())`),
+    createdAt: bigint("created_at", { mode: "number" }).notNull().default(sql`(extract(epoch from now()))::bigint`),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull().default(sql`(extract(epoch from now()))::bigint`),
   },
   (table) => [
     index("idx_admin_notes_tenant").on(table.tenantId, table.createdAt),

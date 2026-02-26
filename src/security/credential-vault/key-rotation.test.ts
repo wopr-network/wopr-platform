@@ -1,7 +1,8 @@
 import { createHmac } from "node:crypto";
-import BetterSqlite3 from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { decrypt, encrypt } from "../encryption.js";
 import type { EncryptedPayload } from "../types.js";
 import { reEncryptAllCredentials } from "./key-rotation.js";
@@ -10,148 +11,113 @@ import { getVaultEncryptionKey } from "./store.js";
 const OLD_SECRET = "old-platform-secret-for-test";
 const NEW_SECRET = "new-platform-secret-for-test";
 
+const NOW_EPOCH = Math.floor(Date.now() / 1000);
+
 function deriveTenantKey(tenantId: string, secret: string): Buffer {
   return createHmac("sha256", secret).update(`tenant:${tenantId}`).digest();
 }
 
 describe("reEncryptAllCredentials", () => {
-  let sqlite: BetterSqlite3.Database;
-  let db: ReturnType<typeof drizzle>;
+  let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    sqlite.exec(`CREATE TABLE provider_credentials (
-      id TEXT PRIMARY KEY,
-      provider TEXT NOT NULL DEFAULT '',
-      key_name TEXT NOT NULL DEFAULT '',
-      encrypted_value TEXT NOT NULL,
-      auth_type TEXT NOT NULL DEFAULT '',
-      auth_header TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      last_validated TEXT,
-      created_at TEXT NOT NULL DEFAULT '',
-      rotated_at TEXT,
-      created_by TEXT NOT NULL DEFAULT ''
-    )`);
-    sqlite.exec(`CREATE TABLE tenant_api_keys (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      provider TEXT NOT NULL DEFAULT '',
-      label TEXT NOT NULL DEFAULT '',
-      encrypted_key TEXT NOT NULL,
-      created_at INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL DEFAULT 0
-    )`);
-    db = drizzle(sqlite);
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(() => sqlite.close());
+  afterEach(async () => {
+    await pool.close();
+  });
 
-  it("re-encrypts provider credentials from old to new secret", () => {
+  it("re-encrypts provider credentials from old to new secret", async () => {
     const oldKey = getVaultEncryptionKey(OLD_SECRET);
     const encrypted = encrypt("sk-ant-real-key-12345", oldKey);
-    sqlite
-      .prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)")
-      .run("cred-1", JSON.stringify(encrypted));
+    await pool.query(
+      "INSERT INTO provider_credentials (id, provider, key_name, encrypted_value, auth_type, created_by) VALUES ($1, $2, $3, $4, $5, $6)",
+      ["cred-1", "openrouter", "default", JSON.stringify(encrypted), "bearer", "test"],
+    );
 
-    const result = reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(1);
     expect(result.providerCredentials.errors).toHaveLength(0);
 
-    // Verify: decryptable with new key, not old
-    const row = sqlite.prepare("SELECT encrypted_value FROM provider_credentials WHERE id = ?").get("cred-1") as {
-      encrypted_value: string;
-    };
+    const row = await pool.query<{ encrypted_value: string }>(
+      "SELECT encrypted_value FROM provider_credentials WHERE id = $1",
+      ["cred-1"],
+    );
     const newKey = getVaultEncryptionKey(NEW_SECRET);
-    const payload: EncryptedPayload = JSON.parse(row.encrypted_value);
+    const payload: EncryptedPayload = JSON.parse(row.rows[0].encrypted_value);
     const decrypted = decrypt(payload, newKey);
     expect(decrypted).toBe("sk-ant-real-key-12345");
 
-    // Old key should fail
     const oldKey2 = getVaultEncryptionKey(OLD_SECRET);
     expect(() => decrypt(payload, oldKey2)).toThrow();
   });
 
-  it("re-encrypts tenant BYOK keys from old to new secret", () => {
+  it("re-encrypts tenant BYOK keys from old to new secret", async () => {
     const oldTenantKey = deriveTenantKey("t1", OLD_SECRET);
     const encrypted = encrypt("sk-openai-tenant-key", oldTenantKey);
-    sqlite
-      .prepare("INSERT INTO tenant_api_keys (id, tenant_id, encrypted_key) VALUES (?, ?, ?)")
-      .run("tk-1", "t1", JSON.stringify(encrypted));
+    await pool.query(
+      "INSERT INTO tenant_api_keys (id, tenant_id, provider, encrypted_key, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      ["tk-1", "t1", "openai", JSON.stringify(encrypted), NOW_EPOCH, NOW_EPOCH],
+    );
 
-    const result = reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
     expect(result.tenantKeys.migrated).toBe(1);
     expect(result.tenantKeys.errors).toHaveLength(0);
 
-    // Verify: decryptable with new tenant key
-    const row = sqlite.prepare("SELECT encrypted_key FROM tenant_api_keys WHERE id = ?").get("tk-1") as {
-      encrypted_key: string;
-    };
+    const row = await pool.query<{ encrypted_key: string }>("SELECT encrypted_key FROM tenant_api_keys WHERE id = $1", [
+      "tk-1",
+    ]);
     const newTenantKey = deriveTenantKey("t1", NEW_SECRET);
-    const payload: EncryptedPayload = JSON.parse(row.encrypted_key);
+    const payload: EncryptedPayload = JSON.parse(row.rows[0].encrypted_key);
     expect(decrypt(payload, newTenantKey)).toBe("sk-openai-tenant-key");
   });
 
-  it("handles mixed valid and invalid rows gracefully", () => {
+  it("handles mixed valid and invalid rows gracefully", async () => {
     const oldKey = getVaultEncryptionKey(OLD_SECRET);
     const encrypted = encrypt("valid-key", oldKey);
-    sqlite
-      .prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)")
-      .run("cred-1", JSON.stringify(encrypted));
-    sqlite
-      .prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)")
-      .run("cred-2", "not-valid-json");
+    await pool.query(
+      "INSERT INTO provider_credentials (id, provider, key_name, encrypted_value, auth_type, created_by) VALUES ($1, $2, $3, $4, $5, $6)",
+      ["cred-1", "openrouter", "default", JSON.stringify(encrypted), "bearer", "test"],
+    );
+    await pool.query(
+      "INSERT INTO provider_credentials (id, provider, key_name, encrypted_value, auth_type, created_by) VALUES ($1, $2, $3, $4, $5, $6)",
+      ["cred-2", "openrouter", "default", "not-valid-json", "bearer", "test"],
+    );
 
-    const result = reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(1);
     expect(result.providerCredentials.errors).toHaveLength(1);
     expect(result.providerCredentials.errors[0]).toContain("cred-2");
   });
 
-  it("handles missing tenant_api_keys table gracefully", () => {
-    // Close and recreate DB without tenant_api_keys table
-    sqlite.close();
-    sqlite = new BetterSqlite3(":memory:");
-    sqlite.exec(`CREATE TABLE provider_credentials (
-      id TEXT PRIMARY KEY,
-      provider TEXT NOT NULL DEFAULT '',
-      key_name TEXT NOT NULL DEFAULT '',
-      encrypted_value TEXT NOT NULL,
-      auth_type TEXT NOT NULL DEFAULT '',
-      auth_header TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      last_validated TEXT,
-      created_at TEXT NOT NULL DEFAULT '',
-      rotated_at TEXT,
-      created_by TEXT NOT NULL DEFAULT ''
-    )`);
-    db = drizzle(sqlite);
-
-    // Should not throw
-    const result = reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+  it("returns zero counts when tables are empty", async () => {
+    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(0);
     expect(result.tenantKeys.migrated).toBe(0);
   });
 
-  it("re-encrypts multiple provider credentials", () => {
+  it("re-encrypts multiple provider credentials", async () => {
     const oldKey = getVaultEncryptionKey(OLD_SECRET);
     for (let i = 1; i <= 3; i++) {
       const encrypted = encrypt(`sk-key-${i}`, oldKey);
-      sqlite
-        .prepare("INSERT INTO provider_credentials (id, encrypted_value) VALUES (?, ?)")
-        .run(`cred-${i}`, JSON.stringify(encrypted));
+      await pool.query(
+        "INSERT INTO provider_credentials (id, provider, key_name, encrypted_value, auth_type, created_by) VALUES ($1, $2, $3, $4, $5, $6)",
+        [`cred-${i}`, "openrouter", "default", JSON.stringify(encrypted), "bearer", "test"],
+      );
     }
 
-    const result = reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(3);
 
-    // Verify all are re-encrypted with new key
     const newKey = getVaultEncryptionKey(NEW_SECRET);
     for (let i = 1; i <= 3; i++) {
-      const row = sqlite.prepare("SELECT encrypted_value FROM provider_credentials WHERE id = ?").get(`cred-${i}`) as {
-        encrypted_value: string;
-      };
-      const payload: EncryptedPayload = JSON.parse(row.encrypted_value);
+      const row = await pool.query<{ encrypted_value: string }>(
+        "SELECT encrypted_value FROM provider_credentials WHERE id = $1",
+        [`cred-${i}`],
+      );
+      const payload: EncryptedPayload = JSON.parse(row.rows[0].encrypted_value);
       expect(decrypt(payload, newKey)).toBe(`sk-key-${i}`);
     }
   });

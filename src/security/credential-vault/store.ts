@@ -80,12 +80,12 @@ export class CredentialVaultStore {
   }
 
   /** Create a new provider credential. Returns the record ID. */
-  create(input: CreateCredentialInput): string {
+  async create(input: CreateCredentialInput): Promise<string> {
     const id = randomUUID();
     const encrypted = encrypt(input.plaintextKey, this.encryptionKey);
     const serialized = JSON.stringify(encrypted);
 
-    this.repo.insert({
+    await this.repo.insert({
       id,
       provider: input.provider,
       keyName: input.keyName,
@@ -105,13 +105,14 @@ export class CredentialVaultStore {
   }
 
   /** List all credentials for a provider (or all providers). Never returns encrypted values. */
-  list(provider?: string): CredentialSummary[] {
-    return this.repo.list(provider).map((r) => ({ ...r, isActive: r.isActive === 1 }));
+  async list(provider?: string): Promise<CredentialSummary[]> {
+    const rows = await this.repo.list(provider);
+    return rows.map((r) => ({ ...r, isActive: r.isActive === 1 }));
   }
 
   /** Get a single credential summary by ID. */
-  getById(id: string): CredentialSummary | null {
-    const row = this.repo.getSummaryById(id);
+  async getById(id: string): Promise<CredentialSummary | null> {
+    const row = await this.repo.getSummaryById(id);
     if (!row) return null;
     return { ...row, isActive: row.isActive === 1 };
   }
@@ -121,8 +122,8 @@ export class CredentialVaultStore {
    *
    * SECURITY: The returned plaintext key MUST be discarded after use.
    */
-  decrypt(id: string): DecryptedCredential | null {
-    const row = this.repo.getFullById(id);
+  async decrypt(id: string): Promise<DecryptedCredential | null> {
+    const row = await this.repo.getFullById(id);
     if (!row) return null;
 
     const payload: EncryptedPayload = JSON.parse(row.encryptedValue);
@@ -144,8 +145,9 @@ export class CredentialVaultStore {
    *
    * SECURITY: Returned keys MUST be discarded after use.
    */
-  getActiveForProvider(provider: string): DecryptedCredential[] {
-    return this.repo.listActiveForProvider(provider).map((row) => {
+  async getActiveForProvider(provider: string): Promise<DecryptedCredential[]> {
+    const rows = await this.repo.listActiveForProvider(provider);
+    return rows.map((row) => {
       const payload: EncryptedPayload = JSON.parse(row.encryptedValue);
       const plaintextKey = decrypt(payload, this.encryptionKey);
       return {
@@ -160,13 +162,13 @@ export class CredentialVaultStore {
   }
 
   /** Rotate a credential's key. Encrypts the new key and records the rotation timestamp. */
-  rotate(input: RotateCredentialInput): boolean {
-    const existing = this.repo.getSummaryById(input.id);
+  async rotate(input: RotateCredentialInput): Promise<boolean> {
+    const existing = await this.repo.getSummaryById(input.id);
     if (!existing) return false;
 
     const encrypted = encrypt(input.plaintextKey, this.encryptionKey);
     const serialized = JSON.stringify(encrypted);
-    this.repo.updateEncryptedValue(input.id, serialized);
+    await this.repo.updateEncryptedValue(input.id, serialized);
 
     this.audit(input.rotatedBy, "credential.rotate", {
       credentialId: input.id,
@@ -177,11 +179,11 @@ export class CredentialVaultStore {
   }
 
   /** Mark a credential as active or inactive. */
-  setActive(id: string, isActive: boolean, changedBy: string): boolean {
-    const existing = this.repo.getSummaryById(id);
+  async setActive(id: string, isActive: boolean, changedBy: string): Promise<boolean> {
+    const existing = await this.repo.getSummaryById(id);
     if (!existing) return false;
 
-    this.repo.setActive(id, isActive);
+    await this.repo.setActive(id, isActive);
 
     this.audit(changedBy, isActive ? "credential.activate" : "credential.deactivate", {
       credentialId: id,
@@ -192,16 +194,16 @@ export class CredentialVaultStore {
   }
 
   /** Record a successful validation timestamp. */
-  markValidated(id: string): boolean {
+  async markValidated(id: string): Promise<boolean> {
     return this.repo.markValidated(id);
   }
 
   /** Permanently delete a credential. */
-  delete(id: string, deletedBy: string): boolean {
-    const existing = this.repo.getSummaryById(id);
+  async delete(id: string, deletedBy: string): Promise<boolean> {
+    const existing = await this.repo.getSummaryById(id);
     if (!existing) return false;
 
-    this.repo.deleteById(id);
+    await this.repo.deleteById(id);
 
     this.audit(deletedBy, "credential.delete", {
       credentialId: id,

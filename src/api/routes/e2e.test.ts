@@ -1,20 +1,14 @@
-import BetterSqlite3 from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb, type DrizzleDb } from "../../db/index.js";
-import * as schema from "../../db/schema/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import { initAffiliateSchema } from "../../monetization/affiliate/schema.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { initCreditSchema } from "../../monetization/credits/schema.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import { initMeterSchema } from "../../monetization/metering/schema.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
-import { initStripeSchema } from "../../monetization/stripe/schema.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
+import { createTestDb } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -478,7 +472,7 @@ describe("E2E: Bot management flow", () => {
 
 describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
-  let sqlite: BetterSqlite3.Database;
+
   let db: DrizzleDb;
   let tenantStore: TenantCustomerStore;
   let creditLedger: CreditLedger;
@@ -503,42 +497,27 @@ describe("E2E: Billing flow (credit model)", () => {
     charge: vi.fn().mockResolvedValue({ success: true }),
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     createdBots.clear();
     botRunningState = new Map();
     botCounter = 0;
 
-    // Set up in-memory DB with schemas
-    sqlite = new BetterSqlite3(":memory:");
-    initMeterSchema(sqlite);
-    initStripeSchema(sqlite);
-    initCreditSchema(sqlite);
-    initAffiliateSchema(sqlite);
-    db = createDb(sqlite);
+    // Set up in-memory DB with PGlite
+    const { db: testDb } = await createTestDb();
+    db = testDb;
     tenantStore = new TenantCustomerStore(db);
     creditLedger = new CreditLedger(db);
 
     // Inject credit ledger for quota routes
     setLedger(creditLedger);
 
-    // Inject billing deps
-    const sigPenaltySqlite = new BetterSqlite3(":memory:");
-    sigPenaltySqlite.exec(`
-      CREATE TABLE IF NOT EXISTS webhook_sig_penalties (
-        ip TEXT NOT NULL,
-        source TEXT NOT NULL,
-        failures INTEGER NOT NULL DEFAULT 0,
-        blocked_until INTEGER NOT NULL DEFAULT 0,
-        updated_at INTEGER NOT NULL,
-        PRIMARY KEY (ip, source)
-      );
-    `);
+    // Inject billing deps (use same db for sig penalty repo)
     setBillingDeps({
       processor: mockProcessor,
       creditLedger,
       meterAggregator: new MeterAggregator(db),
-      sigPenaltyRepo: new DrizzleSigPenaltyRepository(drizzle(sigPenaltySqlite, { schema })),
+      sigPenaltyRepo: new DrizzleSigPenaltyRepository(db),
       affiliateRepo: new DrizzleAffiliateRepository(db),
     });
 
@@ -566,7 +545,7 @@ describe("E2E: Billing flow (credit model)", () => {
   });
 
   afterEach(() => {
-    sqlite.close();
+    vi.clearAllMocks();
   });
 
   it("Credit checkout -> webhook credits ledger -> verify balance -> portal access", async () => {
@@ -626,18 +605,18 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
-    const webhookResult = handleWebhookEvent({ tenantStore, creditLedger }, checkoutEvent);
+    const webhookResult = await handleWebhookEvent({ tenantStore, creditLedger }, checkoutEvent);
     expect(webhookResult.handled).toBe(true);
     expect(webhookResult.tenant).toBe(tenantId);
     expect(webhookResult.creditedCents).toBe(2500);
 
     // Step 5: Verify the tenant is now mapped to a Stripe customer
-    const mapping = tenantStore.getByTenant(tenantId);
+    const mapping = await tenantStore.getByTenant(tenantId);
     expect(mapping).not.toBeNull();
     expect(mapping?.processor_customer_id).toBe("cus_e2e_123");
 
     // Step 6: Verify credits were granted
-    const balance = creditLedger.balance(tenantId);
+    const balance = await creditLedger.balance(tenantId);
     expect(balance).toBe(2500);
 
     // Step 7: Check balance via quota route
@@ -679,12 +658,12 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
-    const secondResult = handleWebhookEvent({ tenantStore, creditLedger }, secondCheckoutEvent);
+    const secondResult = await handleWebhookEvent({ tenantStore, creditLedger }, secondCheckoutEvent);
     expect(secondResult.handled).toBe(true);
     expect(secondResult.creditedCents).toBe(5000); // 1:1 without priceMap
 
     // Step 10: Verify accumulated balance
-    const finalBalance = creditLedger.balance(tenantId);
+    const finalBalance = await creditLedger.balance(tenantId);
     expect(finalBalance).toBe(7500); // 2500 + 5000
   });
 });

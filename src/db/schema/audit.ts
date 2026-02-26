@@ -1,10 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
-export const auditLog = sqliteTable(
+export const auditLog = pgTable(
   "audit_log",
   {
     id: text("id").primaryKey(),
-    timestamp: integer("timestamp").notNull(),
+    timestamp: bigint("timestamp", { mode: "number" }).notNull(),
     userId: text("user_id").notNull(),
     authMethod: text("auth_method").notNull(),
     action: text("action").notNull(),

@@ -1,24 +1,22 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { createTestDb } from "../../test/db.js";
 import { BudgetChecker, type SpendLimits } from "./budget-checker.js";
 
-/** Free tier limits (matching old DEFAULT_TIERS["free"]) */
 const FREE_LIMITS: SpendLimits = {
   maxSpendPerHour: 0.5,
   maxSpendPerMonth: 5,
   label: "free",
 };
 
-/** Pro tier limits */
 const PRO_LIMITS: SpendLimits = {
   maxSpendPerHour: 10,
   maxSpendPerMonth: 200,
   label: "pro",
 };
 
-/** Enterprise (unlimited) limits */
 const ENTERPRISE_LIMITS: SpendLimits = {
   maxSpendPerHour: null,
   maxSpendPerMonth: null,
@@ -27,23 +25,21 @@ const ENTERPRISE_LIMITS: SpendLimits = {
 
 describe("BudgetChecker", () => {
   let db: DrizzleDb;
-  let sqlite: import("better-sqlite3").Database;
+  let pool: PGlite;
   let checker: BudgetChecker;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
-    db = testDb.db;
-    sqlite = testDb.sqlite;
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     checker = new BudgetChecker(db, { cacheTtlMs: 1000 });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   describe("check()", () => {
-    it("allows requests when spend is under limit", () => {
-      const result = checker.check("tenant-1", FREE_LIMITS);
+    it("allows requests when spend is under limit", async () => {
+      const result = await checker.check("tenant-1", FREE_LIMITS);
       expect(result.allowed).toBe(true);
       expect(result.currentHourlySpend).toBe(0);
       expect(result.currentMonthlySpend).toBe(0);
@@ -51,257 +47,223 @@ describe("BudgetChecker", () => {
       expect(result.maxSpendPerMonth).toBe(5);
     });
 
-    it("blocks requests when hourly limit is exceeded", () => {
-      // Insert events to exceed hourly limit ($0.50)
+    it("blocks requests when hourly limit is exceeded", async () => {
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 0.3,
-          charge: 0.6,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 0.3,
+        charge: 0.6,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      const result = checker.check("tenant-1", FREE_LIMITS);
+      const result = await checker.check("tenant-1", FREE_LIMITS);
       expect(result.allowed).toBe(false);
       expect(result.reason).toContain("Hourly spending limit exceeded");
       expect(result.httpStatus).toBe(429);
       expect(result.currentHourlySpend).toBe(0.6);
     });
 
-    it("blocks requests when monthly limit is exceeded", () => {
-      // Insert events to exceed monthly limit ($5.00)
+    it("blocks requests when monthly limit is exceeded", async () => {
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 2.5,
-          charge: 5.0,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 2.5,
+        charge: 5.0,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      const result = checker.check("tenant-1", FREE_LIMITS);
+      const result = await checker.check("tenant-1", FREE_LIMITS);
       expect(result.allowed).toBe(false);
       expect(result.reason).toContain("spending limit exceeded");
       expect(result.httpStatus).toBe(429);
-      // Could be hourly or monthly -- both are exceeded (5.0 >= 0.5 and 5.0 >= 5.0)
     });
 
-    it("allows unlimited spend for enterprise tier", () => {
-      const result = checker.check("tenant-ent", ENTERPRISE_LIMITS);
+    it("allows unlimited spend for enterprise tier", async () => {
+      const result = await checker.check("tenant-ent", ENTERPRISE_LIMITS);
       expect(result.allowed).toBe(true);
       expect(result.maxSpendPerHour).toBeNull();
       expect(result.maxSpendPerMonth).toBeNull();
     });
 
-    it("uses custom per-tenant limits when provided", () => {
+    it("uses custom per-tenant limits when provided", async () => {
       const customLimits: SpendLimits = {
         maxSpendPerHour: 1.0,
         maxSpendPerMonth: 10.0,
         label: "custom",
       };
-
-      checker.clearCache(); // Clear cache to force re-query
-
-      const result = checker.check("tenant-1", customLimits);
+      checker.clearCache();
+      const result = await checker.check("tenant-1", customLimits);
       expect(result.allowed).toBe(true);
       expect(result.maxSpendPerHour).toBe(1.0);
       expect(result.maxSpendPerMonth).toBe(10.0);
     });
 
-    it("caches budget data to avoid repeated DB queries", () => {
-      // First check
-      const result1 = checker.check("tenant-1", FREE_LIMITS);
+    it("caches budget data to avoid repeated DB queries", async () => {
+      const result1 = await checker.check("tenant-1", FREE_LIMITS);
       expect(result1.allowed).toBe(true);
 
-      // Add events (should not be reflected in cached result)
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 0.3,
-          charge: 0.6,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 0.3,
+        charge: 0.6,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      // Second check (should use cache)
-      const result2 = checker.check("tenant-1", FREE_LIMITS);
+      const result2 = await checker.check("tenant-1", FREE_LIMITS);
       expect(result2.allowed).toBe(true);
-      expect(result2.currentHourlySpend).toBe(0); // Cached value
+      expect(result2.currentHourlySpend).toBe(0);
 
-      // Clear cache and check again
       checker.invalidate("tenant-1");
-      const result3 = checker.check("tenant-1", FREE_LIMITS);
-      expect(result3.allowed).toBe(false); // Now sees the new spend
+      const result3 = await checker.check("tenant-1", FREE_LIMITS);
+      expect(result3.allowed).toBe(false);
       expect(result3.currentHourlySpend).toBe(0.6);
     });
 
-    it("aggregates spend from both meter_events and usage_summaries", () => {
+    it("aggregates spend from both meter_events and usage_summaries", async () => {
       const now = Date.now();
       const oneHourAgo = now - 60 * 60 * 1000;
 
-      // Add event in meter_events
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 0.1,
-          charge: 0.2,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 0.1,
+        charge: 0.2,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      // Add summary in usage_summaries
-      db.insert(usageSummaries)
-        .values({
-          id: "sum-1",
-          tenant: "tenant-1",
-          capability: "chat",
-          provider: "replicate",
-          eventCount: 1,
-          totalCost: 0.15,
-          totalCharge: 0.3,
-          totalDuration: 0,
-          windowStart: oneHourAgo,
-          windowEnd: now,
-        })
-        .run();
+      await db.insert(usageSummaries).values({
+        id: "sum-1",
+        tenant: "tenant-1",
+        capability: "chat",
+        provider: "replicate",
+        eventCount: 1,
+        totalCost: 0.15,
+        totalCharge: 0.3,
+        totalDuration: 0,
+        windowStart: oneHourAgo,
+        windowEnd: now,
+      });
 
-      const result = checker.check("tenant-1", FREE_LIMITS);
-      expect(result.allowed).toBe(false); // 0.2 + 0.3 = 0.5, which equals the limit
+      const result = await checker.check("tenant-1", FREE_LIMITS);
+      expect(result.allowed).toBe(false);
       expect(result.currentHourlySpend).toBe(0.5);
     });
 
-    it("handles edge case: spend exactly at limit", () => {
+    it("handles edge case: spend exactly at limit", async () => {
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 0.25,
-          charge: 0.5,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 0.25,
+        charge: 0.5,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      const result = checker.check("tenant-1", FREE_LIMITS);
-      expect(result.allowed).toBe(false); // >= limit
+      const result = await checker.check("tenant-1", FREE_LIMITS);
+      expect(result.allowed).toBe(false);
       expect(result.currentHourlySpend).toBe(0.5);
     });
 
-    it("handles edge case: spend just under limit", () => {
+    it("handles edge case: spend just under limit", async () => {
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 0.24,
-          charge: 0.49,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 0.24,
+        charge: 0.49,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      const result = checker.check("tenant-1", FREE_LIMITS);
+      const result = await checker.check("tenant-1", FREE_LIMITS);
       expect(result.allowed).toBe(true);
       expect(result.currentHourlySpend).toBe(0.49);
     });
 
-    it("ignores events outside the hourly time window", () => {
+    it("ignores events outside the hourly time window", async () => {
       const now = Date.now();
       const twoHoursAgo = now - 2 * 60 * 60 * 1000;
 
-      // Old event (outside hourly window, but within monthly)
-      db.insert(meterEvents)
-        .values({
-          id: "evt-old",
-          tenant: "tenant-1",
-          cost: 10,
-          charge: 20,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: twoHoursAgo,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-old",
+        tenant: "tenant-1",
+        cost: 10,
+        charge: 20,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: twoHoursAgo,
+      });
 
-      checker.clearCache(); // Ensure fresh query
+      checker.clearCache();
 
-      const result = checker.check("tenant-1", FREE_LIMITS);
-      expect(result.allowed).toBe(false); // Blocked by monthly limit (20 > 5)
-      expect(result.currentHourlySpend).toBe(0); // Old event ignored for hourly
-      expect(result.currentMonthlySpend).toBe(20); // But counted for monthly
+      const result = await checker.check("tenant-1", FREE_LIMITS);
+      expect(result.allowed).toBe(false);
+      expect(result.currentHourlySpend).toBe(0);
+      expect(result.currentMonthlySpend).toBe(20);
     });
   });
 
   describe("clearCache()", () => {
-    it("clears all cached entries", () => {
-      checker.check("tenant-1", FREE_LIMITS);
-      checker.check("tenant-2", PRO_LIMITS);
+    it("clears all cached entries", async () => {
+      await checker.check("tenant-1", FREE_LIMITS);
+      await checker.check("tenant-2", PRO_LIMITS);
 
       checker.clearCache();
 
-      // Add events (should be reflected after cache clear)
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 0.3,
-          charge: 0.6,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 0.3,
+        charge: 0.6,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      const result = checker.check("tenant-1", FREE_LIMITS);
-      expect(result.currentHourlySpend).toBe(0.6); // Fresh data
+      const result = await checker.check("tenant-1", FREE_LIMITS);
+      expect(result.currentHourlySpend).toBe(0.6);
     });
   });
 
   describe("invalidate()", () => {
-    it("invalidates cache for a specific tenant", () => {
-      checker.check("tenant-1", FREE_LIMITS);
-      checker.check("tenant-2", PRO_LIMITS);
+    it("invalidates cache for a specific tenant", async () => {
+      await checker.check("tenant-1", FREE_LIMITS);
+      await checker.check("tenant-2", PRO_LIMITS);
 
       checker.invalidate("tenant-1");
 
-      // Add events for tenant-1 (should be reflected after invalidation)
       const now = Date.now();
-      db.insert(meterEvents)
-        .values({
-          id: "evt-1",
-          tenant: "tenant-1",
-          cost: 0.3,
-          charge: 0.6,
-          capability: "chat",
-          provider: "replicate",
-          timestamp: now,
-        })
-        .run();
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: 0.3,
+        charge: 0.6,
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
 
-      const result1 = checker.check("tenant-1", FREE_LIMITS);
-      expect(result1.currentHourlySpend).toBe(0.6); // Fresh data
+      const result1 = await checker.check("tenant-1", FREE_LIMITS);
+      expect(result1.currentHourlySpend).toBe(0.6);
 
-      const result2 = checker.check("tenant-2", PRO_LIMITS);
-      expect(result2.currentHourlySpend).toBe(0); // Still cached
+      const result2 = await checker.check("tenant-2", PRO_LIMITS);
+      expect(result2.currentHourlySpend).toBe(0);
     });
   });
 });

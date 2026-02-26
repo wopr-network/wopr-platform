@@ -164,22 +164,24 @@ function deps(): BillingRouterDeps {
 
 export const billingRouter = router({
   /** Get credits balance for a tenant. Tenant defaults to ctx.tenantId when omitted. */
-  creditsBalance: protectedProcedure.input(z.object({ tenant: tenantIdSchema.optional() })).query(({ input, ctx }) => {
-    const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-    if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-    }
-    const { creditLedger, meterAggregator } = deps();
-    const balance = creditLedger.balance(tenant);
+  creditsBalance: protectedProcedure
+    .input(z.object({ tenant: tenantIdSchema.optional() }))
+    .query(async ({ input, ctx }) => {
+      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+      }
+      const { creditLedger, meterAggregator } = deps();
+      const balance = await creditLedger.balance(tenant);
 
-    // Compute 7-day average daily burn from usage summaries.
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const { totalCharge } = meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
-    const daily_burn_cents = Math.round(totalCharge / 7);
-    const runway_days = daily_burn_cents > 0 ? Math.floor(balance / daily_burn_cents) : null;
+      // Compute 7-day average daily burn from usage summaries.
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const { totalCharge } = await meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
+      const daily_burn_cents = Math.round(totalCharge / 7);
+      const runway_days = daily_burn_cents > 0 ? Math.floor(balance / daily_burn_cents) : null;
 
-    return { tenant, balance_cents: balance, daily_burn_cents, runway_days };
-  }),
+      return { tenant, balance_cents: balance, daily_burn_cents, runway_days };
+    }),
 
   /** Get credit transaction history for a tenant. Tenant defaults to ctx.tenantId when omitted. */
   creditsHistory: protectedProcedure
@@ -193,14 +195,14 @@ export const billingRouter = router({
         offset: z.number().int().min(0).optional(),
       }),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
       if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { creditLedger } = deps();
       const { tenant: _t, ...filters } = { ...input, tenant };
-      const entries = creditLedger.history(tenant, filters);
+      const entries = await creditLedger.history(tenant, filters);
       return { entries, total: entries.length };
     }),
 
@@ -305,7 +307,7 @@ export const billingRouter = router({
         limit: z.number().int().positive().max(1000).optional(),
       }),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const { meterAggregator } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
       // Enforce tenant isolation if token is tenant-scoped
@@ -313,7 +315,7 @@ export const billingRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
-      let summaries = meterAggregator.querySummaries(tenant, {
+      let summaries = await meterAggregator.querySummaries(tenant, {
         since: input.startDate,
         until: input.endDate,
         limit: input.limit,
@@ -337,7 +339,7 @@ export const billingRouter = router({
         startDate: z.number().int().positive().optional(),
       }),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const { meterAggregator } = deps();
       const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
       if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
@@ -345,7 +347,7 @@ export const billingRouter = router({
       }
 
       const since = input.startDate ?? Math.floor(Date.now() / 3_600_000) * 3_600_000;
-      const total = meterAggregator.getTenantTotal(tenant, since);
+      const total = await meterAggregator.getTenantTotal(tenant, since);
 
       return {
         tenant,
@@ -362,38 +364,38 @@ export const billingRouter = router({
   }),
 
   /** Get current plan tier for the authenticated user. */
-  currentPlan: protectedProcedure.query(({ ctx }) => {
+  currentPlan: protectedProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
     const { tenantStore } = deps();
-    const mapping = tenantStore.getByTenant(tenant);
+    const mapping = await tenantStore.getByTenant(tenant);
     return { tier: (mapping?.tier ?? "free") as "free" | "pro" | "team" | "enterprise" };
   }),
 
   /** Change subscription plan. */
   changePlan: protectedProcedure
     .input(z.object({ tier: z.enum(["free", "pro", "team", "enterprise"]) }))
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
       const { tenantStore } = deps();
-      tenantStore.setTier(tenant, input.tier);
+      await tenantStore.setTier(tenant, input.tier);
       return { tier: input.tier };
     }),
 
   /** Get inference mode (byok or hosted). */
-  inferenceMode: protectedProcedure.query(({ ctx }) => {
+  inferenceMode: protectedProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
     const { tenantStore } = deps();
-    const mode = tenantStore.getInferenceMode(tenant);
+    const mode = await tenantStore.getInferenceMode(tenant);
     return { mode: mode as "byok" | "hosted" };
   }),
 
   /** Set inference mode (byok or hosted). */
   setInferenceMode: protectedProcedure
     .input(z.object({ mode: z.enum(["byok", "hosted"]) }))
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
       const { tenantStore } = deps();
-      tenantStore.setInferenceMode(tenant, input.mode);
+      await tenantStore.setInferenceMode(tenant, input.mode);
       return { mode: input.mode };
     }),
 
@@ -408,7 +410,7 @@ export const billingRouter = router({
   }),
 
   /** Get hosted usage summary for current billing period. */
-  hostedUsageSummary: protectedProcedure.query(({ ctx }) => {
+  hostedUsageSummary: protectedProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
     const { meterAggregator, creditLedger } = deps();
 
@@ -417,7 +419,7 @@ export const billingRouter = router({
     periodStart.setHours(0, 0, 0, 0);
     const since = periodStart.getTime();
 
-    const summaries = meterAggregator.querySummaries(tenant, { since, limit: 1000 });
+    const summaries = await meterAggregator.querySummaries(tenant, { since, limit: 1000 });
 
     // Group by capability
     const capMap = new Map<string, { units: number; cost: number }>();
@@ -437,7 +439,7 @@ export const billingRouter = router({
     }));
 
     const totalCost = capabilities.reduce((sum, c) => sum + c.cost, 0);
-    const balance = creditLedger.balance(tenant);
+    const balance = await creditLedger.balance(tenant);
 
     return {
       periodStart: periodStart.toISOString(),
@@ -460,14 +462,14 @@ export const billingRouter = router({
         })
         .optional(),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
       const { meterAggregator } = deps();
 
       const since = input?.from ? new Date(input.from).getTime() : undefined;
       const until = input?.to ? new Date(input.to).getTime() : undefined;
 
-      let summaries = meterAggregator.querySummaries(tenant, {
+      let summaries = await meterAggregator.querySummaries(tenant, {
         since,
         until,
         limit: 500,
@@ -489,10 +491,10 @@ export const billingRouter = router({
     }),
 
   /** Get spending limits configuration. */
-  spendingLimits: protectedProcedure.query(({ ctx }) => {
+  spendingLimits: protectedProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
     const { spendingLimitsRepo } = deps();
-    return spendingLimitsRepo.get(tenant);
+    return await spendingLimitsRepo.get(tenant);
   }),
 
   /** Update spending limits. */
@@ -512,11 +514,11 @@ export const billingRouter = router({
         ),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
       const { spendingLimitsRepo } = deps();
-      spendingLimitsRepo.upsert(tenant, input);
-      return spendingLimitsRepo.get(tenant);
+      await spendingLimitsRepo.upsert(tenant, input);
+      return await spendingLimitsRepo.get(tenant);
     }),
 
   /** Get billing info (payment methods, invoices, email). */
@@ -561,7 +563,7 @@ export const billingRouter = router({
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
       const { tenantStore } = deps();
-      const mapping = tenantStore.getByTenant(tenant);
+      const mapping = await tenantStore.getByTenant(tenant);
 
       if (!mapping) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No billing account found" });
@@ -583,12 +585,12 @@ export const billingRouter = router({
 
       // Guard: prevent removing the last payment method when there's an active
       // billing hold or an outstanding balance (negative credit balance).
-      const mapping = tenantStore.getByTenant(tenant);
+      const mapping = await tenantStore.getByTenant(tenant);
       if (mapping) {
         const paymentMethods = await processor.listPaymentMethods(tenant);
         if (paymentMethods.length <= 1) {
           const hasBillingHold = mapping.billing_hold === 1;
-          const hasOutstandingBalance = creditLedger.balance(tenant) < 0;
+          const hasOutstandingBalance = (await creditLedger.balance(tenant)) < 0;
           if (hasBillingHold || hasOutstandingBalance) {
             throw new TRPCError({
               code: "FORBIDDEN",
@@ -617,7 +619,7 @@ export const billingRouter = router({
     const tenant = ctx.tenantId ?? ctx.user.id;
     const { autoTopupSettingsStore, processor } = deps();
 
-    const settings = autoTopupSettingsStore.getByTenant(tenant);
+    const settings = await autoTopupSettingsStore.getByTenant(tenant);
 
     // Look up payment method last4 via IPaymentProcessor
     let paymentMethodLast4: string | null = null;
@@ -702,7 +704,7 @@ export const billingRouter = router({
         scheduleNextAt = null; // Clear next-at when disabling
       }
 
-      autoTopupSettingsStore.upsert(tenant, {
+      await autoTopupSettingsStore.upsert(tenant, {
         usageEnabled: input.usage_enabled,
         usageThresholdCents: input.usage_threshold_cents,
         usageTopupCents: input.usage_topup_cents,
@@ -711,7 +713,7 @@ export const billingRouter = router({
         scheduleNextAt: scheduleNextAt,
       });
 
-      const updated = autoTopupSettingsStore.getByTenant(tenant);
+      const updated = await autoTopupSettingsStore.getByTenant(tenant);
       return {
         usage_enabled: updated?.usageEnabled ?? false,
         usage_threshold_cents: updated?.usageThresholdCents ?? 500,
@@ -726,13 +728,13 @@ export const billingRouter = router({
   /** Get current dividend pool stats and user eligibility. */
   dividendStats: protectedProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
       if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
-      const stats = dividendRepo.getStats(tenant);
+      const stats = await dividendRepo.getStats(tenant);
       return {
         pool_cents: stats.poolCents,
         active_users: stats.activeUsers,
@@ -755,34 +757,34 @@ export const billingRouter = router({
         })
         .optional(),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
       if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
-      const dividends = dividendRepo.getHistory(tenant, input?.limit ?? 50, input?.offset ?? 0);
+      const dividends = await dividendRepo.getHistory(tenant, input?.limit ?? 50, input?.offset ?? 0);
       return { dividends };
     }),
 
   /** Get lifetime total dividend credits for the authenticated user. */
   dividendLifetime: protectedProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
       if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
-      const total = dividendRepo.getLifetimeTotalCents(tenant);
+      const total = await dividendRepo.getLifetimeTotalCents(tenant);
       return { total_cents: total, tenant };
     }),
 
   /** Get affiliate code, link, and stats for the authenticated user. */
-  affiliateInfo: protectedProcedure.query(({ ctx }) => {
+  affiliateInfo: protectedProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId ?? ctx.user.id;
     const { affiliateRepo } = deps();
-    return affiliateRepo.getStats(tenant);
+    return await affiliateRepo.getStats(tenant);
   }),
 
   /** Record a referral attribution (called during signup if ref param present). */
@@ -797,7 +799,7 @@ export const billingRouter = router({
         referredTenantId: tenantIdSchema,
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const callerTenant = ctx.tenantId ?? ctx.user.id;
       if (input.referredTenantId !== callerTenant) {
         throw new TRPCError({
@@ -806,7 +808,7 @@ export const billingRouter = router({
         });
       }
       const { affiliateRepo } = deps();
-      const codeRecord = affiliateRepo.getByCode(input.code);
+      const codeRecord = await affiliateRepo.getByCode(input.code);
       if (!codeRecord) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Invalid referral code" });
       }
@@ -815,7 +817,7 @@ export const billingRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Self-referral is not allowed" });
       }
 
-      const isNew = affiliateRepo.recordReferral(codeRecord.tenantId, input.referredTenantId, input.code);
+      const isNew = await affiliateRepo.recordReferral(codeRecord.tenantId, input.referredTenantId, input.code);
       return { recorded: isNew, referrer: codeRecord.tenantId };
     }),
 

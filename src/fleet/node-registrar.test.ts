@@ -58,44 +58,44 @@ function makeRecoveryEvent(overrides: Partial<RecoveryEvent> = {}): RecoveryEven
 }
 
 describe("NodeRegistrar", () => {
-  it("calls nodeRepo.register and returns result", () => {
+  it("calls nodeRepo.register and returns result", async () => {
     const node = makeNode({ id: "node-1", status: "active" });
     const nodeRepo: NodeRegistrarNodeRepo = {
-      register: vi.fn().mockReturnValue(node),
-      registerSelfHosted: vi.fn().mockReturnValue(node),
+      register: vi.fn().mockResolvedValue(node),
+      registerSelfHosted: vi.fn().mockResolvedValue(node),
     };
     const recoveryRepo: NodeRegistrarRecoveryRepo = {
-      listOpenEvents: vi.fn().mockReturnValue([]),
+      listOpenEvents: vi.fn().mockResolvedValue([]),
       getWaitingItems: vi.fn(),
     };
 
     const registrar = new NodeRegistrar(nodeRepo, recoveryRepo);
     const reg = makeRegistration({ nodeId: "node-1" });
-    const result = registrar.register(reg);
+    const result = await registrar.register(reg);
 
     expect(nodeRepo.register).toHaveBeenCalledWith(reg);
     expect(result).toBe(node);
   });
 
-  it("triggers onReturning callback when node status is returning", () => {
+  it("triggers onReturning callback when node status is returning", async () => {
     const node = makeNode({ id: "node-1", status: "returning" });
     const nodeRepo: NodeRegistrarNodeRepo = {
-      register: vi.fn().mockReturnValue(node),
-      registerSelfHosted: vi.fn().mockReturnValue(node),
+      register: vi.fn().mockResolvedValue(node),
+      registerSelfHosted: vi.fn().mockResolvedValue(node),
     };
     const recoveryRepo: NodeRegistrarRecoveryRepo = {
-      listOpenEvents: vi.fn().mockReturnValue([]),
+      listOpenEvents: vi.fn().mockResolvedValue([]),
       getWaitingItems: vi.fn(),
     };
     const onReturning = vi.fn();
 
     const registrar = new NodeRegistrar(nodeRepo, recoveryRepo, { onReturning });
-    registrar.register(makeRegistration({ nodeId: "node-1" }));
+    await registrar.register(makeRegistration({ nodeId: "node-1" }));
 
     expect(onReturning).toHaveBeenCalledWith("node-1");
   });
 
-  it("triggers onRetryWaiting when there are waiting tenants after registration", () => {
+  it("triggers onRetryWaiting when there are waiting tenants after registration", async () => {
     const node = makeNode({ id: "node-1", status: "active" });
     const event = makeRecoveryEvent({ id: "evt-1" });
     const waitingItem = {
@@ -112,24 +112,24 @@ describe("NodeRegistrar", () => {
     };
 
     const nodeRepo: NodeRegistrarNodeRepo = {
-      register: vi.fn().mockReturnValue(node),
-      registerSelfHosted: vi.fn().mockReturnValue(node),
+      register: vi.fn().mockResolvedValue(node),
+      registerSelfHosted: vi.fn().mockResolvedValue(node),
     };
     const recoveryRepo: NodeRegistrarRecoveryRepo = {
-      listOpenEvents: vi.fn().mockReturnValue([event]),
-      getWaitingItems: vi.fn().mockReturnValue([waitingItem]),
+      listOpenEvents: vi.fn().mockResolvedValue([event]),
+      getWaitingItems: vi.fn().mockResolvedValue([waitingItem]),
     };
     const onRetryWaiting = vi.fn();
 
     const registrar = new NodeRegistrar(nodeRepo, recoveryRepo, { onRetryWaiting });
-    registrar.register(makeRegistration({ nodeId: "node-1" }));
+    await registrar.register(makeRegistration({ nodeId: "node-1" }));
 
     expect(recoveryRepo.listOpenEvents).toHaveBeenCalled();
     expect(recoveryRepo.getWaitingItems).toHaveBeenCalledWith("evt-1");
     expect(onRetryWaiting).toHaveBeenCalledWith("evt-1");
   });
 
-  it("triggers onRetryWaiting for waiting tenants even when onReturning is a no-op (returning node)", () => {
+  it("triggers onRetryWaiting for waiting tenants even when onReturning is a no-op (returning node)", async () => {
     // Regression guard for WOP-912: onReturning is wired as a no-op in services.ts
     // because OrphanCleaner handles container cleanup on first heartbeat.
     // The waiting-tenant retry is handled separately by the onRetryWaiting path,
@@ -151,19 +151,19 @@ describe("NodeRegistrar", () => {
     };
 
     const nodeRepo: NodeRegistrarNodeRepo = {
-      register: vi.fn().mockReturnValue(node),
-      registerSelfHosted: vi.fn().mockReturnValue(node),
+      register: vi.fn().mockResolvedValue(node),
+      registerSelfHosted: vi.fn().mockResolvedValue(node),
     };
     const recoveryRepo: NodeRegistrarRecoveryRepo = {
-      listOpenEvents: vi.fn().mockReturnValue([event]),
-      getWaitingItems: vi.fn().mockReturnValue([waitingItem]),
+      listOpenEvents: vi.fn().mockResolvedValue([event]),
+      getWaitingItems: vi.fn().mockResolvedValue([waitingItem]),
     };
     // Simulate services.ts wiring: onReturning is a no-op, onRetryWaiting is active
     const onReturning = vi.fn(); // no-op stand-in
     const onRetryWaiting = vi.fn();
 
     const registrar = new NodeRegistrar(nodeRepo, recoveryRepo, { onReturning, onRetryWaiting });
-    registrar.register(makeRegistration({ nodeId: "node-1" }));
+    await registrar.register(makeRegistration({ nodeId: "node-1" }));
 
     // onReturning fires for node lifecycle (container cleanup hand-off)
     expect(onReturning).toHaveBeenCalledWith("node-1");

@@ -1,13 +1,12 @@
 /**
  * Unit tests for createPayRamCheckout (WOP-407).
  */
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import type { Payram } from "payram";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { PayRamChargeStore } from "./charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "./checkout.js";
-import { initPayRamSchema } from "./schema.js";
 
 function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn> } = {}): Payram {
   return {
@@ -23,20 +22,19 @@ function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn
 }
 
 describe("createPayRamCheckout", () => {
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
   let chargeStore: PayRamChargeStore;
   let payram: Payram;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initPayRamSchema(sqlite);
-    const db = createDb(sqlite);
+  beforeEach(async () => {
+    const { db, pool: p } = await createTestDb();
+    pool = p;
     chargeStore = new PayRamChargeStore(db);
     payram = createMockPayram();
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("rejects amounts below $10 minimum", async () => {
@@ -74,7 +72,7 @@ describe("createPayRamCheckout", () => {
 
     await createPayRamCheckout(mockPayram, chargeStore, { tenant: "t-2", amountUsd: 25 });
 
-    const charge = chargeStore.getByReferenceId("ref-store-test");
+    const charge = await chargeStore.getByReferenceId("ref-store-test");
     expect(charge).not.toBeNull();
     expect(charge?.tenantId).toBe("t-2");
     expect(charge?.amountUsdCents).toBe(2500); // $25.00 = 2500 cents

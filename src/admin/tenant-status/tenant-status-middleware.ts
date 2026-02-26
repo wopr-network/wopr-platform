@@ -26,7 +26,7 @@ export function createTenantStatusGate(cfg: TenantStatusGateConfig) {
       return next();
     }
 
-    const row = cfg.statusStore.get(tenantId);
+    const row = await cfg.statusStore.get(tenantId);
     const status = row?.status ?? "active";
 
     if (status === "active" || status === "grace_period") {
@@ -59,11 +59,11 @@ export function createTenantStatusGate(cfg: TenantStatusGateConfig) {
  *
  * Returns an error object if the tenant is not operational, null otherwise.
  */
-export function checkTenantStatus(
+export async function checkTenantStatus(
   statusStore: ITenantStatusRepository,
   tenantId: string,
-): { error: string; message: string } | null {
-  const row = statusStore.get(tenantId);
+): Promise<{ error: string; message: string } | null> {
+  const row = await statusStore.get(tenantId);
   const status = row?.status ?? "active";
 
   if (status === "active" || status === "grace_period") {

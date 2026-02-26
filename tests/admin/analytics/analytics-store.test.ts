@@ -1,54 +1,56 @@
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AnalyticsStore } from "../../../src/admin/analytics/analytics-store.js";
 import type { DrizzleDb } from "../../../src/db/index.js";
-import { createTestDb as createMigratedTestDb } from "../../../src/test/db.js";
+import { createTestDb } from "../../../src/test/db.js";
 
-type TestSqlite = BetterSqlite3.Database;
-
-function seedAutoTopup(
-  sqlite: TestSqlite,
+async function seedAutoTopup(
+  pool: PGlite,
   tenantId: string,
   amountCents: number,
   status: "success" | "failed",
   createdAt: string,
   failureReason?: string,
-): void {
-  sqlite.prepare(
-    "INSERT INTO credit_auto_topup (id, tenant_id, amount_cents, status, failure_reason, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(crypto.randomUUID(), tenantId, amountCents, status, failureReason ?? null, createdAt);
+): Promise<void> {
+  await pool.query(
+    "INSERT INTO credit_auto_topup (id, tenant_id, amount_cents, status, failure_reason, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+    [crypto.randomUUID(), tenantId, amountCents, status, failureReason ?? null, createdAt],
+  );
 }
 
-function seedCredits(
-  sqlite: TestSqlite,
+async function seedCredits(
+  pool: PGlite,
   tenantId: string,
   type: string,
   amountCents: number,
   createdAt: string,
-): void {
-  sqlite.prepare(
-    "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run(crypto.randomUUID(), tenantId, amountCents, 0, type, createdAt);
+): Promise<void> {
+  await pool.query(
+    "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+    [crypto.randomUUID(), tenantId, amountCents, 0, type, createdAt],
+  );
 }
 
-function seedMeterEvent(
-  sqlite: TestSqlite,
+async function seedMeterEvent(
+  pool: PGlite,
   tenant: string,
   capability: string,
   provider: string,
   cost: number,
   charge: number,
   timestamp: number,
-): void {
-  sqlite.prepare(
-    "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-  ).run(crypto.randomUUID(), tenant, cost, charge, capability, provider, timestamp);
+): Promise<void> {
+  await pool.query(
+    "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    [crypto.randomUUID(), tenant, cost, charge, capability, provider, timestamp],
+  );
 }
 
-function seedBalance(sqlite: TestSqlite, tenantId: string, balanceCents: number): void {
-  sqlite.prepare(
-    "INSERT OR REPLACE INTO credit_balances (tenant_id, balance_cents, last_updated) VALUES (?, ?, datetime('now'))",
-  ).run(tenantId, balanceCents);
+async function seedBalance(pool: PGlite, tenantId: string, balanceCents: number): Promise<void> {
+  await pool.query(
+    "INSERT INTO credit_balances (tenant_id, balance_cents, last_updated) VALUES ($1, $2, NOW()) ON CONFLICT (tenant_id) DO UPDATE SET balance_cents = $2, last_updated = NOW()",
+    [tenantId, balanceCents],
+  );
 }
 
 const NOW = Date.now();
@@ -61,21 +63,21 @@ const SIXTY_DAYS_AGO_ISO = new Date(SIXTY_DAYS_AGO).toISOString();
 
 describe("AnalyticsStore — getRevenueOverview", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("returns all zeros for an empty database", () => {
+  it("returns all zeros for an empty database", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
-    const result = store.getRevenueOverview(range);
+    const result = await store.getRevenueOverview(range);
 
     expect(result.creditsSoldCents).toBe(0);
     expect(result.revenueConsumedCents).toBe(0);
@@ -84,18 +86,18 @@ describe("AnalyticsStore — getRevenueOverview", () => {
     expect(result.grossMarginPct).toBe(0);
   });
 
-  it("calculates revenue, cost, and margin correctly", () => {
+  it("calculates revenue, cost, and margin correctly", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Purchase: $100 in credits
-    seedCredits(sqlite, "tenant-1", "purchase", 10000, NOW_ISO);
+    await seedCredits(pool, "tenant-1", "purchase", 10000, NOW_ISO);
     // Consumed: $60 adapter_usage + $20 bot_runtime = $80
-    seedCredits(sqlite, "tenant-1", "adapter_usage", -6000, NOW_ISO);
-    seedCredits(sqlite, "tenant-1", "bot_runtime", -2000, NOW_ISO);
+    await seedCredits(pool, "tenant-1", "adapter_usage", -6000, NOW_ISO);
+    await seedCredits(pool, "tenant-1", "bot_runtime", -2000, NOW_ISO);
     // Provider cost: $30 → 3000 cents
-    seedMeterEvent(sqlite, "tenant-1", "chat", "openai", 0.3, 0.6, NOW);
+    await seedMeterEvent(pool, "tenant-1", "chat", "openai", 0.3, 0.6, NOW);
 
-    const result = store.getRevenueOverview(range);
+    const result = await store.getRevenueOverview(range);
 
     expect(result.creditsSoldCents).toBe(10000);
     expect(result.revenueConsumedCents).toBe(8000);
@@ -104,17 +106,17 @@ describe("AnalyticsStore — getRevenueOverview", () => {
     expect(result.grossMarginPct).toBeCloseTo(99.625, 1);
   });
 
-  it("excludes data outside the date range", () => {
+  it("excludes data outside the date range", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Old data outside range
-    seedCredits(sqlite, "tenant-1", "purchase", 5000, SIXTY_DAYS_AGO_ISO);
-    seedMeterEvent(sqlite, "tenant-1", "chat", "openai", 0.1, 0.2, SIXTY_DAYS_AGO);
+    await seedCredits(pool, "tenant-1", "purchase", 5000, SIXTY_DAYS_AGO_ISO);
+    await seedMeterEvent(pool, "tenant-1", "chat", "openai", 0.1, 0.2, SIXTY_DAYS_AGO);
 
     // Recent data within range
-    seedCredits(sqlite, "tenant-1", "purchase", 2000, NOW_ISO);
+    await seedCredits(pool, "tenant-1", "purchase", 2000, NOW_ISO);
 
-    const result = store.getRevenueOverview(range);
+    const result = await store.getRevenueOverview(range);
 
     expect(result.creditsSoldCents).toBe(2000);
     expect(result.providerCostCents).toBe(0);
@@ -123,20 +125,20 @@ describe("AnalyticsStore — getRevenueOverview", () => {
 
 describe("AnalyticsStore — getFloat", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("returns zeros for an empty database", () => {
-    const result = store.getFloat();
+  it("returns zeros for an empty database", async () => {
+    const result = await store.getFloat();
 
     expect(result.totalFloatCents).toBe(0);
     expect(result.totalCreditsSoldCents).toBe(0);
@@ -145,15 +147,15 @@ describe("AnalyticsStore — getFloat", () => {
     expect(result.tenantCount).toBe(0);
   });
 
-  it("calculates float correctly from credit balances", () => {
-    seedBalance(sqlite, "tenant-1", 1000);
-    seedBalance(sqlite, "tenant-2", 500);
-    seedBalance(sqlite, "tenant-3", 0); // zero balance — not counted
+  it("calculates float correctly from credit balances", async () => {
+    await seedBalance(pool, "tenant-1", 1000);
+    await seedBalance(pool, "tenant-2", 500);
+    await seedBalance(pool, "tenant-3", 0); // zero balance — not counted
 
-    seedCredits(sqlite, "tenant-1", "purchase", 2000, NOW_ISO);
-    seedCredits(sqlite, "tenant-2", "purchase", 1000, NOW_ISO);
+    await seedCredits(pool, "tenant-1", "purchase", 2000, NOW_ISO);
+    await seedCredits(pool, "tenant-2", "purchase", 1000, NOW_ISO);
 
-    const result = store.getFloat();
+    const result = await store.getFloat();
 
     expect(result.totalFloatCents).toBe(1500);
     expect(result.tenantCount).toBe(2); // only tenants with balance > 0
@@ -165,30 +167,30 @@ describe("AnalyticsStore — getFloat", () => {
 
 describe("AnalyticsStore — getRevenueBreakdown", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("returns per-use and monthly rows", () => {
+  it("returns per-use and monthly rows", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Per-use events
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    seedMeterEvent(sqlite, "t1", "image-generation", "replicate", 0.05, 0.10, NOW);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    await seedMeterEvent(pool, "t1", "image-generation", "replicate", 0.05, 0.10, NOW);
 
     // Monthly credit transactions
-    seedCredits(sqlite, "t1", "bot_runtime", -500, NOW_ISO);
-    seedCredits(sqlite, "t1", "addon", -200, NOW_ISO);
+    await seedCredits(pool, "t1", "bot_runtime", -500, NOW_ISO);
+    await seedCredits(pool, "t1", "addon", -200, NOW_ISO);
 
-    const result = store.getRevenueBreakdown(range);
+    const result = await store.getRevenueBreakdown(range);
 
     const perUse = result.filter((r) => r.category === "per_use");
     const monthly = result.filter((r) => r.category === "monthly");
@@ -208,27 +210,27 @@ describe("AnalyticsStore — getRevenueBreakdown", () => {
 
 describe("AnalyticsStore — getMarginByCapability", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("calculates margin per capability correctly", () => {
+  it("calculates margin per capability correctly", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // chat: charge=0.20, cost=0.10 → margin=0.10 (50%)
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, NOW);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.10, 0.20, NOW);
     // image-generation: charge=0.50, cost=0.25 → margin=0.25 (50%)
-    seedMeterEvent(sqlite, "t1", "image-generation", "replicate", 0.25, 0.50, NOW);
+    await seedMeterEvent(pool, "t1", "image-generation", "replicate", 0.25, 0.50, NOW);
 
-    const result = store.getMarginByCapability(range);
+    const result = await store.getMarginByCapability(range);
 
     expect(result).toHaveLength(2);
 
@@ -240,13 +242,13 @@ describe("AnalyticsStore — getMarginByCapability", () => {
     expect(chat!.marginPct).toBeCloseTo(50, 1);
   });
 
-  it("returns 0% margin for zero revenue capability (no divide-by-zero)", () => {
+  it("returns 0% margin for zero revenue capability (no divide-by-zero)", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // cost=0.10, charge=0.00 → revenue=0, margin should be 0%, not NaN
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.00, NOW);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.10, 0.00, NOW);
 
-    const result = store.getMarginByCapability(range);
+    const result = await store.getMarginByCapability(range);
 
     const chat = result.find((r) => r.capability === "chat");
     expect(chat).toBeDefined();
@@ -257,27 +259,27 @@ describe("AnalyticsStore — getMarginByCapability", () => {
 
 describe("AnalyticsStore — getProviderSpend", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("aggregates provider spend with call counts", () => {
+  it("aggregates provider spend with call counts", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    seedMeterEvent(sqlite, "t1", "image", "replicate", 0.05, 0.10, NOW);
-    seedMeterEvent(sqlite, "t1", "tts", "elevenlabs", 0.02, 0.04, NOW);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    await seedMeterEvent(pool, "t1", "image", "replicate", 0.05, 0.10, NOW);
+    await seedMeterEvent(pool, "t1", "tts", "elevenlabs", 0.02, 0.04, NOW);
 
-    const result = store.getProviderSpend(range);
+    const result = await store.getProviderSpend(range);
 
     expect(result.length).toBe(3);
 
@@ -296,24 +298,24 @@ describe("AnalyticsStore — getProviderSpend", () => {
 
 describe("AnalyticsStore — getTenantHealth", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("counts tenants from both credit_balances and tenant_status", () => {
-    seedBalance(sqlite, "tenant-a", 500);
-    seedBalance(sqlite, "tenant-b", 0);
-    sqlite.prepare("INSERT INTO tenant_status (tenant_id) VALUES (?)").run("tenant-c");
+  it("counts tenants from both credit_balances and tenant_status", async () => {
+    await seedBalance(pool, "tenant-a", 500);
+    await seedBalance(pool, "tenant-b", 0);
+    await pool.query("INSERT INTO tenant_status (tenant_id) VALUES ($1)", ["tenant-c"]);
 
-    const result = store.getTenantHealth();
+    const result = await store.getTenantHealth();
 
     // tenant-a from credit_balances, tenant-b from credit_balances, tenant-c from tenant_status
     expect(result.totalTenants).toBe(3);
@@ -321,16 +323,16 @@ describe("AnalyticsStore — getTenantHealth", () => {
     expect(result.atRisk).toBe(0); // TODO: placeholder
   });
 
-  it("identifies active tenants by recent debit transactions", () => {
-    seedBalance(sqlite, "tenant-a", 1000);
-    seedBalance(sqlite, "tenant-b", 1000);
+  it("identifies active tenants by recent debit transactions", async () => {
+    await seedBalance(pool, "tenant-a", 1000);
+    await seedBalance(pool, "tenant-b", 1000);
 
     // tenant-a: recent activity (within 30 days)
-    seedCredits(sqlite, "tenant-a", "adapter_usage", -100, NOW_ISO);
+    await seedCredits(pool, "tenant-a", "adapter_usage", -100, NOW_ISO);
     // tenant-b: old activity (older than 30 days)
-    seedCredits(sqlite, "tenant-b", "adapter_usage", -100, SIXTY_DAYS_AGO_ISO);
+    await seedCredits(pool, "tenant-b", "adapter_usage", -100, SIXTY_DAYS_AGO_ISO);
 
-    const result = store.getTenantHealth();
+    const result = await store.getTenantHealth();
 
     expect(result.activeTenants).toBe(1); // only tenant-a
     expect(result.dormant).toBe(result.totalTenants - result.activeTenants);
@@ -339,19 +341,19 @@ describe("AnalyticsStore — getTenantHealth", () => {
 
 describe("AnalyticsStore — getTimeSeries", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("buckets data into daily periods", () => {
+  it("buckets data into daily periods", async () => {
     const DAY = 86_400_000;
     const now = Math.floor(Date.now() / DAY) * DAY; // align to day boundary
     const day1 = now - 2 * DAY;
@@ -362,16 +364,16 @@ describe("AnalyticsStore — getTimeSeries", () => {
     const day2Iso = new Date(day2 + 1000).toISOString();
     const day3Iso = new Date(day3 + 1000).toISOString();
 
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day2 + 1000);
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day3 + 1000);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.10, 0.20, day2 + 1000);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.10, 0.20, day3 + 1000);
 
-    seedCredits(sqlite, "t1", "purchase", 1000, day1Iso);
-    seedCredits(sqlite, "t1", "purchase", 1000, day2Iso);
-    seedCredits(sqlite, "t1", "purchase", 1000, day3Iso);
+    await seedCredits(pool, "t1", "purchase", 1000, day1Iso);
+    await seedCredits(pool, "t1", "purchase", 1000, day2Iso);
+    await seedCredits(pool, "t1", "purchase", 1000, day3Iso);
 
     const range = { from: day1, to: day3 + DAY };
-    const result = store.getTimeSeries(range, DAY);
+    const result = await store.getTimeSeries(range, DAY);
 
     expect(result.length).toBe(3);
 
@@ -384,31 +386,31 @@ describe("AnalyticsStore — getTimeSeries", () => {
     }
   });
 
-  it("auto-adjusts bucket size to stay within MAX_TIME_SERIES_POINTS", () => {
+  it("auto-adjusts bucket size to stay within MAX_TIME_SERIES_POINTS", async () => {
     const HOUR = 3_600_000;
     const range = { from: 0, to: HOUR * 2000 }; // 2000 hours — would exceed 1000 pts at 1h buckets
 
-    const result = store.getTimeSeries(range, HOUR);
+    const result = await store.getTimeSeries(range, HOUR);
 
     expect(result.length).toBeLessThanOrEqual(1000);
   });
 
-  it("creates credit-only periods when there are no meter events for that bucket", () => {
+  it("creates credit-only periods when there are no meter events for that bucket", async () => {
     const DAY = 86_400_000;
     const now = Math.floor(Date.now() / DAY) * DAY;
     const day1 = now - 2 * DAY;
     const day2 = now - 1 * DAY;
 
     // day1: meter event only (no credit transaction)
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.10, 0.20, day1 + 1000);
 
     // day2: credit transaction only (no meter event) — exercises the else branch in getTimeSeries
     const day2Iso = new Date(day2 + 1000).toISOString();
-    seedCredits(sqlite, "t1", "purchase", 500, day2Iso);
-    seedCredits(sqlite, "t1", "bot_runtime", -100, day2Iso);
+    await seedCredits(pool, "t1", "purchase", 500, day2Iso);
+    await seedCredits(pool, "t1", "bot_runtime", -100, day2Iso);
 
     const range = { from: day1, to: day2 + DAY };
-    const result = store.getTimeSeries(range, DAY);
+    const result = await store.getTimeSeries(range, DAY);
 
     expect(result.length).toBe(2);
 
@@ -429,22 +431,22 @@ describe("AnalyticsStore — getTimeSeries", () => {
 
 describe("AnalyticsStore — exportCsv", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
-  it("exports revenue_overview as CSV with correct headers", () => {
-    const csv = store.exportCsv(range, "revenue_overview");
+  it("exports revenue_overview as CSV with correct headers", async () => {
+    const csv = await store.exportCsv(range, "revenue_overview");
     const lines = csv.split("\n");
 
     expect(lines[0]).toContain("creditsSoldCents");
@@ -452,9 +454,9 @@ describe("AnalyticsStore — exportCsv", () => {
     expect(lines.length).toBe(2); // header + 1 data row
   });
 
-  it("exports revenue_breakdown as CSV", () => {
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    const csv = store.exportCsv(range, "revenue_breakdown");
+  it("exports revenue_breakdown as CSV", async () => {
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    const csv = await store.exportCsv(range, "revenue_breakdown");
     const lines = csv.split("\n");
 
     expect(lines[0]).toContain("category");
@@ -463,73 +465,73 @@ describe("AnalyticsStore — exportCsv", () => {
     expect(lines.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("exports margin_by_capability as CSV", () => {
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    const csv = store.exportCsv(range, "margin_by_capability");
+  it("exports margin_by_capability as CSV", async () => {
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    const csv = await store.exportCsv(range, "margin_by_capability");
     const lines = csv.split("\n");
 
     expect(lines[0]).toContain("capability");
     expect(lines[0]).toContain("marginPct");
   });
 
-  it("exports provider_spend as CSV", () => {
-    seedMeterEvent(sqlite, "t1", "chat", "openai", 0.01, 0.02, NOW);
-    const csv = store.exportCsv(range, "provider_spend");
+  it("exports provider_spend as CSV", async () => {
+    await seedMeterEvent(pool, "t1", "chat", "openai", 0.01, 0.02, NOW);
+    const csv = await store.exportCsv(range, "provider_spend");
     const lines = csv.split("\n");
 
     expect(lines[0]).toContain("provider");
     expect(lines[0]).toContain("callCount");
   });
 
-  it("exports tenant_health as CSV", () => {
-    const csv = store.exportCsv(range, "tenant_health");
+  it("exports tenant_health as CSV", async () => {
+    const csv = await store.exportCsv(range, "tenant_health");
     const lines = csv.split("\n");
 
     expect(lines[0]).toContain("totalTenants");
     expect(lines.length).toBe(2);
   });
 
-  it("exports time_series as CSV", () => {
-    const csv = store.exportCsv(range, "time_series");
+  it("exports time_series as CSV", async () => {
+    const csv = await store.exportCsv(range, "time_series");
     const lines = csv.split("\n");
 
     expect(lines[0]).toContain("periodStart");
     expect(lines[0]).toContain("marginCents");
   });
 
-  it("escapes values containing commas in CSV output", () => {
-    // We can test this with a capability name containing a comma (unlikely in real data,
-    // but the toCsv helper should handle it)
-    sqlite.prepare(
-      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).run(crypto.randomUUID(), "t1", 0.01, 0.02, "chat,text", "openai", NOW);
+  it("escapes values containing commas in CSV output", async () => {
+    await pool.query(
+      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [crypto.randomUUID(), "t1", 0.01, 0.02, "chat,text", "openai", NOW],
+    );
 
-    const csv = store.exportCsv(range, "margin_by_capability");
+    const csv = await store.exportCsv(range, "margin_by_capability");
 
     // The capability "chat,text" should be quoted in CSV
     expect(csv).toContain('"chat,text"');
   });
 
-  it("escapes values containing double-quotes in CSV output", () => {
-    sqlite.prepare(
-      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).run(crypto.randomUUID(), "t1", 0.01, 0.02, 'chat"premium"', "openai", NOW);
+  it("escapes values containing double-quotes in CSV output", async () => {
+    await pool.query(
+      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      [crypto.randomUUID(), "t1", 0.01, 0.02, 'chat"premium"', "openai", NOW],
+    );
 
-    const csv = store.exportCsv(range, "margin_by_capability");
+    const csv = await store.exportCsv(range, "margin_by_capability");
 
     // Double-quotes inside a quoted field must be escaped as ""
     expect(csv).toContain('"chat""premium"""');
   });
 
-  it("returns empty string for unknown export section", () => {
-    const csv = store.exportCsv(range, "nonexistent_section");
+  it("returns empty string for unknown export section", async () => {
+    const csv = await store.exportCsv(range, "nonexistent_section");
 
     expect(csv).toBe("");
   });
 
-  it("exports auto_topup as CSV with correct headers", () => {
-    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
-    const csv = store.exportCsv(range, "auto_topup");
+  it("exports auto_topup as CSV with correct headers", async () => {
+    await seedAutoTopup(pool, "tenant-1", 5000, "success", NOW_ISO);
+    const csv = await store.exportCsv(range, "auto_topup");
     const lines = csv.split("\n");
 
     expect(lines[0]).toContain("totalEvents");
@@ -541,21 +543,21 @@ describe("AnalyticsStore — exportCsv", () => {
 
 describe("AnalyticsStore — getAutoTopupMetrics", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("returns all zeros for an empty database", () => {
+  it("returns all zeros for an empty database", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
-    const result = store.getAutoTopupMetrics(range);
+    const result = await store.getAutoTopupMetrics(range);
 
     expect(result.totalEvents).toBe(0);
     expect(result.successCount).toBe(0);
@@ -564,15 +566,15 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
     expect(result.failureRate).toBe(0);
   });
 
-  it("calculates success/failure counts and revenue correctly", () => {
+  it("calculates success/failure counts and revenue correctly", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
-    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
-    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
-    seedAutoTopup(sqlite, "tenant-2", 3000, "success", NOW_ISO);
-    seedAutoTopup(sqlite, "tenant-3", 5000, "failed", NOW_ISO, "card_declined");
+    await seedAutoTopup(pool, "tenant-1", 5000, "success", NOW_ISO);
+    await seedAutoTopup(pool, "tenant-1", 5000, "success", NOW_ISO);
+    await seedAutoTopup(pool, "tenant-2", 3000, "success", NOW_ISO);
+    await seedAutoTopup(pool, "tenant-3", 5000, "failed", NOW_ISO, "card_declined");
 
-    const result = store.getAutoTopupMetrics(range);
+    const result = await store.getAutoTopupMetrics(range);
 
     expect(result.totalEvents).toBe(4);
     expect(result.successCount).toBe(3);
@@ -581,27 +583,27 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
     expect(result.failureRate).toBeCloseTo(25, 1); // 1/4 = 25%
   });
 
-  it("excludes data outside the date range", () => {
+  it("excludes data outside the date range", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
     // Old data outside range
-    seedAutoTopup(sqlite, "tenant-1", 5000, "success", SIXTY_DAYS_AGO_ISO);
+    await seedAutoTopup(pool, "tenant-1", 5000, "success", SIXTY_DAYS_AGO_ISO);
     // Recent data within range
-    seedAutoTopup(sqlite, "tenant-1", 3000, "success", NOW_ISO);
+    await seedAutoTopup(pool, "tenant-1", 3000, "success", NOW_ISO);
 
-    const result = store.getAutoTopupMetrics(range);
+    const result = await store.getAutoTopupMetrics(range);
 
     expect(result.totalEvents).toBe(1);
     expect(result.revenueCents).toBe(3000);
   });
 
-  it("returns 0% failure rate when all events are successes", () => {
+  it("returns 0% failure rate when all events are successes", async () => {
     const range = { from: THIRTY_DAYS_AGO, to: NOW };
 
-    seedAutoTopup(sqlite, "tenant-1", 5000, "success", NOW_ISO);
-    seedAutoTopup(sqlite, "tenant-2", 3000, "success", NOW_ISO);
+    await seedAutoTopup(pool, "tenant-1", 5000, "success", NOW_ISO);
+    await seedAutoTopup(pool, "tenant-2", 3000, "success", NOW_ISO);
 
-    const result = store.getAutoTopupMetrics(range);
+    const result = await store.getAutoTopupMetrics(range);
 
     expect(result.failureRate).toBe(0);
   });
@@ -609,46 +611,46 @@ describe("AnalyticsStore — getAutoTopupMetrics", () => {
 
 describe("AnalyticsStore — getTenantHealth (atRisk with auto-topup)", () => {
   let db: DrizzleDb;
-  let sqlite: TestSqlite;
+  let pool: PGlite;
   let store: AnalyticsStore;
 
-  beforeEach(() => {
-    ({ db, sqlite } = createMigratedTestDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     store = new AnalyticsStore(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("counts tenants with low balance and no auto-topup as at-risk", () => {
+  it("counts tenants with low balance and no auto-topup as at-risk", async () => {
     // tenant-a: low balance, NO auto-topup history -> at risk
-    seedBalance(sqlite, "tenant-a", 200);
+    await seedBalance(pool, "tenant-a", 200);
     // tenant-b: low balance, HAS auto-topup history -> NOT at risk
-    seedBalance(sqlite, "tenant-b", 200);
-    seedAutoTopup(sqlite, "tenant-b", 5000, "success", NOW_ISO);
+    await seedBalance(pool, "tenant-b", 200);
+    await seedAutoTopup(pool, "tenant-b", 5000, "success", NOW_ISO);
     // tenant-c: high balance, no auto-topup -> NOT at risk
-    seedBalance(sqlite, "tenant-c", 10000);
+    await seedBalance(pool, "tenant-c", 10000);
 
-    const result = store.getTenantHealth();
+    const result = await store.getTenantHealth();
 
     expect(result.atRisk).toBe(1); // only tenant-a
   });
 
-  it("returns 0 at-risk when all low-balance tenants have auto-topup", () => {
-    seedBalance(sqlite, "tenant-a", 200);
-    seedAutoTopup(sqlite, "tenant-a", 5000, "success", NOW_ISO);
+  it("returns 0 at-risk when all low-balance tenants have auto-topup", async () => {
+    await seedBalance(pool, "tenant-a", 200);
+    await seedAutoTopup(pool, "tenant-a", 5000, "success", NOW_ISO);
 
-    const result = store.getTenantHealth();
+    const result = await store.getTenantHealth();
 
     expect(result.atRisk).toBe(0);
   });
 
-  it("returns 0 at-risk when no tenants have low balance", () => {
-    seedBalance(sqlite, "tenant-a", 10000);
-    seedBalance(sqlite, "tenant-b", 5000);
+  it("returns 0 at-risk when no tenants have low balance", async () => {
+    await seedBalance(pool, "tenant-a", 10000);
+    await seedBalance(pool, "tenant-b", 5000);
 
-    const result = store.getTenantHealth();
+    const result = await store.getTenantHealth();
 
     expect(result.atRisk).toBe(0);
   });

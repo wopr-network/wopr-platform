@@ -11,7 +11,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { RoleStore } from "../../admin/roles/role-store.js";
-import { canManageBot } from "../../fleet/bot-authorization.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
@@ -62,29 +61,6 @@ function deps(): FleetRouterDeps {
   return _deps;
 }
 
-/**
- * Check if the current user can manage (mutate) a specific bot.
- * Throws FORBIDDEN if not authorized. Does NOT apply to list/read operations.
- */
-async function assertCanManageBot(ctx: { user: { id: string }; tenantId: string }, botId: string): Promise<void> {
-  const roleStore = deps().getRoleStore?.();
-  const botRepo = deps().getBotInstanceRepo?.();
-  if (!roleStore || !botRepo) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Bot management authorization unavailable" });
-  }
-
-  const userRole = roleStore.getRole(ctx.user.id, ctx.tenantId);
-  const botInstance = botRepo.getById(botId);
-  const createdBy = botInstance?.createdByUserId ?? null;
-
-  if (!canManageBot(userRole, ctx.user.id, createdBy)) {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message: "You do not have permission to manage this bot",
-    });
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -125,7 +101,7 @@ export const fleetRouter = router({
     try {
       const ledger = getCreditLedger();
       if (ledger) {
-        const balance = ledger.balance(ctx.tenantId);
+        const balance = await ledger.balance(ctx.tenantId);
         if (balance < 17) {
           throw new TRPCError({
             code: "PAYMENT_REQUIRED",
@@ -170,21 +146,31 @@ export const fleetRouter = router({
   controlInstance: tenantProcedure
     .input(z.object({ id: uuidSchema, action: controlActionSchema }))
     .mutation(async ({ input, ctx }) => {
-      const { getFleetManager, getCreditLedger } = deps();
+      const { getFleetManager, getCreditLedger, getBotInstanceRepo, getRoleStore } = deps();
       const fleet = getFleetManager();
       // Verify tenant ownership
       const profile = await fleet.profiles.get(input.id);
       if (!profile || profile.tenantId !== ctx.tenantId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
       }
-      // Member-level authorization: check if user can manage this bot (WOP-1002)
-      await assertCanManageBot(ctx, input.id);
+      // WOP-1002: user-scoped ownership — regular users can only control their own bots
+      if (ctx.user?.id) {
+        const botRepo = getBotInstanceRepo?.();
+        const roleStore = getRoleStore?.();
+        if (botRepo && roleStore) {
+          const instance = await botRepo.getById(input.id);
+          const role = await roleStore.getRole(ctx.user.id, ctx.tenantId);
+          if (role === "user" && instance?.createdByUserId && instance.createdByUserId !== ctx.user.id) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "You do not have permission to manage this bot" });
+          }
+        }
+      }
       // Payment gate (WOP-380): require minimum 17 cents to start a bot
       if (input.action === "start") {
         try {
           const ledger = getCreditLedger();
           if (ledger) {
-            const balance = ledger.balance(ctx.tenantId);
+            const balance = await ledger.balance(ctx.tenantId);
             if (balance < 17) {
               throw new TRPCError({
                 code: "PAYMENT_REQUIRED",
@@ -504,7 +490,7 @@ export const fleetRouter = router({
         try {
           const ledger = getCreditLedger();
           if (ledger) {
-            const balance = ledger.balance(ctx.tenantId);
+            const balance = await ledger.balance(ctx.tenantId);
             if (balance < tierConfig.dailyCostCents) {
               throw new TRPCError({
                 code: "PAYMENT_REQUIRED",
@@ -525,10 +511,10 @@ export const fleetRouter = router({
 
       // Remember previous tier for rollback
       const repo = getBotInstanceRepo?.();
-      const previousTier = repo?.getResourceTier(input.id) ?? "standard";
+      const previousTier: string = (await repo?.getResourceTier(input.id)) ?? "standard";
 
       // Update billing record
-      repo?.setResourceTier(input.id, input.tier);
+      await repo?.setResourceTier(input.id, input.tier);
 
       // Restart container with new resource limits (if bot has a container)
       try {
@@ -635,7 +621,7 @@ export const fleetRouter = router({
       if (newTierConfig.dailyCostCents > 0) {
         const ledger = getCreditLedger();
         if (ledger) {
-          const balance = ledger.balance(ctx.tenantId);
+          const balance = await ledger.balance(ctx.tenantId);
           if (balance < newTierConfig.dailyCostCents) {
             throw new TRPCError({
               code: "PAYMENT_REQUIRED",
@@ -750,13 +736,13 @@ export const fleetRouter = router({
       }
 
       const vpsRepo = getVpsRepo();
-      const existing = vpsRepo.getByBotId(input.id);
+      const existing = await vpsRepo.getByBotId(input.id);
       if (existing && existing.status === "active") {
         throw new TRPCError({ code: "CONFLICT", message: "Bot already on VPS tier" });
       }
 
       const tenantStore = getTenantCustomerStore();
-      const customer = tenantStore.getByTenant(ctx.tenantId);
+      const customer = await tenantStore.getByTenant(ctx.tenantId);
       if (!customer) {
         throw new TRPCError({
           code: "PAYMENT_REQUIRED",
@@ -793,7 +779,7 @@ export const fleetRouter = router({
     }
 
     const vpsRepo = getVpsRepo();
-    const sub = vpsRepo.getByBotId(input.id);
+    const sub = await vpsRepo.getByBotId(input.id);
     if (!sub) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Bot is not on VPS tier" });
     }

@@ -1,6 +1,6 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
-export const restoreLog = sqliteTable(
+export const restoreLog = pgTable(
   "restore_log",
   {
     id: text("id").primaryKey(),
@@ -11,7 +11,7 @@ export const restoreLog = sqliteTable(
     /** S3 key of the pre-restore safety snapshot */
     preRestoreKey: text("pre_restore_key"),
     /** Unix epoch seconds when restore completed */
-    restoredAt: integer("restored_at").notNull(),
+    restoredAt: bigint("restored_at", { mode: "number" }).notNull(),
     /** User ID of the admin/tenant who triggered the restore */
     restoredBy: text("restored_by").notNull(),
     /** Optional reason for the restore */

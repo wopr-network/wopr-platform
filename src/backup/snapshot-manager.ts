@@ -138,7 +138,7 @@ export class SnapshotManager {
     };
 
     try {
-      this.repo.insert(row);
+      await this.repo.insert(row);
     } catch (err) {
       await rm(tarPath, { force: true });
       // Clean up orphaned S3 object if upload succeeded but DB insert failed
@@ -184,7 +184,7 @@ export class SnapshotManager {
    * 2. Extract snapshot tar over WOPR_HOME
    */
   async restore(snapshotId: string, woprHomePath: string): Promise<void> {
-    const snapshot = this.get(snapshotId);
+    const snapshot = await this.get(snapshotId);
     if (!snapshot) {
       throw new SnapshotNotFoundError(snapshotId);
     }
@@ -222,32 +222,32 @@ export class SnapshotManager {
   }
 
   /** Get a single snapshot by ID */
-  get(id: string): Snapshot | null {
+  async get(id: string): Promise<Snapshot | null> {
     return this.repo.getById(id);
   }
 
   /** List all non-deleted snapshots for an instance, newest first */
-  list(instanceId: string, type?: string): Snapshot[] {
+  async list(instanceId: string, type?: string): Promise<Snapshot[]> {
     return this.repo.list(instanceId, type);
   }
 
   /** List all non-deleted snapshots for a tenant */
-  listByTenant(tenant: string, type?: string): Snapshot[] {
+  async listByTenant(tenant: string, type?: string): Promise<Snapshot[]> {
     return this.repo.listByTenant(tenant, type);
   }
 
   /** Count on-demand snapshots for a tenant (non-deleted only) */
-  countByTenant(tenant: string, type: "on-demand"): number {
+  async countByTenant(tenant: string, type: "on-demand"): Promise<number> {
     return this.repo.countByTenant(tenant, type);
   }
 
   /** List all active (non-deleted) snapshots of a given type across all tenants */
-  listAllActive(type: "on-demand"): Snapshot[] {
+  async listAllActive(type: "on-demand"): Promise<Snapshot[]> {
     return this.repo.listAllActive(type);
   }
 
   /** List snapshots that have passed their expiresAt time */
-  listExpired(now: number): Snapshot[] {
+  async listExpired(now: number): Promise<Snapshot[]> {
     return this.repo.listExpired(now);
   }
 
@@ -260,7 +260,7 @@ export class SnapshotManager {
    * reconciliation and re-throw so the caller knows the delete failed.
    */
   async delete(id: string): Promise<boolean> {
-    const snapshot = this.get(id);
+    const snapshot = await this.get(id);
     if (!snapshot) return false;
 
     // Remove from DO Spaces if available
@@ -278,7 +278,7 @@ export class SnapshotManager {
 
     // Soft-delete in DB
     try {
-      this.repo.softDelete(id);
+      await this.repo.softDelete(id);
     } catch (err) {
       if (spacesRemoved && snapshot.s3Key) {
         // S3 object is already deleted but DB record is still active — log for manual reconciliation
@@ -296,7 +296,7 @@ export class SnapshotManager {
 
   /** Hard-delete a snapshot: remove tar file, Spaces object, and DB row. */
   async hardDelete(id: string): Promise<boolean> {
-    const snapshot = this.get(id);
+    const snapshot = await this.get(id);
     if (!snapshot) return false;
 
     // Remove tar file
@@ -314,19 +314,19 @@ export class SnapshotManager {
     }
 
     // Hard-delete from DB
-    this.repo.hardDelete(id);
+    await this.repo.hardDelete(id);
 
     logger.info(`Hard-deleted snapshot ${id}`);
     return true;
   }
 
   /** Count non-deleted snapshots for an instance */
-  count(instanceId: string): number {
+  async count(instanceId: string): Promise<number> {
     return this.repo.count(instanceId);
   }
 
   /** Get oldest non-deleted snapshots for an instance (for retention cleanup) */
-  getOldest(instanceId: string, limit: number): Snapshot[] {
+  async getOldest(instanceId: string, limit: number): Promise<Snapshot[]> {
     return this.repo.getOldest(instanceId, limit);
   }
 }

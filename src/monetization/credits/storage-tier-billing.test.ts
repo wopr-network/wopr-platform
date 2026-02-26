@@ -1,76 +1,55 @@
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDb, type DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { DrizzleBotBilling } from "./bot-billing.js";
 
-function initTestSchema(sqlite: BetterSqlite3.Database): void {
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS bot_instances (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      node_id TEXT,
-      billing_state TEXT NOT NULL DEFAULT 'active',
-      suspended_at TEXT,
-      destroy_after TEXT,
-      resource_tier TEXT NOT NULL DEFAULT 'standard',
-      storage_tier TEXT NOT NULL DEFAULT 'standard',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      created_by_user_id TEXT
-    )
-  `);
-}
-
 describe("bot-billing storage tier", () => {
-  let sqlite: BetterSqlite3.Database;
-  let db: DrizzleDb;
+  let pool: PGlite;
   let billing: DrizzleBotBilling;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initTestSchema(sqlite);
-    db = createDb(sqlite);
+  beforeEach(async () => {
+    const { db, pool: p } = await createTestDb();
+    pool = p;
     billing = new DrizzleBotBilling(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("new bot defaults to standard storage tier", () => {
-    billing.registerBot("bot-1", "tenant-1", "TestBot");
-    expect(billing.getStorageTier("bot-1")).toBe("standard");
+  it("new bot defaults to standard storage tier", async () => {
+    await billing.registerBot("bot-1", "tenant-1", "TestBot");
+    expect(await billing.getStorageTier("bot-1")).toBe("standard");
   });
 
-  it("setStorageTier updates tier", () => {
-    billing.registerBot("bot-1", "tenant-1", "TestBot");
-    billing.setStorageTier("bot-1", "pro");
-    expect(billing.getStorageTier("bot-1")).toBe("pro");
+  it("setStorageTier updates tier", async () => {
+    await billing.registerBot("bot-1", "tenant-1", "TestBot");
+    await billing.setStorageTier("bot-1", "pro");
+    expect(await billing.getStorageTier("bot-1")).toBe("pro");
   });
 
-  it("getStorageTier returns null for unknown bot", () => {
-    expect(billing.getStorageTier("nonexistent")).toBeNull();
+  it("getStorageTier returns null for unknown bot", async () => {
+    expect(await billing.getStorageTier("nonexistent")).toBeNull();
   });
 
-  it("getStorageTierCostsForTenant sums active bot storage costs", () => {
-    billing.registerBot("bot-1", "tenant-1", "Bot1");
-    billing.registerBot("bot-2", "tenant-1", "Bot2");
-    billing.registerBot("bot-3", "tenant-1", "Bot3");
-    billing.setStorageTier("bot-1", "plus"); // 3 credits/day
-    billing.setStorageTier("bot-2", "max"); // 15 credits/day
-    // bot-3 stays standard                  // 0 credits/day
-    expect(billing.getStorageTierCostsForTenant("tenant-1")).toBe(18);
+  it("getStorageTierCostsForTenant sums active bot storage costs", async () => {
+    await billing.registerBot("bot-1", "tenant-1", "Bot1");
+    await billing.registerBot("bot-2", "tenant-1", "Bot2");
+    await billing.registerBot("bot-3", "tenant-1", "Bot3");
+    await billing.setStorageTier("bot-1", "plus"); // 3 credits/day
+    await billing.setStorageTier("bot-2", "max"); // 15 credits/day
+    // bot-3 stays standard                        // 0 credits/day
+    expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(18);
   });
 
-  it("getStorageTierCostsForTenant excludes suspended bots", () => {
-    billing.registerBot("bot-1", "tenant-1", "Bot1");
-    billing.setStorageTier("bot-1", "pro"); // 8 credits/day
-    billing.suspendBot("bot-1");
-    expect(billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+  it("getStorageTierCostsForTenant excludes suspended bots", async () => {
+    await billing.registerBot("bot-1", "tenant-1", "Bot1");
+    await billing.setStorageTier("bot-1", "pro"); // 8 credits/day
+    await billing.suspendBot("bot-1");
+    expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
   });
 
-  it("getStorageTierCostsForTenant returns 0 for unknown tenant", () => {
-    expect(billing.getStorageTierCostsForTenant("nonexistent")).toBe(0);
+  it("getStorageTierCostsForTenant returns 0 for unknown tenant", async () => {
+    expect(await billing.getStorageTierCostsForTenant("nonexistent")).toBe(0);
   });
 });
