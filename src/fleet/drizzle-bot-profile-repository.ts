@@ -1,24 +1,23 @@
 import { eq, sql } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import type * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
 import { botProfiles } from "../db/schema/index.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
 import type { BotProfile } from "./types.js";
 
 /**
  * Drizzle-backed implementation of IBotProfileRepository.
- * Stores bot profiles in the `bot_profiles` SQLite table.
+ * Stores bot profiles in the `bot_profiles` table.
  */
 export class DrizzleBotProfileRepository implements IBotProfileRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: DrizzleDb) {}
 
-  get(id: string): BotProfile | null {
-    const row = this.db.select().from(botProfiles).where(eq(botProfiles.id, id)).get();
-    return row ? toProfile(row) : null;
+  async get(id: string): Promise<BotProfile | null> {
+    const rows = await this.db.select().from(botProfiles).where(eq(botProfiles.id, id));
+    return rows[0] ? toProfile(rows[0]) : null;
   }
 
-  save(profile: BotProfile): BotProfile {
-    this.db
+  async save(profile: BotProfile): Promise<BotProfile> {
+    await this.db
       .insert(botProfiles)
       .values({
         id: profile.id,
@@ -46,20 +45,19 @@ export class DrizzleBotProfileRepository implements IBotProfileRepository {
           description: profile.description ?? "",
           releaseChannel: profile.releaseChannel ?? "stable",
           discoveryJson: profile.discovery ? JSON.stringify(profile.discovery) : null,
-          updatedAt: sql`(datetime('now'))`,
+          updatedAt: sql`(now())`,
         },
-      })
-      .run();
+      });
     return profile;
   }
 
-  delete(id: string): boolean {
-    const result = this.db.delete(botProfiles).where(eq(botProfiles.id, id)).run();
-    return result.changes > 0;
+  async delete(id: string): Promise<boolean> {
+    const result = await this.db.delete(botProfiles).where(eq(botProfiles.id, id)).returning({ id: botProfiles.id });
+    return result.length > 0;
   }
 
-  list(): BotProfile[] {
-    const rows = this.db.select().from(botProfiles).all();
+  async list(): Promise<BotProfile[]> {
+    const rows = await this.db.select().from(botProfiles);
     return rows.map(toProfile);
   }
 }

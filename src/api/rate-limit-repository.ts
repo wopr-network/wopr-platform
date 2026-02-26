@@ -7,11 +7,11 @@ export interface IRateLimitRepository {
    * the counter to 1 and starts a new window.
    * Returns the updated entry.
    */
-  increment(key: string, scope: string, windowMs: number): RateLimitEntry;
+  increment(key: string, scope: string, windowMs: number): Promise<RateLimitEntry>;
 
   /** Read the current entry without modifying it. Returns null if absent. */
-  get(key: string, scope: string): RateLimitEntry | null;
+  get(key: string, scope: string): Promise<RateLimitEntry | null>;
 
   /** Delete entries whose window started more than windowMs ago. */
-  purgeStale(windowMs: number): number;
+  purgeStale(windowMs: number): Promise<number>;
 }

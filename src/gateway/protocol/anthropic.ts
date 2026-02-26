@@ -137,14 +137,14 @@ function messagesHandler(deps: ProtocolDeps) {
     const tenant = c.get("gatewayTenant");
 
     // Budget check
-    const budgetResult = deps.budgetChecker.check(tenant.id, tenant.spendLimits);
+    const budgetResult = await deps.budgetChecker.check(tenant.id, tenant.spendLimits);
     if (!budgetResult.allowed) {
       const mapped = mapToAnthropicError(429, budgetResult.reason ?? "Budget exceeded");
       return anthropicErrorResponse(mapped.status, mapped.body);
     }
 
     // Credit balance check (estimate minimum 1 cent for LLM calls)
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       // Convert to Anthropic error format
       const mapped = mapToAnthropicError(402, creditErr.message);

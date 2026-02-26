@@ -1,35 +1,31 @@
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDb, type DrizzleDb } from "../../db/index.js";
-import { DrizzleCreditLedger } from "../credits/credit-ledger.js";
-import { initCreditSchema } from "../credits/schema.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
+import { CreditLedger } from "../credits/credit-ledger.js";
 import { processAffiliateCreditMatch } from "./credit-match.js";
 import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";
-import { initAffiliateSchema } from "./schema.js";
 
 describe("processAffiliateCreditMatch", () => {
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
   let db: DrizzleDb;
-  let ledger: DrizzleCreditLedger;
+  let ledger: CreditLedger;
   let affiliateRepo: DrizzleAffiliateRepository;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initCreditSchema(sqlite);
-    initAffiliateSchema(sqlite);
-    db = createDb(sqlite);
-    ledger = new DrizzleCreditLedger(db);
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    ledger = new CreditLedger(db);
     affiliateRepo = new DrizzleAffiliateRepository(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("does nothing when tenant has no referral", () => {
-    ledger.credit("buyer", 1000, "purchase", "first buy", "session-1", "stripe");
+  it("does nothing when tenant has no referral", async () => {
+    await ledger.credit("buyer", 1000, "purchase", "first buy", "session-1", "stripe");
 
-    const result = processAffiliateCreditMatch({
+    const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
       purchaseAmountCents: 1000,
       ledger,
@@ -39,13 +35,13 @@ describe("processAffiliateCreditMatch", () => {
     expect(result).toBeNull();
   });
 
-  it("does nothing when tenant already has prior purchases", () => {
-    affiliateRepo.recordReferral("referrer", "buyer", "abc123");
+  it("does nothing when tenant already has prior purchases", async () => {
+    await affiliateRepo.recordReferral("referrer", "buyer", "abc123");
 
-    ledger.credit("buyer", 500, "purchase", "old buy", "session-0", "stripe");
-    ledger.credit("buyer", 1000, "purchase", "new buy", "session-1", "stripe");
+    await ledger.credit("buyer", 500, "purchase", "old buy", "session-0", "stripe");
+    await ledger.credit("buyer", 1000, "purchase", "new buy", "session-1", "stripe");
 
-    const result = processAffiliateCreditMatch({
+    const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
       purchaseAmountCents: 1000,
       ledger,
@@ -55,11 +51,11 @@ describe("processAffiliateCreditMatch", () => {
     expect(result).toBeNull();
   });
 
-  it("credits referrer on first purchase with 100% match", () => {
-    affiliateRepo.recordReferral("referrer", "buyer", "abc123");
-    ledger.credit("buyer", 2000, "purchase", "first buy", "session-1", "stripe");
+  it("credits referrer on first purchase with 100% match", async () => {
+    await affiliateRepo.recordReferral("referrer", "buyer", "abc123");
+    await ledger.credit("buyer", 2000, "purchase", "first buy", "session-1", "stripe");
 
-    const result = processAffiliateCreditMatch({
+    const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
       purchaseAmountCents: 2000,
       ledger,
@@ -70,19 +66,19 @@ describe("processAffiliateCreditMatch", () => {
     expect(result).not.toBeNull();
     expect(result?.matchAmountCents).toBe(2000);
     expect(result?.referrerTenantId).toBe("referrer");
-    expect(ledger.balance("referrer")).toBe(2000);
+    expect(await ledger.balance("referrer")).toBe(2000);
 
-    const ref = affiliateRepo.getReferralByReferred("buyer");
+    const ref = await affiliateRepo.getReferralByReferred("buyer");
     expect(ref?.matchAmountCents).toBe(2000);
     expect(ref?.matchedAt).not.toBeNull();
     expect(ref?.firstPurchaseAt).not.toBeNull();
   });
 
-  it("respects custom match rate", () => {
-    affiliateRepo.recordReferral("referrer", "buyer", "abc123");
-    ledger.credit("buyer", 2000, "purchase", "first buy", "session-1", "stripe");
+  it("respects custom match rate", async () => {
+    await affiliateRepo.recordReferral("referrer", "buyer", "abc123");
+    await ledger.credit("buyer", 2000, "purchase", "first buy", "session-1", "stripe");
 
-    const result = processAffiliateCreditMatch({
+    const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
       purchaseAmountCents: 2000,
       ledger,
@@ -91,14 +87,14 @@ describe("processAffiliateCreditMatch", () => {
     });
 
     expect(result?.matchAmountCents).toBe(1000);
-    expect(ledger.balance("referrer")).toBe(1000);
+    expect(await ledger.balance("referrer")).toBe(1000);
   });
 
-  it("is idempotent — second call returns null", () => {
-    affiliateRepo.recordReferral("referrer", "buyer", "abc123");
-    ledger.credit("buyer", 1000, "purchase", "first buy", "session-1", "stripe");
+  it("is idempotent — second call returns null", async () => {
+    await affiliateRepo.recordReferral("referrer", "buyer", "abc123");
+    await ledger.credit("buyer", 1000, "purchase", "first buy", "session-1", "stripe");
 
-    const first = processAffiliateCreditMatch({
+    const first = await processAffiliateCreditMatch({
       tenantId: "buyer",
       purchaseAmountCents: 1000,
       ledger,
@@ -106,7 +102,7 @@ describe("processAffiliateCreditMatch", () => {
     });
     expect(first).not.toBeNull();
 
-    const second = processAffiliateCreditMatch({
+    const second = await processAffiliateCreditMatch({
       tenantId: "buyer",
       purchaseAmountCents: 1000,
       ledger,

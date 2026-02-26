@@ -6,11 +6,11 @@ import { router, tenantProcedure } from "../init.js";
 
 export interface OrgKeysRouterDeps {
   getTenantKeyStore: () => {
-    listForTenant: (tenantId: string) => unknown[];
+    listForTenant: (tenantId: string) => Promise<unknown[]>;
     get: (
       tenantId: string,
       provider: string,
-    ) =>
+    ) => Promise<
       | {
           id: string;
           tenant_id: string;
@@ -19,17 +19,18 @@ export interface OrgKeysRouterDeps {
           created_at: number;
           updated_at: number;
         }
-      | undefined;
-    upsert: (tenantId: string, provider: string, encryptedPayload: EncryptedPayload, label: string) => string;
-    delete: (tenantId: string, provider: string) => boolean;
+      | undefined
+    >;
+    upsert: (tenantId: string, provider: string, encryptedPayload: EncryptedPayload, label: string) => Promise<string>;
+    delete: (tenantId: string, provider: string) => Promise<boolean>;
   };
   encrypt: (plaintext: string, key: Buffer) => EncryptedPayload;
   deriveTenantKey: (tenantId: string, platformSecret: string) => Buffer;
   platformSecret: string | undefined;
   /** Given a userId and their personal tenantId, return the org tenantId they belong to, or null. */
-  getOrgTenantIdForUser: (userId: string, memberTenantId: string) => string | null;
+  getOrgTenantIdForUser: (userId: string, memberTenantId: string) => Promise<string | null>;
   /** Get the user's role in a specific tenant. */
-  getUserRoleInTenant: (userId: string, tenantId: string) => string | null;
+  getUserRoleInTenant: (userId: string, tenantId: string) => Promise<string | null>;
 }
 
 let _deps: OrgKeysRouterDeps | null = null;
@@ -44,9 +45,9 @@ function deps(): OrgKeysRouterDeps {
 }
 
 /** Assert the caller is tenant_admin for the org. Throws FORBIDDEN otherwise. */
-function requireOrgAdmin(userId: string, orgTenantId: string): void {
+async function requireOrgAdmin(userId: string, orgTenantId: string): Promise<void> {
   const { getUserRoleInTenant } = deps();
-  const role = getUserRoleInTenant(userId, orgTenantId);
+  const role = await getUserRoleInTenant(userId, orgTenantId);
   if (role !== "tenant_admin" && role !== "platform_admin") {
     throw new TRPCError({
       code: "FORBIDDEN",
@@ -56,9 +57,9 @@ function requireOrgAdmin(userId: string, orgTenantId: string): void {
 }
 
 /** Resolve the org tenantId for the caller. Throws NOT_FOUND if not in an org. */
-function resolveOrgTenantId(userId: string, memberTenantId: string): string {
+async function resolveOrgTenantId(userId: string, memberTenantId: string): Promise<string> {
   const { getOrgTenantIdForUser } = deps();
-  const orgTenantId = getOrgTenantIdForUser(userId, memberTenantId);
+  const orgTenantId = await getOrgTenantIdForUser(userId, memberTenantId);
   if (!orgTenantId) {
     throw new TRPCError({ code: "NOT_FOUND", message: "No org membership found" });
   }
@@ -67,18 +68,18 @@ function resolveOrgTenantId(userId: string, memberTenantId: string): string {
 
 export const orgKeysRouter = router({
   /** List org-level API keys (metadata only). Any org member can call this. */
-  listOrgKeys: tenantProcedure.query(({ ctx }) => {
-    const orgTenantId = resolveOrgTenantId(ctx.user.id, ctx.tenantId);
+  listOrgKeys: tenantProcedure.query(async ({ ctx }) => {
+    const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
     const { getTenantKeyStore } = deps();
-    const keys = getTenantKeyStore().listForTenant(orgTenantId);
+    const keys = await getTenantKeyStore().listForTenant(orgTenantId);
     return { orgTenantId, keys };
   }),
 
   /** Check if org has a key for a provider. Any org member can call this. */
-  getOrgKey: tenantProcedure.input(z.object({ provider: providerSchema })).query(({ input, ctx }) => {
-    const orgTenantId = resolveOrgTenantId(ctx.user.id, ctx.tenantId);
+  getOrgKey: tenantProcedure.input(z.object({ provider: providerSchema })).query(async ({ input, ctx }) => {
+    const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
     const { getTenantKeyStore } = deps();
-    const record = getTenantKeyStore().get(orgTenantId, input.provider);
+    const record = await getTenantKeyStore().get(orgTenantId, input.provider);
     if (!record) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No org key stored for this provider" });
     }
@@ -101,9 +102,9 @@ export const orgKeysRouter = router({
         label: z.string().max(100).optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
-      const orgTenantId = resolveOrgTenantId(ctx.user.id, ctx.tenantId);
-      requireOrgAdmin(ctx.user.id, orgTenantId);
+    .mutation(async ({ input, ctx }) => {
+      const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
+      await requireOrgAdmin(ctx.user.id, orgTenantId);
 
       const { getTenantKeyStore, encrypt, deriveTenantKey, platformSecret } = deps();
       if (!platformSecret) {
@@ -116,18 +117,18 @@ export const orgKeysRouter = router({
       const tenantKey = deriveTenantKey(orgTenantId, platformSecret);
       const encryptedPayload = encrypt(input.apiKey, tenantKey);
       const maskedLabel = input.label ?? `...${input.apiKey.slice(-4)}`;
-      const id = getTenantKeyStore().upsert(orgTenantId, input.provider, encryptedPayload, maskedLabel);
+      const id = await getTenantKeyStore().upsert(orgTenantId, input.provider, encryptedPayload, maskedLabel);
 
       return { ok: true as const, id, provider: input.provider };
     }),
 
   /** Delete an org API key. Requires tenant_admin. */
-  deleteOrgKey: tenantProcedure.input(z.object({ provider: providerSchema })).mutation(({ input, ctx }) => {
-    const orgTenantId = resolveOrgTenantId(ctx.user.id, ctx.tenantId);
-    requireOrgAdmin(ctx.user.id, orgTenantId);
+  deleteOrgKey: tenantProcedure.input(z.object({ provider: providerSchema })).mutation(async ({ input, ctx }) => {
+    const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
+    await requireOrgAdmin(ctx.user.id, orgTenantId);
 
     const { getTenantKeyStore } = deps();
-    const deleted = getTenantKeyStore().delete(orgTenantId, input.provider);
+    const deleted = await getTenantKeyStore().delete(orgTenantId, input.provider);
     if (!deleted) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No org key stored for this provider" });
     }

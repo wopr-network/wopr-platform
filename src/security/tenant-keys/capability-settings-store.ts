@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../../db/index.js";
 import { tenantCapabilitySettings } from "../../db/schema/index.js";
 
 export const ALL_CAPABILITIES = ["transcription", "image-gen", "text-gen", "embeddings"] as const;
@@ -13,19 +13,18 @@ export interface TenantCapabilitySetting {
 }
 
 export class CapabilitySettingsStore {
-  private readonly db: BetterSQLite3Database<Record<string, unknown>>;
+  private readonly db: DrizzleDb;
 
-  constructor(db: BetterSQLite3Database<Record<string, unknown>>) {
+  constructor(db: DrizzleDb) {
     this.db = db;
   }
 
   /** Get all capability settings for a tenant. Returns empty array if none set (defaults to hosted). */
-  listForTenant(tenantId: string): TenantCapabilitySetting[] {
-    const rows = this.db
+  async listForTenant(tenantId: string): Promise<TenantCapabilitySetting[]> {
+    const rows = await this.db
       .select()
       .from(tenantCapabilitySettings)
-      .where(eq(tenantCapabilitySettings.tenantId, tenantId))
-      .all();
+      .where(eq(tenantCapabilitySettings.tenantId, tenantId));
     return rows.map((r) => ({
       tenant_id: r.tenantId,
       capability: r.capability,
@@ -35,15 +34,14 @@ export class CapabilitySettingsStore {
   }
 
   /** Set the mode for a specific capability. Upserts. */
-  upsert(tenantId: string, capability: string, mode: string): void {
+  async upsert(tenantId: string, capability: string, mode: string): Promise<void> {
     const now = Date.now();
-    this.db
+    await this.db
       .insert(tenantCapabilitySettings)
       .values({ tenantId, capability, mode, updatedAt: now })
       .onConflictDoUpdate({
         target: [tenantCapabilitySettings.tenantId, tenantCapabilitySettings.capability],
         set: { mode, updatedAt: now },
-      })
-      .run();
+      });
   }
 }

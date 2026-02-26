@@ -3,28 +3,19 @@
  */
 
 import crypto from "node:crypto";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleSigPenaltyRepository } from "../api/drizzle-sig-penalty-repository.js";
-import * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import type { GatewayTenant } from "./types.js";
 import { createTwilioWebhookAuth } from "./webhook-auth.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
 function makeTestSigPenaltyRepo() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE webhook_sig_penalties (
-      ip TEXT NOT NULL,
-      source TEXT NOT NULL,
-      failures INTEGER NOT NULL DEFAULT 0,
-      blocked_until INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (ip, source)
-    )
-  `);
-  const db = drizzle(sqlite, { schema });
   return new DrizzleSigPenaltyRepository(db);
 }
 
@@ -61,6 +52,14 @@ function buildTestApp(resolveTenant: (c: import("hono").Context) => GatewayTenan
 }
 
 describe("createTwilioWebhookAuth", () => {
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterEach(async () => {
+    await pool.close();
+  });
+
   it("returns 400 when X-Twilio-Signature header is missing", async () => {
     const app = buildTestApp();
     const res = await app.request("/v1/phone/inbound/tenant-abc", {

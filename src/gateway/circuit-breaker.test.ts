@@ -2,11 +2,11 @@
  * Tests for per-instance circuit breaker middleware.
  */
 
-import BetterSqlite3 from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { circuitBreaker, getCircuitStates } from "./circuit-breaker.js";
 import type { ICircuitBreakerRepository } from "./circuit-breaker-repository.js";
 import { DrizzleCircuitBreakerRepository } from "./drizzle-circuit-breaker-repository.js";
@@ -15,20 +15,6 @@ import type { GatewayTenant } from "./types.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function makeCircuitBreakerRepo(): { repo: ICircuitBreakerRepository; sqlite: BetterSqlite3.Database } {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS circuit_breaker_states (
-      instance_id TEXT PRIMARY KEY,
-      count INTEGER NOT NULL DEFAULT 0,
-      window_start INTEGER NOT NULL,
-      tripped_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_circuit_window ON circuit_breaker_states(window_start);
-  `);
-  return { repo: new DrizzleCircuitBreakerRepository(drizzle(sqlite, { schema })), sqlite };
-}
 
 function makeTenant(id: string, instanceId?: string): GatewayTenant {
   return { id, spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null }, instanceId };
@@ -72,19 +58,19 @@ async function sendRequests(app: TestApp, count: number, tenantId = "tenant-a", 
 
 describe("circuitBreaker", () => {
   let repo: ICircuitBreakerRepository;
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    const r = makeCircuitBreakerRepo();
-    repo = r.repo;
-    sqlite = r.sqlite;
+    ({ db, pool } = await createTestDb());
+    repo = new DrizzleCircuitBreakerRepository(db);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   it("stays closed (allows requests) under threshold", async () => {
@@ -204,7 +190,7 @@ describe("circuitBreaker", () => {
     const app = makeApp({ maxRequestsPerWindow: 2, windowMs: 10_000, pauseDurationMs: 300_000 }, repo);
     await sendRequests(app, 3, "tenant-states", "inst-states");
 
-    const states = getCircuitStates(repo);
+    const states = await getCircuitStates(repo);
     const entry = states.get("inst-states");
     expect(entry).toBeDefined();
     expect(entry?.trippedAt).not.toBeNull();

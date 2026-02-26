@@ -14,14 +14,14 @@ export interface OnboardingSession {
 }
 
 export interface IOnboardingSessionRepository {
-  getById(id: string): OnboardingSession | null;
-  getByUserId(userId: string): OnboardingSession | null;
-  getByAnonymousId(anonymousId: string): OnboardingSession | null;
-  getActiveByAnonymousId(anonymousId: string): OnboardingSession | null;
-  create(data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">): OnboardingSession;
-  upgradeAnonymousToUser(anonymousId: string, userId: string): OnboardingSession | null;
-  updateBudgetUsed(id: string, budgetUsedCents: number): void;
-  setStatus(id: string, status: OnboardingSession["status"]): void;
+  getById(id: string): Promise<OnboardingSession | null>;
+  getByUserId(userId: string): Promise<OnboardingSession | null>;
+  getByAnonymousId(anonymousId: string): Promise<OnboardingSession | null>;
+  getActiveByAnonymousId(anonymousId: string): Promise<OnboardingSession | null>;
+  create(data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">): Promise<OnboardingSession>;
+  upgradeAnonymousToUser(anonymousId: string, userId: string): Promise<OnboardingSession | null>;
+  updateBudgetUsed(id: string, budgetUsedCents: number): Promise<void>;
+  setStatus(id: string, status: OnboardingSession["status"]): Promise<void>;
 }
 
 type DbRow = typeof onboardingSessions.$inferSelect;
@@ -42,24 +42,24 @@ function toSession(row: DbRow): OnboardingSession {
 export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  getById(id: string): OnboardingSession | null {
-    const row = this.db.select().from(onboardingSessions).where(eq(onboardingSessions.id, id)).get();
-    return row ? toSession(row) : null;
+  async getById(id: string): Promise<OnboardingSession | null> {
+    const rows = await this.db.select().from(onboardingSessions).where(eq(onboardingSessions.id, id));
+    return rows[0] ? toSession(rows[0]) : null;
   }
 
-  getByUserId(userId: string): OnboardingSession | null {
-    const row = this.db.select().from(onboardingSessions).where(eq(onboardingSessions.userId, userId)).get();
-    return row ? toSession(row) : null;
+  async getByUserId(userId: string): Promise<OnboardingSession | null> {
+    const rows = await this.db.select().from(onboardingSessions).where(eq(onboardingSessions.userId, userId));
+    return rows[0] ? toSession(rows[0]) : null;
   }
 
-  getByAnonymousId(anonymousId: string): OnboardingSession | null {
-    const row = this.db.select().from(onboardingSessions).where(eq(onboardingSessions.anonymousId, anonymousId)).get();
-    return row ? toSession(row) : null;
+  async getByAnonymousId(anonymousId: string): Promise<OnboardingSession | null> {
+    const rows = await this.db.select().from(onboardingSessions).where(eq(onboardingSessions.anonymousId, anonymousId));
+    return rows[0] ? toSession(rows[0]) : null;
   }
 
-  getActiveByAnonymousId(anonymousId: string): OnboardingSession | null {
+  async getActiveByAnonymousId(anonymousId: string): Promise<OnboardingSession | null> {
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const row = this.db
+    const rows = await this.db
       .select()
       .from(onboardingSessions)
       .where(
@@ -68,14 +68,15 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
           eq(onboardingSessions.status, "active"),
           gt(onboardingSessions.createdAt, cutoff),
         ),
-      )
-      .get();
-    return row ? toSession(row) : null;
+      );
+    return rows[0] ? toSession(rows[0]) : null;
   }
 
-  create(data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">): OnboardingSession {
+  async create(
+    data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">,
+  ): Promise<OnboardingSession> {
     const now = Date.now();
-    const row = this.db
+    const rows = await this.db
       .insert(onboardingSessions)
       .values({
         id: data.id,
@@ -87,35 +88,31 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
         updatedAt: now,
         budgetUsedCents: 0,
       })
-      .returning()
-      .get();
-    return toSession(row);
+      .returning();
+    return toSession(rows[0]);
   }
 
-  upgradeAnonymousToUser(anonymousId: string, userId: string): OnboardingSession | null {
+  async upgradeAnonymousToUser(anonymousId: string, userId: string): Promise<OnboardingSession | null> {
     const now = Date.now();
-    const row = this.db
+    const rows = await this.db
       .update(onboardingSessions)
       .set({ userId, updatedAt: now })
       .where(eq(onboardingSessions.anonymousId, anonymousId))
-      .returning()
-      .get();
-    return row ? toSession(row) : null;
+      .returning();
+    return rows[0] ? toSession(rows[0]) : null;
   }
 
-  updateBudgetUsed(id: string, budgetUsedCents: number): void {
-    this.db
+  async updateBudgetUsed(id: string, budgetUsedCents: number): Promise<void> {
+    await this.db
       .update(onboardingSessions)
       .set({ budgetUsedCents, updatedAt: Date.now() })
-      .where(eq(onboardingSessions.id, id))
-      .run();
+      .where(eq(onboardingSessions.id, id));
   }
 
-  setStatus(id: string, status: OnboardingSession["status"]): void {
-    this.db
+  async setStatus(id: string, status: OnboardingSession["status"]): Promise<void> {
+    await this.db
       .update(onboardingSessions)
       .set({ status, updatedAt: Date.now() })
-      .where(eq(onboardingSessions.id, id))
-      .run();
+      .where(eq(onboardingSessions.id, id));
   }
 }

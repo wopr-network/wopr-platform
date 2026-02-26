@@ -65,7 +65,7 @@ export class NotificationWorker {
 
   /** Process one batch of pending notifications. Returns count of processed items. */
   async processBatch(): Promise<number> {
-    const pending = this.queue.fetchPending(this.batchSize);
+    const pending = await this.queue.fetchPending(this.batchSize);
     let processed = 0;
 
     for (const notif of pending) {

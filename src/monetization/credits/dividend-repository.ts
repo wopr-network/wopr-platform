@@ -16,44 +16,46 @@ export interface DigestTenantRow {
 }
 
 export interface IDividendRepository {
-  getStats(tenantId: string): DividendStats;
-  getHistory(tenantId: string, limit: number, offset: number): DividendHistoryEntry[];
-  getLifetimeTotalCents(tenantId: string): number;
+  getStats(tenantId: string): Promise<DividendStats>;
+  getHistory(tenantId: string, limit: number, offset: number): Promise<DividendHistoryEntry[]>;
+  getLifetimeTotalCents(tenantId: string): Promise<number>;
   /** Aggregate dividend distributions per tenant for a date window [windowStart, windowEnd). */
-  getDigestTenantAggregates(windowStart: string, windowEnd: string): DigestTenantRow[];
+  getDigestTenantAggregates(windowStart: string, windowEnd: string): Promise<DigestTenantRow[]>;
   /** Resolve email for a tenant from admin_users. Returns undefined if no row exists. */
-  getTenantEmail(tenantId: string): string | undefined;
+  getTenantEmail(tenantId: string): Promise<string | undefined>;
 }
 
 export class DrizzleDividendRepository implements IDividendRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  getStats(tenantId: string): DividendStats {
+  async getStats(tenantId: string): Promise<DividendStats> {
     // 1. Pool = sum of purchase amounts from yesterday UTC
-    const poolRow = this.db
-      .select({ total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)` })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.type, "purchase"),
-          sql`${creditTransactions.createdAt} >= datetime('now', '-1 day', 'start of day')`,
-          sql`${creditTransactions.createdAt} < datetime('now', 'start of day')`,
-        ),
-      )
-      .get();
+    const poolRow = (
+      await this.db
+        .select({ total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)` })
+        .from(creditTransactions)
+        .where(
+          and(
+            eq(creditTransactions.type, "purchase"),
+            sql`${creditTransactions.createdAt}::timestamp >= NOW() - INTERVAL '1 day'`,
+            sql`${creditTransactions.createdAt}::timestamp < date_trunc('day', NOW())`,
+          ),
+        )
+    )[0];
     const poolCents = poolRow?.total ?? 0;
 
     // 2. Active users = distinct tenants with a purchase in the last 7 days
-    const activeRow = this.db
-      .select({ count: sql<number>`COUNT(DISTINCT ${creditTransactions.tenantId})` })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.type, "purchase"),
-          sql`${creditTransactions.createdAt} >= datetime('now', '-7 days')`,
-        ),
-      )
-      .get();
+    const activeRow = (
+      await this.db
+        .select({ count: sql<number>`COUNT(DISTINCT ${creditTransactions.tenantId})` })
+        .from(creditTransactions)
+        .where(
+          and(
+            eq(creditTransactions.type, "purchase"),
+            sql`${creditTransactions.createdAt}::timestamp >= NOW() - INTERVAL '7 days'`,
+          ),
+        )
+    )[0];
     const activeUsers = activeRow?.count ?? 0;
 
     // 3. Per-user projection (avoid division by zero)
@@ -65,21 +67,24 @@ export class DrizzleDividendRepository implements IDividendRepository {
     const nextDistributionAt = nextMidnight.toISOString();
 
     // 5. User eligibility — last purchase within 7 days
-    const userPurchaseRow = this.db
-      .select({ createdAt: creditTransactions.createdAt })
-      .from(creditTransactions)
-      .where(and(eq(creditTransactions.tenantId, tenantId), eq(creditTransactions.type, "purchase")))
-      .orderBy(desc(creditTransactions.createdAt))
-      .limit(1)
-      .get();
+    const userPurchaseRow = (
+      await this.db
+        .select({ createdAt: creditTransactions.createdAt })
+        .from(creditTransactions)
+        .where(and(eq(creditTransactions.tenantId, tenantId), eq(creditTransactions.type, "purchase")))
+        .orderBy(desc(creditTransactions.createdAt))
+        .limit(1)
+    )[0];
 
     let userEligible = false;
     let userLastPurchaseAt: string | null = null;
     let userWindowExpiresAt: string | null = null;
 
     if (userPurchaseRow) {
-      // SQLite stores as "YYYY-MM-DD HH:MM:SS", convert to ISO 8601
-      const lastPurchase = new Date(`${userPurchaseRow.createdAt}Z`);
+      const rawTs = userPurchaseRow.createdAt;
+      // Parse the timestamp directly. PGlite may return ISO strings with or without
+      // timezone suffix. JavaScript's Date constructor handles ISO 8601 strings natively.
+      const lastPurchase = new Date(rawTs);
       userLastPurchaseAt = lastPurchase.toISOString();
 
       const windowExpiry = new Date(lastPurchase.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -99,7 +104,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
     };
   }
 
-  getHistory(tenantId: string, limit: number, offset: number): DividendHistoryEntry[] {
+  async getHistory(tenantId: string, limit: number, offset: number): Promise<DividendHistoryEntry[]> {
     const safeLimit = Math.min(Math.max(1, limit), 250);
     const safeOffset = Math.max(0, offset);
 
@@ -114,20 +119,20 @@ export class DrizzleDividendRepository implements IDividendRepository {
       .where(eq(dividendDistributions.tenantId, tenantId))
       .orderBy(desc(dividendDistributions.date))
       .limit(safeLimit)
-      .offset(safeOffset)
-      .all();
+      .offset(safeOffset);
   }
 
-  getLifetimeTotalCents(tenantId: string): number {
-    const row = this.db
-      .select({ total: sql<number>`COALESCE(SUM(${dividendDistributions.amountCents}), 0)` })
-      .from(dividendDistributions)
-      .where(eq(dividendDistributions.tenantId, tenantId))
-      .get();
+  async getLifetimeTotalCents(tenantId: string): Promise<number> {
+    const row = (
+      await this.db
+        .select({ total: sql<number>`COALESCE(SUM(${dividendDistributions.amountCents}), 0)` })
+        .from(dividendDistributions)
+        .where(eq(dividendDistributions.tenantId, tenantId))
+    )[0];
     return row?.total ?? 0;
   }
 
-  getDigestTenantAggregates(windowStart: string, windowEnd: string): DigestTenantRow[] {
+  async getDigestTenantAggregates(windowStart: string, windowEnd: string): Promise<DigestTenantRow[]> {
     return this.db
       .select({
         tenantId: dividendDistributions.tenantId,
@@ -138,17 +143,17 @@ export class DrizzleDividendRepository implements IDividendRepository {
       })
       .from(dividendDistributions)
       .where(and(gte(dividendDistributions.date, windowStart), lt(dividendDistributions.date, windowEnd)))
-      .groupBy(dividendDistributions.tenantId)
-      .all();
+      .groupBy(dividendDistributions.tenantId);
   }
 
-  getTenantEmail(tenantId: string): string | undefined {
-    const row = this.db
-      .select({ email: adminUsers.email })
-      .from(adminUsers)
-      .where(eq(adminUsers.tenantId, tenantId))
-      .limit(1)
-      .get();
+  async getTenantEmail(tenantId: string): Promise<string | undefined> {
+    const row = (
+      await this.db
+        .select({ email: adminUsers.email })
+        .from(adminUsers)
+        .where(eq(adminUsers.tenantId, tenantId))
+        .limit(1)
+    )[0];
     return row?.email;
   }
 }

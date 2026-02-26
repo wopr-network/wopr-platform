@@ -1,4 +1,3 @@
-import Database from "better-sqlite3";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { DrizzleAuditLogRepository, type IAuditLogRepository } from "../../audit/audit-log-repository.js";
@@ -6,18 +5,13 @@ import { countAuditLog, queryAuditLog } from "../../audit/query.js";
 import { purgeExpiredEntriesForUser } from "../../audit/retention.js";
 import type { AuditEnv } from "../../audit/types.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createDb } from "../../db/index.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
-
-const AUDIT_DB_PATH = process.env.AUDIT_DB_PATH || "/data/platform/audit.db";
+import { getDb } from "../../fleet/services.js";
 
 /** Lazy-initialized audit repository (avoids opening DB at module load time). */
 let _auditRepo: IAuditLogRepository | null = null;
 function getAuditRepo(): IAuditLogRepository {
   if (!_auditRepo) {
-    const sqlite = new Database(AUDIT_DB_PATH);
-    applyPlatformPragmas(sqlite);
-    _auditRepo = new DrizzleAuditLogRepository(createDb(sqlite));
+    _auditRepo = new DrizzleAuditLogRepository(getDb());
   }
   return _auditRepo;
 }
@@ -27,11 +21,11 @@ export function setAuditDb(db: DrizzleDb): void {
   _auditRepo = new DrizzleAuditLogRepository(db);
 }
 
-function handleUserAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
+async function handleUserAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  purgeExpiredEntriesForUser(repo, user.id);
+  void purgeExpiredEntriesForUser(repo, user.id);
 
   const sinceRaw = c.req.query("since") ? Number(c.req.query("since")) : undefined;
   const untilRaw = c.req.query("until") ? Number(c.req.query("until")) : undefined;
@@ -50,15 +44,14 @@ function handleUserAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
   };
 
   try {
-    const entries = queryAuditLog(repo, filters);
-    const total = countAuditLog(repo, filters);
+    const [entries, total] = await Promise.all([queryAuditLog(repo, filters), countAuditLog(repo, filters)]);
     return c.json({ entries, total });
   } catch {
     return c.json({ error: "Internal server error" }, 500);
   }
 }
 
-function handleAdminAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
+async function handleAdminAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
   const user = c.get("user");
   if (!user?.isAdmin) return c.json({ error: "Forbidden" }, 403);
 
@@ -79,8 +72,7 @@ function handleAdminAudit(c: Context<AuditEnv>, repo: IAuditLogRepository) {
   };
 
   try {
-    const entries = queryAuditLog(repo, filters);
-    const total = countAuditLog(repo, filters);
+    const [entries, total] = await Promise.all([queryAuditLog(repo, filters), countAuditLog(repo, filters)]);
     return c.json({ entries, total });
   } catch {
     return c.json({ error: "Internal server error" }, 500);

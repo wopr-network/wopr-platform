@@ -20,13 +20,13 @@ export interface Tenant {
 // ---------------------------------------------------------------------------
 
 export interface IOrgRepository {
-  createOrg(ownerId: string, name: string, slug?: string): Tenant;
-  ensurePersonalTenant(userId: string, displayName: string): Tenant;
-  getById(id: string): Tenant | null;
-  getBySlug(slug: string): Tenant | null;
-  listOrgsByOwner(ownerId: string): Tenant[];
-  updateOrg(orgId: string, data: { name?: string; slug?: string }): Tenant;
-  updateOwner(orgId: string, newOwnerId: string): void;
+  createOrg(ownerId: string, name: string, slug?: string): Promise<Tenant>;
+  ensurePersonalTenant(userId: string, displayName: string): Promise<Tenant>;
+  getById(id: string): Promise<Tenant | null>;
+  getBySlug(slug: string): Promise<Tenant | null>;
+  listOrgsByOwner(ownerId: string): Promise<Tenant[]>;
+  updateOrg(orgId: string, data: { name?: string; slug?: string }): Promise<Tenant>;
+  updateOwner(orgId: string, newOwnerId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ function toTenant(row: typeof tenants.$inferSelect): Tenant {
 export class DrizzleOrgRepository implements IOrgRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  createOrg(ownerId: string, name: string, slug?: string): Tenant {
+  async createOrg(ownerId: string, name: string, slug?: string): Promise<Tenant> {
     const id = crypto.randomUUID();
     const finalSlug = slug || slugify(name);
     if (!finalSlug) {
@@ -67,25 +67,26 @@ export class DrizzleOrgRepository implements IOrgRepository {
       });
     }
 
-    const row = this.db
-      .insert(tenants)
-      .values({
-        id,
-        name,
-        slug: finalSlug,
-        type: "org",
-        ownerId,
-        createdAt: Date.now(),
-      })
-      .returning()
-      .get();
+    const row = (
+      await this.db
+        .insert(tenants)
+        .values({
+          id,
+          name,
+          slug: finalSlug,
+          type: "org",
+          ownerId,
+          createdAt: Date.now(),
+        })
+        .returning()
+    )[0];
 
     return toTenant(row);
   }
 
-  ensurePersonalTenant(userId: string, displayName: string): Tenant {
+  async ensurePersonalTenant(userId: string, displayName: string): Promise<Tenant> {
     // Use userId as the tenant ID for backward compatibility
-    this.db
+    await this.db
       .insert(tenants)
       .values({
         id: userId,
@@ -95,44 +96,38 @@ export class DrizzleOrgRepository implements IOrgRepository {
         ownerId: userId,
         createdAt: Date.now(),
       })
-      .onConflictDoNothing({ target: tenants.id })
-      .run();
+      .onConflictDoNothing({ target: tenants.id });
 
-    const tenant = this.getById(userId);
+    const tenant = await this.getById(userId);
     if (!tenant) throw new Error(`Personal tenant not found for user ${userId}`);
     return tenant;
   }
 
-  getById(id: string): Tenant | null {
-    const row = this.db.select().from(tenants).where(eq(tenants.id, id)).get();
+  async getById(id: string): Promise<Tenant | null> {
+    const row = (await this.db.select().from(tenants).where(eq(tenants.id, id)))[0];
     return row ? toTenant(row) : null;
   }
 
-  getBySlug(slug: string): Tenant | null {
-    const row = this.db.select().from(tenants).where(eq(tenants.slug, slug)).get();
+  async getBySlug(slug: string): Promise<Tenant | null> {
+    const row = (await this.db.select().from(tenants).where(eq(tenants.slug, slug)))[0];
     return row ? toTenant(row) : null;
   }
 
-  listOrgsByOwner(ownerId: string): Tenant[] {
-    const rows = this.db
-      .select()
-      .from(tenants)
-      .where(eq(tenants.ownerId, ownerId))
-      .all()
-      .filter((r) => r.type === "org");
-    return rows.map(toTenant);
+  async listOrgsByOwner(ownerId: string): Promise<Tenant[]> {
+    const rows = await this.db.select().from(tenants).where(eq(tenants.ownerId, ownerId));
+    return rows.filter((r) => r.type === "org").map(toTenant);
   }
 
-  updateOrg(orgId: string, data: { name?: string; slug?: string }): Tenant {
+  async updateOrg(orgId: string, data: { name?: string; slug?: string }): Promise<Tenant> {
     const updates: Partial<typeof tenants.$inferInsert> = {};
     if (data.name !== undefined) updates.name = data.name;
     if (data.slug !== undefined) updates.slug = data.slug;
-    const row = this.db.update(tenants).set(updates).where(eq(tenants.id, orgId)).returning().get();
+    const row = (await this.db.update(tenants).set(updates).where(eq(tenants.id, orgId)).returning())[0];
     if (!row) throw new Error(`Org not found: ${orgId}`);
     return toTenant(row);
   }
 
-  updateOwner(orgId: string, newOwnerId: string): void {
-    this.db.update(tenants).set({ ownerId: newOwnerId }).where(eq(tenants.id, orgId)).run();
+  async updateOwner(orgId: string, newOwnerId: string): Promise<void> {
+    await this.db.update(tenants).set({ ownerId: newOwnerId }).where(eq(tenants.id, orgId));
   }
 }

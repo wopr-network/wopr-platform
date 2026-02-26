@@ -27,7 +27,7 @@ export const adminRecoveryRoutes = new Hono<AuthEnv>();
  * GET /api/admin/recovery
  * List recovery events (paginated)
  */
-adminRecoveryRoutes.get("/", adminAuth, (c) => {
+adminRecoveryRoutes.get("/", adminAuth, async (c) => {
   const rawLimit = Number.parseInt(c.req.query("limit") ?? "50", 10);
   const limit = Number.isNaN(rawLimit) || rawLimit < 1 ? 50 : Math.min(rawLimit, 500);
   const recoveryRepo = getRecoveryRepo();
@@ -36,7 +36,7 @@ adminRecoveryRoutes.get("/", adminAuth, (c) => {
   const validStatuses: RecoveryEvent["status"][] = ["in_progress", "partial", "completed"];
   const statusFilter =
     rawStatus && (validStatuses as string[]).includes(rawStatus) ? (rawStatus as RecoveryEvent["status"]) : undefined;
-  const events = recoveryRepo.listEvents(limit, statusFilter);
+  const events = await recoveryRepo.listEvents(limit, statusFilter);
 
   return c.json({
     success: true,
@@ -49,11 +49,11 @@ adminRecoveryRoutes.get("/", adminAuth, (c) => {
  * GET /api/admin/recovery/:eventId
  * Get recovery event details with items
  */
-adminRecoveryRoutes.get("/:eventId", adminAuth, (c) => {
+adminRecoveryRoutes.get("/:eventId", adminAuth, async (c) => {
   const eventId = c.req.param("eventId");
   const orchestrator = getRecoveryOrchestrator();
 
-  const { event, items } = orchestrator.getEventDetails(eventId);
+  const { event, items } = await orchestrator.getEventDetails(eventId);
 
   if (!event) {
     return c.json(
@@ -111,8 +111,8 @@ export const adminNodeRoutes = new Hono<AuthEnv>();
  * GET /api/admin/nodes
  * List all nodes with status and capacity alerts
  */
-adminNodeRoutes.get("/", adminAuth, (c) => {
-  const nodes = getNodeRepo().list();
+adminNodeRoutes.get("/", adminAuth, async (c) => {
+  const nodes = await getNodeRepo().list();
   const alerts = checkCapacityAlerts(nodes);
 
   return c.json({
@@ -197,7 +197,7 @@ adminNodeRoutes.post("/migrate", adminAuth, async (c) => {
       .parse(body);
 
     const botInstanceRepo = getBotInstanceRepo();
-    const bot = botInstanceRepo.getById(parsed.botId);
+    const bot = await botInstanceRepo.getById(parsed.botId);
     if (!bot) {
       return c.json({ success: false, error: "Bot not found" }, 404);
     }
@@ -315,16 +315,16 @@ adminNodeRoutes.get("/sizes", adminAuth, async (c) => {
  * GET /api/admin/nodes/:nodeId
  * Get node detail including tenant list and provisioning info
  */
-adminNodeRoutes.get("/:nodeId", adminAuth, (c) => {
+adminNodeRoutes.get("/:nodeId", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
   const nodeRepo = getNodeRepo();
 
-  const node = nodeRepo.getById(nodeId);
+  const node = await nodeRepo.getById(nodeId);
   if (!node) {
     return c.json({ success: false, error: "Node not found" }, 404);
   }
 
-  const tenants = getBotInstanceRepo().listByNode(nodeId);
+  const tenants = await getBotInstanceRepo().listByNode(nodeId);
 
   return c.json({
     success: true,
@@ -370,10 +370,10 @@ adminNodeRoutes.delete("/:nodeId", adminAuth, async (c) => {
  * GET /api/admin/nodes/:nodeId/tenants
  * Get tenants assigned to a specific node
  */
-adminNodeRoutes.get("/:nodeId/tenants", adminAuth, (c) => {
+adminNodeRoutes.get("/:nodeId/tenants", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
 
-  const tenants = getBotInstanceRepo().listByNode(nodeId);
+  const tenants = await getBotInstanceRepo().listByNode(nodeId);
 
   return c.json({
     success: true,
@@ -436,12 +436,12 @@ adminNodeRoutes.post("/:nodeId/drain", adminAuth, async (c) => {
  * POST /api/admin/nodes/:nodeId/cancel-drain
  * Cancel an in-progress drain (marks node back to active)
  */
-adminNodeRoutes.post("/:nodeId/cancel-drain", adminAuth, (c) => {
+adminNodeRoutes.post("/:nodeId/cancel-drain", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
 
   try {
     // Use the state machine transition to go back to active
-    getNodeRepo().transition(nodeId, "active", "drain_cancelled", "admin");
+    await getNodeRepo().transition(nodeId, "active", "drain_cancelled", "admin");
 
     getAdminAuditLog().log({
       adminUser: (c.get("user") as { id?: string } | undefined)?.id ?? "unknown",

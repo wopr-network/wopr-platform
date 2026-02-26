@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Records every auto-topup attempt — both successes and failures.
  * Used by admin analytics to track auto-topup revenue and failure rates.
  */
-export const creditAutoTopup = sqliteTable(
+export const creditAutoTopup = pgTable(
   "credit_auto_topup",
   {
     id: text("id").primaryKey(),
@@ -15,7 +15,7 @@ export const creditAutoTopup = sqliteTable(
     failureReason: text("failure_reason"),
     /** Stripe payment intent or charge ID, if applicable */
     paymentReference: text("payment_reference"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_auto_topup_tenant").on(table.tenantId),

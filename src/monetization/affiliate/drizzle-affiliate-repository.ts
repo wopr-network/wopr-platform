@@ -34,34 +34,34 @@ export interface AffiliateStats {
 
 export interface IAffiliateRepository {
   /** Get or create affiliate code for tenant. Generates lazily on first call. */
-  getOrCreateCode(tenantId: string): AffiliateCode;
+  getOrCreateCode(tenantId: string): Promise<AffiliateCode>;
 
   /** Look up which tenant owns a given code. Returns null if code not found. */
-  getByCode(code: string): AffiliateCode | null;
+  getByCode(code: string): Promise<AffiliateCode | null>;
 
   /** Record a referral. No-op if referred tenant already attributed. Returns true if new. */
-  recordReferral(referrerTenantId: string, referredTenantId: string, code: string): boolean;
+  recordReferral(referrerTenantId: string, referredTenantId: string, code: string): Promise<boolean>;
 
   /** Check if a tenant was already referred by someone. */
-  isReferred(referredTenantId: string): boolean;
+  isReferred(referredTenantId: string): Promise<boolean>;
 
   /** Get stats for a tenant's affiliate program. */
-  getStats(tenantId: string): AffiliateStats;
+  getStats(tenantId: string): Promise<AffiliateStats>;
 
   /** List referrals for a tenant. */
-  listReferrals(tenantId: string): AffiliateReferral[];
+  listReferrals(tenantId: string): Promise<AffiliateReferral[]>;
 
   /** Get the referral record for a referred tenant. Returns null if not referred. */
-  getReferral(referredTenantId: string): AffiliateReferral | null;
+  getReferral(referredTenantId: string): Promise<AffiliateReferral | null>;
 
   /** Mark a referral as having made first purchase (for conversion tracking). */
-  markFirstPurchase(referredTenantId: string): void;
+  markFirstPurchase(referredTenantId: string): Promise<void>;
 
   /** Record a match payout on a referral. */
-  recordMatch(referredTenantId: string, amountCents: number): void;
+  recordMatch(referredTenantId: string, amountCents: number): Promise<void>;
 
   /** Look up a referral by the referred tenant. Returns null if not referred. */
-  getReferralByReferred(referredTenantId: string): AffiliateReferral | null;
+  getReferralByReferred(referredTenantId: string): Promise<AffiliateReferral | null>;
 }
 
 /** Generate a random 6-char lowercase alphanumeric code. */
@@ -75,9 +75,9 @@ function generateCode(): string {
 export class DrizzleAffiliateRepository implements IAffiliateRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  getOrCreateCode(tenantId: string): AffiliateCode {
+  async getOrCreateCode(tenantId: string): Promise<AffiliateCode> {
     // Check if code already exists
-    const existing = this.db.select().from(affiliateCodes).where(eq(affiliateCodes.tenantId, tenantId)).get();
+    const existing = (await this.db.select().from(affiliateCodes).where(eq(affiliateCodes.tenantId, tenantId)))[0];
 
     if (existing) {
       return {
@@ -91,10 +91,10 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
       const code = generateCode();
       try {
-        this.db.insert(affiliateCodes).values({ tenantId, code }).run();
+        await this.db.insert(affiliateCodes).values({ tenantId, code, createdAt: new Date().toISOString() });
 
         // Read back to get server-generated createdAt
-        const row = this.db.select().from(affiliateCodes).where(eq(affiliateCodes.tenantId, tenantId)).get();
+        const row = (await this.db.select().from(affiliateCodes).where(eq(affiliateCodes.tenantId, tenantId)))[0];
         if (!row) throw new Error("Failed to read back inserted affiliate code");
 
         return {
@@ -104,16 +104,18 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : "";
+        const isUnique =
+          msg.includes("UNIQUE") || msg.includes("duplicate key") || (err as { code?: string }).code === "23505";
         // Code collision — retry with a new code
-        if (msg.includes("UNIQUE") && msg.includes("affiliate_codes.code")) continue;
+        if (isUnique && (msg.includes("affiliate_codes.code") || msg.includes("affiliate_codes_code_unique"))) continue;
         // Concurrent request won the race on tenant_id — return existing row
-        if (msg.includes("UNIQUE") && msg.includes("affiliate_codes.tenant_id")) break;
+        if (isUnique && (msg.includes("affiliate_codes.tenant_id") || msg.includes("affiliate_codes_pkey"))) break;
         throw err;
       }
     }
 
     // Loop exhausted or broke out of tenant_id race — read back whatever row now exists
-    const row = this.db.select().from(affiliateCodes).where(eq(affiliateCodes.tenantId, tenantId)).get();
+    const row = (await this.db.select().from(affiliateCodes).where(eq(affiliateCodes.tenantId, tenantId)))[0];
     if (row) {
       return { tenantId: row.tenantId, code: row.code, createdAt: row.createdAt };
     }
@@ -121,8 +123,8 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     throw new Error(`Failed to generate unique affiliate code after ${MAX_CODE_ATTEMPTS} attempts`);
   }
 
-  getByCode(code: string): AffiliateCode | null {
-    const row = this.db.select().from(affiliateCodes).where(eq(affiliateCodes.code, code)).get();
+  async getByCode(code: string): Promise<AffiliateCode | null> {
+    const row = (await this.db.select().from(affiliateCodes).where(eq(affiliateCodes.code, code)))[0];
 
     if (!row) return null;
     return {
@@ -132,40 +134,41 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     };
   }
 
-  recordReferral(referrerTenantId: string, referredTenantId: string, code: string): boolean {
+  async recordReferral(referrerTenantId: string, referredTenantId: string, code: string): Promise<boolean> {
     if (referrerTenantId === referredTenantId) {
       throw new Error("Self-referral is not allowed");
     }
 
     const id = crypto.randomUUID();
-    const result = this.db
+    const result = await this.db
       .insert(affiliateReferrals)
       .values({ id, referrerTenantId, referredTenantId, code })
       .onConflictDoNothing({ target: affiliateReferrals.referredTenantId })
-      .run();
+      .returning({ id: affiliateReferrals.id });
 
-    // SQLite returns changes=0 if onConflictDoNothing triggered
-    return result.changes > 0;
+    return result.length > 0;
   }
 
-  isReferred(referredTenantId: string): boolean {
-    const row = this.db
-      .select({ id: affiliateReferrals.id })
-      .from(affiliateReferrals)
-      .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
-      .limit(1)
-      .get();
+  async isReferred(referredTenantId: string): Promise<boolean> {
+    const row = (
+      await this.db
+        .select({ id: affiliateReferrals.id })
+        .from(affiliateReferrals)
+        .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
+        .limit(1)
+    )[0];
 
     return row != null;
   }
 
-  getReferral(referredTenantId: string): AffiliateReferral | null {
-    const row = this.db
-      .select()
-      .from(affiliateReferrals)
-      .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
-      .limit(1)
-      .get();
+  async getReferral(referredTenantId: string): Promise<AffiliateReferral | null> {
+    const row = (
+      await this.db
+        .select()
+        .from(affiliateReferrals)
+        .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
+        .limit(1)
+    )[0];
 
     if (!row) return null;
     return {
@@ -180,26 +183,29 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     };
   }
 
-  getStats(tenantId: string): AffiliateStats {
-    const codeRow = this.getOrCreateCode(tenantId);
+  async getStats(tenantId: string): Promise<AffiliateStats> {
+    const codeRow = await this.getOrCreateCode(tenantId);
 
-    const totalRow = this.db
-      .select({ total: count() })
-      .from(affiliateReferrals)
-      .where(eq(affiliateReferrals.referrerTenantId, tenantId))
-      .get();
+    const totalRow = (
+      await this.db
+        .select({ total: count() })
+        .from(affiliateReferrals)
+        .where(eq(affiliateReferrals.referrerTenantId, tenantId))
+    )[0];
 
-    const convertedRow = this.db
-      .select({ converted: count() })
-      .from(affiliateReferrals)
-      .where(and(eq(affiliateReferrals.referrerTenantId, tenantId), isNotNull(affiliateReferrals.firstPurchaseAt)))
-      .get();
+    const convertedRow = (
+      await this.db
+        .select({ converted: count() })
+        .from(affiliateReferrals)
+        .where(and(eq(affiliateReferrals.referrerTenantId, tenantId), isNotNull(affiliateReferrals.firstPurchaseAt)))
+    )[0];
 
-    const earnedRow = this.db
-      .select({ earned: sum(affiliateReferrals.matchAmountCents) })
-      .from(affiliateReferrals)
-      .where(eq(affiliateReferrals.referrerTenantId, tenantId))
-      .get();
+    const earnedRow = (
+      await this.db
+        .select({ earned: sum(affiliateReferrals.matchAmountCents) })
+        .from(affiliateReferrals)
+        .where(eq(affiliateReferrals.referrerTenantId, tenantId))
+    )[0];
 
     return {
       code: codeRow.code,
@@ -210,39 +216,36 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     };
   }
 
-  listReferrals(tenantId: string): AffiliateReferral[] {
-    return this.db
+  async listReferrals(tenantId: string): Promise<AffiliateReferral[]> {
+    const rows = await this.db
       .select()
       .from(affiliateReferrals)
-      .where(eq(affiliateReferrals.referrerTenantId, tenantId))
-      .all()
-      .map((row) => ({
-        id: row.id,
-        referrerTenantId: row.referrerTenantId,
-        referredTenantId: row.referredTenantId,
-        code: row.code,
-        signedUpAt: row.signedUpAt,
-        firstPurchaseAt: row.firstPurchaseAt,
-        matchAmountCents: row.matchAmountCents,
-        matchedAt: row.matchedAt,
-      }));
+      .where(eq(affiliateReferrals.referrerTenantId, tenantId));
+    return rows.map((row) => ({
+      id: row.id,
+      referrerTenantId: row.referrerTenantId,
+      referredTenantId: row.referredTenantId,
+      code: row.code,
+      signedUpAt: row.signedUpAt,
+      firstPurchaseAt: row.firstPurchaseAt,
+      matchAmountCents: row.matchAmountCents,
+      matchedAt: row.matchedAt,
+    }));
   }
 
-  markFirstPurchase(referredTenantId: string): void {
-    this.db
+  async markFirstPurchase(referredTenantId: string): Promise<void> {
+    await this.db
       .update(affiliateReferrals)
-      // raw SQL: Drizzle cannot express datetime('now') for SQLite current timestamp
-      .set({ firstPurchaseAt: sql`(datetime('now'))` })
-      .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.firstPurchaseAt)))
-      .run();
+      .set({ firstPurchaseAt: sql`now()` })
+      .where(
+        and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.firstPurchaseAt)),
+      );
   }
 
-  getReferralByReferred(referredTenantId: string): AffiliateReferral | null {
-    const row = this.db
-      .select()
-      .from(affiliateReferrals)
-      .where(eq(affiliateReferrals.referredTenantId, referredTenantId))
-      .get();
+  async getReferralByReferred(referredTenantId: string): Promise<AffiliateReferral | null> {
+    const row = (
+      await this.db.select().from(affiliateReferrals).where(eq(affiliateReferrals.referredTenantId, referredTenantId))
+    )[0];
 
     if (!row) return null;
     return {
@@ -257,16 +260,14 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     };
   }
 
-  recordMatch(referredTenantId: string, amountCents: number): void {
-    this.db
+  async recordMatch(referredTenantId: string, amountCents: number): Promise<void> {
+    await this.db
       .update(affiliateReferrals)
-      // raw SQL: Drizzle cannot express datetime('now') for SQLite current timestamp
       .set({
         matchAmountCents: amountCents,
-        matchedAt: sql`(datetime('now'))`,
+        matchedAt: sql`now()`,
       })
-      .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.matchedAt)))
-      .run();
+      .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.matchedAt)));
   }
 }
 

@@ -1,9 +1,9 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, pgTable, real, text } from "drizzle-orm/pg-core";
 
-export const tenantSpendingLimits = sqliteTable("tenant_spending_limits", {
+export const tenantSpendingLimits = pgTable("tenant_spending_limits", {
   tenantId: text("tenant_id").primaryKey(),
   globalAlertAt: real("global_alert_at"),
   globalHardCap: real("global_hard_cap"),
   perCapabilityJson: text("per_capability_json"),
-  updatedAt: integer("updated_at").notNull(),
+  updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
 });

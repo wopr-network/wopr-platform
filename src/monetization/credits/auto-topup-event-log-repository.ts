@@ -11,23 +11,20 @@ export interface AutoTopupEventLogEntry {
 }
 
 export interface IAutoTopupEventLogRepository {
-  writeEvent(entry: AutoTopupEventLogEntry): void;
+  writeEvent(entry: AutoTopupEventLogEntry): Promise<void>;
 }
 
 export class DrizzleAutoTopupEventLogRepository implements IAutoTopupEventLogRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  writeEvent(entry: AutoTopupEventLogEntry): void {
-    this.db
-      .insert(creditAutoTopup)
-      .values({
-        id: crypto.randomUUID(),
-        tenantId: entry.tenantId,
-        amountCents: entry.amountCents,
-        status: entry.status,
-        failureReason: entry.failureReason ?? null,
-        paymentReference: entry.paymentReference ?? null,
-      })
-      .run();
+  async writeEvent(entry: AutoTopupEventLogEntry): Promise<void> {
+    await this.db.insert(creditAutoTopup).values({
+      id: crypto.randomUUID(),
+      tenantId: entry.tenantId,
+      amountCents: entry.amountCents,
+      status: entry.status,
+      failureReason: entry.failureReason ?? null,
+      paymentReference: entry.paymentReference ?? null,
+    });
   }
 }

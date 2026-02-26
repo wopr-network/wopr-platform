@@ -1,6 +1,6 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
-export const tenantCustomers = sqliteTable(
+export const tenantCustomers = pgTable(
   "tenant_customers",
   {
     tenant: text("tenant").primaryKey(),
@@ -9,24 +9,24 @@ export const tenantCustomers = sqliteTable(
     tier: text("tier").notNull().default("free"),
     billingHold: integer("billing_hold").notNull().default(0),
     inferenceMode: text("inference_mode").notNull().default("byok"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
+    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
   },
   (table) => [index("idx_tenant_customers_processor").on(table.processorCustomerId)],
 );
 
-export const stripeUsageReports = sqliteTable(
+export const stripeUsageReports = pgTable(
   "stripe_usage_reports",
   {
     id: text("id").primaryKey(),
     tenant: text("tenant").notNull(),
     capability: text("capability").notNull(),
     provider: text("provider").notNull(),
-    periodStart: integer("period_start").notNull(),
-    periodEnd: integer("period_end").notNull(),
+    periodStart: bigint("period_start", { mode: "number" }).notNull(),
+    periodEnd: bigint("period_end", { mode: "number" }).notNull(),
     eventName: text("event_name").notNull(),
     valueCents: integer("value_cents").notNull(),
-    reportedAt: integer("reported_at").notNull(),
+    reportedAt: bigint("reported_at", { mode: "number" }).notNull(),
   },
   (table) => [
     uniqueIndex("idx_stripe_usage_unique").on(table.tenant, table.capability, table.provider, table.periodStart),

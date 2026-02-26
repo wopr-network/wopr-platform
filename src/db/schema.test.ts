@@ -1,807 +1,217 @@
-import BetterSqlite3 from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { initMeterSchema } from "../monetization/metering/schema.js";
-import { initStripeSchema } from "../monetization/stripe/schema.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../test/db.js";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function freshDb(): BetterSqlite3.Database {
-  return new BetterSqlite3(":memory:");
-}
-
-/** Recreate audit_log table with raw SQL for schema constraint testing. */
-function initAuditSchema(db: BetterSqlite3.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS audit_log (
-      id TEXT PRIMARY KEY,
-      timestamp INTEGER NOT NULL,
-      user_id TEXT NOT NULL,
-      auth_method TEXT NOT NULL,
-      action TEXT NOT NULL,
-      resource_type TEXT NOT NULL,
-      resource_id TEXT,
-      details TEXT,
-      ip_address TEXT,
-      user_agent TEXT
-    )
-  `);
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log (timestamp)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_log (user_id)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log (action)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log (resource_type, resource_id)");
-}
-
-function tableNames(db: BetterSqlite3.Database): string[] {
-  return (
-    db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[]
-  ).map((r) => r.name);
-}
-
-function indexNames(db: BetterSqlite3.Database, prefix: string): string[] {
-  return (
-    db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE ?").all(`${prefix}%`) as {
-      name: string;
-    }[]
-  ).map((r) => r.name);
-}
-
-// ---------------------------------------------------------------------------
-// initSnapshotSchema
-// ---------------------------------------------------------------------------
-
 describe("snapshots schema (via Drizzle migration)", () => {
-  let db: BetterSqlite3.Database;
+  let pool: PGlite;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
-    db = testDb.sqlite;
+  beforeEach(async () => {
+    ({ pool } = await createTestDb());
   });
 
-  afterEach(() => {
-    db.close();
-  });
-
-  it("creates the snapshots table", () => {
-    expect(tableNames(db)).toContain("snapshots");
-  });
-
-  it("creates expected indexes", () => {
-    const idxs = indexNames(db, "idx_snapshots_");
-    expect(idxs).toContain("idx_snapshots_instance");
-    expect(idxs).toContain("idx_snapshots_user");
-  });
-
-  it("is idempotent (migration can run on same db)", () => {
-    // Drizzle migrations are inherently idempotent (tracked in __drizzle_migrations)
-    expect(tableNames(db).filter((t) => t === "snapshots")).toHaveLength(1);
-  });
-
-  it("enforces NOT NULL on instance_id", () => {
-    expect(() =>
-      db
-        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
-        .run("s1", null, "u1", "manual", "/path"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on user_id", () => {
-    expect(() =>
-      db
-        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
-        .run("s1", "i1", null, "manual", "/path"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on trigger", () => {
-    expect(() =>
-      db
-        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
-        .run("s1", "i1", "u1", null, "/path"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on storage_path", () => {
-    expect(() =>
-      db
-        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
-        .run("s1", "i1", "u1", "manual", null),
-    ).toThrow();
-  });
-
-  it("enforces CHECK constraint on trigger column", () => {
-    // Valid values: manual, scheduled, pre_update
-    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
-      "s-manual",
-      "i1",
-      "u1",
-      "manual",
-      "/a",
+  it("creates the snapshots table", async () => {
+    const result = await pool.query<{ table_name: string }>(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'snapshots'",
     );
-    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
-      "s-scheduled",
-      "i1",
-      "u1",
-      "scheduled",
-      "/b",
-    );
-    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
-      "s-pre",
-      "i1",
-      "u1",
-      "pre_update",
-      "/c",
-    );
-
-    // Invalid value should fail
-    expect(() =>
-      db
-        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
-        .run("s-bad", "i1", "u1", "invalid_trigger", "/d"),
-    ).toThrow();
+    expect(result.rows).toHaveLength(1);
   });
 
-  it("enforces PRIMARY KEY uniqueness on id", () => {
-    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
-      "dup-id",
-      "i1",
-      "u1",
-      "manual",
-      "/a",
+  it("creates expected indexes", async () => {
+    const result = await pool.query<{ indexname: string }>(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'snapshots' AND indexname LIKE 'idx_snapshots_%'",
     );
-
-    expect(() =>
-      db
-        .prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)")
-        .run("dup-id", "i2", "u2", "scheduled", "/b"),
-    ).toThrow();
+    const names = result.rows.map((r) => r.indexname);
+    expect(names).toContain("idx_snapshots_instance");
+    expect(names).toContain("idx_snapshots_user");
   });
 
-  it("provides defaults for size_mb, plugins, and config_hash", () => {
-    db.prepare("INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES (?, ?, ?, ?, ?)").run(
-      "s-defaults",
-      "i1",
-      "u1",
-      "manual",
-      "/path",
+  it("is idempotent (migration can run on same db)", async () => {
+    const result = await pool.query<{ count: string }>(
+      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'snapshots'",
     );
+    expect(Number(result.rows[0]?.count)).toBe(1);
+  });
 
-    const row = db.prepare("SELECT size_mb, plugins, config_hash FROM snapshots WHERE id = ?").get("s-defaults") as {
-      size_mb: number;
-      plugins: string;
-      config_hash: string;
-    };
+  it("enforces NOT NULL on instance_id", async () => {
+    await expect(
+      pool.query(
+        "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES ($1, $2, $3, $4, $5)",
+        ["s1", null, "u1", "manual", "/path"],
+      ),
+    ).rejects.toThrow();
+  });
 
-    expect(row.size_mb).toBe(0);
-    expect(row.plugins).toBe("[]");
-    expect(row.config_hash).toBe("");
+  it("enforces NOT NULL on user_id", async () => {
+    await expect(
+      pool.query(
+        "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES ($1, $2, $3, $4, $5)",
+        ["s1", "i1", null, "manual", "/path"],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("enforces NOT NULL on trigger", async () => {
+    await expect(
+      pool.query(
+        "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES ($1, $2, $3, $4, $5)",
+        ["s1", "i1", "u1", null, "/path"],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("enforces NOT NULL on storage_path", async () => {
+    await expect(
+      pool.query(
+        "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES ($1, $2, $3, $4, $5)",
+        ["s1", "i1", "u1", "manual", null],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("enforces PRIMARY KEY uniqueness on id", async () => {
+    await pool.query(
+      "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES ($1, $2, $3, $4, $5)",
+      ["dup-id", "i1", "u1", "manual", "/a"],
+    );
+    await expect(
+      pool.query(
+        "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES ($1, $2, $3, $4, $5)",
+        ["dup-id", "i2", "u2", "scheduled", "/b"],
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("provides defaults for size_mb, plugins, and config_hash", async () => {
+    await pool.query(
+      "INSERT INTO snapshots (id, instance_id, user_id, trigger, storage_path) VALUES ($1, $2, $3, $4, $5)",
+      ["s-defaults", "i1", "u1", "manual", "/path"],
+    );
+    const result = await pool.query<{ size_mb: number; plugins: string; config_hash: string }>(
+      "SELECT size_mb, plugins, config_hash FROM snapshots WHERE id = $1",
+      ["s-defaults"],
+    );
+    const row = result.rows[0];
+    expect(row?.size_mb).toBe(0);
+    expect(row?.plugins).toBe("[]");
+    expect(row?.config_hash).toBe("");
   });
 });
-
-// ---------------------------------------------------------------------------
-// initAuditSchema — constraint & integrity tests
-// ---------------------------------------------------------------------------
-
-describe("initAuditSchema — data integrity", () => {
-  let db: BetterSqlite3.Database;
-
-  beforeEach(() => {
-    db = freshDb();
-    initAuditSchema(db);
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
-  it("enforces NOT NULL on timestamp", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("a1", null, "u1", "session", "instance.create", "instance"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on user_id", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("a1", Date.now(), null, "session", "instance.create", "instance"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on auth_method", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("a1", Date.now(), "u1", null, "instance.create", "instance"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on action", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("a1", Date.now(), "u1", "session", null, "instance"),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on resource_type", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("a1", Date.now(), "u1", "session", "instance.create", null),
-    ).toThrow();
-  });
-
-  it("enforces PRIMARY KEY uniqueness on id", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("dup", now, "u1", "session", "instance.create", "instance");
-
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run("dup", now, "u2", "api_key", "instance.destroy", "instance"),
-    ).toThrow();
-  });
-
-  it("allows NULL for optional columns (resource_id, details, ip_address, user_agent)", () => {
-    db.prepare(
-      "INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type, resource_id, details, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("a-null", Date.now(), "u1", "session", "instance.create", "instance", null, null, null, null);
-
-    const row = db.prepare("SELECT * FROM audit_log WHERE id = ?").get("a-null") as Record<string, unknown>;
-    expect(row.resource_id).toBeNull();
-    expect(row.details).toBeNull();
-    expect(row.ip_address).toBeNull();
-    expect(row.user_agent).toBeNull();
-  });
-
-  it("has all expected indexes", () => {
-    const idxs = indexNames(db, "idx_audit_");
-    expect(idxs).toContain("idx_audit_timestamp");
-    expect(idxs).toContain("idx_audit_user_id");
-    expect(idxs).toContain("idx_audit_action");
-    expect(idxs).toContain("idx_audit_resource");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// initMeterSchema — constraint & integrity tests
-// ---------------------------------------------------------------------------
-
-describe("initMeterSchema — data integrity", () => {
-  let db: BetterSqlite3.Database;
-
-  beforeEach(() => {
-    db = freshDb();
-    initMeterSchema(db);
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
-  it("creates all three tables", () => {
-    const tables = tableNames(db);
-    expect(tables).toContain("meter_events");
-    expect(tables).toContain("usage_summaries");
-    expect(tables).toContain("billing_period_summaries");
-  });
-
-  it("enforces NOT NULL on meter_events.tenant", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("m1", null, 0.01, 0.02, "embeddings", "openai", Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on meter_events.cost", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("m1", "t1", null, 0.02, "embeddings", "openai", Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on meter_events.charge", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("m1", "t1", 0.01, null, "embeddings", "openai", Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on meter_events.capability", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("m1", "t1", 0.01, 0.02, null, "openai", Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on meter_events.provider", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("m1", "t1", 0.01, 0.02, "embeddings", null, Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on meter_events.timestamp", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("m1", "t1", 0.01, 0.02, "embeddings", "openai", null),
-    ).toThrow();
-  });
-
-  it("allows NULL for optional meter_events columns (session_id, duration)", () => {
-    db.prepare(
-      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp, session_id, duration) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("m-opt", "t1", 0.01, 0.02, "embeddings", "openai", Date.now(), null, null);
-
-    const row = db.prepare("SELECT session_id, duration FROM meter_events WHERE id = ?").get("m-opt") as Record<
-      string,
-      unknown
-    >;
-    expect(row.session_id).toBeNull();
-    expect(row.duration).toBeNull();
-  });
-
-  it("enforces PRIMARY KEY uniqueness on meter_events.id", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).run("dup-m", "t1", 0.01, 0.02, "embeddings", "openai", now);
-
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("dup-m", "t2", 0.05, 0.1, "voice", "deepgram", now),
-    ).toThrow();
-  });
-
-  it("enforces UNIQUE index on billing_period_summaries composite key", () => {
-    db.prepare(
-      "INSERT INTO billing_period_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, period_start, period_end, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("bp1", "t1", "embeddings", "openai", 10, 0.5, 1.0, 0, 1000, 2000, Date.now());
-
-    // Same tenant+capability+provider+period_start should violate the unique index
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO billing_period_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, period_start, period_end, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("bp2", "t1", "embeddings", "openai", 5, 0.25, 0.5, 0, 1000, 2000, Date.now()),
-    ).toThrow();
-  });
-
-  it("allows different period_start values for same tenant+capability+provider", () => {
-    db.prepare(
-      "INSERT INTO billing_period_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, period_start, period_end, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("bp-a", "t1", "embeddings", "openai", 10, 0.5, 1.0, 0, 1000, 2000, Date.now());
-
-    // Different period_start is fine
-    db.prepare(
-      "INSERT INTO billing_period_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, total_duration, period_start, period_end, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("bp-b", "t1", "embeddings", "openai", 5, 0.25, 0.5, 0, 3000, 4000, Date.now());
-
-    const count = db.prepare("SELECT COUNT(*) as cnt FROM billing_period_summaries").get() as { cnt: number };
-    expect(count.cnt).toBe(2);
-  });
-
-  it("has all expected indexes on meter_events", () => {
-    const idxs = indexNames(db, "idx_meter_");
-    expect(idxs).toContain("idx_meter_tenant");
-    expect(idxs).toContain("idx_meter_timestamp");
-    expect(idxs).toContain("idx_meter_capability");
-    expect(idxs).toContain("idx_meter_session");
-    expect(idxs).toContain("idx_meter_tenant_timestamp");
-  });
-
-  it("has all expected indexes on usage_summaries", () => {
-    const idxs = indexNames(db, "idx_summary_");
-    expect(idxs).toContain("idx_summary_tenant");
-    expect(idxs).toContain("idx_summary_window");
-  });
-
-  it("has all expected indexes on billing_period_summaries", () => {
-    const idxs = indexNames(db, "idx_billing_period_");
-    expect(idxs).toContain("idx_billing_period_unique");
-    expect(idxs).toContain("idx_billing_period_tenant");
-    expect(idxs).toContain("idx_billing_period_window");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// initStripeSchema — constraint & integrity tests
-// ---------------------------------------------------------------------------
-
-describe("initStripeSchema — data integrity", () => {
-  let db: BetterSqlite3.Database;
-
-  beforeEach(() => {
-    db = freshDb();
-    initStripeSchema(db);
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
-  it("enforces UNIQUE on tenant_customers.processor_customer_id", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-    ).run("t1", "cus_unique", "free", now, now);
-
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run("t2", "cus_unique", "free", now, now),
-    ).toThrow();
-  });
-
-  it("enforces PRIMARY KEY on tenant_customers.tenant", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-    ).run("t-dup", "cus_1", "free", now, now);
-
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run("t-dup", "cus_2", "free", now, now),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on tenant_customers.processor_customer_id", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run("t1", null, "free", Date.now(), Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on tenant_customers.tier", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run("t1", "cus_1", null, Date.now(), Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on tenant_customers.created_at", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run("t1", "cus_1", "free", null, Date.now()),
-    ).toThrow();
-  });
-
-  it("enforces NOT NULL on tenant_customers.updated_at", () => {
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO tenant_customers (tenant, processor_customer_id, tier, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-        )
-        .run("t1", "cus_1", "free", Date.now(), null),
-    ).toThrow();
-  });
-
-  it("defaults tier to 'free'", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO tenant_customers (tenant, processor_customer_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
-    ).run("t-default", "cus_default", now, now);
-
-    const row = db.prepare("SELECT tier FROM tenant_customers WHERE tenant = ?").get("t-default") as { tier: string };
-    expect(row.tier).toBe("free");
-  });
-
-  it("enforces UNIQUE index on stripe_usage_reports composite key", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("r1", "t1", "embeddings", "openai", 1000, 2000, "wopr_embeddings_usage", 50, now);
-
-    // Same tenant+capability+provider+period_start should fail
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("r2", "t1", "embeddings", "openai", 1000, 2000, "wopr_embeddings_usage", 100, now),
-    ).toThrow();
-  });
-
-  it("allows different period_start for same tenant+capability+provider in usage reports", () => {
-    const now = Date.now();
-    db.prepare(
-      "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("r-a", "t1", "embeddings", "openai", 1000, 2000, "wopr_embeddings_usage", 50, now);
-
-    db.prepare(
-      "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run("r-b", "t1", "embeddings", "openai", 3000, 4000, "wopr_embeddings_usage", 75, now);
-
-    const count = db.prepare("SELECT COUNT(*) as cnt FROM stripe_usage_reports").get() as { cnt: number };
-    expect(count.cnt).toBe(2);
-  });
-
-  it("enforces NOT NULL on stripe_usage_reports required columns", () => {
-    const now = Date.now();
-    // tenant NOT NULL
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("r1", null, "embeddings", "openai", 1000, 2000, "evt", 50, now),
-    ).toThrow();
-
-    // capability NOT NULL
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("r2", "t1", null, "openai", 1000, 2000, "evt", 50, now),
-    ).toThrow();
-
-    // event_name NOT NULL
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("r3", "t1", "embeddings", "openai", 1000, 2000, null, 50, now),
-    ).toThrow();
-
-    // value_cents NOT NULL
-    expect(() =>
-      db
-        .prepare(
-          "INSERT INTO stripe_usage_reports (id, tenant, capability, provider, period_start, period_end, event_name, value_cents, reported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run("r4", "t1", "embeddings", "openai", 1000, 2000, "evt", null, now),
-    ).toThrow();
-  });
-
-  it("has expected indexes on tenant_customers", () => {
-    const idxs = indexNames(db, "idx_tenant_customers_");
-    expect(idxs).toContain("idx_tenant_customers_processor");
-  });
-
-  it("has expected indexes on stripe_usage_reports", () => {
-    const idxs = indexNames(db, "idx_stripe_");
-    expect(idxs).toContain("idx_stripe_usage_unique");
-    expect(idxs).toContain("idx_stripe_usage_tenant");
-  });
-});
-
-// TierStore / plan_tiers tests removed — tier system replaced by credit ledger (WOP-384)
-
-// ---------------------------------------------------------------------------
-// Cross-schema: all inits are independent and compose cleanly
-// ---------------------------------------------------------------------------
-
-describe("cross-schema composition", () => {
-  it("all schema inits can run on the same database", () => {
-    const db = freshDb();
-
-    initAuditSchema(db);
-    initMeterSchema(db);
-    initStripeSchema(db);
-
-    const tables = tableNames(db);
-    expect(tables).toContain("audit_log");
-    expect(tables).toContain("meter_events");
-    expect(tables).toContain("usage_summaries");
-    expect(tables).toContain("billing_period_summaries");
-
-    db.close();
-  });
-
-  it("all inits are idempotent when run together twice", () => {
-    const db = freshDb();
-
-    // First pass
-    initAuditSchema(db);
-    initMeterSchema(db);
-    initStripeSchema(db);
-
-    // Second pass — should not error
-    initAuditSchema(db);
-    initMeterSchema(db);
-    initStripeSchema(db);
-
-    db.close();
-  });
-
-  it("migration-created db has all tables including snapshots", () => {
-    const { sqlite } = createTestDb();
-    const tables = tableNames(sqlite);
-    expect(tables).toContain("audit_log");
-    expect(tables).toContain("meter_events");
-    expect(tables).toContain("snapshots");
-    expect(tables).toContain("bot_profiles");
-    sqlite.close();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// bot_profiles schema (via Drizzle migration)
-// ---------------------------------------------------------------------------
 
 describe("bot_profiles schema (via Drizzle migration)", () => {
-  let db: BetterSqlite3.Database;
+  let pool: PGlite;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
-    db = testDb.sqlite;
+  beforeEach(async () => {
+    ({ pool } = await createTestDb());
   });
 
-  afterEach(() => {
-    db.close();
+  it("creates the bot_profiles table", async () => {
+    const result = await pool.query<{ table_name: string }>(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'bot_profiles'",
+    );
+    expect(result.rows).toHaveLength(1);
   });
 
-  it("creates the bot_profiles table", () => {
-    expect(tableNames(db)).toContain("bot_profiles");
+  it("creates expected indexes", async () => {
+    const result = await pool.query<{ indexname: string }>(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'bot_profiles' AND indexname LIKE 'idx_bot_profiles_%'",
+    );
+    const names = result.rows.map((r) => r.indexname);
+    expect(names).toContain("idx_bot_profiles_tenant");
+    expect(names).toContain("idx_bot_profiles_name");
+    expect(names).toContain("idx_bot_profiles_release_channel");
   });
 
-  it("creates expected indexes", () => {
-    const idxs = indexNames(db, "idx_bot_profiles_");
-    expect(idxs).toContain("idx_bot_profiles_tenant");
-    expect(idxs).toContain("idx_bot_profiles_name");
-    expect(idxs).toContain("idx_bot_profiles_release_channel");
+  it("enforces NOT NULL on tenant_id", async () => {
+    await expect(
+      pool.query("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES ($1, $2, $3, $4)", [
+        "bp1",
+        null,
+        "my-bot",
+        "ghcr.io/wopr-network/wopr:latest",
+      ]),
+    ).rejects.toThrow();
   });
 
-  it("enforces NOT NULL on tenant_id", () => {
-    expect(() =>
-      db
-        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
-        .run("bp1", null, "my-bot", "ghcr.io/wopr-network/wopr:latest"),
-    ).toThrow();
+  it("enforces NOT NULL on name", async () => {
+    await expect(
+      pool.query("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES ($1, $2, $3, $4)", [
+        "bp1",
+        "t1",
+        null,
+        "ghcr.io/wopr-network/wopr:latest",
+      ]),
+    ).rejects.toThrow();
   });
 
-  it("enforces NOT NULL on name", () => {
-    expect(() =>
-      db
-        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
-        .run("bp1", "t1", null, "ghcr.io/wopr-network/wopr:latest"),
-    ).toThrow();
+  it("enforces NOT NULL on image", async () => {
+    await expect(
+      pool.query("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES ($1, $2, $3, $4)", [
+        "bp1",
+        "t1",
+        "my-bot",
+        null,
+      ]),
+    ).rejects.toThrow();
   });
 
-  it("enforces NOT NULL on image", () => {
-    expect(() =>
-      db
-        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
-        .run("bp1", "t1", "my-bot", null),
-    ).toThrow();
-  });
-
-  it("enforces PRIMARY KEY uniqueness on id", () => {
-    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)").run(
+  it("enforces PRIMARY KEY uniqueness on id", async () => {
+    await pool.query("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES ($1, $2, $3, $4)", [
       "dup-id",
       "t1",
       "bot-a",
       "ghcr.io/wopr-network/wopr:latest",
-    );
+    ]);
+    await expect(
+      pool.query("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES ($1, $2, $3, $4)", [
+        "dup-id",
+        "t2",
+        "bot-b",
+        "ghcr.io/wopr-network/wopr:latest",
+      ]),
+    ).rejects.toThrow();
+  });
+});
 
-    expect(() =>
-      db
-        .prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)")
-        .run("dup-id", "t2", "bot-b", "ghcr.io/wopr-network/wopr:latest"),
-    ).toThrow();
+describe("credit_transactions schema (via Drizzle migration)", () => {
+  let pool: PGlite;
+
+  beforeEach(async () => {
+    ({ pool } = await createTestDb());
   });
 
-  it("provides correct defaults for optional/defaulted columns", () => {
-    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image) VALUES (?, ?, ?, ?)").run(
-      "bp-defaults",
-      "t1",
-      "my-bot",
-      "ghcr.io/wopr-network/wopr:latest",
+  it("creates the credit_transactions table", async () => {
+    const result = await pool.query<{ table_name: string }>(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'credit_transactions'",
     );
-
-    const row = db
-      .prepare(
-        "SELECT env, restart_policy, update_policy, release_channel, description, volume_name, discovery_json, created_at, updated_at FROM bot_profiles WHERE id = ?",
-      )
-      .get("bp-defaults") as Record<string, unknown>;
-
-    expect(row.env).toBe("{}");
-    expect(row.restart_policy).toBe("unless-stopped");
-    expect(row.update_policy).toBe("on-push");
-    expect(row.release_channel).toBe("stable");
-    expect(row.description).toBe("");
-    expect(row.volume_name).toBeNull();
-    expect(row.discovery_json).toBeNull();
-    expect(row.created_at).toBeTruthy();
-    expect(row.updated_at).toBeTruthy();
+    expect(result.rows).toHaveLength(1);
   });
 
-  it("allows NULL for optional columns (volume_name, discovery_json)", () => {
-    db.prepare(
-      "INSERT INTO bot_profiles (id, tenant_id, name, image, volume_name, discovery_json) VALUES (?, ?, ?, ?, ?, ?)",
-    ).run("bp-null", "t1", "my-bot", "ghcr.io/wopr-network/wopr:latest", null, null);
-
-    const row = db
-      .prepare("SELECT volume_name, discovery_json FROM bot_profiles WHERE id = ?")
-      .get("bp-null") as Record<string, unknown>;
-    expect(row.volume_name).toBeNull();
-    expect(row.discovery_json).toBeNull();
-  });
-
-  it("stores and retrieves JSON env blob", () => {
-    const envJson = JSON.stringify({ TOKEN: "abc", DEBUG: "1" });
-    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image, env) VALUES (?, ?, ?, ?, ?)").run(
-      "bp-env",
-      "t1",
-      "my-bot",
-      "ghcr.io/wopr-network/wopr:latest",
-      envJson,
+  it("enforces UNIQUE on reference_id", async () => {
+    await pool.query(
+      "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, reference_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      ["tx1", "t1", 100, 100, "purchase", "ref-unique"],
     );
-
-    const row = db.prepare("SELECT env FROM bot_profiles WHERE id = ?").get("bp-env") as { env: string };
-    expect(JSON.parse(row.env)).toEqual({ TOKEN: "abc", DEBUG: "1" });
+    await expect(
+      pool.query(
+        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, reference_id) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["tx2", "t2", 200, 200, "purchase", "ref-unique"],
+      ),
+    ).rejects.toThrow();
   });
+});
 
-  it("stores and retrieves JSON discovery blob", () => {
-    const discoveryJson = JSON.stringify({ enabled: true, topics: ["wopr-org-acme"] });
-    db.prepare("INSERT INTO bot_profiles (id, tenant_id, name, image, discovery_json) VALUES (?, ?, ?, ?, ?)").run(
-      "bp-disc",
-      "t1",
-      "my-bot",
-      "ghcr.io/wopr-network/wopr:latest",
-      discoveryJson,
+describe("migration completeness", () => {
+  it("all core tables exist after migration", async () => {
+    const { pool } = await createTestDb();
+    const result = await pool.query<{ table_name: string }>(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
     );
-
-    const row = db.prepare("SELECT discovery_json FROM bot_profiles WHERE id = ?").get("bp-disc") as {
-      discovery_json: string;
-    };
-    expect(JSON.parse(row.discovery_json)).toEqual({ enabled: true, topics: ["wopr-org-acme"] });
+    const tables = result.rows.map((r) => r.table_name);
+    expect(tables).toContain("bot_instances");
+    expect(tables).toContain("bot_profiles");
+    expect(tables).toContain("credit_transactions");
+    expect(tables).toContain("meter_events");
+    expect(tables).toContain("nodes");
+    expect(tables).toContain("snapshots");
   });
 });

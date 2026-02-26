@@ -1,4 +1,4 @@
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../db/index.js";
@@ -13,29 +13,30 @@ import { createTestDb } from "../../test/db.js";
  * the branch coverage we need in rate-store.ts while keeping tests fast.
  */
 describe("RateStore.listPublicRates (used by public pricing route)", () => {
+  let pool: PGlite;
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+
   let store: RateStore;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     store = new RateStore(db);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
-  it("returns empty array when no rates exist", () => {
-    const rates = store.listPublicRates();
+  it("returns empty array when no rates exist", async () => {
+    const rates = await await store.listPublicRates();
     expect(rates).toEqual([]);
   });
 
-  it("returns only active rates", () => {
-    store.createSellRate({ capability: "tts", displayName: "TTS Standard", unit: "char", priceUsd: 0.001 });
-    store.createSellRate({
+  it("returns only active rates", async () => {
+    await await store.createSellRate({ capability: "tts", displayName: "TTS Standard", unit: "char", priceUsd: 0.001 });
+    await await store.createSellRate({
       capability: "tts-hd",
       displayName: "TTS HD",
       unit: "char",
@@ -43,15 +44,27 @@ describe("RateStore.listPublicRates (used by public pricing route)", () => {
       isActive: false,
     });
 
-    const rates = store.listPublicRates();
+    const rates = await await store.listPublicRates();
     expect(rates).toHaveLength(1);
     expect(rates[0].display_name).toBe("TTS Standard");
   });
 
-  it("orders by capability then sort_order", () => {
-    store.createSellRate({ capability: "tts", displayName: "TTS B", unit: "char", priceUsd: 0.002, sortOrder: 2 });
-    store.createSellRate({ capability: "llm", displayName: "LLM Fast", unit: "token", priceUsd: 0.001, sortOrder: 1 });
-    store.createSellRate({
+  it("orders by capability then sort_order", async () => {
+    await await store.createSellRate({
+      capability: "tts",
+      displayName: "TTS B",
+      unit: "char",
+      priceUsd: 0.002,
+      sortOrder: 2,
+    });
+    await await store.createSellRate({
+      capability: "llm",
+      displayName: "LLM Fast",
+      unit: "token",
+      priceUsd: 0.001,
+      sortOrder: 1,
+    });
+    await await store.createSellRate({
       capability: "tts",
       displayName: "TTS A",
       unit: "char",
@@ -60,16 +73,16 @@ describe("RateStore.listPublicRates (used by public pricing route)", () => {
       sortOrder: 1,
     });
 
-    const rates = store.listPublicRates();
+    const rates = await await store.listPublicRates();
     expect(rates[0].capability).toBe("llm");
     expect(rates[1].display_name).toBe("TTS A");
     expect(rates[2].display_name).toBe("TTS B");
   });
 
-  it("grouping logic works for multiple capabilities", () => {
-    store.createSellRate({ capability: "tts", displayName: "TTS Standard", unit: "char", priceUsd: 0.001 });
-    store.createSellRate({ capability: "llm", displayName: "GPT Fast", unit: "token", priceUsd: 0.0001 });
-    store.createSellRate({
+  it("grouping logic works for multiple capabilities", async () => {
+    await await store.createSellRate({ capability: "tts", displayName: "TTS Standard", unit: "char", priceUsd: 0.001 });
+    await await store.createSellRate({ capability: "llm", displayName: "GPT Fast", unit: "token", priceUsd: 0.0001 });
+    await await store.createSellRate({
       capability: "tts",
       displayName: "TTS HD",
       unit: "char",
@@ -77,7 +90,7 @@ describe("RateStore.listPublicRates (used by public pricing route)", () => {
       model: "tts-hd",
     });
 
-    const rates = store.listPublicRates();
+    const rates = await await store.listPublicRates();
 
     const grouped: Record<string, Array<{ name: string; unit: string; price: number }>> = {};
     for (const rate of rates) {

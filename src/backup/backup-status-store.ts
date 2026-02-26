@@ -15,33 +15,33 @@ export class BackupStatusStore {
   }
 
   /** Record a successful backup for a container. */
-  recordSuccess(containerId: string, nodeId: string, sizeMb: number, remotePath: string): void {
-    this.repo.upsertSuccess(containerId, nodeId, sizeMb, remotePath);
+  async recordSuccess(containerId: string, nodeId: string, sizeMb: number, remotePath: string): Promise<void> {
+    await this.repo.upsertSuccess(containerId, nodeId, sizeMb, remotePath);
   }
 
   /** Record a failed backup attempt for a container. */
-  recordFailure(containerId: string, nodeId: string, error: string): void {
-    this.repo.upsertFailure(containerId, nodeId, error);
+  async recordFailure(containerId: string, nodeId: string, error: string): Promise<void> {
+    await this.repo.upsertFailure(containerId, nodeId, error);
   }
 
   /** Get backup status for a single container. */
-  get(containerId: string): BackupStatusEntry | null {
-    const row = this.repo.getByContainerId(containerId);
+  async get(containerId: string): Promise<BackupStatusEntry | null> {
+    const row = await this.repo.getByContainerId(containerId);
     return row ? toEntry(row) : null;
   }
 
   /** List all backup statuses, ordered by last backup time descending. */
-  listAll(): BackupStatusEntry[] {
-    return this.repo.listAll().map(toEntry);
+  async listAll(): Promise<BackupStatusEntry[]> {
+    return (await this.repo.listAll()).map(toEntry);
   }
 
   /** List only stale backups (last successful backup > 24h ago or never backed up). */
-  listStale(): BackupStatusEntry[] {
-    return this.listAll().filter((entry) => entry.isStale);
+  async listStale(): Promise<BackupStatusEntry[]> {
+    return (await this.listAll()).filter((entry) => entry.isStale);
   }
 
   /** Get count of all tracked containers. */
-  count(): number {
+  async count(): Promise<number> {
     return this.repo.count();
   }
 }

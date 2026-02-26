@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { encrypt } from "../encryption.js";
 import { scanForKeyLeaks } from "../key-audit.js";
@@ -18,11 +18,11 @@ export interface MigrationResult {
  *
  * IMPORTANT: This is destructive — run in a transaction and back up first.
  */
-export function migratePlaintextCredentials(
-  db: BetterSQLite3Database<Record<string, unknown>>,
+export async function migratePlaintextCredentials(
+  db: DrizzleDb,
   vaultKey: Buffer,
   tenantKeyDeriver: (tenantId: string) => Buffer,
-): MigrationResult[] {
+): Promise<MigrationResult[]> {
   const results: MigrationResult[] = [];
 
   // --- provider_credentials ---
@@ -32,10 +32,9 @@ export function migratePlaintextCredentials(
     errors: [],
   };
 
-  const provRows = db
+  const provRows = await db
     .select({ id: providerCredentials.id, encryptedValue: providerCredentials.encryptedValue })
-    .from(providerCredentials)
-    .all();
+    .from(providerCredentials);
 
   for (const row of provRows) {
     try {
@@ -56,10 +55,10 @@ export function migratePlaintextCredentials(
     try {
       const encrypted = encrypt(row.encryptedValue, vaultKey);
       const serialized = JSON.stringify(encrypted);
-      db.update(providerCredentials)
+      await db
+        .update(providerCredentials)
         .set({ encryptedValue: serialized })
-        .where(eq(providerCredentials.id, row.id))
-        .run();
+        .where(eq(providerCredentials.id, row.id));
       provResult.migratedCount++;
     } catch (err) {
       provResult.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -76,10 +75,9 @@ export function migratePlaintextCredentials(
       errors: [],
     };
 
-    const tenantRows = db
+    const tenantRows = await db
       .select({ id: tenantApiKeys.id, tenantId: tenantApiKeys.tenantId, encryptedKey: tenantApiKeys.encryptedKey })
-      .from(tenantApiKeys)
-      .all();
+      .from(tenantApiKeys);
 
     for (const row of tenantRows) {
       try {
@@ -97,7 +95,7 @@ export function migratePlaintextCredentials(
         const tenantKey = tenantKeyDeriver(row.tenantId);
         const encrypted = encrypt(row.encryptedKey, tenantKey);
         const serialized = JSON.stringify(encrypted);
-        db.update(tenantApiKeys).set({ encryptedKey: serialized }).where(eq(tenantApiKeys.id, row.id)).run();
+        await db.update(tenantApiKeys).set({ encryptedKey: serialized }).where(eq(tenantApiKeys.id, row.id));
         tenantResult.migratedCount++;
       } catch (err) {
         tenantResult.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);

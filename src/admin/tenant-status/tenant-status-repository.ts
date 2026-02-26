@@ -3,13 +3,13 @@ import type { TenantAccountStatus, TenantStatusRecord } from "../admin-repositor
 export type { TenantAccountStatus, TenantStatusRecord };
 
 export interface ITenantStatusRepository {
-  get(tenantId: string): TenantStatusRecord | null;
-  getStatus(tenantId: string): TenantAccountStatus;
-  ensureExists(tenantId: string): void;
-  suspend(tenantId: string, reason: string, adminUserId: string): void;
-  reactivate(tenantId: string, adminUserId: string): void;
-  ban(tenantId: string, reason: string, adminUserId: string): void;
-  setGracePeriod(tenantId: string): void;
-  expireGracePeriods(): string[];
-  isOperational(tenantId: string): boolean;
+  get(tenantId: string): Promise<TenantStatusRecord | null>;
+  getStatus(tenantId: string): Promise<TenantAccountStatus>;
+  ensureExists(tenantId: string): Promise<void>;
+  suspend(tenantId: string, reason: string, adminUserId: string): Promise<void>;
+  reactivate(tenantId: string, adminUserId: string): Promise<void>;
+  ban(tenantId: string, reason: string, adminUserId: string): Promise<void>;
+  setGracePeriod(tenantId: string): Promise<void>;
+  expireGracePeriods(): Promise<string[]>;
+  isOperational(tenantId: string): Promise<boolean>;
 }

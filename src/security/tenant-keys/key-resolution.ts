@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../../db/index.js";
 import { tenantApiKeys } from "../../db/schema/index.js";
 import { decrypt } from "../encryption.js";
 import type { Provider } from "../types.js";
@@ -31,19 +31,20 @@ export interface ResolvedKey {
  * @param encryptionKey - The 32-byte key used to decrypt the stored BYOK key
  * @param pooledKeys - Map of provider -> pooled API key (from env vars)
  */
-export function resolveApiKey(
-  db: BetterSQLite3Database<Record<string, unknown>>,
+export async function resolveApiKey(
+  db: DrizzleDb,
   tenantId: string,
   provider: Provider,
   encryptionKey: Buffer,
   pooledKeys: Map<Provider, string>,
-): ResolvedKey | null {
+): Promise<ResolvedKey | null> {
   // 1. Check for tenant BYOK key
-  const row = db
-    .select({ encryptedKey: tenantApiKeys.encryptedKey })
-    .from(tenantApiKeys)
-    .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.provider, provider)))
-    .get();
+  const row = (
+    await db
+      .select({ encryptedKey: tenantApiKeys.encryptedKey })
+      .from(tenantApiKeys)
+      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.provider, provider)))
+  )[0];
 
   if (row) {
     const payload = JSON.parse(row.encryptedKey);

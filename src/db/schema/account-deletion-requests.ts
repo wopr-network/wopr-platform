@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Account deletion requests — tracks the lifecycle of GDPR deletion requests.
@@ -10,7 +10,7 @@ import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
  * the deletion cron executes the purge and marks the request completed.
  * Users can cancel a pending request within the grace period.
  */
-export const accountDeletionRequests = sqliteTable(
+export const accountDeletionRequests = pgTable(
   "account_deletion_requests",
   {
     id: text("id").primaryKey(),
@@ -28,8 +28,8 @@ export const accountDeletionRequests = sqliteTable(
     completedAt: text("completed_at"),
     /** JSON summary of what was deleted (table row counts) */
     deletionSummary: text("deletion_summary"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_acct_del_tenant").on(table.tenantId),

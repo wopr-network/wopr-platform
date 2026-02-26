@@ -2,23 +2,19 @@
  * Integration tests for /api/billing/crypto/* routes (WOP-407).
  *
  * Tests PayRam crypto payment routes through the full composed Hono app.
- * Uses in-memory SQLite and mocked PayRam client.
+ * Uses in-memory PGlite and mocked PayRam client.
  */
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import type { Payram } from "payram";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
+import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "../../src/db/index.js";
 
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
-const { createDb } = await import("../../src/db/index.js");
 const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
-const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
 const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
-const { initMeterSchema } = await import("../../src/monetization/metering/schema.js");
-const { initStripeSchema } = await import("../../src/monetization/stripe/schema.js");
-const { initPayRamSchema } = await import("../../src/monetization/payram/schema.js");
-const { initAffiliateSchema } = await import("../../src/monetization/affiliate/schema.js");
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
 const { DrizzlePayRamChargeStore } = await import("../../src/monetization/payram/charge-store.js");
 
@@ -50,18 +46,12 @@ function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn
 }
 
 describe("integration: billing crypto routes", () => {
-  let sqlite: BetterSqlite3.Database;
-  let db: ReturnType<typeof createDb>;
+  let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    sqlite = new BetterSqlite3(":memory:");
-    initMeterSchema(sqlite);
-    initStripeSchema(sqlite);
-    initCreditSchema(sqlite);
-    initPayRamSchema(sqlite);
-    initAffiliateSchema(sqlite);
-    db = createDb(sqlite);
+    ({ db, pool } = await createTestDb());
     setBillingDeps({
       processor: createMockProcessor(),
       creditLedger: new CreditLedger(db),
@@ -75,8 +65,8 @@ describe("integration: billing crypto routes", () => {
     });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
     // Clean up env vars set during tests
     delete process.env.PAYRAM_API_KEY;
     delete process.env.PAYRAM_BASE_URL;
@@ -129,7 +119,7 @@ describe("integration: billing crypto routes", () => {
   // -- Tests with PayRam configured via env vars --------------------------
 
   describe("with PAYRAM_API_KEY and PAYRAM_BASE_URL set", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       process.env.PAYRAM_API_KEY = "test-api-key-12345";
       process.env.PAYRAM_BASE_URL = "https://payram.example.com";
       // Re-init deps to pick up the env vars

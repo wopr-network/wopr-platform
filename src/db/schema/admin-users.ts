@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, check, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
-export const adminUsers = sqliteTable(
+export const adminUsers = pgTable(
   "admin_users",
   {
     id: text("id").primaryKey(),
@@ -12,8 +12,8 @@ export const adminUsers = sqliteTable(
     role: text("role").notNull().default("user"),
     creditBalanceCents: integer("credit_balance_cents").notNull().default(0),
     agentCount: integer("agent_count").notNull().default(0),
-    lastSeen: integer("last_seen"),
-    createdAt: integer("created_at").notNull(),
+    lastSeen: bigint("last_seen", { mode: "number" }),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
   },
   (table) => [
     index("idx_admin_users_email").on(table.email),

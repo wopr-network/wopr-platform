@@ -1,12 +1,10 @@
+import type { PGlite } from "@electric-sql/pglite";
+import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
+import { userRoles } from "../../db/schema/user-roles.js";
 import { createTestDb } from "../../test/db.js";
 import { isValidRole, RoleStore } from "./role-store.js";
-
-function createRoleTestDb(): { db: DrizzleDb; close: () => void } {
-  const { db, sqlite } = createTestDb();
-  return { db, close: () => sqlite.close() };
-}
 
 describe("isValidRole", () => {
   it("accepts valid roles", () => {
@@ -24,127 +22,129 @@ describe("isValidRole", () => {
 
 describe("RoleStore", () => {
   let db: DrizzleDb;
-  let close: () => void;
+  let pool: PGlite;
   let store: RoleStore;
 
-  beforeEach(() => {
-    const t = createRoleTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    close = t.close;
+    pool = t.pool;
     store = new RoleStore(db);
   });
 
-  afterEach(() => {
-    close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   describe("setRole / getRole", () => {
-    it("sets and gets a role", () => {
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
-      expect(store.getRole("user-1", "tenant-1")).toBe("user");
+    it("sets and gets a role", async () => {
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
+      expect(await store.getRole("user-1", "tenant-1")).toBe("user");
     });
 
-    it("returns null for non-existent role", () => {
-      expect(store.getRole("user-1", "tenant-1")).toBeNull();
+    it("returns null for non-existent role", async () => {
+      expect(await store.getRole("user-1", "tenant-1")).toBeNull();
     });
 
-    it("upserts an existing role", () => {
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
-      store.setRole("user-1", "tenant-1", "tenant_admin", "admin-2");
-      expect(store.getRole("user-1", "tenant-1")).toBe("tenant_admin");
+    it("upserts an existing role", async () => {
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
+      await store.setRole("user-1", "tenant-1", "tenant_admin", "admin-2");
+      expect(await store.getRole("user-1", "tenant-1")).toBe("tenant_admin");
     });
 
-    it("stores granted_by and granted_at", () => {
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
-      const row = db.$client
-        .prepare("SELECT * FROM user_roles WHERE user_id = ? AND tenant_id = ?")
-        .get("user-1", "tenant-1") as { granted_by: string; granted_at: number };
-      expect(row.granted_by).toBe("admin-1");
-      expect(row.granted_at).toBeGreaterThan(0);
+    it("stores granted_by and granted_at", async () => {
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
+      const rows = await db
+        .select()
+        .from(userRoles)
+        .where(and(eq(userRoles.userId, "user-1"), eq(userRoles.tenantId, "tenant-1")));
+      expect(rows[0].grantedBy).toBe("admin-1");
+      expect(rows[0].grantedAt).toBeGreaterThan(0);
     });
 
-    it("handles null granted_by", () => {
-      store.setRole("user-1", "tenant-1", "user", null);
-      const row = db.$client
-        .prepare("SELECT * FROM user_roles WHERE user_id = ? AND tenant_id = ?")
-        .get("user-1", "tenant-1") as { granted_by: string | null };
-      expect(row.granted_by).toBeNull();
+    it("handles null granted_by", async () => {
+      await store.setRole("user-1", "tenant-1", "user", null);
+      const rows = await db
+        .select()
+        .from(userRoles)
+        .where(and(eq(userRoles.userId, "user-1"), eq(userRoles.tenantId, "tenant-1")));
+      expect(rows[0].grantedBy).toBeNull();
     });
 
-    it("rejects invalid roles", () => {
-      expect(() => store.setRole("user-1", "tenant-1", "superuser" as "user", "admin-1")).toThrow("Invalid role");
+    it("rejects invalid roles", async () => {
+      await expect(() => store.setRole("user-1", "tenant-1", "superuser" as "user", "admin-1")).rejects.toThrow(
+        "Invalid role",
+      );
     });
 
-    it("allows same user in different tenants", () => {
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
-      store.setRole("user-1", "tenant-2", "tenant_admin", "admin-1");
-      expect(store.getRole("user-1", "tenant-1")).toBe("user");
-      expect(store.getRole("user-1", "tenant-2")).toBe("tenant_admin");
+    it("allows same user in different tenants", async () => {
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
+      await store.setRole("user-1", "tenant-2", "tenant_admin", "admin-1");
+      expect(await store.getRole("user-1", "tenant-1")).toBe("user");
+      expect(await store.getRole("user-1", "tenant-2")).toBe("tenant_admin");
     });
   });
 
   describe("removeRole", () => {
-    it("removes an existing role", () => {
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
-      expect(store.removeRole("user-1", "tenant-1")).toBe(true);
-      expect(store.getRole("user-1", "tenant-1")).toBeNull();
+    it("removes an existing role", async () => {
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
+      expect(await store.removeRole("user-1", "tenant-1")).toBe(true);
+      expect(await store.getRole("user-1", "tenant-1")).toBeNull();
     });
 
-    it("returns false for non-existent role", () => {
-      expect(store.removeRole("user-1", "tenant-1")).toBe(false);
+    it("returns false for non-existent role", async () => {
+      expect(await store.removeRole("user-1", "tenant-1")).toBe(false);
     });
   });
 
   describe("listByTenant", () => {
-    it("lists all users in a tenant", () => {
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
-      store.setRole("user-2", "tenant-1", "tenant_admin", "admin-1");
-      store.setRole("user-3", "tenant-2", "user", "admin-1");
+    it("lists all users in a tenant", async () => {
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
+      await store.setRole("user-2", "tenant-1", "tenant_admin", "admin-1");
+      await store.setRole("user-3", "tenant-2", "user", "admin-1");
 
-      const roles = store.listByTenant("tenant-1");
+      const roles = await store.listByTenant("tenant-1");
       expect(roles).toHaveLength(2);
       expect(roles.map((r) => r.user_id).sort()).toEqual(["user-1", "user-2"]);
     });
 
-    it("returns empty array for tenant with no roles", () => {
-      const roles = store.listByTenant("nonexistent");
+    it("returns empty array for tenant with no roles", async () => {
+      const roles = await store.listByTenant("nonexistent");
       expect(roles).toHaveLength(0);
     });
   });
 
   describe("platform admin operations", () => {
-    it("isPlatformAdmin returns true for platform admins", () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      expect(store.isPlatformAdmin("admin-1")).toBe(true);
+    it("isPlatformAdmin returns true for platform admins", async () => {
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      expect(await store.isPlatformAdmin("admin-1")).toBe(true);
     });
 
-    it("isPlatformAdmin returns false for non-admins", () => {
-      expect(store.isPlatformAdmin("user-1")).toBe(false);
+    it("isPlatformAdmin returns false for non-admins", async () => {
+      expect(await store.isPlatformAdmin("user-1")).toBe(false);
     });
 
-    it("isPlatformAdmin returns false for tenant_admin", () => {
-      store.setRole("user-1", RoleStore.PLATFORM_TENANT, "tenant_admin", null);
-      expect(store.isPlatformAdmin("user-1")).toBe(false);
+    it("isPlatformAdmin returns false for tenant_admin", async () => {
+      await store.setRole("user-1", RoleStore.PLATFORM_TENANT, "tenant_admin", null);
+      expect(await store.isPlatformAdmin("user-1")).toBe(false);
     });
 
-    it("listPlatformAdmins returns all platform admins", () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
+    it("listPlatformAdmins returns all platform admins", async () => {
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
 
-      const admins = store.listPlatformAdmins();
+      const admins = await store.listPlatformAdmins();
       expect(admins).toHaveLength(2);
       expect(admins.map((a) => a.user_id).sort()).toEqual(["admin-1", "admin-2"]);
     });
 
-    it("countPlatformAdmins returns correct count", () => {
-      expect(store.countPlatformAdmins()).toBe(0);
-
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      expect(store.countPlatformAdmins()).toBe(1);
-
-      store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      expect(store.countPlatformAdmins()).toBe(2);
+    it("countPlatformAdmins returns correct count", async () => {
+      expect(await store.countPlatformAdmins()).toBe(0);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      expect(await store.countPlatformAdmins()).toBe(1);
+      await store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      expect(await store.countPlatformAdmins()).toBe(2);
     });
   });
 });

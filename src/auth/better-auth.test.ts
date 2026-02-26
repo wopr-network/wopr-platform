@@ -4,7 +4,7 @@
  * Tests session resolution middleware and integration with existing auth system.
  */
 import { betterAuth } from "better-auth";
-import BetterSqlite3 from "better-sqlite3";
+import BetterSqlite3, { type Database as BetterSqlite3Db } from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getAuth, resetAuth, setAuth } from "./better-auth.js";
@@ -46,7 +46,7 @@ describe("better-auth integration", () => {
 
   describe("resolveSessionUser middleware", () => {
     let app: Hono<AuthEnv>;
-    let db: BetterSqlite3.Database;
+    let db: BetterSqlite3Db;
 
     beforeEach(() => {
       db = new BetterSqlite3(":memory:");

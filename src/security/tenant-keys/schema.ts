@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type Database from "better-sqlite3";
+import { and, eq } from "drizzle-orm";
+import type { DrizzleDb } from "../../db/index.js";
+import { tenantApiKeys } from "../../db/schema/index.js";
 import type { EncryptedPayload } from "../types.js";
 
 /** A stored tenant API key record. */
@@ -15,98 +17,114 @@ export interface TenantApiKey {
   updated_at: number;
 }
 
-/** Initialize the tenant_api_keys table. */
-export function initTenantKeySchema(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tenant_api_keys (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      label TEXT NOT NULL DEFAULT '',
-      encrypted_key TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    )
-  `);
-
-  // One key per provider per tenant
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_tenant_keys_tenant_provider ON tenant_api_keys (tenant_id, provider)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_tenant_keys_tenant ON tenant_api_keys (tenant_id)");
-  db.exec("CREATE INDEX IF NOT EXISTS idx_tenant_keys_provider ON tenant_api_keys (provider)");
+export interface ITenantKeyStore {
+  upsert(tenantId: string, provider: string, encryptedKey: EncryptedPayload, label?: string): Promise<string>;
+  get(tenantId: string, provider: string): Promise<TenantApiKey | undefined>;
+  listForTenant(tenantId: string): Promise<Omit<TenantApiKey, "encrypted_key">[]>;
+  delete(tenantId: string, provider: string): Promise<boolean>;
+  deleteAllForTenant(tenantId: string): Promise<number>;
 }
 
-/** CRUD store for tenant API keys. */
-export class TenantKeyStore {
-  private readonly db: Database.Database;
+/** CRUD store for tenant API keys using Drizzle ORM. */
+export class TenantKeyStore implements ITenantKeyStore {
+  private readonly db: DrizzleDb;
 
-  constructor(db: Database.Database) {
+  constructor(db: DrizzleDb) {
     this.db = db;
-    initTenantKeySchema(db);
   }
 
   /** Store or replace a tenant's key for a provider. Returns the record ID. */
-  upsert(tenantId: string, provider: string, encryptedKey: EncryptedPayload, label = ""): string {
+  async upsert(tenantId: string, provider: string, encryptedKey: EncryptedPayload, label = ""): Promise<string> {
     const now = Date.now();
     const serialized = JSON.stringify(encryptedKey);
 
-    const existing = this.db
-      .prepare("SELECT id FROM tenant_api_keys WHERE tenant_id = ? AND provider = ?")
-      .get(tenantId, provider) as { id: string } | undefined;
+    const existing = await this.db
+      .select({ id: tenantApiKeys.id })
+      .from(tenantApiKeys)
+      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.provider, provider)))
+      .limit(1);
 
-    if (existing) {
-      this.db
-        .prepare("UPDATE tenant_api_keys SET encrypted_key = ?, label = ?, updated_at = ? WHERE id = ?")
-        .run(serialized, label, now, existing.id);
-      return existing.id;
+    if (existing.length > 0) {
+      await this.db
+        .update(tenantApiKeys)
+        .set({ encryptedKey: serialized, label, updatedAt: now })
+        .where(eq(tenantApiKeys.id, existing[0].id));
+      return existing[0].id;
     }
 
     const id = randomUUID();
-    this.db
-      .prepare(
-        "INSERT INTO tenant_api_keys (id, tenant_id, provider, label, encrypted_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(id, tenantId, provider, label, serialized, now, now);
+    await this.db.insert(tenantApiKeys).values({
+      id,
+      tenantId,
+      provider,
+      label,
+      encryptedKey: serialized,
+      createdAt: now,
+      updatedAt: now,
+    });
     return id;
   }
 
   /** Get a tenant's key record for a provider. Returns undefined if none stored. */
-  get(tenantId: string, provider: string): TenantApiKey | undefined {
-    return this.db
-      .prepare("SELECT * FROM tenant_api_keys WHERE tenant_id = ? AND provider = ?")
-      .get(tenantId, provider) as TenantApiKey | undefined;
+  async get(tenantId: string, provider: string): Promise<TenantApiKey | undefined> {
+    const rows = await this.db
+      .select()
+      .from(tenantApiKeys)
+      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.provider, provider)))
+      .limit(1);
+
+    if (rows.length === 0) return undefined;
+    const r = rows[0];
+    return {
+      id: r.id,
+      tenant_id: r.tenantId,
+      provider: r.provider,
+      label: r.label,
+      encrypted_key: r.encryptedKey,
+      created_at: r.createdAt,
+      updated_at: r.updatedAt,
+    };
   }
 
   /** List all key records for a tenant. Never returns plaintext keys. */
-  listForTenant(tenantId: string): Omit<TenantApiKey, "encrypted_key">[] {
-    return this.db
-      .prepare("SELECT id, tenant_id, provider, label, created_at, updated_at FROM tenant_api_keys WHERE tenant_id = ?")
-      .all(tenantId) as Omit<TenantApiKey, "encrypted_key">[];
+  async listForTenant(tenantId: string): Promise<Omit<TenantApiKey, "encrypted_key">[]> {
+    const rows = await this.db
+      .select({
+        id: tenantApiKeys.id,
+        tenantId: tenantApiKeys.tenantId,
+        provider: tenantApiKeys.provider,
+        label: tenantApiKeys.label,
+        createdAt: tenantApiKeys.createdAt,
+        updatedAt: tenantApiKeys.updatedAt,
+      })
+      .from(tenantApiKeys)
+      .where(eq(tenantApiKeys.tenantId, tenantId));
+
+    return rows.map((r) => ({
+      id: r.id,
+      tenant_id: r.tenantId,
+      provider: r.provider,
+      label: r.label,
+      created_at: r.createdAt,
+      updated_at: r.updatedAt,
+    }));
   }
 
   /** Delete a tenant's key for a provider. Returns true if a row was deleted. */
-  delete(tenantId: string, provider: string): boolean {
-    const result = this.db
-      .prepare("DELETE FROM tenant_api_keys WHERE tenant_id = ? AND provider = ?")
-      .run(tenantId, provider);
-    return result.changes > 0;
+  async delete(tenantId: string, provider: string): Promise<boolean> {
+    const result = await this.db
+      .delete(tenantApiKeys)
+      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.provider, provider)))
+      .returning({ id: tenantApiKeys.id });
+    return result.length > 0;
   }
 
   /** Delete all keys for a tenant. Returns the number of rows deleted. */
-  deleteAllForTenant(tenantId: string): number {
-    const result = this.db.prepare("DELETE FROM tenant_api_keys WHERE tenant_id = ?").run(tenantId);
-    return result.changes;
+  async deleteAllForTenant(tenantId: string): Promise<number> {
+    const result = await this.db
+      .delete(tenantApiKeys)
+      .where(eq(tenantApiKeys.tenantId, tenantId))
+      .returning({ id: tenantApiKeys.id });
+    return result.length;
   }
-}
-
-/** Initialize the tenant_capability_settings table. */
-export function initCapabilitySettingsSchema(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tenant_capability_settings (
-      tenant_id TEXT NOT NULL,
-      capability TEXT NOT NULL,
-      mode TEXT NOT NULL DEFAULT 'hosted',
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (tenant_id, capability)
-    )
-  `);
 }

@@ -29,7 +29,7 @@ export async function runDeletionCronWithExecutor(
   executorDeps: DeletionExecutorDeps,
   executor: ExecutorFn,
 ): Promise<DeletionCronResult> {
-  const expired = store.findExpired();
+  const expired = await store.findExpired();
   const cronResult: DeletionCronResult = {
     processed: expired.length,
     succeeded: 0,
@@ -40,7 +40,7 @@ export async function runDeletionCronWithExecutor(
   for (const request of expired) {
     try {
       const result = await executor(executorDeps, request.tenantId);
-      store.markCompleted(request.id, result.deletedCounts);
+      await store.markCompleted(request.id, result.deletedCounts);
       cronResult.succeeded++;
       cronResult.results.push(result);
     } catch (_err) {

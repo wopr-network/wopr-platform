@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { logger } from "../config/logger.js";
-import type * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
 import { nodes } from "../db/schema/index.js";
 import { generateCloudInit } from "./cloud-init.js";
 import type { DOClient, DODroplet } from "./do-client.js";
@@ -34,7 +33,7 @@ export class NodeProvisioningError extends Error {
 }
 
 export class NodeProvisioner {
-  private readonly db: BetterSQLite3Database<typeof schema>;
+  private readonly db: DrizzleDb;
   private readonly doClient: DOClient;
   private readonly sshKeyId: number;
   private readonly defaultRegion: string;
@@ -42,7 +41,7 @@ export class NodeProvisioner {
   private readonly botImage: string;
 
   constructor(
-    db: BetterSQLite3Database<typeof schema>,
+    db: DrizzleDb,
     doClient: DOClient,
     options: {
       sshKeyId: number;
@@ -75,21 +74,18 @@ export class NodeProvisioner {
     const now = Math.floor(Date.now() / 1000);
 
     // 1. Insert placeholder
-    this.db
-      .insert(nodes)
-      .values({
-        id: nodeId,
-        host: "pending",
-        status: "provisioning",
-        capacityMb: 0,
-        usedMb: 0,
-        provisionStage: "creating",
-        region,
-        size,
-        registeredAt: now,
-        updatedAt: now,
-      })
-      .run();
+    await this.db.insert(nodes).values({
+      id: nodeId,
+      host: "pending",
+      status: "provisioning",
+      capacityMb: 0,
+      usedMb: 0,
+      provisionStage: "creating",
+      region,
+      size,
+      registeredAt: now,
+      updatedAt: now,
+    });
 
     try {
       // 2. Create droplet
@@ -105,7 +101,7 @@ export class NodeProvisioner {
       });
 
       // 3. Poll until active
-      this.updateProvisionStage(nodeId, "waiting_active");
+      await this.updateProvisionStage(nodeId, "waiting_active");
       const activeDroplet = await this.waitForDropletActive(droplet.id);
 
       // 4. Get public IP
@@ -118,8 +114,8 @@ export class NodeProvisioner {
       const monthlyCostCents = Math.round(activeDroplet.size.price_monthly * 100);
 
       // 5. Update node record with real data
-      this.updateProvisionStage(nodeId, "installing_docker");
-      this.db
+      await this.updateProvisionStage(nodeId, "installing_docker");
+      await this.db
         .update(nodes)
         .set({
           host: publicIp,
@@ -128,20 +124,18 @@ export class NodeProvisioner {
           monthlyCostCents,
           updatedAt: Math.floor(Date.now() / 1000),
         })
-        .where(eq(nodes.id, nodeId))
-        .run();
+        .where(eq(nodes.id, nodeId));
 
       // 6. Mark as waiting_agent — the node agent will register itself via
       //    POST /internal/nodes/register when cloud-init completes, flipping
       //    status to "active" automatically via NodeConnectionManager.registerNode().
-      this.db
+      await this.db
         .update(nodes)
         .set({
           provisionStage: "waiting_agent",
           updatedAt: Math.floor(Date.now() / 1000),
         })
-        .where(eq(nodes.id, nodeId))
-        .run();
+        .where(eq(nodes.id, nodeId));
 
       logger.info(`Node ${nodeId} provisioned, waiting for agent registration`, {
         dropletId: droplet.id,
@@ -159,7 +153,7 @@ export class NodeProvisioner {
         monthlyCostCents,
       };
     } catch (err) {
-      this.db
+      await this.db
         .update(nodes)
         .set({
           status: "failed",
@@ -167,8 +161,7 @@ export class NodeProvisioner {
           lastError: err instanceof Error ? err.message : String(err),
           updatedAt: Math.floor(Date.now() / 1000),
         })
-        .where(eq(nodes.id, nodeId))
-        .run();
+        .where(eq(nodes.id, nodeId));
 
       throw err;
     }
@@ -178,7 +171,8 @@ export class NodeProvisioner {
    * Destroy a node: verify it's drained/empty, delete DO droplet, remove from DB.
    */
   async destroy(nodeId: string): Promise<void> {
-    const node = this.db.select().from(nodes).where(eq(nodes.id, nodeId)).get();
+    const rows = await this.db.select().from(nodes).where(eq(nodes.id, nodeId));
+    const node = rows[0];
     if (!node) throw new Error(`Node ${nodeId} not found`);
 
     if (node.drainStatus !== "drained" && node.usedMb > 0) {
@@ -189,7 +183,7 @@ export class NodeProvisioner {
       await this.doClient.deleteDroplet(Number(node.dropletId));
     }
 
-    this.db.delete(nodes).where(eq(nodes.id, nodeId)).run();
+    await this.db.delete(nodes).where(eq(nodes.id, nodeId));
 
     logger.info(`Node ${nodeId} destroyed`);
   }
@@ -204,15 +198,14 @@ export class NodeProvisioner {
     return this.doClient.listSizes();
   }
 
-  private updateProvisionStage(nodeId: string, stage: string): void {
-    this.db
+  private async updateProvisionStage(nodeId: string, stage: string): Promise<void> {
+    await this.db
       .update(nodes)
       .set({
         provisionStage: stage,
         updatedAt: Math.floor(Date.now() / 1000),
       })
-      .where(eq(nodes.id, nodeId))
-      .run();
+      .where(eq(nodes.id, nodeId));
   }
 
   private async waitForDropletActive(dropletId: number, timeoutMs = 300_000): Promise<DODroplet> {

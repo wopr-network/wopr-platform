@@ -1,13 +1,12 @@
-import type Database from "better-sqlite3";
-import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import { eq, like, sql } from "drizzle-orm";
+import type { DrizzleDb } from "../db/index.js";
 import { adminAuditLog } from "../db/schema/admin-audit.js";
 import { adminNotes } from "../db/schema/admin-notes.js";
 import { auditLog } from "../db/schema/audit.js";
+import { backupStatus } from "../db/schema/backup-status.js";
 import { botInstances } from "../db/schema/bot-instances.js";
 import { creditBalances, creditTransactions } from "../db/schema/credits.js";
 import { emailNotifications } from "../db/schema/email-notifications.js";
-import type * as schema from "../db/schema/index.js";
 import { billingPeriodSummaries, meterEvents, usageSummaries } from "../db/schema/meter-events.js";
 import { notificationPreferences } from "../db/schema/notification-preferences.js";
 import { notificationQueue } from "../db/schema/notification-queue.js";
@@ -28,31 +27,39 @@ export interface AuthDeletionResult {
   userChanges: number;
 }
 
+/** Minimal raw-query interface satisfied by both pg.Pool and PGlite. */
+export interface RawQueryDb {
+  query<T extends Record<string, unknown>>(
+    query: string,
+    params?: unknown[],
+  ): Promise<{ rows: T[]; rowCount?: number | null; affectedRows?: number }>;
+}
+
 /** Repository interface for the multi-table tenant data purge. */
 export interface IDeletionExecutorRepository {
-  deleteBotInstances(tenantId: string): number;
-  deleteCreditTransactions(tenantId: string): number;
-  deleteCreditBalances(tenantId: string): number;
-  deleteCreditAdjustments(tenantId: string): number | null;
-  deleteMeterEvents(tenantId: string): number;
-  deleteUsageSummaries(tenantId: string): number;
-  deleteBillingPeriodSummaries(tenantId: string): number;
-  deleteStripeUsageReports(tenantId: string): number;
-  deleteNotificationQueue(tenantId: string): number;
-  deleteNotificationPreferences(tenantId: string): number;
-  deleteEmailNotifications(tenantId: string): number;
-  deleteAuditLog(tenantId: string): number;
-  anonymizeAuditLog(tenantId: string): number;
-  deleteAdminNotes(tenantId: string): number;
-  listSnapshotS3Keys(tenantId: string): { id: string; s3Key: string | null }[];
-  deleteSnapshots(tenantId: string): number;
-  deleteBackupStatus(tenantId: string): number | null;
-  deletePayramCharges(tenantId: string): number;
-  deleteTenantStatus(tenantId: string): number;
-  deleteUserRolesByUser(tenantId: string): number;
-  deleteUserRolesByTenant(tenantId: string): number;
-  deleteTenantCustomers(tenantId: string): number;
-  deleteAuthUser(tenantId: string): AuthDeletionResult;
+  deleteBotInstances(tenantId: string): Promise<number>;
+  deleteCreditTransactions(tenantId: string): Promise<number>;
+  deleteCreditBalances(tenantId: string): Promise<number>;
+  deleteCreditAdjustments(tenantId: string): Promise<number | null>;
+  deleteMeterEvents(tenantId: string): Promise<number>;
+  deleteUsageSummaries(tenantId: string): Promise<number>;
+  deleteBillingPeriodSummaries(tenantId: string): Promise<number>;
+  deleteStripeUsageReports(tenantId: string): Promise<number>;
+  deleteNotificationQueue(tenantId: string): Promise<number>;
+  deleteNotificationPreferences(tenantId: string): Promise<number>;
+  deleteEmailNotifications(tenantId: string): Promise<number>;
+  deleteAuditLog(tenantId: string): Promise<number>;
+  anonymizeAuditLog(tenantId: string): Promise<number>;
+  deleteAdminNotes(tenantId: string): Promise<number>;
+  listSnapshotS3Keys(tenantId: string): Promise<{ id: string; s3Key: string | null }[]>;
+  deleteSnapshots(tenantId: string): Promise<number>;
+  deleteBackupStatus(tenantId: string): Promise<number | null>;
+  deletePayramCharges(tenantId: string): Promise<number>;
+  deleteTenantStatus(tenantId: string): Promise<number>;
+  deleteUserRolesByUser(tenantId: string): Promise<number>;
+  deleteUserRolesByTenant(tenantId: string): Promise<number>;
+  deleteTenantCustomers(tenantId: string): Promise<number>;
+  deleteAuthUser(tenantId: string): Promise<AuthDeletionResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,134 +68,205 @@ export interface IDeletionExecutorRepository {
 
 export class DrizzleDeletionExecutorRepository implements IDeletionExecutorRepository {
   constructor(
-    private readonly db: BetterSQLite3Database<typeof schema>,
-    private readonly rawDb: Database.Database,
-    private readonly authDb?: Database.Database,
+    private readonly db: DrizzleDb,
+    private readonly authDb?: RawQueryDb,
   ) {}
 
-  deleteBotInstances(tenantId: string): number {
-    return this.db.delete(botInstances).where(eq(botInstances.tenantId, tenantId)).run().changes;
+  async deleteBotInstances(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(botInstances)
+      .where(eq(botInstances.tenantId, tenantId))
+      .returning({ id: botInstances.id });
+    return rows.length;
   }
 
-  deleteCreditTransactions(tenantId: string): number {
-    return this.db.delete(creditTransactions).where(eq(creditTransactions.tenantId, tenantId)).run().changes;
+  async deleteCreditTransactions(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(creditTransactions)
+      .where(eq(creditTransactions.tenantId, tenantId))
+      .returning({ id: creditTransactions.id });
+    return rows.length;
   }
 
-  deleteCreditBalances(tenantId: string): number {
-    return this.db.delete(creditBalances).where(eq(creditBalances.tenantId, tenantId)).run().changes;
+  async deleteCreditBalances(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(creditBalances)
+      .where(eq(creditBalances.tenantId, tenantId))
+      .returning({ tenantId: creditBalances.tenantId });
+    return rows.length;
   }
 
-  deleteCreditAdjustments(tenantId: string): number | null {
+  async deleteCreditAdjustments(tenantId: string): Promise<number | null> {
     try {
-      return this.rawDb.prepare("DELETE FROM credit_adjustments WHERE tenant = ?").run(tenantId).changes;
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("no such table")) return null;
-      throw err;
+      const result = await this.db.execute(sql`DELETE FROM credit_adjustments WHERE tenant = ${tenantId}`);
+      return (result as unknown as { rowCount: number | null }).rowCount ?? 0;
+    } catch {
+      // Table may not exist (legacy table not in Drizzle schema)
+      return null;
     }
   }
 
-  deleteMeterEvents(tenantId: string): number {
-    return this.db.delete(meterEvents).where(eq(meterEvents.tenant, tenantId)).run().changes;
+  async deleteMeterEvents(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(meterEvents)
+      .where(eq(meterEvents.tenant, tenantId))
+      .returning({ id: meterEvents.id });
+    return rows.length;
   }
 
-  deleteUsageSummaries(tenantId: string): number {
-    return this.db.delete(usageSummaries).where(eq(usageSummaries.tenant, tenantId)).run().changes;
+  async deleteUsageSummaries(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(usageSummaries)
+      .where(eq(usageSummaries.tenant, tenantId))
+      .returning({ id: usageSummaries.id });
+    return rows.length;
   }
 
-  deleteBillingPeriodSummaries(tenantId: string): number {
-    return this.db.delete(billingPeriodSummaries).where(eq(billingPeriodSummaries.tenant, tenantId)).run().changes;
+  async deleteBillingPeriodSummaries(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(billingPeriodSummaries)
+      .where(eq(billingPeriodSummaries.tenant, tenantId))
+      .returning({ id: billingPeriodSummaries.id });
+    return rows.length;
   }
 
-  deleteStripeUsageReports(tenantId: string): number {
-    return this.db.delete(stripeUsageReports).where(eq(stripeUsageReports.tenant, tenantId)).run().changes;
+  async deleteStripeUsageReports(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(stripeUsageReports)
+      .where(eq(stripeUsageReports.tenant, tenantId))
+      .returning({ id: stripeUsageReports.id });
+    return rows.length;
   }
 
-  deleteNotificationQueue(tenantId: string): number {
-    return this.db.delete(notificationQueue).where(eq(notificationQueue.tenantId, tenantId)).run().changes;
+  async deleteNotificationQueue(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(notificationQueue)
+      .where(eq(notificationQueue.tenantId, tenantId))
+      .returning({ id: notificationQueue.id });
+    return rows.length;
   }
 
-  deleteNotificationPreferences(tenantId: string): number {
-    return this.db.delete(notificationPreferences).where(eq(notificationPreferences.tenantId, tenantId)).run().changes;
+  async deleteNotificationPreferences(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(notificationPreferences)
+      .where(eq(notificationPreferences.tenantId, tenantId))
+      .returning({ tenantId: notificationPreferences.tenantId });
+    return rows.length;
   }
 
-  deleteEmailNotifications(tenantId: string): number {
-    return this.db.delete(emailNotifications).where(eq(emailNotifications.tenantId, tenantId)).run().changes;
+  async deleteEmailNotifications(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(emailNotifications)
+      .where(eq(emailNotifications.tenantId, tenantId))
+      .returning({ id: emailNotifications.id });
+    return rows.length;
   }
 
-  deleteAuditLog(tenantId: string): number {
-    return this.db.delete(auditLog).where(eq(auditLog.userId, tenantId)).run().changes;
+  async deleteAuditLog(tenantId: string): Promise<number> {
+    const rows = await this.db.delete(auditLog).where(eq(auditLog.userId, tenantId)).returning({ id: auditLog.id });
+    return rows.length;
   }
 
-  anonymizeAuditLog(tenantId: string): number {
-    return this.db
+  async anonymizeAuditLog(tenantId: string): Promise<number> {
+    const rows = await this.db
       .update(adminAuditLog)
       .set({ targetTenant: "[deleted]", targetUser: "[deleted]" })
       .where(eq(adminAuditLog.targetTenant, tenantId))
-      .run().changes;
+      .returning({ id: adminAuditLog.id });
+    return rows.length;
   }
 
-  deleteAdminNotes(tenantId: string): number {
-    return this.db.delete(adminNotes).where(eq(adminNotes.tenantId, tenantId)).run().changes;
+  async deleteAdminNotes(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(adminNotes)
+      .where(eq(adminNotes.tenantId, tenantId))
+      .returning({ id: adminNotes.id });
+    return rows.length;
   }
 
-  listSnapshotS3Keys(tenantId: string): { id: string; s3Key: string | null }[] {
+  async listSnapshotS3Keys(tenantId: string): Promise<{ id: string; s3Key: string | null }[]> {
     return this.db
       .select({ id: snapshots.id, s3Key: snapshots.s3Key })
       .from(snapshots)
-      .where(eq(snapshots.tenant, tenantId))
-      .all();
+      .where(eq(snapshots.tenant, tenantId));
   }
 
-  deleteSnapshots(tenantId: string): number {
-    return this.db.delete(snapshots).where(eq(snapshots.tenant, tenantId)).run().changes;
+  async deleteSnapshots(tenantId: string): Promise<number> {
+    const rows = await this.db.delete(snapshots).where(eq(snapshots.tenant, tenantId)).returning({ id: snapshots.id });
+    return rows.length;
   }
 
-  deleteBackupStatus(tenantId: string): number | null {
-    try {
-      return this.rawDb.prepare("DELETE FROM backup_status WHERE container_id LIKE ?").run(`%${tenantId}%`).changes;
-    } catch (err) {
-      if (err instanceof Error && err.message.includes("no such table")) return null;
-      throw err;
+  async deleteBackupStatus(tenantId: string): Promise<number | null> {
+    const rows = await this.db
+      .delete(backupStatus)
+      .where(like(backupStatus.containerId, `%${tenantId}%`))
+      .returning({ containerId: backupStatus.containerId });
+    return rows.length;
+  }
+
+  async deletePayramCharges(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(payramCharges)
+      .where(eq(payramCharges.tenantId, tenantId))
+      .returning({ referenceId: payramCharges.referenceId });
+    return rows.length;
+  }
+
+  async deleteTenantStatus(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(tenantStatus)
+      .where(eq(tenantStatus.tenantId, tenantId))
+      .returning({ tenantId: tenantStatus.tenantId });
+    return rows.length;
+  }
+
+  async deleteUserRolesByUser(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(userRoles)
+      .where(eq(userRoles.userId, tenantId))
+      .returning({ userId: userRoles.userId });
+    return rows.length;
+  }
+
+  async deleteUserRolesByTenant(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(userRoles)
+      .where(eq(userRoles.tenantId, tenantId))
+      .returning({ userId: userRoles.userId });
+    return rows.length;
+  }
+
+  async deleteTenantCustomers(tenantId: string): Promise<number> {
+    const rows = await this.db
+      .delete(tenantCustomers)
+      .where(eq(tenantCustomers.tenant, tenantId))
+      .returning({ tenant: tenantCustomers.tenant });
+    return rows.length;
+  }
+
+  async deleteAuthUser(tenantId: string): Promise<AuthDeletionResult> {
+    if (!this.authDb) {
+      return { sessionChanges: 0, accountChanges: 0, verificationChanges: 0, userChanges: 0 };
     }
-  }
 
-  deletePayramCharges(tenantId: string): number {
-    return this.db.delete(payramCharges).where(eq(payramCharges.tenantId, tenantId)).run().changes;
-  }
-
-  deleteTenantStatus(tenantId: string): number {
-    return this.db.delete(tenantStatus).where(eq(tenantStatus.tenantId, tenantId)).run().changes;
-  }
-
-  deleteUserRolesByUser(tenantId: string): number {
-    return this.db.delete(userRoles).where(eq(userRoles.userId, tenantId)).run().changes;
-  }
-
-  deleteUserRolesByTenant(tenantId: string): number {
-    return this.db.delete(userRoles).where(eq(userRoles.tenantId, tenantId)).run().changes;
-  }
-
-  deleteTenantCustomers(tenantId: string): number {
-    return this.db.delete(tenantCustomers).where(eq(tenantCustomers.tenant, tenantId)).run().changes;
-  }
-
-  deleteAuthUser(tenantId: string): AuthDeletionResult {
-    if (!this.authDb) return { sessionChanges: 0, accountChanges: 0, verificationChanges: 0, userChanges: 0 };
-
-    const sessionChanges = this.authDb.prepare("DELETE FROM session WHERE user_id = ?").run(tenantId).changes;
-    const accountChanges = this.authDb.prepare("DELETE FROM account WHERE user_id = ?").run(tenantId).changes;
+    const sessionResult = await this.authDb.query("DELETE FROM session WHERE user_id = $1", [tenantId]);
+    const accountResult = await this.authDb.query("DELETE FROM account WHERE user_id = $1", [tenantId]);
 
     let verificationChanges = 0;
     try {
-      verificationChanges = this.authDb
-        .prepare("DELETE FROM email_verification_tokens WHERE user_id = ?")
-        .run(tenantId).changes;
+      const verResult = await this.authDb.query("DELETE FROM email_verification_tokens WHERE user_id = $1", [tenantId]);
+      verificationChanges = verResult.affectedRows ?? verResult.rowCount ?? 0;
     } catch {
       // Table may not exist
     }
 
-    const userChanges = this.authDb.prepare("DELETE FROM user WHERE id = ?").run(tenantId).changes;
+    const userResult = await this.authDb.query('DELETE FROM "user" WHERE id = $1', [tenantId]);
 
-    return { sessionChanges, accountChanges, verificationChanges, userChanges };
+    return {
+      sessionChanges: sessionResult.affectedRows ?? sessionResult.rowCount ?? 0,
+      accountChanges: accountResult.affectedRows ?? accountResult.rowCount ?? 0,
+      verificationChanges,
+      userChanges: userResult.affectedRows ?? userResult.rowCount ?? 0,
+    };
   }
 }

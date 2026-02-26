@@ -14,8 +14,8 @@ type NotificationPrefsRow = typeof notificationPreferences.$inferInsert;
 
 /** Repository interface for notification preferences. */
 export interface INotificationPreferencesStore {
-  get(tenantId: string): NotificationPrefs;
-  update(tenantId: string, prefs: Partial<NotificationPrefs>): void;
+  get(tenantId: string): Promise<NotificationPrefs>;
+  update(tenantId: string, prefs: Partial<NotificationPrefs>): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,12 +36,12 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get preferences for a tenant. Returns defaults if no row exists. */
-  get(tenantId: string): NotificationPrefs {
-    const row = this.db
+  async get(tenantId: string): Promise<NotificationPrefs> {
+    const rows = await this.db
       .select()
       .from(notificationPreferences)
-      .where(eq(notificationPreferences.tenantId, tenantId))
-      .get();
+      .where(eq(notificationPreferences.tenantId, tenantId));
+    const row = rows[0];
 
     if (!row) return { ...DEFAULTS };
 
@@ -57,7 +57,7 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
   }
 
   /** Update preferences for a tenant. Upserts — creates row if missing. */
-  update(tenantId: string, prefs: Partial<NotificationPrefs>): void {
+  async update(tenantId: string, prefs: Partial<NotificationPrefs>): Promise<void> {
     const values: Partial<NotificationPrefsRow> = { tenantId, updatedAt: Math.floor(Date.now() / 1000) };
 
     if (prefs.billing_low_balance !== undefined) values.billingLowBalance = prefs.billing_low_balance ? 1 : 0;
@@ -70,15 +70,14 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
     if (prefs.account_team_invites !== undefined) values.accountTeamInvites = prefs.account_team_invites ? 1 : 0;
 
     // Get existing row to merge with defaults
-    const existing = this.db
+    const existing = await this.db
       .select()
       .from(notificationPreferences)
-      .where(eq(notificationPreferences.tenantId, tenantId))
-      .get();
+      .where(eq(notificationPreferences.tenantId, tenantId));
 
-    if (existing) {
+    if (existing.length > 0) {
       // Only update the set fields
-      this.db.update(notificationPreferences).set(values).where(eq(notificationPreferences.tenantId, tenantId)).run();
+      await this.db.update(notificationPreferences).set(values).where(eq(notificationPreferences.tenantId, tenantId));
     } else {
       // Insert with defaults for unspecified fields
       const insertValues: NotificationPrefsRow = {
@@ -93,7 +92,7 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
         updatedAt: Math.floor(Date.now() / 1000),
         ...values,
       };
-      this.db.insert(notificationPreferences).values(insertValues).run();
+      await this.db.insert(notificationPreferences).values(insertValues);
     }
   }
 }

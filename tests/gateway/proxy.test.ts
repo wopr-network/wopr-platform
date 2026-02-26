@@ -1,27 +1,15 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleSigPenaltyRepository } from "../../src/api/drizzle-sig-penalty-repository.js";
-import * as schema from "../../src/db/schema/index.js";
+import { createTestDb } from "../../src/test/db.js";
 import { createGatewayRoutes } from "../../src/gateway/routes.js";
 import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
 import type { FetchFn, GatewayConfig, GatewayTenant } from "../../src/gateway/types.js";
 
-function makeTestSigPenaltyRepo() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE webhook_sig_penalties (
-      ip TEXT NOT NULL,
-      source TEXT NOT NULL,
-      failures INTEGER NOT NULL DEFAULT 0,
-      blocked_until INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (ip, source)
-    )
-  `);
-  return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
+async function makeTestSigPenaltyRepo() {
+  const { db } = await createTestDb();
+  return new DrizzleSigPenaltyRepository(db);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,9 +147,9 @@ class StubCreditLedger {
   }
 }
 
-function makeGatewayApp(
+async function makeGatewayApp(
   opts: { fetchFn?: FetchFn; budgetAllowed?: boolean; creditBalance?: number } = {},
-): Hono<GatewayAuthEnv> {
+): Promise<Hono<GatewayAuthEnv>> {
   const config: GatewayConfig = {
     meter: createStubMeter() as unknown as GatewayConfig["meter"],
     budgetChecker: createStubBudgetChecker(
@@ -184,7 +172,7 @@ function makeGatewayApp(
     resolveServiceKey: resolver,
     webhookBaseUrl: TEST_WEBHOOK_BASE_URL,
     resolveTenantFromWebhook: () => TENANT,
-    sigPenaltyRepo: makeTestSigPenaltyRepo(),
+    sigPenaltyRepo: await makeTestSigPenaltyRepo(),
   };
 
   const app = new Hono<GatewayAuthEnv>();
@@ -211,7 +199,7 @@ describe("Gateway proxy endpoints", () => {
 
   describe("authentication", () => {
     it("rejects unauthenticated requests on all endpoints", async () => {
-      const app = makeGatewayApp();
+      const app = await makeGatewayApp();
       const endpoints = [
         "/v1/chat/completions",
         "/v1/completions",
@@ -241,7 +229,7 @@ describe("Gateway proxy endpoints", () => {
 
   describe("budget check", () => {
     it("rejects requests when budget is exceeded", async () => {
-      const app = makeGatewayApp({ budgetAllowed: false });
+      const app = await makeGatewayApp({ budgetAllowed: false });
 
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
@@ -274,7 +262,7 @@ describe("Gateway proxy endpoints", () => {
         },
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
 
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
@@ -309,7 +297,7 @@ describe("Gateway proxy endpoints", () => {
         headers: { "Content-Type": "application/json", "x-openrouter-cost": "0.00005" },
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/completions", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -337,7 +325,7 @@ describe("Gateway proxy endpoints", () => {
         headers: { "Content-Type": "application/json", "x-openrouter-cost": "0.000001" },
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/embeddings", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -365,7 +353,7 @@ describe("Gateway proxy endpoints", () => {
         }),
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/audio/transcriptions", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/octet-stream" },
@@ -396,7 +384,7 @@ describe("Gateway proxy endpoints", () => {
         });
       };
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/audio/speech", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -425,7 +413,7 @@ describe("Gateway proxy endpoints", () => {
         }),
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/images/generations", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -458,7 +446,7 @@ describe("Gateway proxy endpoints", () => {
         }),
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/video/generations", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -491,7 +479,7 @@ describe("Gateway proxy endpoints", () => {
       };
 
       it("makes outbound call and meters cost", async () => {
-        const app = makeGatewayApp({ fetchFn: stubFetch });
+        const app = await makeGatewayApp({ fetchFn: stubFetch });
         const res = await app.request("/v1/phone/outbound", {
           method: "POST",
           headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -511,7 +499,7 @@ describe("Gateway proxy endpoints", () => {
 
   describe("POST /v1/phone/inbound/:tenantId", () => {
     it("meters per-minute events for inbound calls", async () => {
-      const app = makeGatewayApp();
+      const app = await makeGatewayApp();
       const path = "/phone/inbound/tenant-1";
       const bodyJson = { call_sid: "CA123", duration_minutes: 5, status: "completed" };
       const res = await app.request(`/v1${path}`, {
@@ -541,7 +529,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ sid: "SM123", status: "queued" }),
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -567,7 +555,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ sid: "MM456", status: "queued" }),
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -590,7 +578,7 @@ describe("Gateway proxy endpoints", () => {
     });
 
     it("rejects requests missing required fields", async () => {
-      const app = makeGatewayApp();
+      const app = await makeGatewayApp();
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -609,7 +597,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ code: 21211, message: "Invalid To number" }),
       });
 
-      const app = makeGatewayApp({ fetchFn: failFetch });
+      const app = await makeGatewayApp({ fetchFn: failFetch });
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -621,7 +609,7 @@ describe("Gateway proxy endpoints", () => {
     });
 
     it("budget-checks before sending", async () => {
-      const app = makeGatewayApp({ budgetAllowed: false });
+      const app = await makeGatewayApp({ budgetAllowed: false });
       const res = await app.request("/v1/messages/sms", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -641,7 +629,7 @@ describe("Gateway proxy endpoints", () => {
 
   describe("POST /v1/messages/sms/inbound/:tenantId", () => {
     it("meters inbound SMS at wholesale rate", async () => {
-      const app = makeGatewayApp();
+      const app = await makeGatewayApp();
       const path = "/messages/sms/inbound/tenant-1";
       const bodyParams = {
         from: "+15551234567",
@@ -666,7 +654,7 @@ describe("Gateway proxy endpoints", () => {
     });
 
     it("meters inbound MMS at higher rate", async () => {
-      const app = makeGatewayApp();
+      const app = await makeGatewayApp();
       const path = "/messages/sms/inbound/tenant-1";
       const bodyParams = { from: "+15551234567", to: "+15559876543", body: "Photo" };
       const res = await app.request(`/v1${path}`, {
@@ -691,7 +679,7 @@ describe("Gateway proxy endpoints", () => {
 
   describe("POST /v1/messages/sms/status/:tenantId", () => {
     it("acknowledges delivery status callbacks", async () => {
-      const app = makeGatewayApp();
+      const app = await makeGatewayApp();
       const path = "/messages/sms/status/tenant-1";
       const bodyParams = { message_sid: "SM123", message_status: "delivered" };
       const res = await app.request(`/v1${path}`, {
@@ -712,7 +700,7 @@ describe("Gateway proxy endpoints", () => {
     });
 
     it("handles failed delivery status", async () => {
-      const app = makeGatewayApp();
+      const app = await makeGatewayApp();
       const path = "/messages/sms/status/tenant-1";
       const bodyJson = {
         message_sid: "SM456",
@@ -768,7 +756,7 @@ describe("Gateway proxy endpoints", () => {
         );
       };
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/phone/numbers", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -790,7 +778,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ available_phone_numbers: [] }),
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/phone/numbers", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -824,7 +812,7 @@ describe("Gateway proxy endpoints", () => {
         }),
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/phone/numbers", {
         method: "GET",
         headers: authHeaders(),
@@ -856,7 +844,7 @@ describe("Gateway proxy endpoints", () => {
         return new Response(null, { status: 204 });
       };
 
-      const app = makeGatewayApp({ fetchFn: stubFetch });
+      const app = await makeGatewayApp({ fetchFn: stubFetch });
       const res = await app.request("/v1/phone/numbers/PN123", {
         method: "DELETE",
         headers: authHeaders(),
@@ -879,7 +867,7 @@ describe("Gateway proxy endpoints", () => {
         throw new Error("Network error");
       };
 
-      const app = makeGatewayApp({ fetchFn: failFetch });
+      const app = await makeGatewayApp({ fetchFn: failFetch });
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -900,7 +888,7 @@ describe("Gateway proxy endpoints", () => {
         body: JSON.stringify({ error: "internal server error" }),
       });
 
-      const app = makeGatewayApp({ fetchFn: failFetch });
+      const app = await makeGatewayApp({ fetchFn: failFetch });
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -948,7 +936,7 @@ describe("Gateway proxy endpoints", () => {
 
   describe("credit balance check", () => {
     it("returns 402 when credit balance is insufficient", async () => {
-      const app = makeGatewayApp({ creditBalance: 0 }); // Zero balance
+      const app = await makeGatewayApp({ creditBalance: 0 }); // Zero balance
 
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
@@ -986,7 +974,7 @@ describe("Gateway proxy endpoints", () => {
         },
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch, creditBalance: 10000 }); // 100 USD
+      const app = await makeGatewayApp({ fetchFn: stubFetch, creditBalance: 10000 }); // 100 USD
 
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
@@ -1011,7 +999,7 @@ describe("Gateway proxy endpoints", () => {
         },
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch, creditBalance: 10000 });
+      const app = await makeGatewayApp({ fetchFn: stubFetch, creditBalance: 10000 });
 
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
@@ -1037,7 +1025,7 @@ describe("Gateway proxy endpoints", () => {
         },
       });
 
-      const app = makeGatewayApp({ fetchFn: stubFetch, creditBalance: 0 });
+      const app = await makeGatewayApp({ fetchFn: stubFetch, creditBalance: 0 });
 
       const res = await app.request("/v1/chat/completions", {
         method: "POST",
@@ -1050,7 +1038,7 @@ describe("Gateway proxy endpoints", () => {
     });
 
     it("returns 402 when credit balance is zero", async () => {
-      const app = makeGatewayApp({ creditBalance: 0 }); // Zero balance
+      const app = await makeGatewayApp({ creditBalance: 0 }); // Zero balance
 
       const res = await app.request("/v1/phone/outbound", {
         method: "POST",

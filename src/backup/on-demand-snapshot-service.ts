@@ -33,9 +33,12 @@ export class OnDemandSnapshotService {
   }
 
   /** Check if tenant can create another on-demand snapshot. */
-  checkQuota(tenant: string, tier: Tier): { allowed: boolean; current: number; max: number; reason?: string } {
+  async checkQuota(
+    tenant: string,
+    tier: Tier,
+  ): Promise<{ allowed: boolean; current: number; max: number; reason?: string }> {
     const policy = SNAPSHOT_TIER_POLICIES[tier];
-    const current = this.manager.countByTenant(tenant, "on-demand");
+    const current = await this.manager.countByTenant(tenant, "on-demand");
     if (current >= policy.onDemandMax) {
       return {
         allowed: false,
@@ -59,13 +62,13 @@ export class OnDemandSnapshotService {
   /** Create an on-demand snapshot with all business checks. */
   async create(params: CreateSnapshotParams): Promise<CreateSnapshotResult> {
     // 1. Check credit balance (must have at least 1 cent)
-    const balance = this.ledger.balance(params.tenant);
+    const balance = await this.ledger.balance(params.tenant);
     if (balance <= 0) {
       throw new InsufficientCreditsError(balance);
     }
 
     // 2. Check quota
-    const quota = this.checkQuota(params.tenant, params.tier);
+    const quota = await this.checkQuota(params.tenant, params.tier);
     if (!quota.allowed) {
       throw new SnapshotQuotaExceededError(quota.current, quota.max, params.tier);
     }
@@ -97,7 +100,7 @@ export class OnDemandSnapshotService {
 
   /** Delete an on-demand snapshot. Only on-demand snapshots can be deleted by tenants. */
   async delete(snapshotId: string, tenant: string): Promise<boolean> {
-    const snapshot = this.manager.get(snapshotId);
+    const snapshot = await this.manager.get(snapshotId);
     if (!snapshot) return false;
     if (snapshot.tenant !== tenant) return false;
     if (snapshot.type !== "on-demand") {
@@ -107,8 +110,8 @@ export class OnDemandSnapshotService {
   }
 
   /** List all non-deleted snapshots for a tenant's bot. */
-  list(tenant: string, instanceId: string): Snapshot[] {
-    return this.manager.list(instanceId).filter((s) => s.tenant === tenant && s.deletedAt === null);
+  async list(tenant: string, instanceId: string): Promise<Snapshot[]> {
+    return (await this.manager.list(instanceId)).filter((s) => s.tenant === tenant && s.deletedAt === null);
   }
 }
 

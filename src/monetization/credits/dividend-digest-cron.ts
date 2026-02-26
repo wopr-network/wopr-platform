@@ -59,7 +59,7 @@ export async function runDividendDigestCron(cfg: DividendDigestConfig): Promise<
   const windowStart = subtractDays(cfg.digestDate, 7);
   const windowEnd = cfg.digestDate;
 
-  const tenantAggregates = cfg.dividendRepo.getDigestTenantAggregates(windowStart, windowEnd);
+  const tenantAggregates = await cfg.dividendRepo.getDigestTenantAggregates(windowStart, windowEnd);
 
   for (const agg of tenantAggregates) {
     // Check threshold
@@ -69,7 +69,7 @@ export async function runDividendDigestCron(cfg: DividendDigestConfig): Promise<
     }
 
     // Resolve email from admin_users via repository
-    const email = cfg.dividendRepo.getTenantEmail(agg.tenantId);
+    const email = await cfg.dividendRepo.getTenantEmail(agg.tenantId);
 
     if (!email) {
       result.skipped++;
@@ -80,7 +80,7 @@ export async function runDividendDigestCron(cfg: DividendDigestConfig): Promise<
     result.qualified++;
 
     // Compute lifetime total
-    const lifetimeCents = cfg.dividendRepo.getLifetimeTotalCents(agg.tenantId);
+    const lifetimeCents = await cfg.dividendRepo.getLifetimeTotalCents(agg.tenantId);
 
     // Next dividend date = tomorrow (dividends run nightly)
     const nextDividendDate = formatDateFull(addDays(cfg.digestDate, 1));

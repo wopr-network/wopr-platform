@@ -85,7 +85,7 @@ export class InferenceWatchdog {
   }
 
   private async check(): Promise<void> {
-    const nodes = this.repo.list(["active", "degraded"]);
+    const nodes = await this.repo.list(["active", "degraded"]);
 
     for (const node of nodes) {
       if (!node.host) continue;
@@ -93,7 +93,7 @@ export class InferenceWatchdog {
       const health = await this.pollHealth(node.host);
       const now = Math.floor(Date.now() / 1000);
 
-      this.repo.updateServiceHealth(node.id, health, now);
+      await this.repo.updateServiceHealth(node.id, health, now);
 
       const allDown = Object.values(health).every((s) => s === "down");
       const anyUp = Object.values(health).some((s) => s === "ok");
@@ -109,7 +109,7 @@ export class InferenceWatchdog {
           state.consecutiveAllDown = 0;
           state.rebootedAt = null;
           if (node.status === "degraded") {
-            this.repo.updateStatus(node.id, "active");
+            await this.repo.updateStatus(node.id, "active");
           }
         }
         continue;
@@ -121,7 +121,7 @@ export class InferenceWatchdog {
         if (state.rebootedAt !== null) {
           const elapsed = Date.now() - state.rebootedAt;
           if (elapsed >= this.failedTimeoutMs) {
-            this.repo.updateStatus(node.id, "failed");
+            await this.repo.updateStatus(node.id, "failed");
             this.notifier.gpuNodeFailed(node.id).catch((err) => {
               logger.error("Failed to send gpuNodeFailed notification", { nodeId: node.id, err });
             });
@@ -133,7 +133,7 @@ export class InferenceWatchdog {
         }
 
         if (state.consecutiveAllDown >= this.rebootThreshold) {
-          this.repo.updateStatus(node.id, "degraded");
+          await this.repo.updateStatus(node.id, "degraded");
           this.notifier.gpuNodeDegraded(node.id, health).catch((err) => {
             logger.error("Failed to send gpuNodeDegraded notification", { nodeId: node.id, err });
           });

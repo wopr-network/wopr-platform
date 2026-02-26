@@ -43,10 +43,10 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
    * List backup status for all tenants.
    * Query params: ?stale=true to filter only stale backups.
    */
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const store = storeFactory();
     const staleOnly = c.req.query("stale") === "true";
-    const entries = staleOnly ? store.listStale() : store.listAll();
+    const entries = staleOnly ? await store.listStale() : await store.listAll();
     return c.json({
       backups: entries,
       total: entries.length,
@@ -59,9 +59,9 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
    * List containers with stale backups (>24h since last successful backup).
    * MUST be registered before /:containerId to avoid being shadowed.
    */
-  routes.get("/alerts/stale", (c) => {
+  routes.get("/alerts/stale", async (c) => {
     const store = storeFactory();
-    const stale = store.listStale();
+    const stale = await store.listStale();
     return c.json({
       alerts: stale.map((e) => ({
         containerId: e.containerId,
@@ -78,10 +78,10 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
    * GET /api/admin/backups/:containerId
    * Get backup status for a specific tenant container.
    */
-  routes.get("/:containerId", (c) => {
+  routes.get("/:containerId", async (c) => {
     const store = storeFactory();
     const containerId = c.req.param("containerId");
-    const entry = store.get(containerId);
+    const entry = await store.get(containerId);
     if (!entry) {
       return c.json({ error: "No backup status found for this container" }, 404);
     }
@@ -95,7 +95,7 @@ function buildRoutes(storeFactory: () => BackupStatusStore, spacesFactory: () =>
   routes.get("/:containerId/snapshots", async (c) => {
     const store = storeFactory();
     const containerId = c.req.param("containerId");
-    const entry = store.get(containerId);
+    const entry = await store.get(containerId);
     if (!entry) {
       return c.json({ error: "No backup status found for this container" }, 404);
     }

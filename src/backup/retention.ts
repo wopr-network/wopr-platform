@@ -11,14 +11,14 @@ import { RETENTION_POLICIES } from "./types.js";
  */
 export async function enforceRetention(manager: SnapshotManager, instanceId: string, tier: Tier): Promise<number> {
   const policy = RETENTION_POLICIES[tier];
-  const currentCount = manager.count(instanceId);
+  const currentCount = await manager.count(instanceId);
 
   if (currentCount <= policy.maxSnapshots) {
     return 0;
   }
 
   const excess = currentCount - policy.maxSnapshots;
-  const toDelete = manager.getOldest(instanceId, excess);
+  const toDelete = await manager.getOldest(instanceId, excess);
 
   let deleted = 0;
   for (const snapshot of toDelete) {

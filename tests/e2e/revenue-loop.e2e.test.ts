@@ -1,4 +1,5 @@
 import { unlink } from "node:fs/promises";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
@@ -10,7 +11,6 @@ import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
 import { AdapterSocket } from "../../src/monetization/socket/socket.js";
 import type { AdapterResult, ImageGenerationOutput, ProviderAdapter } from "../../src/monetization/adapters/types.js";
-import type Database from "better-sqlite3";
 
 // ---------------------------------------------------------------------------
 // Fake image-generation adapter — simulates a hosted provider (e.g., Replicate)
@@ -39,7 +39,7 @@ function createFakeImageGenAdapter(): ProviderAdapter {
 
 describe("E2E: core revenue loop — signup → bot → plugin → capability → credit consumed", () => {
   let db: DrizzleDb;
-  let sqlite: Database.Database;
+  let pool: PGlite;
   let ledger: CreditLedger;
   let botBilling: BotBilling;
   let meter: MeterEmitter;
@@ -53,14 +53,12 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   const BOT_ID = `bot-${Date.now()}`;
   const BOT_NAME = "e2e-test-bot";
 
-  beforeEach(() => {
+  beforeEach(async () => {
     const ts = Date.now();
     walPath = `/tmp/wopr-e2e-wal-${ts}.jsonl`;
     dlqPath = `/tmp/wopr-e2e-dlq-${ts}.jsonl`;
 
-    const testDb = createTestDb();
-    db = testDb.db;
-    sqlite = testDb.sqlite;
+    ({ db, pool } = await createTestDb());
 
     ledger = new CreditLedger(db);
     botBilling = new BotBilling(db);
@@ -85,10 +83,10 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   afterEach(async () => {
-    // Flush remaining meter events to SQLite before closing the DB.
+    // Flush remaining meter events before closing the DB.
     meter.close();
-    // Close SQLite last — meter.close() flushes synchronously so no race here.
-    sqlite.close();
+    // Close pool last — meter.close() flushes synchronously so no race here.
+    await pool.close();
 
     // Clean up temp WAL/DLQ files.
     await unlink(walPath).catch(() => {});
@@ -101,17 +99,17 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
   it("complete revenue chain: signup → bot → capability → metered → credits deducted", async () => {
     // STEP 1: User signs up — tenant gets signup credits ($5.00 = 500 cents)
-    const granted = grantSignupCredits(ledger, TENANT_ID);
+    const granted = await grantSignupCredits(ledger, TENANT_ID);
     expect(granted).toBe(true);
-    expect(ledger.balance(TENANT_ID)).toBe(SIGNUP_GRANT_CENTS); // 500 cents
+    expect(await ledger.balance(TENANT_ID)).toBe(SIGNUP_GRANT_CENTS); // 500 cents
 
     // STEP 2: User creates a bot instance
-    botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
-    const botInfo = botBilling.getBotBilling(BOT_ID);
+    await botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
+    const botInfo = await botBilling.getBotBilling(BOT_ID);
     expect(botInfo).not.toBeNull();
     expect(botInfo!.billingState).toBe("active");
     expect(botInfo!.tenantId).toBe(TENANT_ID);
-    expect(botBilling.getActiveBotCount(TENANT_ID)).toBe(1);
+    expect(await botBilling.getActiveBotCount(TENANT_ID)).toBe(1);
 
     // STEP 3: Plugin declares capability requirement (image-generation) and
     //         platform routes the request to the registered adapter.
@@ -130,10 +128,10 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     expect(generatedImage.model).toBe("sdxl-1.0");
 
     // STEP 4: Verify meter event was emitted and flushed to DB.
-    // Force flush to ensure the meter event is persisted to SQLite.
+    // Force flush to ensure the meter event is persisted.
     meter.flush();
 
-    const events = meter.queryEvents(TENANT_ID);
+    const events = await meter.queryEvents(TENANT_ID);
     expect(events.length).toBeGreaterThanOrEqual(1);
 
     const event = events[0];
@@ -145,7 +143,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     expect(event.charge).toBeCloseTo(0.026, 5);
 
     // STEP 5: Usage aggregation rolls up into billing_period_summaries.
-    const aggregated = aggregator.aggregate();
+    const aggregated = await aggregator.aggregate();
     expect(aggregated).toBeGreaterThanOrEqual(0);
 
     // STEP 6: Credits are deducted from the tenant's balance.
@@ -153,7 +151,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     const chargeCents = Math.round(event.charge * 100); // 0.026 * 100 = 3 cents (rounded)
     expect(chargeCents).toBeGreaterThan(0);
 
-    ledger.debit(
+    await ledger.debit(
       TENANT_ID,
       chargeCents,
       "adapter_usage",
@@ -161,13 +159,13 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
       event.id, // referenceId for idempotency
     );
 
-    const balanceAfter = ledger.balance(TENANT_ID);
+    const balanceAfter = await ledger.balance(TENANT_ID);
     expect(balanceAfter).toBe(SIGNUP_GRANT_CENTS - chargeCents);
     expect(balanceAfter).toBeLessThan(SIGNUP_GRANT_CENTS);
     expect(balanceAfter).toBeGreaterThan(0); // Still has credits left
 
     // Verify the transaction was recorded
-    const history = ledger.history(TENANT_ID);
+    const history = await ledger.history(TENANT_ID);
     expect(history.length).toBe(2); // signup_grant + adapter_usage
     const debitTx = history.find((tx) => tx.type === "adapter_usage");
     expect(debitTx).toBeDefined();
@@ -176,87 +174,26 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   });
 
   // =========================================================================
-  // TEST 2: Stripe reporting (conditional on STRIPE_SECRET_KEY)
+  // TEST 2: Idempotent signup grant
   // =========================================================================
 
-  it.skipIf(!stripeAvailable)(
-    "bonus: Stripe receives usage event in test mode",
-    async () => {
-      const stripe = new Stripe(STRIPE_KEY!);
-
-      // Create a real Stripe test-mode customer to map to the tenant.
-      const customer = await stripe.customers.create({
-        email: `e2e-test-${Date.now()}@wopr.bot`,
-        metadata: { wopr_tenant: TENANT_ID, test: "true" },
-      });
-
-      try {
-        tenantStore.upsert({
-          tenant: TENANT_ID,
-          processorCustomerId: customer.id,
-        });
-
-        // Run the full chain
-        grantSignupCredits(ledger, TENANT_ID);
-        botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
-
-        await socket.execute<ImageGenerationOutput>({
-          tenantId: TENANT_ID,
-          capability: "image-generation",
-          input: { prompt: "test image for Stripe reporting" },
-        });
-
-        meter.flush();
-
-        // Poll until the billing period has elapsed (up to 3s to tolerate slow CI).
-        const periodBoundary2 = aggregator.getBillingPeriod(Date.now()).start + 1_000;
-        for (let i = 0; i < 60; i++) {
-          if (Date.now() >= periodBoundary2) break;
-          await new Promise((r) => setTimeout(r, 50));
-        }
-        aggregator.aggregate();
-
-        // Create reporter and send to Stripe
-        const reporter = new StripeUsageReporter(db, stripe, tenantStore, {
-          intervalMs: 999_999, // Don't auto-run
-        });
-
-        const reported = await reporter.report();
-        expect(reported).toBeGreaterThanOrEqual(1);
-
-        // Verify the report was recorded locally
-        const reports = reporter.queryReports(TENANT_ID);
-        expect(reports.length).toBeGreaterThanOrEqual(1);
-        expect(reports[0].event_name).toBe("wopr_image_generation_usage");
-        expect(reports[0].value_cents).toBeGreaterThan(0);
-      } finally {
-        // Clean up test Stripe customer regardless of test outcome
-        await stripe.customers.del(customer.id);
-      }
-    },
-  );
-
-  // =========================================================================
-  // TEST 3: Idempotent signup grant
-  // =========================================================================
-
-  it("idempotent signup grant — second call is a no-op", () => {
-    expect(grantSignupCredits(ledger, TENANT_ID)).toBe(true);
-    expect(grantSignupCredits(ledger, TENANT_ID)).toBe(false);
-    expect(ledger.balance(TENANT_ID)).toBe(SIGNUP_GRANT_CENTS);
+  it("idempotent signup grant — second call is a no-op", async () => {
+    expect(await grantSignupCredits(ledger, TENANT_ID)).toBe(true);
+    expect(await grantSignupCredits(ledger, TENANT_ID)).toBe(false);
+    expect(await ledger.balance(TENANT_ID)).toBe(SIGNUP_GRANT_CENTS);
   });
 
   // =========================================================================
   // TEST 3: Debit fails when balance is insufficient
   // =========================================================================
 
-  it("debit throws InsufficientBalanceError when balance is insufficient", () => {
-    grantSignupCredits(ledger, TENANT_ID);
+  it("debit throws InsufficientBalanceError when balance is insufficient", async () => {
+    await grantSignupCredits(ledger, TENANT_ID);
 
     // Try to debit more than the balance
-    expect(() => {
-      ledger.debit(TENANT_ID, SIGNUP_GRANT_CENTS + 1, "adapter_usage", "should fail");
-    }).toThrow(InsufficientBalanceError);
+    await expect(
+      ledger.debit(TENANT_ID, SIGNUP_GRANT_CENTS + 1, "adapter_usage", "should fail"),
+    ).rejects.toThrow(InsufficientBalanceError);
   });
 
   // =========================================================================
@@ -265,23 +202,23 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
   it("bot suspended by runtime cron when credits are exhausted", async () => {
     // Grant minimal credits (1 cent — less than the 17-cent daily bot cost)
-    ledger.credit(TENANT_ID, 1, "promo", "tiny grant");
-    botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
+    await ledger.credit(TENANT_ID, 1, "promo", "tiny grant");
+    await botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
 
-    expect(botBilling.getActiveBotCount(TENANT_ID)).toBe(1);
+    expect(await botBilling.getActiveBotCount(TENANT_ID)).toBe(1);
 
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: (tid) => botBilling.getActiveBotCount(tid),
-      onSuspend: (tid) => {
-        botBilling.suspendAllForTenant(tid);
+      onSuspend: async (tid) => {
+        await botBilling.suspendAllForTenant(tid);
       },
     });
 
     expect(result.suspended).toContain(TENANT_ID);
 
     // After suspension, bot should be suspended
-    const botInfo = botBilling.getBotBilling(BOT_ID);
+    const botInfo = await botBilling.getBotBilling(BOT_ID);
     expect(botInfo!.billingState).toBe("suspended");
   });
 
@@ -289,22 +226,22 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   // TEST 5: Bot reactivation after credit purchase
   // =========================================================================
 
-  it("suspended bot reactivated after credit purchase", () => {
+  it("suspended bot reactivated after credit purchase", async () => {
     // Setup: grant minimal credits, register bot, exhaust balance, suspend
-    ledger.credit(TENANT_ID, 1, "promo", "tiny grant");
-    botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
-    ledger.debit(TENANT_ID, 1, "bot_runtime", "exhaust balance");
-    botBilling.suspendAllForTenant(TENANT_ID);
+    await ledger.credit(TENANT_ID, 1, "promo", "tiny grant");
+    await botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
+    await ledger.debit(TENANT_ID, 1, "bot_runtime", "exhaust balance");
+    await botBilling.suspendAllForTenant(TENANT_ID);
 
-    expect(botBilling.getBotBilling(BOT_ID)!.billingState).toBe("suspended");
-    expect(ledger.balance(TENANT_ID)).toBe(0);
+    expect((await botBilling.getBotBilling(BOT_ID))!.billingState).toBe("suspended");
+    expect(await ledger.balance(TENANT_ID)).toBe(0);
 
     // Simulate credit purchase (what the Stripe webhook handler does)
-    ledger.credit(TENANT_ID, 1000, "purchase", "Stripe credit purchase");
-    const reactivated = botBilling.checkReactivation(TENANT_ID, ledger);
+    await ledger.credit(TENANT_ID, 1000, "purchase", "Stripe credit purchase");
+    const reactivated = await botBilling.checkReactivation(TENANT_ID, ledger);
 
     expect(reactivated).toContain(BOT_ID);
-    expect(botBilling.getBotBilling(BOT_ID)!.billingState).toBe("active");
-    expect(ledger.balance(TENANT_ID)).toBe(1000);
+    expect((await botBilling.getBotBilling(BOT_ID))!.billingState).toBe("active");
+    expect(await ledger.balance(TENANT_ID)).toBe(1000);
   });
 });

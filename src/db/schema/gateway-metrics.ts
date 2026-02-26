@@ -1,10 +1,10 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
-export const gatewayMetrics = sqliteTable(
+export const gatewayMetrics = pgTable(
   "gateway_metrics",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    minuteKey: integer("minute_key").notNull(),
+    id: serial("id").primaryKey(),
+    minuteKey: bigint("minute_key", { mode: "number" }).notNull(),
     capability: text("capability").notNull(),
     requests: integer("requests").notNull().default(0),
     errors: integer("errors").notNull().default(0),

@@ -25,7 +25,7 @@ function makeEntry(overrides: Partial<ModelProviderEntry> = {}): ModelProviderEn
 function makeRegistry(providers: ModelProviderEntry[]): ProviderRegistry {
   const healthOverrides = new Map<string, boolean>();
   return {
-    getProviders: (capability: string) =>
+    getProviders: async (capability: string) =>
       providers
         .filter((p) => p.capability === capability)
         .map((p) => {
@@ -66,72 +66,72 @@ const fakeTTSResult: AdapterResult<TTSOutput> = {
 
 describe("ArbitrageRouter", () => {
   describe("selectProvider", () => {
-    it("selects GPU provider when available", () => {
+    it("selects GPU provider when available", async () => {
       const gpu = makeEntry({ adapter: "chatterbox-tts", tier: "gpu", providerCost: 0.02 });
       const hosted = makeEntry({ adapter: "elevenlabs", tier: "hosted", providerCost: 0.12 });
       const registry = makeRegistry([gpu, hosted]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       expect(decision.provider.adapter).toBe("chatterbox-tts");
       expect(decision.reason).toBe("gpu-cheapest");
     });
 
-    it("selects hosted provider when no GPU available", () => {
+    it("selects hosted provider when no GPU available", async () => {
       const hosted = makeEntry({ adapter: "elevenlabs", tier: "hosted", providerCost: 0.15 });
       const registry = makeRegistry([hosted]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       expect(decision.provider.adapter).toBe("elevenlabs");
       expect(decision.reason).toBe("hosted-cheapest");
     });
 
-    it("selects cheapest hosted provider (arbitrage)", () => {
+    it("selects cheapest hosted provider (arbitrage)", async () => {
       const expensive = makeEntry({ adapter: "elevenlabs", tier: "hosted", providerCost: 0.15 });
       const cheap = makeEntry({ adapter: "openai-tts", tier: "hosted", providerCost: 0.12 });
       const registry = makeRegistry([expensive, cheap]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       expect(decision.provider.adapter).toBe("openai-tts");
     });
 
-    it("uses priority as tiebreaker when costs are equal", () => {
+    it("uses priority as tiebreaker when costs are equal", async () => {
       const p1 = makeEntry({ adapter: "a", tier: "hosted", providerCost: 0.12, priority: 2 });
       const p2 = makeEntry({ adapter: "b", tier: "hosted", providerCost: 0.12, priority: 1 });
       const registry = makeRegistry([p1, p2]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       expect(decision.provider.adapter).toBe("b"); // lower priority wins
     });
 
-    it("throws NoProviderAvailableError when no providers registered", () => {
+    it("throws NoProviderAvailableError when no providers registered", async () => {
       const registry = makeRegistry([]);
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
 
-      expect(() => router.selectProvider("tts")).toThrow(NoProviderAvailableError);
+      await expect(router.selectProvider("tts")).rejects.toThrow(NoProviderAvailableError);
     });
 
-    it("skips disabled providers", () => {
+    it("skips disabled providers", async () => {
       const disabled = makeEntry({ adapter: "disabled-provider", tier: "gpu", enabled: false });
       const registry = makeRegistry([disabled]);
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
 
-      expect(() => router.selectProvider("tts")).toThrow(NoProviderAvailableError);
+      await expect(router.selectProvider("tts")).rejects.toThrow(NoProviderAvailableError);
     });
 
-    it("skips unhealthy providers", () => {
+    it("skips unhealthy providers", async () => {
       const unhealthy = makeEntry({ adapter: "sick-provider", tier: "gpu", healthy: false });
       const registry = makeRegistry([unhealthy]);
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
 
-      expect(() => router.selectProvider("tts")).toThrow(NoProviderAvailableError);
+      await expect(router.selectProvider("tts")).rejects.toThrow(NoProviderAvailableError);
     });
   });
 
@@ -307,29 +307,29 @@ describe("ArbitrageRouter", () => {
   });
 
   describe("preferLowLatency", () => {
-    it("prefers fast provider over cheaper slow provider when preferLowLatency is true", () => {
+    it("prefers fast provider over cheaper slow provider when preferLowLatency is true", async () => {
       const slow = makeEntry({ adapter: "slow-cheap", tier: "hosted", providerCost: 0.05, latencyClass: "slow" });
       const fast = makeEntry({ adapter: "fast-expensive", tier: "hosted", providerCost: 0.15, latencyClass: "fast" });
       const registry = makeRegistry([slow, fast]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map(), preferLowLatency: true });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       expect(decision.provider.adapter).toBe("fast-expensive");
     });
 
-    it("uses cost-first ordering when preferLowLatency is false (default)", () => {
+    it("uses cost-first ordering when preferLowLatency is false (default)", async () => {
       const slow = makeEntry({ adapter: "slow-cheap", tier: "hosted", providerCost: 0.05, latencyClass: "slow" });
       const fast = makeEntry({ adapter: "fast-expensive", tier: "hosted", providerCost: 0.15, latencyClass: "fast" });
       const registry = makeRegistry([slow, fast]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map() });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       expect(decision.provider.adapter).toBe("slow-cheap");
     });
 
-    it("uses cost then priority as tiebreaker when preferLowLatency is true and latency classes are equal", () => {
+    it("uses cost then priority as tiebreaker when preferLowLatency is true and latency classes are equal", async () => {
       // Both are "normal" latency — latencyDiff is 0, so falls through to cost/priority tiebreaker
       const p1 = makeEntry({
         adapter: "normal-priority2",
@@ -348,13 +348,13 @@ describe("ArbitrageRouter", () => {
       const registry = makeRegistry([p1, p2]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map(), preferLowLatency: true });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       // Same cost and same latency class — priority tiebreaker picks lower priority number
       expect(decision.provider.adapter).toBe("normal-priority1");
     });
 
-    it("uses cost as tiebreaker when preferLowLatency is true and latency classes are equal but costs differ", () => {
+    it("uses cost as tiebreaker when preferLowLatency is true and latency classes are equal but costs differ", async () => {
       const expensive = makeEntry({
         adapter: "normal-expensive",
         tier: "hosted",
@@ -365,7 +365,7 @@ describe("ArbitrageRouter", () => {
       const registry = makeRegistry([expensive, cheap]);
 
       const router = new ArbitrageRouter({ registry, adapters: new Map(), preferLowLatency: true });
-      const decision = router.selectProvider("tts");
+      const decision = await router.selectProvider("tts");
 
       expect(decision.provider.adapter).toBe("normal-cheap");
     });

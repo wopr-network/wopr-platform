@@ -1,74 +1,65 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../db/schema/index.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { DrizzleSigPenaltyRepository } from "./drizzle-sig-penalty-repository.js";
 
-function makeDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS webhook_sig_penalties (
-      ip TEXT NOT NULL,
-      source TEXT NOT NULL,
-      failures INTEGER NOT NULL DEFAULT 0,
-      blocked_until INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (ip, source)
-    );
-    CREATE INDEX IF NOT EXISTS idx_sig_penalties_blocked ON webhook_sig_penalties (blocked_until);
-  `);
-  return drizzle(sqlite, { schema });
-}
-
 describe("DrizzleSigPenaltyRepository", () => {
+  let db: DrizzleDb;
+  let pool: PGlite;
   let repo: DrizzleSigPenaltyRepository;
 
-  beforeEach(() => {
-    repo = new DrizzleSigPenaltyRepository(makeDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    repo = new DrizzleSigPenaltyRepository(db);
   });
 
-  it("returns null for unknown IP", () => {
-    expect(repo.get("1.2.3.4", "stripe")).toBeNull();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("records and retrieves a penalty", () => {
-    repo.recordFailure("1.2.3.4", "stripe");
-    const penalty = repo.get("1.2.3.4", "stripe");
+  it("returns null for unknown IP", async () => {
+    expect(await repo.get("1.2.3.4", "stripe")).toBeNull();
+  });
+
+  it("records and retrieves a penalty", async () => {
+    await repo.recordFailure("1.2.3.4", "stripe");
+    const penalty = await repo.get("1.2.3.4", "stripe");
     expect(penalty).not.toBeNull();
     expect(penalty?.failures).toBe(1);
     expect(penalty?.blockedUntil).toBeGreaterThan(Date.now());
   });
 
-  it("increments failures on repeated calls", () => {
-    repo.recordFailure("1.2.3.4", "stripe");
-    repo.recordFailure("1.2.3.4", "stripe");
-    const penalty = repo.get("1.2.3.4", "stripe");
+  it("increments failures on repeated calls", async () => {
+    await repo.recordFailure("1.2.3.4", "stripe");
+    await repo.recordFailure("1.2.3.4", "stripe");
+    const penalty = await repo.get("1.2.3.4", "stripe");
     expect(penalty?.failures).toBe(2);
   });
 
-  it("clears penalty on clear()", () => {
-    repo.recordFailure("1.2.3.4", "stripe");
-    repo.clear("1.2.3.4", "stripe");
-    expect(repo.get("1.2.3.4", "stripe")).toBeNull();
+  it("clears penalty on clear()", async () => {
+    await repo.recordFailure("1.2.3.4", "stripe");
+    await repo.clear("1.2.3.4", "stripe");
+    expect(await repo.get("1.2.3.4", "stripe")).toBeNull();
   });
 
-  it("does not affect other IP/source combinations", () => {
-    repo.recordFailure("1.2.3.4", "stripe");
-    repo.recordFailure("5.6.7.8", "twilio");
-    expect(repo.get("1.2.3.4", "stripe")?.failures).toBe(1);
-    expect(repo.get("5.6.7.8", "twilio")?.failures).toBe(1);
-    expect(repo.get("1.2.3.4", "twilio")).toBeNull();
+  it("does not affect other IP/source combinations", async () => {
+    await repo.recordFailure("1.2.3.4", "stripe");
+    await repo.recordFailure("5.6.7.8", "twilio");
+    expect((await repo.get("1.2.3.4", "stripe"))?.failures).toBe(1);
+    expect((await repo.get("5.6.7.8", "twilio"))?.failures).toBe(1);
+    expect(await repo.get("1.2.3.4", "twilio")).toBeNull();
   });
 
-  it("purges stale entries", () => {
-    repo.recordFailure("1.2.3.4", "stripe");
+  it("purges stale entries", async () => {
+    await repo.recordFailure("1.2.3.4", "stripe");
     // purgeStale with a very large decay: cutoff = now - decayMs is far in the past,
     // but blockedUntil is in the future, so entry is NOT stale yet
-    expect(repo.purgeStale(0)).toBe(0);
+    expect(await repo.purgeStale(0)).toBe(0);
     // Use negative decay to push cutoff into the far future (now - (-largeMs) = now + largeMs)
     // so blockedUntil < cutoff and the entry is pruned
-    const purged = repo.purgeStale(-24 * 60 * 60 * 1000);
+    const purged = await repo.purgeStale(-24 * 60 * 60 * 1000);
     expect(purged).toBe(1);
-    expect(repo.get("1.2.3.4", "stripe")).toBeNull();
+    expect(await repo.get("1.2.3.4", "stripe")).toBeNull();
   });
 });

@@ -6,8 +6,8 @@ import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 function createMocks() {
   const nodeRepo = {
     getById: vi.fn(),
-    transition: vi.fn().mockReturnValue({ id: "dead-node", status: "recovering" }),
-    list: vi.fn().mockReturnValue([]),
+    transition: vi.fn().mockResolvedValue({ id: "dead-node", status: "recovering" }),
+    list: vi.fn().mockResolvedValue([]),
   };
 
   const profileRepo = {
@@ -15,7 +15,7 @@ function createMocks() {
   };
 
   const recoveryRepo = {
-    createEvent: vi.fn().mockImplementation((data) => ({
+    createEvent: vi.fn().mockImplementation(async (data) => ({
       ...data,
       status: "in_progress",
       tenantsRecovered: 0,
@@ -25,9 +25,9 @@ function createMocks() {
       completedAt: null,
       reportJson: null,
     })),
-    updateEvent: vi.fn(),
+    updateEvent: vi.fn().mockResolvedValue(undefined),
     getEvent: vi.fn(),
-    createItem: vi.fn().mockImplementation((data) => ({
+    createItem: vi.fn().mockImplementation(async (data) => ({
       ...data,
       targetNode: null,
       status: "waiting",
@@ -35,10 +35,10 @@ function createMocks() {
       startedAt: null,
       completedAt: null,
     })),
-    updateItem: vi.fn(),
-    listOpenEvents: vi.fn().mockReturnValue([]),
-    getWaitingItems: vi.fn().mockReturnValue([]),
-    incrementRetryCount: vi.fn(),
+    updateItem: vi.fn().mockResolvedValue(undefined),
+    listOpenEvents: vi.fn().mockResolvedValue([]),
+    getWaitingItems: vi.fn().mockResolvedValue([]),
+    incrementRetryCount: vi.fn().mockResolvedValue(undefined),
   };
 
   const commandBus = {
@@ -56,8 +56,8 @@ function createMocks() {
     nodeStatusChange: vi.fn().mockResolvedValue(undefined),
   };
 
-  const getTenants = vi.fn().mockReturnValue([]);
-  const findBestTarget = vi.fn().mockReturnValue({
+  const getTenants = vi.fn().mockResolvedValue([]);
+  const findBestTarget = vi.fn().mockResolvedValue({
     id: "target-node",
     host: "10.0.0.2",
     status: "active",
@@ -118,9 +118,9 @@ describe("RecoveryOrchestrator", () => {
       estimatedMb: 100,
       tier: "pro",
     };
-    mocks.getTenants.mockReturnValue([tenant]);
+    mocks.getTenants.mockResolvedValue([tenant]);
 
-    mocks.profileRepo.get.mockReturnValue({
+    mocks.profileRepo.get.mockResolvedValue({
       id: "bot-1",
       tenantId: "tenant-1",
       name: "my-bot",
@@ -154,7 +154,7 @@ describe("RecoveryOrchestrator", () => {
 
   it("transitions dead node unhealthy→offline→recovering, then offline when done", async () => {
     // Arrange: one tenant to recover
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -164,7 +164,7 @@ describe("RecoveryOrchestrator", () => {
         tier: "pro",
       },
     ]);
-    mocks.profileRepo.get.mockReturnValue(null); // no profile, use defaults
+    mocks.profileRepo.get.mockResolvedValue(null); // no profile, use defaults
 
     // Act
     await orchestrator.triggerRecovery("dead-node", "heartbeat_timeout");
@@ -192,7 +192,7 @@ describe("RecoveryOrchestrator", () => {
   });
 
   it("falls back to default image when no profile found", async () => {
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -202,7 +202,7 @@ describe("RecoveryOrchestrator", () => {
         tier: null,
       },
     ]);
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.profileRepo.get.mockResolvedValue(null);
 
     await orchestrator.triggerRecovery("dead-node", "manual");
 
@@ -217,7 +217,7 @@ describe("RecoveryOrchestrator", () => {
   });
 
   it("records tenant as waiting when no target node has capacity", async () => {
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -227,8 +227,8 @@ describe("RecoveryOrchestrator", () => {
         tier: null,
       },
     ]);
-    mocks.findBestTarget.mockReturnValue(null); // no capacity
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.findBestTarget.mockResolvedValue(null); // no capacity
+    mocks.profileRepo.get.mockResolvedValue(null);
 
     const report = await orchestrator.triggerRecovery("dead-node", "manual");
 
@@ -238,7 +238,7 @@ describe("RecoveryOrchestrator", () => {
   });
 
   it("records tenant as failed when command bus throws", async () => {
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -248,7 +248,7 @@ describe("RecoveryOrchestrator", () => {
         tier: null,
       },
     ]);
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.profileRepo.get.mockResolvedValue(null);
     mocks.commandBus.send.mockRejectedValueOnce(new Error("connection lost"));
 
     const report = await orchestrator.triggerRecovery("dead-node", "manual");
@@ -258,7 +258,7 @@ describe("RecoveryOrchestrator", () => {
   });
 
   it("creates recovery event and items via recoveryRepo", async () => {
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -268,7 +268,7 @@ describe("RecoveryOrchestrator", () => {
         tier: "pro",
       },
     ]);
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.profileRepo.get.mockResolvedValue(null);
 
     await orchestrator.triggerRecovery("dead-node", "heartbeat_timeout");
 
@@ -287,7 +287,7 @@ describe("RecoveryOrchestrator", () => {
   });
 
   it("notifies admin when recovery completes with waiting tenants", async () => {
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -297,8 +297,8 @@ describe("RecoveryOrchestrator", () => {
         tier: null,
       },
     ]);
-    mocks.findBestTarget.mockReturnValue(null);
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.findBestTarget.mockResolvedValue(null);
+    mocks.profileRepo.get.mockResolvedValue(null);
 
     await orchestrator.triggerRecovery("dead-node", "manual");
 
@@ -312,7 +312,7 @@ describe("RecoveryOrchestrator", () => {
   });
 
   it("handles multiple tenants, recovering some and failing others", async () => {
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -330,7 +330,7 @@ describe("RecoveryOrchestrator", () => {
         tier: "free",
       },
     ]);
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.profileRepo.get.mockResolvedValue(null);
     // First call succeeds, second fails
     mocks.commandBus.send
       .mockResolvedValueOnce({ id: "r1", type: "command_result", command: "backup.download", success: true })
@@ -349,7 +349,7 @@ describe("RecoveryOrchestrator", () => {
   it("retryWaiting recovers previously waiting tenants", async () => {
     const eventId = "event-1";
 
-    mocks.recoveryRepo.getEvent.mockReturnValue({
+    mocks.recoveryRepo.getEvent.mockResolvedValue({
       id: eventId,
       nodeId: "dead-node",
       trigger: "heartbeat_timeout",
@@ -363,7 +363,7 @@ describe("RecoveryOrchestrator", () => {
       reportJson: null,
     });
 
-    mocks.recoveryRepo.getWaitingItems.mockReturnValue([
+    mocks.recoveryRepo.getWaitingItems.mockResolvedValue([
       {
         id: "item-1",
         recoveryEventId: eventId,
@@ -379,7 +379,7 @@ describe("RecoveryOrchestrator", () => {
       },
     ]);
 
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -389,7 +389,7 @@ describe("RecoveryOrchestrator", () => {
         tier: "pro",
       },
     ]);
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.profileRepo.get.mockResolvedValue(null);
 
     const report = await orchestrator.retryWaiting(eventId);
 
@@ -400,7 +400,7 @@ describe("RecoveryOrchestrator", () => {
   it("retryWaiting marks waiting item as failed when recoverTenant fails", async () => {
     const eventId = "event-1";
 
-    mocks.recoveryRepo.getEvent.mockReturnValue({
+    mocks.recoveryRepo.getEvent.mockResolvedValue({
       id: eventId,
       nodeId: "dead-node",
       trigger: "heartbeat_timeout",
@@ -414,7 +414,7 @@ describe("RecoveryOrchestrator", () => {
       reportJson: null,
     });
 
-    mocks.recoveryRepo.getWaitingItems.mockReturnValue([
+    mocks.recoveryRepo.getWaitingItems.mockResolvedValue([
       {
         id: "item-1",
         recoveryEventId: eventId,
@@ -430,7 +430,7 @@ describe("RecoveryOrchestrator", () => {
       },
     ]);
 
-    mocks.getTenants.mockReturnValue([
+    mocks.getTenants.mockResolvedValue([
       {
         botId: "bot-1",
         tenantId: "tenant-1",
@@ -440,7 +440,7 @@ describe("RecoveryOrchestrator", () => {
         tier: "pro",
       },
     ]);
-    mocks.profileRepo.get.mockReturnValue(null);
+    mocks.profileRepo.get.mockResolvedValue(null);
     // Capacity available now, but the command fails
     mocks.commandBus.send.mockRejectedValueOnce(new Error("connection refused"));
 
@@ -454,12 +454,12 @@ describe("RecoveryOrchestrator", () => {
   });
 
   it("retryWaiting throws when event not found", async () => {
-    mocks.recoveryRepo.getEvent.mockReturnValue(null);
+    mocks.recoveryRepo.getEvent.mockResolvedValue(null);
 
     await expect(orchestrator.retryWaiting("nonexistent")).rejects.toThrow("Recovery event nonexistent not found");
   });
 
-  it("listEvents delegates to recoveryRepo.listOpenEvents", () => {
+  it("listEvents delegates to recoveryRepo.listOpenEvents", async () => {
     const fakeEvents = [
       {
         id: "evt-1",
@@ -475,15 +475,15 @@ describe("RecoveryOrchestrator", () => {
         reportJson: null,
       },
     ];
-    mocks.recoveryRepo.listOpenEvents.mockReturnValue(fakeEvents);
+    mocks.recoveryRepo.listOpenEvents.mockResolvedValue(fakeEvents);
 
-    const result = orchestrator.listEvents();
+    const result = await orchestrator.listEvents();
 
     expect(result).toEqual(fakeEvents);
     expect(mocks.recoveryRepo.listOpenEvents).toHaveBeenCalled();
   });
 
-  it("getEventDetails returns event and waiting items", () => {
+  it("getEventDetails returns event and waiting items", async () => {
     const event = {
       id: "evt-1",
       nodeId: "node-1",
@@ -512,10 +512,10 @@ describe("RecoveryOrchestrator", () => {
         retryCount: 0,
       },
     ];
-    mocks.recoveryRepo.getEvent.mockReturnValue(event);
-    mocks.recoveryRepo.getWaitingItems.mockReturnValue(items);
+    mocks.recoveryRepo.getEvent.mockResolvedValue(event);
+    mocks.recoveryRepo.getWaitingItems.mockResolvedValue(items);
 
-    const result = orchestrator.getEventDetails("evt-1");
+    const result = await orchestrator.getEventDetails("evt-1");
 
     expect(result.event).toEqual(event);
     expect(result.items).toEqual(items);

@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * PayRam payment sessions — tracks the lifecycle of each crypto payment.
  * reference_id is the PayRam-assigned unique identifier.
  */
-export const payramCharges = sqliteTable(
+export const payramCharges = pgTable(
   "payram_charges",
   {
     referenceId: text("reference_id").primaryKey(),
@@ -14,8 +14,8 @@ export const payramCharges = sqliteTable(
     status: text("status").notNull().default("OPEN"),
     currency: text("currency"),
     filledAmount: text("filled_amount"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
     creditedAt: text("credited_at"),
   },
   (table) => [

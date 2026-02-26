@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Credit transaction ledger — every credit/debit is an immutable row.
  * Positive amountCents = credit (money in), negative = debit (money out).
  */
-export const creditTransactions = sqliteTable(
+export const creditTransactions = pgTable(
   "credit_transactions",
   {
     id: text("id").primaryKey(),
@@ -17,7 +17,7 @@ export const creditTransactions = sqliteTable(
     referenceId: text("reference_id").unique(),
     fundingSource: text("funding_source"), // "stripe" | "payram" | null (null = legacy/signup)
     attributedUserId: text("attributed_user_id"), // nullable — null for system/bot charges
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_credit_tx_tenant").on(table.tenantId),
@@ -25,8 +25,6 @@ export const creditTransactions = sqliteTable(
     index("idx_credit_tx_ref").on(table.referenceId),
     index("idx_credit_tx_created").on(table.createdAt),
     index("idx_credit_tx_tenant_created").on(table.tenantId, table.createdAt),
-    index("idx_credit_tx_attributed_user").on(table.attributedUserId),
-    index("idx_credit_tx_tenant_attributed").on(table.tenantId, table.attributedUserId),
   ],
 );
 
@@ -34,8 +32,8 @@ export const creditTransactions = sqliteTable(
  * Denormalized credit balance per tenant — updated atomically alongside
  * every credit_transactions insert via a Drizzle transaction.
  */
-export const creditBalances = sqliteTable("credit_balances", {
+export const creditBalances = pgTable("credit_balances", {
   tenantId: text("tenant_id").primaryKey(),
   balanceCents: integer("balance_cents").notNull().default(0),
-  lastUpdated: text("last_updated").notNull().default(sql`(datetime('now'))`),
+  lastUpdated: text("last_updated").notNull().default(sql`(now())`),
 });

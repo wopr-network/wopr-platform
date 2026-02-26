@@ -1,7 +1,6 @@
 import { and, eq, lte, sql } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../db/index.js";
 import { accountDeletionRequests } from "../db/schema/account-deletion-requests.js";
-import type * as schema from "../db/schema/index.js";
 import type { DeletionRequest } from "./repository-types.js";
 
 // ---------------------------------------------------------------------------
@@ -17,12 +16,12 @@ export interface InsertDeletionRequest {
 
 /** Repository interface for account deletion request storage. */
 export interface IDeletionRepository {
-  insert(data: InsertDeletionRequest): void;
-  getById(id: string): DeletionRequest | null;
-  getPendingForTenant(tenantId: string): DeletionRequest | null;
-  cancel(id: string, reason: string): void;
-  markCompleted(id: string, summaryJson: string): void;
-  findExpired(): DeletionRequest[];
+  insert(data: InsertDeletionRequest): Promise<void>;
+  getById(id: string): Promise<DeletionRequest | null>;
+  getPendingForTenant(tenantId: string): Promise<DeletionRequest | null>;
+  cancel(id: string, reason: string): Promise<void>;
+  markCompleted(id: string, summaryJson: string): Promise<void>;
+  findExpired(): Promise<DeletionRequest[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,72 +29,62 @@ export interface IDeletionRepository {
 // ---------------------------------------------------------------------------
 
 export class DrizzleDeletionRepository implements IDeletionRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: DrizzleDb) {}
 
-  insert(data: InsertDeletionRequest): void {
-    this.db
-      .insert(accountDeletionRequests)
-      .values({
-        id: data.id,
-        tenantId: data.tenantId,
-        requestedBy: data.requestedBy,
-        status: "pending",
-        deleteAfter: sql`(datetime('now', '+${sql.raw(String(data.graceDays))} days'))`,
-      })
-      .run();
+  async insert(data: InsertDeletionRequest): Promise<void> {
+    await this.db.insert(accountDeletionRequests).values({
+      id: data.id,
+      tenantId: data.tenantId,
+      requestedBy: data.requestedBy,
+      status: "pending",
+      deleteAfter: sql`(now() + interval '${sql.raw(String(data.graceDays))} days')::text`,
+    });
   }
 
-  getById(id: string): DeletionRequest | null {
-    const row = this.db.select().from(accountDeletionRequests).where(eq(accountDeletionRequests.id, id)).get();
-    return row ? toRequest(row) : null;
+  async getById(id: string): Promise<DeletionRequest | null> {
+    const rows = await this.db.select().from(accountDeletionRequests).where(eq(accountDeletionRequests.id, id));
+    return rows[0] ? toRequest(rows[0]) : null;
   }
 
-  getPendingForTenant(tenantId: string): DeletionRequest | null {
-    const row = this.db
+  async getPendingForTenant(tenantId: string): Promise<DeletionRequest | null> {
+    const rows = await this.db
       .select()
       .from(accountDeletionRequests)
-      .where(and(eq(accountDeletionRequests.tenantId, tenantId), eq(accountDeletionRequests.status, "pending")))
-      .get();
-    return row ? toRequest(row) : null;
+      .where(and(eq(accountDeletionRequests.tenantId, tenantId), eq(accountDeletionRequests.status, "pending")));
+    return rows[0] ? toRequest(rows[0]) : null;
   }
 
-  cancel(id: string, reason: string): void {
-    this.db
+  async cancel(id: string, reason: string): Promise<void> {
+    await this.db
       .update(accountDeletionRequests)
       .set({
         status: "cancelled",
         cancelReason: reason,
-        updatedAt: sql`(datetime('now'))`,
+        updatedAt: sql`now()::text`,
       })
-      .where(and(eq(accountDeletionRequests.id, id), eq(accountDeletionRequests.status, "pending")))
-      .run();
+      .where(and(eq(accountDeletionRequests.id, id), eq(accountDeletionRequests.status, "pending")));
   }
 
-  markCompleted(id: string, summaryJson: string): void {
-    this.db
+  async markCompleted(id: string, summaryJson: string): Promise<void> {
+    await this.db
       .update(accountDeletionRequests)
       .set({
         status: "completed",
-        completedAt: sql`(datetime('now'))`,
+        completedAt: sql`now()::text`,
         deletionSummary: summaryJson,
-        updatedAt: sql`(datetime('now'))`,
+        updatedAt: sql`now()::text`,
       })
-      .where(eq(accountDeletionRequests.id, id))
-      .run();
+      .where(eq(accountDeletionRequests.id, id));
   }
 
-  findExpired(): DeletionRequest[] {
-    return this.db
+  async findExpired(): Promise<DeletionRequest[]> {
+    const rows = await this.db
       .select()
       .from(accountDeletionRequests)
       .where(
-        and(
-          eq(accountDeletionRequests.status, "pending"),
-          lte(accountDeletionRequests.deleteAfter, sql`(datetime('now'))`),
-        ),
-      )
-      .all()
-      .map(toRequest);
+        and(eq(accountDeletionRequests.status, "pending"), lte(accountDeletionRequests.deleteAfter, sql`now()::text`)),
+      );
+    return rows.map(toRequest);
   }
 }
 

@@ -25,7 +25,7 @@ export interface ScheduleTopupResult {
  */
 export async function runScheduledTopups(deps: ScheduleTopupDeps): Promise<ScheduleTopupResult> {
   const now = new Date().toISOString();
-  const due = deps.settingsRepo.listDueScheduled(now);
+  const due = await deps.settingsRepo.listDueScheduled(now);
 
   const result: ScheduleTopupResult = {
     processed: 0,
@@ -45,15 +45,15 @@ export async function runScheduledTopups(deps: ScheduleTopupDeps): Promise<Sched
       );
 
       // Always advance schedule_next_at (even on failure, to prevent hammer-retry)
-      deps.settingsRepo.advanceScheduleNextAt(settings.tenantId);
+      await deps.settingsRepo.advanceScheduleNextAt(settings.tenantId);
 
       if (chargeResult.success) {
-        deps.settingsRepo.resetScheduleFailures(settings.tenantId);
+        await deps.settingsRepo.resetScheduleFailures(settings.tenantId);
         result.succeeded.push(settings.tenantId);
       } else {
-        const failureCount = deps.settingsRepo.incrementScheduleFailures(settings.tenantId);
+        const failureCount = await deps.settingsRepo.incrementScheduleFailures(settings.tenantId);
         if (failureCount >= MAX_CONSECUTIVE_FAILURES) {
-          deps.settingsRepo.disableSchedule(settings.tenantId);
+          await deps.settingsRepo.disableSchedule(settings.tenantId);
           logger.warn("Schedule auto-topup disabled after consecutive failures", {
             tenantId: settings.tenantId,
             failureCount,
@@ -63,10 +63,10 @@ export async function runScheduledTopups(deps: ScheduleTopupDeps): Promise<Sched
       }
     } catch (err) {
       // Advance even on unexpected error
-      deps.settingsRepo.advanceScheduleNextAt(settings.tenantId);
-      const failureCount = deps.settingsRepo.incrementScheduleFailures(settings.tenantId);
+      await deps.settingsRepo.advanceScheduleNextAt(settings.tenantId);
+      const failureCount = await deps.settingsRepo.incrementScheduleFailures(settings.tenantId);
       if (failureCount >= MAX_CONSECUTIVE_FAILURES) {
-        deps.settingsRepo.disableSchedule(settings.tenantId);
+        await deps.settingsRepo.disableSchedule(settings.tenantId);
       }
       const msg = err instanceof Error ? err.message : String(err);
       logger.error("Schedule auto-topup unexpected error", { tenantId: settings.tenantId, error: msg });

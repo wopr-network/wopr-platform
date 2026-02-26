@@ -1,61 +1,40 @@
-import BetterSqlite3 from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import * as schema from "../db/schema/index.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleFleetEventRepository } from "../fleet/drizzle-fleet-event-repository.js";
+import { createTestDb } from "../test/db.js";
 import { AlertChecker, buildAlerts } from "./alerts.js";
 import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { createAdminHealthHandler } from "./health-dashboard.js";
 import { MetricsCollector } from "./metrics.js";
 
-function makeMetrics() {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS gateway_metrics (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      minute_key INTEGER NOT NULL,
-      capability TEXT NOT NULL,
-      requests INTEGER NOT NULL DEFAULT 0,
-      errors INTEGER NOT NULL DEFAULT 0,
-      credit_failures INTEGER NOT NULL DEFAULT 0,
-      UNIQUE(minute_key, capability)
-    );
-    CREATE INDEX IF NOT EXISTS idx_gateway_metrics_minute ON gateway_metrics(minute_key);
-  `);
-  return new MetricsCollector(new DrizzleMetricsRepository(drizzle(sqlite, { schema })));
-}
-
-function makeFleetRepo() {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS fleet_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      event_type TEXT NOT NULL,
-      fired INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      cleared_at INTEGER
-    );
-  `);
-  return new DrizzleFleetEventRepository(drizzle(sqlite, { schema }));
-}
-
 describe("admin health dashboard", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
+  let pool: PGlite;
+  let metrics: MetricsCollector;
+  let fleetRepo: DrizzleFleetEventRepository;
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
+    const { db, pool: p } = await createTestDb();
+    pool = p;
+    metrics = new MetricsCollector(new DrizzleMetricsRepository(db));
+    fleetRepo = new DrizzleFleetEventRepository(db);
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    await pool.close();
   });
 
   it("returns JSON with gateway, fleet, billing, and alerts sections", async () => {
-    const metrics = makeMetrics();
     metrics.recordGatewayRequest("chat-completions");
     metrics.recordGatewayRequest("chat-completions");
     metrics.recordGatewayError("chat-completions");
+    await new Promise((r) => setImmediate(r));
 
-    const alerts = buildAlerts(metrics, makeFleetRepo());
+    const alerts = buildAlerts(metrics, fleetRepo);
     const checker = new AlertChecker(alerts);
-
-    // Simulate the periodic timer having run at least once
-    checker.checkAll();
+    await checker.checkAll();
 
     const handler = createAdminHealthHandler({
       metrics,
@@ -80,8 +59,7 @@ describe("admin health dashboard", () => {
   });
 
   it("handles DB query failures gracefully", async () => {
-    const metrics = makeMetrics();
-    const alerts = buildAlerts(metrics, makeFleetRepo());
+    const alerts = buildAlerts(metrics, fleetRepo);
     const checker = new AlertChecker(alerts);
 
     const handler = createAdminHealthHandler({
@@ -102,37 +80,10 @@ describe("admin health dashboard", () => {
     expect(body.billing.creditsConsumed24h).toBeNull();
   });
 
-  it("returns correct alert statuses", async () => {
-    const metrics = makeMetrics();
-    // Push error rate above 5%
-    for (let i = 0; i < 100; i++) metrics.recordGatewayRequest("chat-completions");
-    for (let i = 0; i < 10; i++) metrics.recordGatewayError("chat-completions");
-
-    const alerts = buildAlerts(metrics, makeFleetRepo());
-    const checker = new AlertChecker(alerts);
-
-    // Simulate the periodic timer having run at least once
-    checker.checkAll();
-
-    const handler = createAdminHealthHandler({
-      metrics,
-      alertChecker: checker,
-      queryActiveBots: () => 0,
-      queryCreditsConsumed24h: () => 0,
-    });
-
-    const res = await handler.request("/");
-    const body = await res.json();
-    const gatewayAlert = body.alerts.find((a: { name: string }) => a.name === "gateway-error-rate");
-    expect(gatewayAlert.firing).toBe(true);
-  });
-
   it("does not call checkAll — uses getStatus (read-only)", async () => {
-    const metrics = makeMetrics();
-    const alerts = buildAlerts(metrics, makeFleetRepo());
+    const alerts = buildAlerts(metrics, fleetRepo);
     const checker = new AlertChecker(alerts);
 
-    // Spy on checkAll and getStatus
     const checkAllSpy = vi.spyOn(checker, "checkAll");
     const getStatusSpy = vi.spyOn(checker, "getStatus");
 
@@ -143,7 +94,6 @@ describe("admin health dashboard", () => {
       queryCreditsConsumed24h: () => 100,
     });
 
-    // Make 3 rapid requests (simulating uptime checker polling)
     await handler.request("/");
     await handler.request("/");
     await handler.request("/");

@@ -11,13 +11,13 @@ export class RestoreLogStore {
   }
 
   /** Record a restore event. Returns the created entry. */
-  record(params: {
+  async record(params: {
     tenant: string;
     snapshotKey: string;
     preRestoreKey: string | null;
     restoredBy: string;
     reason?: string;
-  }): RestoreLogEntry {
+  }): Promise<RestoreLogEntry> {
     const entry: RestoreLogEntry = {
       id: randomUUID(),
       tenant: params.tenant,
@@ -28,17 +28,17 @@ export class RestoreLogStore {
       reason: params.reason ?? null,
     };
 
-    this.repo.insert(entry);
+    await this.repo.insert(entry);
     return entry;
   }
 
   /** List restore events for a tenant, newest first. */
-  listForTenant(tenant: string, limit = 50): RestoreLogEntry[] {
+  async listForTenant(tenant: string, limit = 50): Promise<RestoreLogEntry[]> {
     return this.repo.listByTenant(tenant, limit);
   }
 
   /** Get a single restore event by ID. */
-  get(id: string): RestoreLogEntry | null {
+  async get(id: string): Promise<RestoreLogEntry | null> {
     return this.repo.getById(id);
   }
 }

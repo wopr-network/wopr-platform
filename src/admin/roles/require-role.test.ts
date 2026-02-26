@@ -7,9 +7,9 @@ import { createTestDb } from "../../test/db.js";
 import { requirePlatformAdmin, requireTenantAdmin } from "./require-role.js";
 import { RoleStore } from "./role-store.js";
 
-function createRoleTestDb(): { db: DrizzleDb; close: () => void } {
-  const { db, sqlite } = createTestDb();
-  return { db, close: () => sqlite.close() };
+async function createRoleTestDb(): Promise<{ db: DrizzleDb; close: () => Promise<void> }> {
+  const { db, pool } = await createTestDb();
+  return { db, close: () => pool.close() };
 }
 
 /** Helper to create a Hono app with a fake user injected. */
@@ -27,22 +27,22 @@ function appWithUser(user: AuthUser | null) {
 
 describe("requirePlatformAdmin middleware", () => {
   let db: DrizzleDb;
-  let close: () => void;
+  let close: () => Promise<void>;
   let store: RoleStore;
 
-  beforeEach(() => {
-    const t = createRoleTestDb();
+  beforeEach(async () => {
+    const t = await createRoleTestDb();
     db = t.db;
     close = t.close;
     store = new RoleStore(db);
   });
 
-  afterEach(() => {
-    close();
+  afterEach(async () => {
+    await close();
   });
 
   it("allows platform admins", async () => {
-    store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+    await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
     const app = appWithUser({ id: "admin-1", roles: [] });
     app.get("/test", requirePlatformAdmin(store), (c) => c.json({ ok: true }));
@@ -53,7 +53,7 @@ describe("requirePlatformAdmin middleware", () => {
   });
 
   it("rejects non-platform-admins", async () => {
-    store.setRole("user-1", "tenant-1", "user", null);
+    await store.setRole("user-1", "tenant-1", "user", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
     app.get("/test", requirePlatformAdmin(store), (c) => c.json({ ok: true }));
@@ -73,22 +73,22 @@ describe("requirePlatformAdmin middleware", () => {
 
 describe("requireTenantAdmin middleware", () => {
   let db: DrizzleDb;
-  let close: () => void;
+  let close: () => Promise<void>;
   let store: RoleStore;
 
-  beforeEach(() => {
-    const t = createRoleTestDb();
+  beforeEach(async () => {
+    const t = await createRoleTestDb();
     db = t.db;
     close = t.close;
     store = new RoleStore(db);
   });
 
-  afterEach(() => {
-    close();
+  afterEach(async () => {
+    await close();
   });
 
   it("allows platform admins for any tenant", async () => {
-    store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+    await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
     const app = appWithUser({ id: "admin-1", roles: [] });
     app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
@@ -98,7 +98,7 @@ describe("requireTenantAdmin middleware", () => {
   });
 
   it("allows tenant admins for their own tenant", async () => {
-    store.setRole("user-1", "tenant-1", "tenant_admin", null);
+    await store.setRole("user-1", "tenant-1", "tenant_admin", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
     app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
@@ -108,7 +108,7 @@ describe("requireTenantAdmin middleware", () => {
   });
 
   it("rejects tenant admins for other tenants", async () => {
-    store.setRole("user-1", "tenant-1", "tenant_admin", null);
+    await store.setRole("user-1", "tenant-1", "tenant_admin", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
     app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
@@ -118,7 +118,7 @@ describe("requireTenantAdmin middleware", () => {
   });
 
   it("rejects regular users", async () => {
-    store.setRole("user-1", "tenant-1", "user", null);
+    await store.setRole("user-1", "tenant-1", "user", null);
 
     const app = appWithUser({ id: "user-1", roles: [] });
     app.get("/tenants/:tenantId", requireTenantAdmin(store), (c) => c.json({ ok: true }));
@@ -138,18 +138,18 @@ describe("requireTenantAdmin middleware", () => {
 
 describe("admin roles API routes", () => {
   let db: DrizzleDb;
-  let close: () => void;
+  let close: () => Promise<void>;
   let store: RoleStore;
 
-  beforeEach(() => {
-    const t = createRoleTestDb();
+  beforeEach(async () => {
+    const t = await createRoleTestDb();
     db = t.db;
     close = t.close;
     store = new RoleStore(db);
   });
 
-  afterEach(() => {
-    close();
+  afterEach(async () => {
+    await close();
   });
 
   function buildApp(userId: string) {
@@ -161,9 +161,9 @@ describe("admin roles API routes", () => {
 
   describe("GET /api/admin/roles/:tenantId", () => {
     it("platform admin can list roles for any tenant", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
-      store.setRole("user-2", "tenant-1", "tenant_admin", "admin-1");
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
+      await store.setRole("user-2", "tenant-1", "tenant_admin", "admin-1");
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/roles/tenant-1");
@@ -174,8 +174,8 @@ describe("admin roles API routes", () => {
     });
 
     it("tenant admin can list roles for their own tenant", async () => {
-      store.setRole("ta-1", "tenant-1", "tenant_admin", null);
-      store.setRole("user-1", "tenant-1", "user", "ta-1");
+      await store.setRole("ta-1", "tenant-1", "tenant_admin", null);
+      await store.setRole("user-1", "tenant-1", "user", "ta-1");
 
       const app = buildApp("ta-1");
       const res = await app.request("/api/admin/roles/tenant-1");
@@ -186,7 +186,7 @@ describe("admin roles API routes", () => {
     });
 
     it("regular user cannot list roles", async () => {
-      store.setRole("user-1", "tenant-1", "user", null);
+      await store.setRole("user-1", "tenant-1", "user", null);
 
       const app = buildApp("user-1");
       const res = await app.request("/api/admin/roles/tenant-1");
@@ -196,7 +196,7 @@ describe("admin roles API routes", () => {
 
   describe("PUT /api/admin/roles/:tenantId/:userId", () => {
     it("platform admin can set role in any tenant", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/roles/tenant-1/user-1", {
@@ -205,11 +205,11 @@ describe("admin roles API routes", () => {
         body: JSON.stringify({ role: "user" }),
       });
       expect(res.status).toBe(200);
-      expect(store.getRole("user-1", "tenant-1")).toBe("user");
+      expect(await store.getRole("user-1", "tenant-1")).toBe("user");
     });
 
     it("tenant admin can set role in their own tenant", async () => {
-      store.setRole("ta-1", "tenant-1", "tenant_admin", null);
+      await store.setRole("ta-1", "tenant-1", "tenant_admin", null);
 
       const app = buildApp("ta-1");
       const res = await app.request("/api/admin/roles/tenant-1/user-1", {
@@ -218,11 +218,11 @@ describe("admin roles API routes", () => {
         body: JSON.stringify({ role: "user" }),
       });
       expect(res.status).toBe(200);
-      expect(store.getRole("user-1", "tenant-1")).toBe("user");
+      expect(await store.getRole("user-1", "tenant-1")).toBe("user");
     });
 
     it("rejects invalid role", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/roles/tenant-1/user-1", {
@@ -234,7 +234,7 @@ describe("admin roles API routes", () => {
     });
 
     it("only platform admin can grant platform_admin role", async () => {
-      store.setRole("ta-1", "tenant-1", "tenant_admin", null);
+      await store.setRole("ta-1", "tenant-1", "tenant_admin", null);
 
       const app = buildApp("ta-1");
       const res = await app.request("/api/admin/roles/tenant-1/user-1", {
@@ -246,7 +246,7 @@ describe("admin roles API routes", () => {
     });
 
     it("rejects empty body", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/roles/tenant-1/user-1", {
@@ -260,17 +260,17 @@ describe("admin roles API routes", () => {
 
   describe("DELETE /api/admin/roles/:tenantId/:userId", () => {
     it("platform admin can remove role", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      store.setRole("user-1", "tenant-1", "user", "admin-1");
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("user-1", "tenant-1", "user", "admin-1");
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/roles/tenant-1/user-1", { method: "DELETE" });
       expect(res.status).toBe(200);
-      expect(store.getRole("user-1", "tenant-1")).toBeNull();
+      expect(await store.getRole("user-1", "tenant-1")).toBeNull();
     });
 
     it("returns 404 for non-existent role", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/roles/tenant-1/user-999", { method: "DELETE" });
@@ -280,8 +280,8 @@ describe("admin roles API routes", () => {
 
   describe("GET /api/admin/platform-admins", () => {
     it("lists all platform admins", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/platform-admins");
@@ -292,7 +292,7 @@ describe("admin roles API routes", () => {
     });
 
     it("rejects non-platform-admins", async () => {
-      store.setRole("user-1", "tenant-1", "user", null);
+      await store.setRole("user-1", "tenant-1", "user", null);
 
       const app = buildApp("user-1");
       const res = await app.request("/api/admin/platform-admins");
@@ -302,7 +302,7 @@ describe("admin roles API routes", () => {
 
   describe("POST /api/admin/platform-admins", () => {
     it("adds a platform admin", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/platform-admins", {
@@ -311,11 +311,11 @@ describe("admin roles API routes", () => {
         body: JSON.stringify({ userId: "user-2" }),
       });
       expect(res.status).toBe(200);
-      expect(store.isPlatformAdmin("user-2")).toBe(true);
+      expect(await store.isPlatformAdmin("user-2")).toBe(true);
     });
 
     it("rejects missing userId", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/platform-admins", {
@@ -329,17 +329,17 @@ describe("admin roles API routes", () => {
 
   describe("DELETE /api/admin/platform-admins/:userId", () => {
     it("removes a platform admin", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
-      store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-2", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/platform-admins/admin-2", { method: "DELETE" });
       expect(res.status).toBe(200);
-      expect(store.isPlatformAdmin("admin-2")).toBe(false);
+      expect(await store.isPlatformAdmin("admin-2")).toBe(false);
     });
 
     it("prevents removing the last platform admin", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/platform-admins/admin-1", { method: "DELETE" });
@@ -350,7 +350,7 @@ describe("admin roles API routes", () => {
     });
 
     it("returns 404 for non-existent platform admin", async () => {
-      store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
+      await store.setRole("admin-1", RoleStore.PLATFORM_TENANT, "platform_admin", null);
 
       const app = buildApp("admin-1");
       const res = await app.request("/api/admin/platform-admins/user-999", { method: "DELETE" });

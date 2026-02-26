@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Bot profiles table — stores bot configuration templates.
@@ -8,7 +8,7 @@ import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
  * Each profile defines a bot's container configuration: image, env vars,
  * restart policy, update policy, release channel, and discovery settings.
  */
-export const botProfiles = sqliteTable(
+export const botProfiles = pgTable(
   "bot_profiles",
   {
     /** Bot UUID (matches fleet profile ID) */
@@ -34,9 +34,9 @@ export const botProfiles = sqliteTable(
     /** Human-readable description */
     description: text("description").notNull().default(""),
     /** ISO timestamp of record creation */
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
     /** ISO timestamp of last update */
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
   },
   (table) => [
     index("idx_bot_profiles_tenant").on(table.tenantId),

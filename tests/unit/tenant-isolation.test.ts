@@ -50,9 +50,13 @@
  * - All /fleet/* and /api/tenant-keys/* routes use scopedBearerAuthWithTenant()
  */
 
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BotProfile, BotStatus } from "../../src/fleet/types.js";
+import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb } from "../../src/test/db.js";
+import { TenantKeyStore } from "../../src/security/tenant-keys/schema.js";
 
 // ---------------------------------------------------------------------------
 // Two tenant-scoped tokens — MUST be set before any module import
@@ -150,11 +154,6 @@ vi.mock("../../src/network/network-policy.js", () => ({
   NetworkPolicy: class {
     prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
     cleanupAfterRemoval = vi.fn().mockResolvedValue(undefined);
-  },
-}));
-vi.mock("better-sqlite3", () => ({
-  default: class MockDatabase {
-    pragma = vi.fn();
   },
 }));
 vi.mock("../../src/monetization/credits/credit-ledger.js", () => ({
@@ -380,7 +379,7 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
 
   // -------------------------------------------------------------------------
   // PATCH /fleet/bots/:id
-  // -------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   it("org A cannot update org B's bot via PATCH /fleet/bots/:id", async () => {
     const res = await fleetApp.request(`/fleet/bots/${BOT_B_ID}`, {
@@ -429,15 +428,6 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
 // Tenant-key route isolation tests
 // ---------------------------------------------------------------------------
 
-// We need the real BetterSqlite3 (not the mocked one used by fleet tests).
-// Use vi.importActual to get the real module.
-import type { Database as BetterSqlite3Database } from "better-sqlite3";
-import { TenantKeyStore } from "../../src/security/tenant-keys/schema.js";
-
-const ActualBetterSqlite3 = (
-  await vi.importActual<typeof import("better-sqlite3")>("better-sqlite3")
-).default as new (path: string) => BetterSqlite3Database;
-
 // Import tenant-key routes (shares the same mocked FLEET_TOKEN env vars)
 const { tenantKeyRoutes, setStore } = await import("../../src/api/routes/tenant-keys.js");
 
@@ -445,18 +435,18 @@ const keysApp = new Hono();
 keysApp.route("/api/tenant-keys", tenantKeyRoutes);
 
 describe("tenant isolation — tenant-key routes (WOP-822)", () => {
-  let sqlite: BetterSqlite3Database;
+  let pool: PGlite;
+  let db: DrizzleDb;
   let store: TenantKeyStore;
 
-  beforeEach(() => {
-    // Use real SQLite in-memory DB — TenantKeyStore handles its own schema
-    sqlite = new ActualBetterSqlite3(":memory:");
-    store = new TenantKeyStore(sqlite);
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    store = new TenantKeyStore(db);
     setStore(store);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("org A cannot list org B's keys", async () => {
@@ -503,7 +493,7 @@ describe("tenant isolation — tenant-key routes (WOP-822)", () => {
     expect(res.status).toBe(404);
 
     // Verify the key still exists for tenant B
-    const record = store.get(TENANT_B, "anthropic");
+    const record = await store.get(TENANT_B, "anthropic");
     expect(record).toBeDefined();
   });
 

@@ -1,4 +1,4 @@
-import Database from "better-sqlite3";
+import Database, { type Database as SqliteDatabase } from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   generateVerificationToken,
@@ -9,7 +9,7 @@ import {
 } from "./verification.js";
 
 describe("email verification", () => {
-  let db: Database.Database;
+  let db: SqliteDatabase;
 
   beforeEach(() => {
     db = new Database(":memory:");

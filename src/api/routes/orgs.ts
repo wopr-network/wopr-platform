@@ -29,16 +29,26 @@ export function createOrgRoutes(deps: OrgRouteDeps | (() => OrgRouteDeps)): Hono
     const slug = body.slug?.trim() || undefined;
 
     try {
-      const org = orgRepo.createOrg(user.id, name, slug);
+      const org = await orgRepo.createOrg(user.id, name, slug);
       // Assign creator as tenant_admin
-      roleStore.setRole(user.id, org.id, "tenant_admin", user.id);
+      await roleStore.setRole(user.id, org.id, "tenant_admin", user.id);
       return c.json({ id: org.id, name: org.name, slug: org.slug, type: org.type }, 201);
     } catch (err: unknown) {
       if (err instanceof Error && (err as { status?: number }).status === 400) {
         return c.json({ error: err.message }, 400);
       }
-      // SQLite UNIQUE constraint violation
-      if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
+      // PostgreSQL or SQLite UNIQUE constraint violation
+      const cause = err instanceof Error ? (err.cause as Error | undefined) : undefined;
+      const causeMsg = cause?.message ?? "";
+      const causeCode = (cause as { code?: string } | undefined)?.code;
+      if (
+        err instanceof Error &&
+        (err.message.includes("UNIQUE constraint failed") ||
+          err.message.includes("duplicate key value") ||
+          (err as { code?: string }).code === "23505" ||
+          causeMsg.includes("duplicate key value") ||
+          causeCode === "23505")
+      ) {
         return c.json({ error: "An org with this slug already exists" }, 409);
       }
       throw err;
@@ -46,14 +56,14 @@ export function createOrgRoutes(deps: OrgRouteDeps | (() => OrgRouteDeps)): Hono
   });
 
   // GET /api/orgs — list orgs the current user owns
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const { orgRepo } = getDeps();
     const user = c.get("user");
     if (!user) {
       return c.json({ error: "Authentication required" }, 401);
     }
 
-    const orgs = orgRepo.listOrgsByOwner(user.id);
+    const orgs = await orgRepo.listOrgsByOwner(user.id);
     return c.json({
       orgs: orgs.map((o) => ({ id: o.id, name: o.name, slug: o.slug, type: o.type })),
     });

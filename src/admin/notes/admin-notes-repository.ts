@@ -4,8 +4,12 @@ import type { AdminNote, AdminNoteFilters, AdminNoteInput } from "../admin-repos
 export type { AdminNote, AdminNoteFilters, AdminNoteInput };
 
 export interface IAdminNotesRepository {
-  create(input: AdminNoteInput): AdminNote;
-  list(filters: AdminNoteFilters): { entries: AdminNote[]; total: number };
-  update(noteId: string, tenantId: string, updates: { content?: string; isPinned?: boolean }): AdminNote | null;
-  delete(noteId: string, tenantId: string): boolean;
+  create(input: AdminNoteInput): Promise<AdminNote>;
+  list(filters: AdminNoteFilters): Promise<{ entries: AdminNote[]; total: number }>;
+  update(
+    noteId: string,
+    tenantId: string,
+    updates: { content?: string; isPinned?: boolean },
+  ): Promise<AdminNote | null>;
+  delete(noteId: string, tenantId: string): Promise<boolean>;
 }

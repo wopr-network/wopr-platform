@@ -1,8 +1,8 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../../db/schema/index.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
 import { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
+import { createTestDb } from "../../test/db.js";
 
 /**
  * Tests for token-based registration in internal-nodes route.
@@ -11,79 +11,46 @@ import { RegistrationTokenStore } from "../../fleet/registration-token-store.js"
  * to keep tests fast and focused.
  */
 
-function makeDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS node_registration_tokens (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      label TEXT,
-      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      expires_at INTEGER NOT NULL,
-      used INTEGER NOT NULL DEFAULT 0,
-      node_id TEXT,
-      used_at INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS nodes (
-      id TEXT PRIMARY KEY,
-      host TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'active',
-      capacity_mb INTEGER NOT NULL,
-      used_mb INTEGER NOT NULL DEFAULT 0,
-      agent_version TEXT,
-      last_heartbeat_at INTEGER,
-      registered_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      droplet_id TEXT,
-      region TEXT,
-      size TEXT,
-      monthly_cost_cents INTEGER,
-      provision_stage TEXT,
-      last_error TEXT,
-      drain_status TEXT,
-      drain_migrated INTEGER,
-      drain_total INTEGER,
-      owner_user_id TEXT,
-      node_secret TEXT,
-      label TEXT
-    );
-  `);
-  return drizzle(sqlite, { schema });
-}
-
 describe("RegistrationTokenStore integration with node registration", () => {
   let tokenStore: RegistrationTokenStore;
+  let db: DrizzleDb;
+  let pool: PGlite;
 
-  beforeEach(() => {
-    tokenStore = new RegistrationTokenStore(makeDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    tokenStore = new RegistrationTokenStore(db);
   });
 
-  it("creates a valid token that can be consumed once", () => {
-    const { token } = tokenStore.create("user-abc", "Test Node");
-    const result = tokenStore.consume(token, "self-node-1");
+  afterEach(async () => {
+    await pool.close();
+  });
+
+  it("creates a valid token that can be consumed once", async () => {
+    const { token } = await tokenStore.create("user-abc", "Test Node");
+    const result = await tokenStore.consume(token, "self-node-1");
     expect(result).not.toBeNull();
     expect(result?.userId).toBe("user-abc");
     expect(result?.label).toBe("Test Node");
   });
 
-  it("token cannot be consumed twice (replay prevention)", () => {
-    const { token } = tokenStore.create("user-abc");
-    tokenStore.consume(token, "self-node-1");
-    const result = tokenStore.consume(token, "self-node-2");
+  it("token cannot be consumed twice (replay prevention)", async () => {
+    const { token } = await tokenStore.create("user-abc");
+    await tokenStore.consume(token, "self-node-1");
+    const result = await tokenStore.consume(token, "self-node-2");
     expect(result).toBeNull();
   });
 
-  it("invalid token returns null", () => {
-    const result = tokenStore.consume("not-a-real-token", "self-node-1");
+  it("invalid token returns null", async () => {
+    const result = await tokenStore.consume("not-a-real-token", "self-node-1");
     expect(result).toBeNull();
   });
 
-  it("listActive excludes consumed tokens", () => {
-    const { token: t1 } = tokenStore.create("user-abc", "Node A");
-    const { token: t2 } = tokenStore.create("user-abc", "Node B");
-    tokenStore.consume(t1, "self-node-1");
+  it("listActive excludes consumed tokens", async () => {
+    const { token: t1 } = await tokenStore.create("user-abc", "Node A");
+    const { token: t2 } = await tokenStore.create("user-abc", "Node B");
+    await tokenStore.consume(t1, "self-node-1");
 
-    const active = tokenStore.listActive("user-abc");
+    const active = await tokenStore.listActive("user-abc");
     expect(active).toHaveLength(1);
     expect(active[0].id).toBe(t2);
   });

@@ -43,7 +43,7 @@ export function auditLog(logger: AuditLogger, action: AuditAction) {
     }
 
     try {
-      logger.log({
+      await logger.log({
         userId: user.id,
         authMethod,
         action,

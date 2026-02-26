@@ -74,14 +74,15 @@ export class RateStore {
 
   // ── Sell Rates ──
 
-  createSellRate(input: SellRateInput): SellRate {
+  async createSellRate(input: SellRateInput): Promise<SellRate> {
     // Check for existing NULL-model sell rate for this capability (application-level uniqueness)
     if (!input.model) {
-      const existing = this.db
-        .select({ id: sellRates.id })
-        .from(sellRates)
-        .where(and(eq(sellRates.capability, input.capability), isNull(sellRates.model)))
-        .get();
+      const existing = (
+        await this.db
+          .select({ id: sellRates.id })
+          .from(sellRates)
+          .where(and(eq(sellRates.capability, input.capability), isNull(sellRates.model)))
+      )[0];
       if (existing) {
         throw new Error(`A sell rate with capability '${input.capability}' and NULL model already exists`);
       }
@@ -92,40 +93,38 @@ export class RateStore {
     const isActive = input.isActive ?? true;
     const sortOrder = input.sortOrder ?? 0;
 
-    this.db
-      .insert(sellRates)
-      .values({
-        id,
-        capability: input.capability,
-        displayName: input.displayName,
-        unit: input.unit,
-        priceUsd: input.priceUsd,
-        model: input.model ?? null,
-        isActive: isActive ? 1 : 0,
-        sortOrder,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    await this.db.insert(sellRates).values({
+      id,
+      capability: input.capability,
+      displayName: input.displayName,
+      unit: input.unit,
+      priceUsd: input.priceUsd,
+      model: input.model ?? null,
+      isActive: isActive ? 1 : 0,
+      sortOrder,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-    return this.getSellRate(id) as SellRate;
+    return (await this.getSellRate(id)) as SellRate;
   }
 
-  updateSellRate(id: string, input: Partial<SellRateInput>): SellRate {
-    const existing = this.getSellRate(id);
+  async updateSellRate(id: string, input: Partial<SellRateInput>): Promise<SellRate> {
+    const existing = await this.getSellRate(id);
     if (!existing) {
       throw new Error(`Sell rate with id '${id}' not found`);
     }
 
     // Check NULL-model uniqueness if changing model to NULL
     if ("model" in input && !input.model) {
-      const duplicate = this.db
-        .select({ id: sellRates.id })
-        .from(sellRates)
-        .where(
-          and(eq(sellRates.capability, existing.capability), isNull(sellRates.model), sql`${sellRates.id} != ${id}`),
-        )
-        .get();
+      const duplicate = (
+        await this.db
+          .select({ id: sellRates.id })
+          .from(sellRates)
+          .where(
+            and(eq(sellRates.capability, existing.capability), isNull(sellRates.model), sql`${sellRates.id} != ${id}`),
+          )
+      )[0];
       if (duplicate) {
         throw new Error(`A sell rate with capability '${existing.capability}' and NULL model already exists`);
       }
@@ -142,84 +141,83 @@ export class RateStore {
     if (input.sortOrder !== undefined) setValues.sortOrder = input.sortOrder;
     setValues.updatedAt = new Date().toISOString();
 
-    this.db.update(sellRates).set(setValues).where(eq(sellRates.id, id)).run();
+    await this.db.update(sellRates).set(setValues).where(eq(sellRates.id, id));
 
-    return this.getSellRate(id) as SellRate;
+    return (await this.getSellRate(id)) as SellRate;
   }
 
-  deleteSellRate(id: string): boolean {
-    const result = this.db.delete(sellRates).where(eq(sellRates.id, id)).run();
-    return result.changes > 0;
+  async deleteSellRate(id: string): Promise<boolean> {
+    const result = await this.db.delete(sellRates).where(eq(sellRates.id, id)).returning({ id: sellRates.id });
+    return result.length > 0;
   }
 
-  getSellRate(id: string): SellRate | null {
-    const row = this.db.select().from(sellRates).where(eq(sellRates.id, id)).get();
-    return row ? toSellRate(row) : null;
+  async getSellRate(id: string): Promise<SellRate | null> {
+    const rows = await this.db.select().from(sellRates).where(eq(sellRates.id, id));
+    return rows[0] ? toSellRate(rows[0]) : null;
   }
 
   /** Look up an active sell rate by capability and model. Returns null if not found. */
-  getSellRateByModel(capability: string, model: string, unit?: string): SellRate | null {
-    // raw SQL: Drizzle cannot express the optional unit filter clause that is conditionally
-    // appended to the query depending on whether the unit parameter is provided
-    const sqlite = this.db.$client;
-    const unitClause = unit ? " AND unit = ?" : "";
-    const params: unknown[] = unit ? [capability, model, unit] : [capability, model];
-    const result = sqlite
-      .prepare(
-        `SELECT * FROM sell_rates WHERE capability = ? AND model = ? AND is_active = 1${unitClause} ORDER BY sort_order ASC, created_at ASC LIMIT 1`,
-      )
-      .get(...params);
-    return (result as SellRate) ?? null;
+  async getSellRateByModel(capability: string, model: string, unit?: string): Promise<SellRate | null> {
+    const conditions = [eq(sellRates.capability, capability), eq(sellRates.model, model), eq(sellRates.isActive, 1)];
+    if (unit !== undefined) {
+      conditions.push(eq(sellRates.unit, unit));
+    }
+    const rows = await this.db
+      .select()
+      .from(sellRates)
+      .where(and(...conditions))
+      .orderBy(asc(sellRates.sortOrder), asc(sellRates.createdAt))
+      .limit(1);
+    return rows[0] ? toSellRate(rows[0]) : null;
   }
 
-  listSellRates(filters?: RateFilters): { entries: SellRate[]; total: number } {
+  async listSellRates(filters?: RateFilters): Promise<{ entries: SellRate[]; total: number }> {
     const wheres = buildSellRateWheres(filters);
 
-    const countResult = this.db.select({ count: count() }).from(sellRates).where(wheres).get();
+    const countResult = (await this.db.select({ count: count() }).from(sellRates).where(wheres))[0];
     const total = countResult?.count ?? 0;
 
     const limit = Math.min(filters?.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     const offset = filters?.offset ?? 0;
 
-    const rows = this.db
+    const rows = await this.db
       .select()
       .from(sellRates)
       .where(wheres)
       .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder), asc(sellRates.displayName))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     return { entries: rows.map(toSellRate), total };
   }
 
   /** List only active sell rates, ordered by capability + sort_order. For public pricing endpoint. */
-  listPublicRates(): SellRate[] {
-    const rows = this.db
+  async listPublicRates(): Promise<SellRate[]> {
+    const rows = await this.db
       .select()
       .from(sellRates)
       .where(eq(sellRates.isActive, 1))
-      .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder), asc(sellRates.displayName))
-      .all();
+      .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder), asc(sellRates.displayName));
     return rows.map(toSellRate);
   }
 
   // ── Provider Costs ──
 
-  createProviderCost(input: ProviderCostInput): ProviderCost {
+  async createProviderCost(input: ProviderCostInput): Promise<ProviderCost> {
     // Check for existing NULL-model provider cost (application-level uniqueness)
     if (!input.model) {
-      const existing = this.db
-        .select({ id: providerCosts.id })
-        .from(providerCosts)
-        .where(
-          and(
-            eq(providerCosts.capability, input.capability),
-            eq(providerCosts.adapter, input.adapter),
-            isNull(providerCosts.model),
-          ),
-        )
-        .get();
+      const existing = (
+        await this.db
+          .select({ id: providerCosts.id })
+          .from(providerCosts)
+          .where(
+            and(
+              eq(providerCosts.capability, input.capability),
+              eq(providerCosts.adapter, input.adapter),
+              isNull(providerCosts.model),
+            ),
+          )
+      )[0];
       if (existing) {
         throw new Error(
           `A provider cost with capability '${input.capability}', adapter '${input.adapter}', and NULL model already exists`,
@@ -233,46 +231,44 @@ export class RateStore {
     const priority = input.priority ?? 0;
     const latencyClass = input.latencyClass ?? "standard";
 
-    this.db
-      .insert(providerCosts)
-      .values({
-        id,
-        capability: input.capability,
-        adapter: input.adapter,
-        model: input.model ?? null,
-        unit: input.unit,
-        costUsd: input.costUsd,
-        priority,
-        latencyClass,
-        isActive: isActive ? 1 : 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    await this.db.insert(providerCosts).values({
+      id,
+      capability: input.capability,
+      adapter: input.adapter,
+      model: input.model ?? null,
+      unit: input.unit,
+      costUsd: input.costUsd,
+      priority,
+      latencyClass,
+      isActive: isActive ? 1 : 0,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-    return this.getProviderCost(id) as ProviderCost;
+    return (await this.getProviderCost(id)) as ProviderCost;
   }
 
-  updateProviderCost(id: string, input: Partial<ProviderCostInput>): ProviderCost {
-    const existing = this.getProviderCost(id);
+  async updateProviderCost(id: string, input: Partial<ProviderCostInput>): Promise<ProviderCost> {
+    const existing = await this.getProviderCost(id);
     if (!existing) {
       throw new Error(`Provider cost with id '${id}' not found`);
     }
 
     // Check NULL-model uniqueness if changing model to NULL
     if ("model" in input && !input.model) {
-      const duplicate = this.db
-        .select({ id: providerCosts.id })
-        .from(providerCosts)
-        .where(
-          and(
-            eq(providerCosts.capability, existing.capability),
-            eq(providerCosts.adapter, existing.adapter),
-            isNull(providerCosts.model),
-            sql`${providerCosts.id} != ${id}`,
-          ),
-        )
-        .get();
+      const duplicate = (
+        await this.db
+          .select({ id: providerCosts.id })
+          .from(providerCosts)
+          .where(
+            and(
+              eq(providerCosts.capability, existing.capability),
+              eq(providerCosts.adapter, existing.adapter),
+              isNull(providerCosts.model),
+              sql`${providerCosts.id} != ${id}`,
+            ),
+          )
+      )[0];
       if (duplicate) {
         throw new Error(
           `A provider cost with capability '${existing.capability}', adapter '${existing.adapter}', and NULL model already exists`,
@@ -292,38 +288,40 @@ export class RateStore {
     if (input.isActive !== undefined) setValues.isActive = input.isActive ? 1 : 0;
     setValues.updatedAt = new Date().toISOString();
 
-    this.db.update(providerCosts).set(setValues).where(eq(providerCosts.id, id)).run();
+    await this.db.update(providerCosts).set(setValues).where(eq(providerCosts.id, id));
 
-    return this.getProviderCost(id) as ProviderCost;
+    return (await this.getProviderCost(id)) as ProviderCost;
   }
 
-  deleteProviderCost(id: string): boolean {
-    const result = this.db.delete(providerCosts).where(eq(providerCosts.id, id)).run();
-    return result.changes > 0;
+  async deleteProviderCost(id: string): Promise<boolean> {
+    const result = await this.db
+      .delete(providerCosts)
+      .where(eq(providerCosts.id, id))
+      .returning({ id: providerCosts.id });
+    return result.length > 0;
   }
 
-  getProviderCost(id: string): ProviderCost | null {
-    const row = this.db.select().from(providerCosts).where(eq(providerCosts.id, id)).get();
-    return row ? toProviderCost(row) : null;
+  async getProviderCost(id: string): Promise<ProviderCost | null> {
+    const rows = await this.db.select().from(providerCosts).where(eq(providerCosts.id, id));
+    return rows[0] ? toProviderCost(rows[0]) : null;
   }
 
-  listProviderCosts(filters?: ProviderCostFilters): { entries: ProviderCost[]; total: number } {
+  async listProviderCosts(filters?: ProviderCostFilters): Promise<{ entries: ProviderCost[]; total: number }> {
     const wheres = buildProviderCostWheres(filters);
 
-    const countResult = this.db.select({ count: count() }).from(providerCosts).where(wheres).get();
+    const countResult = (await this.db.select({ count: count() }).from(providerCosts).where(wheres))[0];
     const total = countResult?.count ?? 0;
 
     const limit = Math.min(filters?.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
     const offset = filters?.offset ?? 0;
 
-    const rows = this.db
+    const rows = await this.db
       .select()
       .from(providerCosts)
       .where(wheres)
       .orderBy(asc(providerCosts.capability), asc(providerCosts.priority), asc(providerCosts.adapter))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     return { entries: rows.map(toProviderCost), total };
   }
@@ -331,41 +329,44 @@ export class RateStore {
   // ── Margin Reporting ──
 
   /** Get combined sell rate + provider cost for margin calculation */
-  getMarginReport(capability?: string): Array<{
-    capability: string;
-    sellRate: SellRate;
-    providerCosts: ProviderCost[];
-    bestMarginPct: number;
-  }> {
+  async getMarginReport(capability?: string): Promise<
+    Array<{
+      capability: string;
+      sellRate: SellRate;
+      providerCosts: ProviderCost[];
+      bestMarginPct: number;
+    }>
+  > {
     const wheres = capability ? eq(sellRates.capability, capability) : undefined;
 
-    const allSellRates = this.db
+    const allSellRates = await this.db
       .select()
       .from(sellRates)
       .where(wheres)
-      .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder))
-      .all();
+      .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder));
 
-    return allSellRates.map((sr) => {
-      const costs = this.db
-        .select()
-        .from(providerCosts)
-        .where(eq(providerCosts.capability, sr.capability))
-        .orderBy(asc(providerCosts.priority), asc(providerCosts.costUsd))
-        .all()
-        .map(toProviderCost);
+    const result = [];
+    for (const sr of allSellRates) {
+      const costs = (
+        await this.db
+          .select()
+          .from(providerCosts)
+          .where(eq(providerCosts.capability, sr.capability))
+          .orderBy(asc(providerCosts.priority), asc(providerCosts.costUsd))
+      ).map(toProviderCost);
 
       const sellRate = toSellRate(sr);
       const minCost = costs.length > 0 ? Math.min(...costs.map((pc) => pc.cost_usd)) : 0;
       const bestMarginPct = sellRate.price_usd > 0 ? ((sellRate.price_usd - minCost) / sellRate.price_usd) * 100 : 0;
 
-      return {
+      result.push({
         capability: sellRate.capability,
         sellRate,
         providerCosts: costs,
         bestMarginPct,
-      };
-    });
+      });
+    }
+    return result;
   }
 }
 

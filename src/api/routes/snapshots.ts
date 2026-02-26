@@ -13,7 +13,15 @@ const tokenMetadataMap = buildTokenMetadataMap();
 /** Validates that an instance/snapshot ID contains only safe characters (no path traversal). */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
+let _testSnapshotManager: SnapshotManager | undefined;
+
+/** For testing only: inject a mock snapshot manager to avoid DATABASE_URL dependency. */
+export function setSnapshotManagerForTest(manager: SnapshotManager | undefined): void {
+  _testSnapshotManager = manager;
+}
+
 function getManager(): SnapshotManager {
+  if (_testSnapshotManager) return _testSnapshotManager;
   return getSnapshotManager();
 }
 
@@ -118,7 +126,7 @@ snapshotRoutes.get("/", async (c) => {
     return ownershipError;
   }
 
-  const snapshots = getManager().list(instanceId);
+  const snapshots = await getManager().list(instanceId);
   return c.json({ snapshots });
 });
 
@@ -141,7 +149,7 @@ snapshotRoutes.post("/:sid/restore", writeAuth, async (c) => {
   const manager = getManager();
 
   // Verify the snapshot belongs to this instance
-  const snapshot = manager.get(snapshotId);
+  const snapshot = await manager.get(snapshotId);
   if (!snapshot) {
     return c.json({ error: `Snapshot not found: ${snapshotId}` }, 404);
   }
@@ -179,7 +187,7 @@ snapshotRoutes.delete("/:sid", writeAuth, async (c) => {
   const manager = getManager();
 
   // Verify the snapshot belongs to this instance
-  const snapshot = manager.get(snapshotId);
+  const snapshot = await manager.get(snapshotId);
   if (!snapshot) {
     return c.json({ error: `Snapshot not found: ${snapshotId}` }, 404);
   }

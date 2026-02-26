@@ -27,112 +27,101 @@ function toNodeTransition(row: TransitionRow): NodeTransition {
 export class DrizzleNodeRepository implements INodeRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  getById(id: string): Node | null {
-    const row = this.db.select().from(nodes).where(eq(nodes.id, id)).get() ?? null;
-    return row ? toNode(row) : null;
+  async getById(id: string): Promise<Node | null> {
+    const rows = await this.db.select().from(nodes).where(eq(nodes.id, id));
+    return rows[0] ? toNode(rows[0]) : null;
   }
 
-  getBySecret(secret: string): Node | null {
+  async getBySecret(secret: string): Promise<Node | null> {
     const hash = createHash("sha256").update(secret).digest("hex");
-    const row = this.db.select().from(nodes).where(eq(nodes.nodeSecret, hash)).get() ?? null;
-    return row ? toNode(row) : null;
+    const rows = await this.db.select().from(nodes).where(eq(nodes.nodeSecret, hash));
+    return rows[0] ? toNode(rows[0]) : null;
   }
 
-  list(statuses?: NodeStatus[]): Node[] {
+  async list(statuses?: NodeStatus[]): Promise<Node[]> {
     if (statuses && statuses.length > 0) {
-      return this.db.select().from(nodes).where(inArray(nodes.status, statuses)).all().map(toNode);
+      const rows = await this.db.select().from(nodes).where(inArray(nodes.status, statuses));
+      return rows.map(toNode);
     }
-    return this.db.select().from(nodes).all().map(toNode);
+    const rows = await this.db.select().from(nodes);
+    return rows.map(toNode);
   }
 
-  transition(id: string, to: NodeStatus, reason: string, triggeredBy: string): Node {
+  async transition(id: string, to: NodeStatus, reason: string, triggeredBy: string): Promise<Node> {
     const now = Math.floor(Date.now() / 1000);
 
-    return this.db.transaction(() => {
-      const node = this.getById(id);
-      if (!node) throw new NodeNotFoundError(id);
+    // Read node before transaction (allows subclass override for testing)
+    const node = await this.getById(id);
+    if (!node) throw new NodeNotFoundError(id);
 
-      if (!isValidTransition(node.status, to)) {
-        throw new InvalidTransitionError(node.status, to);
-      }
+    if (!isValidTransition(node.status, to)) {
+      throw new InvalidTransitionError(node.status, to);
+    }
 
-      // When cancelling a drain (draining → active), clear drain tracking metadata
-      const extraFields =
-        node.status === "draining" && to === "active"
-          ? { drainStatus: null, drainMigrated: null, drainTotal: null }
-          : {};
+    const fromStatus = node.status;
+    const extraFields =
+      fromStatus === "draining" && to === "active" ? { drainStatus: null, drainMigrated: null, drainTotal: null } : {};
 
-      const result = this.db
+    return this.db.transaction(async (tx) => {
+      const result = await tx
         .update(nodes)
         .set({ status: to, updatedAt: now, ...extraFields })
-        .where(and(eq(nodes.id, id), eq(nodes.status, node.status)))
-        .run();
+        .where(and(eq(nodes.id, id), eq(nodes.status, fromStatus)))
+        .returning({ id: nodes.id });
 
-      if (result.changes === 0) {
+      if (result.length === 0) {
         throw new ConcurrentTransitionError(id);
       }
 
-      this.db
-        .insert(nodeTransitions)
-        .values({
-          id: randomUUID(),
-          nodeId: id,
-          fromStatus: node.status,
-          toStatus: to,
-          reason,
-          triggeredBy,
-          createdAt: now,
-        })
-        .run();
+      await tx.insert(nodeTransitions).values({
+        id: randomUUID(),
+        nodeId: id,
+        fromStatus,
+        toStatus: to,
+        reason,
+        triggeredBy,
+        createdAt: now,
+      });
 
       return { ...node, status: to, updatedAt: now, ...extraFields };
     });
   }
 
-  register(data: NodeRegistration): Node {
+  async register(data: NodeRegistration): Promise<Node> {
     const now = Math.floor(Date.now() / 1000);
-    const existing = this.db.select().from(nodes).where(eq(nodes.id, data.nodeId)).get() ?? null;
+    const existingRows = await this.db.select().from(nodes).where(eq(nodes.id, data.nodeId));
+    const existing = existingRows[0] ? toNode(existingRows[0]) : null;
 
     if (!existing) {
-      return this.db.transaction(() => {
-        this.db
-          .insert(nodes)
-          .values({
-            id: data.nodeId,
-            host: data.host,
-            capacityMb: data.capacityMb,
-            usedMb: 0,
-            agentVersion: data.agentVersion,
-            status: "provisioning",
-            lastHeartbeatAt: now,
-            registeredAt: now,
-            updatedAt: now,
-          })
-          .run();
-
-        return this.transition(data.nodeId, "active", "first_registration", "node_agent");
+      await this.db.insert(nodes).values({
+        id: data.nodeId,
+        host: data.host,
+        capacityMb: data.capacityMb,
+        usedMb: 0,
+        agentVersion: data.agentVersion,
+        status: "provisioning",
+        lastHeartbeatAt: now,
+        registeredAt: now,
+        updatedAt: now,
       });
+      return this.transition(data.nodeId, "active", "first_registration", "node_agent");
     }
 
     const deadStates: NodeStatus[] = ["offline", "recovering", "failed"];
     if (deadStates.includes(existing.status as NodeStatus)) {
-      return this.db.transaction(() => {
-        this.db
-          .update(nodes)
-          .set({
-            host: data.host,
-            agentVersion: data.agentVersion,
-            updatedAt: now,
-          })
-          .where(eq(nodes.id, data.nodeId))
-          .run();
-
-        return this.transition(data.nodeId, "returning", "re_registration", "node_agent");
-      });
+      await this.db
+        .update(nodes)
+        .set({
+          host: data.host,
+          agentVersion: data.agentVersion,
+          updatedAt: now,
+        })
+        .where(eq(nodes.id, data.nodeId));
+      return this.transition(data.nodeId, "returning", "re_registration", "node_agent");
     }
 
     // Healthy node re-registering — metadata update only, no transition
-    const row = this.db
+    const rows = await this.db
       .update(nodes)
       .set({
         host: data.host,
@@ -140,85 +129,75 @@ export class DrizzleNodeRepository implements INodeRepository {
         updatedAt: now,
       })
       .where(eq(nodes.id, data.nodeId))
-      .returning()
-      .get();
-    return toNode(row);
+      .returning();
+    return toNode(rows[0]);
   }
 
-  registerSelfHosted(data: SelfHostedNodeRegistration): Node {
+  async registerSelfHosted(data: SelfHostedNodeRegistration): Promise<Node> {
     const now = Math.floor(Date.now() / 1000);
-    return this.db.transaction(() => {
-      this.db
-        .insert(nodes)
-        .values({
-          id: data.nodeId,
-          host: data.host,
-          capacityMb: data.capacityMb,
-          usedMb: 0,
-          agentVersion: data.agentVersion,
-          status: "provisioning",
-          lastHeartbeatAt: now,
-          registeredAt: now,
-          updatedAt: now,
-          ownerUserId: data.ownerUserId,
-          label: data.label,
-          nodeSecret: data.nodeSecretHash,
-        })
-        .run();
-
-      return this.transition(data.nodeId, "active", "first_registration", "node_agent");
+    await this.db.insert(nodes).values({
+      id: data.nodeId,
+      host: data.host,
+      capacityMb: data.capacityMb,
+      usedMb: 0,
+      agentVersion: data.agentVersion,
+      status: "provisioning",
+      lastHeartbeatAt: now,
+      registeredAt: now,
+      updatedAt: now,
+      ownerUserId: data.ownerUserId,
+      label: data.label,
+      nodeSecret: data.nodeSecretHash,
     });
+    return this.transition(data.nodeId, "active", "first_registration", "node_agent");
   }
 
-  updateHeartbeat(id: string, usedMb: number): void {
+  async updateHeartbeat(id: string, usedMb: number): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
-    const result = this.db
+    const result = await this.db
       .update(nodes)
       .set({ lastHeartbeatAt: now, usedMb, updatedAt: now })
       .where(eq(nodes.id, id))
-      .run();
-    if (result.changes === 0) throw new NodeNotFoundError(id);
+      .returning({ id: nodes.id });
+    if (result.length === 0) throw new NodeNotFoundError(id);
   }
 
-  addCapacity(id: string, deltaMb: number): void {
-    const result = this.db
+  async addCapacity(id: string, deltaMb: number): Promise<void> {
+    const result = await this.db
       .update(nodes)
-      .set({ usedMb: sql`MAX(0, ${nodes.usedMb} + ${deltaMb})` })
+      .set({ usedMb: sql`GREATEST(0, ${nodes.usedMb} + ${deltaMb})` })
       .where(eq(nodes.id, id))
-      .run();
-    if (result.changes === 0) throw new NodeNotFoundError(id);
+      .returning({ id: nodes.id });
+    if (result.length === 0) throw new NodeNotFoundError(id);
   }
 
-  findBestTarget(excludeId: string, requiredMb: number): Node | null {
-    const row =
-      this.db
-        .select()
-        .from(nodes)
-        .where(
-          and(
-            eq(nodes.status, "active"),
-            ne(nodes.id, excludeId),
-            sql`(${nodes.capacityMb} - ${nodes.usedMb}) >= ${requiredMb}`,
-          ),
-        )
-        .orderBy(desc(sql`${nodes.capacityMb} - ${nodes.usedMb}`))
-        .limit(1)
-        .get() ?? null;
-    return row ? toNode(row) : null;
+  async findBestTarget(excludeId: string, requiredMb: number): Promise<Node | null> {
+    const rows = await this.db
+      .select()
+      .from(nodes)
+      .where(
+        and(
+          eq(nodes.status, "active"),
+          ne(nodes.id, excludeId),
+          sql`(${nodes.capacityMb} - ${nodes.usedMb}) >= ${requiredMb}`,
+        ),
+      )
+      .orderBy(desc(sql`${nodes.capacityMb} - ${nodes.usedMb}`))
+      .limit(1);
+    return rows[0] ? toNode(rows[0]) : null;
   }
 
-  listTransitions(nodeId: string, limit = 50): NodeTransition[] {
-    return this.db
+  async listTransitions(nodeId: string, limit = 50): Promise<NodeTransition[]> {
+    const rows = await this.db
       .select()
       .from(nodeTransitions)
       .where(eq(nodeTransitions.nodeId, nodeId))
       .orderBy(desc(nodeTransitions.createdAt))
-      .limit(limit)
-      .all()
-      .map(toNodeTransition);
+      .limit(limit);
+    return rows.map(toNodeTransition);
   }
 
-  delete(id: string): void {
-    this.db.delete(nodes).where(eq(nodes.id, id)).run();
+  async delete(id: string): Promise<void> {
+    await this.db.delete(nodes).where(eq(nodes.id, id));
   }
 }

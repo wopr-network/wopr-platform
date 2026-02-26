@@ -7,11 +7,11 @@ import type { AdminAuditLogRow, AuditFilters } from "./audit-log.js";
 /** Repository interface for admin audit log operations. */
 export interface IAdminAuditLogRepository {
   /** Insert a new admin audit entry. */
-  insert(row: AdminAuditLogRow): void;
+  insert(row: AdminAuditLogRow): Promise<void>;
   /** Query entries with filters. Returns matching entries and total count. */
-  query(filters: AuditFilters): { entries: AdminAuditLogRow[]; total: number };
+  query(filters: AuditFilters): Promise<{ entries: AdminAuditLogRow[]; total: number }>;
   /** Query all entries matching filters (no pagination). For CSV export. */
-  queryAll(filters: Omit<AuditFilters, "limit" | "offset">): AdminAuditLogRow[];
+  queryAll(filters: Omit<AuditFilters, "limit" | "offset">): Promise<AdminAuditLogRow[]>;
 }
 
 const MAX_LIMIT = 250;
@@ -68,50 +68,46 @@ function toRow(r: typeof adminAuditLog.$inferSelect): AdminAuditLogRow {
 export class DrizzleAdminAuditLogRepository implements IAdminAuditLogRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  insert(row: AdminAuditLogRow): void {
-    this.db
-      .insert(adminAuditLog)
-      .values({
-        id: row.id,
-        adminUser: row.admin_user,
-        action: row.action,
-        category: row.category,
-        targetTenant: row.target_tenant,
-        targetUser: row.target_user,
-        details: row.details,
-        ipAddress: row.ip_address,
-        userAgent: row.user_agent,
-        createdAt: row.created_at,
-        outcome: row.outcome,
-      })
-      .run();
+  async insert(row: AdminAuditLogRow): Promise<void> {
+    await this.db.insert(adminAuditLog).values({
+      id: row.id,
+      adminUser: row.admin_user,
+      action: row.action,
+      category: row.category,
+      targetTenant: row.target_tenant,
+      targetUser: row.target_user,
+      details: row.details,
+      ipAddress: row.ip_address,
+      userAgent: row.user_agent,
+      createdAt: row.created_at,
+      outcome: row.outcome,
+    });
   }
 
-  query(filters: AuditFilters): { entries: AdminAuditLogRow[]; total: number } {
+  async query(filters: AuditFilters): Promise<{ entries: AdminAuditLogRow[]; total: number }> {
     const where = buildConditions(filters);
 
-    const countResult = this.db.select({ count: count() }).from(adminAuditLog).where(where).get();
-    const total = countResult?.count ?? 0;
+    const countResult = await this.db.select({ count: count() }).from(adminAuditLog).where(where);
+    const total = countResult[0]?.count ?? 0;
 
     const limit = Math.min(Math.max(1, filters.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
     const offset = Math.max(0, filters.offset ?? 0);
 
-    const rows = this.db
+    const rows = await this.db
       .select()
       .from(adminAuditLog)
       .where(where)
       .orderBy(desc(adminAuditLog.createdAt))
       .limit(limit)
-      .offset(offset)
-      .all();
+      .offset(offset);
 
     return { entries: rows.map(toRow), total };
   }
 
-  queryAll(filters: Omit<AuditFilters, "limit" | "offset">): AdminAuditLogRow[] {
+  async queryAll(filters: Omit<AuditFilters, "limit" | "offset">): Promise<AdminAuditLogRow[]> {
     const where = buildConditions(filters);
 
-    const rows = this.db.select().from(adminAuditLog).where(where).orderBy(desc(adminAuditLog.createdAt)).all();
+    const rows = await this.db.select().from(adminAuditLog).where(where).orderBy(desc(adminAuditLog.createdAt));
 
     return rows.map(toRow);
   }

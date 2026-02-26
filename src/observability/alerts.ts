@@ -12,7 +12,7 @@ export interface AlertCheckResult {
 
 export interface AlertDefinition {
   name: string;
-  check: () => AlertCheckResult;
+  check: () => AlertCheckResult | Promise<AlertCheckResult>;
 }
 
 /**
@@ -26,8 +26,8 @@ export function buildAlerts(metrics: MetricsCollector, fleetEventRepo: IFleetEve
   return [
     {
       name: "gateway-error-rate",
-      check: () => {
-        const window = metrics.getWindow(5);
+      check: async () => {
+        const window = await metrics.getWindow(5);
         const errorRate = window.errorRate;
         const threshold = 0.05;
         return {
@@ -43,8 +43,8 @@ export function buildAlerts(metrics: MetricsCollector, fleetEventRepo: IFleetEve
     },
     {
       name: "credit-deduction-spike",
-      check: () => {
-        const window = metrics.getWindow(5);
+      check: async () => {
+        const window = await metrics.getWindow(5);
         const failures = window.creditDeductionFailures;
         const threshold = 10;
         return {
@@ -60,8 +60,8 @@ export function buildAlerts(metrics: MetricsCollector, fleetEventRepo: IFleetEve
     },
     {
       name: "fleet-unexpected-stop",
-      check: () => {
-        const firing = fleetEventRepo.isFleetStopFired();
+      check: async () => {
+        const firing = await fleetEventRepo.isFleetStopFired();
         return {
           firing,
           value: firing ? 1 : 0,
@@ -105,7 +105,9 @@ export class AlertChecker {
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.checkAll(), this.intervalMs);
+    this.timer = setInterval(() => {
+      void this.checkAll();
+    }, this.intervalMs);
     if (this.timer.unref) this.timer.unref();
   }
 
@@ -116,11 +118,11 @@ export class AlertChecker {
     }
   }
 
-  checkAll(): Array<{ name: string; firing: boolean; message: string }> {
+  async checkAll(): Promise<Array<{ name: string; firing: boolean; message: string }>> {
     const results: Array<{ name: string; firing: boolean; message: string }> = [];
 
     for (const alert of this.alerts) {
-      const result = alert.check();
+      const result = await alert.check();
       const wasFiring = this.firedState.get(alert.name) ?? false;
 
       if (result.firing && !wasFiring) {
@@ -144,8 +146,8 @@ export class AlertChecker {
     }
 
     // Clear the event-driven fleet stop flag after processing
-    if (this.fleetEventRepo?.isFleetStopFired()) {
-      this.fleetEventRepo.clearFleetStop();
+    if (await this.fleetEventRepo?.isFleetStopFired()) {
+      await this.fleetEventRepo?.clearFleetStop();
     }
 
     this.lastResults = results;

@@ -32,22 +32,21 @@ export class RoleStore {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get the role for a user in a specific tenant (or null if none). */
-  getRole(userId: string, tenantId: string): Role | null {
-    const row = this.db
+  async getRole(userId: string, tenantId: string): Promise<Role | null> {
+    const rows = await this.db
       .select({ role: userRoles.role })
       .from(userRoles)
-      .where(and(eq(userRoles.userId, userId), eq(userRoles.tenantId, tenantId)))
-      .get();
-    return row ? (row.role as Role) : null;
+      .where(and(eq(userRoles.userId, userId), eq(userRoles.tenantId, tenantId)));
+    return rows[0] ? (rows[0].role as Role) : null;
   }
 
   /** Upsert a role for a user in a tenant. */
-  setRole(userId: string, tenantId: string, role: Role, grantedBy: string | null): void {
+  async setRole(userId: string, tenantId: string, role: Role, grantedBy: string | null): Promise<void> {
     if (!isValidRole(role)) {
       throw new Error(`Invalid role: ${role}`);
     }
 
-    this.db
+    await this.db
       .insert(userRoles)
       .values({
         userId,
@@ -63,44 +62,41 @@ export class RoleStore {
           grantedBy,
           grantedAt: Date.now(),
         },
-      })
-      .run();
+      });
   }
 
   /** Remove a user's role in a tenant. */
-  removeRole(userId: string, tenantId: string): boolean {
-    const result = this.db
+  async removeRole(userId: string, tenantId: string): Promise<boolean> {
+    const result = await this.db
       .delete(userRoles)
       .where(and(eq(userRoles.userId, userId), eq(userRoles.tenantId, tenantId)))
-      .run();
-    return result.changes > 0;
+      .returning({ userId: userRoles.userId });
+    return result.length > 0;
   }
 
   /** List all users with roles in a given tenant. */
-  listByTenant(tenantId: string): UserRoleRow[] {
-    const rows = this.db
+  async listByTenant(tenantId: string): Promise<UserRoleRow[]> {
+    const rows = await this.db
       .select()
       .from(userRoles)
       .where(eq(userRoles.tenantId, tenantId))
-      .orderBy(sql`${userRoles.grantedAt} DESC`)
-      .all();
+      .orderBy(sql`${userRoles.grantedAt} DESC`);
     return rows.map(toRow);
   }
 
   /** List all platform admins (users with platform_admin role in the sentinel tenant). */
-  listPlatformAdmins(): UserRoleRow[] {
-    const rows = this.db
+  async listPlatformAdmins(): Promise<UserRoleRow[]> {
+    const rows = await this.db
       .select()
       .from(userRoles)
       .where(and(eq(userRoles.tenantId, RoleStore.PLATFORM_TENANT), eq(userRoles.role, "platform_admin")))
-      .orderBy(sql`${userRoles.grantedAt} DESC`)
-      .all();
+      .orderBy(sql`${userRoles.grantedAt} DESC`);
     return rows.map(toRow);
   }
 
   /** Check if a user is a platform admin. */
-  isPlatformAdmin(userId: string): boolean {
-    const row = this.db
+  async isPlatformAdmin(userId: string): Promise<boolean> {
+    const rows = await this.db
       .select({ userId: userRoles.userId })
       .from(userRoles)
       .where(
@@ -109,19 +105,17 @@ export class RoleStore {
           eq(userRoles.tenantId, RoleStore.PLATFORM_TENANT),
           eq(userRoles.role, "platform_admin"),
         ),
-      )
-      .get();
-    return row != null;
+      );
+    return rows.length > 0;
   }
 
   /** Count the number of platform admins. */
-  countPlatformAdmins(): number {
-    const row = this.db
+  async countPlatformAdmins(): Promise<number> {
+    const rows = await this.db
       .select({ count: count() })
       .from(userRoles)
-      .where(and(eq(userRoles.tenantId, RoleStore.PLATFORM_TENANT), eq(userRoles.role, "platform_admin")))
-      .get();
-    return row?.count ?? 0;
+      .where(and(eq(userRoles.tenantId, RoleStore.PLATFORM_TENANT), eq(userRoles.role, "platform_admin")));
+    return rows[0]?.count ?? 0;
   }
 }
 

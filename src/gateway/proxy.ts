@@ -97,9 +97,9 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
 /**
  * Run the pre-call budget check. Returns an error response if budget is exceeded.
  */
-function budgetCheck(c: Context<GatewayAuthEnv>, deps: ProxyDeps): Response | null {
+async function budgetCheck(c: Context<GatewayAuthEnv>, deps: ProxyDeps): Promise<Response | null> {
   const tenant = c.get("gatewayTenant");
-  const result = deps.budgetChecker.check(tenant.id, tenant.spendLimits);
+  const result = await deps.budgetChecker.check(tenant.id, tenant.spendLimits);
 
   if (!result.allowed) {
     const mapped = mapBudgetError(result.reason ?? "Budget exceeded");
@@ -146,11 +146,11 @@ function emitMeterEvent(
 export function chatCompletions(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for chat completions
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -305,7 +305,7 @@ export function chatCompletions(deps: ProxyDeps) {
       const costHeader = res.headers.get("x-openrouter-cost");
       const cost = costHeader
         ? parseFloat(costHeader)
-        : estimateTokenCost(responseBody, requestModel, deps.rateLookupFn);
+        : await estimateTokenCost(responseBody, requestModel, deps.rateLookupFn);
 
       logger.info("Gateway proxy: chat/completions", {
         tenant: tenant.id,
@@ -360,11 +360,11 @@ export function chatCompletions(deps: ProxyDeps) {
 export function textCompletions(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for text completions
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -409,7 +409,7 @@ export function textCompletions(deps: ProxyDeps) {
       const costHeader = res.headers.get("x-openrouter-cost");
       const cost = costHeader
         ? parseFloat(costHeader)
-        : estimateTokenCost(responseBody, requestModel, deps.rateLookupFn, "text-completions");
+        : await estimateTokenCost(responseBody, requestModel, deps.rateLookupFn, "text-completions");
 
       logger.info("Gateway proxy: completions", { tenant: tenant.id, status: res.status, cost });
 
@@ -460,11 +460,11 @@ export function textCompletions(deps: ProxyDeps) {
 export function embeddings(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for embeddings
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -548,11 +548,11 @@ export function embeddings(deps: ProxyDeps) {
 export function audioTranscriptions(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for STT
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -645,11 +645,11 @@ export function audioTranscriptions(deps: ProxyDeps) {
 export function audioSpeech(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for TTS
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -829,11 +829,11 @@ export function audioSpeech(deps: ProxyDeps) {
 export function imageGenerations(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for image generation
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -930,11 +930,11 @@ export function imageGenerations(deps: ProxyDeps) {
 export function videoGenerations(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for image generation
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1017,10 +1017,10 @@ export function phoneOutbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
 
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1324,11 +1324,11 @@ const MMS_OUTBOUND_MARGIN = 2.5;
 export function smsOutbound(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for SMS/MMS
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1578,11 +1578,11 @@ const TENANT_NUMBER_PREFIX = "wopr:tenant:";
 export function phoneNumberProvision(deps: ProxyDeps) {
   return async (c: Context<GatewayAuthEnv>) => {
     const tenant = c.get("gatewayTenant");
-    const budgetErr = budgetCheck(c, deps);
+    const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for phone number provision
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1915,12 +1915,12 @@ export function phoneNumberRelease(deps: ProxyDeps) {
 // -----------------------------------------------------------------------
 
 /** Estimate token cost from an OpenAI-compatible response body. */
-function estimateTokenCost(
+async function estimateTokenCost(
   responseBody: string,
   model?: string,
   rateLookupFn?: SellRateLookupFn,
   capability = "chat-completions",
-): number {
+): Promise<number> {
   try {
     const parsed = JSON.parse(responseBody) as {
       usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
@@ -1935,7 +1935,7 @@ function estimateTokenCost(
         outputTokens,
       });
     }
-    const rates = resolveTokenRates(rateLookupFn ?? (() => null), capability, model);
+    const rates = await resolveTokenRates(rateLookupFn ?? (() => Promise.resolve(null)), capability, model);
     return (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
   } catch {
     return 0.001; // minimum fallback

@@ -13,50 +13,47 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
     return now - (now % 60_000);
   }
 
-  recordGatewayRequest(capability: string): void {
+  async recordGatewayRequest(capability: string): Promise<void> {
     const minuteKey = this.minuteKey();
-    this.db
+    await this.db
       .insert(gatewayMetrics)
       .values({ minuteKey, capability, requests: 1, errors: 0, creditFailures: 0 })
       .onConflictDoUpdate({
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { requests: sql`${gatewayMetrics.requests} + 1` },
-      })
-      .run();
-    this.pruneOld();
+      });
+    void this.pruneOld();
   }
 
-  recordGatewayError(capability: string): void {
+  async recordGatewayError(capability: string): Promise<void> {
     const minuteKey = this.minuteKey();
-    this.db
+    await this.db
       .insert(gatewayMetrics)
       .values({ minuteKey, capability, requests: 0, errors: 1, creditFailures: 0 })
       .onConflictDoUpdate({
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { errors: sql`${gatewayMetrics.errors} + 1` },
-      })
-      .run();
-    this.pruneOld();
+      });
+    void this.pruneOld();
   }
 
-  recordCreditDeductionFailure(): void {
+  async recordCreditDeductionFailure(): Promise<void> {
     const minuteKey = this.minuteKey();
     // Use a synthetic capability key for credit failures
     const capability = "__credit_failures__";
-    this.db
+    await this.db
       .insert(gatewayMetrics)
       .values({ minuteKey, capability, requests: 0, errors: 0, creditFailures: 1 })
       .onConflictDoUpdate({
         target: [gatewayMetrics.minuteKey, gatewayMetrics.capability],
         set: { creditFailures: sql`${gatewayMetrics.creditFailures} + 1` },
-      })
-      .run();
-    this.pruneOld();
+      });
+    void this.pruneOld();
   }
 
-  getWindow(minutes: number): WindowResult {
+  async getWindow(minutes: number): Promise<WindowResult> {
     const cutoff = Date.now() - minutes * 60_000;
-    const rows = this.db.select().from(gatewayMetrics).where(gt(gatewayMetrics.minuteKey, cutoff)).all();
+    const rows = await this.db.select().from(gatewayMetrics).where(gt(gatewayMetrics.minuteKey, cutoff));
 
     const byCapability = new Map<string, { requests: number; errors: number }>();
     let totalRequests = 0;
@@ -94,14 +91,17 @@ export class DrizzleMetricsRepository implements IMetricsRepository {
     };
   }
 
-  prune(maxRetentionMinutes: number): number {
+  async prune(maxRetentionMinutes: number): Promise<number> {
     const cutoff = Date.now() - maxRetentionMinutes * 60_000;
-    const result = this.db.delete(gatewayMetrics).where(lt(gatewayMetrics.minuteKey, cutoff)).run();
-    return result.changes;
+    const result = await this.db
+      .delete(gatewayMetrics)
+      .where(lt(gatewayMetrics.minuteKey, cutoff))
+      .returning({ key: gatewayMetrics.minuteKey });
+    return result.length;
   }
 
-  private pruneOld(): void {
+  private async pruneOld(): Promise<void> {
     const cutoff = Date.now() - MAX_RETENTION_MINUTES * 60_000;
-    this.db.delete(gatewayMetrics).where(lt(gatewayMetrics.minuteKey, cutoff)).run();
+    await this.db.delete(gatewayMetrics).where(lt(gatewayMetrics.minuteKey, cutoff));
   }
 }

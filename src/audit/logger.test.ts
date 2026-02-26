@@ -8,14 +8,14 @@ import { queryAuditLog } from "./query.js";
 describe("AuditLogger", () => {
   let db: DrizzleDb;
 
-  beforeEach(() => {
-    ({ db } = createTestDb());
+  beforeEach(async () => {
+    ({ db } = await createTestDb());
   });
 
-  it("creates an entry with all fields", () => {
+  it("creates an entry with all fields", async () => {
     const repo = new DrizzleAuditLogRepository(db);
     const logger = new AuditLogger(repo);
-    const entry = logger.log({
+    const entry = await logger.log({
       userId: "user-1",
       authMethod: "session",
       action: "instance.create",
@@ -38,10 +38,10 @@ describe("AuditLogger", () => {
     expect(entry.user_agent).toBe("TestAgent/1.0");
   });
 
-  it("creates an entry with minimal fields (nulls for optional)", () => {
+  it("creates an entry with minimal fields (nulls for optional)", async () => {
     const repo = new DrizzleAuditLogRepository(db);
     const logger = new AuditLogger(repo);
-    const entry = logger.log({
+    const entry = await logger.log({
       userId: "user-2",
       authMethod: "api_key",
       action: "auth.login",
@@ -54,16 +54,16 @@ describe("AuditLogger", () => {
     expect(entry.user_agent).toBeNull();
   });
 
-  it("generates unique IDs for each entry", () => {
+  it("generates unique IDs for each entry", async () => {
     const repo = new DrizzleAuditLogRepository(db);
     const logger = new AuditLogger(repo);
-    const e1 = logger.log({
+    const e1 = await logger.log({
       userId: "u1",
       authMethod: "session",
       action: "auth.login",
       resourceType: "user",
     });
-    const e2 = logger.log({
+    const e2 = await logger.log({
       userId: "u1",
       authMethod: "session",
       action: "auth.logout",
@@ -73,10 +73,10 @@ describe("AuditLogger", () => {
     expect(e1.id).not.toBe(e2.id);
   });
 
-  it("persists entries to the database", () => {
+  it("persists entries to the database", async () => {
     const repo = new DrizzleAuditLogRepository(db);
     const logger = new AuditLogger(repo);
-    logger.log({
+    await logger.log({
       userId: "u1",
       authMethod: "session",
       action: "instance.create",
@@ -84,8 +84,11 @@ describe("AuditLogger", () => {
       resourceId: "bot-1",
     });
 
+    // Wait for the async insert to complete
+    await new Promise((r) => setTimeout(r, 50));
+
     // Query using the audit query module to verify persistence
-    const rows = queryAuditLog(repo, { userId: "u1" });
+    const rows = await queryAuditLog(repo, { userId: "u1" });
     expect(rows).toHaveLength(1);
     expect(rows[0].user_id).toBe("u1");
     expect(rows[0].action).toBe("instance.create");

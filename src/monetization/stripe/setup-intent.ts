@@ -20,7 +20,7 @@ export async function createSetupIntent(
   tenantStore: TenantCustomerStore,
   opts: SetupIntentOpts,
 ): Promise<Stripe.SetupIntent> {
-  const mapping = tenantStore.getByTenant(opts.tenant);
+  const mapping = await tenantStore.getByTenant(opts.tenant);
   if (!mapping) {
     throw new Error(`No Stripe customer found for tenant: ${opts.tenant}`);
   }

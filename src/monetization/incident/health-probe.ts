@@ -72,7 +72,7 @@ export async function probePaymentHealth(deps: HealthProbeDeps): Promise<Payment
   const dlqOk = dlqDepth === 0;
 
   // 5. Gateway metrics
-  const window5m = deps.metrics.getWindow(5);
+  const window5m = await deps.metrics.getWindow(5);
   const errorRate = window5m.errorRate;
   const creditFailures = window5m.creditDeductionFailures;
   const gatewayOk = errorRate <= 0.05 && creditFailures <= 10;

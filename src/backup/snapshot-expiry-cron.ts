@@ -14,7 +14,7 @@ export async function runSnapshotExpiryCron(manager: SnapshotManager): Promise<S
   const result: SnapshotExpiryCronResult = { expired: 0, errors: [] };
   const now = Date.now();
 
-  const expired = manager.listExpired(now);
+  const expired = await manager.listExpired(now);
 
   for (const snap of expired) {
     try {

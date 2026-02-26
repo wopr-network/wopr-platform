@@ -84,7 +84,7 @@ export function proxySSEStream(
                 });
               }
               const rates = opts.rateLookupFn
-                ? resolveTokenRates(opts.rateLookupFn, capability, opts.model)
+                ? await resolveTokenRates(opts.rateLookupFn, capability, opts.model)
                 : DEFAULT_TOKEN_RATES;
               accumulatedCost = (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
             }

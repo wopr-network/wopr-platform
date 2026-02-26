@@ -4,11 +4,12 @@
  * Tests for listCapabilitySettings and updateCapabilitySettings procedures.
  */
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
 import { CapabilitySettingsStore } from "../../security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
+import { createTestDb } from "../../test/db.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
 import { setCapabilitiesRouterDeps } from "./capabilities.js";
@@ -23,21 +24,15 @@ function ctxForTenant(tenantId: string): TRPCContext {
 const TENANT = "tenant-test-915";
 
 describe("capabilities.listCapabilitySettings", () => {
-  let sqlite: Database.Database;
-  let keyStore: TenantKeyStore;
+  let pool: PGlite;
+  let db: DrizzleDb;
   let capStore: CapabilitySettingsStore;
+  let keyStore: TenantKeyStore;
 
-  beforeEach(() => {
-    sqlite = new Database(":memory:");
-    sqlite.exec(`CREATE TABLE IF NOT EXISTS tenant_capability_settings (
-      tenant_id TEXT NOT NULL,
-      capability TEXT NOT NULL,
-      mode TEXT NOT NULL DEFAULT 'hosted',
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (tenant_id, capability)
-    )`);
-    keyStore = new TenantKeyStore(sqlite);
-    capStore = new CapabilitySettingsStore(drizzle(sqlite));
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    capStore = new CapabilitySettingsStore(db);
+    keyStore = new TenantKeyStore(db);
 
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => keyStore,
@@ -53,8 +48,8 @@ describe("capabilities.listCapabilitySettings", () => {
     });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("returns all 4 capabilities defaulting to hosted when no settings stored", async () => {
@@ -76,8 +71,8 @@ describe("capabilities.listCapabilitySettings", () => {
   });
 
   it("returns byok mode with masked key when key is stored and mode is byok", async () => {
-    keyStore.upsert(TENANT, "openai", { ciphertext: "enc:sk-test", iv: "iv", authTag: "tag" }, "...1234");
-    capStore.upsert(TENANT, "text-gen", "byok");
+    await keyStore.upsert(TENANT, "openai", { ciphertext: "enc:sk-test", iv: "iv", authTag: "tag" }, "...1234");
+    await capStore.upsert(TENANT, "text-gen", "byok");
 
     const caller = appRouter.createCaller(ctxForTenant(TENANT));
     const result = await caller.capabilities.listCapabilitySettings();
@@ -90,7 +85,7 @@ describe("capabilities.listCapabilitySettings", () => {
   });
 
   it("returns hosted mode even when key exists if mode preference is hosted", async () => {
-    keyStore.upsert(TENANT, "openai", { ciphertext: "enc:sk-test", iv: "iv", authTag: "tag" }, "...5678");
+    await keyStore.upsert(TENANT, "openai", { ciphertext: "enc:sk-test", iv: "iv", authTag: "tag" }, "...5678");
     // Do NOT set mode — defaults to hosted
 
     const caller = appRouter.createCaller(ctxForTenant(TENANT));
@@ -115,8 +110,8 @@ describe("capabilities.listCapabilitySettings", () => {
 
   it("isolates settings between tenants", async () => {
     const OTHER_TENANT = "tenant-other";
-    capStore.upsert(OTHER_TENANT, "text-gen", "byok");
-    keyStore.upsert(OTHER_TENANT, "openai", { ciphertext: "enc:other-key", iv: "iv", authTag: "tag" }, "...9999");
+    await capStore.upsert(OTHER_TENANT, "text-gen", "byok");
+    await keyStore.upsert(OTHER_TENANT, "openai", { ciphertext: "enc:other-key", iv: "iv", authTag: "tag" }, "...9999");
 
     const caller = appRouter.createCaller(ctxForTenant(TENANT));
     const result = await caller.capabilities.listCapabilitySettings();
@@ -128,21 +123,15 @@ describe("capabilities.listCapabilitySettings", () => {
 });
 
 describe("capabilities.updateCapabilitySettings", () => {
-  let sqlite: Database.Database;
-  let keyStore: TenantKeyStore;
+  let pool: PGlite;
+  let db: DrizzleDb;
   let capStore: CapabilitySettingsStore;
+  let keyStore: TenantKeyStore;
 
-  beforeEach(() => {
-    sqlite = new Database(":memory:");
-    sqlite.exec(`CREATE TABLE IF NOT EXISTS tenant_capability_settings (
-      tenant_id TEXT NOT NULL,
-      capability TEXT NOT NULL,
-      mode TEXT NOT NULL DEFAULT 'hosted',
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (tenant_id, capability)
-    )`);
-    keyStore = new TenantKeyStore(sqlite);
-    capStore = new CapabilitySettingsStore(drizzle(sqlite));
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    capStore = new CapabilitySettingsStore(db);
+    keyStore = new TenantKeyStore(db);
 
     setCapabilitiesRouterDeps({
       getTenantKeyStore: () => keyStore,
@@ -158,8 +147,8 @@ describe("capabilities.updateCapabilitySettings", () => {
     });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   it("updates mode to byok for text-gen", async () => {
@@ -186,7 +175,7 @@ describe("capabilities.updateCapabilitySettings", () => {
     expect(result.keyStatus).toBe("unchecked");
 
     // Verify key was stored
-    const stored = keyStore.get(TENANT, "openai");
+    const stored = await keyStore.get(TENANT, "openai");
     expect(stored).toBeDefined();
   });
 
@@ -211,7 +200,7 @@ describe("capabilities.updateCapabilitySettings", () => {
   });
 
   it("allows switching back to hosted", async () => {
-    capStore.upsert(TENANT, "text-gen", "byok");
+    await capStore.upsert(TENANT, "text-gen", "byok");
 
     const caller = appRouter.createCaller(ctxForTenant(TENANT));
     const result = await caller.capabilities.updateCapabilitySettings({

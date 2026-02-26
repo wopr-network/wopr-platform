@@ -6,9 +6,9 @@ import type { BackupStatusRow, IBackupStatusRepository } from "./repository-type
 export class DrizzleBackupStatusRepository implements IBackupStatusRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  upsertSuccess(containerId: string, nodeId: string, sizeMb: number, remotePath: string): void {
+  async upsertSuccess(containerId: string, nodeId: string, sizeMb: number, remotePath: string): Promise<void> {
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .insert(backupStatus)
       .values({
         containerId,
@@ -34,13 +34,12 @@ export class DrizzleBackupStatusRepository implements IBackupStatusRepository {
           totalBackups: sql`${backupStatus.totalBackups} + 1`,
           updatedAt: now,
         },
-      })
-      .run();
+      });
   }
 
-  upsertFailure(containerId: string, nodeId: string, error: string): void {
+  async upsertFailure(containerId: string, nodeId: string, error: string): Promise<void> {
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .insert(backupStatus)
       .values({
         containerId,
@@ -58,21 +57,22 @@ export class DrizzleBackupStatusRepository implements IBackupStatusRepository {
           lastBackupError: error,
           updatedAt: now,
         },
-      })
-      .run();
+      });
   }
 
-  getByContainerId(containerId: string): BackupStatusRow | null {
-    const row = this.db.select().from(backupStatus).where(eq(backupStatus.containerId, containerId)).get();
-    return row ? toRow(row) : null;
+  async getByContainerId(containerId: string): Promise<BackupStatusRow | null> {
+    const rows = await this.db.select().from(backupStatus).where(eq(backupStatus.containerId, containerId));
+    return rows[0] ? toRow(rows[0]) : null;
   }
 
-  listAll(): BackupStatusRow[] {
-    return this.db.select().from(backupStatus).orderBy(desc(backupStatus.lastBackupAt)).all().map(toRow);
+  async listAll(): Promise<BackupStatusRow[]> {
+    const rows = await this.db.select().from(backupStatus).orderBy(desc(backupStatus.lastBackupAt));
+    return rows.map(toRow);
   }
 
-  count(): number {
-    return this.db.select().from(backupStatus).all().length;
+  async count(): Promise<number> {
+    const rows = await this.db.select().from(backupStatus);
+    return rows.length;
   }
 }
 

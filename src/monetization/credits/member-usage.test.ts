@@ -1,55 +1,30 @@
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDb } from "../../db/index.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb } from "../../test/db.js";
 import { CreditLedger } from "./credit-ledger.js";
 
-function initTestSchema(sqlite: BetterSqlite3.Database): void {
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS credit_transactions (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      balance_after_cents INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      description TEXT,
-      reference_id TEXT UNIQUE,
-      funding_source TEXT,
-      attributed_user_id TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS credit_balances (
-      tenant_id TEXT PRIMARY KEY,
-      balance_cents INTEGER NOT NULL DEFAULT 0,
-      last_updated TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `);
-}
-
 describe("DrizzleCreditLedger.memberUsage", () => {
-  let sqlite: BetterSqlite3.Database;
-  let db: ReturnType<typeof createDb>;
+  let pool: PGlite;
+  let db: DrizzleDb;
   let ledger: CreditLedger;
 
-  beforeEach(() => {
-    sqlite = new BetterSqlite3(":memory:");
-    initTestSchema(sqlite);
-    db = createDb(sqlite);
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     ledger = new CreditLedger(db);
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("should aggregate debit totals per attributed user", () => {
-    ledger.credit("org-1", 10000, "purchase", "Seed");
-    ledger.debit("org-1", 100, "adapter_usage", "Chat", undefined, false, "user-a");
-    ledger.debit("org-1", 200, "adapter_usage", "Chat", undefined, false, "user-a");
-    ledger.debit("org-1", 300, "adapter_usage", "Chat", undefined, false, "user-b");
+  it("should aggregate debit totals per attributed user", async () => {
+    await ledger.credit("org-1", 10000, "purchase", "Seed");
+    await ledger.debit("org-1", 100, "adapter_usage", "Chat", undefined, false, "user-a");
+    await ledger.debit("org-1", 200, "adapter_usage", "Chat", undefined, false, "user-a");
+    await ledger.debit("org-1", 300, "adapter_usage", "Chat", undefined, false, "user-b");
 
-    const result = ledger.memberUsage("org-1");
+    const result = await ledger.memberUsage("org-1");
     expect(result).toHaveLength(2);
 
     const userA = result.find((r) => r.userId === "user-a");
@@ -61,18 +36,18 @@ describe("DrizzleCreditLedger.memberUsage", () => {
     expect(userB?.transactionCount).toBe(1);
   });
 
-  it("should exclude transactions with null attributedUserId", () => {
-    ledger.credit("org-1", 10000, "purchase", "Seed");
-    ledger.debit("org-1", 100, "bot_runtime", "Cron"); // no attributedUserId
-    ledger.debit("org-1", 200, "adapter_usage", "Chat", undefined, false, "user-a");
+  it("should exclude transactions with null attributedUserId", async () => {
+    await ledger.credit("org-1", 10000, "purchase", "Seed");
+    await ledger.debit("org-1", 100, "bot_runtime", "Cron"); // no attributedUserId
+    await ledger.debit("org-1", 200, "adapter_usage", "Chat", undefined, false, "user-a");
 
-    const result = ledger.memberUsage("org-1");
+    const result = await ledger.memberUsage("org-1");
     expect(result).toHaveLength(1);
     expect(result[0]?.userId).toBe("user-a");
   });
 
-  it("should return empty array when no attributed debits exist", () => {
-    const result = ledger.memberUsage("org-1");
+  it("should return empty array when no attributed debits exist", async () => {
+    const result = await ledger.memberUsage("org-1");
     expect(result).toEqual([]);
   });
 });

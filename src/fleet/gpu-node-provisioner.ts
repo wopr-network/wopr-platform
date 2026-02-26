@@ -142,14 +142,14 @@ export class GpuNodeProvisioner {
    * Destroy a GPU node: delete DO droplet, remove repo record.
    */
   async destroy(nodeId: string): Promise<void> {
-    const node = this.repo.getById(nodeId);
+    const node = await this.repo.getById(nodeId);
     if (!node) throw new Error(`GPU node ${nodeId} not found`);
 
     if (node.dropletId) {
       await this.doClient.deleteDroplet(Number(node.dropletId));
     }
 
-    this.repo.delete(nodeId);
+    await this.repo.delete(nodeId);
     logger.info(`GPU node ${nodeId} destroyed`);
   }
 

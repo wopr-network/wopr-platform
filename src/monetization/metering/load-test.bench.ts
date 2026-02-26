@@ -1,5 +1,7 @@
 import { unlinkSync } from "node:fs";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, bench, describe } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
 import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
@@ -21,16 +23,14 @@ function makeEvent(i: number): MeterEvent {
 }
 
 describe("MeterEmitter throughput", () => {
-  let db: ReturnType<typeof createTestDb>["db"];
-  let sqlite: ReturnType<typeof createTestDb>["sqlite"];
+  let db: DrizzleDb;
+  let pool: PGlite;
   let emitter: MeterEmitter;
   const walPath = `/tmp/wopr-bench-wal-${process.pid}.jsonl`;
   const dlqPath = `/tmp/wopr-bench-dlq-${process.pid}.jsonl`;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
-    db = testDb.db;
-    sqlite = testDb.sqlite;
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
       batchSize: 1000,
@@ -39,9 +39,9 @@ describe("MeterEmitter throughput", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     emitter.close();
-    sqlite.close();
+    await pool.close();
     try {
       unlinkSync(walPath);
     } catch {
@@ -66,53 +66,45 @@ describe("MeterEmitter throughput", () => {
 
   bench(
     "emit + flush batch of 100",
-    () => {
+    async () => {
       for (let i = 0; i < 100; i++) {
         emitter.emit(makeEvent(eventCounter++));
       }
-      emitter.flush();
+      await emitter.flush();
     },
     { iterations: 100 },
   );
 
   bench(
     "emit + flush batch of 1000",
-    () => {
+    async () => {
       for (let i = 0; i < 1000; i++) {
         emitter.emit(makeEvent(eventCounter++));
       }
-      emitter.flush();
+      await emitter.flush();
     },
     { iterations: 50 },
   );
 });
 
 describe("MeterAggregator throughput", () => {
-  let db: ReturnType<typeof createTestDb>["db"];
-  let sqlite: ReturnType<typeof createTestDb>["sqlite"];
+  let db: DrizzleDb;
+  let pool: PGlite;
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
   const walPath = `/tmp/wopr-bench-agg-wal-${process.pid}.jsonl`;
   const dlqPath = `/tmp/wopr-bench-agg-dlq-${process.pid}.jsonl`;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
-    db = testDb.db;
-    sqlite = testDb.sqlite;
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, walPath, dlqPath });
     aggregator = new MeterAggregator(db, { windowMs: 60_000 });
-
-    // Pre-populate: 10K events across 10 tenants in a past window
-    for (let i = 0; i < 10_000; i++) {
-      emitter.emit(makeEvent(i));
-    }
-    emitter.flush();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     aggregator.stop();
     emitter.close();
-    sqlite.close();
+    await pool.close();
     try {
       unlinkSync(walPath);
     } catch {
@@ -127,8 +119,8 @@ describe("MeterAggregator throughput", () => {
 
   bench(
     "aggregate 10K events",
-    () => {
-      aggregator.aggregate();
+    async () => {
+      await aggregator.aggregate();
     },
     { iterations: 10 },
   );

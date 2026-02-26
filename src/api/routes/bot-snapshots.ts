@@ -86,7 +86,7 @@ botSnapshotRoutes.post("/", writeAuth, async (c) => {
 
   // Read tier from authenticated tenant record in DB — never trust the client-supplied header
   const store = getTenantStore();
-  const tenantRecord = store?.getByTenant(tenantId) ?? null;
+  const tenantRecord = (await store?.getByTenant(tenantId)) ?? null;
   const rawTier = tenantRecord?.tier ?? "free";
   const tier = tierSchema.safeParse(rawTier);
   if (!tier.success) {

@@ -146,7 +146,7 @@ export class RestoreService {
       const downtimeMs = Date.now() - startTime;
 
       // 8. Log the restore event
-      const logEntry = this.restoreLog.record({
+      const logEntry = await this.restoreLog.record({
         tenant: params.tenantId,
         snapshotKey: params.snapshotKey,
         preRestoreKey,
@@ -199,7 +199,7 @@ export class RestoreService {
       }
 
       // Still log the failed attempt
-      const logEntry = this.restoreLog.record({
+      const logEntry = await this.restoreLog.record({
         tenant: params.tenantId,
         snapshotKey: params.snapshotKey,
         preRestoreKey: null,

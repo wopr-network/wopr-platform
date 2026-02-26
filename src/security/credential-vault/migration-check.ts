@@ -1,4 +1,4 @@
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { scanForKeyLeaks } from "../key-audit.js";
 
@@ -16,14 +16,13 @@ export interface PlaintextFinding {
   provider: string;
 }
 
-export function auditCredentialEncryption(db: BetterSQLite3Database<Record<string, unknown>>): PlaintextFinding[] {
+export async function auditCredentialEncryption(db: DrizzleDb): Promise<PlaintextFinding[]> {
   const findings: PlaintextFinding[] = [];
 
   // Check provider_credentials.encrypted_value
-  const providerRows = db
+  const providerRows = await db
     .select({ id: providerCredentials.id, encryptedValue: providerCredentials.encryptedValue })
-    .from(providerCredentials)
-    .all();
+    .from(providerCredentials);
 
   for (const row of providerRows) {
     // A properly encrypted value should be a JSON object with iv/authTag/ciphertext
@@ -53,10 +52,9 @@ export function auditCredentialEncryption(db: BetterSQLite3Database<Record<strin
 
   // Check tenant_api_keys.encrypted_key (if table exists)
   try {
-    const tenantRows = db
+    const tenantRows = await db
       .select({ id: tenantApiKeys.id, encryptedKey: tenantApiKeys.encryptedKey })
-      .from(tenantApiKeys)
-      .all();
+      .from(tenantApiKeys);
 
     for (const row of tenantRows) {
       try {

@@ -9,45 +9,45 @@ const MAX_BACKOFF_MS = 15 * 60 * 1000; // 15 minutes
 export class DrizzleSigPenaltyRepository implements ISigPenaltyRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  get(ip: string, source: string): SigPenalty | null {
-    const row = this.db
+  async get(ip: string, source: string): Promise<SigPenalty | null> {
+    const rows = await this.db
       .select()
       .from(webhookSigPenalties)
-      .where(and(eq(webhookSigPenalties.ip, ip), eq(webhookSigPenalties.source, source)))
-      .get();
-    return row ? this.toSigPenalty(row) : null;
+      .where(and(eq(webhookSigPenalties.ip, ip), eq(webhookSigPenalties.source, source)));
+    return rows[0] ? this.toSigPenalty(rows[0]) : null;
   }
 
-  recordFailure(ip: string, source: string): SigPenalty {
+  async recordFailure(ip: string, source: string): Promise<SigPenalty> {
     const now = Date.now();
-    const existing = this.get(ip, source);
+    const existing = await this.get(ip, source);
     const failures = (existing?.failures ?? 0) + 1;
     const backoffMs = Math.min(1000 * 2 ** failures, MAX_BACKOFF_MS);
     const blockedUntil = now + backoffMs;
 
-    this.db
+    await this.db
       .insert(webhookSigPenalties)
       .values({ ip, source, failures, blockedUntil, updatedAt: now })
       .onConflictDoUpdate({
         target: [webhookSigPenalties.ip, webhookSigPenalties.source],
         set: { failures, blockedUntil, updatedAt: now },
-      })
-      .run();
+      });
 
     return { ip, source, failures, blockedUntil, updatedAt: now };
   }
 
-  clear(ip: string, source: string): void {
-    this.db
+  async clear(ip: string, source: string): Promise<void> {
+    await this.db
       .delete(webhookSigPenalties)
-      .where(and(eq(webhookSigPenalties.ip, ip), eq(webhookSigPenalties.source, source)))
-      .run();
+      .where(and(eq(webhookSigPenalties.ip, ip), eq(webhookSigPenalties.source, source)));
   }
 
-  purgeStale(decayMs: number): number {
+  async purgeStale(decayMs: number): Promise<number> {
     const cutoff = Date.now() - decayMs;
-    const result = this.db.delete(webhookSigPenalties).where(lt(webhookSigPenalties.blockedUntil, cutoff)).run();
-    return result.changes;
+    const result = await this.db
+      .delete(webhookSigPenalties)
+      .where(lt(webhookSigPenalties.blockedUntil, cutoff))
+      .returning({ ip: webhookSigPenalties.ip });
+    return result.length;
   }
 
   private toSigPenalty(row: typeof webhookSigPenalties.$inferSelect): SigPenalty {

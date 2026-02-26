@@ -1,7 +1,10 @@
-import Database from "better-sqlite3";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDb, type DrizzleDb } from "../db/index.js";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import { migrate } from "drizzle-orm/pglite/migrator";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
 import { emailNotifications } from "../db/schema/email-notifications.js";
+import * as schema from "../db/schema/index.js";
 import { BillingEmailService } from "./billing-emails.js";
 import { EmailClient } from "./client.js";
 import { DrizzleBillingEmailRepository } from "./drizzle-billing-email-repository.js";
@@ -21,28 +24,16 @@ vi.mock("../config/logger.js", () => ({
   },
 }));
 
-function setupDb(): DrizzleDb {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE email_notifications (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      email_type TEXT NOT NULL,
-      sent_at TEXT NOT NULL DEFAULT (datetime('now')),
-      sent_date TEXT NOT NULL,
-      UNIQUE(tenant_id, email_type, sent_date)
-    )
-  `);
-  return createDb(sqlite);
-}
-
 describe("BillingEmailService", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
   let emailClient: EmailClient;
   let service: BillingEmailService;
 
-  beforeEach(() => {
-    db = setupDb();
+  beforeEach(async () => {
+    pool = new PGlite();
+    db = drizzle(pool, { schema }) as unknown as DrizzleDb;
+    await migrate(drizzle(pool, { schema }), { migrationsFolder: "./drizzle/migrations" });
     emailClient = new EmailClient({
       apiKey: "test-key",
       from: "noreply@wopr.bot",
@@ -54,40 +45,44 @@ describe("BillingEmailService", () => {
     });
   });
 
+  afterEach(async () => {
+    await pool.close();
+  });
+
   describe("shouldSendEmail", () => {
-    it("should return true when no email was sent today", () => {
-      expect(service.shouldSendEmail("tenant-1", "low-balance")).toBe(true);
+    it("should return true when no email was sent today", async () => {
+      expect(await service.shouldSendEmail("tenant-1", "low-balance")).toBe(true);
     });
 
-    it("should return false when email was already sent today", () => {
-      service.recordEmailSent("tenant-1", "low-balance");
-      expect(service.shouldSendEmail("tenant-1", "low-balance")).toBe(false);
+    it("should return false when email was already sent today", async () => {
+      await service.recordEmailSent("tenant-1", "low-balance");
+      expect(await service.shouldSendEmail("tenant-1", "low-balance")).toBe(false);
     });
 
-    it("should allow different email types for same tenant same day", () => {
-      service.recordEmailSent("tenant-1", "low-balance");
-      expect(service.shouldSendEmail("tenant-1", "bot-suspended")).toBe(true);
+    it("should allow different email types for same tenant same day", async () => {
+      await service.recordEmailSent("tenant-1", "low-balance");
+      expect(await service.shouldSendEmail("tenant-1", "bot-suspended")).toBe(true);
     });
 
-    it("should allow same email type for different tenants", () => {
-      service.recordEmailSent("tenant-1", "low-balance");
-      expect(service.shouldSendEmail("tenant-2", "low-balance")).toBe(true);
+    it("should allow same email type for different tenants", async () => {
+      await service.recordEmailSent("tenant-1", "low-balance");
+      expect(await service.shouldSendEmail("tenant-2", "low-balance")).toBe(true);
     });
   });
 
   describe("recordEmailSent", () => {
-    it("should insert a record into the database", () => {
-      service.recordEmailSent("tenant-1", "low-balance");
+    it("should insert a record into the database", async () => {
+      await service.recordEmailSent("tenant-1", "low-balance");
 
-      const rows = db.select().from(emailNotifications).all();
+      const rows = await db.select().from(emailNotifications);
       expect(rows).toHaveLength(1);
       expect(rows[0].tenantId).toBe("tenant-1");
       expect(rows[0].emailType).toBe("low-balance");
     });
 
-    it("should throw on duplicate insert (same tenant, type, date)", () => {
-      service.recordEmailSent("tenant-1", "low-balance");
-      expect(() => service.recordEmailSent("tenant-1", "low-balance")).toThrow();
+    it("should throw on duplicate insert (same tenant, type, date)", async () => {
+      await service.recordEmailSent("tenant-1", "low-balance");
+      await expect(service.recordEmailSent("tenant-1", "low-balance")).rejects.toThrow();
     });
   });
 
@@ -96,7 +91,7 @@ describe("BillingEmailService", () => {
       const sent = await service.sendPurchaseReceipt("user@test.com", "tenant-1", "$10.00", "$15.00");
 
       expect(sent).toBe(true);
-      const rows = db.select().from(emailNotifications).all();
+      const rows = await db.select().from(emailNotifications);
       expect(rows).toHaveLength(1);
       expect(rows[0].emailType).toBe("credit-purchase");
     });
@@ -108,7 +103,7 @@ describe("BillingEmailService", () => {
       // Purchase receipts always send but record for audit only.
       // The unique constraint will prevent a second insert with the same date.
       // This is by design - 1 receipt email per day per tenant is sufficient.
-      const rows = db.select().from(emailNotifications).all();
+      const rows = await db.select().from(emailNotifications);
       expect(rows).toHaveLength(1);
     });
   });
@@ -118,13 +113,13 @@ describe("BillingEmailService", () => {
       const sent = await service.sendLowBalanceWarning("user@test.com", "tenant-1", "$1.50", 3);
 
       expect(sent).toBe(true);
-      const rows = db.select().from(emailNotifications).all();
+      const rows = await db.select().from(emailNotifications);
       expect(rows).toHaveLength(1);
       expect(rows[0].emailType).toBe("low-balance");
     });
 
     it("should skip when already sent today", async () => {
-      service.recordEmailSent("tenant-1", "low-balance");
+      await service.recordEmailSent("tenant-1", "low-balance");
       const sent = await service.sendLowBalanceWarning("user@test.com", "tenant-1", "$1.50", 3);
 
       expect(sent).toBe(false);
@@ -136,7 +131,7 @@ describe("BillingEmailService", () => {
       const sent = await service.sendBotSuspendedNotice("user@test.com", "tenant-1", ["MyBot"]);
 
       expect(sent).toBe(true);
-      const rows = db.select().from(emailNotifications).all();
+      const rows = await db.select().from(emailNotifications);
       expect(rows).toHaveLength(1);
       expect(rows[0].emailType).toBe("bot-suspended");
     });
@@ -148,7 +143,7 @@ describe("BillingEmailService", () => {
     });
 
     it("should skip when already sent today", async () => {
-      service.recordEmailSent("tenant-1", "bot-suspended");
+      await service.recordEmailSent("tenant-1", "bot-suspended");
       const sent = await service.sendBotSuspendedNotice("user@test.com", "tenant-1", ["MyBot"]);
 
       expect(sent).toBe(false);
@@ -160,13 +155,13 @@ describe("BillingEmailService", () => {
       const sent = await service.sendDestructionWarning("user@test.com", "tenant-1", ["MyBot"]);
 
       expect(sent).toBe(true);
-      const rows = db.select().from(emailNotifications).all();
+      const rows = await db.select().from(emailNotifications);
       expect(rows).toHaveLength(1);
       expect(rows[0].emailType).toBe("bot-destruction");
     });
 
     it("should skip when already sent today", async () => {
-      service.recordEmailSent("tenant-1", "bot-destruction");
+      await service.recordEmailSent("tenant-1", "bot-destruction");
       const sent = await service.sendDestructionWarning("user@test.com", "tenant-1", ["MyBot"]);
 
       expect(sent).toBe(false);
@@ -178,13 +173,13 @@ describe("BillingEmailService", () => {
       const sent = await service.sendDataDeletedNotice("user@test.com", "tenant-1");
 
       expect(sent).toBe(true);
-      const rows = db.select().from(emailNotifications).all();
+      const rows = await db.select().from(emailNotifications);
       expect(rows).toHaveLength(1);
       expect(rows[0].emailType).toBe("data-deleted");
     });
 
     it("should skip when already sent today", async () => {
-      service.recordEmailSent("tenant-1", "data-deleted");
+      await service.recordEmailSent("tenant-1", "data-deleted");
       const sent = await service.sendDataDeletedNotice("user@test.com", "tenant-1");
 
       expect(sent).toBe(false);

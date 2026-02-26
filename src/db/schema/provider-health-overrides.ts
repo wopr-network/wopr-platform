@@ -1,7 +1,7 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, integer, pgTable, text } from "drizzle-orm/pg-core";
 
-export const providerHealthOverrides = sqliteTable("provider_health_overrides", {
+export const providerHealthOverrides = pgTable("provider_health_overrides", {
   adapter: text("adapter").primaryKey(),
   healthy: integer("healthy").notNull().default(1),
-  markedAt: integer("marked_at").notNull(),
+  markedAt: bigint("marked_at", { mode: "number" }).notNull(),
 });

@@ -1,4 +1,4 @@
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
@@ -11,19 +11,20 @@ import { createAdminRateApiRoutes } from "./admin-rates.js";
  * exercising validation branches and error paths not covered elsewhere.
  */
 describe("admin rates routes", () => {
+  let pool: PGlite;
   let db: DrizzleDb;
-  let sqlite: BetterSqlite3.Database;
+
   let app: ReturnType<typeof createAdminRateApiRoutes>;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
     app = createAdminRateApiRoutes(db);
   });
 
   afterEach(() => {
-    sqlite.close();
+    pool.close();
   });
 
   // ── GET / ──

@@ -50,11 +50,11 @@ export class OrgService {
    * Return the personal org for the user, creating it if it doesn't exist.
    * "Personal org" = the user's personal tenant (type="personal").
    */
-  getOrCreatePersonalOrg(userId: string, displayName: string): OrgWithMembers {
-    const tenant = this.orgRepo.ensurePersonalTenant(userId, displayName);
+  async getOrCreatePersonalOrg(userId: string, displayName: string): Promise<OrgWithMembers> {
+    const tenant = await this.orgRepo.ensurePersonalTenant(userId, displayName);
     // Ensure the owner member row exists. Use addMember (which uses ON CONFLICT DO NOTHING)
     // unconditionally to handle concurrent calls that may race past findMember.
-    this.memberRepo.addMember({
+    await this.memberRepo.addMember({
       id: crypto.randomUUID(),
       orgId: tenant.id,
       userId,
@@ -65,16 +65,16 @@ export class OrgService {
   }
 
   /** Get an org's details, including member/invite lists. */
-  getOrg(orgId: string): OrgWithMembers {
-    const tenant = this.requireOrg(orgId);
+  async getOrg(orgId: string): Promise<OrgWithMembers> {
+    const tenant = await this.requireOrg(orgId);
     return this.buildOrgWithMembers(tenant);
   }
 
-  updateOrg(orgId: string, actorUserId: string, data: { name?: string; slug?: string }): Tenant {
-    this.requireAdminOrOwner(orgId, actorUserId);
+  async updateOrg(orgId: string, actorUserId: string, data: { name?: string; slug?: string }): Promise<Tenant> {
+    await this.requireAdminOrOwner(orgId, actorUserId);
     if (data.slug !== undefined) {
       this.validateSlug(data.slug);
-      const existing = this.orgRepo.getBySlug(data.slug);
+      const existing = await this.orgRepo.getBySlug(data.slug);
       if (existing && existing.id !== orgId) {
         throw new TRPCError({ code: "CONFLICT", message: "Slug already taken" });
       }
@@ -82,8 +82,8 @@ export class OrgService {
     return this.orgRepo.updateOrg(orgId, data);
   }
 
-  deleteOrg(orgId: string, actorUserId: string): void {
-    const org = this.requireOrg(orgId);
+  async deleteOrg(orgId: string, actorUserId: string): Promise<void> {
+    const org = await this.requireOrg(orgId);
     if (org.ownerId !== actorUserId) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can delete the organization" });
     }
@@ -93,8 +93,13 @@ export class OrgService {
     throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "Org deletion requires IOrgRepository.deleteOrg" });
   }
 
-  inviteMember(orgId: string, actorUserId: string, email: string, role: "admin" | "member"): OrgInviteRow {
-    this.requireAdminOrOwner(orgId, actorUserId);
+  async inviteMember(
+    orgId: string,
+    actorUserId: string,
+    email: string,
+    role: "admin" | "member",
+  ): Promise<OrgInviteRow> {
+    await this.requireAdminOrOwner(orgId, actorUserId);
     const token = crypto.randomBytes(32).toString("hex");
     const invite: OrgInviteRow = {
       id: crypto.randomUUID(),
@@ -106,66 +111,71 @@ export class OrgService {
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       createdAt: Date.now(),
     };
-    this.memberRepo.createInvite(invite);
+    await this.memberRepo.createInvite(invite);
     return invite;
   }
 
-  revokeInvite(orgId: string, actorUserId: string, inviteId: string): void {
-    this.requireAdminOrOwner(orgId, actorUserId);
-    const invite = this.memberRepo.findInviteById(inviteId);
+  async revokeInvite(orgId: string, actorUserId: string, inviteId: string): Promise<void> {
+    await this.requireAdminOrOwner(orgId, actorUserId);
+    const invite = await this.memberRepo.findInviteById(inviteId);
     if (!invite || invite.orgId !== orgId) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Invite not found" });
     }
-    this.memberRepo.deleteInvite(inviteId);
+    await this.memberRepo.deleteInvite(inviteId);
   }
 
-  changeRole(orgId: string, actorUserId: string, targetUserId: string, newRole: "admin" | "member"): void {
-    this.requireAdminOrOwner(orgId, actorUserId);
-    const org = this.requireOrg(orgId);
+  async changeRole(
+    orgId: string,
+    actorUserId: string,
+    targetUserId: string,
+    newRole: "admin" | "member",
+  ): Promise<void> {
+    await this.requireAdminOrOwner(orgId, actorUserId);
+    const org = await this.requireOrg(orgId);
     if (org.ownerId === targetUserId) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Cannot change the owner's role. Use transfer ownership instead.",
       });
     }
-    const member = this.memberRepo.findMember(orgId, targetUserId);
+    const member = await this.memberRepo.findMember(orgId, targetUserId);
     if (!member) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
     }
-    this.memberRepo.updateMemberRole(orgId, targetUserId, newRole);
+    await this.memberRepo.updateMemberRole(orgId, targetUserId, newRole);
   }
 
-  removeMember(orgId: string, actorUserId: string, targetUserId: string): void {
-    this.requireAdminOrOwner(orgId, actorUserId);
-    const org = this.requireOrg(orgId);
+  async removeMember(orgId: string, actorUserId: string, targetUserId: string): Promise<void> {
+    await this.requireAdminOrOwner(orgId, actorUserId);
+    const org = await this.requireOrg(orgId);
     if (org.ownerId === targetUserId) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove the owner" });
     }
-    const member = this.memberRepo.findMember(orgId, targetUserId);
+    const member = await this.memberRepo.findMember(orgId, targetUserId);
     if (!member) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Member not found" });
     }
     if (member.role === "admin") {
-      const count = this.memberRepo.countAdminsAndOwners(orgId);
+      const count = await this.memberRepo.countAdminsAndOwners(orgId);
       if (count <= 1) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot remove the last admin" });
       }
     }
-    this.memberRepo.removeMember(orgId, targetUserId);
+    await this.memberRepo.removeMember(orgId, targetUserId);
   }
 
-  transferOwnership(orgId: string, actorUserId: string, targetUserId: string): void {
-    const org = this.requireOrg(orgId);
+  async transferOwnership(orgId: string, actorUserId: string, targetUserId: string): Promise<void> {
+    const org = await this.requireOrg(orgId);
     if (org.ownerId !== actorUserId) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can transfer ownership" });
     }
-    const target = this.memberRepo.findMember(orgId, targetUserId);
+    const target = await this.memberRepo.findMember(orgId, targetUserId);
     if (!target) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Target member not found" });
     }
-    this.memberRepo.updateMemberRole(orgId, targetUserId, "owner");
-    this.memberRepo.updateMemberRole(orgId, actorUserId, "admin");
-    this.orgRepo.updateOwner(orgId, targetUserId);
+    await this.memberRepo.updateMemberRole(orgId, targetUserId, "owner");
+    await this.memberRepo.updateMemberRole(orgId, actorUserId, "admin");
+    await this.orgRepo.updateOwner(orgId, targetUserId);
   }
 
   validateSlug(slug: string): void {
@@ -177,9 +187,9 @@ export class OrgService {
     }
   }
 
-  private buildOrgWithMembers(tenant: Tenant): OrgWithMembers {
-    const members = this.memberRepo.listMembers(tenant.id);
-    const invites = this.memberRepo.listInvites(tenant.id);
+  private async buildOrgWithMembers(tenant: Tenant): Promise<OrgWithMembers> {
+    const members = await this.memberRepo.listMembers(tenant.id);
+    const invites = await this.memberRepo.listInvites(tenant.id);
     return {
       ...tenant,
       members: members.map((m) => ({
@@ -201,14 +211,14 @@ export class OrgService {
     };
   }
 
-  private requireOrg(orgId: string): Tenant {
-    const org = this.orgRepo.getById(orgId);
+  private async requireOrg(orgId: string): Promise<Tenant> {
+    const org = await this.orgRepo.getById(orgId);
     if (!org) throw new TRPCError({ code: "NOT_FOUND", message: "Organization not found" });
     return org;
   }
 
-  private requireAdminOrOwner(orgId: string, userId: string): void {
-    const member = this.memberRepo.findMember(orgId, userId);
+  private async requireAdminOrOwner(orgId: string, userId: string): Promise<void> {
+    const member = await this.memberRepo.findMember(orgId, userId);
     if (!member || (member.role !== "admin" && member.role !== "owner")) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Admin or owner role required" });
     }

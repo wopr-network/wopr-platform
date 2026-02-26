@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Bot instances table — tracks billing lifecycle for each bot.
@@ -7,7 +7,7 @@ import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
  * Billing states: created -> active -> suspended -> destroyed
  * Reactivation: suspended -> active (when credits purchased)
  */
-export const botInstances = sqliteTable(
+export const botInstances = pgTable(
   "bot_instances",
   {
     /** Bot UUID (matches fleet profile ID) */
@@ -34,9 +34,9 @@ export const botInstances = sqliteTable(
     /** Storage tier: standard | plus | pro | max */
     storageTier: text("storage_tier").notNull().default("standard"),
     /** ISO timestamp of record creation */
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(sql`(now())`),
     /** ISO timestamp of last update */
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(now())`),
     /** User who created this bot instance (null for legacy bots) */
     createdByUserId: text("created_by_user_id"),
   },
@@ -45,6 +45,5 @@ export const botInstances = sqliteTable(
     index("idx_bot_instances_billing_state").on(table.billingState),
     index("idx_bot_instances_destroy_after").on(table.destroyAfter),
     index("idx_bot_instances_node").on(table.nodeId),
-    index("idx_bot_instances_created_by").on(table.createdByUserId),
   ],
 );

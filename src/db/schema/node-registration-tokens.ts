@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, boolean, index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * One-time registration tokens for self-hosted node agents.
  * Generated from the UI, expire after 15 minutes, single-use.
  */
-export const nodeRegistrationTokens = sqliteTable(
+export const nodeRegistrationTokens = pgTable(
   "node_registration_tokens",
   {
     /** Random UUID token value (also the primary key) */
@@ -15,15 +15,15 @@ export const nodeRegistrationTokens = sqliteTable(
     /** Optional human label (e.g., "Living room Mac Mini") */
     label: text("label"),
     /** Unix epoch seconds when token was created */
-    createdAt: integer("created_at").notNull().default(sql`(unixepoch())`),
+    createdAt: bigint("created_at", { mode: "number" }).notNull().default(sql`(extract(epoch from now())::bigint)`),
     /** Unix epoch seconds when token expires (createdAt + 900) */
-    expiresAt: integer("expires_at").notNull(),
+    expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
     /** Whether this token has been consumed */
-    used: integer("used", { mode: "boolean" }).notNull().default(false),
+    used: boolean("used").notNull().default(false),
     /** Node ID assigned when token was consumed (null if unused) */
     nodeId: text("node_id"),
     /** Unix epoch seconds when token was consumed */
-    usedAt: integer("used_at"),
+    usedAt: bigint("used_at", { mode: "number" }),
   },
   (table) => [index("idx_reg_tokens_user").on(table.userId), index("idx_reg_tokens_expires").on(table.expiresAt)],
 );

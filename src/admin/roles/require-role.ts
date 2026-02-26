@@ -21,7 +21,7 @@ export function requirePlatformAdmin(roleStore: RoleStore) {
       return c.json({ error: "Authentication required" }, 401);
     }
 
-    if (!roleStore.isPlatformAdmin(user.id)) {
+    if (!(await roleStore.isPlatformAdmin(user.id))) {
       return c.json({ error: "Platform admin access required" }, 403);
     }
 
@@ -52,7 +52,7 @@ export function requireTenantAdmin(roleStore: RoleStore, tenantIdKey = "tenantId
     }
 
     // Platform admins can manage any tenant
-    if (roleStore.isPlatformAdmin(user.id)) {
+    if (await roleStore.isPlatformAdmin(user.id)) {
       return next();
     }
 
@@ -61,7 +61,7 @@ export function requireTenantAdmin(roleStore: RoleStore, tenantIdKey = "tenantId
       return c.json({ error: "Tenant ID required" }, 400);
     }
 
-    const role = roleStore.getRole(user.id, tenantId);
+    const role = await roleStore.getRole(user.id, tenantId);
     if (role !== "tenant_admin") {
       return c.json({ error: "Tenant admin access required" }, 403);
     }

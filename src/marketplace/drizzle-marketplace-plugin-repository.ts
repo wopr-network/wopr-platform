@@ -23,54 +23,50 @@ function rowToDomain(row: typeof marketplacePlugins.$inferSelect): MarketplacePl
 export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  findAll(): MarketplacePlugin[] {
-    return this.db.select().from(marketplacePlugins).orderBy(asc(marketplacePlugins.sortOrder)).all().map(rowToDomain);
+  async findAll(): Promise<MarketplacePlugin[]> {
+    const rows = await this.db.select().from(marketplacePlugins).orderBy(asc(marketplacePlugins.sortOrder));
+    return rows.map(rowToDomain);
   }
 
-  findEnabled(): MarketplacePlugin[] {
-    return this.db
+  async findEnabled(): Promise<MarketplacePlugin[]> {
+    const rows = await this.db
       .select()
       .from(marketplacePlugins)
       .where(eq(marketplacePlugins.enabled, 1))
-      .orderBy(asc(marketplacePlugins.sortOrder))
-      .all()
-      .map(rowToDomain);
+      .orderBy(asc(marketplacePlugins.sortOrder));
+    return rows.map(rowToDomain);
   }
 
-  findPendingReview(): MarketplacePlugin[] {
-    return this.db
+  async findPendingReview(): Promise<MarketplacePlugin[]> {
+    const rows = await this.db
       .select()
       .from(marketplacePlugins)
       .where(eq(marketplacePlugins.enabled, 0))
-      .orderBy(asc(marketplacePlugins.discoveredAt))
-      .all()
-      .map(rowToDomain);
+      .orderBy(asc(marketplacePlugins.discoveredAt));
+    return rows.map(rowToDomain);
   }
 
-  findById(pluginId: string): MarketplacePlugin | undefined {
-    const row = this.db.select().from(marketplacePlugins).where(eq(marketplacePlugins.pluginId, pluginId)).get();
-    return row ? rowToDomain(row) : undefined;
+  async findById(pluginId: string): Promise<MarketplacePlugin | undefined> {
+    const rows = await this.db.select().from(marketplacePlugins).where(eq(marketplacePlugins.pluginId, pluginId));
+    return rows[0] ? rowToDomain(rows[0]) : undefined;
   }
 
-  insert(plugin: NewMarketplacePlugin): MarketplacePlugin {
+  async insert(plugin: NewMarketplacePlugin): Promise<MarketplacePlugin> {
     const now = Date.now();
-    this.db
-      .insert(marketplacePlugins)
-      .values({
-        pluginId: plugin.pluginId,
-        npmPackage: plugin.npmPackage,
-        version: plugin.version,
-        category: plugin.category ?? null,
-        notes: plugin.notes ?? null,
-        discoveredAt: now,
-      })
-      .run();
-    const inserted = this.findById(plugin.pluginId);
+    await this.db.insert(marketplacePlugins).values({
+      pluginId: plugin.pluginId,
+      npmPackage: plugin.npmPackage,
+      version: plugin.version,
+      category: plugin.category ?? null,
+      notes: plugin.notes ?? null,
+      discoveredAt: now,
+    });
+    const inserted = await this.findById(plugin.pluginId);
     if (!inserted) throw new Error(`Failed to insert marketplace plugin: ${plugin.pluginId}`);
     return inserted;
   }
 
-  update(pluginId: string, patch: Partial<MarketplacePlugin>): MarketplacePlugin {
+  async update(pluginId: string, patch: Partial<MarketplacePlugin>): Promise<MarketplacePlugin> {
     const updates: Record<string, unknown> = {};
     if (patch.enabled !== undefined) updates.enabled = patch.enabled ? 1 : 0;
     if (patch.featured !== undefined) updates.featured = patch.featured ? 1 : 0;
@@ -82,14 +78,14 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
     // Auto-set enabledAt when enabling
     if (patch.enabled === true) updates.enabledAt = Date.now();
     if (Object.keys(updates).length > 0) {
-      this.db.update(marketplacePlugins).set(updates).where(eq(marketplacePlugins.pluginId, pluginId)).run();
+      await this.db.update(marketplacePlugins).set(updates).where(eq(marketplacePlugins.pluginId, pluginId));
     }
-    const updated = this.findById(pluginId);
+    const updated = await this.findById(pluginId);
     if (!updated) throw new Error(`Marketplace plugin not found after update: ${pluginId}`);
     return updated;
   }
 
-  delete(pluginId: string): void {
-    this.db.delete(marketplacePlugins).where(eq(marketplacePlugins.pluginId, pluginId)).run();
+  async delete(pluginId: string): Promise<void> {
+    await this.db.delete(marketplacePlugins).where(eq(marketplacePlugins.pluginId, pluginId));
   }
 }

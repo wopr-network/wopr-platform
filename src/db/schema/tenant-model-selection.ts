@@ -1,6 +1,6 @@
-import { sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { pgTable, text } from "drizzle-orm/pg-core";
 
-export const tenantModelSelection = sqliteTable("tenant_model_selection", {
+export const tenantModelSelection = pgTable("tenant_model_selection", {
   tenantId: text("tenant_id").primaryKey(),
   defaultModel: text("default_model").notNull().default("openrouter/auto"),
   updatedAt: text("updated_at")

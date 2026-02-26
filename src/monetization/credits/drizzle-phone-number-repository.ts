@@ -24,34 +24,31 @@ export class DrizzlePhoneNumberRepository implements IPhoneNumberRepository {
         provisionedAt: new Date().toISOString(),
         lastBilledAt: null,
       })
-      .onConflictDoNothing()
-      .run();
+      .onConflictDoNothing();
   }
 
   async removePhoneNumber(sid: string): Promise<void> {
-    await this.db.delete(provisionedPhoneNumbers).where(eq(provisionedPhoneNumbers.sid, sid)).run();
+    await this.db.delete(provisionedPhoneNumbers).where(eq(provisionedPhoneNumbers.sid, sid));
   }
 
   async listActivePhoneNumbers(): Promise<ProvisionedPhoneNumber[]> {
-    return this.db.select().from(provisionedPhoneNumbers).all().map(toPhone);
+    const rows = await this.db.select().from(provisionedPhoneNumbers);
+    return rows.map(toPhone);
   }
 
   async listByTenant(tenantId: string): Promise<ProvisionedPhoneNumber[]> {
-    return this.db
+    const rows = await this.db
       .select()
       .from(provisionedPhoneNumbers)
-      .where(eq(provisionedPhoneNumbers.tenantId, tenantId))
-      .all()
-      .map(toPhone);
+      .where(eq(provisionedPhoneNumbers.tenantId, tenantId));
+    return rows.map(toPhone);
   }
 
   async markBilled(sid: string): Promise<void> {
     await this.db
       .update(provisionedPhoneNumbers)
-      // raw SQL: Drizzle cannot express datetime('now') for SQLite current timestamp
-      .set({ lastBilledAt: sql`(datetime('now'))` })
-      .where(eq(provisionedPhoneNumbers.sid, sid))
-      .run();
+      .set({ lastBilledAt: sql`now()` })
+      .where(eq(provisionedPhoneNumbers.sid, sid));
   }
 }
 

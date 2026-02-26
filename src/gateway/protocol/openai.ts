@@ -147,7 +147,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
     const tenant = c.get("gatewayTenant");
 
     // Budget check
-    const budgetResult = deps.budgetChecker.check(tenant.id, tenant.spendLimits);
+    const budgetResult = await deps.budgetChecker.check(tenant.id, tenant.spendLimits);
     if (!budgetResult.allowed) {
       return c.json(
         {
@@ -163,7 +163,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
     }
 
     // Credit balance check (estimate minimum 1 cent for LLM calls)
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       // Convert to OpenAI error format
       return c.json(
@@ -255,7 +255,9 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");
-      const cost = costHeader ? parseFloat(costHeader) : estimateTokenCostFromBody(responseBody, requestModel, deps);
+      const cost = costHeader
+        ? parseFloat(costHeader)
+        : await estimateTokenCostFromBody(responseBody, requestModel, deps);
 
       logger.info("OpenAI handler: chat/completions", {
         tenant: tenant.id,
@@ -306,7 +308,7 @@ function embeddingsHandler(deps: ProtocolDeps) {
     const tenant = c.get("gatewayTenant");
 
     // Budget check
-    const budgetResult = deps.budgetChecker.check(tenant.id, tenant.spendLimits);
+    const budgetResult = await deps.budgetChecker.check(tenant.id, tenant.spendLimits);
     if (!budgetResult.allowed) {
       return c.json(
         {
@@ -322,7 +324,7 @@ function embeddingsHandler(deps: ProtocolDeps) {
     }
 
     // Credit balance check (estimate minimum 1 cent for LLM calls)
-    const creditErr = creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps, 1);
     if (creditErr) {
       // Convert to OpenAI error format
       return c.json(
@@ -414,14 +416,18 @@ function embeddingsHandler(deps: ProtocolDeps) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function estimateTokenCostFromBody(body: string, model?: string, deps?: ProtocolDeps): number {
+async function estimateTokenCostFromBody(body: string, model?: string, deps?: ProtocolDeps): Promise<number> {
   try {
     const parsed = JSON.parse(body) as {
       usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     const inputTokens = parsed.usage?.prompt_tokens ?? 0;
     const outputTokens = parsed.usage?.completion_tokens ?? 0;
-    const rates = resolveTokenRates(deps?.rateLookupFn ?? (() => null), "chat-completions", model);
+    const rates = await resolveTokenRates(
+      deps?.rateLookupFn ?? (() => Promise.resolve(null)),
+      "chat-completions",
+      model,
+    );
     return (inputTokens * rates.inputRatePer1K + outputTokens * rates.outputRatePer1K) / 1000;
   } catch {
     return 0.001;

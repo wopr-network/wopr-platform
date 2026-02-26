@@ -1,10 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Append-only audit log for all node status transitions.
  * Written atomically with every INodeRepository.transition() call.
  */
-export const nodeTransitions = sqliteTable(
+export const nodeTransitions = pgTable(
   "node_transitions",
   {
     /** UUID */
@@ -20,7 +20,7 @@ export const nodeTransitions = sqliteTable(
     /** What triggered it: "heartbeat_watchdog", "recovery_orchestrator", "api:admin" */
     triggeredBy: text("triggered_by").notNull(),
     /** Unix epoch seconds */
-    createdAt: integer("created_at").notNull(),
+    createdAt: bigint("created_at", { mode: "number" }).notNull(),
   },
   (t) => [index("idx_node_transitions_node").on(t.nodeId), index("idx_node_transitions_created").on(t.createdAt)],
 );

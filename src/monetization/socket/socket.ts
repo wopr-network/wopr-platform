@@ -74,7 +74,7 @@ export class AdapterSocket {
     // Pre-call budget check — fail-closed if enabled and budget exceeded
     const limits = request.spendLimits;
     if (this.budgetChecker && limits && !request.byok) {
-      const budgetResult = this.budgetChecker.check(request.tenantId, limits);
+      const budgetResult = await this.budgetChecker.check(request.tenantId, limits);
       if (!budgetResult.allowed) {
         const error = Object.assign(new Error(budgetResult.reason ?? "Budget exceeded"), {
           httpStatus: budgetResult.httpStatus ?? 429,

@@ -29,13 +29,13 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
   };
 
   // GET /plugins — list all marketplace plugins
-  routes.get("/plugins", (c) => {
-    return c.json(repo().findAll());
+  routes.get("/plugins", async (c) => {
+    return c.json(await repo().findAll());
   });
 
   // GET /queue — list plugins pending review (enabled = false)
-  routes.get("/queue", (c) => {
-    return c.json(repo().findPendingReview());
+  routes.get("/queue", async (c) => {
+    return c.json(await repo().findPendingReview());
   });
 
   // POST /plugins — manually add a plugin by npm package name
@@ -47,12 +47,12 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
     }
 
     const { npmPackage, version, category, notes } = parsed.data;
-    const existing = repo().findById(npmPackage);
+    const existing = await repo().findById(npmPackage);
     if (existing) {
       return c.json({ error: "Plugin already exists" }, 409);
     }
 
-    const plugin = repo().insert({
+    const plugin = await repo().insert({
       pluginId: npmPackage,
       npmPackage,
       version,
@@ -77,7 +77,7 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
   // PATCH /plugins/:id — update plugin (enable/disable, feature, sort, notes)
   routes.patch("/plugins/:id", async (c) => {
     const id = c.req.param("id");
-    const existing = repo().findById(id);
+    const existing = await repo().findById(id);
     if (!existing) {
       return c.json({ error: "Plugin not found" }, 404);
     }
@@ -95,7 +95,7 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
       if (user) patch.enabledBy = user.id;
     }
 
-    const updated = repo().update(
+    const updated = await repo().update(
       id,
       patch as Partial<import("../../marketplace/marketplace-repository-types.js").MarketplacePlugin>,
     );
@@ -115,13 +115,13 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
   });
 
   // DELETE /plugins/:id — remove a plugin from the registry
-  routes.delete("/plugins/:id", (c) => {
+  routes.delete("/plugins/:id", async (c) => {
     const id = c.req.param("id");
-    const existing = repo().findById(id);
+    const existing = await repo().findById(id);
     if (!existing) {
       return c.json({ error: "Plugin not found" }, 404);
     }
-    repo().delete(id);
+    await repo().delete(id);
     try {
       const user = c.get("user") as { id: string } | undefined;
       getAdminAuditLog().log({

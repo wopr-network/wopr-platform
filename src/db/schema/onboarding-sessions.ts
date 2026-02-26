@@ -1,6 +1,6 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
-export const onboardingSessions = sqliteTable(
+export const onboardingSessions = pgTable(
   "onboarding_sessions",
   {
     id: text("id").primaryKey(),

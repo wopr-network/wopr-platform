@@ -4,19 +4,17 @@ import { MigrationManager } from "./migration-manager.js";
 import type { NodeConnectionManager, TenantAssignment } from "./node-connection-manager.js";
 
 function makeDb(instance: Record<string, unknown> | undefined) {
+  // Drizzle PG select returns a Promise that resolves to an array
+  const rows = instance ? [instance] : [];
   return {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          get: vi.fn().mockReturnValue(instance),
-        }),
+        where: vi.fn().mockResolvedValue(rows),
       }),
     }),
     update: vi.fn().mockReturnValue({
       set: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          run: vi.fn(),
-        }),
+        where: vi.fn().mockResolvedValue([]),
       }),
     }),
   };
@@ -146,17 +144,14 @@ describe("MigrationManager.migrateTenant", () => {
   });
 
   it("persists bot_instances.node_id to DB after successful migration", async () => {
-    const runMock = vi.fn();
-    const whereMock = vi.fn().mockReturnValue({ run: runMock });
+    const whereMock = vi.fn().mockResolvedValue(undefined);
     const setMock = vi.fn().mockReturnValue({ where: whereMock });
     const updateMock = vi.fn().mockReturnValue({ set: setMock });
 
     const db = {
       select: vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            get: vi.fn().mockReturnValue(defaultInstance),
-          }),
+          where: vi.fn().mockResolvedValue([defaultInstance]),
         }),
       }),
       update: updateMock,
@@ -171,22 +166,19 @@ describe("MigrationManager.migrateTenant", () => {
     const setCall = (setMock as ReturnType<typeof vi.fn>).mock.calls.find((call) => call[0]?.nodeId === TARGET_NODE);
     expect(setCall).toBeDefined();
     expect(setCall?.[0]?.nodeId).toBe(TARGET_NODE);
-    expect(runMock).toHaveBeenCalled();
+    expect(whereMock).toHaveBeenCalled();
   });
 
   it("does not persist node_id to DB when migration fails", async () => {
-    const runMock = vi.fn();
     const setMock = vi.fn().mockReturnValue({
-      where: vi.fn().mockReturnValue({ run: runMock }),
+      where: vi.fn().mockResolvedValue(undefined),
     });
     const updateMock = vi.fn().mockReturnValue({ set: setMock });
 
     const db = {
       select: vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            get: vi.fn().mockReturnValue(defaultInstance),
-          }),
+          where: vi.fn().mockResolvedValue([defaultInstance]),
         }),
       }),
       update: updateMock,
@@ -267,32 +259,28 @@ describe("MigrationManager.migrateTenant", () => {
   });
 
   it("returns error when no capacity and no explicit target", async () => {
-    const db = makeDb(defaultInstance);
-    // placement.findPlacementExcluding will query db.select() again
-    // We mock the DB to return null for placement
-    const selectMock = vi.fn();
-    let callCount = 0;
-    selectMock.mockImplementation(() => ({
-      from: vi.fn().mockReturnValue({
-        all: vi.fn().mockReturnValue([]), // nodes query: returns empty list (no placement possible)
-        where: vi.fn().mockReturnValue({
-          get: vi.fn().mockImplementation(() => {
-            callCount++;
-            if (callCount === 1) return defaultInstance; // First call: bot instance lookup
-            return null; // Second call: placement query
+    // First select call: bot instance lookup (returns array with instance)
+    // Second select call: nodes list for placement (returns empty array)
+    let selectCallCount = 0;
+    const selectMock = vi.fn().mockImplementation(() => {
+      selectCallCount++;
+      if (selectCallCount === 1) {
+        // Bot instance lookup: has .where() that resolves to array
+        return {
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([defaultInstance]),
           }),
-          limit: vi.fn().mockReturnValue({
-            get: vi.fn().mockReturnValue(null), // placement returns null
-          }),
-          orderBy: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({
-              get: vi.fn().mockReturnValue(null),
-            }),
-          }),
-        }),
-      }),
-    }));
-    const db2 = { ...db, select: selectMock };
+        };
+      }
+      // Nodes query for placement: no .where(), resolves directly from .from()
+      return {
+        from: vi.fn().mockResolvedValue([]), // empty nodes list = no placement possible
+      };
+    });
+    const db2 = {
+      ...makeDb(defaultInstance),
+      select: selectMock,
+    };
     const mgr = new MigrationManager(db2 as never, nodeConnections, notifier);
 
     const result = await mgr.migrateTenant(BOT_ID);

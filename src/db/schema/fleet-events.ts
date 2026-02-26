@@ -1,9 +1,9 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, integer, pgTable, serial, text } from "drizzle-orm/pg-core";
 
-export const fleetEvents = sqliteTable("fleet_events", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const fleetEvents = pgTable("fleet_events", {
+  id: serial("id").primaryKey(),
   eventType: text("event_type").notNull(),
   fired: integer("fired").notNull().default(0),
-  createdAt: integer("created_at").notNull(),
-  clearedAt: integer("cleared_at"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  clearedAt: bigint("cleared_at", { mode: "number" }),
 });

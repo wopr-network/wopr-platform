@@ -6,24 +6,23 @@ import type { IRestoreLogRepository, NewRestoreLogEntry, RestoreLogEntry } from 
 export class DrizzleRestoreLogRepository implements IRestoreLogRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  insert(entry: NewRestoreLogEntry): void {
-    this.db.insert(restoreLog).values(entry).run();
+  async insert(entry: NewRestoreLogEntry): Promise<void> {
+    await this.db.insert(restoreLog).values(entry);
   }
 
-  getById(id: string): RestoreLogEntry | null {
-    const row = this.db.select().from(restoreLog).where(eq(restoreLog.id, id)).get();
-    return row ? toEntry(row) : null;
+  async getById(id: string): Promise<RestoreLogEntry | null> {
+    const rows = await this.db.select().from(restoreLog).where(eq(restoreLog.id, id));
+    return rows[0] ? toEntry(rows[0]) : null;
   }
 
-  listByTenant(tenant: string, limit: number): RestoreLogEntry[] {
-    return this.db
+  async listByTenant(tenant: string, limit: number): Promise<RestoreLogEntry[]> {
+    const rows = await this.db
       .select()
       .from(restoreLog)
       .where(eq(restoreLog.tenant, tenant))
       .orderBy(desc(restoreLog.restoredAt))
-      .limit(limit)
-      .all()
-      .map(toEntry);
+      .limit(limit);
+    return rows.map(toEntry);
   }
 }
 

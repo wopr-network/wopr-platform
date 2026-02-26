@@ -200,7 +200,7 @@ fleetRoutes.post(
       const tenantId = parsed.data.tenantId;
 
       // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
-      const balance = getDeps().creditLedger.balance(tenantId);
+      const balance = await getDeps().creditLedger.balance(tenantId);
       if (balance < 17) {
         return c.json(
           {
@@ -333,7 +333,9 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
         const repo = getRecoveryOrchestrator();
         return repo
           .listEvents()
-          .reduce((p, e) => p.then(() => repo.retryWaiting(e.id)), Promise.resolve(undefined as unknown));
+          .then((events) =>
+            events.reduce((p, e) => p.then(() => repo.retryWaiting(e.id)), Promise.resolve(undefined as unknown)),
+          );
       })
       .catch((err) => {
         logger.error("Auto-retry after bot removal failed", { err });
@@ -359,7 +361,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
   try {
     const tenantId = profile?.tenantId;
     if (!tenantId) return c.json({ error: "Missing tenant" }, 400);
-    const balance = getDeps().creditLedger.balance(tenantId);
+    const balance = await getDeps().creditLedger.balance(tenantId);
     if (balance < 17) {
       return c.json(
         {
@@ -759,7 +761,7 @@ fleetRoutes.post("/bots/:id/upgrade-to-vps", writeAuth, async (c) => {
 
   const { getVpsRepo, getTenantCustomerStore } = await import("../../fleet/services.js");
   const vpsRepo = getVpsRepo();
-  const existing = vpsRepo.getByBotId(botId);
+  const existing = await vpsRepo.getByBotId(botId);
   if (existing && existing.status === "active") {
     return c.json({ error: "Bot already on VPS tier" }, 409);
   }
@@ -816,7 +818,7 @@ fleetRoutes.get("/bots/:id/vps-info", readAuth, async (c) => {
   if (!profile) return c.json({ error: "Bot not found" }, 404);
 
   const { getVpsRepo } = await import("../../fleet/services.js");
-  const sub = getVpsRepo().getByBotId(botId);
+  const sub = await getVpsRepo().getByBotId(botId);
   if (!sub) {
     return c.json({ error: "Bot is not on VPS tier" }, 404);
   }

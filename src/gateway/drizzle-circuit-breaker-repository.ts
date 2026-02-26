@@ -7,31 +7,30 @@ import type { CircuitBreakerEntry } from "./repository-types.js";
 export class DrizzleCircuitBreakerRepository implements ICircuitBreakerRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  get(instanceId: string): CircuitBreakerEntry | null {
-    const row = this.db
+  async get(instanceId: string): Promise<CircuitBreakerEntry | null> {
+    const rows = await this.db
       .select()
       .from(circuitBreakerStates)
-      .where(eq(circuitBreakerStates.instanceId, instanceId))
-      .get();
+      .where(eq(circuitBreakerStates.instanceId, instanceId));
+    const row = rows[0];
     if (!row) return null;
     return this.toEntry(row);
   }
 
-  incrementOrReset(instanceId: string, windowMs: number): CircuitBreakerEntry {
+  async incrementOrReset(instanceId: string, windowMs: number): Promise<CircuitBreakerEntry> {
     const now = Date.now();
-    const existing = this.db
+    const rows = await this.db
       .select()
       .from(circuitBreakerStates)
-      .where(eq(circuitBreakerStates.instanceId, instanceId))
-      .get();
+      .where(eq(circuitBreakerStates.instanceId, instanceId));
+    const existing = rows[0];
 
     if (existing && now - existing.windowStart < windowMs) {
       // Within window: increment
-      this.db
+      await this.db
         .update(circuitBreakerStates)
         .set({ count: sql`${circuitBreakerStates.count} + 1` })
-        .where(eq(circuitBreakerStates.instanceId, instanceId))
-        .run();
+        .where(eq(circuitBreakerStates.instanceId, instanceId));
       return {
         instanceId,
         count: existing.count + 1,
@@ -41,53 +40,50 @@ export class DrizzleCircuitBreakerRepository implements ICircuitBreakerRepositor
     }
 
     // New window or new instance: upsert with count = 1
-    this.db
+    await this.db
       .insert(circuitBreakerStates)
       .values({ instanceId, count: 1, windowStart: now, trippedAt: null })
       .onConflictDoUpdate({
         target: circuitBreakerStates.instanceId,
         set: { count: 1, windowStart: now, trippedAt: null },
-      })
-      .run();
+      });
     return { instanceId, count: 1, windowStart: now, trippedAt: null };
   }
 
-  trip(instanceId: string): void {
+  async trip(instanceId: string): Promise<void> {
     const now = Date.now();
-    this.db
+    await this.db
       .insert(circuitBreakerStates)
       .values({ instanceId, count: 1, windowStart: now, trippedAt: now })
       .onConflictDoUpdate({
         target: circuitBreakerStates.instanceId,
         set: { trippedAt: now },
-      })
-      .run();
+      });
   }
 
-  reset(instanceId: string): void {
+  async reset(instanceId: string): Promise<void> {
     const now = Date.now();
-    this.db
+    await this.db
       .insert(circuitBreakerStates)
       .values({ instanceId, count: 0, windowStart: now, trippedAt: null })
       .onConflictDoUpdate({
         target: circuitBreakerStates.instanceId,
         set: { count: 0, windowStart: now, trippedAt: null },
-      })
-      .run();
+      });
   }
 
-  getAll(): CircuitBreakerEntry[] {
-    const rows = this.db.select().from(circuitBreakerStates).all();
+  async getAll(): Promise<CircuitBreakerEntry[]> {
+    const rows = await this.db.select().from(circuitBreakerStates);
     return rows.map((r) => this.toEntry(r));
   }
 
-  purgeStale(windowMs: number): number {
+  async purgeStale(windowMs: number): Promise<number> {
     const cutoff = Date.now() - windowMs;
-    const result = this.db
+    const result = await this.db
       .delete(circuitBreakerStates)
       .where(and(lt(circuitBreakerStates.windowStart, cutoff), isNull(circuitBreakerStates.trippedAt)))
-      .run();
-    return result.changes;
+      .returning({ id: circuitBreakerStates.instanceId });
+    return result.length;
   }
 
   private toEntry(row: typeof circuitBreakerStates.$inferSelect): CircuitBreakerEntry {

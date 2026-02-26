@@ -19,7 +19,7 @@ export function createHealthRoutes(storeFactory?: () => BackupStatusStore | null
   const routes = new Hono();
   const resolveStore = storeFactory ?? getHealthStore;
 
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const health: {
       status: string;
       service: string;
@@ -32,8 +32,8 @@ export function createHealthRoutes(storeFactory?: () => BackupStatusStore | null
     const store = resolveStore();
     if (store) {
       try {
-        const stale = store.listStale();
-        const total = store.count();
+        const stale = await store.listStale();
+        const total = await store.count();
         health.backups = { staleCount: stale.length, totalTracked: total };
         if (stale.length > 0) {
           health.status = "degraded";

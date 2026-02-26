@@ -20,7 +20,7 @@ const store = new ProfileStore(DATA_DIR);
 // Dependencies injected for hosted credential resolution.
 // In production these are set by the app bootstrap; tests mock them.
 let credentialVault: {
-  getActiveForProvider(provider: string): Array<Pick<DecryptedCredential, "plaintextKey">>;
+  getActiveForProvider(provider: string): Promise<Array<Pick<DecryptedCredential, "plaintextKey">>>;
 } | null = null;
 let meterEmitter: { emit(event: MeterEvent): void } | null = null;
 
@@ -67,7 +67,7 @@ async function dispatchEnvUpdate(
 ): Promise<{ dispatched: boolean; dispatchError?: string }> {
   try {
     const db = getDb();
-    const instance = db.select().from(botInstances).where(eq(botInstances.id, botId)).get();
+    const instance = (await db.select().from(botInstances).where(eq(botInstances.id, botId)))[0];
 
     if (!instance?.nodeId) {
       return { dispatched: false, dispatchError: "bot_not_deployed" };
@@ -163,7 +163,7 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
       return c.json({ error: "Credential vault not configured" }, 503);
     }
 
-    const creds = credentialVault.getActiveForProvider(capEntry.vaultProvider);
+    const creds = await credentialVault.getActiveForProvider(capEntry.vaultProvider);
     if (creds.length === 0) {
       return c.json({ error: `No platform credential available for hosted capability: ${capability}` }, 503);
     }
@@ -613,7 +613,7 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
       return c.json({ error: "Credential vault not configured" }, 503);
     }
 
-    const creds = credentialVault.getActiveForProvider(capEntry.vaultProvider);
+    const creds = await credentialVault.getActiveForProvider(capEntry.vaultProvider);
     if (creds.length === 0) {
       return c.json({ error: `No platform credential available for hosted capability: ${capability}` }, 503);
     }

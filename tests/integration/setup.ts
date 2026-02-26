@@ -4,7 +4,6 @@
  * Provides a fully-composed Hono app with mocked external dependencies
  * (Docker, Stripe, filesystem) but real middleware chains and routing.
  */
-import BetterSqlite3 from "better-sqlite3";
 import { vi } from "vitest";
 
 // ---------------------------------------------------------------------------
@@ -190,12 +189,7 @@ setFleetDeps({
   emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
 });
 
-// ---------------------------------------------------------------------------
-// Database helper
-// ---------------------------------------------------------------------------
-
-export function createTestDb(): BetterSqlite3.Database {
-  const db = new BetterSqlite3(":memory:");
-  db.pragma("journal_mode = WAL");
-  return db;
-}
+// Inject the mock snapshot manager into the snapshot route so it does not
+// attempt to connect to a real database via getSnapshotManager().
+const { setSnapshotManagerForTest } = await import("../../src/api/routes/snapshots.js");
+setSnapshotManagerForTest(snapshotManagerMock as never);

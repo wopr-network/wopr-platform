@@ -56,13 +56,13 @@ export class RecoveryOrchestrator {
      * Returns tenants assigned to the given node, pre-sorted by tier priority
      * (enterprise > pro > starter > free). Provided by the wiring layer (WOP-879).
      */
-    private readonly getTenants: (nodeId: string) => TenantRecoveryInfo[],
+    private readonly getTenants: (nodeId: string) => Promise<TenantRecoveryInfo[]>,
     /** Finds the best active target node with at least `requiredMb` free. */
-    private readonly findBestTarget: (excludeNodeId: string, requiredMb: number) => Node | null,
+    private readonly findBestTarget: (excludeNodeId: string, requiredMb: number) => Promise<Node | null>,
     /** Updates bot_instances.node_id to the new node. */
-    private readonly reassignTenant: (botId: string, targetNodeId: string) => void,
+    private readonly reassignTenant: (botId: string, targetNodeId: string) => Promise<void>,
     /** Adds deltaMb to the target node's used_mb. */
-    private readonly addNodeCapacity: (nodeId: string, deltaMb: number) => void,
+    private readonly addNodeCapacity: (nodeId: string, deltaMb: number) => Promise<void>,
   ) {}
 
   /**
@@ -83,18 +83,18 @@ export class RecoveryOrchestrator {
     //    the first transition will throw InvalidTransitionError — callers are
     //    expected to ensure the node is in the correct state before triggering.
     const transitionReason = trigger === "heartbeat_timeout" ? "heartbeat_timeout" : "manual_recovery";
-    this.nodeRepo.transition(deadNodeId, "offline", transitionReason, "recovery_orchestrator");
-    this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_orchestrator");
+    await this.nodeRepo.transition(deadNodeId, "offline", transitionReason, "recovery_orchestrator");
+    await this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_orchestrator");
 
     // 2. Get all tenants and create the recovery event. If either throws, roll
     //    back the node to "offline" so it does not get stuck in "recovering"
     //    with no event record and no path forward.
     let tenants: TenantRecoveryInfo[];
     try {
-      tenants = this.getTenants(deadNodeId);
+      tenants = await this.getTenants(deadNodeId);
 
       // 3. Create recovery event via repository
-      this.recoveryRepo.createEvent({
+      await this.recoveryRepo.createEvent({
         id: eventId,
         nodeId: deadNodeId,
         trigger,
@@ -105,7 +105,7 @@ export class RecoveryOrchestrator {
         eventId,
         err: setupErr instanceof Error ? setupErr.message : String(setupErr),
       });
-      this.nodeRepo.transition(deadNodeId, "offline", "recovery_setup_failed", "recovery_orchestrator");
+      await this.nodeRepo.transition(deadNodeId, "offline", "recovery_setup_failed", "recovery_orchestrator");
       throw setupErr;
     }
 
@@ -122,7 +122,7 @@ export class RecoveryOrchestrator {
     }
 
     // 5. WOP-856: Transition node from "recovering" to "offline"
-    this.nodeRepo.transition(deadNodeId, "offline", "recovery_complete", "recovery_orchestrator");
+    await this.nodeRepo.transition(deadNodeId, "offline", "recovery_complete", "recovery_orchestrator");
 
     // 6. Finalize recovery event.
     //    "partial"   — some tenants are still waiting for capacity
@@ -134,7 +134,7 @@ export class RecoveryOrchestrator {
         : report.recovered.length === 0 && report.failed.length > 0
           ? "failed"
           : "completed";
-    this.recoveryRepo.updateEvent(eventId, {
+    await this.recoveryRepo.updateEvent(eventId, {
       status: finalStatus as RecoveryEvent["status"],
       tenantsRecovered: report.recovered.length,
       tenantsFailed: report.failed.length,
@@ -179,19 +179,19 @@ export class RecoveryOrchestrator {
     logger.info(`Recovering tenant ${tenant.name} (${tenant.tenantId})`, { eventId, itemId });
 
     // a. Find best target node
-    const target = this.findBestTarget(deadNodeId, tenant.estimatedMb);
+    const target = await this.findBestTarget(deadNodeId, tenant.estimatedMb);
 
     if (!target) {
       logger.warn(`No capacity available for tenant ${tenant.name}`, { eventId, itemId });
       report.waiting.push({ tenant: tenant.botId, reason: "no_capacity" });
-      this.recoveryRepo.createItem({
+      await this.recoveryRepo.createItem({
         id: itemId,
         recoveryEventId: eventId,
         tenant: tenant.tenantId,
         sourceNode: deadNodeId,
         backupKey,
       });
-      this.recoveryRepo.updateItem(itemId, {
+      await this.recoveryRepo.updateItem(itemId, {
         status: "waiting",
         reason: "no_capacity",
         startedAt: now,
@@ -212,7 +212,7 @@ export class RecoveryOrchestrator {
       let image = RecoveryOrchestrator.DEFAULT_IMAGE;
       let env: Record<string, string> = {};
 
-      const profile = this.profileRepo.get(tenant.botId);
+      const profile = await this.profileRepo.get(tenant.botId);
       if (profile) {
         image = profile.image;
         env = profile.env;
@@ -244,22 +244,22 @@ export class RecoveryOrchestrator {
       });
 
       // f. Update routing (reassign tenant to new node)
-      this.reassignTenant(tenant.botId, target.id);
+      await this.reassignTenant(tenant.botId, target.id);
 
       // g. Update target node used_mb
-      this.addNodeCapacity(target.id, tenant.estimatedMb);
+      await this.addNodeCapacity(target.id, tenant.estimatedMb);
 
       logger.info(`Recovered tenant ${tenant.name} to node ${target.id}`, { eventId, itemId });
       report.recovered.push({ tenant: tenant.botId, target: target.id });
 
-      this.recoveryRepo.createItem({
+      await this.recoveryRepo.createItem({
         id: itemId,
         recoveryEventId: eventId,
         tenant: tenant.tenantId,
         sourceNode: deadNodeId,
         backupKey,
       });
-      this.recoveryRepo.updateItem(itemId, {
+      await this.recoveryRepo.updateItem(itemId, {
         targetNode: target.id,
         status: "recovered",
         startedAt: now,
@@ -289,14 +289,14 @@ export class RecoveryOrchestrator {
 
       report.failed.push({ tenant: tenant.botId, reason });
 
-      this.recoveryRepo.createItem({
+      await this.recoveryRepo.createItem({
         id: itemId,
         recoveryEventId: eventId,
         tenant: tenant.tenantId,
         sourceNode: deadNodeId,
         backupKey,
       });
-      this.recoveryRepo.updateItem(itemId, {
+      await this.recoveryRepo.updateItem(itemId, {
         targetNode: target ? target.id : null,
         status: "failed",
         reason,
@@ -310,12 +310,12 @@ export class RecoveryOrchestrator {
    * Retry recovery for waiting tenants (e.g., after new capacity is added).
    */
   async retryWaiting(recoveryEventId: string): Promise<RecoveryReport> {
-    const event = this.recoveryRepo.getEvent(recoveryEventId);
+    const event = await this.recoveryRepo.getEvent(recoveryEventId);
     if (!event) {
       throw new Error(`Recovery event ${recoveryEventId} not found`);
     }
 
-    const waitingItems = this.recoveryRepo.getWaitingItems(recoveryEventId);
+    const waitingItems = await this.recoveryRepo.getWaitingItems(recoveryEventId);
 
     logger.info(`Retrying ${waitingItems.length} waiting tenants for event ${recoveryEventId}`);
 
@@ -326,7 +326,7 @@ export class RecoveryOrchestrator {
       waiting: [],
     };
 
-    const allTenants = this.getTenants(event.nodeId);
+    const allTenants = await this.getTenants(event.nodeId);
 
     for (const item of waitingItems) {
       const tenant = allTenants.find((t) => t.tenantId === item.tenant);
@@ -347,21 +347,21 @@ export class RecoveryOrchestrator {
       // tenant is still waiting (no capacity again), leave the item as-is so
       // it remains eligible for future retryWaiting calls.
       if (actuallyRecovered) {
-        this.recoveryRepo.updateItem(item.id, {
+        await this.recoveryRepo.updateItem(item.id, {
           status: "recovered" as RecoveryItem["status"],
           completedAt: Math.floor(Date.now() / 1000),
         });
       } else if (actuallyFailed) {
-        this.recoveryRepo.updateItem(item.id, {
+        await this.recoveryRepo.updateItem(item.id, {
           status: "failed" as RecoveryItem["status"],
           completedAt: Math.floor(Date.now() / 1000),
         });
       }
-      this.recoveryRepo.incrementRetryCount(item.id);
+      await this.recoveryRepo.incrementRetryCount(item.id);
     }
 
     // Update event counts
-    this.recoveryRepo.updateEvent(recoveryEventId, {
+    await this.recoveryRepo.updateEvent(recoveryEventId, {
       tenantsRecovered: (event.tenantsRecovered ?? 0) + report.recovered.length,
       tenantsFailed: (event.tenantsFailed ?? 0) + report.failed.length,
       tenantsWaiting: report.waiting.length,
@@ -375,7 +375,7 @@ export class RecoveryOrchestrator {
   /**
    * Get open recovery events.
    */
-  listEvents(): RecoveryEvent[] {
+  async listEvents(): Promise<RecoveryEvent[]> {
     return this.recoveryRepo.listOpenEvents();
   }
 
@@ -386,9 +386,9 @@ export class RecoveryOrchestrator {
    * including recovered/failed, IRecoveryRepository will need a getItems()
    * method (tracked separately).
    */
-  getEventDetails(eventId: string): { event: RecoveryEvent | undefined; items: RecoveryItem[] } {
-    const event = this.recoveryRepo.getEvent(eventId) ?? undefined;
-    const items = event ? this.recoveryRepo.getWaitingItems(eventId) : [];
+  async getEventDetails(eventId: string): Promise<{ event: RecoveryEvent | undefined; items: RecoveryItem[] }> {
+    const event = (await this.recoveryRepo.getEvent(eventId)) ?? undefined;
+    const items = event ? await this.recoveryRepo.getWaitingItems(eventId) : [];
     return { event, items };
   }
 }

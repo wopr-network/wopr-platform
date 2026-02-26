@@ -42,7 +42,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   // Idempotency: check if any per-tenant dividend was already distributed for this date.
   // We look for any referenceId matching "dividend:YYYY-MM-DD:*".
   const sentinelPrefix = `dividend:${cfg.targetDate}:`;
-  const alreadyRan = cfg.creditTransactionRepo.existsByReferenceIdLike(`${sentinelPrefix}%`);
+  const alreadyRan = await cfg.creditTransactionRepo.existsByReferenceIdLike(`${sentinelPrefix}%`);
 
   if (alreadyRan) {
     result.skippedAlreadyRun = true;
@@ -54,7 +54,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   const dayStart = `${cfg.targetDate} 00:00:00`;
   const dayEnd = `${cfg.targetDate} 24:00:00`;
 
-  const dailyPurchaseTotal = cfg.creditTransactionRepo.sumPurchasesForPeriod(dayStart, dayEnd);
+  const dailyPurchaseTotal = await cfg.creditTransactionRepo.sumPurchasesForPeriod(dayStart, dayEnd);
   result.poolCents = Math.floor(dailyPurchaseTotal * cfg.matchRate);
 
   // Step 2: Find all active tenants (purchased in last 7 days from target date).
@@ -63,7 +63,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   const windowStart = subtractDays(cfg.targetDate, 6);
   const windowStartTs = `${windowStart} 00:00:00`;
 
-  const activeTenantIds = cfg.creditTransactionRepo.getActiveTenantIdsInWindow(windowStartTs, dayEnd);
+  const activeTenantIds = await cfg.creditTransactionRepo.getActiveTenantIdsInWindow(windowStartTs, dayEnd);
   result.activeCount = activeTenantIds.length;
 
   // Step 3: Compute per-user share.
@@ -91,7 +91,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   for (const tenantId of activeTenantIds) {
     const perUserRef = `dividend:${cfg.targetDate}:${tenantId}`;
     try {
-      cfg.ledger.credit(
+      await cfg.ledger.credit(
         tenantId,
         result.perUserCents,
         "community_dividend",

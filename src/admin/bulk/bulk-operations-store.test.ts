@@ -1,7 +1,8 @@
-import type BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { adminUsers } from "../../db/schema/admin-users.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { createTestDb } from "../../test/db.js";
 import { AdminAuditLog } from "../audit-log.js";
@@ -10,29 +11,28 @@ import { DrizzleBulkOperationsRepository } from "./bulk-operations-repository.js
 import { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk-operations-store.js";
 
 describe("BulkOperationsStore", () => {
-  let sqlite: BetterSqlite3.Database;
   let db: DrizzleDb;
+  let pool: PGlite;
   let creditStore: ICreditLedger;
   let tenantStatusStore: TenantStatusStore;
   let auditLog: AdminAuditLog;
   let store: BulkOperationsStore;
 
-  beforeEach(() => {
-    const t = createTestDb();
+  beforeEach(async () => {
+    const t = await createTestDb();
     db = t.db;
-    sqlite = t.sqlite;
+    pool = t.pool;
 
     const balances = new Map<string, number>();
     creditStore = {
-      credit(tenantId, amountCents) {
-        const balanceAfterCents = (balances.get(tenantId) ?? 0) + amountCents;
-        balances.set(tenantId, balanceAfterCents);
+      async credit(tenantId, amountCents) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
         return {
           id: "tx-1",
           tenantId,
           amountCents,
-          balanceAfterCents,
-          type: "signup_grant",
+          balanceAfterCents: balances.get(tenantId) ?? 0,
+          type: "signup_grant" as const,
           description: null,
           referenceId: null,
           fundingSource: null,
@@ -40,15 +40,14 @@ describe("BulkOperationsStore", () => {
           createdAt: new Date().toISOString(),
         };
       },
-      debit(tenantId, amountCents) {
-        const balanceAfterCents = (balances.get(tenantId) ?? 0) - amountCents;
-        balances.set(tenantId, balanceAfterCents);
+      async debit(tenantId, amountCents) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
         return {
           id: "tx-2",
           tenantId,
           amountCents: -amountCents,
-          balanceAfterCents,
-          type: "correction",
+          balanceAfterCents: balances.get(tenantId) ?? 0,
+          type: "correction" as const,
           description: null,
           referenceId: null,
           fundingSource: null,
@@ -56,43 +55,91 @@ describe("BulkOperationsStore", () => {
           createdAt: new Date().toISOString(),
         };
       },
-      balance(tenantId) {
+      async balance(tenantId) {
         return balances.get(tenantId) ?? 0;
       },
-      hasReferenceId() {
+      async hasReferenceId() {
         return false;
       },
-      history() {
+      async history() {
         return [];
       },
-      tenantsWithBalance() {
+      async tenantsWithBalance() {
         return [];
       },
-      memberUsage() {
+      async memberUsage(_tenantId: string) {
         return [];
       },
     };
+
     tenantStatusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
-    const bulkRepo = new DrizzleBulkOperationsRepository(db, sqlite);
+    const bulkRepo = new DrizzleBulkOperationsRepository(db);
     store = new BulkOperationsStore(bulkRepo, creditStore, tenantStatusStore, auditLog);
 
-    // Seed test data using raw sqlite (admin_users table created by Drizzle migration)
-    const insertUser = sqlite.prepare(
-      `INSERT INTO admin_users (id, email, name, tenant_id, status, role, credit_balance_cents, agent_count, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
     const now = Date.now();
-    insertUser.run("u1", "alice@test.com", "Alice", "tenant-1", "active", "user", 1000, 2, now);
-    insertUser.run("u2", "bob@test.com", "Bob", "tenant-2", "active", "user", 500, 1, now);
-    insertUser.run("u3", "carol@test.com", "Carol", "tenant-3", "suspended", "user", 0, 0, now);
-    insertUser.run("u4", "dave@test.com", "Dave", "tenant-4", "active", "tenant_admin", 200, 3, now);
-    insertUser.run("u5", "eve@test.com", "Eve", "tenant-5", "dormant", "user", 0, 0, now);
+    await db.insert(adminUsers).values([
+      {
+        id: "u1",
+        email: "alice@test.com",
+        name: "Alice",
+        tenantId: "tenant-1",
+        status: "active",
+        role: "user",
+        creditBalanceCents: 1000,
+        agentCount: 2,
+        createdAt: now,
+      },
+      {
+        id: "u2",
+        email: "bob@test.com",
+        name: "Bob",
+        tenantId: "tenant-2",
+        status: "active",
+        role: "user",
+        creditBalanceCents: 500,
+        agentCount: 1,
+        createdAt: now,
+      },
+      {
+        id: "u3",
+        email: "carol@test.com",
+        name: "Carol",
+        tenantId: "tenant-3",
+        status: "suspended",
+        role: "user",
+        creditBalanceCents: 0,
+        agentCount: 0,
+        createdAt: now,
+      },
+      {
+        id: "u4",
+        email: "dave@test.com",
+        name: "Dave",
+        tenantId: "tenant-4",
+        status: "active",
+        role: "tenant_admin",
+        creditBalanceCents: 200,
+        agentCount: 3,
+        createdAt: now,
+      },
+      {
+        id: "u5",
+        email: "eve@test.com",
+        name: "Eve",
+        tenantId: "tenant-5",
+        status: "dormant",
+        role: "user",
+        creditBalanceCents: 0,
+        agentCount: 0,
+        createdAt: now,
+      },
+    ]);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   // ---------------------------------------------------------------------------
@@ -100,17 +147,17 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("validation", () => {
-    it("rejects empty tenant IDs array", () => {
-      expect(() =>
+    it("rejects empty tenant IDs array", async () => {
+      await expect(() =>
         store.bulkGrant({ tenantIds: [], amountCents: 100, reason: "test", notifyByEmail: false }, "admin"),
-      ).toThrow("At least one tenant must be selected");
+      ).rejects.toThrow("At least one tenant must be selected");
     });
 
-    it("rejects >500 tenant IDs", () => {
+    it("rejects >500 tenant IDs", async () => {
       const ids = Array.from({ length: 501 }, (_, i) => `tenant-${i}`);
-      expect(() =>
+      await expect(() =>
         store.bulkGrant({ tenantIds: ids, amountCents: 100, reason: "test", notifyByEmail: false }, "admin"),
-      ).toThrow(`Maximum ${MAX_BULK_SIZE} tenants per bulk operation`);
+      ).rejects.toThrow(`Maximum ${MAX_BULK_SIZE} tenants per bulk operation`);
     });
   });
 
@@ -119,8 +166,8 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("bulkGrant", () => {
-    it("grants credits to multiple tenants and returns correct counts", () => {
-      const result = store.bulkGrant(
+    it("grants credits to multiple tenants and returns correct counts", async () => {
+      const result = await store.bulkGrant(
         { tenantIds: ["tenant-1", "tenant-2"], amountCents: 500, reason: "Outage comp", notifyByEmail: false },
         "admin-1",
       );
@@ -132,13 +179,16 @@ describe("BulkOperationsStore", () => {
       expect(result.totalAmountCents).toBe(1000);
       expect(result.undoDeadline).toBeGreaterThan(Date.now());
 
-      expect(creditStore.balance("tenant-1")).toBe(500);
-      expect(creditStore.balance("tenant-2")).toBe(500);
+      expect(await creditStore.balance("tenant-1")).toBe(500);
+      expect(await creditStore.balance("tenant-2")).toBe(500);
     });
 
-    it("creates an audit log entry with category bulk", () => {
-      store.bulkGrant({ tenantIds: ["tenant-1"], amountCents: 100, reason: "test", notifyByEmail: true }, "admin-1");
-      const logs = auditLog.query({ action: "bulk.grant" });
+    it("creates an audit log entry with category bulk", async () => {
+      await store.bulkGrant(
+        { tenantIds: ["tenant-1"], amountCents: 100, reason: "test", notifyByEmail: true },
+        "admin-1",
+      );
+      const logs = await auditLog.query({ action: "bulk.grant" });
       expect(logs.entries).toHaveLength(1);
       expect(logs.entries[0].category).toBe("bulk");
       const details = JSON.parse(logs.entries[0].details);
@@ -152,41 +202,43 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("undoGrant", () => {
-    it("reverses a grant within the 5-minute window", () => {
-      const grant = store.bulkGrant(
+    it("reverses a grant within the 5-minute window", async () => {
+      const grant = await store.bulkGrant(
         { tenantIds: ["tenant-1", "tenant-2"], amountCents: 300, reason: "test", notifyByEmail: false },
         "admin-1",
       );
-      expect(creditStore.balance("tenant-1")).toBe(300);
+      expect(await creditStore.balance("tenant-1")).toBe(300);
 
-      const undo = store.undoGrant(grant.operationId, "admin-1");
+      const undo = await store.undoGrant(grant.operationId, "admin-1");
       expect(undo.succeeded).toBe(2);
       expect(undo.failed).toBe(0);
-      expect(creditStore.balance("tenant-1")).toBe(0);
-      expect(creditStore.balance("tenant-2")).toBe(0);
+      expect(await creditStore.balance("tenant-1")).toBe(0);
+      expect(await creditStore.balance("tenant-2")).toBe(0);
     });
 
-    it("fails after 5-minute window expires", () => {
+    it("fails after 5-minute window expires", async () => {
       vi.useFakeTimers();
-      const grant = store.bulkGrant(
+      const grant = await store.bulkGrant(
         { tenantIds: ["tenant-1"], amountCents: 100, reason: "test", notifyByEmail: false },
         "admin-1",
       );
       vi.advanceTimersByTime(UNDO_WINDOW_MS + 1000);
-      expect(() => store.undoGrant(grant.operationId, "admin-1")).toThrow("Undo window has expired");
+      await expect(() => store.undoGrant(grant.operationId, "admin-1")).rejects.toThrow("Undo window has expired");
     });
 
-    it("fails if already undone", () => {
-      const grant = store.bulkGrant(
+    it("fails if already undone", async () => {
+      const grant = await store.bulkGrant(
         { tenantIds: ["tenant-1"], amountCents: 100, reason: "test", notifyByEmail: false },
         "admin-1",
       );
-      store.undoGrant(grant.operationId, "admin-1");
-      expect(() => store.undoGrant(grant.operationId, "admin-1")).toThrow("already been undone");
+      await store.undoGrant(grant.operationId, "admin-1");
+      await expect(() => store.undoGrant(grant.operationId, "admin-1")).rejects.toThrow("already been undone");
     });
 
-    it("fails for non-existent operation ID", () => {
-      expect(() => store.undoGrant("00000000-0000-0000-0000-000000000000", "admin-1")).toThrow("not found");
+    it("fails for non-existent operation ID", async () => {
+      await expect(() => store.undoGrant("00000000-0000-0000-0000-000000000000", "admin-1")).rejects.toThrow(
+        "not found",
+      );
     });
   });
 
@@ -195,47 +247,52 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("bulkSuspend", () => {
-    it("suspends multiple active tenants", () => {
-      // Ensure tenants have status rows
-      tenantStatusStore.ensureExists("tenant-1");
-      tenantStatusStore.ensureExists("tenant-2");
+    it("suspends multiple active tenants", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      await tenantStatusStore.ensureExists("tenant-2");
 
-      const result = store.bulkSuspend(
+      const result = await store.bulkSuspend(
         { tenantIds: ["tenant-1", "tenant-2"], reason: "Dormant cleanup", notifyByEmail: false },
         "admin-1",
       );
       expect(result.succeeded).toBe(2);
       expect(result.failed).toBe(0);
-      expect(tenantStatusStore.getStatus("tenant-1")).toBe("suspended");
-      expect(tenantStatusStore.getStatus("tenant-2")).toBe("suspended");
+      expect(await tenantStatusStore.getStatus("tenant-1")).toBe("suspended");
+      expect(await tenantStatusStore.getStatus("tenant-2")).toBe("suspended");
     });
 
-    it("skips already-suspended tenants", () => {
-      tenantStatusStore.ensureExists("tenant-1");
-      tenantStatusStore.suspend("tenant-1", "prior", "admin-0");
+    it("skips already-suspended tenants", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      await tenantStatusStore.suspend("tenant-1", "prior", "admin-0");
 
-      const result = store.bulkSuspend({ tenantIds: ["tenant-1"], reason: "test", notifyByEmail: false }, "admin-1");
+      const result = await store.bulkSuspend(
+        { tenantIds: ["tenant-1"], reason: "test", notifyByEmail: false },
+        "admin-1",
+      );
       expect(result.succeeded).toBe(0);
       expect(result.failed).toBe(1);
       expect(result.errors[0].error).toContain("Already suspended");
     });
 
-    it("skips banned tenants", () => {
-      tenantStatusStore.ensureExists("tenant-1");
-      tenantStatusStore.ban("tenant-1", "tos violation", "admin-0");
+    it("skips banned tenants", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      await tenantStatusStore.ban("tenant-1", "tos violation", "admin-0");
 
-      const result = store.bulkSuspend({ tenantIds: ["tenant-1"], reason: "test", notifyByEmail: false }, "admin-1");
+      const result = await store.bulkSuspend(
+        { tenantIds: ["tenant-1"], reason: "test", notifyByEmail: false },
+        "admin-1",
+      );
       expect(result.succeeded).toBe(0);
       expect(result.failed).toBe(1);
       expect(result.errors[0].error).toContain("banned");
     });
 
-    it("tracks partial failures correctly", () => {
-      tenantStatusStore.ensureExists("tenant-1");
-      tenantStatusStore.ensureExists("tenant-2");
-      tenantStatusStore.suspend("tenant-2", "prior", "admin-0");
+    it("tracks partial failures correctly", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      await tenantStatusStore.ensureExists("tenant-2");
+      await tenantStatusStore.suspend("tenant-2", "prior", "admin-0");
 
-      const result = store.bulkSuspend(
+      const result = await store.bulkSuspend(
         { tenantIds: ["tenant-1", "tenant-2"], reason: "test", notifyByEmail: false },
         "admin-1",
       );
@@ -249,32 +306,32 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("bulkReactivate", () => {
-    it("reactivates multiple suspended tenants", () => {
-      tenantStatusStore.ensureExists("tenant-1");
-      tenantStatusStore.ensureExists("tenant-2");
-      tenantStatusStore.suspend("tenant-1", "prior", "admin-0");
-      tenantStatusStore.suspend("tenant-2", "prior", "admin-0");
+    it("reactivates multiple suspended tenants", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      await tenantStatusStore.ensureExists("tenant-2");
+      await tenantStatusStore.suspend("tenant-1", "prior", "admin-0");
+      await tenantStatusStore.suspend("tenant-2", "prior", "admin-0");
 
-      const result = store.bulkReactivate({ tenantIds: ["tenant-1", "tenant-2"] }, "admin-1");
+      const result = await store.bulkReactivate({ tenantIds: ["tenant-1", "tenant-2"] }, "admin-1");
       expect(result.succeeded).toBe(2);
-      expect(tenantStatusStore.getStatus("tenant-1")).toBe("active");
-      expect(tenantStatusStore.getStatus("tenant-2")).toBe("active");
+      expect(await tenantStatusStore.getStatus("tenant-1")).toBe("active");
+      expect(await tenantStatusStore.getStatus("tenant-2")).toBe("active");
     });
 
-    it("skips already-active tenants", () => {
-      tenantStatusStore.ensureExists("tenant-1");
+    it("skips already-active tenants", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
 
-      const result = store.bulkReactivate({ tenantIds: ["tenant-1"] }, "admin-1");
+      const result = await store.bulkReactivate({ tenantIds: ["tenant-1"] }, "admin-1");
       expect(result.succeeded).toBe(0);
       expect(result.failed).toBe(1);
       expect(result.errors[0].error).toContain("Already active");
     });
 
-    it("skips banned tenants", () => {
-      tenantStatusStore.ensureExists("tenant-1");
-      tenantStatusStore.ban("tenant-1", "tos violation", "admin-0");
+    it("skips banned tenants", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      await tenantStatusStore.ban("tenant-1", "tos violation", "admin-0");
 
-      const result = store.bulkReactivate({ tenantIds: ["tenant-1"] }, "admin-1");
+      const result = await store.bulkReactivate({ tenantIds: ["tenant-1"] }, "admin-1");
       expect(result.succeeded).toBe(0);
       expect(result.failed).toBe(1);
       expect(result.errors[0].error).toContain("banned");
@@ -286,8 +343,8 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("bulkExport", () => {
-    it("generates CSV with selected fields", () => {
-      const result = store.bulkExport(
+    it("generates CSV with selected fields", async () => {
+      const result = await store.bulkExport(
         {
           tenantIds: ["tenant-1", "tenant-2"],
           fields: [
@@ -307,8 +364,8 @@ describe("BulkOperationsStore", () => {
       expect(lines.length).toBe(3); // header + 2 data rows
     });
 
-    it("generates CSV with all fields enabled", () => {
-      const result = store.bulkExport(
+    it("generates CSV with all fields enabled", async () => {
+      const result = await store.bulkExport(
         {
           tenantIds: ["tenant-1"],
           fields: [
@@ -327,8 +384,8 @@ describe("BulkOperationsStore", () => {
       );
     });
 
-    it("handles empty result for valid tenant IDs with no matching rows", () => {
-      const result = store.bulkExport(
+    it("handles empty result for valid tenant IDs with no matching rows", async () => {
+      const result = await store.bulkExport(
         {
           tenantIds: ["nonexistent-tenant"],
           fields: [{ key: "account_info", enabled: true }],
@@ -346,8 +403,8 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("dryRun", () => {
-    it("returns correct tenant info for preview", () => {
-      const tenants = store.dryRun(["tenant-1", "tenant-2"]);
+    it("returns correct tenant info for preview", async () => {
+      const tenants = await store.dryRun(["tenant-1", "tenant-2"]);
       expect(tenants).toHaveLength(2);
       expect(tenants[0].tenantId).toBe("tenant-1");
       expect(tenants[0].email).toBe("alice@test.com");
@@ -360,21 +417,21 @@ describe("BulkOperationsStore", () => {
   // ---------------------------------------------------------------------------
 
   describe("listMatchingTenantIds", () => {
-    it("returns filtered IDs matching status filter", () => {
-      const ids = store.listMatchingTenantIds({ status: "active" });
+    it("returns filtered IDs matching status filter", async () => {
+      const ids = await store.listMatchingTenantIds({ status: "active" });
       expect(ids).toContain("tenant-1");
       expect(ids).toContain("tenant-2");
       expect(ids).toContain("tenant-4");
       expect(ids).not.toContain("tenant-3"); // suspended
     });
 
-    it("returns filtered IDs matching search filter", () => {
-      const ids = store.listMatchingTenantIds({ search: "alice" });
+    it("returns filtered IDs matching search filter", async () => {
+      const ids = await store.listMatchingTenantIds({ search: "alice" });
       expect(ids).toEqual(["tenant-1"]);
     });
 
-    it("returns all IDs with no filters", () => {
-      const ids = store.listMatchingTenantIds({});
+    it("returns all IDs with no filters", async () => {
+      const ids = await store.listMatchingTenantIds({});
       expect(ids).toHaveLength(5);
     });
   });

@@ -32,20 +32,20 @@ function deps(): ModelSelectionRouterDeps {
 
 export const modelSelectionRouter = router({
   /** Get the default model for the authenticated tenant. */
-  getDefaultModel: tenantProcedure.query(({ ctx }) => {
+  getDefaultModel: tenantProcedure.query(async ({ ctx }) => {
     const repo = deps().getRepository();
     return {
       tenantId: ctx.tenantId,
-      defaultModel: repo.getDefaultModel(ctx.tenantId),
+      defaultModel: await repo.getDefaultModel(ctx.tenantId),
     };
   }),
 
   /** Set the default model for the authenticated tenant. */
   setDefaultModel: tenantProcedure
     .input(z.object({ defaultModel: z.string().min(1).max(256) }))
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const repo = deps().getRepository();
-      repo.setDefaultModel(ctx.tenantId, input.defaultModel);
+      await repo.setDefaultModel(ctx.tenantId, input.defaultModel);
       return { tenantId: ctx.tenantId, defaultModel: input.defaultModel };
     }),
 });

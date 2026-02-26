@@ -2,42 +2,27 @@
  * Integration tests for /api/billing/* routes (credit purchase model, WOP-406).
  *
  * Tests billing endpoints through the full composed Hono app.
- * Uses in-memory SQLite for the tenant store and mocked IPaymentProcessor.
+ * Uses in-memory PGlite for the tenant store and mocked IPaymentProcessor.
  */
-import BetterSqlite3 from "better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
+import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "../../src/db/index.js";
 
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { DrizzleSigPenaltyRepository } = await import("../../src/api/drizzle-sig-penalty-repository.js");
-const { createDb } = await import("../../src/db/index.js");
-const { drizzle } = await import("drizzle-orm/better-sqlite3");
 const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
-const { initCreditSchema } = await import("../../src/monetization/credits/schema.js");
 const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
-const { initMeterSchema } = await import("../../src/monetization/metering/schema.js");
-const { initStripeSchema } = await import("../../src/monetization/stripe/schema.js");
 const { TenantCustomerStore } = await import("../../src/monetization/stripe/tenant-store.js");
 import type { IPaymentProcessor } from "../../src/monetization/payment-processor.js";
-import * as schema from "../../src/db/schema/index.js";
-
-function createTestSigPenaltyRepo() {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE webhook_sig_penalties (
-      ip TEXT NOT NULL,
-      source TEXT NOT NULL,
-      failures INTEGER NOT NULL DEFAULT 0,
-      blocked_until INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (ip, source)
-    )
-  `);
-  return new DrizzleSigPenaltyRepository(drizzle(sqlite, { schema }));
-}
-const { initAffiliateSchema } = await import("../../src/monetization/affiliate/schema.js");
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
+
+async function createTestSigPenaltyRepo() {
+  const { db } = await createTestDb();
+  return new DrizzleSigPenaltyRepository(db);
+}
 
 function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPaymentProcessor {
   return {
@@ -63,30 +48,25 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
 }
 
 describe("integration: billing routes", () => {
-  let sqlite: BetterSqlite3.Database;
-  let db: ReturnType<typeof createDb>;
-  let tenantStore: TenantCustomerStore;
+  let pool: PGlite;
+  let db: DrizzleDb;
+  let tenantStore: InstanceType<typeof TenantCustomerStore>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    sqlite = new BetterSqlite3(":memory:");
-    initMeterSchema(sqlite);
-    initStripeSchema(sqlite);
-    initCreditSchema(sqlite);
-    initAffiliateSchema(sqlite);
-    db = createDb(sqlite);
+    ({ db, pool } = await createTestDb());
     tenantStore = new TenantCustomerStore(db);
     setBillingDeps({
       processor: createMockProcessor(),
       creditLedger: new CreditLedger(db),
       meterAggregator: new MeterAggregator(db),
-      sigPenaltyRepo: createTestSigPenaltyRepo(),
+      sigPenaltyRepo: await createTestSigPenaltyRepo(),
       affiliateRepo: new DrizzleAffiliateRepository(db),
     });
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
   // -- Authentication -------------------------------------------------------
@@ -209,7 +189,7 @@ describe("integration: billing routes", () => {
         }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -237,7 +217,7 @@ describe("integration: billing routes", () => {
         }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -262,7 +242,7 @@ describe("integration: billing routes", () => {
         }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -307,7 +287,7 @@ describe("integration: billing routes", () => {
         }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 
@@ -333,7 +313,7 @@ describe("integration: billing routes", () => {
         }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
-        sigPenaltyRepo: createTestSigPenaltyRepo(),
+        sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
       });
 

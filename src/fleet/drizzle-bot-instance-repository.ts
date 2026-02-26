@@ -1,59 +1,61 @@
 import { eq, sql } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import type * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
 import { botInstances } from "../db/schema/index.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { BillingState, BotInstance, NewBotInstance } from "./repository-types.js";
 
 /** Drizzle-backed implementation of IBotInstanceRepository. */
 export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
-  constructor(private readonly db: BetterSQLite3Database<typeof schema>) {}
+  constructor(private readonly db: DrizzleDb) {}
 
-  getById(id: string): BotInstance | null {
-    const row = this.db.select().from(botInstances).where(eq(botInstances.id, id)).get();
-    return row ? toInstance(row) : null;
+  async getById(id: string): Promise<BotInstance | null> {
+    const rows = await this.db.select().from(botInstances).where(eq(botInstances.id, id));
+    return rows[0] ? toInstance(rows[0]) : null;
   }
 
-  listByNode(nodeId: string): BotInstance[] {
-    return this.db.select().from(botInstances).where(eq(botInstances.nodeId, nodeId)).all().map(toInstance);
+  async listByNode(nodeId: string): Promise<BotInstance[]> {
+    const rows = await this.db.select().from(botInstances).where(eq(botInstances.nodeId, nodeId));
+    return rows.map(toInstance);
   }
 
-  listByTenant(tenantId: string): BotInstance[] {
-    return this.db.select().from(botInstances).where(eq(botInstances.tenantId, tenantId)).all().map(toInstance);
+  async listByTenant(tenantId: string): Promise<BotInstance[]> {
+    const rows = await this.db.select().from(botInstances).where(eq(botInstances.tenantId, tenantId));
+    return rows.map(toInstance);
   }
 
-  create(data: NewBotInstance): BotInstance {
+  async create(data: NewBotInstance): Promise<BotInstance> {
     const now = new Date().toISOString();
-    this.db
-      .insert(botInstances)
-      .values({
-        id: data.id,
-        tenantId: data.tenantId,
-        name: data.name,
-        nodeId: data.nodeId,
-        billingState: data.billingState ?? "active",
-        createdAt: now,
-        updatedAt: now,
-        createdByUserId: data.createdByUserId ?? null,
-      })
-      .run();
-    const created = this.getById(data.id);
+    await this.db.insert(botInstances).values({
+      id: data.id,
+      tenantId: data.tenantId,
+      name: data.name,
+      nodeId: data.nodeId,
+      billingState: data.billingState ?? "active",
+      createdAt: now,
+      updatedAt: now,
+      createdByUserId: data.createdByUserId ?? null,
+    });
+    const created = await this.getById(data.id);
     if (!created) throw new Error(`Bot instance not found after insert: ${data.id}`);
     return created;
   }
 
-  reassign(id: string, nodeId: string): BotInstance {
+  async reassign(id: string, nodeId: string): Promise<BotInstance> {
     const now = new Date().toISOString();
-    const result = this.db.update(botInstances).set({ nodeId, updatedAt: now }).where(eq(botInstances.id, id)).run();
-    if (result.changes === 0) {
+    const result = await this.db
+      .update(botInstances)
+      .set({ nodeId, updatedAt: now })
+      .where(eq(botInstances.id, id))
+      .returning({ id: botInstances.id });
+    if (result.length === 0) {
       throw new Error(`Bot instance not found: ${id}`);
     }
-    const updated = this.getById(id);
+    const updated = await this.getById(id);
     if (!updated) throw new Error(`Bot instance not found after update: ${id}`);
     return updated;
   }
 
-  setBillingState(id: string, state: BillingState): BotInstance {
+  async setBillingState(id: string, state: BillingState): Promise<BotInstance> {
     const now = new Date().toISOString();
     const updates: Record<string, unknown> = {
       billingState: state,
@@ -68,38 +70,39 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
       updates.suspendedAt = null;
       updates.destroyAfter = null;
     } else if (state === "destroyed") {
-      // Clear suspension timestamps — they are no longer meaningful once destroyed.
       updates.suspendedAt = null;
       updates.destroyAfter = null;
     }
 
-    const result = this.db.update(botInstances).set(updates).where(eq(botInstances.id, id)).run();
-    if (result.changes === 0) {
+    const result = await this.db
+      .update(botInstances)
+      .set(updates)
+      .where(eq(botInstances.id, id))
+      .returning({ id: botInstances.id });
+    if (result.length === 0) {
       throw new Error(`Bot instance not found: ${id}`);
     }
-    const updated = this.getById(id);
+    const updated = await this.getById(id);
     if (!updated) throw new Error(`Bot instance not found after update: ${id}`);
     return updated;
   }
 
-  getResourceTier(botId: string): string | null {
-    const row = this.db
+  async getResourceTier(botId: string): Promise<string | null> {
+    const rows = await this.db
       .select({ resourceTier: botInstances.resourceTier })
       .from(botInstances)
-      .where(eq(botInstances.id, botId))
-      .get();
-    return row?.resourceTier ?? null;
+      .where(eq(botInstances.id, botId));
+    return rows[0]?.resourceTier ?? null;
   }
 
-  setResourceTier(botId: string, tier: string): void {
-    this.db
+  async setResourceTier(botId: string, tier: string): Promise<void> {
+    await this.db
       .update(botInstances)
       .set({
         resourceTier: tier,
-        updatedAt: sql`(datetime('now'))`,
+        updatedAt: sql`(now())`,
       })
-      .where(eq(botInstances.id, botId))
-      .run();
+      .where(eq(botInstances.id, botId));
   }
 }
 

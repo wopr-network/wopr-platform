@@ -248,7 +248,7 @@ describe("Anthropic protocol handler", () => {
 
   describe("budget checking", () => {
     it("returns 429 when budget exceeded", async () => {
-      deps.budgetChecker.check = vi.fn(() => ({
+      deps.budgetChecker.check = vi.fn(async () => ({
         allowed: false,
         reason: "Monthly spending limit exceeded",
         httpStatus: 429,
@@ -531,7 +531,7 @@ describe("OpenAI protocol handler", () => {
 
   describe("budget checking", () => {
     it("returns 429 when budget exceeded", async () => {
-      deps.budgetChecker.check = vi.fn(() => ({
+      deps.budgetChecker.check = vi.fn(async () => ({
         allowed: false,
         reason: "Hourly spending limit exceeded",
         httpStatus: 429,

@@ -22,5 +22,5 @@ export interface SpendingCapRecord {
 /** Repository interface for spending cap queries. */
 export interface ISpendingCapStore {
   /** Query accumulated daily and monthly spend for a tenant at a given point in time. */
-  querySpend(tenant: string, now: number): SpendingCapRecord;
+  querySpend(tenant: string, now: number): Promise<SpendingCapRecord>;
 }

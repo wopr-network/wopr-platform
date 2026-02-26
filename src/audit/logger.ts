@@ -11,7 +11,7 @@ export class AuditLogger {
   }
 
   /** Append a new audit entry. Returns the created entry. */
-  log(input: AuditEntryInput): AuditEntry {
+  async log(input: AuditEntryInput): Promise<AuditEntry> {
     const entry: AuditEntry = {
       id: crypto.randomUUID(),
       timestamp: Date.now(),
@@ -25,7 +25,7 @@ export class AuditLogger {
       user_agent: input.userAgent ?? null,
     };
 
-    this.repo.insert(entry);
+    await this.repo.insert(entry);
 
     return entry;
   }

@@ -1,12 +1,12 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
-export const circuitBreakerStates = sqliteTable(
+export const circuitBreakerStates = pgTable(
   "circuit_breaker_states",
   {
     instanceId: text("instance_id").primaryKey(),
     count: integer("count").notNull().default(0),
-    windowStart: integer("window_start").notNull(),
-    trippedAt: integer("tripped_at"),
+    windowStart: bigint("window_start", { mode: "number" }).notNull(),
+    trippedAt: bigint("tripped_at", { mode: "number" }),
   },
   (table) => [index("idx_circuit_window").on(table.windowStart)],
 );

@@ -81,7 +81,7 @@ export const accountRouter = router({
       const userId = ctx.user.id;
 
       // Check for existing pending request
-      const existing = store.getPendingForTenant(tenantId);
+      const existing = await store.getPendingForTenant(tenantId);
       if (existing) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -113,7 +113,7 @@ export const accountRouter = router({
       }
 
       // Create the deletion request
-      const request = store.create(tenantId, userId);
+      const request = await store.create(tenantId, userId);
 
       // Suspend all bots immediately
       if (suspendBots) {
@@ -140,10 +140,10 @@ export const accountRouter = router({
   /**
    * Get current deletion request status for the authenticated tenant.
    */
-  deletionStatus: tenantProcedure.query(({ ctx }) => {
+  deletionStatus: tenantProcedure.query(async ({ ctx }) => {
     const { getDeletionStore } = deps();
     const store = getDeletionStore();
-    const request = store.getPendingForTenant(ctx.tenantId);
+    const request = await store.getPendingForTenant(ctx.tenantId);
 
     if (!request) {
       return { hasPendingDeletion: false as const };
@@ -161,11 +161,11 @@ export const accountRouter = router({
    * Cancel a pending deletion request.
    * Only possible during the 30-day grace period.
    */
-  cancelDeletion: tenantProcedure.input(z.object({ requestId: z.string().uuid() })).mutation(({ input, ctx }) => {
+  cancelDeletion: tenantProcedure.input(z.object({ requestId: z.string().uuid() })).mutation(async ({ input, ctx }) => {
     const { getDeletionStore, getNotificationService, reactivateTenant, getUserEmail } = deps();
     const store = getDeletionStore();
 
-    const request = store.getById(input.requestId);
+    const request = await store.getById(input.requestId);
     if (!request || request.tenantId !== ctx.tenantId) {
       throw new TRPCError({
         code: "NOT_FOUND",
@@ -179,7 +179,7 @@ export const accountRouter = router({
       });
     }
 
-    store.cancel(input.requestId, `Cancelled by user ${ctx.user.id}`);
+    await store.cancel(input.requestId, `Cancelled by user ${ctx.user.id}`);
 
     // Reactivate the tenant
     if (reactivateTenant) {

@@ -3,11 +3,11 @@ import type { MarketplacePlugin, NewMarketplacePlugin } from "./marketplace-repo
 export type { MarketplacePlugin, NewMarketplacePlugin };
 
 export interface IMarketplacePluginRepository {
-  findAll(): MarketplacePlugin[];
-  findEnabled(): MarketplacePlugin[];
-  findPendingReview(): MarketplacePlugin[];
-  findById(pluginId: string): MarketplacePlugin | undefined;
-  insert(plugin: NewMarketplacePlugin): MarketplacePlugin;
-  update(pluginId: string, patch: Partial<MarketplacePlugin>): MarketplacePlugin;
-  delete(pluginId: string): void;
+  findAll(): Promise<MarketplacePlugin[]>;
+  findEnabled(): Promise<MarketplacePlugin[]>;
+  findPendingReview(): Promise<MarketplacePlugin[]>;
+  findById(pluginId: string): Promise<MarketplacePlugin | undefined>;
+  insert(plugin: NewMarketplacePlugin): Promise<MarketplacePlugin>;
+  update(pluginId: string, patch: Partial<MarketplacePlugin>): Promise<MarketplacePlugin>;
+  delete(pluginId: string): Promise<void>;
 }

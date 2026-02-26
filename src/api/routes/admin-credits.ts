@@ -52,9 +52,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
     try {
       const user = c.get("user");
       const adminUser = user?.id ?? "unknown";
-      let result: ReturnType<typeof ledger.credit>;
+      let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        result = ledger.credit(tenant, amountCents, "signup_grant", reason);
+        result = await ledger.credit(tenant, amountCents, "signup_grant", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -114,9 +114,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
     try {
       const user = c.get("user");
       const adminUser = user?.id ?? "unknown";
-      let result: ReturnType<typeof ledger.credit>;
+      let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        result = ledger.credit(tenant, amountCents, "purchase", reason);
+        result = await ledger.credit(tenant, amountCents, "purchase", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -179,12 +179,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
     try {
       const user = c.get("user");
       const adminUser = user?.id ?? "unknown";
-      let result: ReturnType<typeof ledger.credit> | ReturnType<typeof ledger.debit>;
+      let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
         if (amountCents >= 0) {
-          result = ledger.credit(tenant, amountCents || 1, "promo", reason);
+          result = await ledger.credit(tenant, amountCents || 1, "promo", reason);
         } else {
-          result = ledger.debit(tenant, Math.abs(amountCents), "correction", reason);
+          result = await ledger.debit(tenant, Math.abs(amountCents), "correction", reason);
         }
       } catch (err) {
         try {
@@ -223,12 +223,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   });
 
   /** GET /:tenantId/balance */
-  routes.get("/:tenantId/balance", (c) => {
+  routes.get("/:tenantId/balance", async (c) => {
     const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
 
     try {
-      const balance = ledger.balance(tenant);
+      const balance = await ledger.balance(tenant);
       return c.json({ tenant, balance_cents: balance });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
@@ -236,7 +236,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   });
 
   /** GET /:tenantId/transactions */
-  routes.get("/:tenantId/transactions", (c) => {
+  routes.get("/:tenantId/transactions", async (c) => {
     const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
     const typeParam = c.req.query("type");
@@ -248,7 +248,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
     };
 
     try {
-      const entries = ledger.history(tenant, filters);
+      const entries = await ledger.history(tenant, filters);
       return c.json({ entries, total: entries.length });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
@@ -256,7 +256,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   });
 
   /** GET /:tenantId/adjustments -- alias for transactions */
-  routes.get("/:tenantId/adjustments", (c) => {
+  routes.get("/:tenantId/adjustments", async (c) => {
     const ledger = ledgerFactory();
     const tenant = c.req.param("tenantId");
     const typeParam = c.req.query("type");
@@ -268,7 +268,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
     };
 
     try {
-      const entries = ledger.history(tenant, filters);
+      const entries = await ledger.history(tenant, filters);
       return c.json({ entries, total: entries.length });
     } catch {
       return c.json({ error: "Internal server error" }, 500);

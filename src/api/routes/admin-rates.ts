@@ -1,32 +1,15 @@
-import Database from "better-sqlite3";
 import { Hono } from "hono";
 import type { ProviderCostInput, SellRateInput } from "../../admin/rates/rate-store.js";
 import { RateStore } from "../../admin/rates/rate-store.js";
-import { initRateSchema } from "../../admin/rates/schema.js";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
-import { createDb, type DrizzleDb } from "../../db/index.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
-import { getAdminAuditLog } from "../../fleet/services.js";
-
-const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
-
-/** Lazy-initialized rates database (avoids opening DB at module load time). */
-let _ratesDb: DrizzleDb | null = null;
-function getRatesDb(): DrizzleDb {
-  if (!_ratesDb) {
-    const sqlite = new Database(RATES_DB_PATH);
-    applyPlatformPragmas(sqlite);
-    initRateSchema(sqlite);
-    _ratesDb = createDb(sqlite);
-  }
-  return _ratesDb;
-}
+import type { DrizzleDb } from "../../db/index.js";
+import { getAdminAuditLog, getDb } from "../../fleet/services.js";
 
 let _store: RateStore | null = null;
 function getStore(): RateStore {
   if (!_store) {
-    _store = new RateStore(getRatesDb());
+    _store = new RateStore(getDb());
   }
   return _store;
 }
@@ -52,14 +35,16 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
   // ── Combined List ──
 
   /** GET / - List all sell rates and provider costs (combined admin view) */
-  routes.get("/", (c) => {
+  routes.get("/", async (c) => {
     const store = storeFactory();
     const capability = c.req.query("capability");
     const active = parseBooleanParam(c.req.query("active"));
 
     try {
-      const sellRates = store.listSellRates({ capability, isActive: active });
-      const providerCosts = store.listProviderCosts({ capability, isActive: active });
+      const [sellRates, providerCosts] = await Promise.all([
+        store.listSellRates({ capability, isActive: active }),
+        store.listProviderCosts({ capability, isActive: active }),
+      ]);
 
       return c.json({
         sell_rates: sellRates.entries,
@@ -126,9 +111,9 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
         isActive: isActive as boolean | undefined,
         sortOrder: sortOrder as number | undefined,
       };
-      let result: ReturnType<typeof store.createSellRate>;
+      let result: Awaited<ReturnType<typeof store.createSellRate>>;
       try {
-        result = store.createSellRate(input);
+        result = await store.createSellRate(input);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -213,9 +198,9 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       if (isActive !== undefined) input.isActive = isActive as boolean;
       if (sortOrder !== undefined) input.sortOrder = sortOrder as number;
 
-      let result: ReturnType<typeof store.updateSellRate>;
+      let result: Awaited<ReturnType<typeof store.updateSellRate>>;
       try {
-        result = store.updateSellRate(id, input);
+        result = await store.updateSellRate(id, input);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -251,7 +236,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
   });
 
   /** DELETE /sell/:id - Delete a sell rate */
-  routes.delete("/sell/:id", (c) => {
+  routes.delete("/sell/:id", async (c) => {
     const store = storeFactory();
     const id = c.req.param("id");
 
@@ -259,7 +244,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
       let deleted: boolean;
       try {
-        deleted = store.deleteSellRate(id);
+        deleted = await store.deleteSellRate(id);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -353,9 +338,9 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
         latencyClass: latencyClass as string | undefined,
         isActive: isActive as boolean | undefined,
       };
-      let result: ReturnType<typeof store.createProviderCost>;
+      let result: Awaited<ReturnType<typeof store.createProviderCost>>;
       try {
-        result = store.createProviderCost(input);
+        result = await store.createProviderCost(input);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -445,9 +430,9 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       if (latencyClass !== undefined) input.latencyClass = latencyClass as string;
       if (isActive !== undefined) input.isActive = isActive as boolean;
 
-      let result: ReturnType<typeof store.updateProviderCost>;
+      let result: Awaited<ReturnType<typeof store.updateProviderCost>>;
       try {
-        result = store.updateProviderCost(id, input);
+        result = await store.updateProviderCost(id, input);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -483,7 +468,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
   });
 
   /** DELETE /provider/:id - Delete a provider cost */
-  routes.delete("/provider/:id", (c) => {
+  routes.delete("/provider/:id", async (c) => {
     const store = storeFactory();
     const id = c.req.param("id");
 
@@ -491,7 +476,7 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
       const adminUser = (c.get("user") as { id?: string } | undefined)?.id ?? "unknown";
       let deleted: boolean;
       try {
-        deleted = store.deleteProviderCost(id);
+        deleted = await store.deleteProviderCost(id);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -529,12 +514,12 @@ function buildRoutes(storeFactory: () => RateStore): Hono<AuthEnv> {
   // ── Margin Report ──
 
   /** GET /margins - Get margin report */
-  routes.get("/margins", (c) => {
+  routes.get("/margins", async (c) => {
     const store = storeFactory();
     const capability = c.req.query("capability");
 
     try {
-      const report = store.getMarginReport(capability);
+      const report = await store.getMarginReport(capability);
       return c.json({ margins: report });
     } catch {
       return c.json({ error: "Internal server error" }, 500);

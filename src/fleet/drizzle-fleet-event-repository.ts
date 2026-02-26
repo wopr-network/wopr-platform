@@ -6,33 +6,29 @@ import type { IFleetEventRepository } from "./fleet-event-repository.js";
 export class DrizzleFleetEventRepository implements IFleetEventRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  fireFleetStop(): void {
-    // Upsert semantics: if a row for unexpected_stop already exists, update it
-    // rather than inserting a duplicate. Multiple rows would make isFleetStopFired()
-    // non-deterministic because .get() returns whichever row SQLite finds first.
-    const existing = this.db.select().from(fleetEvents).where(eq(fleetEvents.eventType, "unexpected_stop")).get();
+  async fireFleetStop(): Promise<void> {
+    const rows = await this.db.select().from(fleetEvents).where(eq(fleetEvents.eventType, "unexpected_stop"));
+    const existing = rows[0];
     if (existing) {
-      this.db
+      await this.db
         .update(fleetEvents)
         .set({ fired: 1, createdAt: Date.now() })
-        .where(eq(fleetEvents.eventType, "unexpected_stop"))
-        .run();
+        .where(eq(fleetEvents.eventType, "unexpected_stop"));
     } else {
-      this.db.insert(fleetEvents).values({ eventType: "unexpected_stop", fired: 1, createdAt: Date.now() }).run();
+      await this.db.insert(fleetEvents).values({ eventType: "unexpected_stop", fired: 1, createdAt: Date.now() });
     }
   }
 
-  clearFleetStop(): void {
+  async clearFleetStop(): Promise<void> {
     const now = Date.now();
-    this.db
+    await this.db
       .update(fleetEvents)
       .set({ fired: 0, clearedAt: now })
-      .where(eq(fleetEvents.eventType, "unexpected_stop"))
-      .run();
+      .where(eq(fleetEvents.eventType, "unexpected_stop"));
   }
 
-  isFleetStopFired(): boolean {
-    const row = this.db.select().from(fleetEvents).where(eq(fleetEvents.eventType, "unexpected_stop")).get();
-    return row !== undefined && row.fired === 1;
+  async isFleetStopFired(): Promise<boolean> {
+    const rows = await this.db.select().from(fleetEvents).where(eq(fleetEvents.eventType, "unexpected_stop"));
+    return rows.length > 0 && rows[0].fired === 1;
   }
 }

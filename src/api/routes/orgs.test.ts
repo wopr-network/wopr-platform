@@ -6,8 +6,8 @@ import { DrizzleOrgRepository } from "../../org/drizzle-org-repository.js";
 import { createTestDb } from "../../test/db.js";
 import { createOrgRoutes } from "./orgs.js";
 
-function setup() {
-  const { db, sqlite } = createTestDb();
+async function setup() {
+  const { db, pool } = await createTestDb();
   const orgRepo = new DrizzleOrgRepository(db);
   const roleStore = new RoleStore(db);
   const routes = createOrgRoutes({ orgRepo, roleStore });
@@ -22,7 +22,7 @@ function setup() {
   });
   app.route("/api/orgs", routes);
 
-  return { app, db, orgRepo, roleStore, close: () => sqlite.close() };
+  return { app, db, orgRepo, roleStore, close: () => pool.close() };
 }
 
 describe("POST /api/orgs", () => {
@@ -30,8 +30,8 @@ describe("POST /api/orgs", () => {
   let close: () => void;
   let roleStore: RoleStore;
 
-  beforeEach(() => {
-    const t = setup();
+  beforeEach(async () => {
+    const t = await setup();
     app = t.app;
     close = t.close;
     roleStore = t.roleStore;
@@ -53,7 +53,7 @@ describe("POST /api/orgs", () => {
     expect(body.slug).toBe("my-org");
 
     // Verify role was assigned
-    const role = roleStore.getRole("user-1", body.id);
+    const role = await roleStore.getRole("user-1", body.id);
     expect(role).toBe("tenant_admin");
   });
 
@@ -96,8 +96,8 @@ describe("GET /api/orgs", () => {
   let app: Hono<AuthEnv>;
   let close: () => void;
 
-  beforeEach(() => {
-    const t = setup();
+  beforeEach(async () => {
+    const t = await setup();
     app = t.app;
     close = t.close;
   });
@@ -135,7 +135,7 @@ describe("GET /api/orgs", () => {
 
 describe("unauthenticated access", () => {
   it("returns 401 when no user is set", async () => {
-    const { db, sqlite } = createTestDb();
+    const { db, pool } = await createTestDb();
     const orgRepo = new DrizzleOrgRepository(db);
     const roleStore = new RoleStore(db);
     const routes = createOrgRoutes({ orgRepo, roleStore });
@@ -150,6 +150,6 @@ describe("unauthenticated access", () => {
       body: JSON.stringify({ name: "Org" }),
     });
     expect(res.status).toBe(401);
-    sqlite.close();
+    pool.close();
   });
 });

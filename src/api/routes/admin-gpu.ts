@@ -20,8 +20,8 @@ export const adminGpuRoutes = new Hono<AuthEnv>();
  * GET /api/admin/gpu
  * List all GPU nodes
  */
-adminGpuRoutes.get("/", adminAuth, (c) => {
-  const nodes = getGpuNodeRepository().list();
+adminGpuRoutes.get("/", adminAuth, async (c) => {
+  const nodes = await getGpuNodeRepository().list();
   return c.json({
     success: true,
     nodes,
@@ -139,9 +139,9 @@ adminGpuRoutes.get("/sizes", adminAuth, async (c) => {
  * GET /api/admin/gpu/:nodeId
  * Get single GPU node details
  */
-adminGpuRoutes.get("/:nodeId", adminAuth, (c) => {
+adminGpuRoutes.get("/:nodeId", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
-  const node = getGpuNodeRepository().getById(nodeId);
+  const node = await getGpuNodeRepository().getById(nodeId);
 
   if (!node) {
     return c.json({ success: false, error: "GPU node not found" }, 404);
@@ -158,7 +158,7 @@ adminGpuRoutes.delete("/:nodeId", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
 
   try {
-    const node = getGpuNodeRepository().getById(nodeId);
+    const node = await getGpuNodeRepository().getById(nodeId);
     if (!node) {
       return c.json({ success: false, error: "GPU node not found" }, 404);
     }
@@ -197,7 +197,7 @@ adminGpuRoutes.post("/:nodeId/reboot", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId");
 
   try {
-    const node = getGpuNodeRepository().getById(nodeId);
+    const node = await getGpuNodeRepository().getById(nodeId);
     if (!node) {
       return c.json({ success: false, error: "GPU node not found" }, 404);
     }

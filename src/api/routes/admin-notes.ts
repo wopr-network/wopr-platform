@@ -44,7 +44,7 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
   const routes = new Hono<AuthEnv>();
 
   // GET /:tenantId -- list notes
-  routes.get("/:tenantId", (c) => {
+  routes.get("/:tenantId", async (c) => {
     const store = storeFactory();
     const tenantId = c.req.param("tenantId");
     const filters = {
@@ -53,7 +53,7 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
       offset: parseIntParam(c.req.query("offset")),
     };
     try {
-      const result = store.list(filters);
+      const result = await store.list(filters);
       return c.json(result);
     } catch {
       return c.json({ error: "Internal server error" }, 500);
@@ -76,14 +76,14 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
     }
     try {
       const user = c.get("user");
-      const note = store.create({
+      const note = await store.create({
         tenantId,
         authorId: user?.id ?? "unknown",
         content,
         isPinned: body.isPinned === true,
       });
       try {
-        getAdminAuditLog().log({
+        void getAdminAuditLog().log({
           adminUser: user?.id ?? "unknown",
           action: "note.create",
           category: "support",
@@ -115,14 +115,14 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
     if (typeof body.content === "string") updates.content = body.content;
     if (typeof body.isPinned === "boolean") updates.isPinned = body.isPinned;
     try {
-      const note = store.update(noteId, tenantId, updates);
+      const note = await store.update(noteId, tenantId, updates);
       if (note === null) {
         // Could be not found or ownership mismatch — return 403 to avoid leaking note existence
         return c.json({ error: "Forbidden" }, 403);
       }
       try {
         const user = c.get("user");
-        getAdminAuditLog().log({
+        void getAdminAuditLog().log({
           adminUser: user?.id ?? "unknown",
           action: "note.update",
           category: "support",
@@ -140,16 +140,16 @@ function buildRoutes(storeFactory: () => IAdminNotesRepository): Hono<AuthEnv> {
   });
 
   // DELETE /:tenantId/:noteId -- delete note
-  routes.delete("/:tenantId/:noteId", (c) => {
+  routes.delete("/:tenantId/:noteId", async (c) => {
     const store = storeFactory();
     const tenantId = c.req.param("tenantId");
     const noteId = c.req.param("noteId");
     try {
-      const deleted = store.delete(noteId, tenantId);
+      const deleted = await store.delete(noteId, tenantId);
       if (!deleted) return c.json({ error: "Forbidden" }, 403);
       try {
         const user = c.get("user");
-        getAdminAuditLog().log({
+        void getAdminAuditLog().log({
           adminUser: user?.id ?? "unknown",
           action: "note.delete",
           category: "support",

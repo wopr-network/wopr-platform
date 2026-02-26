@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
-import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
+import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { decrypt, encrypt } from "../encryption.js";
 import type { EncryptedPayload } from "../types.js";
@@ -21,29 +21,12 @@ export interface RotationResult {
  *
  * MUST be run inside a transaction by the caller.
  * Back up the database before running this.
- *
- * Key Rotation Process for PLATFORM_SECRET:
- *
- * The PLATFORM_SECRET env var is the root secret for all credential encryption:
- * - CredentialVaultStore uses getVaultEncryptionKey(PLATFORM_SECRET) for provider credentials
- * - Tenant BYOK keys use deriveTenantKey(tenantId, PLATFORM_SECRET)
- * - Instance secrets use deriveInstanceKey(instanceId, PLATFORM_SECRET)
- *
- * To rotate PLATFORM_SECRET:
- *
- * 1. Back up the database.
- * 2. Call reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET) inside a transaction.
- * 3. Update PLATFORM_SECRET to the new value in your environment.
- * 4. Restart all platform instances.
- *
- * IMPORTANT: Instance secrets (secrets.enc files) use deriveInstanceKey(instanceId, PLATFORM_SECRET).
- * Running instances will need to be re-seeded with secrets after rotation.
  */
-export function reEncryptAllCredentials(
-  db: BetterSQLite3Database<Record<string, unknown>>,
+export async function reEncryptAllCredentials(
+  db: DrizzleDb,
   oldSecret: string,
   newSecret: string,
-): RotationResult {
+): Promise<RotationResult> {
   const result: RotationResult = {
     providerCredentials: { migrated: 0, errors: [] },
     tenantKeys: { migrated: 0, errors: [] },
@@ -53,20 +36,19 @@ export function reEncryptAllCredentials(
   const newVaultKey = getVaultEncryptionKey(newSecret);
 
   // --- provider_credentials ---
-  const provRows = db
+  const provRows = await db
     .select({ id: providerCredentials.id, encryptedValue: providerCredentials.encryptedValue })
-    .from(providerCredentials)
-    .all();
+    .from(providerCredentials);
 
   for (const row of provRows) {
     try {
       const payload: EncryptedPayload = JSON.parse(row.encryptedValue);
       const plaintext = decrypt(payload, oldVaultKey);
       const reEncrypted = encrypt(plaintext, newVaultKey);
-      db.update(providerCredentials)
+      await db
+        .update(providerCredentials)
         .set({ encryptedValue: JSON.stringify(reEncrypted) })
-        .where(eq(providerCredentials.id, row.id))
-        .run();
+        .where(eq(providerCredentials.id, row.id));
       result.providerCredentials.migrated++;
     } catch (err) {
       result.providerCredentials.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -75,14 +57,13 @@ export function reEncryptAllCredentials(
 
   // --- tenant_api_keys ---
   try {
-    const tenantRows = db
+    const tenantRows = await db
       .select({
         id: tenantApiKeys.id,
         tenantId: tenantApiKeys.tenantId,
         encryptedKey: tenantApiKeys.encryptedKey,
       })
-      .from(tenantApiKeys)
-      .all();
+      .from(tenantApiKeys);
 
     for (const row of tenantRows) {
       try {
@@ -91,10 +72,10 @@ export function reEncryptAllCredentials(
         const plaintext = decrypt(payload, oldTenantKey);
         const newTenantKey = deriveTenantKey(row.tenantId, newSecret);
         const reEncrypted = encrypt(plaintext, newTenantKey);
-        db.update(tenantApiKeys)
+        await db
+          .update(tenantApiKeys)
           .set({ encryptedKey: JSON.stringify(reEncrypted) })
-          .where(eq(tenantApiKeys.id, row.id))
-          .run();
+          .where(eq(tenantApiKeys.id, row.id));
         result.tenantKeys.migrated++;
       } catch (err) {
         result.tenantKeys.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);

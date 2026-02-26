@@ -1,76 +1,64 @@
-import BetterSqlite3 from "better-sqlite3";
+import { randomUUID } from "node:crypto";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDb } from "../../db/index.js";
-import { orgMemberships } from "../../db/schema/org-memberships.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleOrgMembershipRepository } from "../../fleet/org-membership-repository.js";
+import { createTestDb } from "../../test/db.js";
 import { encrypt, generateInstanceKey } from "../encryption.js";
-import type { Provider } from "../types.js";
+import type { EncryptedPayload, Provider } from "../types.js";
 import { resolveApiKey } from "./key-resolution.js";
 import { resolveApiKeyWithOrgFallback } from "./org-key-resolution.js";
-import { TenantKeyStore } from "./schema.js";
 
-function freshDb() {
-  const sqlite = new BetterSqlite3(":memory:");
-  const store = new TenantKeyStore(sqlite);
-  // Create org_memberships table
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS org_memberships (
-      org_tenant_id TEXT NOT NULL,
-      member_tenant_id TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      PRIMARY KEY (org_tenant_id, member_tenant_id)
-    )
-  `);
-  sqlite.exec(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_org_memberships_member_unique ON org_memberships (member_tenant_id)",
+async function insertTenantKey(
+  pool: PGlite,
+  tenantId: string,
+  provider: string,
+  encryptedKey: EncryptedPayload,
+): Promise<void> {
+  const now = Date.now();
+  await pool.query(
+    "INSERT INTO tenant_api_keys (id, tenant_id, provider, label, encrypted_key, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    [randomUUID(), tenantId, provider, "", JSON.stringify(encryptedKey), now, now],
   );
-  const db = createDb(sqlite);
-  const membershipRepo = new DrizzleOrgMembershipRepository(db);
-  return { sqlite, db, store, membershipRepo };
+}
+
+async function insertOrgMembership(pool: PGlite, orgTenantId: string, memberTenantId: string): Promise<void> {
+  await pool.query("INSERT INTO org_memberships (org_tenant_id, member_tenant_id, created_at) VALUES ($1, $2, $3)", [
+    orgTenantId,
+    memberTenantId,
+    Date.now(),
+  ]);
 }
 
 describe("resolveApiKeyWithOrgFallback", () => {
-  let sqlite: BetterSqlite3.Database;
-  let db: ReturnType<typeof createDb>;
-  let store: TenantKeyStore;
+  let db: DrizzleDb;
+  let pool: PGlite;
   let membershipRepo: DrizzleOrgMembershipRepository;
   let encryptionKey: Buffer;
   let orgEncryptionKey: Buffer;
   const pooled = new Map<Provider, string>();
 
-  beforeEach(() => {
-    const fresh = freshDb();
-    sqlite = fresh.sqlite;
-    db = fresh.db;
-    store = fresh.store;
-    membershipRepo = fresh.membershipRepo;
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    membershipRepo = new DrizzleOrgMembershipRepository(db);
     encryptionKey = generateInstanceKey();
     orgEncryptionKey = generateInstanceKey();
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
   });
 
-  it("returns personal key when member has one (no org fallback)", () => {
+  it("returns personal key when member has one (no org fallback)", async () => {
     const encrypted = encrypt("sk-personal", encryptionKey);
-    store.upsert("member-1", "anthropic", encrypted);
+    await insertTenantKey(pool, "member-1", "anthropic", encrypted);
+    await insertOrgMembership(pool, "org-1", "member-1");
 
-    // member-1 belongs to org-1
-    db.insert(orgMemberships)
-      .values({
-        orgTenantId: "org-1",
-        memberTenantId: "member-1",
-        createdAt: Date.now(),
-      })
-      .run();
-
-    // org-1 also has a key
     const orgEncrypted = encrypt("sk-org", orgEncryptionKey);
-    store.upsert("org-1", "anthropic", orgEncrypted);
+    await insertTenantKey(pool, "org-1", "anthropic", orgEncrypted);
 
-    const result = resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
+    const result = await resolveApiKeyWithOrgFallback(
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -83,21 +71,14 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(result?.source).toBe("tenant");
   });
 
-  it("falls back to org key when member has no personal key", () => {
-    // member-1 belongs to org-1, no personal key
-    db.insert(orgMemberships)
-      .values({
-        orgTenantId: "org-1",
-        memberTenantId: "member-1",
-        createdAt: Date.now(),
-      })
-      .run();
+  it("falls back to org key when member has no personal key", async () => {
+    await insertOrgMembership(pool, "org-1", "member-1");
 
     const orgEncrypted = encrypt("sk-org-key", orgEncryptionKey);
-    store.upsert("org-1", "anthropic", orgEncrypted);
+    await insertTenantKey(pool, "org-1", "anthropic", orgEncrypted);
 
-    const result = resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
+    const result = await resolveApiKeyWithOrgFallback(
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -110,19 +91,13 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(result?.source).toBe("org");
   });
 
-  it("falls back to pooled when neither member nor org has a key", () => {
-    db.insert(orgMemberships)
-      .values({
-        orgTenantId: "org-1",
-        memberTenantId: "member-1",
-        createdAt: Date.now(),
-      })
-      .run();
+  it("falls back to pooled when neither member nor org has a key", async () => {
+    await insertOrgMembership(pool, "org-1", "member-1");
 
     const pooledKeys = new Map<Provider, string>([["anthropic", "sk-pooled"]]);
 
-    const result = resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
+    const result = await resolveApiKeyWithOrgFallback(
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -135,9 +110,9 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(result?.source).toBe("pooled");
   });
 
-  it("returns null when no key exists anywhere", () => {
-    const result = resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
+  it("returns null when no key exists anywhere", async () => {
+    const result = await resolveApiKeyWithOrgFallback(
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -148,12 +123,12 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(result).toBeNull();
   });
 
-  it("works for tenants not in any org (same as resolveApiKey)", () => {
+  it("works for tenants not in any org (same as resolveApiKey)", async () => {
     const encrypted = encrypt("sk-solo", encryptionKey);
-    store.upsert("solo-tenant", "openai", encrypted);
+    await insertTenantKey(pool, "solo-tenant", "openai", encrypted);
 
-    const result = resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null,
+    const result = await resolveApiKeyWithOrgFallback(
+      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "solo-tenant",
       "openai",
       encryptionKey,
@@ -166,31 +141,21 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(result?.source).toBe("tenant");
   });
 
-  it("full chain: personal > org > pooled > null", () => {
+  it("full chain: personal > org > pooled > null", async () => {
     const memberKey = generateInstanceKey();
     const orgKey = generateInstanceKey();
     const pooledKeys = new Map<Provider, string>([["discord", "pooled-discord"]]);
     const deriveKey = (tid: string) => (tid === "org-1" ? orgKey : memberKey);
 
-    // Set up org membership
-    db.insert(orgMemberships)
-      .values({
-        orgTenantId: "org-1",
-        memberTenantId: "m1",
-        createdAt: Date.now(),
-      })
-      .run();
-
-    // Personal key for anthropic
-    store.upsert("m1", "anthropic", encrypt("personal-anthropic", memberKey));
-    // Org key for openai
-    store.upsert("org-1", "openai", encrypt("org-openai", orgKey));
+    await insertOrgMembership(pool, "org-1", "m1");
+    await insertTenantKey(pool, "m1", "anthropic", encrypt("personal-anthropic", memberKey));
+    await insertTenantKey(pool, "org-1", "openai", encrypt("org-openai", orgKey));
 
     const lookupKey = (tid: string, prov: Provider, encKey: Buffer) =>
-      resolveApiKey(db, tid, prov, encKey, new Map())?.key ?? null;
+      resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null);
 
     // anthropic: personal wins
-    const r1 = resolveApiKeyWithOrgFallback(
+    const r1 = await resolveApiKeyWithOrgFallback(
       lookupKey,
       "m1",
       "anthropic",
@@ -203,7 +168,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(r1?.key).toBe("personal-anthropic");
 
     // openai: org fallback
-    const r2 = resolveApiKeyWithOrgFallback(
+    const r2 = await resolveApiKeyWithOrgFallback(
       lookupKey,
       "m1",
       "openai",
@@ -216,7 +181,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(r2?.key).toBe("org-openai");
 
     // discord: pooled fallback
-    const r3 = resolveApiKeyWithOrgFallback(
+    const r3 = await resolveApiKeyWithOrgFallback(
       lookupKey,
       "m1",
       "discord",
@@ -229,7 +194,15 @@ describe("resolveApiKeyWithOrgFallback", () => {
     expect(r3?.key).toBe("pooled-discord");
 
     // google: null
-    const r4 = resolveApiKeyWithOrgFallback(lookupKey, "m1", "google", memberKey, new Map(), deriveKey, membershipRepo);
+    const r4 = await resolveApiKeyWithOrgFallback(
+      lookupKey,
+      "m1",
+      "google",
+      memberKey,
+      new Map(),
+      deriveKey,
+      membershipRepo,
+    );
     expect(r4).toBeNull();
   });
 });

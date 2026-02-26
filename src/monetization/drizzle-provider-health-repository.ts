@@ -7,42 +7,39 @@ import type { ProviderHealthOverride } from "./repository-types.js";
 export class DrizzleProviderHealthRepository implements IProviderHealthRepository {
   constructor(private readonly db: DrizzleDb) {}
 
-  get(adapter: string): ProviderHealthOverride | null {
-    const row = this.db
-      .select()
-      .from(providerHealthOverrides)
-      .where(eq(providerHealthOverrides.adapter, adapter))
-      .get();
+  async get(adapter: string): Promise<ProviderHealthOverride | null> {
+    const row = (
+      await this.db.select().from(providerHealthOverrides).where(eq(providerHealthOverrides.adapter, adapter))
+    )[0];
     if (!row) return null;
     return { adapter: row.adapter, healthy: row.healthy === 1, markedAt: row.markedAt };
   }
 
-  getAll(): ProviderHealthOverride[] {
-    return this.db
-      .select()
-      .from(providerHealthOverrides)
-      .all()
-      .map((row) => ({ adapter: row.adapter, healthy: row.healthy === 1, markedAt: row.markedAt }));
+  async getAll(): Promise<ProviderHealthOverride[]> {
+    const rows = await this.db.select().from(providerHealthOverrides);
+    return rows.map((row) => ({ adapter: row.adapter, healthy: row.healthy === 1, markedAt: row.markedAt }));
   }
 
-  markUnhealthy(adapter: string): void {
-    this.db
+  async markUnhealthy(adapter: string): Promise<void> {
+    await this.db
       .insert(providerHealthOverrides)
       .values({ adapter, healthy: 0, markedAt: Date.now() })
       .onConflictDoUpdate({
         target: providerHealthOverrides.adapter,
         set: { healthy: 0, markedAt: Date.now() },
-      })
-      .run();
+      });
   }
 
-  markHealthy(adapter: string): void {
-    this.db.delete(providerHealthOverrides).where(eq(providerHealthOverrides.adapter, adapter)).run();
+  async markHealthy(adapter: string): Promise<void> {
+    await this.db.delete(providerHealthOverrides).where(eq(providerHealthOverrides.adapter, adapter));
   }
 
-  purgeExpired(unhealthyTtlMs: number): number {
+  async purgeExpired(unhealthyTtlMs: number): Promise<number> {
     const cutoff = Date.now() - unhealthyTtlMs;
-    const result = this.db.delete(providerHealthOverrides).where(lt(providerHealthOverrides.markedAt, cutoff)).run();
-    return result.changes;
+    const result = await this.db
+      .delete(providerHealthOverrides)
+      .where(lt(providerHealthOverrides.markedAt, cutoff))
+      .returning({ id: providerHealthOverrides.adapter });
+    return result.length;
   }
 }

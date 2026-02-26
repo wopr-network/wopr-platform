@@ -32,7 +32,7 @@ export async function runStorageMeteringCron(cfg: StorageMeteringCronConfig): Pr
   };
 
   // Get all active on-demand snapshots
-  const activeSnapshots = cfg.manager.listAllActive("on-demand");
+  const activeSnapshots = await cfg.manager.listAllActive("on-demand");
 
   // Group by tenant, tracking both total bytes and count
   const tenantSizes = new Map<string, number>(); // tenant -> total bytes

@@ -2,33 +2,19 @@
  * Tests for per-capability rate limiting middleware.
  */
 
-import BetterSqlite3 from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
-import * as schema from "../db/schema/index.js";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { capabilityRateLimit, resolveCapabilityCategory } from "./capability-rate-limit.js";
 import type { GatewayTenant } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function makeRateLimitRepo(): { repo: IRateLimitRepository; sqlite: BetterSqlite3.Database } {
-  const sqlite = new BetterSqlite3(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS rate_limit_entries (
-      key TEXT NOT NULL,
-      scope TEXT NOT NULL,
-      count INTEGER NOT NULL DEFAULT 0,
-      window_start INTEGER NOT NULL,
-      PRIMARY KEY (key, scope)
-    );
-  `);
-  return { repo: new DrizzleRateLimitRepository(drizzle(sqlite, { schema })), sqlite };
-}
 
 function makeTenant(id: string): GatewayTenant {
   return { id, spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null } };
@@ -118,18 +104,18 @@ describe("resolveCapabilityCategory", () => {
 
 describe("capabilityRateLimit", () => {
   let repo: IRateLimitRepository;
-  let sqlite: BetterSqlite3.Database;
+  let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
-    const r = makeRateLimitRepo();
-    repo = r.repo;
-    sqlite = r.sqlite;
+    ({ db, pool } = await createTestDb());
+    repo = new DrizzleRateLimitRepository(db);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.useRealTimers();
-    sqlite.close();
+    await pool.close();
   });
 
   it("allows requests under the llm limit", async () => {

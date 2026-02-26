@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { index, pgTable, text, unique } from "drizzle-orm/pg-core";
 
 /**
  * Email notification deduplication table.
@@ -8,13 +8,13 @@ import { index, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
  * Unique constraint on (tenantId, emailType, sentDate) ensures max 1
  * email per type per day per tenant.
  */
-export const emailNotifications = sqliteTable(
+export const emailNotifications = pgTable(
   "email_notifications",
   {
     id: text("id").primaryKey(),
     tenantId: text("tenant_id").notNull(),
     emailType: text("email_type").notNull(),
-    sentAt: text("sent_at").notNull().default(sql`(datetime('now'))`),
+    sentAt: text("sent_at").notNull().default(sql`(now())`),
     /** Date string (YYYY-MM-DD) extracted from sentAt for dedup constraint. */
     sentDate: text("sent_date").notNull(),
   },

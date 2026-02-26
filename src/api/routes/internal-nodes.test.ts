@@ -128,7 +128,7 @@ describe("POST /register", () => {
   it("returns 401 for invalid per-node secret", async () => {
     delete process.env.NODE_SECRET;
     const nodeRepo = getNodeRepo();
-    vi.mocked(nodeRepo.getBySecret).mockReturnValue(null);
+    vi.mocked(nodeRepo.getBySecret).mockResolvedValue(null);
 
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",
@@ -175,7 +175,7 @@ describe("POST /register", () => {
   it("returns 401 for expired/invalid registration token", async () => {
     delete process.env.NODE_SECRET;
     const tokenStore = getRegistrationTokenStore();
-    vi.mocked(tokenStore.consume).mockReturnValue(null);
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
 
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {

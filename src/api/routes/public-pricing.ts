@@ -1,28 +1,11 @@
-import Database from "better-sqlite3";
 import { Hono } from "hono";
 import { RateStore } from "../../admin/rates/rate-store.js";
-import { initRateSchema } from "../../admin/rates/schema.js";
-import { createDb, type DrizzleDb } from "../../db/index.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
-
-const RATES_DB_PATH = process.env.RATES_DB_PATH || "/data/platform/rates.db";
-
-/** Lazy-initialized rates database (avoids opening DB at module load time). */
-let _ratesDb: DrizzleDb | null = null;
-function getRatesDb(): DrizzleDb {
-  if (!_ratesDb) {
-    const sqlite = new Database(RATES_DB_PATH);
-    applyPlatformPragmas(sqlite);
-    initRateSchema(sqlite);
-    _ratesDb = createDb(sqlite);
-  }
-  return _ratesDb;
-}
+import { getDb } from "../../fleet/services.js";
 
 let _store: RateStore | null = null;
 function getStore(): RateStore {
   if (!_store) {
-    _store = new RateStore(getRatesDb());
+    _store = new RateStore(getDb());
   }
   return _store;
 }
@@ -38,10 +21,10 @@ function getStore(): RateStore {
 // No session context needed.
 export const publicPricingRoutes = new Hono();
 
-publicPricingRoutes.get("/", (c) => {
+publicPricingRoutes.get("/", async (c) => {
   try {
     const store = getStore();
-    const rates = store.listPublicRates();
+    const rates = await store.listPublicRates();
 
     // Group by capability for the UI
     const grouped: Record<string, Array<{ name: string; unit: string; price: number }>> = {};

@@ -142,9 +142,9 @@ export const adminRouter = router({
     }),
 
   /** Get credits balance for a tenant. */
-  creditsBalance: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input }) => {
+  creditsBalance: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getCreditLedger } = deps();
-    const balance = getCreditLedger().balance(input.tenantId);
+    const balance = await getCreditLedger().balance(input.tenantId);
     return { tenant: input.tenantId, balance_cents: balance };
   }),
 
@@ -157,11 +157,11 @@ export const adminRouter = router({
         reason: z.string().min(1),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = getCreditLedger().credit(input.tenantId, input.amount_cents, "signup_grant", input.reason);
+        const result = await getCreditLedger().credit(input.tenantId, input.amount_cents, "signup_grant", input.reason);
         getAuditLog().log({
           adminUser,
           action: "credits.grant",
@@ -194,11 +194,11 @@ export const adminRouter = router({
         reference_ids: z.array(z.string()).optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = getCreditLedger().debit(input.tenantId, input.amount_cents, "refund", input.reason);
+        const result = await getCreditLedger().debit(input.tenantId, input.amount_cents, "refund", input.reason);
         getAuditLog().log({
           adminUser,
           action: "credits.refund",
@@ -235,14 +235,13 @@ export const adminRouter = router({
         reason: z.string().min(1),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result =
-          input.amount_cents >= 0
-            ? getCreditLedger().credit(input.tenantId, input.amount_cents || 1, "promo", input.reason)
-            : getCreditLedger().debit(input.tenantId, Math.abs(input.amount_cents), "correction", input.reason);
+        const result = await (input.amount_cents >= 0
+          ? getCreditLedger().credit(input.tenantId, input.amount_cents || 1, "promo", input.reason)
+          : getCreditLedger().debit(input.tenantId, Math.abs(input.amount_cents), "correction", input.reason));
         getAuditLog().log({
           adminUser,
           action: "credits.correction",
@@ -277,10 +276,10 @@ export const adminRouter = router({
         offset: z.number().int().min(0).optional(),
       }),
     )
-    .query(({ input }) => {
+    .query(async ({ input }) => {
       const { getCreditLedger } = deps();
       const { tenantId, ...filters } = input;
-      const entries = getCreditLedger().history(tenantId, filters);
+      const entries = await getCreditLedger().history(tenantId, filters);
       return { entries, total: entries.length };
     }),
 
@@ -305,9 +304,9 @@ export const adminRouter = router({
     }),
 
   /** Get a specific user by ID. */
-  usersGet: protectedProcedure.input(z.object({ userId: z.string().min(1) })).query(({ input }) => {
+  usersGet: protectedProcedure.input(z.object({ userId: z.string().min(1) })).query(async ({ input }) => {
     const { getUserStore } = deps();
-    const user = getUserStore().getById(input.userId);
+    const user = await getUserStore().getById(input.userId);
     if (!user) {
       throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
     }
@@ -319,10 +318,10 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get tenant account status. */
-  tenantStatus: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
+  tenantStatus: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input, ctx }) => {
     requirePlatformAdmin(ctx.user?.roles ?? []);
     const { getTenantStatusStore } = deps();
-    const row = getTenantStatusStore().get(input.tenantId);
+    const row = await getTenantStatusStore().get(input.tenantId);
     return row ?? { tenantId: input.tenantId, status: "active" };
   }),
 
@@ -335,14 +334,14 @@ export const adminRouter = router({
         notifyByEmail: z.boolean().optional().default(false),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog, getBotBilling } = deps();
       const store = getTenantStatusStore();
       const adminUserId = ctx.user?.id ?? "unknown";
 
       // Check current status
-      const current = store.getStatus(input.tenantId);
+      const current = await store.getStatus(input.tenantId);
       if (current === "banned") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -357,12 +356,12 @@ export const adminRouter = router({
       }
 
       // Suspend the tenant
-      store.suspend(input.tenantId, input.reason, adminUserId);
+      await store.suspend(input.tenantId, input.reason, adminUserId);
 
       // Suspend all bots for this tenant
       let suspendedBots: string[] = [];
       if (getBotBilling) {
-        suspendedBots = getBotBilling().suspendAllForTenant(input.tenantId);
+        suspendedBots = await getBotBilling().suspendAllForTenant(input.tenantId);
       }
 
       // Audit log
@@ -395,14 +394,14 @@ export const adminRouter = router({
         notifyByEmail: z.boolean().optional().default(false),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog } = deps();
       const store = getTenantStatusStore();
       const adminUserId = ctx.user?.id ?? "unknown";
 
       // Check current status
-      const current = store.getStatus(input.tenantId);
+      const current = await store.getStatus(input.tenantId);
       if (current === "banned") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -417,7 +416,7 @@ export const adminRouter = router({
       }
 
       // Reactivate the tenant
-      store.reactivate(input.tenantId, adminUserId);
+      await store.reactivate(input.tenantId, adminUserId);
 
       // Audit log
       getAuditLog().log({
@@ -448,7 +447,7 @@ export const adminRouter = router({
         confirmName: z.string().min(1),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog, getCreditLedger, getBotBilling } = deps();
       const store = getTenantStatusStore();
@@ -464,7 +463,7 @@ export const adminRouter = router({
       }
 
       // Check current status
-      const current = store.getStatus(input.tenantId);
+      const current = await store.getStatus(input.tenantId);
       if (current === "banned") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -475,19 +474,19 @@ export const adminRouter = router({
       // Suspend all bots
       let suspendedBots: string[] = [];
       if (getBotBilling) {
-        suspendedBots = getBotBilling().suspendAllForTenant(input.tenantId);
+        suspendedBots = await getBotBilling().suspendAllForTenant(input.tenantId);
       }
 
       // Auto-refund remaining credits
       let refundedCents = 0;
-      const balance = getCreditLedger().balance(input.tenantId);
+      const balance = await getCreditLedger().balance(input.tenantId);
       if (balance > 0) {
-        getCreditLedger().debit(input.tenantId, balance, "refund", `Auto-refund on account ban: ${input.reason}`);
+        await getCreditLedger().debit(input.tenantId, balance, "refund", `Auto-refund on account ban: ${input.reason}`);
         refundedCents = balance;
       }
 
       // Ban the tenant
-      store.ban(input.tenantId, input.reason, adminUserId);
+      await store.ban(input.tenantId, input.reason, adminUserId);
 
       // Audit log
       getAuditLog().log({
@@ -989,19 +988,19 @@ export const adminRouter = router({
         isPinned: z.boolean().optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
+    .mutation(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotesStore, getAuditLog } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
       }
-      const note = getNotesStore().create({
+      const note = await getNotesStore().create({
         tenantId: input.tenantId,
         authorId: ctx.user?.id ?? "unknown",
         content: input.content,
         isPinned: input.isPinned,
       });
-      getAuditLog().log({
+      void getAuditLog().log({
         adminUser: ctx.user?.id ?? "unknown",
         action: "note.create",
         category: "support",
@@ -1152,11 +1151,11 @@ export const adminRouter = router({
         to: z.number().int().optional(),
       }),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getCreditLedger } = deps();
       const { tenantId, ...filters } = input;
-      const entries = getCreditLedger().history(tenantId, { ...filters, limit: 10000 });
+      const entries = await getCreditLedger().history(tenantId, { ...filters, limit: 10000 });
 
       const header = "id,tenantId,type,amountCents,description,referenceId,createdAt";
       const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
@@ -1190,21 +1189,21 @@ export const adminRouter = router({
         lowBalance: z.boolean().optional(),
       }),
     )
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
-      return { tenantIds: getBulkStore().listMatchingTenantIds(input) };
+      return { tenantIds: await getBulkStore().listMatchingTenantIds(input) };
     }),
 
   /** Dry-run: preview which tenants would be affected. */
   bulkDryRun: protectedProcedure
     .input(z.object({ tenantIds: z.array(tenantIdSchema).min(1).max(500) }))
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
-      return { tenants: getBulkStore().dryRun(input.tenantIds) };
+      return { tenants: await getBulkStore().dryRun(input.tenantIds) };
     }),
 
   /** Mass grant credits. */

@@ -1,34 +1,9 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { beforeEach, describe, expect, it } from "vitest";
-import * as schema from "../db/schema/index.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
 import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
 import type { BotProfile } from "./types.js";
-
-function makeDb() {
-  const sqlite = new Database(":memory:");
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS bot_profiles (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      image TEXT NOT NULL,
-      env TEXT NOT NULL DEFAULT '{}',
-      restart_policy TEXT NOT NULL DEFAULT 'unless-stopped',
-      update_policy TEXT NOT NULL DEFAULT 'on-push',
-      release_channel TEXT NOT NULL DEFAULT 'stable',
-      volume_name TEXT,
-      discovery_json TEXT,
-      description TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE INDEX IF NOT EXISTS idx_bot_profiles_tenant ON bot_profiles (tenant_id);
-    CREATE INDEX IF NOT EXISTS idx_bot_profiles_name ON bot_profiles (tenant_id, name);
-    CREATE INDEX IF NOT EXISTS idx_bot_profiles_release_channel ON bot_profiles (release_channel);
-  `);
-  return drizzle(sqlite, { schema });
-}
 
 const TEST_IMAGE = "ghcr.io/wopr-network/test:latest";
 
@@ -48,120 +23,127 @@ function makeProfile(overrides: Partial<BotProfile> = {}): BotProfile {
 }
 
 describe("DrizzleBotProfileRepository", () => {
+  let db: DrizzleDb;
+  let pool: PGlite;
   let repo: DrizzleBotProfileRepository;
 
-  beforeEach(() => {
-    repo = new DrizzleBotProfileRepository(makeDb());
+  beforeEach(async () => {
+    ({ db, pool } = await createTestDb());
+    repo = new DrizzleBotProfileRepository(db);
+  });
+
+  afterEach(async () => {
+    await pool.close();
   });
 
   describe("get()", () => {
-    it("returns null when not found", () => {
-      const result = repo.get("nonexistent-id");
+    it("returns null when not found", async () => {
+      const result = await repo.get("nonexistent-id");
       expect(result).toBeNull();
     });
 
-    it("returns parsed profile with env as object (not string)", () => {
+    it("returns parsed profile with env as object (not string)", async () => {
       const profile = makeProfile();
-      repo.save(profile);
-      const result = repo.get(profile.id);
+      await repo.save(profile);
+      const result = await repo.get(profile.id);
       expect(result).not.toBeNull();
       expect(result?.env).toEqual({ FOO: "bar", BAZ: "qux" });
       expect(typeof result?.env).toBe("object");
       expect(typeof result?.env).not.toBe("string");
     });
 
-    it("returns profile with all fields matching", () => {
+    it("returns profile with all fields matching", async () => {
       const profile = makeProfile({
         volumeName: "my-volume",
         discovery: { enabled: true, topics: ["wopr-org-test"] },
       });
-      repo.save(profile);
-      const result = repo.get(profile.id);
+      await repo.save(profile);
+      const result = await repo.get(profile.id);
       expect(result).toEqual(profile);
     });
 
-    it("returns profile with optional fields as undefined when not set", () => {
+    it("returns profile with optional fields as undefined when not set", async () => {
       const profile = makeProfile(); // no volumeName, no discovery
-      repo.save(profile);
-      const result = repo.get(profile.id);
+      await repo.save(profile);
+      const result = await repo.get(profile.id);
       expect(result?.volumeName).toBeUndefined();
       expect(result?.discovery).toBeUndefined();
     });
   });
 
   describe("save()", () => {
-    it("inserts a new profile", () => {
+    it("inserts a new profile", async () => {
       const profile = makeProfile();
-      const result = repo.save(profile);
+      const result = await repo.save(profile);
       expect(result).toEqual(profile);
-      expect(repo.get(profile.id)).toEqual(profile);
+      expect(await repo.get(profile.id)).toEqual(profile);
     });
 
-    it("upserts an existing profile (updates on conflict)", () => {
+    it("upserts an existing profile (updates on conflict)", async () => {
       const profile = makeProfile();
-      repo.save(profile);
+      await repo.save(profile);
 
       const updated = { ...profile, name: "updated-bot", image: TEST_IMAGE };
-      repo.save(updated);
+      await repo.save(updated);
 
-      const result = repo.get(profile.id);
+      const result = await repo.get(profile.id);
       expect(result?.name).toBe("updated-bot");
     });
 
-    it("handles empty env object", () => {
+    it("handles empty env object", async () => {
       const profile = makeProfile({ env: {} });
-      repo.save(profile);
-      const result = repo.get(profile.id);
+      await repo.save(profile);
+      const result = await repo.get(profile.id);
       expect(result?.env).toEqual({});
     });
 
-    it("preserves discovery config through round-trip", () => {
+    it("preserves discovery config through round-trip", async () => {
       const profile = makeProfile({
         discovery: { enabled: false, topics: ["topic-a", "topic-b"] },
       });
-      repo.save(profile);
-      const result = repo.get(profile.id);
+      await repo.save(profile);
+      const result = await repo.get(profile.id);
       expect(result?.discovery).toEqual({ enabled: false, topics: ["topic-a", "topic-b"] });
     });
   });
 
   describe("delete()", () => {
-    it("returns true when profile exists and is deleted", () => {
+    it("returns true when profile exists and is deleted", async () => {
       const profile = makeProfile();
-      repo.save(profile);
-      expect(repo.delete(profile.id)).toBe(true);
-      expect(repo.get(profile.id)).toBeNull();
+      await repo.save(profile);
+      expect(await repo.delete(profile.id)).toBe(true);
+      expect(await repo.get(profile.id)).toBeNull();
     });
 
-    it("returns false when profile does not exist", () => {
-      expect(repo.delete("nonexistent-id")).toBe(false);
+    it("returns false when profile does not exist", async () => {
+      expect(await repo.delete("nonexistent-id")).toBe(false);
     });
   });
 
   describe("list()", () => {
-    it("returns empty array when no profiles", () => {
-      expect(repo.list()).toEqual([]);
+    it("returns empty array when no profiles", async () => {
+      expect(await repo.list()).toEqual([]);
     });
 
-    it("returns all saved profiles", () => {
+    it("returns all saved profiles", async () => {
       const p1 = makeProfile({ id: "aaaaaaaa-1111-1111-1111-111111111111", name: "bot-1" });
       const p2 = makeProfile({
         id: "bbbbbbbb-2222-2222-2222-222222222222",
         name: "bot-2",
         tenantId: "tenant-2",
       });
-      repo.save(p1);
-      repo.save(p2);
+      await repo.save(p1);
+      await repo.save(p2);
 
-      const result = repo.list();
+      const result = await repo.list();
       expect(result).toHaveLength(2);
       expect(result.map((p) => p.name).sort()).toEqual(["bot-1", "bot-2"]);
     });
 
-    it("returns profiles with env parsed as objects", () => {
+    it("returns profiles with env parsed as objects", async () => {
       const p = makeProfile({ env: { KEY: "value" } });
-      repo.save(p);
-      const [result] = repo.list();
+      await repo.save(p);
+      const [result] = await repo.list();
       expect(typeof result.env).toBe("object");
       expect(result.env).toEqual({ KEY: "value" });
     });

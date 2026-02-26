@@ -45,41 +45,43 @@ export class ProviderRegistry {
   }
 
   /** Get all providers for a capability, with health status applied. */
-  getProviders(capability: string): ModelProviderEntry[] {
+  async getProviders(capability: string): Promise<ModelProviderEntry[]> {
     if (Date.now() - this.lastRefresh > this.cacheTtlMs) {
-      this.refresh();
+      await this.refresh();
     }
 
     const entries = this.cache.get(capability) ?? [];
 
-    return entries.map((entry) => {
-      const override = this.healthRepo.get(entry.adapter);
-      if (!override) return entry;
+    return Promise.all(
+      entries.map(async (entry) => {
+        const override = await this.healthRepo.get(entry.adapter);
+        if (!override) return entry;
 
-      // Auto-recovery: if unhealthy TTL has elapsed, clear the override
-      if (!override.healthy && Date.now() - override.markedAt > this.unhealthyTtlMs) {
-        this.healthRepo.markHealthy(entry.adapter);
-        return entry;
-      }
+        // Auto-recovery: if unhealthy TTL has elapsed, clear the override
+        if (!override.healthy && Date.now() - override.markedAt > this.unhealthyTtlMs) {
+          void this.healthRepo.markHealthy(entry.adapter);
+          return entry;
+        }
 
-      return { ...entry, healthy: override.healthy };
-    });
+        return { ...entry, healthy: override.healthy };
+      }),
+    );
   }
 
   /** Mark a provider as unhealthy (called on 5xx errors). */
   markUnhealthy(adapter: string): void {
-    this.healthRepo.markUnhealthy(adapter);
+    void this.healthRepo.markUnhealthy(adapter);
   }
 
   /** Mark a provider as healthy (called on successful responses or health probes). */
   markHealthy(adapter: string): void {
-    this.healthRepo.markHealthy(adapter);
+    void this.healthRepo.markHealthy(adapter);
   }
 
   /** Force-refresh the cache from DB. */
-  refresh(): void {
+  async refresh(): Promise<void> {
     // Load all active provider costs grouped by capability
-    const { entries } = this.rateStore.listProviderCosts({ isActive: true, limit: 250 });
+    const { entries } = await this.rateStore.listProviderCosts({ isActive: true, limit: 250 });
 
     // Group by capability
     const byCapability = new Map<string, ModelProviderEntry[]>();

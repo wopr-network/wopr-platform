@@ -25,7 +25,7 @@ export async function hydrateProxyRoutes(repo: IBotProfileRepository): Promise<v
   const pm = getProxyManager();
   let profiles: BotProfile[];
   try {
-    profiles = repo.list();
+    profiles = await repo.list();
   } catch (err) {
     logger.warn("Proxy hydration skipped: could not list profiles", { err });
     return;
