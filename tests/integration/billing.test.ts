@@ -15,7 +15,7 @@ const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { DrizzleSigPenaltyRepository } = await import("../../src/api/drizzle-sig-penalty-repository.js");
 const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
 const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
-const { TenantCustomerStore } = await import("../../src/monetization/stripe/tenant-store.js");
+const { TenantCustomerStore } = await import("../../src/monetization/index.js");
 import type { IPaymentProcessor } from "../../src/monetization/payment-processor.js";
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
 
@@ -30,10 +30,10 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
     supportsPortal: () => true,
     createCheckoutSession: vi.fn().mockResolvedValue({
       id: "cs_test_123",
-      url: "https://checkout.stripe.com/cs_test_123",
+      url: "https://pay.example.com/checkout/cs_test_123",
     }) as IPaymentProcessor["createCheckoutSession"],
     createPortalSession: vi.fn().mockResolvedValue({
-      url: "https://billing.stripe.com/session_xyz",
+      url: "https://pay.example.com/portal/session_xyz",
     }) as IPaymentProcessor["createPortalSession"],
     handleWebhook: vi.fn().mockResolvedValue({
       handled: false,
@@ -96,7 +96,7 @@ describe("integration: billing routes", () => {
     });
 
     it("/api/billing/webhook does NOT require bearer auth", async () => {
-      // Webhook uses Stripe signature verification, not bearer auth.
+      // Webhook uses processor signature verification, not bearer auth.
       // Should return 400 (missing signature), NOT 401.
       const res = await app.request("/api/billing/webhook", {
         method: "POST",
@@ -126,7 +126,7 @@ describe("integration: billing routes", () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.url).toBe("https://checkout.stripe.com/cs_test_123");
+      expect(body.url).toBe("https://pay.example.com/checkout/cs_test_123");
       expect(body.sessionId).toBe("cs_test_123");
     });
 
@@ -185,7 +185,7 @@ describe("integration: billing routes", () => {
     it("returns 500 when processor fails", async () => {
       setBillingDeps({
         processor: createMockProcessor({
-          createCheckoutSession: vi.fn().mockRejectedValue(new Error("Stripe is down")) as IPaymentProcessor["createCheckoutSession"],
+          createCheckoutSession: vi.fn().mockRejectedValue(new Error("Payment processor unavailable")) as IPaymentProcessor["createCheckoutSession"],
         }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
@@ -213,7 +213,7 @@ describe("integration: billing routes", () => {
     it("creates portal session with valid input", async () => {
       setBillingDeps({
         processor: createMockProcessor({
-          createPortalSession: vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal" }) as IPaymentProcessor["createPortalSession"],
+          createPortalSession: vi.fn().mockResolvedValue({ url: "https://pay.example.com/portal/session" }) as IPaymentProcessor["createPortalSession"],
         }),
         creditLedger: new CreditLedger(db),
         meterAggregator: new MeterAggregator(db),
@@ -232,7 +232,7 @@ describe("integration: billing routes", () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.url).toBe("https://billing.stripe.com/portal");
+      expect(body.url).toBe("https://pay.example.com/portal/session");
     });
 
     it("returns 501 when processor does not support portal", async () => {

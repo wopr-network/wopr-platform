@@ -4,11 +4,11 @@ import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { TenantCustomerStore } from "../../monetization/index.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
 import { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
-import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
@@ -54,11 +54,11 @@ function createMockProcessor(
     createCheckoutSession: (overrides.createCheckoutSession ??
       vi.fn().mockResolvedValue({
         id: "cs_test_123",
-        url: "https://checkout.stripe.com/cs_test_123",
+        url: "https://pay.example.com/checkout/cs_test_123",
       })) as IPaymentProcessor["createCheckoutSession"],
     createPortalSession: (overrides.createPortalSession ??
       vi.fn().mockResolvedValue({
-        url: "https://billing.stripe.com/portal_123",
+        url: "https://pay.example.com/portal/portal_123",
       })) as IPaymentProcessor["createPortalSession"],
     handleWebhook: (overrides.handleWebhook ??
       vi.fn().mockResolvedValue({ handled: false, eventType: "unknown" })) as IPaymentProcessor["handleWebhook"],
@@ -145,7 +145,7 @@ describe("billing routes", () => {
       expect(res.status).toBe(401);
     });
 
-    it("webhook does NOT require bearer auth (uses stripe signature)", async () => {
+    it("webhook does NOT require bearer auth (uses processor signature)", async () => {
       // Webhook should not return 401 even without bearer token.
       // It should return 400 for missing stripe-signature header instead.
       const res = await billingRoutes.request("/webhook", {
@@ -176,7 +176,7 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.url).toBe("https://checkout.stripe.com/cs_test_123");
+      expect(body.url).toBe("https://pay.example.com/checkout/cs_test_123");
       expect(body.sessionId).toBe("cs_test_123");
     });
 
@@ -257,7 +257,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when processor API fails", async () => {
-      const createCheckoutSession = vi.fn().mockRejectedValue(new Error("Stripe is down"));
+      const createCheckoutSession = vi.fn().mockRejectedValue(new Error("Payment processor unavailable"));
       setBillingDeps({
         processor: createMockProcessor({ createCheckoutSession }),
         creditLedger: new CreditLedger(db),
@@ -279,7 +279,7 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(500);
       const body = await res.json();
-      expect(body.error).toBe("Stripe is down");
+      expect(body.error).toBe("Payment processor unavailable");
     });
   });
 
@@ -289,7 +289,7 @@ describe("billing routes", () => {
     it("creates portal session and returns URL", async () => {
       tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
-      const createPortalSession = vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_123" });
+      const createPortalSession = vi.fn().mockResolvedValue({ url: "https://pay.example.com/portal/portal_123" });
       setBillingDeps({
         processor: createMockProcessor({ createPortalSession }),
         creditLedger: new CreditLedger(db),
@@ -309,7 +309,7 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.url).toBe("https://billing.stripe.com/portal_123");
+      expect(body.url).toBe("https://pay.example.com/portal/portal_123");
     });
 
     it("returns 400 for invalid JSON body", async () => {
@@ -1062,7 +1062,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when processor throws (e.g. no customer found)", async () => {
-      const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("No Stripe customer found for tenant: t-unknown"));
+      const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("No customer found for tenant: t-unknown"));
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
@@ -1078,11 +1078,11 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(500);
       const body = await res.json();
-      expect(body.error).toContain("No Stripe customer found");
+      expect(body.error).toContain("No customer found");
     });
 
     it("returns 500 when processor API call fails", async () => {
-      const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("Stripe is down"));
+      const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("Payment processor unavailable"));
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
@@ -1099,7 +1099,7 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(500);
       const body = await res.json();
-      expect(body.error).toBe("Stripe is down");
+      expect(body.error).toBe("Payment processor unavailable");
     });
   });
 
@@ -1166,7 +1166,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when processor API call fails", async () => {
-      const detachPaymentMethod = vi.fn().mockRejectedValue(new Error("Stripe error"));
+      const detachPaymentMethod = vi.fn().mockRejectedValue(new Error("Payment processor error"));
       setBillingDeps({
         processor: createMockProcessor({ detachPaymentMethod }),
         creditLedger: new CreditLedger(db),
@@ -1182,7 +1182,7 @@ describe("billing routes", () => {
 
       expect(res.status).toBe(500);
       const body = await res.json();
-      expect(body.error).toBe("Stripe error");
+      expect(body.error).toBe("Payment processor error");
     });
   });
 

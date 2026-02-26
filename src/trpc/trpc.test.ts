@@ -9,8 +9,8 @@ import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-af
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
+import type { DrizzleTenantCustomerStore } from "../monetization/index.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
-import type { DrizzleTenantCustomerStore } from "../monetization/stripe/tenant-store.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import { appRouter } from "./index.js";
 import type { TRPCContext } from "./init.js";
@@ -38,8 +38,10 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
   return {
     name: "mock",
     supportsPortal: () => true,
-    createCheckoutSession: vi.fn().mockResolvedValue({ id: "cs_test", url: "https://checkout.stripe.com/cs_test" }),
-    createPortalSession: vi.fn().mockResolvedValue({ url: "https://billing.stripe.com/portal_test" }),
+    createCheckoutSession: vi
+      .fn()
+      .mockResolvedValue({ id: "cs_test", url: "https://pay.example.com/checkout/cs_test" }),
+    createPortalSession: vi.fn().mockResolvedValue({ url: "https://pay.example.com/portal/portal_test" }),
     handleWebhook: vi.fn().mockResolvedValue({ handled: false, eventType: "unknown" }),
     setupPaymentMethod: vi.fn().mockResolvedValue({ clientSecret: "seti_test_secret" }),
     listPaymentMethods: vi.fn().mockResolvedValue([]),
@@ -267,7 +269,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
+      const { TenantCustomerStore } = await import("../monetization/index.js");
       tenantStore = new TenantCustomerStore(db);
       const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
       const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(db);
@@ -480,7 +482,7 @@ describe("tRPC appRouter", () => {
       expect(result.global.hardCap).toBe(200);
     });
 
-    it("billingInfo returns empty state when tenant has no Stripe mapping", async () => {
+    it("billingInfo returns empty state when tenant has no processor mapping", async () => {
       const caller = createCaller(authedContext());
       const result = await caller.billing.billingInfo();
       expect(result).toHaveProperty("email");
@@ -507,7 +509,7 @@ describe("tRPC appRouter", () => {
       );
     });
 
-    it("updateBillingEmail calls Stripe when mapping exists", async () => {
+    it("updateBillingEmail calls processor when mapping exists", async () => {
       tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.updateBillingEmail({ email: "new@example.com" });
@@ -645,7 +647,7 @@ describe("tRPC appRouter", () => {
     describe("billing.updateAutoTopupSettings", () => {
       it("rejects enabling usage mode without payment method", async () => {
         const caller = createCaller(authedContext());
-        // tenantStore has no entry for test-tenant → no Stripe customer
+        // tenantStore has no entry for test-tenant → no processor customer
         await expect(caller.billing.updateAutoTopupSettings({ usage_enabled: true })).rejects.toThrow(
           /payment method/i,
         );
@@ -804,7 +806,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
+      const { TenantCustomerStore } = await import("../monetization/index.js");
       const tenantStore = new TenantCustomerStore(db);
       const spendingLimitsRepo1 = new DrizzleSpendingLimitsRepository(db);
 
@@ -874,7 +876,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
+      const { TenantCustomerStore } = await import("../monetization/index.js");
       const tenantStore = new TenantCustomerStore(db);
       const spendingLimitsRepo2 = new DrizzleSpendingLimitsRepository(db);
 
@@ -915,7 +917,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/stripe/tenant-store.js");
+      const { TenantCustomerStore } = await import("../monetization/index.js");
       const tenantStore = new TenantCustomerStore(db);
       const spendingLimitsRepo3 = new DrizzleSpendingLimitsRepository(db);
 
