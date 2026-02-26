@@ -15,6 +15,7 @@ import { setChatDeps } from "./api/routes/chat.js";
 import { setFleetDeps } from "./api/routes/fleet.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
+import { setSetupDeps } from "./api/routes/setup.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { EchoChatBackend } from "./chat/chat-backend.js";
 import { config } from "./config/index.js";
@@ -47,6 +48,7 @@ import {
   getPool,
   getRateLimitRepo,
   getRegistrationTokenStore,
+  getSetupSessionRepo,
   getSystemResourceMonitor,
   initFleet,
 } from "./fleet/services.js";
@@ -735,6 +737,13 @@ if (process.env.NODE_ENV !== "test") {
     const { loadOnboardingConfig } = await import("./onboarding/config.js");
     const onboardingCfg = loadOnboardingConfig();
     setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo());
+    // Wire setup route deps (WOP-1034)
+    const { pluginRegistry } = await import("./api/routes/marketplace-registry.js");
+    setSetupDeps({
+      pluginRegistry,
+      setupSessionRepo: getSetupSessionRepo(),
+      onboardingService: getOnboardingService(),
+    });
     // Wire chat deps (echo backend until WOPR instance integration)
     setChatDeps({ backend: new EchoChatBackend() });
     if (onboardingCfg.enabled) {
