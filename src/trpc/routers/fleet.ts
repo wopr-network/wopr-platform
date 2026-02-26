@@ -146,12 +146,24 @@ export const fleetRouter = router({
   controlInstance: tenantProcedure
     .input(z.object({ id: uuidSchema, action: controlActionSchema }))
     .mutation(async ({ input, ctx }) => {
-      const { getFleetManager, getCreditLedger } = deps();
+      const { getFleetManager, getCreditLedger, getBotInstanceRepo, getRoleStore } = deps();
       const fleet = getFleetManager();
       // Verify tenant ownership
       const profile = await fleet.profiles.get(input.id);
       if (!profile || profile.tenantId !== ctx.tenantId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+      }
+      // WOP-1002: user-scoped ownership — regular users can only control their own bots
+      if (ctx.user?.id) {
+        const botRepo = getBotInstanceRepo?.();
+        const roleStore = getRoleStore?.();
+        if (botRepo && roleStore) {
+          const instance = await botRepo.getById(input.id);
+          const role = await roleStore.getRole(ctx.user.id, ctx.tenantId);
+          if (role === "user" && instance?.createdByUserId && instance.createdByUserId !== ctx.user.id) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "You do not have permission to manage this bot" });
+          }
+        }
       }
       // Payment gate (WOP-380): require minimum 17 cents to start a bot
       if (input.action === "start") {

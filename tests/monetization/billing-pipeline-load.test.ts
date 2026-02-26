@@ -1,10 +1,12 @@
 import { unlinkSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
 import { DrizzleBudgetChecker, type SpendLimits } from "../../src/monetization/budget/budget-checker.js";
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
 import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import type { MeterEvent } from "../../src/monetization/metering/types.js";
+import type { DrizzleDb } from "../../src/db/index.js";
 import { createTestDb } from "../../src/test/db.js";
 import {
   type LoadTestResult,
@@ -35,19 +37,19 @@ function makeEvent(i: number): MeterEvent {
 }
 
 describe("Billing pipeline load tests", () => {
-  let db: ReturnType<typeof createTestDb>["db"];
-  let sqlite: ReturnType<typeof createTestDb>["sqlite"];
+  let db: DrizzleDb;
+  let pool: PGlite;
   const walPath = `/tmp/wopr-load-wal-${process.pid}.jsonl`;
   const dlqPath = `/tmp/wopr-load-dlq-${process.pid}.jsonl`;
 
-  beforeEach(() => {
-    const testDb = createTestDb();
+  beforeEach(async () => {
+    const testDb = await createTestDb();
     db = testDb.db;
-    sqlite = testDb.sqlite;
+    pool = testDb.pool;
   });
 
-  afterEach(() => {
-    sqlite.close();
+  afterEach(async () => {
+    await pool.close();
     try {
       unlinkSync(walPath);
     } catch {
@@ -86,7 +88,7 @@ describe("Billing pipeline load tests", () => {
     expect(result.p99LatencyUs).toBeLessThan(10_000_000); // p99 < 10s (generous for SQLite WAL writes)
   });
 
-  it("Scenario 2: Burst 50K events — rapid emit then single flush", () => {
+  it("Scenario 2: Burst 50K events — rapid emit then single flush", { timeout: 120_000 }, async () => {
     const emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
       batchSize: 100_000, // No auto-flush
@@ -114,7 +116,7 @@ describe("Billing pipeline load tests", () => {
 
     // Flush phase
     const flushStart = performance.now();
-    const flushed = emitter.flush();
+    const flushed = await emitter.flush();
     const flushDuration = performance.now() - flushStart;
 
     console.log(`--- Burst 50K flush phase ---`);
@@ -207,7 +209,7 @@ describe("Billing pipeline load tests", () => {
     expect(percentile(latencies, 50)).toBeLessThan(1_000_000); // p50 < 1s
   });
 
-  it("Scenario 5: Full pipeline — emit, flush, aggregate, budget check cycle", () => {
+  it("Scenario 5: Full pipeline — emit, flush, aggregate, budget check cycle", async () => {
     const WINDOW = 60_000;
     const emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
@@ -221,9 +223,11 @@ describe("Billing pipeline load tests", () => {
     const limits: SpendLimits = { maxSpendPerHour: 1000, maxSpendPerMonth: 10000 };
 
     // Pre-fund tenants
-    for (let i = 0; i < TENANT_COUNT; i++) {
-      ledger.credit(`tenant-${i}`, 1_000_000, "purchase", "load test setup");
-    }
+    await Promise.all(
+      Array.from({ length: TENANT_COUNT }, (_, i) =>
+        ledger.credit(`tenant-${i}`, 1_000_000, "purchase", "load test setup"),
+      ),
+    );
 
     const phases: { name: string; durationMs: number }[] = [];
 
@@ -236,28 +240,30 @@ describe("Billing pipeline load tests", () => {
 
     // Phase 2: Flush
     const flushStart = performance.now();
-    emitter.flush();
+    await emitter.flush();
     phases.push({ name: "Flush 10K", durationMs: performance.now() - flushStart });
 
     // Phase 3: Aggregate
     const aggStart = performance.now();
-    aggregator.aggregate();
+    await aggregator.aggregate();
     phases.push({ name: "Aggregate", durationMs: performance.now() - aggStart });
 
     // Phase 4: Budget checks for all tenants
     const budgetStart = performance.now();
     let allAllowed = true;
     for (let i = 0; i < TENANT_COUNT; i++) {
-      const result = checker.check(`tenant-${i}`, limits);
+      const result = await checker.check(`tenant-${i}`, limits);
       if (!result.allowed) allAllowed = false;
     }
     phases.push({ name: `Budget check ${TENANT_COUNT} tenants`, durationMs: performance.now() - budgetStart });
 
     // Phase 5: Debit credits for all tenants
     const debitStart = performance.now();
-    for (let i = 0; i < TENANT_COUNT; i++) {
-      ledger.debit(`tenant-${i}`, 1, "adapter_usage", "load test");
-    }
+    await Promise.all(
+      Array.from({ length: TENANT_COUNT }, (_, i) =>
+        ledger.debit(`tenant-${i}`, 1, "adapter_usage", "load test"),
+      ),
+    );
     phases.push({ name: `Debit ${TENANT_COUNT} tenants`, durationMs: performance.now() - debitStart });
 
     console.log(`--- Full pipeline cycle ---`);
