@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { createTestDb } from "../test/db.js";
-import { DrizzleOnboardingScriptRepository } from "./onboarding-script-repository.js";
+import { DrizzleOnboardingScriptRepository } from "./drizzle-onboarding-script-repository.js";
 
 describe("DrizzleOnboardingScriptRepository", () => {
   let db: DrizzleDb;

@@ -3,8 +3,11 @@ CREATE TABLE "onboarding_scripts" (
 	"content" text NOT NULL,
 	"version" integer NOT NULL,
 	"updated_at" bigint NOT NULL,
-	"updated_by" text
+	"updated_by" text,
+	CONSTRAINT "onboarding_scripts_version_unique" UNIQUE("version")
 );
+--> statement-breakpoint
+CREATE INDEX "onboarding_scripts_version_idx" ON "onboarding_scripts" ("version" DESC);
 --> statement-breakpoint
 INSERT INTO "onboarding_scripts" ("id", "content", "version", "updated_at", "updated_by")
 VALUES ('seed-v1', $onboarding$# WOPR Onboarding

@@ -39,17 +39,12 @@ export class DrizzleOnboardingScriptRepository implements IOnboardingScriptRepos
     const id = randomUUID();
     const now = Date.now();
 
-    const maxResult = await this.db
-      .select({ maxVersion: sql<number>`COALESCE(MAX(${onboardingScripts.version}), 0)` })
-      .from(onboardingScripts);
-    const nextVersion = (maxResult[0]?.maxVersion ?? 0) + 1;
-
     const rows = await this.db
       .insert(onboardingScripts)
       .values({
         id,
         content: script.content,
-        version: nextVersion,
+        version: sql`(SELECT COALESCE(MAX(${onboardingScripts.version}), 0) + 1 FROM ${onboardingScripts})`,
         updatedAt: now,
         updatedBy: script.updatedBy ?? null,
       })

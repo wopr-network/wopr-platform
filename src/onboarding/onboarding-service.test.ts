@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OnboardingConfig } from "./config.js";
 import type { IDaemonManager } from "./daemon-manager.js";
+import type { IOnboardingScriptRepository } from "./drizzle-onboarding-script-repository.js";
 import type { IOnboardingSessionRepository } from "./drizzle-onboarding-session-repository.js";
-import type { IOnboardingScriptRepository } from "./onboarding-script-repository.js";
 import { OnboardingService } from "./onboarding-service.js";
 import type { IWoprClient } from "./wopr-client.js";
 
@@ -69,6 +69,16 @@ describe("OnboardingService", () => {
       expect.stringContaining("onboarding-"),
       "# WOPR Onboarding Script",
     );
+  });
+
+  it("createSession skips WoprClient when daemon is not ready", async () => {
+    const client = mockWoprClient();
+    const daemon: IDaemonManager = { start: vi.fn(), stop: vi.fn(), isReady: vi.fn().mockReturnValue(false) };
+    const service = new OnboardingService(mockSessionRepo(), client, mockConfig(), daemon, undefined, mockScriptRepo());
+
+    await service.createSession({ anonymousId: "anon-3" });
+
+    expect(client.createSession).not.toHaveBeenCalled();
   });
 
   it("createSession falls back to default prompt when no script in DB", async () => {

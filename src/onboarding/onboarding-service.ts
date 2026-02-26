@@ -5,8 +5,8 @@ import { computeInferenceCost } from "../inference/inference-cost.js";
 import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
 import type { OnboardingConfig } from "./config.js";
 import type { IDaemonManager } from "./daemon-manager.js";
+import type { IOnboardingScriptRepository } from "./drizzle-onboarding-script-repository.js";
 import type { IOnboardingSessionRepository, OnboardingSession } from "./drizzle-onboarding-session-repository.js";
-import type { IOnboardingScriptRepository } from "./onboarding-script-repository.js";
 import type { ConversationEntry, IWoprClient } from "./wopr-client.js";
 
 export class OnboardingService {

@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
-import type { IOnboardingScriptRepository } from "../../onboarding/onboarding-script-repository.js";
+import { getAdminAuditLog } from "../../fleet/services.js";
+import type { IOnboardingScriptRepository } from "../../onboarding/drizzle-onboarding-script-repository.js";
 
 type RepoFactory = () => IOnboardingScriptRepository;
 
@@ -40,10 +41,23 @@ export function createAdminOnboardingRoutes(getRepo: RepoFactory): Hono<AuthEnv>
     }
 
     const user = c.get("user");
+    const adminUser = (user as { id?: string } | undefined)?.id ?? "unknown";
     const script = await repo.insert({
       content,
-      updatedBy: user?.id ?? null,
+      updatedBy: adminUser !== "unknown" ? adminUser : null,
     });
+
+    try {
+      getAdminAuditLog().log({
+        adminUser,
+        action: "onboarding.script_updated",
+        category: "config",
+        details: { version: script.version },
+        outcome: "success",
+      });
+    } catch {
+      /* audit must not break request */
+    }
 
     return c.json(script, 201);
   });

@@ -803,10 +803,10 @@ import type { ISessionUsageRepository } from "../inference/session-usage-reposit
 import { DrizzleSessionUsageRepository } from "../inference/session-usage-repository.js";
 import { loadOnboardingConfig } from "../onboarding/config.js";
 import { DaemonManager, type IDaemonManager } from "../onboarding/daemon-manager.js";
+import type { IOnboardingScriptRepository } from "../onboarding/drizzle-onboarding-script-repository.js";
+import { DrizzleOnboardingScriptRepository } from "../onboarding/drizzle-onboarding-script-repository.js";
 import type { IOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
 import { DrizzleOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
-import type { IOnboardingScriptRepository } from "../onboarding/onboarding-script-repository.js";
-import { DrizzleOnboardingScriptRepository } from "../onboarding/onboarding-script-repository.js";
 import { OnboardingService } from "../onboarding/onboarding-service.js";
 import { WoprClient } from "../onboarding/wopr-client.js";
 
