@@ -27,7 +27,7 @@ export async function createPayRamCheckout(
   });
 
   // Store the charge record for webhook correlation.
-  chargeStore.create(
+  await chargeStore.create(
     result.reference_id,
     opts.tenant,
     Math.round(opts.amountUsd * 100), // Convert to cents
