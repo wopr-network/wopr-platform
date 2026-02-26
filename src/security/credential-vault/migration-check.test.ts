@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 import { auditCredentialEncryption } from "./migration-check.js";
@@ -12,14 +12,18 @@ describe("auditCredentialEncryption", () => {
   let db: DrizzleDb;
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createTestDb();
     db = testDb.db;
     pool = testDb.pool;
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("returns empty array when all credentials are properly encrypted", async () => {
@@ -102,15 +106,19 @@ describe("migratePlaintextCredentials", () => {
   let pool: PGlite;
   let vaultKey: Buffer;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createTestDb();
     db = testDb.db;
     pool = testDb.pool;
-    vaultKey = generateInstanceKey();
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    vaultKey = generateInstanceKey();
   });
 
   it("skips already-encrypted rows", async () => {

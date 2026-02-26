@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminUsersApiRoutes } from "../../api/routes/admin-users.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
-import { createTestDb as createMigratedTestDb } from "../../test/db.js";
+import { createTestDb as createMigratedTestDb, truncateAllTables } from "../../test/db.js";
 import { AdminUserStore } from "./user-store.js";
 
 // ---------------------------------------------------------------------------
@@ -140,15 +140,19 @@ describe("AdminUserStore.list", () => {
   let db: DrizzleDb;
   let store: AdminUserStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new AdminUserStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AdminUserStore(db);
   });
 
   it("returns empty list when no users", async () => {
@@ -335,15 +339,19 @@ describe("AdminUserStore.search", () => {
   let db: DrizzleDb;
   let store: AdminUserStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new AdminUserStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AdminUserStore(db);
   });
 
   it("searches by name", async () => {
@@ -397,15 +405,19 @@ describe("AdminUserStore.getById", () => {
   let db: DrizzleDb;
   let store: AdminUserStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new AdminUserStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new AdminUserStore(db);
   });
 
   it("returns user by ID", async () => {
@@ -450,14 +462,18 @@ describe("admin users API routes", () => {
   let pool: PGlite;
   let db: DrizzleDb;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("GET / returns paginated user list", async () => {

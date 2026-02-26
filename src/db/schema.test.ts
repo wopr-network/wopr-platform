@@ -1,12 +1,20 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 
 describe("snapshots schema (via Drizzle migration)", () => {
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("creates the snapshots table", async () => {
@@ -100,8 +108,16 @@ describe("snapshots schema (via Drizzle migration)", () => {
 describe("bot_profiles schema (via Drizzle migration)", () => {
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("creates the bot_profiles table", async () => {
@@ -175,8 +191,16 @@ describe("bot_profiles schema (via Drizzle migration)", () => {
 describe("credit_transactions schema (via Drizzle migration)", () => {
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("creates the credit_transactions table", async () => {

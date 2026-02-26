@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";
 
 describe("DrizzleAffiliateRepository", () => {
@@ -9,13 +9,17 @@ describe("DrizzleAffiliateRepository", () => {
   let db: DrizzleDb;
   let repo: DrizzleAffiliateRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleAffiliateRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAffiliateRepository(db);
   });
 
   describe("getOrCreateCode", () => {

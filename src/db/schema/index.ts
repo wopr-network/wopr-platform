@@ -38,6 +38,7 @@ export * from "./rates.js";
 export * from "./recovery-events.js";
 export * from "./restore-log.js";
 export * from "./security-settings.js";
+export * from "./session-usage.js";
 export * from "./snapshots.js";
 export * from "./spending-limits.js";
 export * from "./tenant-api-keys.js";

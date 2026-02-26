@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationQueue } from "../db/schema/notification-queue.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { NotificationQueueStore } from "./notification-queue-store.js";
 
 describe("NotificationQueueStore", () => {
@@ -11,13 +11,17 @@ describe("NotificationQueueStore", () => {
   let pool: PGlite;
   let store: NotificationQueueStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    store = new NotificationQueueStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new NotificationQueueStore(db);
   });
 
   describe("enqueue", () => {

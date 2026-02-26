@@ -1,20 +1,29 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleAuditLogRepository, type IAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { countAuditLog, queryAuditLog } from "./query.js";
 
 describe("queryAuditLog", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
+  });
 
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     // Seed test data
     await logger.log({
       userId: "u1",
@@ -129,14 +138,22 @@ describe("queryAuditLog", () => {
 
 describe("countAuditLog", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
+  });
 
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     await logger.log({ userId: "u1", authMethod: "session", action: "instance.create", resourceType: "instance" });
     await logger.log({ userId: "u1", authMethod: "session", action: "instance.stop", resourceType: "instance" });
     await logger.log({ userId: "u2", authMethod: "api_key", action: "auth.login", resourceType: "user" });

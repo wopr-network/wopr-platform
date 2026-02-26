@@ -6,9 +6,9 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import type { Payram } from "payram";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
-import { createTestDb } from "../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
 
 const { app } = await import("../../src/api/app.js");

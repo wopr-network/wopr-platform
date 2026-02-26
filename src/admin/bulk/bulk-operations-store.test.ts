@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { AdminAuditLog } from "../audit-log.js";
 import { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
 import { DrizzleBulkOperationsRepository } from "./bulk-operations-repository.js";
@@ -18,10 +18,18 @@ describe("BulkOperationsStore", () => {
   let auditLog: AdminAuditLog;
   let store: BulkOperationsStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
 
     const balances = new Map<string, number>();
     creditStore = {
@@ -137,9 +145,8 @@ describe("BulkOperationsStore", () => {
     ]);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   // ---------------------------------------------------------------------------

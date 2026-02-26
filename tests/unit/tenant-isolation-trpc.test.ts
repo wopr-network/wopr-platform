@@ -16,8 +16,8 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../../src/test/db.js";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { createTestDb, truncateAllTables } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
 import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { CapabilitySettingsStore } from "../../src/security/tenant-keys/capability-settings-store.js";

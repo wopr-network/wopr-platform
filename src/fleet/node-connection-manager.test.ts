@@ -1,10 +1,10 @@
 import { EventEmitter } from "node:events";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents } from "../db/schema/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
 import type { OrphanCleaner } from "./orphan-cleaner.js";
 import { findPlacement } from "./placement.js";
@@ -41,13 +41,17 @@ describe("NodeConnectionManager.registerNode", () => {
   let pool: PGlite;
   let ncm: NodeConnectionManager;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     ncm = new NodeConnectionManager(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("sets status to active for a brand-new node", async () => {
@@ -171,13 +175,17 @@ describe("NodeConnectionManager.processHeartbeat — returning status preservati
   let pool: PGlite;
   let ncm: NodeConnectionManager;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     ncm = new NodeConnectionManager(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("does not override returning status to active on heartbeat", async () => {
@@ -203,15 +211,20 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
   let ncm: NodeConnectionManager;
   let orphanCleaner: OrphanCleaner;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     orphanCleaner = makeOrphanCleaner();
     ncm = new NodeConnectionManager(db);
     ncm.setOrphanCleaner(orphanCleaner);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    vi.clearAllMocks();
   });
 
   it("triggers OrphanCleaner.clean on first heartbeat from a returning node", async () => {
@@ -323,13 +336,17 @@ describe("re-registration + placement integration", () => {
   let pool: PGlite;
   let ncm: NodeConnectionManager;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     ncm = new NodeConnectionManager(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("node crashes mid-recovery, comes back, not eligible for placement until cleanup", async () => {
@@ -374,12 +391,16 @@ describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () =>
   let pool: PGlite;
   let ncm: NodeConnectionManager;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("full cycle: orphaned containers are stopped, node becomes active", async () => {

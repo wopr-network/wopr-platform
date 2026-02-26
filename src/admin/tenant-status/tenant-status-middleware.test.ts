@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { checkTenantStatus, createTenantStatusGate } from "./tenant-status-middleware.js";
 import { TenantStatusStore } from "./tenant-status-store.js";
 
@@ -12,15 +12,19 @@ describe("createTenantStatusGate", () => {
   let pool: PGlite;
   let store: TenantStatusStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new TenantStatusStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new TenantStatusStore(db);
   });
 
   function createApp(tenantId: string | undefined) {
@@ -87,15 +91,19 @@ describe("checkTenantStatus", () => {
   let pool: PGlite;
   let store: TenantStatusStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new TenantStatusStore(db);
   });
 
-  afterEach(() => {
-    pool.close();
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new TenantStatusStore(db);
   });
 
   it("returns null for active tenant", async () => {

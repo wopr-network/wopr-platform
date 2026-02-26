@@ -1,0 +1,155 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb } from "../test/db.js";
+import { DrizzleSessionUsageRepository, type ISessionUsageRepository } from "./session-usage-repository.js";
+
+describe("DrizzleSessionUsageRepository", () => {
+  let db: DrizzleDb;
+  let repo: ISessionUsageRepository;
+
+  beforeEach(async () => {
+    ({ db } = await createTestDb());
+    repo = new DrizzleSessionUsageRepository(db);
+  });
+
+  it("inserts and retrieves by session ID", async () => {
+    const record = await repo.insert({
+      sessionId: "sess-1",
+      userId: "user-1",
+      page: "/onboarding/welcome",
+      inputTokens: 1000,
+      outputTokens: 200,
+      cachedTokens: 800,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.0042,
+    });
+    expect(record.id).toBeTruthy();
+    expect(record.sessionId).toBe("sess-1");
+
+    const rows = await repo.findBySessionId("sess-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].costUsd).toBeCloseTo(0.0042);
+  });
+
+  it("sums cost by session", async () => {
+    await repo.insert({
+      sessionId: "sess-2",
+      userId: null,
+      page: null,
+      inputTokens: 500,
+      outputTokens: 100,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.002,
+    });
+    await repo.insert({
+      sessionId: "sess-2",
+      userId: null,
+      page: null,
+      inputTokens: 500,
+      outputTokens: 100,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.003,
+    });
+    const total = await repo.sumCostBySession("sess-2");
+    expect(total).toBeCloseTo(0.005);
+  });
+
+  it("sums cost by user since timestamp", async () => {
+    const now = Date.now();
+    await repo.insert({
+      sessionId: "sess-3",
+      userId: "user-2",
+      page: null,
+      inputTokens: 500,
+      outputTokens: 100,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.01,
+    });
+    const total = await repo.sumCostByUser("user-2", now - 60000);
+    expect(total).toBeCloseTo(0.01);
+
+    const empty = await repo.sumCostByUser("user-2", now + 60000);
+    expect(empty).toBe(0);
+  });
+
+  it("aggregates by day", async () => {
+    await repo.insert({
+      sessionId: "sess-4",
+      userId: null,
+      page: null,
+      inputTokens: 500,
+      outputTokens: 100,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.05,
+    });
+    const agg = await repo.aggregateByDay(0);
+    expect(agg.length).toBeGreaterThanOrEqual(1);
+    expect(agg[0].totalCostUsd).toBeCloseTo(0.05);
+  });
+
+  it("aggregates by page", async () => {
+    await repo.insert({
+      sessionId: "sess-5",
+      userId: null,
+      page: "/onboarding/welcome",
+      inputTokens: 500,
+      outputTokens: 100,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.02,
+    });
+    await repo.insert({
+      sessionId: "sess-5",
+      userId: null,
+      page: "/onboarding/superpowers",
+      inputTokens: 500,
+      outputTokens: 100,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.05,
+    });
+    const agg = await repo.aggregateByPage(0);
+    expect(agg.length).toBe(2);
+    const superpowers = agg.find((a) => a.page === "/onboarding/superpowers");
+    expect(superpowers?.totalCostUsd).toBeCloseTo(0.05);
+  });
+
+  it("calculates cache hit rate", async () => {
+    await repo.insert({
+      sessionId: "sess-6",
+      userId: null,
+      page: null,
+      inputTokens: 1000,
+      outputTokens: 100,
+      cachedTokens: 700,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.01,
+    });
+    await repo.insert({
+      sessionId: "sess-6",
+      userId: null,
+      page: null,
+      inputTokens: 1000,
+      outputTokens: 100,
+      cachedTokens: 800,
+      cacheWriteTokens: 0,
+      model: "claude-sonnet-4-20250514",
+      costUsd: 0.01,
+    });
+    const rate = await repo.cacheHitRate(0);
+    // (700 + 800) / (1000 + 1000) = 75%
+    expect(rate).toBeCloseTo(0.75);
+  });
+});

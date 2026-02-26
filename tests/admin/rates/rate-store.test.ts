@@ -1,21 +1,25 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { RateStore } from "../../../src/admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../../src/db/index.js";
-import { createTestDb } from "../../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../../src/test/db.js"
 
 describe("RateStore - Sell Rates", () => {
 	let db: DrizzleDb;
 	let pool: PGlite;
 	let store: RateStore;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		({ db, pool } = await createTestDb());
-		store = new RateStore(db);
 	});
 
-	afterEach(async () => {
+	afterAll(async () => {
 		await pool.close();
+	});
+
+	beforeEach(async () => {
+		await truncateAllTables(pool);
+		store = new RateStore(db);
 	});
 
 	it("creates a sell rate with generated UUID", async () => {
@@ -300,13 +304,17 @@ describe("RateStore - Provider Costs", () => {
 	let pool: PGlite;
 	let store: RateStore;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		({ db, pool } = await createTestDb());
-		store = new RateStore(db);
 	});
 
-	afterEach(async () => {
+	afterAll(async () => {
 		await pool.close();
+	});
+
+	beforeEach(async () => {
+		await truncateAllTables(pool);
+		store = new RateStore(db);
 	});
 
 	it("creates a provider cost with generated UUID", async () => {
@@ -511,13 +519,17 @@ describe("RateStore - Margin Report", () => {
 	let pool: PGlite;
 	let store: RateStore;
 
-	beforeEach(async () => {
+	beforeAll(async () => {
 		({ db, pool } = await createTestDb());
-		store = new RateStore(db);
 	});
 
-	afterEach(async () => {
+	afterAll(async () => {
 		await pool.close();
+	});
+
+	beforeEach(async () => {
+		await truncateAllTables(pool);
+		store = new RateStore(db);
 	});
 
 	it("returns empty array when no data", async () => {

@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { and, eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { userRoles } from "../../db/schema/user-roles.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { isValidRole, RoleStore } from "./role-store.js";
 
 describe("isValidRole", () => {
@@ -25,15 +25,19 @@ describe("RoleStore", () => {
   let pool: PGlite;
   let store: RoleStore;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
-    store = new RoleStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new RoleStore(db);
   });
 
   describe("setRole / getRole", () => {

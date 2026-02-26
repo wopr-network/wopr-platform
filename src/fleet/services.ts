@@ -799,6 +799,8 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
 // Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
 
+import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
+import { DrizzleSessionUsageRepository } from "../inference/session-usage-repository.js";
 import { loadOnboardingConfig } from "../onboarding/config.js";
 import { DaemonManager, type IDaemonManager } from "../onboarding/daemon-manager.js";
 import type { IOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
@@ -810,6 +812,7 @@ let _onboardingSessionRepo: IOnboardingSessionRepository | null = null;
 let _woprClient: WoprClient | null = null;
 let _daemonManager: IDaemonManager | null = null;
 let _onboardingService: OnboardingService | null = null;
+let _sessionUsageRepo: ISessionUsageRepository | null = null; // NOSONAR
 
 export function getOnboardingSessionRepo(): IOnboardingSessionRepository {
   if (!_onboardingSessionRepo) {
@@ -834,10 +837,23 @@ export function getDaemonManager(): IDaemonManager {
   return _daemonManager;
 }
 
+export function getSessionUsageRepo(): ISessionUsageRepository {
+  if (!_sessionUsageRepo) {
+    _sessionUsageRepo = new DrizzleSessionUsageRepository(getDb());
+  }
+  return _sessionUsageRepo;
+}
+
 export function getOnboardingService(): OnboardingService {
   if (!_onboardingService) {
     const cfg = loadOnboardingConfig();
-    _onboardingService = new OnboardingService(getOnboardingSessionRepo(), getWoprClient(), cfg, getDaemonManager());
+    _onboardingService = new OnboardingService(
+      getOnboardingSessionRepo(),
+      getWoprClient(),
+      cfg,
+      getDaemonManager(),
+      getSessionUsageRepo(),
+    );
   }
   return _onboardingService;
 }

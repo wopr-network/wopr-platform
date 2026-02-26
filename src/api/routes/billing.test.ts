@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -9,7 +9,7 @@ import type { IPaymentProcessor } from "../../monetization/payment-processor.js"
 import { PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
 import { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
@@ -81,10 +81,18 @@ describe("billing routes", () => {
   let tenantStore: TenantCustomerStore;
   let sigPenaltyRepo: ISigPenaltyRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createBillingTestDb();
     pool = testDb.pool;
     db = testDb.db;
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     processor = createMockProcessor();
     tenantStore = new TenantCustomerStore(db);
     sigPenaltyRepo = createTestSigPenaltyRepo(db);
@@ -95,10 +103,6 @@ describe("billing routes", () => {
       sigPenaltyRepo,
       affiliateRepo: new DrizzleAffiliateRepository(db),
     });
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   // -- Authentication -------------------------------------------------------

@@ -123,6 +123,7 @@
         "src/security/tenant-keys/org-key-resolution.ts",
         "src/backup/*-repository.ts",
         "src/onboarding/drizzle-*-repository.ts",
+        "src/inference/session-usage-repository.ts",
         "src/audit/audit-log-repository.ts",
         "src/admin/admin-audit-log-repository.ts",
         "src/api/drizzle-oauth-state-repository.ts",

@@ -1,10 +1,11 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { createAdminAuditApiRoutes } from "../api/routes/admin-audit.js";
 import type { DrizzleDb } from "../db/index.js";
 import { adminAuditLog } from "../db/schema/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import type { AuditEntry } from "./audit-log.js";
 import { AdminAuditLog } from "./audit-log.js";
 
@@ -24,12 +25,21 @@ function makeEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {
 
 describe("AdminAuditLog.log", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let auditLogInstance: AdminAuditLog;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("log entry creates a row", async () => {
@@ -85,12 +95,21 @@ describe("AdminAuditLog.log", () => {
 
 describe("AdminAuditLog.query", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let auditLogInstance: AdminAuditLog;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("query with filters - by admin", async () => {
@@ -210,12 +229,21 @@ describe("AdminAuditLog.query", () => {
 
 describe("AdminAuditLog.exportCsv", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let auditLogInstance: AdminAuditLog;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("CSV export format", async () => {
@@ -296,12 +324,21 @@ describe("entries are immutable", () => {
 
 describe("admin audit API routes", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
 
   let auditLogInstance: AdminAuditLog;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("GET /admin/audit returns entries", async () => {

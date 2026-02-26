@@ -1,15 +1,29 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleSigPenaltyRepository } from "../../src/api/drizzle-sig-penalty-repository.js";
-import { createTestDb } from "../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 import { createGatewayRoutes } from "../../src/gateway/routes.js";
 import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
 import type { FetchFn, GatewayConfig, GatewayTenant } from "../../src/gateway/types.js";
+import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "../../src/db/index.js";
 
-async function makeTestSigPenaltyRepo() {
-  const { db } = await createTestDb();
-  return new DrizzleSigPenaltyRepository(db);
+let _sharedDb: DrizzleDb;
+let _sharedPool: PGlite;
+
+beforeAll(async () => {
+  const testDb = await createTestDb();
+  _sharedDb = testDb.db;
+  _sharedPool = testDb.pool;
+});
+
+afterAll(async () => {
+  await _sharedPool.close();
+});
+
+function makeTestSigPenaltyRepo() {
+  return new DrizzleSigPenaltyRepository(_sharedDb);
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +186,7 @@ async function makeGatewayApp(
     resolveServiceKey: resolver,
     webhookBaseUrl: TEST_WEBHOOK_BASE_URL,
     resolveTenantFromWebhook: () => TENANT,
-    sigPenaltyRepo: await makeTestSigPenaltyRepo(),
+    sigPenaltyRepo: makeTestSigPenaltyRepo(),
   };
 
   const app = new Hono<GatewayAuthEnv>();
@@ -189,8 +203,9 @@ function authHeaders() {
 // ---------------------------------------------------------------------------
 
 describe("Gateway proxy endpoints", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     meterEvents.length = 0;
+    await truncateAllTables(_sharedPool);
   });
 
   // -----------------------------------------------------------------------

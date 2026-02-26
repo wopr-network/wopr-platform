@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
 import { DrizzleNodeRepository } from "../../fleet/drizzle-node-repository.js";
 import { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
 import { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { nodesRouter, setNodesRouterDeps } from "./nodes.js";
 
 function makeCtx(userId: string, roles: string[] = []) {
@@ -25,7 +25,7 @@ describe("nodesRouter", () => {
   let botInstanceRepo: DrizzleBotInstanceRepository;
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createTestDb();
     pool = testDb.pool;
     const db = testDb.db;
@@ -33,17 +33,20 @@ describe("nodesRouter", () => {
     nodeRepo = new DrizzleNodeRepository(db);
     registry = new NodeConnectionRegistry();
     botInstanceRepo = new DrizzleBotInstanceRepository(db);
+  });
 
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     setNodesRouterDeps({
       getRegistrationTokenStore: () => tokenStore,
       getNodeRepo: () => nodeRepo,
       getConnectionRegistry: () => registry,
       getBotInstanceRepo: () => botInstanceRepo,
     });
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   describe("createRegistrationToken", () => {

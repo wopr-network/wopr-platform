@@ -78,6 +78,7 @@ export default defineConfig({
     "./src/db/schema/sessions.ts",
     "./src/db/schema/marketplace-plugins.ts",
     "./src/db/schema/onboarding-sessions.ts",
+    "./src/db/schema/session-usage.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "postgresql",
