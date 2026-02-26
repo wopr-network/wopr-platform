@@ -6,15 +6,28 @@ import type { ISessionUsageRepository } from "../inference/session-usage-reposit
 import type { OnboardingConfig } from "./config.js";
 import type { IDaemonManager } from "./daemon-manager.js";
 import type { IOnboardingSessionRepository, OnboardingSession } from "./drizzle-onboarding-session-repository.js";
+import type { IOnboardingScriptRepository } from "./onboarding-script-repository.js";
 import type { ConversationEntry, IWoprClient } from "./wopr-client.js";
 
 export class OnboardingService {
+  private static readonly DEFAULT_PROMPT =
+    "You are a helpful onboarding assistant for WOPR, a self-hosted AI chat platform.";
+
+  private static readonly DEFAULT_SCRIPT_REPO: IOnboardingScriptRepository = {
+    findCurrent: async () => undefined,
+    findHistory: async () => [],
+    insert: async () => {
+      throw new Error("No script repository configured");
+    },
+  };
+
   constructor(
     private readonly repo: IOnboardingSessionRepository,
     private readonly client: IWoprClient,
     private readonly config: OnboardingConfig,
     private readonly daemon: IDaemonManager,
     private readonly usageRepo?: ISessionUsageRepository,
+    private readonly scriptRepo: IOnboardingScriptRepository = OnboardingService.DEFAULT_SCRIPT_REPO,
   ) {}
 
   async createSession(opts: { userId?: string; anonymousId?: string }): Promise<OnboardingSession> {
@@ -36,10 +49,9 @@ export class OnboardingService {
     const woprSessionName = `onboarding-${id}`;
 
     if (this.daemon.isReady()) {
-      await this.client.createSession(
-        woprSessionName,
-        "You are a helpful onboarding assistant for WOPR, a self-hosted AI chat platform.",
-      );
+      const script = await this.scriptRepo.findCurrent();
+      const context = script?.content ?? OnboardingService.DEFAULT_PROMPT;
+      await this.client.createSession(woprSessionName, context);
     }
 
     return this.repo.create({

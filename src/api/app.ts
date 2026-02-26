@@ -12,7 +12,7 @@ import {
   scopedBearerAuthWithTenant,
 } from "../auth/index.js";
 import { logger } from "../config/logger.js";
-import { getDb, getMarketplacePluginRepo, getOrgRepo } from "../fleet/services.js";
+import { getDb, getMarketplacePluginRepo, getOnboardingScriptRepo, getOrgRepo } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
@@ -25,6 +25,7 @@ import { adminInferenceRoutes } from "./routes/admin-inference.js";
 import { createAdminMarketplaceRoutes } from "./routes/admin-marketplace.js";
 import { adminMigrationRoutes } from "./routes/admin-migration.js";
 import { adminNotesRoutes } from "./routes/admin-notes.js";
+import { mountAdminOnboardingRoutes } from "./routes/admin-onboarding.js";
 import { adminRateRoutes } from "./routes/admin-rates.js";
 import { adminNodeRoutes, adminRecoveryRoutes } from "./routes/admin-recovery.js";
 import { adminUsersApiRoutes } from "./routes/admin-users.js";
@@ -263,6 +264,8 @@ app.route("/api/admin/gpu", adminGpuRoutes);
 app.route("/api/admin/inference", adminInferenceRoutes);
 app.route("/api/admin/migrate", adminMigrationRoutes);
 app.route("/api/admin/users", adminUsersApiRoutes);
+// Admin onboarding script editor (WOP-1027)
+app.route("/api/admin/onboarding", mountAdminOnboardingRoutes(getOnboardingScriptRepo));
 // Admin marketplace routes (WOP-1031)
 // Deps factory defers getMarketplacePluginRepo() until first request so the DB
 // is not opened at module load time (tests import app.ts without a live DB).

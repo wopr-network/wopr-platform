@@ -124,6 +124,7 @@
         "src/backup/*-repository.ts",
         "src/onboarding/drizzle-*-repository.ts",
         "src/inference/session-usage-repository.ts",
+        "src/onboarding/onboarding-script-repository.ts",
         "src/audit/audit-log-repository.ts",
         "src/admin/admin-audit-log-repository.ts",
         "src/api/drizzle-oauth-state-repository.ts",

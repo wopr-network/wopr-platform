@@ -805,10 +805,13 @@ import { loadOnboardingConfig } from "../onboarding/config.js";
 import { DaemonManager, type IDaemonManager } from "../onboarding/daemon-manager.js";
 import type { IOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
 import { DrizzleOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
+import type { IOnboardingScriptRepository } from "../onboarding/onboarding-script-repository.js";
+import { DrizzleOnboardingScriptRepository } from "../onboarding/onboarding-script-repository.js";
 import { OnboardingService } from "../onboarding/onboarding-service.js";
 import { WoprClient } from "../onboarding/wopr-client.js";
 
 let _onboardingSessionRepo: IOnboardingSessionRepository | null = null;
+let _onboardingScriptRepo: IOnboardingScriptRepository | null = null;
 let _woprClient: WoprClient | null = null;
 let _daemonManager: IDaemonManager | null = null;
 let _onboardingService: OnboardingService | null = null;
@@ -819,6 +822,13 @@ export function getOnboardingSessionRepo(): IOnboardingSessionRepository {
     _onboardingSessionRepo = new DrizzleOnboardingSessionRepository(getDb());
   }
   return _onboardingSessionRepo;
+}
+
+export function getOnboardingScriptRepo(): IOnboardingScriptRepository {
+  if (!_onboardingScriptRepo) {
+    _onboardingScriptRepo = new DrizzleOnboardingScriptRepository(getDb());
+  }
+  return _onboardingScriptRepo;
 }
 
 export function getWoprClient(): WoprClient {
@@ -853,6 +863,7 @@ export function getOnboardingService(): OnboardingService {
       cfg,
       getDaemonManager(),
       getSessionUsageRepo(),
+      getOnboardingScriptRepo(),
     );
   }
   return _onboardingService;
