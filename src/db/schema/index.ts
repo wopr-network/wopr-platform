@@ -25,6 +25,7 @@ export * from "./nodes.js";
 export * from "./notification-preferences.js";
 export * from "./notification-queue.js";
 export * from "./oauth-states.js";
+export * from "./onboarding-scripts.js";
 export * from "./onboarding-sessions.js";
 export * from "./org-memberships.js";
 export * from "./organization-members.js";
