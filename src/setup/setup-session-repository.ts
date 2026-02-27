@@ -1,4 +1,4 @@
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { setupSessions } from "../db/schema/index.js";
 
@@ -124,14 +124,21 @@ export class DrizzleSetupSessionRepository implements ISetupSessionRepository {
   }
 
   async incrementErrorCount(id: string): Promise<number> {
-    const current = await this.findById(id);
-    if (!current) throw new Error(`SetupSession not found: ${id}`);
-    const newCount = current.errorCount + 1;
-    await this.db.update(setupSessions).set({ errorCount: newCount }).where(eq(setupSessions.id, id));
-    return newCount;
+    const rows = await this.db
+      .update(setupSessions)
+      .set({ errorCount: sql`${setupSessions.errorCount} + 1` })
+      .where(eq(setupSessions.id, id))
+      .returning({ errorCount: setupSessions.errorCount });
+    if (!rows[0]) throw new Error(`SetupSession not found: ${id}`);
+    return rows[0].errorCount;
   }
 
   async resetErrorCount(id: string): Promise<void> {
-    await this.db.update(setupSessions).set({ errorCount: 0 }).where(eq(setupSessions.id, id));
+    const rows = await this.db
+      .update(setupSessions)
+      .set({ errorCount: 0 })
+      .where(eq(setupSessions.id, id))
+      .returning({ id: setupSessions.id });
+    if (!rows[0]) throw new Error(`SetupSession not found: ${id}`);
   }
 }

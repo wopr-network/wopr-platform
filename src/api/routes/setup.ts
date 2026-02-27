@@ -163,7 +163,14 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
     if (!parsed.success) {
       return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
     }
-    const count = await deps.setupService.recordError(parsed.data.setupSessionId);
+    let count: number;
+    try {
+      count = await deps.setupService.recordError(parsed.data.setupSessionId);
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("not found")) return c.json({ error: msg }, 404);
+      throw err;
+    }
     const session = await deps.setupSessionRepo.findById(parsed.data.setupSessionId);
     return c.json({ ok: true, errorCount: count, rolledBack: session?.status === "rolled_back" });
   });
