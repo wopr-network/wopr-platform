@@ -20,7 +20,11 @@ import type { ISessionUsageRepository } from "../../inference/session-usage-repo
 import { Credit } from "../../monetization/credit.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
+import type { PaymentHealthStatus } from "../../monetization/incident/health-probe.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
+import type { AlertChecker } from "../../observability/alerts.js";
+import type { MetricsCollector } from "../../observability/metrics.js";
+import type { SystemResourceMonitor, SystemResourceSnapshot } from "../../observability/system-resources.js";
 import { protectedProcedure, router } from "../init.js";
 import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
 
@@ -45,6 +49,13 @@ export interface AdminRouterDeps {
   getNotificationService?: () => NotificationService;
   getNotificationQueueStore?: () => INotificationQueueStore;
   getSessionUsageRepo?: () => ISessionUsageRepository;
+  // Billing health deps (WOP-531)
+  getMetricsCollector?: () => MetricsCollector;
+  getAlertChecker?: () => AlertChecker;
+  getSystemResourceMonitor?: () => SystemResourceMonitor;
+  probePaymentHealth?: () => Promise<PaymentHealthStatus>;
+  queryActiveBots?: () => number | Promise<number>;
+  queryActiveTenantCount?: () => number | Promise<number>;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -1496,4 +1507,128 @@ export const adminRouter = router({
 
   /** Inference cost tracking and cache analytics. */
   inference: inferenceAdminRouter,
+
+  /** Billing health dashboard — aggregates all observability signals. */
+  billingHealth: protectedProcedure.query(async ({ ctx }) => {
+    requirePlatformAdmin(ctx.user?.roles ?? []);
+    const d = deps();
+    const timestamp = Date.now();
+
+    // Gateway metrics
+    let gateway5m = {
+      totalRequests: 0,
+      totalErrors: 0,
+      errorRate: 0,
+      creditDeductionFailures: 0,
+      byCapability: new Map<string, { requests: number; errors: number; errorRate: number }>(),
+    };
+    let gateway60m = { totalRequests: 0, totalErrors: 0, errorRate: 0 };
+    if (d.getMetricsCollector) {
+      try {
+        const metrics = d.getMetricsCollector();
+        const [w5, w60] = await Promise.all([metrics.getWindow(5), metrics.getWindow(60)]);
+        gateway5m = w5;
+        gateway60m = { totalRequests: w60.totalRequests, totalErrors: w60.totalErrors, errorRate: w60.errorRate };
+      } catch {
+        // Metrics unavailable — non-critical
+      }
+    }
+
+    // Alerts
+    let alerts: Array<{ name: string; firing: boolean; message: string }> = [];
+    if (d.getAlertChecker) {
+      try {
+        alerts = d.getAlertChecker().getStatus();
+      } catch {
+        // Alert checker unavailable — non-critical
+      }
+    }
+
+    // System resources
+    let system: SystemResourceSnapshot | null = null;
+    if (d.getSystemResourceMonitor) {
+      try {
+        system = d.getSystemResourceMonitor().getSnapshot();
+      } catch {
+        // Resource monitor unavailable — non-critical
+      }
+    }
+
+    // Payment health (optional — needs Stripe client)
+    let paymentChecks: PaymentHealthStatus["checks"] | null = null;
+    let paymentOverall: "healthy" | "degraded" | "outage" = "healthy";
+    let paymentSeverity: PaymentHealthStatus["severity"] = null;
+    let paymentReasons: string[] = [];
+
+    if (d.probePaymentHealth) {
+      try {
+        const health = await d.probePaymentHealth();
+        paymentChecks = health.checks;
+        paymentOverall = health.overall;
+        paymentSeverity = health.severity;
+        paymentReasons = health.reasons;
+      } catch {
+        paymentOverall = "degraded";
+        paymentReasons = ["Payment health probe failed"];
+      }
+    }
+
+    // Fleet
+    let activeBots: number | null = null;
+    if (d.queryActiveBots) {
+      try {
+        activeBots = await d.queryActiveBots();
+      } catch {
+        // DB unavailable — non-critical
+      }
+    }
+
+    // Business metrics
+    let activeTenantCount: number | null = null;
+    if (d.queryActiveTenantCount) {
+      try {
+        activeTenantCount = await d.queryActiveTenantCount();
+      } catch {
+        // non-critical
+      }
+    }
+
+    return {
+      timestamp,
+      gateway: {
+        last5m: {
+          totalRequests: gateway5m.totalRequests,
+          totalErrors: gateway5m.totalErrors,
+          errorRate: gateway5m.errorRate,
+          byCapability: Object.fromEntries(gateway5m.byCapability),
+        },
+        last60m: {
+          totalRequests: gateway60m.totalRequests,
+          totalErrors: gateway60m.totalErrors,
+          errorRate: gateway60m.errorRate,
+        },
+      },
+      payment: {
+        overall: paymentOverall,
+        severity: paymentSeverity,
+        reasons: paymentReasons,
+        checks: paymentChecks,
+      },
+      alerts,
+      system: system
+        ? {
+            cpuLoad1m: system.cpuLoad1m,
+            cpuCount: system.cpuCount,
+            memoryUsedBytes: system.memoryUsedBytes,
+            memoryTotalBytes: system.memoryTotalBytes,
+            diskUsedBytes: system.diskUsedBytes,
+            diskTotalBytes: system.diskTotalBytes,
+          }
+        : null,
+      fleet: { activeBots },
+      business: {
+        activeTenantCount,
+      },
+    };
+  }),
 });
