@@ -799,6 +799,8 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
 // Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
 
+import type { IUserRoleRepository } from "../auth/user-role-repository.js";
+import { DrizzleUserRoleRepository } from "../auth/user-role-repository.js";
 import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
 import { DrizzleSessionUsageRepository } from "../inference/session-usage-repository.js";
 import { loadOnboardingConfig } from "../onboarding/config.js";
@@ -818,6 +820,14 @@ let _daemonManager: IDaemonManager | null = null;
 let _onboardingService: OnboardingService | null = null;
 let _sessionUsageRepo: ISessionUsageRepository | null = null; // NOSONAR
 let _graduationService: GraduationService | null = null;
+let _userRoleRepo: IUserRoleRepository | null = null;
+
+export function getUserRoleRepo(): IUserRoleRepository {
+  if (!_userRoleRepo) {
+    _userRoleRepo = new DrizzleUserRoleRepository(getDb());
+  }
+  return _userRoleRepo;
+}
 
 export function getGraduationService(): GraduationService {
   if (!_graduationService) {
@@ -863,19 +873,6 @@ export function getSessionUsageRepo(): ISessionUsageRepository {
   return _sessionUsageRepo;
 }
 
-async function resolveUserTenantId(userId: string): Promise<string | null> {
-  const { eq } = await import("drizzle-orm");
-  const { userRoles } = await import("../db/schema/user-roles.js");
-  const rows = await getDb()
-    .select({ tenantId: userRoles.tenantId })
-    .from(userRoles)
-    .where(eq(userRoles.userId, userId))
-    .limit(1);
-  const tenantId = rows[0]?.tenantId ?? null;
-  // Exclude platform-admin sentinel value
-  return tenantId === "*" ? null : tenantId;
-}
-
 export function getOnboardingService(): OnboardingService {
   if (!_onboardingService) {
     const cfg = loadOnboardingConfig();
@@ -887,7 +884,7 @@ export function getOnboardingService(): OnboardingService {
       getSessionUsageRepo(),
       getOnboardingScriptRepo(),
       getCreditLedger(),
-      resolveUserTenantId,
+      (userId: string) => getUserRoleRepo().getTenantIdByUserId(userId),
     );
   }
   return _onboardingService;
