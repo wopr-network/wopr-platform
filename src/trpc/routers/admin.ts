@@ -1508,37 +1508,52 @@ export const adminRouter = router({
     };
     let gateway60m = { totalRequests: 0, totalErrors: 0, errorRate: 0 };
     if (d.getMetricsCollector) {
-      const metrics = d.getMetricsCollector();
-      const [w5, w60] = await Promise.all([metrics.getWindow(5), metrics.getWindow(60)]);
-      gateway5m = w5;
-      gateway60m = { totalRequests: w60.totalRequests, totalErrors: w60.totalErrors, errorRate: w60.errorRate };
+      try {
+        const metrics = d.getMetricsCollector();
+        const [w5, w60] = await Promise.all([metrics.getWindow(5), metrics.getWindow(60)]);
+        gateway5m = w5;
+        gateway60m = { totalRequests: w60.totalRequests, totalErrors: w60.totalErrors, errorRate: w60.errorRate };
+      } catch {
+        // Metrics unavailable — non-critical
+      }
     }
 
     // Alerts
-    const alerts = d.getAlertChecker ? d.getAlertChecker().getStatus() : [];
+    let alerts: Array<{ name: string; firing: boolean; message: string }> = [];
+    if (d.getAlertChecker) {
+      try {
+        alerts = d.getAlertChecker().getStatus();
+      } catch {
+        // Alert checker unavailable — non-critical
+      }
+    }
 
     // System resources
     let system: SystemResourceSnapshot | null = null;
     if (d.getSystemResourceMonitor) {
-      system = d.getSystemResourceMonitor().getSnapshot();
+      try {
+        system = d.getSystemResourceMonitor().getSnapshot();
+      } catch {
+        // Resource monitor unavailable — non-critical
+      }
     }
 
     // Payment health (optional — needs Stripe client)
     let paymentChecks: PaymentHealthStatus["checks"] | null = null;
-    let overall: "healthy" | "degraded" | "outage" = "healthy";
-    let severity: PaymentHealthStatus["severity"] = null;
-    let reasons: string[] = [];
+    let paymentOverall: "healthy" | "degraded" | "outage" = "healthy";
+    let paymentSeverity: PaymentHealthStatus["severity"] = null;
+    let paymentReasons: string[] = [];
 
     if (d.probePaymentHealth) {
       try {
         const health = await d.probePaymentHealth();
         paymentChecks = health.checks;
-        overall = health.overall;
-        severity = health.severity;
-        reasons = health.reasons;
+        paymentOverall = health.overall;
+        paymentSeverity = health.severity;
+        paymentReasons = health.reasons;
       } catch {
-        overall = "degraded";
-        reasons = ["Payment health probe failed"];
+        paymentOverall = "degraded";
+        paymentReasons = ["Payment health probe failed"];
       }
     }
 
@@ -1564,9 +1579,6 @@ export const adminRouter = router({
 
     return {
       timestamp,
-      overall,
-      severity,
-      reasons,
       gateway: {
         last5m: {
           totalRequests: gateway5m.totalRequests,
@@ -1580,7 +1592,12 @@ export const adminRouter = router({
           errorRate: gateway60m.errorRate,
         },
       },
-      paymentChecks,
+      payment: {
+        overall: paymentOverall,
+        severity: paymentSeverity,
+        reasons: paymentReasons,
+        checks: paymentChecks,
+      },
       alerts,
       system: system
         ? {
@@ -1595,9 +1612,6 @@ export const adminRouter = router({
       fleet: { activeBots },
       business: {
         activeTenantCount,
-        creditsConsumed24h: null as number | null,
-        revenueToday: null as number | null,
-        capabilityBreakdown: [] as Array<{ capability: string; eventCount: number; totalCharge: number }>,
       },
     };
   }),

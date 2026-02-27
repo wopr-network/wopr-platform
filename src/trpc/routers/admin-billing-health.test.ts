@@ -64,11 +64,11 @@ describe("admin.billingHealth", () => {
     expect(asObject["tts"].requests).toBe(50);
   });
 
-  it("should derive overall status from payment health", () => {
+  it("should derive payment.overall status from payment health probe", () => {
     // healthy when no reasons
-    const reasons: string[] = [];
-    const overall = reasons.length === 0 ? "healthy" : "degraded";
-    expect(overall).toBe("healthy");
+    const paymentReasons: string[] = [];
+    const paymentOverall = paymentReasons.length === 0 ? "healthy" : "degraded";
+    expect(paymentOverall).toBe("healthy");
 
     // degraded when reasons present
     const withReasons = ["Stripe API unreachable"];
