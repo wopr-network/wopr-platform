@@ -2,12 +2,12 @@ import type { Context, Next } from "hono";
 import type { CreditLedger } from "./credits/credit-ledger.js";
 
 /**
- * Callback to resolve the user's current credit balance in cents.
+ * Callback to resolve the user's current credit balance in credits.
  */
 export type GetUserBalance = (tenantId: string) => number | Promise<number>;
 
 export interface FeatureGateConfig {
-  /** Resolve the authenticated tenant's credit balance in cents */
+  /** Resolve the authenticated tenant's credit balance in credits */
   getUserBalance: GetUserBalance;
   /** Key on the Hono context where the authenticated user object lives (default: "user") */
   userKey?: string;
@@ -32,10 +32,10 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
 
   /**
    * Middleware that rejects requests when the user's credit balance is zero.
-   * Optionally requires a minimum balance (in cents).
+   * Optionally requires a minimum balance (in credits).
    * On success, sets `c.set('balance', balanceCredits)` for downstream handlers.
    */
-  const requireBalance = (minBalanceCents = 0) => {
+  const requireBalance = (minBalanceCredits = 0) => {
     return async (c: Context, next: Next) => {
       const user = c.get(userKey) as Record<string, unknown> | undefined;
       if (!user) {
@@ -49,12 +49,12 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
 
       const balanceCredits = await cfg.getUserBalance(tenantId);
 
-      if (balanceCredits <= minBalanceCents) {
+      if (balanceCredits <= minBalanceCredits) {
         return c.json(
           {
             error: "Insufficient credit balance",
             currentBalanceCredits: balanceCredits,
-            requiredBalanceCredits: minBalanceCents,
+            requiredBalanceCredits: minBalanceCredits,
             purchaseUrl: "/settings/billing",
           },
           402,

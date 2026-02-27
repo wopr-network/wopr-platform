@@ -256,7 +256,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
     });
   }
 
-  /** Get current balance in cents for a tenant. Returns 0 if tenant has no balance row. */
+  /** Get current balance in credits for a tenant. Returns 0 if tenant has no balance row. */
   async balance(tenantId: string): Promise<number> {
     const rows = await this.db
       .select({ balanceCredits: creditBalances.balanceCredits })
