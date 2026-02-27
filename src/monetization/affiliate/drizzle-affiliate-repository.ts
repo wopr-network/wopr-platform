@@ -22,6 +22,8 @@ export interface AffiliateReferral {
   firstPurchaseAt: string | null;
   matchAmountCents: number | null;
   matchedAt: string | null;
+  signupIp: string | null;
+  signupEmail: string | null;
 }
 
 export interface AffiliateStats {
@@ -40,7 +42,15 @@ export interface IAffiliateRepository {
   getByCode(code: string): Promise<AffiliateCode | null>;
 
   /** Record a referral. No-op if referred tenant already attributed. Returns true if new. */
-  recordReferral(referrerTenantId: string, referredTenantId: string, code: string): Promise<boolean>;
+  recordReferral(
+    referrerTenantId: string,
+    referredTenantId: string,
+    code: string,
+    signalData?: { signupIp?: string; signupEmail?: string },
+  ): Promise<boolean>;
+
+  /** List all referrals where this tenant is the referrer. */
+  listByReferrer(referrerTenantId: string): Promise<AffiliateReferral[]>;
 
   /** Check if a tenant was already referred by someone. */
   isReferred(referredTenantId: string): Promise<boolean>;
@@ -134,7 +144,12 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     };
   }
 
-  async recordReferral(referrerTenantId: string, referredTenantId: string, code: string): Promise<boolean> {
+  async recordReferral(
+    referrerTenantId: string,
+    referredTenantId: string,
+    code: string,
+    signalData?: { signupIp?: string; signupEmail?: string },
+  ): Promise<boolean> {
     if (referrerTenantId === referredTenantId) {
       throw new Error("Self-referral is not allowed");
     }
@@ -142,11 +157,37 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     const id = crypto.randomUUID();
     const result = await this.db
       .insert(affiliateReferrals)
-      .values({ id, referrerTenantId, referredTenantId, code })
+      .values({
+        id,
+        referrerTenantId,
+        referredTenantId,
+        code,
+        signupIp: signalData?.signupIp ?? null,
+        signupEmail: signalData?.signupEmail ?? null,
+      })
       .onConflictDoNothing({ target: affiliateReferrals.referredTenantId })
       .returning({ id: affiliateReferrals.id });
 
     return result.length > 0;
+  }
+
+  async listByReferrer(referrerTenantId: string): Promise<AffiliateReferral[]> {
+    const rows = await this.db
+      .select()
+      .from(affiliateReferrals)
+      .where(eq(affiliateReferrals.referrerTenantId, referrerTenantId));
+    return rows.map((row) => ({
+      id: row.id,
+      referrerTenantId: row.referrerTenantId,
+      referredTenantId: row.referredTenantId,
+      code: row.code,
+      signedUpAt: row.signedUpAt,
+      firstPurchaseAt: row.firstPurchaseAt,
+      matchAmountCents: row.matchAmountCents,
+      matchedAt: row.matchedAt,
+      signupIp: row.signupIp ?? null,
+      signupEmail: row.signupEmail ?? null,
+    }));
   }
 
   async isReferred(referredTenantId: string): Promise<boolean> {
@@ -180,6 +221,8 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       firstPurchaseAt: row.firstPurchaseAt,
       matchAmountCents: row.matchAmountCents,
       matchedAt: row.matchedAt,
+      signupIp: row.signupIp ?? null,
+      signupEmail: row.signupEmail ?? null,
     };
   }
 
@@ -230,6 +273,8 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       firstPurchaseAt: row.firstPurchaseAt,
       matchAmountCents: row.matchAmountCents,
       matchedAt: row.matchedAt,
+      signupIp: row.signupIp ?? null,
+      signupEmail: row.signupEmail ?? null,
     }));
   }
 
@@ -257,6 +302,8 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       firstPurchaseAt: row.firstPurchaseAt,
       matchAmountCents: row.matchAmountCents,
       matchedAt: row.matchedAt,
+      signupIp: row.signupIp ?? null,
+      signupEmail: row.signupEmail ?? null,
     };
   }
 

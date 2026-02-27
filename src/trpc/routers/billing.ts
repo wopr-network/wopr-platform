@@ -817,7 +817,7 @@ export const billingRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Self-referral is not allowed" });
       }
 
-      const isNew = await affiliateRepo.recordReferral(codeRecord.tenantId, input.referredTenantId, input.code);
+      const isNew = await affiliateRepo.recordReferral(codeRecord.tenantId, input.referredTenantId, input.code, {});
       return { recorded: isNew, referrer: codeRecord.tenantId };
     }),
 

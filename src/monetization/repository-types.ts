@@ -1,5 +1,6 @@
 // Re-export all monetization repository interfaces for callers that want a single import point.
 
+export type { FraudEvent, FraudEventInput, IAffiliateFraudRepository } from "./affiliate/affiliate-fraud-repository.js";
 export type {
   AffiliateCode,
   AffiliateReferral,

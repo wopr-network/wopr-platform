@@ -614,6 +614,7 @@ billingRoutes.post("/affiliate/record-referral", adminAuth, async (c) => {
   }
 
   const { code, referredTenantId } = parsed.data;
+  const clientIp = getClientIp(c);
 
   try {
     const repo = getDeps().affiliateRepo;
@@ -622,7 +623,9 @@ billingRoutes.post("/affiliate/record-referral", adminAuth, async (c) => {
       return c.json({ error: "Invalid referral code" }, 404);
     }
 
-    const isNew = await repo.recordReferral(codeRecord.tenantId, referredTenantId, code);
+    const isNew = await repo.recordReferral(codeRecord.tenantId, referredTenantId, code, {
+      signupIp: clientIp !== "unknown" ? clientIp : undefined,
+    });
     return c.json({ recorded: isNew, referrer: codeRecord.tenantId });
   } catch (err) {
     if (err instanceof Error && err.message.includes("Self-referral")) {

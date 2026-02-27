@@ -33,6 +33,8 @@ import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-brea
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
 import { DrizzleMarketplacePluginRepository } from "../marketplace/drizzle-marketplace-plugin-repository.js";
 import type { IMarketplacePluginRepository } from "../marketplace/marketplace-plugin-repository.js";
+import type { IAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
+import { DrizzleAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
 import type { IAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
 import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
 import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
@@ -619,6 +621,7 @@ let _autoTopupSettingsRepo: IAutoTopupSettingsRepository | null = null;
 let _autoTopupEventLogRepo: IAutoTopupEventLogRepository | null = null;
 let _phoneNumberRepo: IPhoneNumberRepository | null = null;
 let _affiliateRepo: IAffiliateRepository | null = null;
+let _affiliateFraudRepo: IAffiliateFraudRepository | null = null;
 
 export function getCreditLedger(): ICreditLedger {
   if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
@@ -678,6 +681,11 @@ export function getPhoneNumberRepo(): IPhoneNumberRepository {
 export function getAffiliateRepo(): IAffiliateRepository {
   if (!_affiliateRepo) _affiliateRepo = new DrizzleAffiliateRepository(getDb());
   return _affiliateRepo;
+}
+
+export function getAffiliateFraudRepo(): IAffiliateFraudRepository {
+  if (!_affiliateFraudRepo) _affiliateFraudRepo = new DrizzleAffiliateFraudRepository(getDb());
+  return _affiliateFraudRepo;
 }
 
 // ---------------------------------------------------------------------------

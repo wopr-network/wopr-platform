@@ -26,6 +26,8 @@ export const affiliateReferrals = pgTable(
     firstPurchaseAt: text("first_purchase_at"),
     matchAmountCents: integer("match_amount_cents"),
     matchedAt: text("matched_at"),
+    signupIp: text("signup_ip"),
+    signupEmail: text("signup_email"),
   },
   (table) => [
     index("idx_affiliate_ref_referrer").on(table.referrerTenantId),
