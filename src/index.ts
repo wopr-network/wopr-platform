@@ -84,6 +84,7 @@ import { CapabilitySettingsStore } from "./security/tenant-keys/capability-setti
 import { TenantKeyStore } from "./security/tenant-keys/schema.js";
 import type { Provider } from "./security/types.js";
 import {
+  setAdminRouterDeps,
   setBillingRouterDeps,
   setCapabilitiesRouterDeps,
   setFleetRouterDeps,
@@ -614,6 +615,26 @@ if (process.env.NODE_ENV !== "test") {
         payramChargeStore,
       });
       logger.info("tRPC billing router initialized");
+
+      // Wire admin tRPC router deps — ban cascade needs Stripe + auto-topup repo (WOP-1064)
+      {
+        const { detachAllPaymentMethods } = await import("./monetization/stripe/payment-methods.js");
+        const { getTenantStatusRepo, getAutoTopupSettingsRepo } = await import("./fleet/services.js");
+        const { AdminAuditLog } = await import("./admin/audit-log.js");
+        const { DrizzleAdminAuditLogRepository } = await import("./admin/admin-audit-log-repository.js");
+        const { AdminUserStore } = await import("./admin/users/user-store.js");
+        const { BotBilling } = await import("./monetization/credits/bot-billing.js");
+        setAdminRouterDeps({
+          getAuditLog: () => new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
+          getCreditLedger: () => getCreditLedger(),
+          getUserStore: () => new AdminUserStore(getDb()),
+          getTenantStatusStore: () => getTenantStatusRepo(),
+          getBotBilling: () => new BotBilling(getDb()),
+          getAutoTopupSettingsRepo: () => getAutoTopupSettingsRepo(),
+          detachAllPaymentMethods: (tenantId: string) => detachAllPaymentMethods(stripe, tenantStore, tenantId),
+        });
+        logger.info("tRPC admin router initialized");
+      }
 
       // Wire REST billing routes (Stripe webhooks, checkout, portal).
       // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).

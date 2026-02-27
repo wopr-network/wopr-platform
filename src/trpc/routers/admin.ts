@@ -18,6 +18,7 @@ import type { INotificationQueueStore } from "../../email/notification-queue-sto
 import type { NotificationService } from "../../email/notification-service.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import { Credit } from "../../monetization/credit.js";
+import type { IAutoTopupSettingsRepository } from "../../monetization/credits/auto-topup-settings-repository.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { PaymentHealthStatus } from "../../monetization/incident/health-probe.js";
@@ -49,6 +50,9 @@ export interface AdminRouterDeps {
   getNotificationService?: () => NotificationService;
   getNotificationQueueStore?: () => INotificationQueueStore;
   getSessionUsageRepo?: () => ISessionUsageRepository;
+  getAutoTopupSettingsRepo?: () => IAutoTopupSettingsRepository;
+  /** Detach all Stripe payment methods for a tenant. Returns count detached. */
+  detachAllPaymentMethods?: (tenantId: string) => Promise<number>;
   // Billing health deps (WOP-531)
   getMetricsCollector?: () => MetricsCollector;
   getAlertChecker?: () => AlertChecker;
@@ -518,6 +522,27 @@ export const adminRouter = router({
         refundedCents = Math.round(balance.toCents());
       }
 
+      // Disable auto-topup (both usage and schedule)
+      let autoTopupDisabled = false;
+      const { getAutoTopupSettingsRepo, detachAllPaymentMethods: detachPMs } = deps();
+      if (getAutoTopupSettingsRepo) {
+        const topupRepo = getAutoTopupSettingsRepo();
+        const settings = await topupRepo.getByTenant(input.tenantId);
+        if (settings) {
+          await topupRepo.upsert(input.tenantId, {
+            usageEnabled: false,
+            scheduleEnabled: false,
+          });
+          autoTopupDisabled = true;
+        }
+      }
+
+      // Detach all Stripe payment methods
+      let paymentMethodsDetached = 0;
+      if (detachPMs) {
+        paymentMethodsDetached = await detachPMs(input.tenantId);
+      }
+
       // Ban the tenant
       await store.ban(input.tenantId, input.reason, adminUserId);
 
@@ -533,6 +558,8 @@ export const adminRouter = router({
           previousStatus: current,
           suspendedBots,
           refundedCents,
+          autoTopupDisabled,
+          paymentMethodsDetached,
         },
       });
 
@@ -542,6 +569,7 @@ export const adminRouter = router({
         reason: input.reason,
         refundedCents,
         suspendedBots,
+        paymentMethodsDetached,
       };
     }),
 

@@ -133,6 +133,22 @@ describe("maybeTriggerUsageTopup", () => {
     expect((await settingsRepo.getByTenant("t1"))?.usageConsecutiveFailures).toBe(1);
   });
 
+  it("skips charge when tenant status check returns non-null (banned/suspended)", async () => {
+    // Setup: settings exist and balance is below threshold
+    await settingsRepo.upsert("t1", {
+      usageEnabled: true,
+      usageThresholdCents: 1000,
+      usageTopupCents: 2000,
+    });
+
+    const chargeAutoTopup = vi.fn();
+    const checkTenantStatus = vi.fn().mockResolvedValue({ error: "account_banned", message: "banned" });
+
+    await maybeTriggerUsageTopup({ settingsRepo, creditLedger: ledger, chargeAutoTopup, checkTenantStatus }, "t1");
+
+    expect(chargeAutoTopup).not.toHaveBeenCalled();
+  });
+
   it("disables usage auto-topup after 3 consecutive failures", async () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
     await settingsRepo.incrementUsageFailures("t1");

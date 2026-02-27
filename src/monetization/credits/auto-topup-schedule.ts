@@ -6,6 +6,8 @@ import type { IAutoTopupSettingsRepository } from "./auto-topup-settings-reposit
 export interface ScheduleTopupDeps {
   settingsRepo: IAutoTopupSettingsRepository;
   chargeAutoTopup: (tenantId: string, amountCents: number, source: string) => Promise<AutoTopupChargeResult>;
+  /** Optional tenant status check. If provided and returns non-null, skip the charge. */
+  checkTenantStatus?: (tenantId: string) => Promise<{ error: string; message: string } | null>;
 }
 
 export interface ScheduleTopupResult {
@@ -36,6 +38,17 @@ export async function runScheduledTopups(deps: ScheduleTopupDeps): Promise<Sched
 
   for (const settings of due) {
     result.processed++;
+
+    // Skip banned/suspended tenants
+    if (deps.checkTenantStatus) {
+      const statusErr = await deps.checkTenantStatus(settings.tenantId);
+      if (statusErr) {
+        // Still advance schedule to prevent hammer-retry on reactivation
+        await deps.settingsRepo.advanceScheduleNextAt(settings.tenantId);
+        result.failed.push(settings.tenantId);
+        continue;
+      }
+    }
 
     try {
       const chargeResult = await deps.chargeAutoTopup(
