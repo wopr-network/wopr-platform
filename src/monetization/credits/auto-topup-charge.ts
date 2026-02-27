@@ -1,6 +1,6 @@
 import type Stripe from "stripe";
 import { logger } from "../../config/logger.js";
-import { Credit } from "../credit.js";
+import type { Credit } from "../credit.js";
 import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
 import type { IAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import type { ICreditLedger } from "./credit-ledger.js";
@@ -32,9 +32,11 @@ export interface AutoTopupChargeResult {
 export async function chargeAutoTopup(
   deps: AutoTopupChargeDeps,
   tenantId: string,
-  amountCents: number,
+  amount: Credit,
   source: string,
 ): Promise<AutoTopupChargeResult> {
+  const amountCents = Math.round(amount.toCents());
+
   // 1. Look up Stripe customer
   const mapping = await deps.tenantStore.getByTenant(tenantId);
   if (!mapping) {
@@ -61,7 +63,7 @@ export async function chargeAutoTopup(
     return { success: false, error };
   }
 
-  // 3. Create off-session PaymentIntent
+  // 3. Create off-session PaymentIntent (Stripe expects integer cents)
   let paymentIntent: Stripe.PaymentIntent;
   try {
     paymentIntent = await deps.stripe.paymentIntents.create({
@@ -79,7 +81,7 @@ export async function chargeAutoTopup(
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
-    logger.warn("Auto-topup Stripe charge failed", { tenantId, amountCents, source, error });
+    logger.warn("Auto-topup Stripe charge failed", { tenantId, amount: amount.toString(), source, error });
     return { success: false, error };
   }
 
@@ -99,19 +101,12 @@ export async function chargeAutoTopup(
 
   // 5. Credit the ledger (idempotent via referenceId = PI ID)
   if (!(await deps.creditLedger.hasReferenceId(paymentIntent.id))) {
-    await deps.creditLedger.credit(
-      tenantId,
-      Credit.fromCents(amountCents),
-      "purchase",
-      `Auto-topup (${source})`,
-      paymentIntent.id,
-      "stripe",
-    );
+    await deps.creditLedger.credit(tenantId, amount, "purchase", `Auto-topup (${source})`, paymentIntent.id, "stripe");
   }
 
   // 6. Write success event
   await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "success", paymentReference: paymentIntent.id });
-  logger.info("Auto-topup charge succeeded", { tenantId, amountCents, source, piId: paymentIntent.id });
+  logger.info("Auto-topup charge succeeded", { tenantId, amount: amount.toString(), source, piId: paymentIntent.id });
 
   return { success: true, paymentReference: paymentIntent.id };
 }

@@ -1,11 +1,12 @@
 import { logger } from "../../config/logger.js";
+import type { Credit } from "../credit.js";
 import type { AutoTopupChargeResult } from "./auto-topup-charge.js";
 import { MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import type { IAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 
 export interface ScheduleTopupDeps {
   settingsRepo: IAutoTopupSettingsRepository;
-  chargeAutoTopup: (tenantId: string, amountCents: number, source: string) => Promise<AutoTopupChargeResult>;
+  chargeAutoTopup: (tenantId: string, amount: Credit, source: string) => Promise<AutoTopupChargeResult>;
 }
 
 export interface ScheduleTopupResult {
@@ -40,7 +41,7 @@ export async function runScheduledTopups(deps: ScheduleTopupDeps): Promise<Sched
     try {
       const chargeResult = await deps.chargeAutoTopup(
         settings.tenantId,
-        settings.scheduleAmountCents,
+        settings.scheduleAmount,
         "auto_topup_schedule",
       );
 

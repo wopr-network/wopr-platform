@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 
 describe("DrizzleAutoTopupSettingsRepository", () => {
@@ -23,21 +24,25 @@ describe("DrizzleAutoTopupSettingsRepository", () => {
   });
 
   it("upsert creates settings and getByTenant retrieves them", async () => {
-    await repo.upsert("t1", { usageEnabled: true, usageThresholdCents: 200, usageTopupCents: 1000 });
+    await repo.upsert("t1", {
+      usageEnabled: true,
+      usageThreshold: Credit.fromCents(200),
+      usageTopup: Credit.fromCents(1000),
+    });
     const s = await repo.getByTenant("t1");
     expect(s).not.toBeNull();
     expect(s?.usageEnabled).toBe(true);
-    expect(s?.usageThresholdCents).toBe(200);
-    expect(s?.usageTopupCents).toBe(1000);
+    expect(s?.usageThreshold.toCents()).toBe(200);
+    expect(s?.usageTopup.toCents()).toBe(1000);
     expect(s?.scheduleEnabled).toBe(false);
   });
 
   it("upsert updates existing settings", async () => {
     await repo.upsert("t1", { usageEnabled: true });
-    await repo.upsert("t1", { usageThresholdCents: 300 });
+    await repo.upsert("t1", { usageThreshold: Credit.fromCents(300) });
     const s = await repo.getByTenant("t1");
     expect(s?.usageEnabled).toBe(true);
-    expect(s?.usageThresholdCents).toBe(300);
+    expect(s?.usageThreshold.toCents()).toBe(300);
   });
 
   it("setUsageChargeInFlight toggles the flag", async () => {
@@ -84,8 +89,8 @@ describe("DrizzleAutoTopupSettingsRepository", () => {
   it("listDueScheduled returns tenants with schedule_next_at <= now", async () => {
     const past = "2026-02-20T00:00:00.000Z";
     const future = "2026-12-31T00:00:00.000Z";
-    await repo.upsert("t1", { scheduleEnabled: true, scheduleAmountCents: 500, scheduleNextAt: past });
-    await repo.upsert("t2", { scheduleEnabled: true, scheduleAmountCents: 1000, scheduleNextAt: future });
+    await repo.upsert("t1", { scheduleEnabled: true, scheduleAmount: Credit.fromCents(500), scheduleNextAt: past });
+    await repo.upsert("t2", { scheduleEnabled: true, scheduleAmount: Credit.fromCents(1000), scheduleNextAt: future });
     await repo.upsert("t3", { scheduleEnabled: false, scheduleNextAt: past });
 
     const due = await repo.listDueScheduled("2026-02-22T00:00:00.000Z");

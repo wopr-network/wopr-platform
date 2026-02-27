@@ -8,10 +8,11 @@ import { TRPCError } from "@trpc/server";
 import type { Payram } from "payram";
 import { z } from "zod";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
+import { Credit } from "../../monetization/credit.js";
 import {
   ALLOWED_SCHEDULE_INTERVALS,
-  ALLOWED_THRESHOLD_CENTS,
-  ALLOWED_TOPUP_AMOUNTS_CENTS,
+  ALLOWED_THRESHOLDS,
+  ALLOWED_TOPUP_AMOUNTS,
   computeNextScheduleAt,
   type IAutoTopupSettingsRepository,
 } from "../../monetization/credits/auto-topup-settings-repository.js";
@@ -636,10 +637,10 @@ export const billingRouter = router({
 
     return {
       usage_enabled: settings?.usageEnabled ?? false,
-      usage_threshold_cents: settings?.usageThresholdCents ?? 500,
-      usage_topup_cents: settings?.usageTopupCents ?? 2000,
+      usage_threshold_cents: settings?.usageThreshold.toCents() ?? 500,
+      usage_topup_cents: settings?.usageTopup.toCents() ?? 2000,
       schedule_enabled: settings?.scheduleEnabled ?? false,
-      schedule_amount_cents: settings?.scheduleAmountCents ?? null,
+      schedule_amount_cents: settings?.scheduleAmount?.toCents() ?? null,
       schedule_next_at: settings?.scheduleNextAt ?? null,
       payment_method_last4: paymentMethodLast4,
     };
@@ -653,15 +654,15 @@ export const billingRouter = router({
         usage_threshold_cents: z
           .number()
           .int()
-          .refine((v) => (ALLOWED_THRESHOLD_CENTS as readonly number[]).includes(v), {
-            message: `Must be one of: ${ALLOWED_THRESHOLD_CENTS.join(", ")}`,
+          .refine((v) => (ALLOWED_THRESHOLDS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_THRESHOLDS.join(", ")}`,
           })
           .optional(),
         usage_topup_cents: z
           .number()
           .int()
-          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CENTS as readonly number[]).includes(v), {
-            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CENTS.join(", ")}`,
+          .refine((v) => (ALLOWED_TOPUP_AMOUNTS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS.join(", ")}`,
           })
           .optional(),
         schedule_enabled: z.boolean().optional(),
@@ -669,8 +670,8 @@ export const billingRouter = router({
         schedule_amount_cents: z
           .number()
           .int()
-          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CENTS as readonly number[]).includes(v), {
-            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CENTS.join(", ")}`,
+          .refine((v) => (ALLOWED_TOPUP_AMOUNTS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS.join(", ")}`,
           })
           .nullable()
           .optional(),
@@ -706,20 +707,20 @@ export const billingRouter = router({
 
       await autoTopupSettingsStore.upsert(tenant, {
         usageEnabled: input.usage_enabled,
-        usageThresholdCents: input.usage_threshold_cents,
-        usageTopupCents: input.usage_topup_cents,
+        usageThreshold: input.usage_threshold_cents != null ? Credit.fromCents(input.usage_threshold_cents) : undefined,
+        usageTopup: input.usage_topup_cents != null ? Credit.fromCents(input.usage_topup_cents) : undefined,
         scheduleEnabled: input.schedule_enabled,
-        scheduleAmountCents: input.schedule_amount_cents ?? undefined,
+        scheduleAmount: input.schedule_amount_cents != null ? Credit.fromCents(input.schedule_amount_cents) : undefined,
         scheduleNextAt: scheduleNextAt,
       });
 
       const updated = await autoTopupSettingsStore.getByTenant(tenant);
       return {
         usage_enabled: updated?.usageEnabled ?? false,
-        usage_threshold_cents: updated?.usageThresholdCents ?? 500,
-        usage_topup_cents: updated?.usageTopupCents ?? 2000,
+        usage_threshold_cents: updated?.usageThreshold.toCents() ?? 500,
+        usage_topup_cents: updated?.usageTopup.toCents() ?? 2000,
         schedule_enabled: updated?.scheduleEnabled ?? false,
-        schedule_amount_cents: updated?.scheduleAmountCents ?? null,
+        schedule_amount_cents: updated?.scheduleAmount?.toCents() ?? null,
         schedule_next_at: updated?.scheduleNextAt ?? null,
         payment_method_last4: null,
       };

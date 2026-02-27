@@ -1,5 +1,5 @@
 import { logger } from "../../config/logger.js";
-import { Credit } from "../credit.js";
+import type { Credit } from "../credit.js";
 import type { AutoTopupChargeResult } from "./auto-topup-charge.js";
 import { MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import type { IAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
@@ -9,7 +9,7 @@ export interface UsageTopupDeps {
   settingsRepo: IAutoTopupSettingsRepository;
   creditLedger: ICreditLedger;
   /** Injected charge function (allows mocking in tests). */
-  chargeAutoTopup: (tenantId: string, amountCents: number, source: string) => Promise<AutoTopupChargeResult>;
+  chargeAutoTopup: (tenantId: string, amount: Credit, source: string) => Promise<AutoTopupChargeResult>;
 }
 
 /**
@@ -28,14 +28,14 @@ export async function maybeTriggerUsageTopup(deps: UsageTopupDeps, tenantId: str
 
   // 3. Check balance vs threshold
   const balance = await deps.creditLedger.balance(tenantId);
-  if (!balance.lessThan(Credit.fromCents(settings.usageThresholdCents))) return;
+  if (!balance.lessThan(settings.usageThreshold)) return;
 
   // 4. Set in-flight flag
   await deps.settingsRepo.setUsageChargeInFlight(tenantId, true);
 
   try {
     // 5. Execute charge
-    const result = await deps.chargeAutoTopup(tenantId, settings.usageTopupCents, "auto_topup_usage");
+    const result = await deps.chargeAutoTopup(tenantId, settings.usageTopup, "auto_topup_usage");
 
     if (result.success) {
       await deps.settingsRepo.resetUsageFailures(tenantId);

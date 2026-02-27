@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
 import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import { DrizzleAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
@@ -55,7 +56,7 @@ describe("chargeAutoTopup", () => {
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
-    const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
+    const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
 
     expect(result.success).toBe(true);
     expect(result.paymentReference).toBeDefined();
@@ -75,7 +76,7 @@ describe("chargeAutoTopup", () => {
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
-    await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
+    await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
 
     const events = await db
       .select()
@@ -96,7 +97,7 @@ describe("chargeAutoTopup", () => {
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
-    const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
+    const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("card_declined");
@@ -119,7 +120,7 @@ describe("chargeAutoTopup", () => {
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
-    const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
+    const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("No Stripe customer");
@@ -136,7 +137,7 @@ describe("chargeAutoTopup", () => {
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
-    const result = await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
+    const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("No payment method");
@@ -153,7 +154,7 @@ describe("chargeAutoTopup", () => {
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
 
-    await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
+    await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
     expect((await ledger.balance("t1")).toCents()).toBe(500);
     expect(await ledger.hasReferenceId(piId)).toBe(true);
   });
