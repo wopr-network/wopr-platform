@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AuthEnv } from "../../auth/index.js";
 import type { IOnboardingSessionRepository } from "../../onboarding/drizzle-onboarding-session-repository.js";
-import type { GraduationService } from "../../onboarding/graduation-service.js";
+import { GraduationError, type GraduationService } from "../../onboarding/graduation-service.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
 
 const ANON_SESSION_COOKIE = "wopr_anon_session";
@@ -166,11 +166,12 @@ onboardingRoutes.post("/session/:id/graduate", async (c) => {
     const result = await _graduationService.graduate(sessionId, path);
     return c.json(result);
   } catch (err) {
-    const msg = String(err);
-    if (msg.includes("not found")) return c.json({ error: msg }, 404);
-    if (msg.includes("already graduated")) return c.json({ error: msg }, 409);
-    if (msg.includes("no bot instance")) return c.json({ error: msg }, 422);
-    if (msg.includes("authenticated")) return c.json({ error: msg }, 403);
-    return c.json({ error: msg }, 500);
+    if (err instanceof GraduationError) {
+      if (err.code === "NOT_FOUND") return c.json({ error: err.message }, 404);
+      if (err.code === "ALREADY_GRADUATED") return c.json({ error: err.message }, 409);
+      if (err.code === "NO_BOT_INSTANCE") return c.json({ error: err.message }, 422);
+      if (err.code === "UNAUTHENTICATED") return c.json({ error: err.message }, 403);
+    }
+    return c.json({ error: String(err) }, 500);
   }
 });

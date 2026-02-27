@@ -4,6 +4,18 @@ import type { IOnboardingSessionRepository } from "./drizzle-onboarding-session-
 
 export type GraduationPath = "byok" | "hosted";
 
+export type GraduationErrorCode = "NOT_FOUND" | "ALREADY_GRADUATED" | "NO_BOT_INSTANCE" | "UNAUTHENTICATED";
+
+export class GraduationError extends Error {
+  constructor(
+    public readonly code: GraduationErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GraduationError";
+  }
+}
+
 export interface GraduationResult {
   graduated: boolean;
   path: GraduationPath;
@@ -20,12 +32,15 @@ export class GraduationService {
 
   async graduate(sessionId: string, path: GraduationPath): Promise<GraduationResult> {
     const session = await this.sessionRepo.getById(sessionId);
-    if (!session) throw new Error(`Session not found: ${sessionId}`);
-    if (!session.userId) throw new Error("Graduation requires an authenticated user");
+    if (!session) throw new GraduationError("NOT_FOUND", `Session not found: ${sessionId}`);
+    if (!session.userId) throw new GraduationError("UNAUTHENTICATED", "Graduation requires an authenticated user");
 
     const bots = await this.botRepo.listByTenant(session.userId);
     if (bots.length === 0) {
-      throw new Error("Cannot graduate: no bot instance exists for this user. Create a bot first.");
+      throw new GraduationError(
+        "NO_BOT_INSTANCE",
+        "Cannot graduate: no bot instance exists for this user. Create a bot first.",
+      );
     }
 
     const totalCost = await this.usageRepo.sumCostBySession(sessionId);
@@ -33,13 +48,14 @@ export class GraduationService {
 
     const graduated = await this.sessionRepo.graduate(sessionId, path, totalPlatformCostUsd);
     if (!graduated) {
-      throw new Error("Session already graduated");
+      throw new GraduationError("ALREADY_GRADUATED", "Session already graduated");
     }
 
     return {
       graduated: true,
       path,
       totalPlatformCostUsd,
+      // v1: graduate to the first/earliest-created bot; multi-bot users must explicitly select
       botInstanceId: bots[0].id,
     };
   }
