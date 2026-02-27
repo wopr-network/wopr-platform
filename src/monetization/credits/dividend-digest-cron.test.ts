@@ -5,6 +5,7 @@ import { adminUsers } from "../../db/schema/admin-users.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { type DividendDigestConfig, runDividendDigestCron } from "./dividend-digest-cron.js";
 import { DrizzleDividendRepository } from "./dividend-repository.js";
 
@@ -82,7 +83,7 @@ describe("runDividendDigestCron", () => {
     await insertUser(db, "t1", "alice@example.com");
     await insertDistribution(db, "t1", "2026-02-20", 1, 100, 10);
 
-    const result = await runDividendDigestCron(makeConfig({ minTotalCents: 2 }));
+    const result = await runDividendDigestCron(makeConfig({ minTotal: Credit.fromCents(2) }));
     expect(result.qualified).toBe(0);
     expect(result.enqueued).toBe(0);
     expect(result.skipped).toBe(1);

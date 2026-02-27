@@ -3,22 +3,23 @@ import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import { creditTransactions } from "../../db/schema/credits.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
+import { Credit } from "../credit.js";
 import type { DividendHistoryEntry, DividendStats } from "../repository-types.js";
 
 export type { DividendHistoryEntry, DividendStats };
 
 export interface DigestTenantRow {
   tenantId: string;
-  totalCents: number;
+  total: Credit;
   distributionCount: number;
-  avgPoolCents: number;
+  avgPool: Credit;
   avgActiveUsers: number;
 }
 
 export interface IDividendRepository {
   getStats(tenantId: string): Promise<DividendStats>;
   getHistory(tenantId: string, limit: number, offset: number): Promise<DividendHistoryEntry[]>;
-  getLifetimeTotalCents(tenantId: string): Promise<number>;
+  getLifetimeTotal(tenantId: string): Promise<Credit>;
   /** Aggregate dividend distributions per tenant for a date window [windowStart, windowEnd). */
   getDigestTenantAggregates(windowStart: string, windowEnd: string): Promise<DigestTenantRow[]>;
   /** Resolve email for a tenant from admin_users. Returns undefined if no row exists. */
@@ -45,6 +46,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
         )
     )[0];
     const poolCents = poolRow?.total ?? 0;
+    const pool = Credit.fromCents(poolCents);
 
     // 2. Active users = distinct tenants with a purchase in the last 7 days
     const activeRow = (
@@ -63,7 +65,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
     const activeUsers = activeRow?.count ?? 0;
 
     // 3. Per-user projection (avoid division by zero)
-    const perUserCents = activeUsers > 0 ? Math.floor(poolCents / activeUsers) : 0;
+    const perUser = activeUsers > 0 ? Credit.fromRaw(Math.floor(pool.toRaw() / activeUsers)) : Credit.ZERO;
 
     // 4. Next distribution = midnight UTC tonight
     const now = new Date();
@@ -98,9 +100,9 @@ export class DrizzleDividendRepository implements IDividendRepository {
     }
 
     return {
-      poolCents,
+      pool,
       activeUsers,
-      perUserCents,
+      perUser,
       nextDistributionAt,
       userEligible,
       userLastPurchaseAt,
@@ -112,7 +114,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
     const safeLimit = Math.min(Math.max(1, limit), 250);
     const safeOffset = Math.max(0, offset);
 
-    return this.db
+    const rows = await this.db
       .select({
         date: dividendDistributions.date,
         amountCents: dividendDistributions.amountCents,
@@ -124,9 +126,16 @@ export class DrizzleDividendRepository implements IDividendRepository {
       .orderBy(desc(dividendDistributions.date))
       .limit(safeLimit)
       .offset(safeOffset);
+
+    return rows.map((row) => ({
+      date: row.date,
+      amount: Credit.fromCents(row.amountCents),
+      pool: Credit.fromCents(row.poolCents),
+      activeUsers: row.activeUsers,
+    }));
   }
 
-  async getLifetimeTotalCents(tenantId: string): Promise<number> {
+  async getLifetimeTotal(tenantId: string): Promise<Credit> {
     const row = (
       await this.db
         // raw SQL: Drizzle cannot express COALESCE(SUM(...), 0) aggregate
@@ -134,11 +143,11 @@ export class DrizzleDividendRepository implements IDividendRepository {
         .from(dividendDistributions)
         .where(eq(dividendDistributions.tenantId, tenantId))
     )[0];
-    return row?.total ?? 0;
+    return Credit.fromCents(row?.total ?? 0);
   }
 
   async getDigestTenantAggregates(windowStart: string, windowEnd: string): Promise<DigestTenantRow[]> {
-    return this.db
+    const rows = await this.db
       .select({
         tenantId: dividendDistributions.tenantId,
         // raw SQL: Drizzle cannot express SUM/COUNT(DISTINCT)/AVG with CAST aggregates
@@ -150,6 +159,14 @@ export class DrizzleDividendRepository implements IDividendRepository {
       .from(dividendDistributions)
       .where(and(gte(dividendDistributions.date, windowStart), lt(dividendDistributions.date, windowEnd)))
       .groupBy(dividendDistributions.tenantId);
+
+    return rows.map((row) => ({
+      tenantId: row.tenantId,
+      total: Credit.fromCents(row.totalCents),
+      distributionCount: row.distributionCount,
+      avgPool: Credit.fromCents(row.avgPoolCents),
+      avgActiveUsers: row.avgActiveUsers,
+    }));
   }
 
   async getTenantEmail(tenantId: string): Promise<string | undefined> {

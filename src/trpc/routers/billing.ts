@@ -737,9 +737,9 @@ export const billingRouter = router({
       const { dividendRepo } = deps();
       const stats = await dividendRepo.getStats(tenant);
       return {
-        pool_cents: stats.poolCents,
+        pool_cents: stats.pool.toCents(),
         active_users: stats.activeUsers,
-        per_user_cents: stats.perUserCents,
+        per_user_cents: stats.perUser.toCents(),
         next_distribution_at: stats.nextDistributionAt,
         user_eligible: stats.userEligible,
         user_last_purchase_at: stats.userLastPurchaseAt,
@@ -777,8 +777,8 @@ export const billingRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
-      const total = await dividendRepo.getLifetimeTotalCents(tenant);
-      return { total_cents: total, tenant };
+      const total = await dividendRepo.getLifetimeTotal(tenant);
+      return { total_cents: total.toCents(), tenant };
     }),
 
   /** Get affiliate code, link, and stats for the authenticated user. */
