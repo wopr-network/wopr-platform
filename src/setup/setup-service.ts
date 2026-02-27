@@ -1,3 +1,4 @@
+import type { IPluginConfigRepository } from "./plugin-config-repository.js";
 import type { ISetupSessionRepository, SetupSession } from "./setup-session-repository.js";
 
 export interface RollbackResult {
@@ -14,7 +15,10 @@ export interface ResumeCheckResult {
 const AUTO_ROLLBACK_THRESHOLD = 3;
 
 export class SetupService {
-  constructor(private readonly repo: ISetupSessionRepository) {}
+  constructor(
+    private readonly repo: ISetupSessionRepository,
+    private readonly pluginConfigRepo?: IPluginConfigRepository,
+  ) {}
 
   /**
    * Roll back a setup session — clears collected config and installed deps,
@@ -40,6 +44,11 @@ export class SetupService {
       collected: null,
       dependenciesInstalled: null,
     });
+
+    if (this.pluginConfigRepo) {
+      await this.pluginConfigRepo.deleteBySetupSession(setupSessionId);
+    }
+
     await this.repo.markRolledBack(setupSessionId);
 
     return { sessionId: setupSessionId, configKeysRemoved, dependenciesRemoved };

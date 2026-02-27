@@ -1,14 +1,13 @@
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { botInstances } from "../../db/schema/index.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
+import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
-import { getCommandBus, getDb } from "../../fleet/services.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
@@ -23,13 +22,16 @@ let credentialVault: {
   getActiveForProvider(provider: string): Promise<Array<Pick<DecryptedCredential, "plaintextKey">>>;
 } | null = null;
 let meterEmitter: { emit(event: MeterEvent): void } | null = null;
+let botInstanceRepo: IBotInstanceRepository | null = null;
 
 export function setBotPluginDeps(deps: {
   credentialVault: typeof credentialVault;
   meterEmitter: typeof meterEmitter;
+  botInstanceRepo: IBotInstanceRepository;
 }): void {
   credentialVault = deps.credentialVault;
   meterEmitter = deps.meterEmitter;
+  botInstanceRepo = deps.botInstanceRepo;
 }
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -54,40 +56,6 @@ const installPluginSchema = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
   providerChoices: z.record(z.string(), z.enum(["byok", "hosted"])).default({}),
 });
-
-/**
- * Dispatch a bot.update command to the node running this bot.
- * Returns { dispatched: true } on success, { dispatched: false, dispatchError } on failure.
- * Never throws -- dispatch failure is non-fatal (DB is source of truth).
- */
-async function dispatchEnvUpdate(
-  botId: string,
-  tenantId: string,
-  env: Record<string, string>,
-): Promise<{ dispatched: boolean; dispatchError?: string }> {
-  try {
-    const db = getDb();
-    const instance = (await db.select().from(botInstances).where(eq(botInstances.id, botId)))[0];
-
-    if (!instance?.nodeId) {
-      return { dispatched: false, dispatchError: "bot_not_deployed" };
-    }
-
-    await getCommandBus().send(instance.nodeId, {
-      type: "bot.update",
-      payload: {
-        name: `tenant_${tenantId}`,
-        env,
-      },
-    });
-
-    return { dispatched: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`Failed to dispatch bot.update for ${botId}: ${message}`);
-    return { dispatched: false, dispatchError: message };
-  }
-}
 
 /** POST /fleet/bots/:botId/plugins/:pluginId — Install a plugin on a bot */
 botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
@@ -337,7 +305,10 @@ async function togglePluginHandler(c: Context): Promise<Response> {
   await store.save(updated);
 
   // Dispatch env update to the correct node
-  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
+  if (!botInstanceRepo) {
+    return c.json({ error: "Bot instance repository not configured" }, 503);
+  }
+  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv, botInstanceRepo);
 
   logger.info(`Toggled plugin ${pluginId} on bot ${botId}: enabled=${parsed.data.enabled}`, {
     botId,

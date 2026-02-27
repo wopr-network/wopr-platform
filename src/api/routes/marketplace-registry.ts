@@ -21,6 +21,7 @@ export interface ConfigSchemaField {
   type: "string" | "number" | "boolean" | "select";
   required: boolean;
   secret?: boolean;
+  env?: string;
   placeholder?: string;
   description?: string;
   default?: string | number | boolean;
@@ -78,6 +79,7 @@ export const pluginRegistry: PluginManifest[] = [
         type: "string",
         required: true,
         secret: true,
+        env: "DISCORD_BOT_TOKEN",
         placeholder: "Paste your Discord bot token",
         description: "Found under Bot > Token in the Developer Portal.",
         validation: { pattern: "^[A-Za-z0-9_.-]+$", message: "Invalid token format" },
@@ -87,6 +89,7 @@ export const pluginRegistry: PluginManifest[] = [
         label: "Server ID",
         type: "string",
         required: true,
+        env: "DISCORD_GUILD_ID",
         placeholder: "e.g. 123456789012345678",
         description: "Right-click server name > Copy Server ID.",
         validation: { pattern: "^\\d{17,20}$", message: "Must be a numeric server ID" },

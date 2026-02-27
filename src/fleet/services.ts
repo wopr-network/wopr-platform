@@ -916,7 +916,23 @@ let _setupService: SetupService | null = null;
 
 export function getSetupService(): SetupService {
   if (!_setupService) {
-    _setupService = new SetupService(getSetupSessionRepo());
+    _setupService = new SetupService(getSetupSessionRepo(), getPluginConfigRepo());
   }
   return _setupService;
+}
+
+// ---------------------------------------------------------------------------
+// Plugin Config Repository (WOP-1055)
+// ---------------------------------------------------------------------------
+
+import type { IPluginConfigRepository } from "../setup/plugin-config-repository.js";
+import { DrizzlePluginConfigRepository } from "../setup/plugin-config-repository.js";
+
+let _pluginConfigRepo: IPluginConfigRepository | null = null;
+
+export function getPluginConfigRepo(): IPluginConfigRepository {
+  if (!_pluginConfigRepo) {
+    _pluginConfigRepo = new DrizzlePluginConfigRepository(getDb());
+  }
+  return _pluginConfigRepo;
 }

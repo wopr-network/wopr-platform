@@ -46,7 +46,7 @@ describe("admin.billingHealth", () => {
     expect(alerts[0].name).toBe("gateway-error-rate");
     expect(alerts[0].firing).toBe(false);
     expect(system).not.toBeNull();
-    expect(system!.cpuCount).toBe(4);
+    expect(system?.cpuCount).toBe(4);
   });
 
   it("should handle null system snapshot gracefully", () => {
@@ -60,8 +60,8 @@ describe("admin.billingHealth", () => {
   it("should convert byCapability Map to plain object", async () => {
     const byCapability = new Map([["tts", { requests: 50, errors: 1, errorRate: 0.02 }]]);
     const asObject = Object.fromEntries(byCapability);
-    expect(asObject["tts"]).toBeDefined();
-    expect(asObject["tts"].requests).toBe(50);
+    expect(asObject.tts).toBeDefined();
+    expect(asObject.tts.requests).toBe(50);
   });
 
   it("should derive payment.overall status from payment health probe", () => {

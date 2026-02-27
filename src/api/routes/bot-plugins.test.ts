@@ -87,10 +87,22 @@ vi.mock("../../fleet/services.js", () => ({
 // Import AFTER mocks are set up
 const { botPluginRoutes, setBotPluginDeps } = await import("./bot-plugins.js");
 
+const mockBotInstanceRepo = {
+  getById: vi.fn().mockResolvedValue(mockBotInstance),
+  listByNode: vi.fn(),
+  listByTenant: vi.fn(),
+  create: vi.fn(),
+  reassign: vi.fn(),
+  setBillingState: vi.fn(),
+  getResourceTier: vi.fn(),
+  setResourceTier: vi.fn(),
+};
+
 // Wire in mock deps
 setBotPluginDeps({
   credentialVault: vaultMock,
   meterEmitter: meterMock,
+  botInstanceRepo: mockBotInstanceRepo,
 });
 
 const app = new Hono();
