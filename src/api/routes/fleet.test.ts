@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
+import { Credit } from "../../monetization/credit.js";
 
 // Set env var BEFORE importing fleet routes so bearer auth uses this token
 const TEST_TOKEN = "test-api-token";
@@ -180,7 +181,7 @@ describe("fleet routes", () => {
     });
 
     // Set default credit ledger mock (tests can override as needed)
-    creditLedgerMock.balance.mockReturnValue(1000); // 1000 cents = $10
+    creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(1000)); // 1000 cents = $10
 
     setFleetDeps({
       creditLedger: creditLedgerMock as never,
@@ -353,7 +354,7 @@ describe("fleet routes", () => {
     });
 
     it("returns 402 when tenant has zero credit balance", async () => {
-      creditLedgerMock.balance.mockReturnValue(0);
+      creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(0));
 
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -377,7 +378,7 @@ describe("fleet routes", () => {
     });
 
     it("returns 402 when tenant balance is below minimum (17 cents)", async () => {
-      creditLedgerMock.balance.mockReturnValue(10);
+      creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(10));
 
       const res = await app.request("/fleet/bots", {
         method: "POST",
@@ -399,7 +400,7 @@ describe("fleet routes", () => {
     });
 
     it("allows bot creation when tenant has positive credit balance", async () => {
-      creditLedgerMock.balance.mockReturnValue(1000);
+      creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(1000));
       fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
       fleetMock.create.mockResolvedValue(mockProfile);
 
@@ -418,7 +419,7 @@ describe("fleet routes", () => {
     });
 
     it("allows bot creation for new tenant with positive balance", async () => {
-      creditLedgerMock.balance.mockReturnValue(500);
+      creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(500));
       fleetMock.profiles.list = vi.fn().mockResolvedValue([]);
       fleetMock.create.mockResolvedValue(mockProfile);
 
@@ -538,7 +539,7 @@ describe("fleet routes", () => {
     });
 
     it("returns 402 when tenant has zero credit balance", async () => {
-      creditLedgerMock.balance.mockReturnValue(0);
+      creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(0));
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(402);
@@ -552,7 +553,7 @@ describe("fleet routes", () => {
     });
 
     it("returns 402 when tenant balance is below minimum (17 cents)", async () => {
-      creditLedgerMock.balance.mockReturnValue(16);
+      creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(16));
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });
       expect(res.status).toBe(402);
@@ -564,7 +565,7 @@ describe("fleet routes", () => {
     });
 
     it("allows start when tenant has sufficient credit balance", async () => {
-      creditLedgerMock.balance.mockReturnValue(17);
+      creditLedgerMock.balance.mockResolvedValue(Credit.fromCents(17));
       fleetMock.start.mockResolvedValue(undefined);
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/start`, { method: "POST", headers: authHeader });

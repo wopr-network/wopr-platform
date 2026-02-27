@@ -206,7 +206,7 @@ fleetRoutes.post(
         return c.json(
           {
             error: "insufficient_credits",
-            balance,
+            balance: Math.round(balance.toCents()),
             required: 17,
             buyUrl: "/dashboard/credits",
           },
@@ -367,7 +367,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
       return c.json(
         {
           error: "insufficient_credits",
-          balance,
+          balance: Math.round(balance.toCents()),
           required: 17,
           buyUrl: "/dashboard/credits",
         },

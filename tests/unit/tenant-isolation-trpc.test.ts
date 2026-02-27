@@ -20,6 +20,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createTestDb, truncateAllTables } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
 import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { Credit } from "../../src/monetization/credit.js";
 import { CapabilitySettingsStore } from "../../src/security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "../../src/security/tenant-keys/schema.js";
 import { appRouter } from "../../src/trpc/index.js";
@@ -60,7 +61,7 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
     const creditLedger: ICreditLedger = {
       credit(tenantId, amountCents) { return Promise.resolve({ id: "t", tenantId, amountCents, balanceAfterCents: 0, type: "signup_grant", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }); },
       debit(tenantId, amountCents) { return Promise.resolve({ id: "t", tenantId, amountCents: -amountCents, balanceAfterCents: 0, type: "correction", description: null, referenceId: null, fundingSource: null, createdAt: new Date().toISOString() }); },
-      balance() { return Promise.resolve(0); },
+      balance() { return Promise.resolve(Credit.ZERO); },
       hasReferenceId() { return Promise.resolve(false); },
       history() { return Promise.resolve([]); },
       tenantsWithBalance() { return Promise.resolve([]); },
