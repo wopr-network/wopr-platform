@@ -50,6 +50,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - platform_data:/data
+      - wopr_shared_node_modules:/shared/node_modules:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,6 +73,7 @@ services:
       - DO_SPACES_ACCESS_KEY=${DO_SPACES_ACCESS_KEY}
       - DO_SPACES_SECRET_KEY=${DO_SPACES_SECRET_KEY}
       - NODE_ENV=production
+      - SHARED_NODE_MODULES_VOLUME=wopr-shared-node-modules
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
       interval: 30s
@@ -97,6 +99,8 @@ volumes:
   caddy_config:
   platform_data:
   postgres_data:
+  wopr_shared_node_modules:
+    name: wopr-shared-node-modules
 
 networks:
   default:
