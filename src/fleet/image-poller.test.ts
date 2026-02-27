@@ -366,7 +366,8 @@ describe("ImagePoller", () => {
 
   describe("shouldAutoUpdate — nightly and cron policies", () => {
     it("does not call onUpdateAvailable for nightly policy outside the nightly window", async () => {
-      // The test runs outside 03:00-03:05 UTC, so nightly bots should NOT auto-update
+      // Pin clock to 10:00 UTC — well outside the 03:00-03:05 nightly window.
+      vi.useFakeTimers({ now: new Date("2025-01-01T10:00:00.000Z"), shouldAdvanceTime: false });
       const profile = makeProfile({ updatePolicy: "nightly" });
       const onUpdate = vi.fn().mockResolvedValue(undefined);
       poller.onUpdateAvailable = onUpdate;
@@ -388,6 +389,7 @@ describe("ImagePoller", () => {
       // onUpdate should not be called since we're not in the nightly window
       expect(onUpdate).not.toHaveBeenCalled();
       vi.unstubAllGlobals();
+      vi.useRealTimers();
     });
 
     it("does not call onUpdateAvailable for cron: policy", async () => {
