@@ -807,6 +807,7 @@ import type { IOnboardingScriptRepository } from "../onboarding/drizzle-onboardi
 import { DrizzleOnboardingScriptRepository } from "../onboarding/drizzle-onboarding-script-repository.js";
 import type { IOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
 import { DrizzleOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
+import { GraduationService } from "../onboarding/graduation-service.js";
 import { OnboardingService } from "../onboarding/onboarding-service.js";
 import { WoprClient } from "../onboarding/wopr-client.js";
 
@@ -816,6 +817,14 @@ let _woprClient: WoprClient | null = null;
 let _daemonManager: IDaemonManager | null = null;
 let _onboardingService: OnboardingService | null = null;
 let _sessionUsageRepo: ISessionUsageRepository | null = null; // NOSONAR
+let _graduationService: GraduationService | null = null;
+
+export function getGraduationService(): GraduationService {
+  if (!_graduationService) {
+    _graduationService = new GraduationService(getOnboardingSessionRepo(), getBotInstanceRepo(), getSessionUsageRepo());
+  }
+  return _graduationService;
+}
 
 export function getOnboardingSessionRepo(): IOnboardingSessionRepository {
   if (!_onboardingSessionRepo) {

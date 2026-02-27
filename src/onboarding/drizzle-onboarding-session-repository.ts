@@ -1,4 +1,4 @@
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { onboardingSessions } from "../db/schema/index.js";
 
@@ -7,10 +7,13 @@ export interface OnboardingSession {
   userId: string | null;
   anonymousId: string | null;
   woprSessionName: string;
-  status: "active" | "transferred" | "expired";
+  status: "active" | "transferred" | "expired" | "graduated";
   createdAt: number;
   updatedAt: number;
   budgetUsedCents: number;
+  graduatedAt: number | null;
+  graduationPath: "byok" | "hosted" | null;
+  totalPlatformCostUsd: string | null;
 }
 
 export interface IOnboardingSessionRepository {
@@ -18,10 +21,17 @@ export interface IOnboardingSessionRepository {
   getByUserId(userId: string): Promise<OnboardingSession | null>;
   getByAnonymousId(anonymousId: string): Promise<OnboardingSession | null>;
   getActiveByAnonymousId(anonymousId: string): Promise<OnboardingSession | null>;
-  create(data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">): Promise<OnboardingSession>;
+  create(
+    data: Omit<
+      OnboardingSession,
+      "createdAt" | "updatedAt" | "budgetUsedCents" | "graduatedAt" | "graduationPath" | "totalPlatformCostUsd"
+    >,
+  ): Promise<OnboardingSession>;
   upgradeAnonymousToUser(anonymousId: string, userId: string): Promise<OnboardingSession | null>;
   updateBudgetUsed(id: string, budgetUsedCents: number): Promise<void>;
   setStatus(id: string, status: OnboardingSession["status"]): Promise<void>;
+  graduate(id: string, path: "byok" | "hosted", totalPlatformCostUsd: string): Promise<OnboardingSession | null>;
+  getGraduatedByUserId(userId: string): Promise<OnboardingSession | null>;
 }
 
 type DbRow = typeof onboardingSessions.$inferSelect;
@@ -36,6 +46,9 @@ function toSession(row: DbRow): OnboardingSession {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     budgetUsedCents: row.budgetUsedCents,
+    graduatedAt: row.graduatedAt ?? null,
+    graduationPath: row.graduationPath as OnboardingSession["graduationPath"],
+    totalPlatformCostUsd: row.totalPlatformCostUsd ?? null,
   };
 }
 
@@ -73,7 +86,10 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
   }
 
   async create(
-    data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">,
+    data: Omit<
+      OnboardingSession,
+      "createdAt" | "updatedAt" | "budgetUsedCents" | "graduatedAt" | "graduationPath" | "totalPlatformCostUsd"
+    >,
   ): Promise<OnboardingSession> {
     const now = Date.now();
     const rows = await this.db
@@ -114,5 +130,29 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
       .update(onboardingSessions)
       .set({ status, updatedAt: Date.now() })
       .where(eq(onboardingSessions.id, id));
+  }
+
+  async graduate(id: string, path: "byok" | "hosted", totalPlatformCostUsd: string): Promise<OnboardingSession | null> {
+    const now = Date.now();
+    const rows = await this.db
+      .update(onboardingSessions)
+      .set({
+        graduatedAt: now,
+        graduationPath: path,
+        totalPlatformCostUsd,
+        status: "graduated",
+        updatedAt: now,
+      })
+      .where(and(eq(onboardingSessions.id, id), isNull(onboardingSessions.graduatedAt)))
+      .returning();
+    return rows[0] ? toSession(rows[0]) : null;
+  }
+
+  async getGraduatedByUserId(userId: string): Promise<OnboardingSession | null> {
+    const rows = await this.db
+      .select()
+      .from(onboardingSessions)
+      .where(and(eq(onboardingSessions.userId, userId), isNotNull(onboardingSessions.graduatedAt)));
+    return rows[0] ? toSession(rows[0]) : null;
   }
 }

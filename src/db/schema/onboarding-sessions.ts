@@ -11,6 +11,9 @@ export const onboardingSessions = pgTable(
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
     budgetUsedCents: integer("budget_used_cents").notNull().default(0),
+    graduatedAt: bigint("graduated_at", { mode: "number" }),
+    graduationPath: text("graduation_path"),
+    totalPlatformCostUsd: text("total_platform_cost_usd"),
   },
   (t) => [
     index("onboarding_sessions_user_id_idx").on(t.userId),
