@@ -13,8 +13,8 @@ export const pluginConfigs = pgTable(
     encryptedFieldsJson: text("encrypted_fields_json"),
     /** Setup session ID that created this config (for rollback) */
     setupSessionId: text("setup_session_id"),
-    createdAt: text("created_at").notNull().default(sql`(now())`),
-    updatedAt: text("updated_at").notNull().default(sql`(now())`),
+    createdAt: text("created_at").notNull().default(sql`(now()::text)`),
+    updatedAt: text("updated_at").notNull().default(sql`(now()::text)`),
   },
   (t) => [
     unique("plugin_configs_bot_plugin_uniq").on(t.botId, t.pluginId),
