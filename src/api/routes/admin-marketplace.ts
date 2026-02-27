@@ -71,6 +71,31 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
     } catch {
       /* audit must not break request */
     }
+
+    // Fire-and-forget: install into shared volume
+    const volumePath = process.env.PLUGIN_VOLUME_PATH ?? "/data/plugins";
+    import("../../marketplace/volume-installer.js")
+      .then(({ installPluginToVolume }) => {
+        installPluginToVolume({
+          pluginId: npmPackage,
+          npmPackage,
+          version,
+          volumePath,
+          repo: repo(),
+        }).catch((err: unknown) => {
+          import("../../config/logger.js")
+            .then(({ logger }) => {
+              logger.error("Volume install trigger failed", { pluginId: npmPackage, err });
+            })
+            .catch(() => {
+              /* logger unavailable */
+            });
+        });
+      })
+      .catch(() => {
+        /* volume installer unavailable — non-fatal */
+      });
+
     return c.json(plugin, 201);
   });
 

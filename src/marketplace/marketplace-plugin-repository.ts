@@ -10,4 +10,5 @@ export interface IMarketplacePluginRepository {
   insert(plugin: NewMarketplacePlugin): Promise<MarketplacePlugin>;
   update(pluginId: string, patch: Partial<MarketplacePlugin>): Promise<MarketplacePlugin>;
   delete(pluginId: string): Promise<void>;
+  setInstallResult(pluginId: string, installedAt: number | null, installError: string | null): Promise<void>;
 }

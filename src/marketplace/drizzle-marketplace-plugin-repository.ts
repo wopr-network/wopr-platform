@@ -17,6 +17,8 @@ function rowToDomain(row: typeof marketplacePlugins.$inferSelect): MarketplacePl
     enabledAt: row.enabledAt,
     enabledBy: row.enabledBy,
     notes: row.notes,
+    installedAt: row.installedAt ?? null,
+    installError: row.installError ?? null,
   };
 }
 
@@ -87,5 +89,12 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
 
   async delete(pluginId: string): Promise<void> {
     await this.db.delete(marketplacePlugins).where(eq(marketplacePlugins.pluginId, pluginId));
+  }
+
+  async setInstallResult(pluginId: string, installedAt: number | null, installError: string | null): Promise<void> {
+    await this.db
+      .update(marketplacePlugins)
+      .set({ installedAt, installError })
+      .where(eq(marketplacePlugins.pluginId, pluginId));
   }
 }
