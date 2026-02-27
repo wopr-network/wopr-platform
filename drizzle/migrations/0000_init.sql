@@ -407,6 +407,18 @@ CREATE TABLE "payram_charges" (
 	"credited_at" text
 );
 --> statement-breakpoint
+CREATE TABLE "plugin_configs" (
+	"id" text PRIMARY KEY NOT NULL,
+	"bot_id" text NOT NULL,
+	"plugin_id" text NOT NULL,
+	"config_json" text NOT NULL,
+	"encrypted_fields_json" text,
+	"setup_session_id" text,
+	"created_at" text DEFAULT (now()::text) NOT NULL,
+	"updated_at" text DEFAULT (now()::text) NOT NULL,
+	CONSTRAINT "plugin_configs_bot_plugin_uniq" UNIQUE("bot_id","plugin_id")
+);
+--> statement-breakpoint
 CREATE TABLE "plugin_marketplace_content" (
 	"plugin_id" text PRIMARY KEY NOT NULL,
 	"version" text NOT NULL,
@@ -693,6 +705,15 @@ CREATE TABLE "onboarding_sessions" (
 	CONSTRAINT "onboarding_sessions_wopr_session_name_unique" UNIQUE("wopr_session_name")
 );
 --> statement-breakpoint
+CREATE TABLE "onboarding_scripts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"content" text NOT NULL,
+	"version" integer NOT NULL,
+	"updated_at" bigint NOT NULL,
+	"updated_by" text,
+	CONSTRAINT "onboarding_scripts_version_unique" UNIQUE("version")
+);
+--> statement-breakpoint
 CREATE TABLE "session_usage" (
 	"id" text PRIMARY KEY NOT NULL,
 	"session_id" text NOT NULL,
@@ -855,4 +876,6 @@ CREATE INDEX "idx_session_usage_user" ON "session_usage" USING btree ("user_id")
 CREATE INDEX "idx_session_usage_created" ON "session_usage" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "idx_session_usage_page" ON "session_usage" USING btree ("page");--> statement-breakpoint
 CREATE INDEX "setup_sessions_session_id_idx" ON "setup_sessions" USING btree ("session_id");--> statement-breakpoint
-CREATE INDEX "setup_sessions_plugin_id_idx" ON "setup_sessions" USING btree ("plugin_id");
+CREATE INDEX "setup_sessions_plugin_id_idx" ON "setup_sessions" USING btree ("plugin_id");--> statement-breakpoint
+CREATE INDEX "plugin_configs_bot_id_idx" ON "plugin_configs" USING btree ("bot_id");--> statement-breakpoint
+CREATE INDEX "plugin_configs_setup_session_idx" ON "plugin_configs" USING btree ("setup_session_id");
