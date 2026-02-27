@@ -20,8 +20,11 @@ const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /** Add email verification columns to the better-auth user table. */
 export async function initVerificationSchema(pool: Pool): Promise<void> {
+  // raw SQL: better-auth manages its own schema outside Drizzle
   await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false`);
+  // raw SQL: better-auth manages its own schema outside Drizzle
   await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS verification_token TEXT`);
+  // raw SQL: better-auth manages its own schema outside Drizzle
   await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS verification_expires TEXT`);
 }
 
@@ -41,6 +44,7 @@ export async function generateVerificationToken(pool: Pool, userId: string): Pro
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
 
+  // raw SQL: better-auth manages its own schema outside Drizzle
   await pool.query(`UPDATE "user" SET verification_token = $1, verification_expires = $2 WHERE id = $3`, [
     token,
     expiresAt,
@@ -56,6 +60,7 @@ export async function generateVerificationToken(pool: Pool, userId: string): Pro
 export async function verifyToken(pool: Pool, token: string): Promise<{ userId: string; email: string } | null> {
   if (!token || token.length !== 64) return null;
 
+  // raw SQL: better-auth manages its own schema outside Drizzle
   const { rows } = await pool.query(
     `SELECT id, email, verification_token, verification_expires, email_verified FROM "user" WHERE verification_token = $1`,
     [token],
@@ -68,6 +73,7 @@ export async function verifyToken(pool: Pool, token: string): Promise<{ userId: 
   const expiresAt = new Date(row.verification_expires).getTime();
   if (Date.now() > expiresAt) return null;
 
+  // raw SQL: better-auth manages its own schema outside Drizzle
   await pool.query(
     `UPDATE "user" SET email_verified = true, verification_token = NULL, verification_expires = NULL WHERE id = $1`,
     [row.id],
@@ -80,6 +86,7 @@ export async function verifyToken(pool: Pool, token: string): Promise<{ userId: 
  * Check whether a user has verified their email.
  */
 export async function isEmailVerified(pool: Pool, userId: string): Promise<boolean> {
+  // raw SQL: better-auth manages its own schema outside Drizzle
   const { rows } = await pool.query(`SELECT email_verified FROM "user" WHERE id = $1`, [userId]);
   return rows[0]?.email_verified === true;
 }
@@ -88,6 +95,7 @@ export async function isEmailVerified(pool: Pool, userId: string): Promise<boole
  * Get a user's email by their ID.
  */
 export async function getUserEmail(pool: Pool, userId: string): Promise<string | null> {
+  // raw SQL: better-auth manages its own schema outside Drizzle
   const { rows } = await pool.query(`SELECT email FROM "user" WHERE id = $1`, [userId]);
   return rows[0]?.email ?? null;
 }

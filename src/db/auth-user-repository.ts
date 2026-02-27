@@ -25,6 +25,7 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
   constructor(private readonly pool: Pool) {}
 
   async getUser(userId: string): Promise<AuthUser | null> {
+    // raw SQL: better-auth manages its own schema outside Drizzle
     const { rows } = await this.pool.query(`SELECT id, name, email, image FROM "user" WHERE id = $1`, [userId]);
     return (rows[0] as AuthUser | undefined) ?? null;
   }
@@ -44,13 +45,17 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
     }
     if (fields.length > 0) {
       values.push(userId);
+      // raw SQL: better-auth manages its own schema outside Drizzle
       await this.pool.query(`UPDATE "user" SET ${fields.join(", ")} WHERE id = $${paramIndex}`, values);
     }
+    // raw SQL: better-auth manages its own schema outside Drizzle
     const { rows } = await this.pool.query(`SELECT id, name, email, image FROM "user" WHERE id = $1`, [userId]);
+    if (rows.length === 0) throw new Error(`User not found: ${userId}`);
     return rows[0] as AuthUser;
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {
+    // raw SQL: better-auth manages its own schema outside Drizzle
     const { rows } = await this.pool.query(
       `SELECT password FROM account WHERE user_id = $1 AND provider_id = 'credential'`,
       [userId],
@@ -60,6 +65,7 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
     const valid = await verifyPassword({ hash: row.password, password: currentPassword });
     if (!valid) return false;
     const newHash = await hashPassword(newPassword);
+    // raw SQL: better-auth manages its own schema outside Drizzle
     await this.pool.query(`UPDATE account SET password = $1 WHERE user_id = $2 AND provider_id = 'credential'`, [
       newHash,
       userId,
