@@ -54,7 +54,7 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
 
 function makeMockLedger(): ICreditLedger {
   const balances = new Map<string, number>();
-  const txns: import("../monetization/credits/credit-ledger.js").CreditTransaction[] = []; // biome-ignore lint/suspicious/noExplicitAny: mock
+  const txns: import("../monetization/credits/credit-ledger.js").CreditTransaction[] = [];
   return {
     async credit(tenantId, amount, type, description) {
       const cents = amount.toCents();
