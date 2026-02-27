@@ -1,6 +1,5 @@
 import { createHmac } from "node:crypto";
 import { serve } from "@hono/node-server";
-import Database from "better-sqlite3";
 import { eq, gte, sql } from "drizzle-orm";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
@@ -432,9 +431,7 @@ if (process.env.NODE_ENV !== "test") {
   // Wire profile tRPC router deps (reads/writes better-auth user table directly)
   {
     const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
-    const AUTH_DB_PATH_LOCAL = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
-    const authDb = new Database(AUTH_DB_PATH_LOCAL);
-    const authUserRepo = new BetterAuthUserRepository(authDb);
+    const authUserRepo = new BetterAuthUserRepository(getPool());
     setProfileRouterDeps({
       getUser: (userId) => authUserRepo.getUser(userId),
       updateUser: (userId, data) => authUserRepo.updateUser(userId, data),

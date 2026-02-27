@@ -9,7 +9,7 @@
  */
 
 import crypto from "node:crypto";
-import type Database from "better-sqlite3";
+import type { Pool } from "pg";
 import type { IEmailVerifier } from "./require-verified.js";
 
 const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -19,21 +19,10 @@ const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 // ---------------------------------------------------------------------------
 
 /** Add email verification columns to the better-auth user table. */
-export function initVerificationSchema(db: Database.Database): void {
-  // better-auth creates a "user" table. We add verification columns.
-  // Use IF NOT EXISTS pattern for idempotency.
-  const columns = db.pragma("table_info(user)") as Array<{ name: string }>;
-  const columnNames = new Set(columns.map((c) => c.name));
-
-  if (!columnNames.has("email_verified")) {
-    db.exec("ALTER TABLE user ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!columnNames.has("verification_token")) {
-    db.exec("ALTER TABLE user ADD COLUMN verification_token TEXT");
-  }
-  if (!columnNames.has("verification_expires")) {
-    db.exec("ALTER TABLE user ADD COLUMN verification_expires TEXT");
-  }
+export async function initVerificationSchema(pool: Pool): Promise<void> {
+  await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT false`);
+  await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS verification_token TEXT`);
+  await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS verification_expires TEXT`);
 }
 
 // ---------------------------------------------------------------------------
@@ -47,97 +36,67 @@ export interface VerificationToken {
 
 /**
  * Generate a verification token and store it against a user.
- *
- * @param db - The auth database
- * @param userId - The user ID to generate a token for
- * @returns The generated token and expiry
  */
-export function generateVerificationToken(db: Database.Database, userId: string): VerificationToken {
+export async function generateVerificationToken(pool: Pool, userId: string): Promise<VerificationToken> {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_MS).toISOString();
 
-  db.prepare("UPDATE user SET verification_token = ?, verification_expires = ? WHERE id = ?").run(
+  await pool.query(`UPDATE "user" SET verification_token = $1, verification_expires = $2 WHERE id = $3`, [
     token,
     expiresAt,
     userId,
-  );
+  ]);
 
   return { token, expiresAt };
 }
 
 /**
  * Verify a token: check it exists, hasn't expired, and mark the user as verified.
- *
- * @param db - The auth database
- * @param token - The verification token from the URL
- * @returns The user ID if verification succeeded, or null if invalid/expired
  */
-export function verifyToken(db: Database.Database, token: string): { userId: string; email: string } | null {
-  if (!token || token.length !== 64) return null; // hex-encoded 32 bytes = 64 chars
+export async function verifyToken(pool: Pool, token: string): Promise<{ userId: string; email: string } | null> {
+  if (!token || token.length !== 64) return null;
 
-  const row = db
-    .prepare(
-      "SELECT id, email, verification_token, verification_expires, email_verified FROM user WHERE verification_token = ?",
-    )
-    .get(token) as
-    | {
-        id: string;
-        email: string;
-        verification_token: string;
-        verification_expires: string;
-        email_verified: number;
-      }
-    | undefined;
+  const { rows } = await pool.query(
+    `SELECT id, email, verification_token, verification_expires, email_verified FROM "user" WHERE verification_token = $1`,
+    [token],
+  );
 
+  const row = rows[0];
   if (!row) return null;
+  if (row.email_verified === true) return null;
 
-  // Already verified
-  if (row.email_verified === 1) return null;
-
-  // Check expiry
   const expiresAt = new Date(row.verification_expires).getTime();
   if (Date.now() > expiresAt) return null;
 
-  // Mark as verified and clear token
-  db.prepare(
-    "UPDATE user SET email_verified = 1, verification_token = NULL, verification_expires = NULL WHERE id = ?",
-  ).run(row.id);
+  await pool.query(
+    `UPDATE "user" SET email_verified = true, verification_token = NULL, verification_expires = NULL WHERE id = $1`,
+    [row.id],
+  );
 
   return { userId: row.id, email: row.email };
 }
 
 /**
  * Check whether a user has verified their email.
- *
- * @param db - The auth database
- * @param userId - The user ID to check
- * @returns true if the user's email is verified
  */
-export function isEmailVerified(db: Database.Database, userId: string): boolean {
-  const row = db.prepare("SELECT email_verified FROM user WHERE id = ?").get(userId) as
-    | { email_verified: number }
-    | undefined;
-
-  return row?.email_verified === 1;
+export async function isEmailVerified(pool: Pool, userId: string): Promise<boolean> {
+  const { rows } = await pool.query(`SELECT email_verified FROM "user" WHERE id = $1`, [userId]);
+  return rows[0]?.email_verified === true;
 }
 
 /**
  * Get a user's email by their ID.
- *
- * @param db - The auth database
- * @param userId - The user ID
- * @returns The user's email, or null if not found
  */
-export function getUserEmail(db: Database.Database, userId: string): string | null {
-  const row = db.prepare("SELECT email FROM user WHERE id = ?").get(userId) as { email: string } | undefined;
-  return row?.email ?? null;
+export async function getUserEmail(pool: Pool, userId: string): Promise<string | null> {
+  const { rows } = await pool.query(`SELECT email FROM "user" WHERE id = $1`, [userId]);
+  return rows[0]?.email ?? null;
 }
 
-/** SQLite-backed implementation of IEmailVerifier for the auth database. */
-export class SqliteEmailVerifier implements IEmailVerifier {
-  constructor(private readonly db: Database.Database) {}
+/** PostgreSQL-backed implementation of IEmailVerifier for the auth database. */
+export class PgEmailVerifier implements IEmailVerifier {
+  constructor(private readonly pool: Pool) {}
 
-  isVerified(userId: string): boolean {
-    return isEmailVerified(this.db, userId);
+  async isVerified(userId: string): Promise<boolean> {
+    return isEmailVerified(this.pool, userId);
   }
 }

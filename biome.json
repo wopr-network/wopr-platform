@@ -174,9 +174,6 @@
     {
       "includes": [
         "src/index.ts",
-        "src/auth/better-auth.ts",
-        "src/email/verification.ts",
-        "src/email/require-verified.ts",
         "src/api/routes/activity.ts",
         "src/api/routes/bot-plugins.ts",
         "src/api/routes/quota.ts",
@@ -185,7 +182,6 @@
         "src/api/routes/admin-rates.ts",
         "src/api/routes/audit.ts",
         "src/api/routes/public-pricing.ts",
-        "src/api/routes/verify-email.ts",
         "src/backup/backup-status-store.ts",
         "src/backup/restore-log-store.ts",
         "src/backup/snapshot-manager.ts",

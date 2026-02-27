@@ -1,27 +1,17 @@
-import Database, { type Database as SqliteDatabase } from "better-sqlite3";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import type { AuthEnv } from "../auth/index.js";
 import { requireEmailVerified } from "./require-verified.js";
-import { initVerificationSchema, isEmailVerified } from "./verification.js";
 
 describe("requireEmailVerified middleware", () => {
-  let db: SqliteDatabase;
+  let verifiedUsers: Set<string>;
   let app: Hono<AuthEnv>;
 
   beforeEach(() => {
-    db = new Database(":memory:");
-    db.exec(`
-      CREATE TABLE user (
-        id TEXT PRIMARY KEY,
-        email TEXT NOT NULL,
-        name TEXT
-      )
-    `);
-    initVerificationSchema(db);
-    db.prepare("INSERT INTO user (id, email, name) VALUES (?, ?, ?)").run("user-1", "alice@test.com", "Alice");
-
-    const middleware = requireEmailVerified({ isVerified: (userId) => isEmailVerified(db, userId) });
+    verifiedUsers = new Set<string>();
+    const middleware = requireEmailVerified({
+      isVerified: async (userId) => verifiedUsers.has(userId),
+    });
 
     app = new Hono<AuthEnv>();
     // Simulate session auth middleware setting user context
@@ -43,10 +33,6 @@ describe("requireEmailVerified middleware", () => {
     app.route("/", noauthApp);
   });
 
-  afterEach(() => {
-    db.close();
-  });
-
   it("should block session-authenticated users without verified email", async () => {
     const res = await app.request("/test/create", {
       method: "POST",
@@ -59,7 +45,7 @@ describe("requireEmailVerified middleware", () => {
   });
 
   it("should allow session-authenticated users with verified email", async () => {
-    db.prepare("UPDATE user SET email_verified = 1 WHERE id = ?").run("user-1");
+    verifiedUsers.add("user-1");
 
     const res = await app.request("/test/create", {
       method: "POST",

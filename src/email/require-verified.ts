@@ -11,7 +11,7 @@ import { logger } from "../config/logger.js";
 
 /** Minimal interface for checking email verification status. */
 export interface IEmailVerifier {
-  isVerified(userId: string): boolean;
+  isVerified(userId: string): Promise<boolean>;
 }
 
 /**
@@ -44,7 +44,7 @@ export function requireEmailVerified(verifier: IEmailVerifier) {
     // Session auth requires verified email
     if (authMethod === "session" && userId) {
       try {
-        if (!verifier.isVerified(userId)) {
+        if (!(await verifier.isVerified(userId))) {
           return c.json(
             {
               error: "Email verification required",

@@ -1,4 +1,4 @@
-import Database, { type Database as SqliteDatabase } from "better-sqlite3";
+import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   generateVerificationToken,
@@ -8,38 +8,50 @@ import {
   verifyToken,
 } from "./verification.js";
 
-describe("email verification", () => {
-  let db: SqliteDatabase;
+/** Minimal Pool-like wrapper around PGlite for testing. */
+// biome-ignore lint/suspicious/noExplicitAny: test helper wrapping PGlite as Pool
+function pgliteAsPool(pg: PGlite): any {
+  return { query: (text: string, params?: unknown[]) => pg.query(text, params) };
+}
 
-  beforeEach(() => {
-    db = new Database(":memory:");
+describe("email verification", () => {
+  let pg: PGlite;
+  // biome-ignore lint/suspicious/noExplicitAny: test pool wrapper
+  let pool: any;
+
+  beforeEach(async () => {
+    pg = new PGlite();
+    pool = pgliteAsPool(pg);
+
     // Create a minimal user table mimicking better-auth's schema
-    db.exec(`
-      CREATE TABLE user (
+    await pg.query(`
+      CREATE TABLE "user" (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL,
         name TEXT,
-        createdAt TEXT
+        "createdAt" TEXT
       )
     `);
-    initVerificationSchema(db);
+    await initVerificationSchema(pool);
 
     // Insert test users
-    db.prepare("INSERT INTO user (id, email, name) VALUES (?, ?, ?)").run("user-1", "alice@test.com", "Alice");
-    db.prepare("INSERT INTO user (id, email, name) VALUES (?, ?, ?)").run("user-2", "bob@test.com", "Bob");
+    await pg.query(`INSERT INTO "user" (id, email, name) VALUES ($1, $2, $3)`, ["user-1", "alice@test.com", "Alice"]);
+    await pg.query(`INSERT INTO "user" (id, email, name) VALUES ($1, $2, $3)`, ["user-2", "bob@test.com", "Bob"]);
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await pg.close();
   });
 
   describe("initVerificationSchema", () => {
-    it("should add verification columns idempotently", () => {
+    it("should add verification columns idempotently", async () => {
       // Call again — should not throw
-      initVerificationSchema(db);
+      await initVerificationSchema(pool);
 
-      const columns = db.pragma("table_info(user)") as Array<{ name: string }>;
-      const names = columns.map((c) => c.name);
+      const { rows } = await pg.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'user' ORDER BY ordinal_position`,
+      );
+      const names = (rows as Array<{ column_name: string }>).map((r) => r.column_name);
       expect(names).toContain("email_verified");
       expect(names).toContain("verification_token");
       expect(names).toContain("verification_expires");
@@ -47,29 +59,27 @@ describe("email verification", () => {
   });
 
   describe("generateVerificationToken", () => {
-    it("should generate a 64-char hex token", () => {
-      const result = generateVerificationToken(db, "user-1");
+    it("should generate a 64-char hex token", async () => {
+      const result = await generateVerificationToken(pool, "user-1");
       expect(result.token).toHaveLength(64);
       expect(result.token).toMatch(/^[a-f0-9]+$/);
     });
 
-    it("should store token and expiry in the database", () => {
-      const result = generateVerificationToken(db, "user-1");
+    it("should store token and expiry in the database", async () => {
+      const result = await generateVerificationToken(pool, "user-1");
 
-      const row = db
-        .prepare("SELECT verification_token, verification_expires FROM user WHERE id = ?")
-        .get("user-1") as {
-        verification_token: string;
-        verification_expires: string;
-      };
+      const { rows } = await pg.query(`SELECT verification_token, verification_expires FROM "user" WHERE id = $1`, [
+        "user-1",
+      ]);
+      const row = rows[0] as { verification_token: string; verification_expires: string };
 
       expect(row.verification_token).toBe(result.token);
       expect(row.verification_expires).toBe(result.expiresAt);
     });
 
-    it("should set expiry 24 hours in the future", () => {
+    it("should set expiry 24 hours in the future", async () => {
       const before = Date.now();
-      const result = generateVerificationToken(db, "user-1");
+      const result = await generateVerificationToken(pool, "user-1");
       const after = Date.now();
 
       const expiresMs = new Date(result.expiresAt).getTime();
@@ -79,102 +89,96 @@ describe("email verification", () => {
       expect(expiresMs).toBeLessThanOrEqual(after + twentyFourHours);
     });
 
-    it("should overwrite previous token on re-generation", () => {
-      const first = generateVerificationToken(db, "user-1");
-      const second = generateVerificationToken(db, "user-1");
+    it("should overwrite previous token on re-generation", async () => {
+      const first = await generateVerificationToken(pool, "user-1");
+      const second = await generateVerificationToken(pool, "user-1");
 
       expect(first.token).not.toBe(second.token);
 
-      const row = db.prepare("SELECT verification_token FROM user WHERE id = ?").get("user-1") as {
-        verification_token: string;
-      };
+      const { rows } = await pg.query(`SELECT verification_token FROM "user" WHERE id = $1`, ["user-1"]);
+      const row = rows[0] as { verification_token: string };
       expect(row.verification_token).toBe(second.token);
     });
   });
 
   describe("verifyToken", () => {
-    it("should verify a valid token and mark user as verified", () => {
-      const { token } = generateVerificationToken(db, "user-1");
-      const result = verifyToken(db, token);
+    it("should verify a valid token and mark user as verified", async () => {
+      const { token } = await generateVerificationToken(pool, "user-1");
+      const result = await verifyToken(pool, token);
 
       expect(result).toEqual({ userId: "user-1", email: "alice@test.com" });
 
-      // Check user is now verified
-      const row = db.prepare("SELECT email_verified, verification_token FROM user WHERE id = ?").get("user-1") as {
-        email_verified: number;
-        verification_token: string | null;
-      };
-      expect(row.email_verified).toBe(1);
+      const { rows } = await pg.query(`SELECT email_verified, verification_token FROM "user" WHERE id = $1`, [
+        "user-1",
+      ]);
+      const row = rows[0] as { email_verified: boolean; verification_token: string | null };
+      expect(row.email_verified).toBe(true);
       expect(row.verification_token).toBeNull();
     });
 
-    it("should return null for non-existent token", () => {
-      expect(verifyToken(db, "a".repeat(64))).toBeNull();
+    it("should return null for non-existent token", async () => {
+      expect(await verifyToken(pool, "a".repeat(64))).toBeNull();
     });
 
-    it("should return null for empty token", () => {
-      expect(verifyToken(db, "")).toBeNull();
+    it("should return null for empty token", async () => {
+      expect(await verifyToken(pool, "")).toBeNull();
     });
 
-    it("should return null for wrong-length token", () => {
-      expect(verifyToken(db, "abc")).toBeNull();
+    it("should return null for wrong-length token", async () => {
+      expect(await verifyToken(pool, "abc")).toBeNull();
     });
 
-    it("should return null for expired token", () => {
-      const { token } = generateVerificationToken(db, "user-1");
+    it("should return null for expired token", async () => {
+      const { token } = await generateVerificationToken(pool, "user-1");
 
-      // Manually set expiry to the past
-      db.prepare("UPDATE user SET verification_expires = ? WHERE id = ?").run(
+      await pg.query(`UPDATE "user" SET verification_expires = $1 WHERE id = $2`, [
         new Date(Date.now() - 1000).toISOString(),
         "user-1",
-      );
+      ]);
 
-      expect(verifyToken(db, token)).toBeNull();
+      expect(await verifyToken(pool, token)).toBeNull();
     });
 
-    it("should return null for already-verified user", () => {
-      const { token } = generateVerificationToken(db, "user-1");
-
-      // Mark as verified manually
-      db.prepare("UPDATE user SET email_verified = 1 WHERE id = ?").run("user-1");
-
-      expect(verifyToken(db, token)).toBeNull();
+    it("should return null for already-verified user", async () => {
+      const { token } = await generateVerificationToken(pool, "user-1");
+      await pg.query(`UPDATE "user" SET email_verified = true WHERE id = $1`, ["user-1"]);
+      expect(await verifyToken(pool, token)).toBeNull();
     });
 
-    it("should only allow single verification per token", () => {
-      const { token } = generateVerificationToken(db, "user-1");
+    it("should only allow single verification per token", async () => {
+      const { token } = await generateVerificationToken(pool, "user-1");
 
-      const first = verifyToken(db, token);
-      const second = verifyToken(db, token);
+      const first = await verifyToken(pool, token);
+      const second = await verifyToken(pool, token);
 
       expect(first).toEqual({ userId: "user-1", email: "alice@test.com" });
-      expect(second).toBeNull(); // Token was cleared after first verification
+      expect(second).toBeNull();
     });
   });
 
   describe("isEmailVerified", () => {
-    it("should return false for unverified user", () => {
-      expect(isEmailVerified(db, "user-1")).toBe(false);
+    it("should return false for unverified user", async () => {
+      expect(await isEmailVerified(pool, "user-1")).toBe(false);
     });
 
-    it("should return true after verification", () => {
-      const { token } = generateVerificationToken(db, "user-1");
-      verifyToken(db, token);
-      expect(isEmailVerified(db, "user-1")).toBe(true);
+    it("should return true after verification", async () => {
+      const { token } = await generateVerificationToken(pool, "user-1");
+      await verifyToken(pool, token);
+      expect(await isEmailVerified(pool, "user-1")).toBe(true);
     });
 
-    it("should return false for non-existent user", () => {
-      expect(isEmailVerified(db, "no-such-user")).toBe(false);
+    it("should return false for non-existent user", async () => {
+      expect(await isEmailVerified(pool, "no-such-user")).toBe(false);
     });
   });
 
   describe("getUserEmail", () => {
-    it("should return email for existing user", () => {
-      expect(getUserEmail(db, "user-1")).toBe("alice@test.com");
+    it("should return email for existing user", async () => {
+      expect(await getUserEmail(pool, "user-1")).toBe("alice@test.com");
     });
 
-    it("should return null for non-existent user", () => {
-      expect(getUserEmail(db, "no-such-user")).toBeNull();
+    it("should return null for non-existent user", async () => {
+      expect(await getUserEmail(pool, "no-such-user")).toBeNull();
     });
   });
 });

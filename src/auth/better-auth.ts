@@ -2,7 +2,7 @@
  * Better Auth — Platform auth source of truth.
  *
  * Provides email+password auth, session management, and cookie-based auth
- * for the platform UI. Uses SQLite via better-sqlite3 for persistence.
+ * for the platform UI. Uses PostgreSQL via pg.Pool for persistence.
  *
  * The auth instance is lazily initialized to avoid opening the database
  * at module import time (which breaks tests).
@@ -10,24 +10,19 @@
 
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
-import Database from "better-sqlite3";
+import type { Pool } from "pg";
 import { logger } from "../config/logger.js";
-import { applyPlatformPragmas } from "../db/pragmas.js";
 import { getEmailClient } from "../email/client.js";
 import { passwordResetEmailTemplate, verifyEmailTemplate } from "../email/templates.js";
-import { generateVerificationToken, initVerificationSchema, SqliteEmailVerifier } from "../email/verification.js";
+import { generateVerificationToken, initVerificationSchema, PgEmailVerifier } from "../email/verification.js";
+import { getPool } from "../fleet/services.js";
 
-const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "";
 const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || "http://localhost:3100";
 
-function authOptions(db?: Database.Database): BetterAuthOptions {
-  const database = db ?? new Database(AUTH_DB_PATH);
-  if ("pragma" in database && typeof database.pragma === "function") {
-    applyPlatformPragmas(database as Database.Database);
-  }
+function authOptions(pool: Pool): BetterAuthOptions {
   return {
-    database,
+    database: pool,
     secret: BETTER_AUTH_SECRET,
     baseURL: BETTER_AUTH_URL,
     basePath: "/api/auth",
@@ -76,9 +71,8 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
             if (user.emailVerified) return;
             // Send verification email after signup
             try {
-              const authDb = database as Database.Database;
-              initVerificationSchema(authDb);
-              const { token } = generateVerificationToken(authDb, user.id);
+              await initVerificationSchema(pool);
+              const { token } = await generateVerificationToken(pool, user.id);
               const verifyUrl = `${BETTER_AUTH_URL}/auth/verify?token=${token}`;
               const emailClient = getEmailClient();
               const template = verifyEmailTemplate(verifyUrl, user.email);
@@ -111,9 +105,6 @@ function authOptions(db?: Database.Database): BetterAuthOptions {
     advanced: {
       // Set cookie domain to the root domain so the session cookie is visible
       // on both app.wopr.bot (the dashboard) and wopr.bot (the marketing domain).
-      // The middleware at src/middleware.ts in wopr-platform-ui checks for this cookie
-      // on wopr.bot to redirect authenticated users to the app — without this, the
-      // redirect is dead code because the cookie would only be scoped to app.wopr.bot.
       cookiePrefix: "better-auth",
       cookies: {
         session_token: {
@@ -157,12 +148,11 @@ export type Auth = ReturnType<typeof betterAuth>;
  */
 export async function runAuthMigrations(): Promise<void> {
   const { getMigrations } = await import("better-auth/db");
-  const { runMigrations } = await getMigrations(authOptions());
+  const { runMigrations } = await getMigrations(authOptions(getPool()));
   await runMigrations();
 }
 
 let _auth: Auth | null = null;
-let _authDb: Database.Database | null = null;
 
 /**
  * Get or create the singleton better-auth instance.
@@ -170,18 +160,14 @@ let _authDb: Database.Database | null = null;
  */
 export function getAuth(): Auth {
   if (!_auth) {
-    _authDb = new Database(AUTH_DB_PATH);
-    applyPlatformPragmas(_authDb);
-    _auth = betterAuth(authOptions(_authDb));
+    _auth = betterAuth(authOptions(getPool()));
   }
   return _auth;
 }
 
 /** Get an IEmailVerifier backed by the auth database. */
-export function getEmailVerifier(): SqliteEmailVerifier {
-  getAuth(); // ensure _authDb is initialized
-  // biome-ignore lint/style/noNonNullAssertion: initialized by getAuth() above
-  return new SqliteEmailVerifier(_authDb!);
+export function getEmailVerifier(): PgEmailVerifier {
+  return new PgEmailVerifier(getPool());
 }
 
 /**
