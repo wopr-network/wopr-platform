@@ -35,4 +35,25 @@ describe("checkSessionBudget", () => {
     const result = await checkSessionBudget(mockRepo(0.9), "sess-1", "paid");
     expect(result.allowed).toBe(true);
   });
+
+  it("rejects when exactly at anonymous cap ($0.10)", async () => {
+    const result = await checkSessionBudget(mockRepo(0.1), "sess-1", "anonymous");
+    expect(result.allowed).toBe(false);
+    expect(result.remainingUsd).toBeCloseTo(0);
+    expect(result.capUsd).toBe(0.1);
+  });
+
+  it("rejects when exactly at free tier cap ($0.25)", async () => {
+    const result = await checkSessionBudget(mockRepo(0.25), "sess-1", "free");
+    expect(result.allowed).toBe(false);
+    expect(result.remainingUsd).toBeCloseTo(0);
+    expect(result.capUsd).toBe(0.25);
+  });
+
+  it("rejects when exactly at paid tier cap ($1.00)", async () => {
+    const result = await checkSessionBudget(mockRepo(1.0), "sess-1", "paid");
+    expect(result.allowed).toBe(false);
+    expect(result.remainingUsd).toBeCloseTo(0);
+    expect(result.capUsd).toBe(1.0);
+  });
 });
