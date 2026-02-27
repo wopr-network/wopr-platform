@@ -59,7 +59,7 @@ quotaRoutes.get("/", async (c) => {
   const balance = await getLedger().balance(tenantId);
 
   return c.json({
-    balanceCents: balance,
+    balanceCents: Math.round(balance.toCents()),
     instances: {
       current: activeInstances,
       max: DEFAULT_INSTANCE_LIMITS.maxInstances,
@@ -100,12 +100,12 @@ quotaRoutes.post("/check", async (c) => {
 
   // Check credit balance
   const balance = await getLedger().balance(tenantId);
-  if (balance <= 0) {
+  if (balance.isNegative() || balance.isZero()) {
     return c.json(
       {
         allowed: false,
         reason: "Insufficient credit balance",
-        currentBalanceCents: balance,
+        currentBalanceCents: Math.round(balance.toCents()),
         purchaseUrl: "/settings/billing",
       },
       402,
@@ -129,7 +129,7 @@ quotaRoutes.post("/check", async (c) => {
 quotaRoutes.get("/balance/:tenant", async (c) => {
   const tenantId = c.req.param("tenant");
   const balance = await getLedger().balance(tenantId);
-  return c.json({ tenantId, balanceCents: balance });
+  return c.json({ tenantId, balanceCents: Math.round(balance.toCents()) });
 });
 
 /**

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
+import { Credit } from "../../monetization/credit.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
@@ -243,7 +244,7 @@ const { healthRoutes } = await import("./health.js");
 
 // Default deps for Bot deployment/management describe blocks (billing flow overrides in beforeEach)
 setFleetDeps({
-  creditLedger: { balance: vi.fn().mockReturnValue(10000) } as never,
+  creditLedger: { balance: vi.fn().mockResolvedValue(Credit.fromCents(10000)) } as never,
   botBilling: { registerBot: vi.fn(), getActiveBotCount: vi.fn().mockReturnValue(0) } as never,
   emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
 });
@@ -617,7 +618,7 @@ describe("E2E: Billing flow (credit model)", () => {
 
     // Step 6: Verify credits were granted
     const balance = await creditLedger.balance(tenantId);
-    expect(balance).toBe(2500);
+    expect(balance.toCents()).toBe(2500);
 
     // Step 7: Check balance via quota route
     const balanceRes = await app.request(`/api/quota/balance/${tenantId}`, {
@@ -664,6 +665,6 @@ describe("E2E: Billing flow (credit model)", () => {
 
     // Step 10: Verify accumulated balance
     const finalBalance = await creditLedger.balance(tenantId);
-    expect(finalBalance).toBe(7500); // 2500 + 5000
+    expect(finalBalance.toCents()).toBe(7500); // 2500 + 5000
   });
 });

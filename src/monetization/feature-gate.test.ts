@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "./credit.js";
 import type { CreditLedger } from "./credits/credit-ledger.js";
 import { createCreditGate, createFeatureGate, type GetUserBalance } from "./feature-gate.js";
 
@@ -37,7 +38,7 @@ function createApp(getUserBalance: GetUserBalance, minBalance?: number) {
 
 describe("requireBalance middleware", () => {
   it("allows request when balance is positive", async () => {
-    const app = createApp(() => 1000);
+    const app = createApp(() => Credit.fromCents(1000));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -45,11 +46,11 @@ describe("requireBalance middleware", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.balance).toBe(1000);
+    expect(body.balance).toBe(Credit.fromCents(1000).toJSON());
   });
 
   it("rejects request when balance is zero", async () => {
-    const app = createApp(() => 0);
+    const app = createApp(() => Credit.fromCents(0));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -61,7 +62,7 @@ describe("requireBalance middleware", () => {
   });
 
   it("rejects request when balance is negative", async () => {
-    const app = createApp(() => -100);
+    const app = createApp(() => Credit.fromCents(-100));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -70,7 +71,7 @@ describe("requireBalance middleware", () => {
   });
 
   it("enforces minimum balance when specified", async () => {
-    const app = createApp(() => 50, 100);
+    const app = createApp(() => Credit.fromCents(50), 100);
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -82,7 +83,7 @@ describe("requireBalance middleware", () => {
   });
 
   it("allows request when balance exceeds minimum", async () => {
-    const app = createApp(() => 200, 100);
+    const app = createApp(() => Credit.fromCents(200), 100);
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -91,7 +92,7 @@ describe("requireBalance middleware", () => {
   });
 
   it("returns 401 when no user is set", async () => {
-    const app = createApp(() => 1000);
+    const app = createApp(() => Credit.fromCents(1000));
     const res = await app.request("/protected");
 
     expect(res.status).toBe(401);
@@ -100,7 +101,7 @@ describe("requireBalance middleware", () => {
   });
 
   it("works with async balance resolver", async () => {
-    const app = createApp(async () => 500);
+    const app = createApp(async () => Credit.fromCents(500));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -110,7 +111,7 @@ describe("requireBalance middleware", () => {
 
   it("uses custom userKey and userIdField", async () => {
     const { requireBalance } = createFeatureGate({
-      getUserBalance: () => 1000,
+      getUserBalance: () => Credit.fromCents(1000),
       userKey: "account",
       userIdField: "tenantId",
     });
@@ -127,18 +128,18 @@ describe("requireBalance middleware", () => {
   });
 
   it("sets balance on context for downstream handlers", async () => {
-    const app = createApp(() => 4200);
+    const app = createApp(() => Credit.fromCents(4200));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.balance).toBe(4200);
+    expect(body.balance).toBe(Credit.fromCents(4200).toJSON());
   });
 
   it("default minBalance of 0 allows any positive balance", async () => {
-    const app = createApp(() => 1);
+    const app = createApp(() => Credit.fromCents(1));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -152,7 +153,7 @@ describe("requireBalance middleware", () => {
 // ---------------------------------------------------------------------------
 
 function createCreditApp(balanceCents: number, minCents?: number) {
-  const mockLedger = { balance: vi.fn().mockReturnValue(balanceCents) } as unknown as CreditLedger;
+  const mockLedger = { balance: vi.fn().mockResolvedValue(Credit.fromCents(balanceCents)) } as unknown as CreditLedger;
   const { requireCredits } = createCreditGate({
     ledger: mockLedger,
     resolveTenantId: (c) => c.req.header("x-tenant-id"),
@@ -178,7 +179,7 @@ describe("requireCredits middleware (WOP-380)", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.creditBalance).toBe(17);
+    expect(body.creditBalance).toBe(Credit.fromCents(17).toJSON());
   });
 
   it("rejects when balance is below default minimum (17 cents)", async () => {
@@ -191,7 +192,7 @@ describe("requireCredits middleware (WOP-380)", () => {
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body.error).toBe("insufficient_credits");
-    expect(body.balance).toBe(16);
+    expect(body.balance).toBe(Credit.fromCents(16).toJSON());
     expect(body.required).toBe(17);
     expect(body.buyUrl).toBe("/dashboard/credits");
   });
@@ -206,7 +207,7 @@ describe("requireCredits middleware (WOP-380)", () => {
     expect(res.status).toBe(402);
     const body = await res.json();
     expect(body.error).toBe("insufficient_credits");
-    expect(body.balance).toBe(0);
+    expect(body.balance).toBe(Credit.fromCents(0).toJSON());
   });
 
   it("respects custom minCents parameter", async () => {
@@ -249,6 +250,6 @@ describe("requireCredits middleware (WOP-380)", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.creditBalance).toBe(4200);
+    expect(body.creditBalance).toBe(Credit.fromCents(4200).toJSON());
   });
 });

@@ -3,17 +3,19 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { CreditLedger } from "./credit-ledger.js";
 import { DrizzleCreditTransactionRepository } from "./credit-transaction-repository.js";
 import { type DividendCronConfig, runDividendCron } from "./dividend-cron.js";
 
 async function insertPurchase(db: DrizzleDb, tenantId: string, amountCents: number, createdAt: string): Promise<void> {
   const id = `test-${tenantId}-${Date.now()}-${Math.random()}`;
+  const amount = Credit.fromCents(amountCents);
   await db.insert(creditTransactions).values({
     id,
     tenantId,
-    amountCents,
-    balanceAfterCents: amountCents,
+    amount,
+    balanceAfter: amount,
     type: "purchase",
     createdAt,
   });
@@ -25,10 +27,10 @@ async function insertPurchase(db: DrizzleDb, tenantId: string, amountCents: numb
   if (existing.length > 0) {
     await db
       .update(creditBalances)
-      .set({ balanceCents: existing[0].balanceCents + amountCents })
+      .set({ balance: existing[0].balance.add(amount) })
       .where((await import("drizzle-orm")).eq(creditBalances.tenantId, tenantId));
   } else {
-    await db.insert(creditBalances).values({ tenantId, balanceCents: amountCents });
+    await db.insert(creditBalances).values({ tenantId, balance: amount });
   }
 }
 
@@ -64,8 +66,8 @@ describe("runDividendCron", () => {
     const result = await runDividendCron(makeConfig());
 
     expect(result.distributed).toBe(1);
-    expect(result.poolCents).toBe(1000);
-    expect(result.perUserCents).toBe(1000);
+    expect(result.pool.toCents()).toBe(1000);
+    expect(result.perUser.toCents()).toBe(1000);
     expect(result.activeCount).toBe(1);
   });
 
@@ -82,7 +84,7 @@ describe("runDividendCron", () => {
     expect(result2.skippedAlreadyRun).toBe(true);
     expect(result2.distributed).toBe(0);
 
-    expect(await ledger.balance("t1")).toBe(balanceAfterFirst);
+    expect((await ledger.balance("t1")).equals(balanceAfterFirst)).toBe(true);
   });
 
   it("handles floor rounding — remainder is not distributed", async () => {
@@ -92,9 +94,11 @@ describe("runDividendCron", () => {
 
     const result = await runDividendCron(makeConfig());
 
-    expect(result.poolCents).toBe(100);
+    expect(result.pool.toCents()).toBe(100);
     expect(result.activeCount).toBe(3);
-    expect(result.perUserCents).toBe(33);
+    // Nanodollar precision: floor(1_000_000_000 raw / 3) = 333_333_333 raw each
+    // Remainder = 1 nanodollar (not 1 cent — far less wasted with higher scale)
+    expect(result.perUser.toRaw()).toBe(333_333_333);
     expect(result.distributed).toBe(3);
   });
 
@@ -104,23 +108,25 @@ describe("runDividendCron", () => {
 
     const result = await runDividendCron(makeConfig());
 
-    expect(result.poolCents).toBe(0);
+    expect(result.pool.toCents()).toBe(0);
     expect(result.activeCount).toBe(1);
-    expect(result.perUserCents).toBe(0);
+    expect(result.perUser.toCents()).toBe(0);
     expect(result.distributed).toBe(0);
   });
 
-  it("skips distribution when per-user share rounds to zero", async () => {
+  it("distributes sub-cent amounts at nanodollar precision", async () => {
+    // 1 cent purchase, 3 active users: pool = 10_000_000 raw
+    // floor(10_000_000 / 3) = 3_333_333 raw each — non-zero, gets distributed
     await insertPurchase(db, "t1", 1, "2026-02-20 12:00:00");
     await insertPurchase(db, "t2", 500, "2026-02-18 12:00:00");
     await insertPurchase(db, "t3", 500, "2026-02-17 12:00:00");
 
     const result = await runDividendCron(makeConfig({ matchRate: 1.0 }));
 
-    expect(result.poolCents).toBe(1);
+    expect(result.pool.toCents()).toBe(1);
     expect(result.activeCount).toBe(3);
-    expect(result.perUserCents).toBe(0);
-    expect(result.distributed).toBe(0);
+    expect(result.perUser.toRaw()).toBe(3_333_333);
+    expect(result.distributed).toBe(3);
   });
 
   it("records transactions with correct type and referenceId", async () => {
@@ -132,7 +138,7 @@ describe("runDividendCron", () => {
     expect(history).toHaveLength(1);
     expect(history[0].type).toBe("community_dividend");
     expect(history[0].referenceId).toBe("dividend:2026-02-20:t1");
-    expect(history[0].amountCents).toBe(1000);
+    expect(history[0].amount.toCents()).toBe(1000);
     expect(history[0].description).toContain("Community dividend");
   });
 

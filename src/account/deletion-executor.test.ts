@@ -9,10 +9,10 @@ async function seedTenant(pool: PGlite, tenantId: string): Promise<void> {
   await pool.exec(`
     INSERT INTO bot_instances (id, tenant_id, name, billing_state, resource_tier, storage_tier, created_at, updated_at)
     VALUES ('bot-${tenantId}', '${tenantId}', 'Bot', 'active', 'standard', 'standard', now()::text, now()::text);
-    INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at)
-    VALUES ('tx-${tenantId}', '${tenantId}', 1000, 1000, 'signup_grant', now()::text);
-    INSERT INTO credit_balances (tenant_id, balance_cents, last_updated)
-    VALUES ('${tenantId}', 1000, now()::text);
+    INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at)
+    VALUES ('tx-${tenantId}', '${tenantId}', 10000000000, 10000000000, 'signup_grant', now()::text);
+    INSERT INTO credit_balances (tenant_id, balance_credits, last_updated)
+    VALUES ('${tenantId}', 10000000000, now()::text);
     INSERT INTO meter_events (id, tenant, cost, charge, capability, provider, timestamp)
     VALUES ('me-${tenantId}', '${tenantId}', 100, 200, 'tts', 'openai', 1700000000);
     INSERT INTO usage_summaries (id, tenant, capability, provider, event_count, total_cost, total_charge, window_start, window_end)

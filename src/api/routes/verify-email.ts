@@ -22,6 +22,7 @@ import { getEmailClient } from "../../email/client.js";
 import { welcomeTemplate } from "../../email/templates.js";
 import { verifyToken } from "../../email/verification.js";
 import { getCreditLedger } from "../../fleet/services.js";
+import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 
 const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
@@ -76,7 +77,7 @@ function buildRoutes(authDbFactory: () => DatabaseType.Database, creditLedgerFac
     // Grant $5 signup credit
     try {
       const ledger = creditLedgerFactory();
-      ledger.credit(result.userId, SIGNUP_CREDIT_CENTS, "signup_grant", "Signup verification credit");
+      ledger.credit(result.userId, Credit.fromCents(SIGNUP_CREDIT_CENTS), "signup_grant", "Signup verification credit");
       logger.info("Signup credit granted", { userId: result.userId, amountCents: SIGNUP_CREDIT_CENTS });
     } catch (err) {
       logger.error("Failed to grant signup credit", {

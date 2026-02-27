@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
 import { CreditLedger } from "./credit-ledger.js";
 
@@ -165,7 +166,7 @@ describe("BotBilling", () => {
       await billing.suspendBot("bot-1");
       await billing.suspendBot("bot-2");
 
-      await ledger.credit("tenant-1", 500, "purchase", "test credit", "ref-1", "stripe");
+      await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "test credit", "ref-1", "stripe");
       const reactivated = await billing.checkReactivation("tenant-1", ledger);
 
       expect(reactivated.sort()).toEqual(["bot-1", "bot-2"]);
@@ -185,14 +186,14 @@ describe("BotBilling", () => {
       await billing.registerBot("bot-1", "tenant-1", "bot-a");
       await billing.destroyBot("bot-1");
 
-      await ledger.credit("tenant-1", 500, "purchase", "test credit", "ref-1", "stripe");
+      await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "test credit", "ref-1", "stripe");
       const reactivated = await billing.checkReactivation("tenant-1", ledger);
 
       expect(reactivated).toEqual([]);
     });
 
     it("returns empty array for tenant with no bots", async () => {
-      await ledger.credit("tenant-1", 500, "purchase", "test credit", "ref-1", "stripe");
+      await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "test credit", "ref-1", "stripe");
       const reactivated = await billing.checkReactivation("tenant-1", ledger);
       expect(reactivated).toEqual([]);
     });

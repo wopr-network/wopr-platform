@@ -1,6 +1,7 @@
 import { unlinkSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "../../src/monetization/credit.js";
 import { DrizzleBudgetChecker, type SpendLimits } from "../../src/monetization/budget/budget-checker.js";
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
@@ -222,7 +223,7 @@ describe("Billing pipeline load tests", () => {
     // Pre-fund tenants
     await Promise.all(
       Array.from({ length: TENANT_COUNT }, (_, i) =>
-        ledger.credit(`tenant-${i}`, 1_000_000, "purchase", "load test setup"),
+        ledger.credit(`tenant-${i}`, Credit.fromCents(1_000_000), "purchase", "load test setup"),
       ),
     );
 
@@ -258,7 +259,7 @@ describe("Billing pipeline load tests", () => {
     const debitStart = performance.now();
     await Promise.all(
       Array.from({ length: TENANT_COUNT }, (_, i) =>
-        ledger.debit(`tenant-${i}`, 1, "adapter_usage", "load test"),
+        ledger.debit(`tenant-${i}`, Credit.fromCents(1), "adapter_usage", "load test"),
       ),
     );
     phases.push({ name: `Debit ${TENANT_COUNT} tenants`, durationMs: performance.now() - debitStart });

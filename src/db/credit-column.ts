@@ -3,15 +3,15 @@ import { Credit } from "../monetization/credit.js";
 
 export const creditColumn = customType<{
   data: Credit;
-  driverData: number;
+  driverData: string;
 }>({
   dataType() {
-    return "integer";
+    return "bigint"; // nanodollar values exceed int4 range
   },
-  toDriver(value: Credit): number {
-    return value.toRaw();
+  toDriver(value: Credit): string {
+    return String(value.toRaw());
   },
-  fromDriver(value: number): Credit {
-    return Credit.fromRaw(value);
+  fromDriver(value: number | string): Credit {
+    return Credit.fromRaw(Number(value));
   },
 });

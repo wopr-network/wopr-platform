@@ -92,13 +92,13 @@ export {
   BotBilling,
   buildResourceTierCosts,
   CreditLedger,
-  DAILY_BOT_COST_CENTS,
+  DAILY_BOT_COST,
   DrizzleBotBilling,
   DrizzleCreditLedger,
   grantSignupCredits,
   InsufficientBalanceError,
   runRuntimeDeductions,
-  SIGNUP_GRANT_CENTS,
+  SIGNUP_GRANT,
   SUSPENSION_GRACE_DAYS,
 } from "./credits/index.js";
 // Feature gating middleware (WOP-384 — replaced tier gates with balance gates)

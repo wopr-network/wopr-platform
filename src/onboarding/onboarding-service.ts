@@ -3,6 +3,7 @@ import type { BudgetTier } from "../inference/budget-guard.js";
 import { checkSessionBudget } from "../inference/budget-guard.js";
 import { computeInferenceCost } from "../inference/inference-cost.js";
 import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
+import { Credit } from "../monetization/credit.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { OnboardingConfig } from "./config.js";
 import type { IDaemonManager } from "./daemon-manager.js";
@@ -138,7 +139,7 @@ export class OnboardingService {
           if (tenantId) {
             await this.creditLedger.debit(
               tenantId,
-              costCents,
+              Credit.fromCents(costCents),
               "onboarding_llm",
               `Onboarding session ${sessionId}`,
               `onboarding-${sessionId}-${Date.now()}`,

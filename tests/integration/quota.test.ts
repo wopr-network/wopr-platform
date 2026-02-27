@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
+import { Credit } from "../../src/monetization/credit.js";
 
 const { app } = await import("../../src/api/app.js");
 const { setLedger } = await import("../../src/api/routes/quota.js");
@@ -60,7 +61,7 @@ describe("integration: quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      await ledger.credit("t-1", 5000, "purchase", "test");
+      await ledger.credit("t-1", Credit.fromCents(5000), "purchase", "test");
       const res = await app.request("/api/quota?tenant=t-1&activeInstances=2", {
         headers: AUTH_HEADER,
       });
@@ -98,7 +99,7 @@ describe("integration: quota routes", () => {
     });
 
     it("allows when tenant has positive balance (200)", async () => {
-      await ledger.credit("t-1", 1000, "purchase", "test");
+      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", "test");
       const res = await app.request("/api/quota/check", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -133,7 +134,7 @@ describe("integration: quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      await ledger.credit("t-1", 2500, "purchase", "test purchase");
+      await ledger.credit("t-1", Credit.fromCents(2500), "purchase", "test purchase");
       const res = await app.request("/api/quota/balance/t-1", {
         headers: AUTH_HEADER,
       });
@@ -156,8 +157,8 @@ describe("integration: quota routes", () => {
     });
 
     it("returns transaction history", async () => {
-      await ledger.credit("t-1", 1000, "purchase", "first");
-      await ledger.credit("t-1", 500, "signup_grant", "welcome");
+      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", "first");
+      await ledger.credit("t-1", Credit.fromCents(500), "signup_grant", "welcome");
 
       const res = await app.request("/api/quota/history/t-1", {
         headers: AUTH_HEADER,

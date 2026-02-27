@@ -6,6 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
+import { Credit } from "../monetization/credit.js";
 import { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import { createTestDb } from "../test/db.js";
 import { type CreditGateDeps, creditBalanceCheck, debitCredits } from "./credit-gate.js";
@@ -50,7 +51,7 @@ describe("creditBalanceCheck grace buffer", () => {
 
   it("returns null when balance is above estimated cost (passes)", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 500, "purchase", "setup");
+    await ledger.credit("t1", Credit.fromCents(500), "purchase", "setup");
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
     expect(await creditBalanceCheck(c, deps, 1)).toBeNull();
@@ -59,8 +60,8 @@ describe("creditBalanceCheck grace buffer", () => {
   it("returns null when balance is zero but within default grace buffer (passes)", async () => {
     // Balance at exactly 0 — within the -50 grace buffer
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 10, "purchase", "setup");
-    await ledger.debit("t1", 10, "adapter_usage", "drain");
+    await ledger.credit("t1", Credit.fromCents(10), "purchase", "setup");
+    await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "drain");
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
     expect(await creditBalanceCheck(c, deps, 0)).toBeNull();
@@ -68,8 +69,8 @@ describe("creditBalanceCheck grace buffer", () => {
 
   it("returns null when balance is -49 (within 50-cent grace buffer)", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 1, "purchase", "setup");
-    await ledger.debit("t1", 50, "adapter_usage", "drain", undefined, true); // balance = -49
+    await ledger.credit("t1", Credit.fromCents(1), "purchase", "setup");
+    await ledger.debit("t1", Credit.fromCents(50), "adapter_usage", "drain", undefined, true); // balance = -49
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
     expect(await creditBalanceCheck(c, deps, 0)).toBeNull();
@@ -77,8 +78,8 @@ describe("creditBalanceCheck grace buffer", () => {
 
   it("returns credits_exhausted when balance is at -50 (at grace buffer limit)", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 1, "purchase", "setup");
-    await ledger.debit("t1", 51, "adapter_usage", "drain", undefined, true); // balance = -50
+    await ledger.credit("t1", Credit.fromCents(1), "purchase", "setup");
+    await ledger.debit("t1", Credit.fromCents(51), "adapter_usage", "drain", undefined, true); // balance = -50
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
     const result = await creditBalanceCheck(c, deps, 0);
@@ -88,8 +89,8 @@ describe("creditBalanceCheck grace buffer", () => {
 
   it("returns credits_exhausted when balance is at -51 (beyond grace buffer)", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 1, "purchase", "setup");
-    await ledger.debit("t1", 52, "adapter_usage", "drain", undefined, true); // balance = -51
+    await ledger.credit("t1", Credit.fromCents(1), "purchase", "setup");
+    await ledger.debit("t1", Credit.fromCents(52), "adapter_usage", "drain", undefined, true); // balance = -51
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
     const result = await creditBalanceCheck(c, deps, 0);
@@ -99,8 +100,8 @@ describe("creditBalanceCheck grace buffer", () => {
 
   it("returns credits_exhausted when custom graceBufferCents=0 and balance is 0", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 10, "purchase", "setup");
-    await ledger.debit("t1", 10, "adapter_usage", "drain"); // balance = 0
+    await ledger.credit("t1", Credit.fromCents(10), "purchase", "setup");
+    await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "drain"); // balance = 0
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing", graceBufferCents: 0 };
     const result = await creditBalanceCheck(c, deps, 0);
@@ -110,7 +111,7 @@ describe("creditBalanceCheck grace buffer", () => {
 
   it("returns insufficient_credits when balance positive but below estimated cost", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 5, "purchase", "setup");
+    await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup");
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
     const result = await creditBalanceCheck(c, deps, 10);
@@ -137,7 +138,7 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
 
   it("debit with cost that would exceed balance succeeds (allowNegative=true)", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 5, "purchase", "setup"); // balance = 5 cents
+    await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup"); // balance = 5 cents
 
     // costUsd = $0.10 = 10 cents, margin = 1.0
     // This should push balance negative without throwing
@@ -145,12 +146,12 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
       debitCredits({ creditLedger: ledger, topUpUrl: "/billing" }, "t1", 0.1, 1.0, "chat-completions", "openrouter"),
     ).resolves.not.toThrow();
 
-    expect(await ledger.balance("t1")).toBeLessThan(0);
+    expect((await ledger.balance("t1")).isNegative()).toBe(true);
   });
 
   it("fires onBalanceExhausted when debit causes balance to cross zero", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 5, "purchase", "setup"); // balance = 5 cents
+    await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup"); // balance = 5 cents
 
     const onBalanceExhausted = vi.fn();
     // costUsd = $0.10 = 10 cents with margin 1.0 → chargeCents = 10, pushes balance to -5
@@ -168,7 +169,7 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
 
   it("does NOT fire onBalanceExhausted when balance stays positive after debit", async () => {
     const ledger = new CreditLedger(db);
-    await ledger.credit("t1", 500, "purchase", "setup"); // balance = 500 cents
+    await ledger.credit("t1", Credit.fromCents(500), "purchase", "setup"); // balance = 500 cents
 
     const onBalanceExhausted = vi.fn();
     // costUsd = $0.01 = 1 cent → balance stays at 499
@@ -182,6 +183,6 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
     );
 
     expect(onBalanceExhausted).not.toHaveBeenCalled();
-    expect(await ledger.balance("t1")).toBeGreaterThan(0);
+    expect((await ledger.balance("t1")).greaterThan(Credit.ZERO)).toBe(true);
   });
 });

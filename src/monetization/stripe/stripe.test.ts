@@ -359,7 +359,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
     // Verify credit was granted
     const balance = await creditLedger.balance("t-1");
-    expect(balance).toBe(1000);
+    expect(balance.toCents()).toBe(1000);
 
     // Verify tenant mapping was created
     const mapping = await tenantStore.getByTenant("t-1");

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { Credit } from "../../src/monetization/credit.js";
 import { DrizzleSigPenaltyRepository } from "../../src/api/drizzle-sig-penalty-repository.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 import { createGatewayRoutes } from "../../src/gateway/routes.js";
@@ -130,24 +131,24 @@ function createStubFetch(
 }
 
 class StubCreditLedger {
-  private balances = new Map<string, number>();
+  private balances = new Map<string, Credit>();
 
-  constructor(initialBalance: number) {
-    this.balances.set(TENANT.id, initialBalance);
+  constructor(initialBalanceCents: number) {
+    this.balances.set(TENANT.id, Credit.fromCents(initialBalanceCents));
   }
 
-  balance(tenantId: string): number {
-    return this.balances.get(tenantId) ?? 0;
+  async balance(tenantId: string): Promise<Credit> {
+    return this.balances.get(tenantId) ?? Credit.ZERO;
   }
 
-  credit(tenantId: string, cents: number): void {
-    const current = this.balances.get(tenantId) ?? 0;
-    this.balances.set(tenantId, current + cents);
+  async credit(tenantId: string, amount: Credit): Promise<void> {
+    const current = this.balances.get(tenantId) ?? Credit.ZERO;
+    this.balances.set(tenantId, current.add(amount));
   }
 
-  debit(tenantId: string, cents: number): void {
-    const current = this.balances.get(tenantId) ?? 0;
-    this.balances.set(tenantId, current - cents);
+  async debit(tenantId: string, amount: Credit): Promise<void> {
+    const current = this.balances.get(tenantId) ?? Credit.ZERO;
+    this.balances.set(tenantId, current.subtract(amount));
   }
 
   transactions(): Array<{

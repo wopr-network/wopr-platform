@@ -39,7 +39,7 @@ describe("grantNewUserBonus", () => {
     });
 
     expect(result).toEqual({ granted: true, bonusCents: 1000 });
-    expect(await ledger.balance("referred-1")).toBe(1000);
+    expect((await ledger.balance("referred-1")).toCents()).toBe(1000);
 
     const txns = await ledger.history("referred-1");
     expect(txns).toHaveLength(1);
@@ -57,7 +57,7 @@ describe("grantNewUserBonus", () => {
     });
 
     expect(result).toEqual({ granted: false, bonusCents: 0 });
-    expect(await ledger.balance("organic-user")).toBe(0);
+    expect((await ledger.balance("organic-user")).toCents()).toBe(0);
   });
 
   it("skips bonus if already granted (idempotency)", async () => {
@@ -74,7 +74,7 @@ describe("grantNewUserBonus", () => {
     });
 
     expect(result).toEqual({ granted: false, bonusCents: 0 });
-    expect(await ledger.balance("referred-1")).toBe(1000);
+    expect((await ledger.balance("referred-1")).toCents()).toBe(1000);
   });
 
   it("skips bonus if firstPurchaseAt is already set", async () => {

@@ -1,4 +1,5 @@
 import { logger } from "../../config/logger.js";
+import { Credit } from "../credit.js";
 import type { AutoTopupChargeResult } from "./auto-topup-charge.js";
 import { MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import type { IAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
@@ -27,7 +28,7 @@ export async function maybeTriggerUsageTopup(deps: UsageTopupDeps, tenantId: str
 
   // 3. Check balance vs threshold
   const balance = await deps.creditLedger.balance(tenantId);
-  if (balance >= settings.usageThresholdCents) return;
+  if (!balance.lessThan(Credit.fromCents(settings.usageThresholdCents))) return;
 
   // 4. Set in-flight flag
   await deps.settingsRepo.setUsageChargeInFlight(tenantId, true);

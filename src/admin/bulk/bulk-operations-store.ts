@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { AdminAuditLog } from "../audit-log.js";
 import type { ITenantStatusRepository } from "../tenant-status/tenant-status-repository.js";
@@ -109,7 +110,7 @@ export class BulkOperationsStore {
 
     for (const tenantId of input.tenantIds) {
       try {
-        await this.creditStore.credit(tenantId, input.amountCents, "signup_grant", input.reason);
+        await this.creditStore.credit(tenantId, Credit.fromCents(input.amountCents), "signup_grant", input.reason);
         succeeded++;
         succeededIds.push(tenantId);
       } catch (err) {
@@ -173,7 +174,12 @@ export class BulkOperationsStore {
 
     for (const tenantId of tenantIds) {
       try {
-        await this.creditStore.debit(tenantId, grant.amountCents, "correction", `Undo bulk grant ${operationId}`);
+        await this.creditStore.debit(
+          tenantId,
+          Credit.fromCents(grant.amountCents),
+          "correction",
+          `Undo bulk grant ${operationId}`,
+        );
         succeeded++;
       } catch (err) {
         errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });

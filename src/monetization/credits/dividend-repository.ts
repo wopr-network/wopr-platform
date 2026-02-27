@@ -33,7 +33,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
     const poolRow = (
       await this.db
         // raw SQL: Drizzle cannot express COALESCE(SUM(...), 0) aggregate
-        .select({ total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)` })
+        .select({ total: sql<number>`COALESCE(SUM(${creditTransactions.amount}), 0)` })
         .from(creditTransactions)
         .where(
           and(

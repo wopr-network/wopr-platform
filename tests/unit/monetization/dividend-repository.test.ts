@@ -21,9 +21,9 @@ describe("DrizzleDividendRepository", () => {
   describe("getStats", () => {
     it("returns zeros when no purchases exist", async () => {
       const stats = await repo.getStats("t-1");
-      expect(stats.poolCents).toBe(0);
-      expect(stats.activeUsers).toBe(0);
-      expect(stats.perUserCents).toBe(0);
+      expect(Number(stats.poolCents)).toBe(0);
+      expect(Number(stats.activeUsers)).toBe(0);
+      expect(Number(stats.perUserCents)).toBe(0);
       expect(stats.userEligible).toBe(false);
       expect(stats.userLastPurchaseAt).toBeNull();
       expect(stats.userWindowExpiresAt).toBeNull();
@@ -38,13 +38,13 @@ describe("DrizzleDividendRepository", () => {
       const yesterdayStr = yesterday.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
         ["tx-1", "t-other", 1000, 1000, "purchase", yesterdayStr],
       );
 
       const stats = await repo.getStats("t-1");
-      expect(stats.poolCents).toBe(1000);
-      expect(stats.activeUsers).toBe(1); // t-other purchased within 7 days
+      expect(Number(stats.poolCents)).toBe(1000);
+      expect(Number(stats.activeUsers)).toBe(1); // t-other purchased within 7 days
     });
 
     it("marks user eligible when they purchased within 7 days", async () => {
@@ -53,7 +53,7 @@ describe("DrizzleDividendRepository", () => {
       const twoDaysAgoStr = twoDaysAgo.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
         ["tx-1", "t-1", 500, 500, "purchase", twoDaysAgoStr],
       );
 
@@ -69,7 +69,7 @@ describe("DrizzleDividendRepository", () => {
       const tenDaysAgoStr = tenDaysAgo.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
         ["tx-1", "t-1", 500, 500, "purchase", tenDaysAgoStr],
       );
 
@@ -80,7 +80,7 @@ describe("DrizzleDividendRepository", () => {
     it("handles division by zero when no active users", async () => {
       // No purchases at all — both pool and active users are 0
       const stats = await repo.getStats("t-1");
-      expect(stats.perUserCents).toBe(0);
+      expect(Number(stats.perUserCents)).toBe(0);
     });
   });
 

@@ -14,6 +14,7 @@ import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repo
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { Credit } from "../../monetization/credit.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type {
   CreditTransaction,
@@ -55,18 +56,19 @@ function makeMockLedger(): ICreditLedger {
   return {
     async credit(
       tenantId: string,
-      amountCents: number,
+      amount: Credit,
       _type: CreditType,
       _description?: string,
       _referenceId?: string,
       _fundingSource?: string,
     ): Promise<CreditTransaction> {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+      const cents = amount.toCents();
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + cents);
       return {
         id: "tx-1",
         tenantId,
-        amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amount,
+        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
         type: "signup_grant",
         description: null,
         referenceId: null,
@@ -77,18 +79,19 @@ function makeMockLedger(): ICreditLedger {
     },
     async debit(
       tenantId: string,
-      amountCents: number,
+      amount: Credit,
       _type: DebitType,
       _description?: string,
       _referenceId?: string,
       _allowNegative?: boolean,
     ): Promise<CreditTransaction> {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+      const cents = amount.toCents();
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
       return {
         id: "tx-2",
         tenantId,
-        amountCents: -amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amount: amount.multiply(-1),
+        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
         type: "correction",
         description: null,
         referenceId: null,
@@ -97,8 +100,8 @@ function makeMockLedger(): ICreditLedger {
         createdAt: new Date().toISOString(),
       };
     },
-    async balance(tenantId: string): Promise<number> {
-      return balances.get(tenantId) ?? 0;
+    async balance(tenantId: string): Promise<Credit> {
+      return Credit.fromCents(balances.get(tenantId) ?? 0);
     },
     async hasReferenceId(_referenceId: string): Promise<boolean> {
       return false;
@@ -106,7 +109,7 @@ function makeMockLedger(): ICreditLedger {
     async history(_tenantId: string, _opts?: HistoryOptions): Promise<CreditTransaction[]> {
       return [];
     },
-    async tenantsWithBalance(): Promise<Array<{ tenantId: string; balanceCents: number }>> {
+    async tenantsWithBalance(): Promise<Array<{ tenantId: string; balance: Credit }>> {
       return [];
     },
     async memberUsage(_tenantId: string) {
@@ -379,7 +382,7 @@ describe("admin tenant status tRPC routes", () => {
 
     it("auto-refunds remaining credits", async () => {
       await statusStore.ensureExists("tenant-1");
-      await creditLedger.credit("tenant-1", 5000, "signup_grant", "initial credit");
+      await creditLedger.credit("tenant-1", Credit.fromCents(5000), "signup_grant", "initial credit");
 
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
@@ -390,7 +393,7 @@ describe("admin tenant status tRPC routes", () => {
       });
 
       expect(result.refundedCents).toBe(5000);
-      expect(await creditLedger.balance("tenant-1")).toBe(0);
+      expect((await creditLedger.balance("tenant-1")).isZero()).toBe(true);
     });
 
     it("does not refund when balance is zero", async () => {
@@ -423,7 +426,7 @@ describe("admin tenant status tRPC routes", () => {
 
     it("logs to audit log with details", async () => {
       await statusStore.ensureExists("tenant-1");
-      await creditLedger.credit("tenant-1", 3000, "signup_grant", "initial");
+      await creditLedger.credit("tenant-1", Credit.fromCents(3000), "signup_grant", "initial");
 
       const caller = createCaller(adminContext());
       await caller.admin.banTenant({

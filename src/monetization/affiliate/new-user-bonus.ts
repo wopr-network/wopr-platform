@@ -1,3 +1,4 @@
+import { Credit } from "../credit.js";
 import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IAffiliateRepository } from "./drizzle-affiliate-repository.js";
 
@@ -57,7 +58,7 @@ export async function grantNewUserBonus(params: NewUserBonusParams): Promise<New
   // 6. Credit the bonus
   await ledger.credit(
     referredTenantId,
-    bonusCents,
+    Credit.fromCents(bonusCents),
     "affiliate_bonus",
     `New user first-purchase bonus (${Math.round(rate * 100)}%)`,
     refId,

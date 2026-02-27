@@ -1,20 +1,20 @@
 /**
  * Credit value object with sub-cent precision.
  *
- * SCALE = 1,000,000 raw units per dollar (micro-dollars).
+ * SCALE = 1,000,000,000 raw units per dollar (nano-dollars).
  * All arithmetic operates on integer raw units -- no floating point
  * in arithmetic paths. Math.round() is used only at input boundaries
  * (fromDollars, fromCents, multiply).
  *
  * @example
  * ```ts
- * const charge = Credit.fromDollars(0.001); // 1000 raw units
- * const balance = Credit.fromCents(500);     // 5,000,000 raw units
+ * const charge = Credit.fromDollars(0.001); // 1,000,000 raw units
+ * const balance = Credit.fromCents(500);     // 5,000,000,000 raw units
  * const remaining = balance.subtract(charge);
  * ```
  */
 export class Credit {
-  static readonly SCALE = 1_000_000;
+  static readonly SCALE = 1_000_000_000;
 
   private constructor(private readonly raw: number) {}
 
@@ -106,5 +106,10 @@ export class Credit {
 
   toString(): string {
     return `Credit(raw=${this.raw})`;
+  }
+
+  /** Serialize to raw integer for JSON (API responses, database). */
+  toJSON(): number {
+    return this.raw;
   }
 }

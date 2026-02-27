@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
+import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { AdminAuditLog } from "../audit-log.js";
@@ -33,13 +34,14 @@ describe("BulkOperationsStore", () => {
 
     const balances = new Map<string, number>();
     creditStore = {
-      async credit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+      async credit(tenantId, amount) {
+        const cents = amount.toCents();
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) + cents);
         return {
           id: "tx-1",
           tenantId,
-          amountCents,
-          balanceAfterCents: balances.get(tenantId) ?? 0,
+          amount,
+          balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
           type: "signup_grant" as const,
           description: null,
           referenceId: null,
@@ -48,13 +50,14 @@ describe("BulkOperationsStore", () => {
           createdAt: new Date().toISOString(),
         };
       },
-      async debit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+      async debit(tenantId, amount) {
+        const cents = amount.toCents();
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
         return {
           id: "tx-2",
           tenantId,
-          amountCents: -amountCents,
-          balanceAfterCents: balances.get(tenantId) ?? 0,
+          amount: amount.multiply(-1),
+          balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
           type: "correction" as const,
           description: null,
           referenceId: null,
@@ -64,7 +67,7 @@ describe("BulkOperationsStore", () => {
         };
       },
       async balance(tenantId) {
-        return balances.get(tenantId) ?? 0;
+        return Credit.fromCents(balances.get(tenantId) ?? 0);
       },
       async hasReferenceId() {
         return false;
@@ -186,8 +189,8 @@ describe("BulkOperationsStore", () => {
       expect(result.totalAmountCents).toBe(1000);
       expect(result.undoDeadline).toBeGreaterThan(Date.now());
 
-      expect(await creditStore.balance("tenant-1")).toBe(500);
-      expect(await creditStore.balance("tenant-2")).toBe(500);
+      expect((await creditStore.balance("tenant-1")).toCents()).toBe(500);
+      expect((await creditStore.balance("tenant-2")).toCents()).toBe(500);
     });
 
     it("creates an audit log entry with category bulk", async () => {
@@ -214,13 +217,13 @@ describe("BulkOperationsStore", () => {
         { tenantIds: ["tenant-1", "tenant-2"], amountCents: 300, reason: "test", notifyByEmail: false },
         "admin-1",
       );
-      expect(await creditStore.balance("tenant-1")).toBe(300);
+      expect((await creditStore.balance("tenant-1")).toCents()).toBe(300);
 
       const undo = await store.undoGrant(grant.operationId, "admin-1");
       expect(undo.succeeded).toBe(2);
       expect(undo.failed).toBe(0);
-      expect(await creditStore.balance("tenant-1")).toBe(0);
-      expect(await creditStore.balance("tenant-2")).toBe(0);
+      expect((await creditStore.balance("tenant-1")).isZero()).toBe(true);
+      expect((await creditStore.balance("tenant-2")).isZero()).toBe(true);
     });
 
     it("fails after 5-minute window expires", async () => {

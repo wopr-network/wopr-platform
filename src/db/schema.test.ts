@@ -212,13 +212,13 @@ describe("credit_transactions schema (via Drizzle migration)", () => {
 
   it("enforces UNIQUE on reference_id", async () => {
     await pool.query(
-      "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, reference_id) VALUES ($1, $2, $3, $4, $5, $6)",
-      ["tx1", "t1", 100, 100, "purchase", "ref-unique"],
+      "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, reference_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      ["tx1", "t1", 1000000000, 1000000000, "purchase", "ref-unique"],
     );
     await expect(
       pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, reference_id) VALUES ($1, $2, $3, $4, $5, $6)",
-        ["tx2", "t2", 200, 200, "purchase", "ref-unique"],
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, reference_id) VALUES ($1, $2, $3, $4, $5, $6)",
+        ["tx2", "t2", 2000000000, 2000000000, "purchase", "ref-unique"],
       ),
     ).rejects.toThrow();
   });

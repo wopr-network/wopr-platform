@@ -124,15 +124,15 @@ export class AnalyticsStore {
 
     const creditsSoldResult = await exec(
       this.db,
-      sql`SELECT COALESCE(SUM(amount_cents), 0)::bigint as total
+      sql`SELECT COALESCE(SUM(amount_credits), 0)::bigint as total
           FROM credit_transactions
-          WHERE type = 'purchase' AND amount_cents > 0
+          WHERE type = 'purchase' AND amount_credits > 0
             AND created_at >= ${iso.from} AND created_at <= ${iso.to}`,
     );
 
     const revenueConsumedResult = await exec(
       this.db,
-      sql`SELECT COALESCE(SUM(ABS(amount_cents)), 0)::bigint as total
+      sql`SELECT COALESCE(SUM(ABS(amount_credits)), 0)::bigint as total
           FROM credit_transactions
           WHERE type IN ('bot_runtime', 'adapter_usage', 'addon')
             AND created_at >= ${iso.from} AND created_at <= ${iso.to}`,
@@ -145,8 +145,12 @@ export class AnalyticsStore {
           WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}`,
     );
 
-    const creditsSoldCents = Number((creditsSoldResult.rows[0] as { total: string | number })?.total ?? 0);
-    const revenueConsumedCents = Number((revenueConsumedResult.rows[0] as { total: string | number })?.total ?? 0);
+    const creditsSoldCents = Math.round(
+      Number((creditsSoldResult.rows[0] as { total: string | number })?.total ?? 0) / 10_000_000,
+    );
+    const revenueConsumedCents = Math.round(
+      Number((revenueConsumedResult.rows[0] as { total: string | number })?.total ?? 0) / 10_000_000,
+    );
     const providerCostCents = Number(
       (providerCostResult.rows[0] as { total_cents: string | number })?.total_cents ?? 0,
     );
@@ -170,23 +174,23 @@ export class AnalyticsStore {
   async getFloat(): Promise<FloatMetrics> {
     const floatResult = await exec(
       this.db,
-      sql`SELECT COUNT(*)::bigint as tenant_count, COALESCE(SUM(balance_cents), 0)::bigint as total_float
+      sql`SELECT COUNT(*)::bigint as tenant_count, COALESCE(SUM(balance_credits), 0)::bigint as total_float
           FROM credit_balances
-          WHERE balance_cents > 0`,
+          WHERE balance_credits > 0`,
     );
 
     const soldResult = await exec(
       this.db,
-      sql`SELECT COALESCE(SUM(amount_cents), 0)::bigint as total_sold
+      sql`SELECT COALESCE(SUM(amount_credits), 0)::bigint as total_sold
           FROM credit_transactions
-          WHERE type = 'purchase' AND amount_cents > 0`,
+          WHERE type = 'purchase' AND amount_credits > 0`,
     );
 
     const floatRow = floatResult.rows[0] as { tenant_count: string | number; total_float: string | number };
     const soldRow = soldResult.rows[0] as { total_sold: string | number };
 
-    const totalFloatCents = Number(floatRow?.total_float ?? 0);
-    const totalCreditsSoldCents = Number(soldRow?.total_sold ?? 0);
+    const totalFloatCents = Math.round(Number(floatRow?.total_float ?? 0) / 10_000_000);
+    const totalCreditsSoldCents = Math.round(Number(soldRow?.total_sold ?? 0) / 10_000_000);
     const tenantCount = Number(floatRow?.tenant_count ?? 0);
 
     const floatPct = totalCreditsSoldCents > 0 ? (totalFloatCents / totalCreditsSoldCents) * 100 : 0;
@@ -225,7 +229,7 @@ export class AnalyticsStore {
               WHEN type = 'addon' THEN 'addon'
               ELSE type
             END as capability,
-            COALESCE(SUM(ABS(amount_cents)), 0)::bigint as revenue_cents
+            COALESCE(SUM(ABS(amount_credits)), 0)::bigint as revenue_cents
           FROM credit_transactions
           WHERE type IN ('bot_runtime', 'addon')
             AND created_at >= ${iso.from} AND created_at <= ${iso.to}
@@ -255,7 +259,7 @@ export class AnalyticsStore {
       result.push({
         category: "monthly",
         capability: row.capability,
-        revenueCents: Number(row.revenue_cents),
+        revenueCents: Math.round(Number(row.revenue_cents) / 10_000_000),
       });
     }
 
@@ -335,7 +339,7 @@ export class AnalyticsStore {
       this.db,
       sql`SELECT COUNT(DISTINCT tenant_id)::bigint as active
           FROM credit_transactions
-          WHERE amount_cents < 0
+          WHERE amount_credits < 0
             AND created_at >= ${thirtyDaysAgoIso}`,
     );
 
@@ -343,14 +347,14 @@ export class AnalyticsStore {
       this.db,
       sql`SELECT COUNT(*)::bigint as with_balance
           FROM credit_balances
-          WHERE balance_cents > 0`,
+          WHERE balance_credits > 0`,
     );
 
     const atRiskResult = await exec(
       this.db,
       sql`SELECT COUNT(*)::bigint as at_risk
           FROM credit_balances
-          WHERE balance_cents > 0 AND balance_cents < 500
+          WHERE balance_credits > 0 AND balance_credits < 5000000000
             AND tenant_id NOT IN (
               SELECT DISTINCT tenant_id FROM credit_auto_topup WHERE status = 'success'
             )`,
@@ -428,8 +432,8 @@ export class AnalyticsStore {
       this.db,
       sql`SELECT
             (FLOOR(EXTRACT(EPOCH FROM created_at::timestamptz) * 1000 / ${effectiveBucketMs})::bigint * ${effectiveBucketMs}) as period_start,
-            COALESCE(SUM(CASE WHEN type = 'purchase' AND amount_cents > 0 THEN amount_cents ELSE 0 END), 0)::bigint as credits_sold_cents,
-            COALESCE(SUM(CASE WHEN type IN ('bot_runtime', 'addon') THEN ABS(amount_cents) ELSE 0 END), 0)::bigint as monthly_revenue_cents
+            COALESCE(SUM(CASE WHEN type = 'purchase' AND amount_credits > 0 THEN amount_credits ELSE 0 END), 0)::bigint as credits_sold_cents,
+            COALESCE(SUM(CASE WHEN type IN ('bot_runtime', 'addon') THEN ABS(amount_credits) ELSE 0 END), 0)::bigint as monthly_revenue_cents
           FROM credit_transactions
           WHERE created_at >= ${iso.from} AND created_at <= ${iso.to}
           GROUP BY period_start
@@ -462,18 +466,20 @@ export class AnalyticsStore {
     }>) {
       const ps = Number(row.period_start);
       const existing = pointMap.get(ps);
+      const creditsSold = Math.round(Number(row.credits_sold_cents) / 10_000_000);
+      const monthlyRevenue = Math.round(Number(row.monthly_revenue_cents) / 10_000_000);
       if (existing) {
-        existing.creditsSoldCents = Number(row.credits_sold_cents);
-        existing.revenueConsumedCents += Number(row.monthly_revenue_cents);
+        existing.creditsSoldCents = creditsSold;
+        existing.revenueConsumedCents += monthlyRevenue;
         existing.marginCents = existing.revenueConsumedCents - existing.providerCostCents;
       } else {
         pointMap.set(ps, {
           periodStart: ps,
           periodEnd: ps + effectiveBucketMs,
-          creditsSoldCents: Number(row.credits_sold_cents),
-          revenueConsumedCents: Number(row.monthly_revenue_cents),
+          creditsSoldCents: creditsSold,
+          revenueConsumedCents: monthlyRevenue,
           providerCostCents: 0,
-          marginCents: Number(row.monthly_revenue_cents),
+          marginCents: monthlyRevenue,
         });
       }
     }

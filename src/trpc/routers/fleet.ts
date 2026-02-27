@@ -20,6 +20,7 @@ import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../.
 import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import { createBotSchema } from "../../fleet/types.js";
+import { Credit } from "../../monetization/credit.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
 import type { ICreditLedger as CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
@@ -102,7 +103,7 @@ export const fleetRouter = router({
       const ledger = getCreditLedger();
       if (ledger) {
         const balance = await ledger.balance(ctx.tenantId);
-        if (balance < 17) {
+        if (balance.lessThan(Credit.fromCents(17))) {
           throw new TRPCError({
             code: "PAYMENT_REQUIRED",
             message: "Insufficient credits",
@@ -171,7 +172,7 @@ export const fleetRouter = router({
           const ledger = getCreditLedger();
           if (ledger) {
             const balance = await ledger.balance(ctx.tenantId);
-            if (balance < 17) {
+            if (balance.lessThan(Credit.fromCents(17))) {
               throw new TRPCError({
                 code: "PAYMENT_REQUIRED",
                 message: "Insufficient credits",
@@ -491,7 +492,7 @@ export const fleetRouter = router({
           const ledger = getCreditLedger();
           if (ledger) {
             const balance = await ledger.balance(ctx.tenantId);
-            if (balance < tierConfig.dailyCostCents) {
+            if (balance.lessThan(Credit.fromCents(tierConfig.dailyCostCents))) {
               throw new TRPCError({
                 code: "PAYMENT_REQUIRED",
                 message: "Insufficient credits for this resource tier",
@@ -622,7 +623,7 @@ export const fleetRouter = router({
         const ledger = getCreditLedger();
         if (ledger) {
           const balance = await ledger.balance(ctx.tenantId);
-          if (balance < newTierConfig.dailyCostCents) {
+          if (balance.lessThan(Credit.fromCents(newTierConfig.dailyCostCents))) {
             throw new TRPCError({
               code: "PAYMENT_REQUIRED",
               message: "Insufficient credits for this storage tier",

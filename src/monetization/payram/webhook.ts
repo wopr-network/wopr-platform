@@ -1,3 +1,4 @@
+import { Credit } from "../credit.js";
 import type { BotBilling } from "../credits/bot-billing.js";
 import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
@@ -58,7 +59,7 @@ export async function handlePayRamWebhook(
 
       await creditLedger.credit(
         charge.tenantId,
-        creditCents,
+        Credit.fromCents(creditCents),
         "purchase",
         `Crypto credit purchase via PayRam (ref: ${payload.reference_id}, ${payload.currency ?? "crypto"})`,
         `payram:${payload.reference_id}`,

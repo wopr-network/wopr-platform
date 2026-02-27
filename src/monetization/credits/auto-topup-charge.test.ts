@@ -59,7 +59,7 @@ describe("chargeAutoTopup", () => {
 
     expect(result.success).toBe(true);
     expect(result.paymentReference).toBeDefined();
-    expect(await ledger.balance("t1")).toBe(500);
+    expect((await ledger.balance("t1")).toCents()).toBe(500);
     const history = await ledger.history("t1");
     expect(history[0].type).toBe("purchase");
     expect(history[0].fundingSource).toBe("stripe");
@@ -100,7 +100,7 @@ describe("chargeAutoTopup", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("card_declined");
-    expect(await ledger.balance("t1")).toBe(0);
+    expect((await ledger.balance("t1")).toCents()).toBe(0);
     const events = await db
       .select()
       .from(creditAutoTopup)
@@ -154,7 +154,7 @@ describe("chargeAutoTopup", () => {
     };
 
     await chargeAutoTopup(deps, "t1", 500, "auto_topup_usage");
-    expect(await ledger.balance("t1")).toBe(500);
+    expect((await ledger.balance("t1")).toCents()).toBe(500);
     expect(await ledger.hasReferenceId(piId)).toBe(true);
   });
 

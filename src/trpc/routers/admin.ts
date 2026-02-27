@@ -17,6 +17,7 @@ import type { AdminUserStore } from "../../admin/users/user-store.js";
 import type { INotificationQueueStore } from "../../email/notification-queue-store.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
+import { Credit } from "../../monetization/credit.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
@@ -151,7 +152,7 @@ export const adminRouter = router({
   creditsBalance: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getCreditLedger } = deps();
     const balance = await getCreditLedger().balance(input.tenantId);
-    return { tenant: input.tenantId, balance_cents: balance };
+    return { tenant: input.tenantId, balance_cents: balance.toCents() };
   }),
 
   /** Grant credits to a tenant. */
@@ -167,7 +168,12 @@ export const adminRouter = router({
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = await getCreditLedger().credit(input.tenantId, input.amount_cents, "signup_grant", input.reason);
+        const result = await getCreditLedger().credit(
+          input.tenantId,
+          Credit.fromCents(input.amount_cents),
+          "signup_grant",
+          input.reason,
+        );
         getAuditLog().log({
           adminUser,
           action: "credits.grant",
@@ -204,7 +210,12 @@ export const adminRouter = router({
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = await getCreditLedger().debit(input.tenantId, input.amount_cents, "refund", input.reason);
+        const result = await getCreditLedger().debit(
+          input.tenantId,
+          Credit.fromCents(input.amount_cents),
+          "refund",
+          input.reason,
+        );
         getAuditLog().log({
           adminUser,
           action: "credits.refund",
@@ -246,8 +257,13 @@ export const adminRouter = router({
       const adminUser = ctx.user?.id ?? "unknown";
       try {
         const result = await (input.amount_cents >= 0
-          ? getCreditLedger().credit(input.tenantId, input.amount_cents || 1, "promo", input.reason)
-          : getCreditLedger().debit(input.tenantId, Math.abs(input.amount_cents), "correction", input.reason));
+          ? getCreditLedger().credit(input.tenantId, Credit.fromCents(input.amount_cents || 1), "promo", input.reason)
+          : getCreditLedger().debit(
+              input.tenantId,
+              Credit.fromCents(Math.abs(input.amount_cents)),
+              "correction",
+              input.reason,
+            ));
         getAuditLog().log({
           adminUser,
           action: "credits.correction",
@@ -486,9 +502,9 @@ export const adminRouter = router({
       // Auto-refund remaining credits
       let refundedCents = 0;
       const balance = await getCreditLedger().balance(input.tenantId);
-      if (balance > 0) {
+      if (balance.greaterThan(Credit.ZERO)) {
         await getCreditLedger().debit(input.tenantId, balance, "refund", `Auto-refund on account ban: ${input.reason}`);
-        refundedCents = balance;
+        refundedCents = Math.round(balance.toCents());
       }
 
       // Ban the tenant
@@ -928,13 +944,13 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get full tenant detail (god view). Aggregates user info, credits, status, usage. */
-  tenantDetail: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
+  tenantDetail: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input, ctx }) => {
     requirePlatformAdmin(ctx.user?.roles ?? []);
     const { getUserStore, getCreditLedger, getTenantStatusStore, getMeterAggregator } = deps();
 
     const user = getUserStore().getById(input.tenantId);
-    const balance = getCreditLedger().balance(input.tenantId);
-    const recentTransactions = getCreditLedger().history(input.tenantId, { limit: 10 });
+    const balance = await getCreditLedger().balance(input.tenantId);
+    const recentTransactions = await getCreditLedger().history(input.tenantId, { limit: 10 });
     const status = getTenantStatusStore().get(input.tenantId);
 
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -947,7 +963,7 @@ export const adminRouter = router({
 
     return {
       user: user ?? null,
-      credits: { balance_cents: balance, recent_transactions: recentTransactions },
+      credits: { balance_cents: balance.toCents(), recent_transactions: recentTransactions },
       status: status ?? { tenantId: input.tenantId, status: "active" },
       usage: { summaries: usageSummaries, total: usageTotal },
     };
@@ -1170,7 +1186,7 @@ export const adminRouter = router({
           csvEscape(r.id),
           csvEscape(r.tenantId),
           csvEscape(r.type),
-          String(r.amountCents),
+          String(r.amount),
           csvEscape(r.description ?? ""),
           csvEscape(r.referenceId ?? ""),
           csvEscape(r.createdAt),

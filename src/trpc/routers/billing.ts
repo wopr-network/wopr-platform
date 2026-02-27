@@ -178,9 +178,9 @@ export const billingRouter = router({
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const { totalCharge } = await meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
       const daily_burn_cents = Math.round(totalCharge / 7);
-      const runway_days = daily_burn_cents > 0 ? Math.floor(balance / daily_burn_cents) : null;
+      const runway_days = daily_burn_cents > 0 ? Math.floor(balance.toCents() / daily_burn_cents) : null;
 
-      return { tenant, balance_cents: balance, daily_burn_cents, runway_days };
+      return { tenant, balance_cents: Math.round(balance.toCents()), daily_burn_cents, runway_days };
     }),
 
   /** Get credit transaction history for a tenant. Tenant defaults to ctx.tenantId when omitted. */
@@ -446,8 +446,8 @@ export const billingRouter = router({
       periodEnd: new Date().toISOString(),
       capabilities,
       totalCost,
-      includedCredit: balance,
-      amountDue: Math.max(0, totalCost - balance),
+      includedCredit: Math.round(balance.toCents()),
+      amountDue: Math.max(0, totalCost - balance.toCents()),
     };
   }),
 
@@ -590,7 +590,7 @@ export const billingRouter = router({
         const paymentMethods = await processor.listPaymentMethods(tenant);
         if (paymentMethods.length <= 1) {
           const hasBillingHold = mapping.billing_hold === 1;
-          const hasOutstandingBalance = (await creditLedger.balance(tenant)) < 0;
+          const hasOutstandingBalance = (await creditLedger.balance(tenant)).isNegative();
           if (hasBillingHold || hasOutstandingBalance) {
             throw new TRPCError({
               code: "FORBIDDEN",

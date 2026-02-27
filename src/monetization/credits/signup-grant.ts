@@ -1,7 +1,8 @@
+import { Credit } from "../credit.js";
 import type { CreditLedger } from "./credit-ledger.js";
 
-/** Signup grant amount: $5.00 = 500 cents */
-export const SIGNUP_GRANT_CENTS = 500;
+/** Signup grant amount: $5.00 */
+export const SIGNUP_GRANT = Credit.fromDollars(5);
 
 /**
  * Grant the signup credit bonus to a newly verified tenant.
@@ -20,7 +21,7 @@ export async function grantSignupCredits(ledger: CreditLedger, tenantId: string)
 
   await ledger.credit(
     tenantId,
-    SIGNUP_GRANT_CENTS,
+    SIGNUP_GRANT,
     "signup_grant",
     "Welcome bonus — $5.00 credit on email verification",
     refId,
@@ -28,3 +29,6 @@ export async function grantSignupCredits(ledger: CreditLedger, tenantId: string)
 
   return true;
 }
+
+/** @deprecated use SIGNUP_GRANT */
+export const SIGNUP_GRANT_CENTS = SIGNUP_GRANT.toCents();

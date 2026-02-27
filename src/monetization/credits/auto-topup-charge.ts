@@ -1,5 +1,6 @@
 import type Stripe from "stripe";
 import { logger } from "../../config/logger.js";
+import { Credit } from "../credit.js";
 import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
 import type { IAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import type { ICreditLedger } from "./credit-ledger.js";
@@ -100,7 +101,7 @@ export async function chargeAutoTopup(
   if (!(await deps.creditLedger.hasReferenceId(paymentIntent.id))) {
     await deps.creditLedger.credit(
       tenantId,
-      amountCents,
+      Credit.fromCents(amountCents),
       "purchase",
       `Auto-topup (${source})`,
       paymentIntent.id,

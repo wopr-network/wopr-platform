@@ -25,9 +25,11 @@ async function seedCredits(
   amountCents: number,
   createdAt: string,
 ): Promise<void> {
+  // amount_credits and balance_after_credits store nanodollars (cents * 10_000_000)
+  const amountCredits = amountCents * 10_000_000;
   await pool.query(
-    "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-    [crypto.randomUUID(), tenantId, amountCents, 0, type, createdAt],
+    "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+    [crypto.randomUUID(), tenantId, amountCredits, 0, type, createdAt],
   );
 }
 
@@ -47,9 +49,10 @@ async function seedMeterEvent(
 }
 
 async function seedBalance(pool: PGlite, tenantId: string, balanceCents: number): Promise<void> {
+  const balanceCredits = balanceCents * 10_000_000;
   await pool.query(
-    "INSERT INTO credit_balances (tenant_id, balance_cents, last_updated) VALUES ($1, $2, NOW()) ON CONFLICT (tenant_id) DO UPDATE SET balance_cents = $2, last_updated = NOW()",
-    [tenantId, balanceCents],
+    "INSERT INTO credit_balances (tenant_id, balance_credits, last_updated) VALUES ($1, $2, NOW()) ON CONFLICT (tenant_id) DO UPDATE SET balance_credits = $2, last_updated = NOW()",
+    [tenantId, balanceCredits],
   );
 }
 

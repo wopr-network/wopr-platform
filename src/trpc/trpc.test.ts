@@ -6,6 +6,7 @@ import { AdminAuditLog } from "../admin/audit-log.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
+import { Credit } from "../monetization/credit.js";
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
@@ -53,52 +54,46 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
 
 function makeMockLedger(): ICreditLedger {
   const balances = new Map<string, number>();
-  const txns: Array<{
-    id: string;
-    tenantId: string;
-    amountCents: number;
-    balanceAfterCents: number;
-    type: string;
-    description: string | null;
-    referenceId: null;
-    fundingSource: null;
-    createdAt: string;
-  }> = [];
+  const txns: import("../monetization/credits/credit-ledger.js").CreditTransaction[] = []; // biome-ignore lint/suspicious/noExplicitAny: mock
   return {
-    async credit(tenantId, amountCents, type, description) {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
-      const tx = {
+    async credit(tenantId, amount, type, description) {
+      const cents = amount.toCents();
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + cents);
+      const tx: import("../monetization/credits/credit-ledger.js").CreditTransaction = {
         id: crypto.randomUUID(),
         tenantId,
-        amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amount,
+        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
         type: type ?? "signup_grant",
         description: description ?? null,
         referenceId: null,
         fundingSource: null,
+        attributedUserId: null,
         createdAt: new Date().toISOString(),
       };
-      txns.push(tx as never);
-      return tx as never;
+      txns.push(tx);
+      return tx;
     },
-    async debit(tenantId, amountCents, type, description) {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
-      const tx = {
+    async debit(tenantId, amount, type, description) {
+      const cents = amount.toCents();
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
+      const tx: import("../monetization/credits/credit-ledger.js").CreditTransaction = {
         id: crypto.randomUUID(),
         tenantId,
-        amountCents: -amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amount: amount.multiply(-1),
+        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
         type: type ?? "correction",
         description: description ?? null,
         referenceId: null,
         fundingSource: null,
+        attributedUserId: null,
         createdAt: new Date().toISOString(),
       };
-      txns.push(tx as never);
-      return tx as never;
+      txns.push(tx);
+      return tx;
     },
     async balance(tenantId) {
-      return balances.get(tenantId) ?? 0;
+      return Credit.fromCents(balances.get(tenantId) ?? 0);
     },
     async hasReferenceId() {
       return false;
@@ -106,7 +101,7 @@ function makeMockLedger(): ICreditLedger {
     async history(tenantId, opts) {
       return txns
         .filter((t) => t.tenantId === tenantId)
-        .slice(opts?.offset ?? 0, (opts?.offset ?? 0) + (opts?.limit ?? 50)) as never;
+        .slice(opts?.offset ?? 0, (opts?.offset ?? 0) + (opts?.limit ?? 50));
     },
     async tenantsWithBalance() {
       return [];

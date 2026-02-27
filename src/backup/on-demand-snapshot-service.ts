@@ -63,8 +63,8 @@ export class OnDemandSnapshotService {
   async create(params: CreateSnapshotParams): Promise<CreateSnapshotResult> {
     // 1. Check credit balance (must have at least 1 cent)
     const balance = await this.ledger.balance(params.tenant);
-    if (balance <= 0) {
-      throw new InsufficientCreditsError(balance);
+    if (balance.isNegative() || balance.isZero()) {
+      throw new InsufficientCreditsError(Math.round(balance.toCents()));
     }
 
     // 2. Check quota

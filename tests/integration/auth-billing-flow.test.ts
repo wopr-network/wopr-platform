@@ -53,7 +53,7 @@ describe("integration: auth → billing → credit flow", () => {
 
       let mapping = await tenantStore.getByTenant(tenantId);
       expect(mapping?.tier).toBe("free");
-      expect(await creditLedger.balance(tenantId)).toBe(0);
+      expect((await creditLedger.balance(tenantId)).toCents()).toBe(0);
 
       // Step 2: User completes a $10 credit purchase via Stripe checkout
       const checkoutEvent: Stripe.Event = {
@@ -74,7 +74,7 @@ describe("integration: auth → billing → credit flow", () => {
       expect(result.creditedCents).toBe(1000);
 
       // Step 3: Balance reflects the purchase
-      expect(await creditLedger.balance(tenantId)).toBe(1000);
+      expect((await creditLedger.balance(tenantId)).toCents()).toBe(1000);
 
       mapping = await tenantStore.getByTenant(tenantId);
       expect(mapping?.processor_customer_id).toBe("cus_new_user");
@@ -102,7 +102,7 @@ describe("integration: auth → billing → credit flow", () => {
         },
       } as Stripe.Event;
       await handleWebhookEvent(deps, purchase1);
-      expect(await creditLedger.balance(tenantId)).toBe(500);
+      expect((await creditLedger.balance(tenantId)).toCents()).toBe(500);
 
       // Second purchase: $10
       const purchase2: Stripe.Event = {
@@ -118,7 +118,7 @@ describe("integration: auth → billing → credit flow", () => {
         },
       } as Stripe.Event;
       await handleWebhookEvent(deps, purchase2);
-      expect(await creditLedger.balance(tenantId)).toBe(1500);
+      expect((await creditLedger.balance(tenantId)).toCents()).toBe(1500);
     });
 
     it("handles checkout for tenant identified via metadata", async () => {
@@ -140,7 +140,7 @@ describe("integration: auth → billing → credit flow", () => {
       const result = await handleWebhookEvent(deps, checkoutEvent);
       expect(result.handled).toBe(true);
       expect(result.tenant).toBe(tenantId);
-      expect(await creditLedger.balance(tenantId)).toBe(500);
+      expect((await creditLedger.balance(tenantId)).toCents()).toBe(500);
     });
   });
 
@@ -183,8 +183,8 @@ describe("integration: auth → billing → credit flow", () => {
       } as Stripe.Event;
       await handleWebhookEvent(deps, purchase2);
 
-      expect(await creditLedger.balance(tenant1)).toBe(1000);
-      expect(await creditLedger.balance(tenant2)).toBe(500);
+      expect((await creditLedger.balance(tenant1)).toCents()).toBe(1000);
+      expect((await creditLedger.balance(tenant2)).toCents()).toBe(500);
     });
   });
 
