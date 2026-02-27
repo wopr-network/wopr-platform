@@ -1,3 +1,26 @@
+/**
+ * NAMING CONVENTION — cents vs credits (WOP-1058)
+ *
+ * - `_cents` suffix = value denominated in USD cents.
+ *   Used for: Stripe amounts, PayRam amounts, ledger balances, ledger transactions.
+ *   The platform credit unit IS the USD cent (1 credit = 1 cent = $0.01).
+ *
+ * - `_credits` suffix = platform credit count (used in DB columns and raw storage).
+ *   Semantically identical to cents but signals "this is a platform concept stored
+ *   as a Credit.toRaw() nanodollar value in the database."
+ *
+ * - NEVER rename a Stripe/PayRam-facing `_cents` field to `_credits`.
+ *   Stripe's `amount` parameter and `amount_total` response are always USD cents.
+ *   PayRam's `amountUsdCents` is always USD cents.
+ *
+ * - When adding new fields: if it touches a payment processor API, use `_cents`.
+ *   If it's a DB column storing Credit.toRaw() values, use `_credits`.
+ *
+ * The Credit class bridges the two:
+ *   Credit.fromCents(cents)  — converts USD cents → Credit (nanodollar raw units)
+ *   credit.toCents()         — converts Credit → USD cents (for display / API responses)
+ */
+
 import crypto from "node:crypto";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
