@@ -37,7 +37,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
         .where(
           and(
             eq(creditTransactions.type, "purchase"),
-            sql`${creditTransactions.createdAt}::timestamp >= NOW() - INTERVAL '1 day'`,
+            sql`${creditTransactions.createdAt}::timestamp >= date_trunc('day', NOW()) - INTERVAL '1 day'`,
             sql`${creditTransactions.createdAt}::timestamp < date_trunc('day', NOW())`,
           ),
         )
