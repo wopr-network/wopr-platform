@@ -109,6 +109,30 @@ describe("runScheduledTopups", () => {
     expect((await settingsRepo.getByTenant("t1"))?.scheduleEnabled).toBe(false);
   });
 
+  it("skips tenants where checkTenantStatus returns non-null", async () => {
+    // Setup: one due tenant that is banned
+    await settingsRepo.upsert("t-banned", {
+      scheduleEnabled: true,
+      scheduleAmountCents: 1000,
+      scheduleIntervalHours: 24,
+      scheduleNextAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    const chargeAutoTopup = vi.fn();
+    const checkTenantStatus = vi.fn().mockResolvedValue({ error: "account_banned", message: "banned" });
+
+    const result = await runScheduledTopups({
+      settingsRepo,
+      chargeAutoTopup,
+      checkTenantStatus,
+    });
+
+    expect(chargeAutoTopup).not.toHaveBeenCalled();
+    // The tenant should still be processed (counter incremented) but skipped
+    expect(result.processed).toBe(1);
+    expect(result.failed).toContain("t-banned");
+  });
+
   it("processes multiple tenants independently", async () => {
     const past = "2026-02-20T00:00:00.000Z";
     await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCents: 500, scheduleNextAt: past });

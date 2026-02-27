@@ -9,12 +9,13 @@ import type { PGlite } from "@electric-sql/pglite";
  * - tenantStatus: query current status
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { Credit } from "../../monetization/credit.js";
+import { DrizzleAutoTopupSettingsRepository } from "../../monetization/credits/auto-topup-settings-repository.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import type {
   CreditTransaction,
@@ -442,6 +443,94 @@ describe("admin tenant status tRPC routes", () => {
       const details = JSON.parse(entries.entries[0].details);
       expect(details.tosReference).toBe("ToS 5.2");
       expect(details.refundedCents).toBe(3000);
+    });
+
+    it("disables auto-topup settings on ban", async () => {
+      await statusStore.ensureExists("tenant-1");
+
+      // Setup auto-topup settings
+      const topupSettingsRepo = new DrizzleAutoTopupSettingsRepository(db);
+      await topupSettingsRepo.upsert("tenant-1", {
+        usageEnabled: true,
+        scheduleEnabled: true,
+      });
+
+      setAdminRouterDeps({
+        getAuditLog: () => auditLog,
+        getCreditLedger: () => creditLedger,
+        getUserStore: () => new AdminUserStore(db),
+        getTenantStatusStore: () => statusStore,
+        getBotBilling: () => botBilling,
+        getAutoTopupSettingsRepo: () => topupSettingsRepo,
+        detachAllPaymentMethods: async () => 0,
+      });
+
+      const caller = createCaller(adminContext());
+      await caller.admin.banTenant({
+        tenantId: "tenant-1",
+        reason: "abuse",
+        tosReference: "ToS 5.2",
+        confirmName: "BAN tenant-1",
+      });
+
+      const settings = await topupSettingsRepo.getByTenant("tenant-1");
+      expect(settings?.usageEnabled).toBe(false);
+      expect(settings?.scheduleEnabled).toBe(false);
+    });
+
+    it("calls detachAllPaymentMethods on ban", async () => {
+      await statusStore.ensureExists("tenant-1");
+
+      const detachFn = vi.fn().mockResolvedValue(2);
+
+      setAdminRouterDeps({
+        getAuditLog: () => auditLog,
+        getCreditLedger: () => creditLedger,
+        getUserStore: () => new AdminUserStore(db),
+        getTenantStatusStore: () => statusStore,
+        getBotBilling: () => botBilling,
+        detachAllPaymentMethods: detachFn,
+      });
+
+      const caller = createCaller(adminContext());
+      const result = await caller.admin.banTenant({
+        tenantId: "tenant-1",
+        reason: "abuse",
+        tosReference: "ToS 5.2",
+        confirmName: "BAN tenant-1",
+      });
+
+      expect(detachFn).toHaveBeenCalledWith("tenant-1");
+      expect(result.paymentMethodsDetached).toBe(2);
+    });
+
+    it("does NOT disable auto-topup on suspend", async () => {
+      await statusStore.ensureExists("tenant-1");
+
+      const topupSettingsRepo = new DrizzleAutoTopupSettingsRepository(db);
+      await topupSettingsRepo.upsert("tenant-1", {
+        usageEnabled: true,
+        scheduleEnabled: true,
+      });
+
+      setAdminRouterDeps({
+        getAuditLog: () => auditLog,
+        getCreditLedger: () => creditLedger,
+        getUserStore: () => new AdminUserStore(db),
+        getTenantStatusStore: () => statusStore,
+        getBotBilling: () => botBilling,
+        getAutoTopupSettingsRepo: () => topupSettingsRepo,
+      });
+
+      const caller = createCaller(adminContext());
+      await caller.admin.suspendTenant({
+        tenantId: "tenant-1",
+        reason: "review",
+      });
+
+      const settings = await topupSettingsRepo.getByTenant("tenant-1");
+      expect(settings?.usageEnabled).toBe(true);
+      expect(settings?.scheduleEnabled).toBe(true);
     });
 
     it("can ban a suspended tenant", async () => {
