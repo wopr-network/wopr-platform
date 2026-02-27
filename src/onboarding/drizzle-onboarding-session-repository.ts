@@ -10,7 +10,6 @@ export interface OnboardingSession {
   status: "active" | "transferred" | "expired" | "graduated";
   createdAt: number;
   updatedAt: number;
-  budgetUsedCents: number;
   graduatedAt: number | null;
   graduationPath: "byok" | "hosted" | null;
   totalPlatformCostUsd: string | null;
@@ -24,11 +23,10 @@ export interface IOnboardingSessionRepository {
   create(
     data: Omit<
       OnboardingSession,
-      "createdAt" | "updatedAt" | "budgetUsedCents" | "graduatedAt" | "graduationPath" | "totalPlatformCostUsd"
+      "createdAt" | "updatedAt" | "graduatedAt" | "graduationPath" | "totalPlatformCostUsd"
     >,
   ): Promise<OnboardingSession>;
   upgradeAnonymousToUser(anonymousId: string, userId: string): Promise<OnboardingSession | null>;
-  updateBudgetUsed(id: string, budgetUsedCents: number): Promise<void>;
   setStatus(id: string, status: OnboardingSession["status"]): Promise<void>;
   graduate(id: string, path: "byok" | "hosted", totalPlatformCostUsd: string): Promise<OnboardingSession | null>;
   getGraduatedByUserId(userId: string): Promise<OnboardingSession | null>;
@@ -45,7 +43,6 @@ function toSession(row: DbRow): OnboardingSession {
     status: row.status as OnboardingSession["status"],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    budgetUsedCents: row.budgetUsedCents,
     graduatedAt: row.graduatedAt ?? null,
     graduationPath: row.graduationPath as OnboardingSession["graduationPath"],
     totalPlatformCostUsd: row.totalPlatformCostUsd ?? null,
@@ -102,7 +99,6 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
         status: data.status,
         createdAt: now,
         updatedAt: now,
-        budgetUsedCents: 0,
       })
       .returning();
     return toSession(rows[0]);
@@ -116,13 +112,6 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
       .where(eq(onboardingSessions.anonymousId, anonymousId))
       .returning();
     return rows[0] ? toSession(rows[0]) : null;
-  }
-
-  async updateBudgetUsed(id: string, budgetUsedCents: number): Promise<void> {
-    await this.db
-      .update(onboardingSessions)
-      .set({ budgetUsedCents, updatedAt: Date.now() })
-      .where(eq(onboardingSessions.id, id));
   }
 
   async setStatus(id: string, status: OnboardingSession["status"]): Promise<void> {

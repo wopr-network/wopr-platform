@@ -863,6 +863,19 @@ export function getSessionUsageRepo(): ISessionUsageRepository {
   return _sessionUsageRepo;
 }
 
+async function resolveUserTenantId(userId: string): Promise<string | null> {
+  const { eq } = await import("drizzle-orm");
+  const { userRoles } = await import("../db/schema/user-roles.js");
+  const rows = await getDb()
+    .select({ tenantId: userRoles.tenantId })
+    .from(userRoles)
+    .where(eq(userRoles.userId, userId))
+    .limit(1);
+  const tenantId = rows[0]?.tenantId ?? null;
+  // Exclude platform-admin sentinel value
+  return tenantId === "*" ? null : tenantId;
+}
+
 export function getOnboardingService(): OnboardingService {
   if (!_onboardingService) {
     const cfg = loadOnboardingConfig();
@@ -873,6 +886,8 @@ export function getOnboardingService(): OnboardingService {
       getDaemonManager(),
       getSessionUsageRepo(),
       getOnboardingScriptRepo(),
+      getCreditLedger(),
+      resolveUserTenantId,
     );
   }
   return _onboardingService;

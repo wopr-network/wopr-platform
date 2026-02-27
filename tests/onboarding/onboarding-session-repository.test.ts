@@ -34,7 +34,6 @@ describe("DrizzleOnboardingSessionRepository", () => {
       status: "active"});
     expect(session.id).toBe("s1");
     expect(session.userId).toBe("u1");
-    expect(session.budgetUsedCents).toBe(0);
 
     const found = await repo.getById("s1");
     expect(found).not.toBeNull();
@@ -61,13 +60,6 @@ describe("DrizzleOnboardingSessionRepository", () => {
     expect(upgraded).not.toBeNull();
     expect(upgraded!.userId).toBe("u3");
     expect(upgraded!.anonymousId).toBe("anon-2");
-  });
-
-  it("updates budget used", async () => {
-    await repo.create({ id: "s5", userId: "u4", anonymousId: null, woprSessionName: "onboarding-u4", status: "active" });
-    await repo.updateBudgetUsed("s5", 50);
-    const found = await repo.getById("s5");
-    expect(found!.budgetUsedCents).toBe(50);
   });
 
   it("sets status", async () => {

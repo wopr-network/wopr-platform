@@ -12,7 +12,6 @@ function makeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSess
     status: "active",
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    budgetUsedCents: 5,
     graduatedAt: null,
     graduationPath: null,
     totalPlatformCostUsd: null,
@@ -48,7 +47,6 @@ function mockSessionRepo(session: OnboardingSession | null): IOnboardingSessionR
     getActiveByAnonymousId: vi.fn(async () => null),
     create: vi.fn(),
     upgradeAnonymousToUser: vi.fn(async () => null),
-    updateBudgetUsed: vi.fn(),
     setStatus: vi.fn(),
     graduate: vi.fn(async (_id: string, path: "byok" | "hosted", cost: string) =>
       session
