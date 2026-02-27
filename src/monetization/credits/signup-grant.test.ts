@@ -22,21 +22,21 @@ describe("grantSignupCredits", () => {
   it("grants credits to a new tenant and returns true", async () => {
     const result = await grantSignupCredits(ledger, "tenant-1");
     expect(result).toBe(true);
-    expect(await ledger.balance("tenant-1")).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT_CENTS);
   });
 
   it("returns false for duplicate grant (idempotency)", async () => {
     await grantSignupCredits(ledger, "tenant-1");
     const result = await grantSignupCredits(ledger, "tenant-1");
     expect(result).toBe(false);
-    expect(await ledger.balance("tenant-1")).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT_CENTS);
   });
 
   it("grants independently to different tenants", async () => {
     await grantSignupCredits(ledger, "tenant-1");
     await grantSignupCredits(ledger, "tenant-2");
-    expect(await ledger.balance("tenant-1")).toBe(SIGNUP_GRANT_CENTS);
-    expect(await ledger.balance("tenant-2")).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance("tenant-2")).toCents()).toBe(SIGNUP_GRANT_CENTS);
   });
 
   it("SIGNUP_GRANT_CENTS equals 500", () => {

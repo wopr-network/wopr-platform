@@ -12,6 +12,7 @@ import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import type { BotInstance } from "../../fleet/repository-types.js";
+import { Credit } from "../../monetization/credit.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
 import { setFleetRouterDeps } from "./fleet.js";
@@ -576,7 +577,7 @@ describe("fleet.setStorageTier", () => {
   });
 
   it("rejects upgrade with insufficient credits", async () => {
-    const mockLedger = { balance: vi.fn().mockReturnValue(2) };
+    const mockLedger = { balance: vi.fn().mockResolvedValue(Credit.fromCents(2)) };
     setFleetRouterDeps({
       getFleetManager: () => fleetMock as unknown as FleetManager,
       getTemplates: () => mockTemplates,
@@ -617,7 +618,7 @@ describe("fleet.setStorageTier", () => {
       getStorageTier: vi.fn().mockReturnValue("standard"),
       setStorageTier: vi.fn(),
     };
-    const mockLedger = { balance: vi.fn().mockReturnValue(1000) };
+    const mockLedger = { balance: vi.fn().mockResolvedValue(Credit.fromCents(1000)) };
     setFleetRouterDeps({
       getFleetManager: () => fleetMock as unknown as FleetManager,
       getTemplates: () => mockTemplates,

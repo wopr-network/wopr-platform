@@ -323,7 +323,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
       .filter((r): r is typeof r & { userId: string } => r.userId != null)
       .map((r) => ({
         userId: r.userId,
-        totalDebit: Credit.fromRaw(r.totalDebitRaw),
+        totalDebit: Credit.fromRaw(Number(r.totalDebitRaw)),
         transactionCount: r.transactionCount,
       }));
   }
