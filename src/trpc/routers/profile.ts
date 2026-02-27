@@ -11,11 +11,11 @@ import { protectedProcedure, router } from "../init.js";
 // ---------------------------------------------------------------------------
 
 export interface ProfileRouterDeps {
-  getUser: (userId: string) => { id: string; name: string; email: string; image: string | null } | null;
+  getUser: (userId: string) => Promise<{ id: string; name: string; email: string; image: string | null } | null>;
   updateUser: (
     userId: string,
     data: { name?: string; image?: string | null },
-  ) => { id: string; name: string; email: string; image: string | null };
+  ) => Promise<{ id: string; name: string; email: string; image: string | null }>;
   changePassword: (userId: string, currentPassword: string, newPassword: string) => Promise<boolean>;
 }
 
@@ -36,8 +36,8 @@ function deps(): ProfileRouterDeps {
 
 export const profileRouter = router({
   /** Get the authenticated user's profile. */
-  getProfile: protectedProcedure.query(({ ctx }) => {
-    const user = deps().getUser(ctx.user.id);
+  getProfile: protectedProcedure.query(async ({ ctx }) => {
+    const user = await deps().getUser(ctx.user.id);
     if (!user) {
       throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
     }
@@ -52,8 +52,8 @@ export const profileRouter = router({
         image: z.string().url().max(2048).nullable().optional(),
       }),
     )
-    .mutation(({ input, ctx }) => {
-      const updated = deps().updateUser(ctx.user.id, {
+    .mutation(async ({ input, ctx }) => {
+      const updated = await deps().updateUser(ctx.user.id, {
         ...(input.name !== undefined && { name: input.name }),
         ...(input.image !== undefined && { image: input.image }),
       });

@@ -13,34 +13,21 @@
  * Redirects to UI with error status (invalid/expired token).
  */
 
-import type DatabaseType from "better-sqlite3";
-import Database from "better-sqlite3";
 import { Hono } from "hono";
+import type { Pool } from "pg";
 import { logger } from "../../config/logger.js";
-import { applyPlatformPragmas } from "../../db/pragmas.js";
 import { getEmailClient } from "../../email/client.js";
 import { welcomeTemplate } from "../../email/templates.js";
 import { verifyToken } from "../../email/verification.js";
-import { getCreditLedger } from "../../fleet/services.js";
+import { getCreditLedger, getPool } from "../../fleet/services.js";
 import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 
-const AUTH_DB_PATH = process.env.AUTH_DB_PATH || "/data/platform/auth.db";
 const UI_ORIGIN = process.env.UI_ORIGIN || "http://localhost:3001";
 const SIGNUP_CREDIT_CENTS = 500; // $5.00
 
-/** Lazy-initialized auth database. */
-let _authDb: DatabaseType.Database | null = null;
-function getAuthDb(): DatabaseType.Database {
-  if (!_authDb) {
-    _authDb = new Database(AUTH_DB_PATH);
-    applyPlatformPragmas(_authDb);
-  }
-  return _authDb;
-}
-
 export interface VerifyEmailRouteDeps {
-  authDb: DatabaseType.Database;
+  pool: Pool;
   creditLedger: ICreditLedger;
 }
 
@@ -52,12 +39,12 @@ export interface VerifyEmailRouteDeps {
  */
 export function createVerifyEmailRoutes(deps: VerifyEmailRouteDeps): Hono {
   return buildRoutes(
-    () => deps.authDb,
+    () => deps.pool,
     () => deps.creditLedger,
   );
 }
 
-function buildRoutes(authDbFactory: () => DatabaseType.Database, creditLedgerFactory: () => ICreditLedger): Hono {
+function buildRoutes(poolFactory: () => Pool, creditLedgerFactory: () => ICreditLedger): Hono {
   const routes = new Hono();
 
   routes.get("/verify", async (c) => {
@@ -67,8 +54,8 @@ function buildRoutes(authDbFactory: () => DatabaseType.Database, creditLedgerFac
       return c.redirect(`${UI_ORIGIN}/auth/verify?status=error&reason=missing_token`);
     }
 
-    const authDb = authDbFactory();
-    const result = verifyToken(authDb, token);
+    const pool = poolFactory();
+    const result = await verifyToken(pool, token);
 
     if (!result) {
       return c.redirect(`${UI_ORIGIN}/auth/verify?status=error&reason=invalid_or_expired`);
@@ -112,4 +99,4 @@ function buildRoutes(authDbFactory: () => DatabaseType.Database, creditLedgerFac
 }
 
 /** Production routes using lazy-initialized dependencies. */
-export const verifyEmailRoutes = buildRoutes(getAuthDb, getCreditLedger);
+export const verifyEmailRoutes = buildRoutes(getPool, getCreditLedger);
