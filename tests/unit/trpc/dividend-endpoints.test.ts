@@ -50,9 +50,9 @@ describe("billing.dividend* tRPC procedures", () => {
   describe("dividendStats", () => {
     it("returns stats with zero pool when no purchases exist", async () => {
       const result = await caller.billing.dividendStats({});
-      expect(result.pool_cents).toBe(0);
-      expect(result.active_users).toBe(0);
-      expect(result.per_user_cents).toBe(0);
+      expect(Number(result.pool_cents)).toBe(0);
+      expect(Number(result.active_users)).toBe(0);
+      expect(Number(result.per_user_cents)).toBe(0);
       expect(result.user_eligible).toBe(false);
       expect(result.user_last_purchase_at).toBeNull();
       expect(result.user_window_expires_at).toBeNull();
@@ -65,7 +65,7 @@ describe("billing.dividend* tRPC procedures", () => {
       const dateStr = recentDate.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
         ["tx-1", "t-1", 500, 500, "purchase", dateStr],
       );
 

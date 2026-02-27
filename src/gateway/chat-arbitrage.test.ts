@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import type { ArbitrageRouter } from "../monetization/arbitrage/router.js";
+import { Credit } from "../monetization/credit.js";
 import type { ProxyDeps } from "./proxy.js";
 import { chatCompletions } from "./proxy.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
@@ -9,7 +10,7 @@ function makeDeps(overrides: Partial<ProxyDeps> = {}): ProxyDeps {
   return {
     budgetChecker: { check: () => ({ allowed: true }) } as never,
     meter: { emit: vi.fn() } as never,
-    creditLedger: { balance: () => 1000, debit: vi.fn() } as never,
+    creditLedger: { balance: () => Credit.fromCents(1000), debit: vi.fn() } as never,
     providers: { openrouter: { apiKey: "test-key", baseUrl: "https://mock.test" } },
     fetchFn: vi.fn() as ProxyDeps["fetchFn"],
     defaultMargin: 1.3,

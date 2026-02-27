@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../monetization/credit.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import {
   InsufficientCreditsError,
@@ -48,7 +49,7 @@ function makeManager(overrides: Record<string, unknown> = {}): SnapshotManager {
 }
 
 function makeLedger(balanceCents = 100): CreditLedger {
-  return { balance: vi.fn().mockResolvedValue(balanceCents) } as unknown as CreditLedger;
+  return { balance: vi.fn().mockResolvedValue(Credit.fromCents(balanceCents)) } as unknown as CreditLedger;
 }
 
 function makeService(managerOverrides: Record<string, unknown> = {}, balanceCents = 100) {
