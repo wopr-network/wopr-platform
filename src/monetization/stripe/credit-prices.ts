@@ -8,13 +8,22 @@
  * between Stripe test/live modes.
  */
 
-/** A preset credit purchase option. */
+/**
+ * A preset credit purchase option.
+ *
+ * IMPORTANT — naming convention (WOP-1058):
+ * - amountCents: USD cents charged to Stripe (monetary — DO NOT rename to _credits).
+ *   This value is passed to Stripe's checkout session and PaymentIntent APIs.
+ * - creditCents: USD cents worth of platform credits granted (includes bonus).
+ *   Named _cents because the platform credit unit = 1 USD cent.
+ *   Passed to Credit.fromCents() — NOT a raw Credit nanodollar value.
+ */
 export interface CreditPricePoint {
   /** Human-readable label. */
   label: string;
-  /** Amount charged in cents (USD). */
+  /** Amount charged in USD cents (Stripe monetary — DO NOT rename to _credits). */
   amountCents: number;
-  /** Credits granted in cents (includes bonus). */
+  /** Platform credits granted in USD cents (includes bonus — DO NOT rename to _credits). */
   creditCents: number;
   /** Bonus percentage (0 for no bonus). */
   bonusPercent: number;
