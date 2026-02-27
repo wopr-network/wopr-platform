@@ -218,7 +218,11 @@ describe("POST /save", () => {
     expect(body.envKeysInjected).toContain("TEST_REGION");
     expect(upsertMock).toHaveBeenCalled();
     expect(saveMock).toHaveBeenCalled();
-    expect(dispatchMock).toHaveBeenCalledWith(TEST_BOT_ID, "t1", expect.objectContaining({ TEST_API_KEY: "sk-test-key", EXISTING: "val" }));
+    expect(dispatchMock).toHaveBeenCalledWith(
+      TEST_BOT_ID,
+      "t1",
+      expect.objectContaining({ TEST_API_KEY: "sk-test-key", EXISTING: "val" }),
+    );
     expect(updateMock).toHaveBeenCalledWith("setup-1", { collected: expect.any(String) });
     expect(recordSuccessMock).toHaveBeenCalledWith("setup-1");
   });
@@ -296,10 +300,12 @@ describe("POST /save", () => {
     const dispatchMock = vi.fn();
     const saveMock = vi.fn();
     const deps = makeDeps({
-      pluginRegistry: [{
-        ...TEST_PLUGIN,
-        configSchema: [{ key: "noEnvField", label: "No Env", type: "string" }],
-      }],
+      pluginRegistry: [
+        {
+          ...TEST_PLUGIN,
+          configSchema: [{ key: "noEnvField", label: "No Env", type: "string" }],
+        },
+      ],
       dispatchEnvUpdate: dispatchMock,
       profileStore: {
         get: vi.fn().mockResolvedValue({ id: TEST_BOT_ID, tenantId: "t1", env: {} }),
