@@ -36,6 +36,7 @@ import {
   getDb,
   getDividendRepo,
   getFleetEventRepo,
+  getGraduationService,
   getHeartbeatProcessor,
   getHeartbeatWatchdog,
   getNodeRegistrar,
@@ -737,7 +738,7 @@ if (process.env.NODE_ENV !== "test") {
   {
     const { loadOnboardingConfig } = await import("./onboarding/config.js");
     const onboardingCfg = loadOnboardingConfig();
-    setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo());
+    setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo(), getGraduationService());
     // Wire setup route deps (WOP-1034)
     const { pluginRegistry } = await import("./api/routes/marketplace-registry.js");
     setSetupDeps({

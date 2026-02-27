@@ -90,7 +90,7 @@ export class OnboardingService {
       if (!budgetCheck.allowed) {
         throw new Error(
           session.userId
-            ? `Session budget exceeded ($${budgetCheck.capUsd.toFixed(2)} cap). Please upgrade your plan.`
+            ? `Session budget exceeded ($${budgetCheck.capUsd.toFixed(2)} cap). To continue, either add your own API key (Settings > API Keys) or add a payment method (Settings > Billing).`
             : `Session budget exceeded ($${budgetCheck.capUsd.toFixed(2)} cap). Sign up for a free account to continue.`,
         );
       }

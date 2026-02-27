@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AuthEnv } from "../../auth/index.js";
 import type { IOnboardingSessionRepository } from "../../onboarding/drizzle-onboarding-session-repository.js";
+import { GraduationError, type GraduationService } from "../../onboarding/graduation-service.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
 
 const ANON_SESSION_COOKIE = "wopr_anon_session";
@@ -9,9 +10,15 @@ const ANON_SESSION_MAX_AGE = 24 * 60 * 60; // 24 hours in seconds
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".wopr.bot";
 
 let _service: OnboardingService | null = null;
+let _graduationService: GraduationService | null = null;
 
-export function setOnboardingDeps(service: OnboardingService, _repo: IOnboardingSessionRepository): void {
+export function setOnboardingDeps(
+  service: OnboardingService,
+  _repo: IOnboardingSessionRepository,
+  graduationService?: GraduationService,
+): void {
   _service = service;
+  _graduationService = graduationService ?? null;
 }
 
 function getService(): OnboardingService {
@@ -128,6 +135,43 @@ onboardingRoutes.post("/session/:id/upgrade", async (c) => {
     }
     return c.json({ sessionId: session.id });
   } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// POST /api/onboarding/session/:id/graduate — trigger graduation
+onboardingRoutes.post("/session/:id/graduate", async (c) => {
+  const userId = c.get("user")?.id as string | undefined;
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+  if (!_graduationService) {
+    return c.json({ error: "Graduation service not available" }, 503);
+  }
+
+  const sessionId = c.req.param("id");
+  let body: Record<string, unknown>;
+  try {
+    body = (await c.req.json()) as Record<string, unknown>;
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const path = body.path;
+  if (path !== "byok" && path !== "hosted") {
+    return c.json({ error: 'path must be "byok" or "hosted"' }, 400);
+  }
+
+  try {
+    const result = await _graduationService.graduate(sessionId, path);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof GraduationError) {
+      if (err.code === "NOT_FOUND") return c.json({ error: err.message }, 404);
+      if (err.code === "ALREADY_GRADUATED") return c.json({ error: err.message }, 409);
+      if (err.code === "NO_BOT_INSTANCE") return c.json({ error: err.message }, 422);
+      if (err.code === "UNAUTHENTICATED") return c.json({ error: err.message }, 403);
+    }
     return c.json({ error: String(err) }, 500);
   }
 });

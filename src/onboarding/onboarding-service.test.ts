@@ -32,6 +32,8 @@ function mockSessionRepo(): IOnboardingSessionRepository {
     upgradeAnonymousToUser: vi.fn().mockResolvedValue(null),
     updateBudgetUsed: vi.fn().mockResolvedValue(undefined),
     setStatus: vi.fn().mockResolvedValue(undefined),
+    graduate: vi.fn().mockResolvedValue(null),
+    getGraduatedByUserId: vi.fn().mockResolvedValue(null),
   };
 }
 
