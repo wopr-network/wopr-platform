@@ -172,6 +172,10 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       return c.json({ error: "amount_credits must be an integer" }, 400);
     }
 
+    if (amountCredits === 0) {
+      return c.json({ error: "amount_credits cannot be zero" }, 400);
+    }
+
     if (typeof reason !== "string" || !reason.trim()) {
       return c.json({ error: "reason is required and must be non-empty" }, 400);
     }
@@ -182,7 +186,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
         if (amountCredits >= 0) {
-          result = await ledger.credit(tenant, amountCredits || 1, "promo", reason);
+          result = await ledger.credit(tenant, amountCredits, "promo", reason);
         } else {
           result = await ledger.debit(tenant, Math.abs(amountCredits), "correction", reason);
         }

@@ -77,8 +77,8 @@ describe("requireBalance middleware", () => {
 
     expect(res.status).toBe(402);
     const body = await res.json();
-    expect(body.currentBalanceCents).toBe(50);
-    expect(body.requiredBalanceCents).toBe(100);
+    expect(body.currentBalanceCredits).toBe(50);
+    expect(body.requiredBalanceCredits).toBe(100);
   });
 
   it("allows request when balance exceeds minimum", async () => {

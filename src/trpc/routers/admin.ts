@@ -242,7 +242,10 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        amount_credits: z.number().int(),
+        amount_credits: z
+          .number()
+          .int()
+          .refine((v) => v !== 0, { message: "amount_credits cannot be zero" }),
         reason: z.string().min(1),
       }),
     )
@@ -251,7 +254,7 @@ export const adminRouter = router({
       const adminUser = ctx.user?.id ?? "unknown";
       try {
         const result = await (input.amount_credits >= 0
-          ? getCreditLedger().credit(input.tenantId, input.amount_credits || 1, "promo", input.reason)
+          ? getCreditLedger().credit(input.tenantId, input.amount_credits, "promo", input.reason)
           : getCreditLedger().debit(input.tenantId, Math.abs(input.amount_credits), "correction", input.reason));
         getAuditLog().log({
           adminUser,

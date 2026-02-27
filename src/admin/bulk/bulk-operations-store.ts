@@ -28,7 +28,7 @@ export interface BulkResult {
 
 export interface BulkGrantResult extends BulkResult {
   action: "grant";
-  totalAmountCents: number;
+  totalAmountCredits: number;
   undoDeadline: number;
 }
 
@@ -153,7 +153,7 @@ export class BulkOperationsStore {
       succeeded,
       failed: errors.length,
       errors,
-      totalAmountCents: input.amountCredits * succeeded,
+      totalAmountCredits: input.amountCredits * succeeded,
       undoDeadline,
     };
   }
@@ -320,7 +320,7 @@ export class BulkOperationsStore {
     if (enabledKeys.has("account_info")) headers.push("name", "email", "status", "role");
     if (enabledKeys.has("credit_balance")) headers.push("credit_balance_credits");
     if (enabledKeys.has("monthly_products")) headers.push("agent_count");
-    if (enabledKeys.has("lifetime_spend")) headers.push("lifetime_spend_cents");
+    if (enabledKeys.has("lifetime_spend")) headers.push("lifetime_spend_credits");
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
 
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);

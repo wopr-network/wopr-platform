@@ -183,7 +183,7 @@ describe("BulkOperationsStore", () => {
       expect(result.succeeded).toBe(2);
       expect(result.failed).toBe(0);
       expect(result.errors).toHaveLength(0);
-      expect(result.totalAmountCents).toBe(1000);
+      expect(result.totalAmountCredits).toBe(1000);
       expect(result.undoDeadline).toBeGreaterThan(Date.now());
 
       expect(await creditStore.balance("tenant-1")).toBe(500);
@@ -387,7 +387,7 @@ describe("BulkOperationsStore", () => {
         "admin-1",
       );
       expect(result.csv).toContain(
-        "tenant_id,name,email,status,role,credit_balance_credits,agent_count,lifetime_spend_cents,last_seen",
+        "tenant_id,name,email,status,role,credit_balance_credits,agent_count,lifetime_spend_credits,last_seen",
       );
     });
 

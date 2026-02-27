@@ -53,8 +53,8 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
         return c.json(
           {
             error: "Insufficient credit balance",
-            currentBalanceCents: balanceCredits,
-            requiredBalanceCents: minBalanceCents,
+            currentBalanceCredits: balanceCredits,
+            requiredBalanceCredits: minBalanceCents,
             purchaseUrl: "/settings/billing",
           },
           402,

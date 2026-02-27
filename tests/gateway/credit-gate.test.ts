@@ -114,7 +114,7 @@ describe("creditBalanceCheck", () => {
         code: string;
         needsCredits: boolean;
         topUpUrl: string;
-        currentBalanceCents: number;
+        currentBalanceCredits: number;
         requiredCents: number;
       };
     };
@@ -124,7 +124,7 @@ describe("creditBalanceCheck", () => {
     expect(body.error.code).toBe("insufficient_credits");
     expect(body.error.needsCredits).toBe(true);
     expect(body.error.topUpUrl).toBe("/credits");
-    expect(body.error.currentBalanceCents).toBe(100);
+    expect(body.error.currentBalanceCredits).toBe(100);
     expect(body.error.requiredCents).toBe(500);
   });
 

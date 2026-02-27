@@ -21,9 +21,9 @@ describe("DrizzleDividendRepository", () => {
   describe("getStats", () => {
     it("returns zeros when no purchases exist", async () => {
       const stats = await repo.getStats("t-1");
-      expect(stats.poolCents).toBe(0);
+      expect(stats.poolCredits).toBe(0);
       expect(stats.activeUsers).toBe(0);
-      expect(stats.perUserCents).toBe(0);
+      expect(stats.perUserCredits).toBe(0);
       expect(stats.userEligible).toBe(false);
       expect(stats.userLastPurchaseAt).toBeNull();
       expect(stats.userWindowExpiresAt).toBeNull();
@@ -38,12 +38,12 @@ describe("DrizzleDividendRepository", () => {
       const yesterdayStr = yesterday.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
         ["tx-1", "t-other", 1000, 1000, "purchase", yesterdayStr],
       );
 
       const stats = await repo.getStats("t-1");
-      expect(stats.poolCents).toBe(1000);
+      expect(stats.poolCredits).toBe(1000);
       expect(stats.activeUsers).toBe(1); // t-other purchased within 7 days
     });
 
@@ -53,7 +53,7 @@ describe("DrizzleDividendRepository", () => {
       const twoDaysAgoStr = twoDaysAgo.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
         ["tx-1", "t-1", 500, 500, "purchase", twoDaysAgoStr],
       );
 
@@ -69,7 +69,7 @@ describe("DrizzleDividendRepository", () => {
       const tenDaysAgoStr = tenDaysAgo.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_cents, balance_after_cents, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
         ["tx-1", "t-1", 500, 500, "purchase", tenDaysAgoStr],
       );
 
@@ -80,7 +80,7 @@ describe("DrizzleDividendRepository", () => {
     it("handles division by zero when no active users", async () => {
       // No purchases at all — both pool and active users are 0
       const stats = await repo.getStats("t-1");
-      expect(stats.perUserCents).toBe(0);
+      expect(stats.perUserCredits).toBe(0);
     });
   });
 
@@ -92,16 +92,16 @@ describe("DrizzleDividendRepository", () => {
 
     it("returns distributions for the tenant in date-descending order", async () => {
       await pool.query(
-        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_credits, pool_credits, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
         ["d-1", "t-1", "2026-02-19", 8, 6000, 750],
       );
       await pool.query(
-        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_credits, pool_credits, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
         ["d-2", "t-1", "2026-02-20", 10, 7000, 700],
       );
       // Different tenant — should not appear
       await pool.query(
-        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_credits, pool_credits, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
         ["d-3", "t-other", "2026-02-20", 10, 7000, 700],
       );
 
@@ -114,7 +114,7 @@ describe("DrizzleDividendRepository", () => {
     it("respects limit and offset", async () => {
       for (let i = 1; i <= 5; i++) {
         await pool.query(
-          "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+          "INSERT INTO dividend_distributions (id, tenant_id, date, amount_credits, pool_credits, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
           [`d-${i}`, "t-1", `2026-02-${String(i).padStart(2, "0")}`, 8, 6000, 750],
         );
       }
@@ -126,27 +126,27 @@ describe("DrizzleDividendRepository", () => {
     });
   });
 
-  describe("getLifetimeTotalCents", () => {
+  describe("getLifetimeTotalCredits", () => {
     it("returns 0 when no distributions exist", async () => {
-      expect(await repo.getLifetimeTotalCents("t-1")).toBe(0);
+      expect(await repo.getLifetimeTotalCredits("t-1")).toBe(0);
     });
 
     it("sums all distributions for the tenant", async () => {
       await pool.query(
-        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_credits, pool_credits, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
         ["d-1", "t-1", "2026-02-19", 8, 6000, 750],
       );
       await pool.query(
-        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_credits, pool_credits, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
         ["d-2", "t-1", "2026-02-20", 10, 7000, 700],
       );
       // Different tenant — should not be included
       await pool.query(
-        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_cents, pool_cents, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
+        "INSERT INTO dividend_distributions (id, tenant_id, date, amount_credits, pool_credits, active_users) VALUES ($1, $2, $3, $4, $5, $6)",
         ["d-3", "t-other", "2026-02-20", 99, 7000, 700],
       );
 
-      expect(await repo.getLifetimeTotalCents("t-1")).toBe(18);
+      expect(await repo.getLifetimeTotalCredits("t-1")).toBe(18);
     });
   });
 });

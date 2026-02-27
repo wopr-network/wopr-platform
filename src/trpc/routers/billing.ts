@@ -736,9 +736,9 @@ export const billingRouter = router({
       const { dividendRepo } = deps();
       const stats = await dividendRepo.getStats(tenant);
       return {
-        pool_cents: stats.poolCredits,
+        pool_credits: stats.poolCredits,
         active_users: stats.activeUsers,
-        per_user_cents: stats.perUserCredits,
+        per_user_credits: stats.perUserCredits,
         next_distribution_at: stats.nextDistributionAt,
         user_eligible: stats.userEligible,
         user_last_purchase_at: stats.userLastPurchaseAt,
@@ -777,7 +777,7 @@ export const billingRouter = router({
       }
       const { dividendRepo } = deps();
       const total = await dividendRepo.getLifetimeTotalCredits(tenant);
-      return { total_cents: total, tenant };
+      return { total_credits: total, tenant };
     }),
 
   /** Get affiliate code, link, and stats for the authenticated user. */

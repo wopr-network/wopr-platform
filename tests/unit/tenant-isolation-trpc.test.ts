@@ -105,7 +105,7 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
     const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
     const result = await callerA.billing.creditsBalance({ tenant: TENANT_A });
     expect(result.tenant).toBe(TENANT_A);
-    expect(result.balance_cents).toBe(0);
+    expect(result.balance_credits).toBe(0);
   });
 
   it("tenant-scoped caller can omit tenant and get own creditsBalance via ctx", async () => {

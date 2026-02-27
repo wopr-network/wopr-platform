@@ -105,7 +105,7 @@ quotaRoutes.post("/check", async (c) => {
       {
         allowed: false,
         reason: "Insufficient credit balance",
-        currentBalanceCents: balance,
+        currentBalanceCredits: balance,
         purchaseUrl: "/settings/billing",
       },
       402,

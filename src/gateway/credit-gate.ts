@@ -31,7 +31,7 @@ export interface CreditError {
   code: string;
   needsCredits: boolean;
   topUpUrl: string;
-  currentBalanceCents: number;
+  currentBalanceCredits: number;
   requiredCents: number;
 }
 
@@ -64,7 +64,7 @@ export async function creditBalanceCheck(
       code: "credits_exhausted",
       needsCredits: true,
       topUpUrl: deps.topUpUrl,
-      currentBalanceCents: balance,
+      currentBalanceCredits: balance,
       requiredCents: required,
     };
   }
@@ -77,7 +77,7 @@ export async function creditBalanceCheck(
       code: "insufficient_credits",
       needsCredits: true,
       topUpUrl: deps.topUpUrl,
-      currentBalanceCents: balance,
+      currentBalanceCredits: balance,
       requiredCents: required,
     };
   }
