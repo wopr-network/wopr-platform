@@ -107,14 +107,14 @@ export class CredentialVaultStore {
   /** List all credentials for a provider (or all providers). Never returns encrypted values. */
   async list(provider?: string): Promise<CredentialSummary[]> {
     const rows = await this.repo.list(provider);
-    return rows.map((r) => ({ ...r, isActive: r.isActive === 1 }));
+    return rows.map((r) => ({ ...r, isActive: r.isActive }));
   }
 
   /** Get a single credential summary by ID. */
   async getById(id: string): Promise<CredentialSummary | null> {
     const row = await this.repo.getSummaryById(id);
     if (!row) return null;
-    return { ...row, isActive: row.isActive === 1 };
+    return { ...row, isActive: row.isActive };
   }
 
   /**

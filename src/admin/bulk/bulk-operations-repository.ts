@@ -114,7 +114,7 @@ export class DrizzleBulkOperationsRepository implements IBulkOperationsRepositor
       adminUser: grant.adminUser,
       createdAt: grant.createdAt,
       undoDeadline: grant.undoDeadline,
-      undone: grant.undone ? 1 : 0,
+      undone: grant.undone,
     });
   }
 
@@ -129,11 +129,11 @@ export class DrizzleBulkOperationsRepository implements IBulkOperationsRepositor
       adminUser: row.adminUser,
       createdAt: row.createdAt,
       undoDeadline: row.undoDeadline,
-      undone: row.undone === 1,
+      undone: row.undone,
     };
   }
 
   async markGrantUndone(operationId: string): Promise<void> {
-    await this.db.update(bulkUndoGrants).set({ undone: 1 }).where(eq(bulkUndoGrants.operationId, operationId));
+    await this.db.update(bulkUndoGrants).set({ undone: true }).where(eq(bulkUndoGrants.operationId, operationId));
   }
 }

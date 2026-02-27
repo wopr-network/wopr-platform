@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, real, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, real, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Sell rates — what users pay. This is the public-facing price list.
@@ -20,7 +20,7 @@ export const sellRates = pgTable(
     /** Optional model identifier for routing (e.g., "anthropic/claude-sonnet-4.5") */
     model: text("model"),
     /** Whether this rate is active (visible on pricing page) */
-    isActive: integer("is_active").notNull().default(1),
+    isActive: boolean("is_active").notNull().default(true),
     /** Sort order within capability group */
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: text("created_at").notNull().default(sql`(now())`),
@@ -57,7 +57,7 @@ export const providerCosts = pgTable(
     /** Latency class: "fast", "standard", "batch" */
     latencyClass: text("latency_class").notNull().default("standard"),
     /** Whether this provider is active and eligible for routing */
-    isActive: integer("is_active").notNull().default(1),
+    isActive: boolean("is_active").notNull().default(true),
     createdAt: text("created_at").notNull().default(sql`(now())`),
     updatedAt: text("updated_at").notNull().default(sql`(now())`),
   },

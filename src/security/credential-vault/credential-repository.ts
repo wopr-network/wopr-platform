@@ -14,7 +14,7 @@ export interface CredentialRow {
   encryptedValue: string;
   authType: string;
   authHeader: string | null;
-  isActive: number;
+  isActive: boolean;
   lastValidated: string | null;
   createdAt: string;
   rotatedAt: string | null;
@@ -28,7 +28,7 @@ export interface CredentialSummaryRow {
   keyName: string;
   authType: string;
   authHeader: string | null;
-  isActive: number;
+  isActive: boolean;
   lastValidated: string | null;
   createdAt: string;
   rotatedAt: string | null;
@@ -77,7 +77,7 @@ export class DrizzleCredentialRepository implements ICredentialRepository {
       encryptedValue: data.encryptedValue,
       authType: data.authType,
       authHeader: data.authHeader,
-      isActive: 1,
+      isActive: true,
       createdBy: data.createdBy,
     });
   }
@@ -132,7 +132,7 @@ export class DrizzleCredentialRepository implements ICredentialRepository {
     const rows = await this.db
       .select()
       .from(providerCredentials)
-      .where(and(eq(providerCredentials.provider, provider), eq(providerCredentials.isActive, 1)));
+      .where(and(eq(providerCredentials.provider, provider), eq(providerCredentials.isActive, true)));
     return rows.map(toFullRow);
   }
 
@@ -148,7 +148,7 @@ export class DrizzleCredentialRepository implements ICredentialRepository {
   async setActive(id: string, isActive: boolean): Promise<boolean> {
     const result = await this.db
       .update(providerCredentials)
-      .set({ isActive: isActive ? 1 : 0 })
+      .set({ isActive })
       .where(eq(providerCredentials.id, id))
       .returning({ id: providerCredentials.id });
     return result.length > 0;

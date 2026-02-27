@@ -141,7 +141,7 @@ export class ProviderRegistry {
       healthy: true, // default; overrides applied in getProviders()
       priority: row.priority,
       latencyClass,
-      enabled: row.is_active === 1,
+      enabled: row.is_active,
     };
   }
 }

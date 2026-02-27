@@ -10,7 +10,7 @@ export interface SellRate {
   unit: string;
   price_usd: number;
   model: string | null;
-  is_active: number;
+  is_active: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -25,7 +25,7 @@ export interface ProviderCost {
   cost_usd: number;
   priority: number;
   latency_class: string;
-  is_active: number;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -100,7 +100,7 @@ export class RateStore {
       unit: input.unit,
       priceUsd: input.priceUsd,
       model: input.model ?? null,
-      isActive: isActive ? 1 : 0,
+      isActive,
       sortOrder,
       createdAt: now,
       updatedAt: now,
@@ -137,7 +137,7 @@ export class RateStore {
     if (input.unit !== undefined) setValues.unit = input.unit;
     if (input.priceUsd !== undefined) setValues.priceUsd = input.priceUsd;
     if ("model" in input) setValues.model = input.model ?? null;
-    if (input.isActive !== undefined) setValues.isActive = input.isActive ? 1 : 0;
+    if (input.isActive !== undefined) setValues.isActive = input.isActive;
     if (input.sortOrder !== undefined) setValues.sortOrder = input.sortOrder;
     setValues.updatedAt = new Date().toISOString();
 
@@ -158,7 +158,7 @@ export class RateStore {
 
   /** Look up an active sell rate by capability and model. Returns null if not found. */
   async getSellRateByModel(capability: string, model: string, unit?: string): Promise<SellRate | null> {
-    const conditions = [eq(sellRates.capability, capability), eq(sellRates.model, model), eq(sellRates.isActive, 1)];
+    const conditions = [eq(sellRates.capability, capability), eq(sellRates.model, model), eq(sellRates.isActive, true)];
     if (unit !== undefined) {
       conditions.push(eq(sellRates.unit, unit));
     }
@@ -196,7 +196,7 @@ export class RateStore {
     const rows = await this.db
       .select()
       .from(sellRates)
-      .where(eq(sellRates.isActive, 1))
+      .where(eq(sellRates.isActive, true))
       .orderBy(asc(sellRates.capability), asc(sellRates.sortOrder), asc(sellRates.displayName));
     return rows.map(toSellRate);
   }
@@ -240,7 +240,7 @@ export class RateStore {
       costUsd: input.costUsd,
       priority,
       latencyClass,
-      isActive: isActive ? 1 : 0,
+      isActive,
       createdAt: now,
       updatedAt: now,
     });
@@ -285,7 +285,7 @@ export class RateStore {
     if (input.costUsd !== undefined) setValues.costUsd = input.costUsd;
     if (input.priority !== undefined) setValues.priority = input.priority;
     if (input.latencyClass !== undefined) setValues.latencyClass = input.latencyClass;
-    if (input.isActive !== undefined) setValues.isActive = input.isActive ? 1 : 0;
+    if (input.isActive !== undefined) setValues.isActive = input.isActive;
     setValues.updatedAt = new Date().toISOString();
 
     await this.db.update(providerCosts).set(setValues).where(eq(providerCosts.id, id));
@@ -377,7 +377,7 @@ export class RateStore {
 function buildSellRateWheres(filters?: RateFilters) {
   const clauses = [];
   if (filters?.capability) clauses.push(eq(sellRates.capability, filters.capability));
-  if (filters?.isActive !== undefined) clauses.push(eq(sellRates.isActive, filters.isActive ? 1 : 0));
+  if (filters?.isActive !== undefined) clauses.push(eq(sellRates.isActive, filters.isActive));
   return clauses.length > 0 ? and(...clauses) : undefined;
 }
 
@@ -385,7 +385,7 @@ function buildProviderCostWheres(filters?: ProviderCostFilters) {
   const clauses = [];
   if (filters?.capability) clauses.push(eq(providerCosts.capability, filters.capability));
   if (filters?.adapter) clauses.push(eq(providerCosts.adapter, filters.adapter));
-  if (filters?.isActive !== undefined) clauses.push(eq(providerCosts.isActive, filters.isActive ? 1 : 0));
+  if (filters?.isActive !== undefined) clauses.push(eq(providerCosts.isActive, filters.isActive));
   return clauses.length > 0 ? and(...clauses) : undefined;
 }
 

@@ -23,7 +23,7 @@ export class AdminNotesStore implements IAdminNotesRepository {
       tenantId: input.tenantId,
       authorId: input.authorId,
       content: input.content,
-      isPinned: input.isPinned ? 1 : 0,
+      isPinned: input.isPinned ?? false,
       createdAt: now,
       updatedAt: now,
     });
@@ -63,7 +63,7 @@ export class AdminNotesStore implements IAdminNotesRepository {
         tenantId: r.tenantId,
         authorId: r.authorId,
         content: r.content,
-        isPinned: r.isPinned === 1,
+        isPinned: r.isPinned,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
       })),
@@ -87,7 +87,7 @@ export class AdminNotesStore implements IAdminNotesRepository {
     const setValues: Record<string, unknown> = { updatedAt: now };
 
     if (updates.content !== undefined) setValues.content = updates.content;
-    if (updates.isPinned !== undefined) setValues.isPinned = updates.isPinned ? 1 : 0;
+    if (updates.isPinned !== undefined) setValues.isPinned = updates.isPinned;
 
     await this.db.update(adminNotes).set(setValues).where(eq(adminNotes.id, noteId));
 
@@ -101,7 +101,7 @@ export class AdminNotesStore implements IAdminNotesRepository {
       tenantId: updated.tenantId,
       authorId: updated.authorId,
       content: updated.content,
-      isPinned: updated.isPinned === 1,
+      isPinned: updated.isPinned,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     };

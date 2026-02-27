@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Per-tenant auto-topup configuration.
@@ -10,13 +10,13 @@ export const creditAutoTopupSettings = pgTable(
   {
     tenantId: text("tenant_id").primaryKey(),
     // Usage-based trigger
-    usageEnabled: integer("usage_enabled").notNull().default(0),
+    usageEnabled: boolean("usage_enabled").notNull().default(false),
     usageThresholdCents: integer("usage_threshold_cents").notNull().default(100),
     usageTopupCents: integer("usage_topup_cents").notNull().default(500),
     usageConsecutiveFailures: integer("usage_consecutive_failures").notNull().default(0),
-    usageChargeInFlight: integer("usage_charge_in_flight").notNull().default(0),
+    usageChargeInFlight: boolean("usage_charge_in_flight").notNull().default(false),
     // Schedule-based trigger
-    scheduleEnabled: integer("schedule_enabled").notNull().default(0),
+    scheduleEnabled: boolean("schedule_enabled").notNull().default(false),
     scheduleAmountCents: integer("schedule_amount_cents").notNull().default(500),
     scheduleIntervalHours: integer("schedule_interval_hours").notNull().default(168),
     scheduleNextAt: text("schedule_next_at"),
