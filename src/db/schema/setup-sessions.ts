@@ -9,6 +9,7 @@ export const setupSessions = pgTable(
     status: text("status").notNull().default("in_progress"),
     collected: text("collected"),
     dependenciesInstalled: text("dependencies_installed"),
+    errorCount: bigint("error_count", { mode: "number" }).notNull().default(0),
     startedAt: bigint("started_at", { mode: "number" }).notNull(),
     completedAt: bigint("completed_at", { mode: "number" }),
   },

@@ -13,6 +13,7 @@ export interface SetupSession {
   status: "in_progress" | "complete" | "rolled_back";
   collected: string | null;
   dependenciesInstalled: string | null;
+  errorCount: number;
   startedAt: number;
   completedAt: number | null;
 }
@@ -31,6 +32,8 @@ export interface ISetupSessionRepository {
   update(id: string, patch: Partial<SetupSession>): Promise<SetupSession>;
   markRolledBack(id: string): Promise<void>;
   markComplete(id: string): Promise<void>;
+  incrementErrorCount(id: string): Promise<number>;
+  resetErrorCount(id: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +50,7 @@ function toSession(row: DbRow): SetupSession {
     status: row.status as SetupSession["status"],
     collected: row.collected,
     dependenciesInstalled: row.dependenciesInstalled,
+    errorCount: row.errorCount,
     startedAt: row.startedAt,
     completedAt: row.completedAt,
   };
@@ -88,6 +92,7 @@ export class DrizzleSetupSessionRepository implements ISetupSessionRepository {
         startedAt: session.startedAt,
         collected: null,
         dependenciesInstalled: null,
+        errorCount: 0,
         completedAt: null,
       })
       .returning();
@@ -116,5 +121,17 @@ export class DrizzleSetupSessionRepository implements ISetupSessionRepository {
       .where(eq(setupSessions.id, id))
       .returning({ id: setupSessions.id });
     if (!rows[0]) throw new Error(`SetupSession not found: ${id}`);
+  }
+
+  async incrementErrorCount(id: string): Promise<number> {
+    const current = await this.findById(id);
+    if (!current) throw new Error(`SetupSession not found: ${id}`);
+    const newCount = current.errorCount + 1;
+    await this.db.update(setupSessions).set({ errorCount: newCount }).where(eq(setupSessions.id, id));
+    return newCount;
+  }
+
+  async resetErrorCount(id: string): Promise<void> {
+    await this.db.update(setupSessions).set({ errorCount: 0 }).where(eq(setupSessions.id, id));
   }
 }
