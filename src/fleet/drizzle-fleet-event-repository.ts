@@ -12,10 +12,10 @@ export class DrizzleFleetEventRepository implements IFleetEventRepository {
     if (existing) {
       await this.db
         .update(fleetEvents)
-        .set({ fired: 1, createdAt: Date.now() })
+        .set({ fired: true, createdAt: Date.now() })
         .where(eq(fleetEvents.eventType, "unexpected_stop"));
     } else {
-      await this.db.insert(fleetEvents).values({ eventType: "unexpected_stop", fired: 1, createdAt: Date.now() });
+      await this.db.insert(fleetEvents).values({ eventType: "unexpected_stop", fired: true, createdAt: Date.now() });
     }
   }
 
@@ -23,12 +23,12 @@ export class DrizzleFleetEventRepository implements IFleetEventRepository {
     const now = Date.now();
     await this.db
       .update(fleetEvents)
-      .set({ fired: 0, clearedAt: now })
+      .set({ fired: false, clearedAt: now })
       .where(eq(fleetEvents.eventType, "unexpected_stop"));
   }
 
   async isFleetStopFired(): Promise<boolean> {
     const rows = await this.db.select().from(fleetEvents).where(eq(fleetEvents.eventType, "unexpected_stop"));
-    return rows.length > 0 && rows[0].fired === 1;
+    return rows.length > 0 && rows[0].fired === true;
   }
 }

@@ -15,7 +15,7 @@ function makeSellRate(overrides: Partial<{ price_usd: number; unit: string; mode
     unit: overrides.unit ?? "1K-tokens",
     price_usd: overrides.price_usd ?? 0.01,
     model: overrides.model ?? "test-model",
-    is_active: 1,
+    is_active: true,
     sort_order: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

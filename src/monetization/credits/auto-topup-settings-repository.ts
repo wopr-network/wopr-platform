@@ -81,7 +81,7 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
     const updateSet: Record<string, unknown> = { updatedAt: now };
 
     if (settings.usageEnabled !== undefined) {
-      values.usageEnabled = settings.usageEnabled ? 1 : 0;
+      values.usageEnabled = settings.usageEnabled;
       updateSet.usageEnabled = values.usageEnabled;
     }
     if (settings.usageThresholdCents !== undefined) {
@@ -93,7 +93,7 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
       updateSet.usageTopupCents = settings.usageTopupCents;
     }
     if (settings.scheduleEnabled !== undefined) {
-      values.scheduleEnabled = settings.scheduleEnabled ? 1 : 0;
+      values.scheduleEnabled = settings.scheduleEnabled;
       updateSet.scheduleEnabled = values.scheduleEnabled;
     }
     if (settings.scheduleAmountCents !== undefined) {
@@ -118,7 +118,7 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
   async setUsageChargeInFlight(tenantId: string, inFlight: boolean): Promise<void> {
     await this.db
       .update(creditAutoTopupSettings)
-      .set({ usageChargeInFlight: inFlight ? 1 : 0, updatedAt: sql`now()` })
+      .set({ usageChargeInFlight: inFlight, updatedAt: sql`now()` })
       .where(eq(creditAutoTopupSettings.tenantId, tenantId));
   }
 
@@ -144,7 +144,7 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
   async disableUsage(tenantId: string): Promise<void> {
     await this.db
       .update(creditAutoTopupSettings)
-      .set({ usageEnabled: 0, updatedAt: sql`now()` })
+      .set({ usageEnabled: false, updatedAt: sql`now()` })
       .where(eq(creditAutoTopupSettings.tenantId, tenantId));
   }
 
@@ -170,7 +170,7 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
   async disableSchedule(tenantId: string): Promise<void> {
     await this.db
       .update(creditAutoTopupSettings)
-      .set({ scheduleEnabled: 0, updatedAt: sql`now()` })
+      .set({ scheduleEnabled: false, updatedAt: sql`now()` })
       .where(eq(creditAutoTopupSettings.tenantId, tenantId));
   }
 
@@ -191,7 +191,7 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
     const rows = await this.db
       .select()
       .from(creditAutoTopupSettings)
-      .where(and(eq(creditAutoTopupSettings.scheduleEnabled, 1), lte(creditAutoTopupSettings.scheduleNextAt, now)));
+      .where(and(eq(creditAutoTopupSettings.scheduleEnabled, true), lte(creditAutoTopupSettings.scheduleNextAt, now)));
     return rows.map(mapRow);
   }
 }
@@ -199,12 +199,12 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
 function mapRow(row: typeof creditAutoTopupSettings.$inferSelect): AutoTopupSettings {
   return {
     tenantId: row.tenantId,
-    usageEnabled: row.usageEnabled === 1,
+    usageEnabled: row.usageEnabled,
     usageThresholdCents: row.usageThresholdCents,
     usageTopupCents: row.usageTopupCents,
     usageConsecutiveFailures: row.usageConsecutiveFailures,
-    usageChargeInFlight: row.usageChargeInFlight === 1,
-    scheduleEnabled: row.scheduleEnabled === 1,
+    usageChargeInFlight: row.usageChargeInFlight,
+    scheduleEnabled: row.scheduleEnabled,
     scheduleAmountCents: row.scheduleAmountCents,
     scheduleIntervalHours: row.scheduleIntervalHours,
     scheduleNextAt: row.scheduleNextAt,

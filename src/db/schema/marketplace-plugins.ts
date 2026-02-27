@@ -1,4 +1,4 @@
-import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 export const marketplacePlugins = pgTable(
   "marketplace_plugins",
@@ -6,8 +6,8 @@ export const marketplacePlugins = pgTable(
     pluginId: text("plugin_id").primaryKey(),
     npmPackage: text("npm_package").notNull(),
     version: text("version").notNull(),
-    enabled: integer("enabled").notNull().default(0),
-    featured: integer("featured").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(false),
+    featured: boolean("featured").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(999),
     category: text("category"),
     discoveredAt: bigint("discovered_at", { mode: "number" }).notNull(),

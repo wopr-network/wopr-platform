@@ -1,4 +1,4 @@
-import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 export const bulkUndoGrants = pgTable(
   "bulk_undo_grants",
@@ -9,7 +9,7 @@ export const bulkUndoGrants = pgTable(
     adminUser: text("admin_user").notNull(),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     undoDeadline: bigint("undo_deadline", { mode: "number" }).notNull(),
-    undone: integer("undone").notNull().default(0),
+    undone: boolean("undone").notNull().default(false),
   },
   (table) => [index("idx_bulk_undo_deadline").on(table.undoDeadline)],
 );

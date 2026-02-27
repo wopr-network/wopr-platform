@@ -388,7 +388,7 @@ describe("RateStore - Partial Updates", () => {
 		expect(updated?.unit).toBe("chars");
 		expect(updated?.price_usd).toBe(5);
 		expect(updated?.model).toBe("gpt-4");
-		expect(updated?.is_active).toBe(0);
+		expect(updated?.is_active).toBe(false);
 		expect(updated?.sort_order).toBe(99);
 	});
 
@@ -414,7 +414,7 @@ describe("RateStore - Partial Updates", () => {
 		expect(updated?.cost_usd).toBe(5);
 		expect(updated?.priority).toBe(10);
 		expect(updated?.latency_class).toBe("fast");
-		expect(updated?.is_active).toBe(0);
+		expect(updated?.is_active).toBe(false);
 	});
 
 	it("throws when updating non-existent provider cost", async () => {
@@ -444,13 +444,13 @@ describe("RateStore - Partial Updates", () => {
 	it("updateSellRate with isActive true hits ternary true branch", async () => {
 		const rate = await store.createSellRate({ capability: "active-t", displayName: "A", unit: "tok", priceUsd: 1, isActive: false });
 		const updated = await store.updateSellRate(rate.id, { isActive: true });
-		expect(updated.is_active).toBe(1);
+		expect(updated.is_active).toBe(true);
 	});
 
 	it("updateProviderCost with isActive true hits ternary true branch", async () => {
 		const cost = await store.createProviderCost({ capability: "active-t", adapter: "a", unit: "tok", costUsd: 1, isActive: false });
 		const updated = await store.updateProviderCost(cost.id, { isActive: true });
-		expect(updated.is_active).toBe(1);
+		expect(updated.is_active).toBe(true);
 	});
 
 	it("updateSellRate clears model to null when no conflict exists", async () => {

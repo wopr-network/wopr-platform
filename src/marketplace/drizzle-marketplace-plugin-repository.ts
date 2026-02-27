@@ -9,8 +9,8 @@ function rowToDomain(row: typeof marketplacePlugins.$inferSelect): MarketplacePl
     pluginId: row.pluginId,
     npmPackage: row.npmPackage,
     version: row.version,
-    enabled: row.enabled === 1,
-    featured: row.featured === 1,
+    enabled: row.enabled,
+    featured: row.featured,
     sortOrder: row.sortOrder,
     category: row.category,
     discoveredAt: row.discoveredAt,
@@ -34,7 +34,7 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
     const rows = await this.db
       .select()
       .from(marketplacePlugins)
-      .where(eq(marketplacePlugins.enabled, 1))
+      .where(eq(marketplacePlugins.enabled, true))
       .orderBy(asc(marketplacePlugins.sortOrder));
     return rows.map(rowToDomain);
   }
@@ -43,7 +43,7 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
     const rows = await this.db
       .select()
       .from(marketplacePlugins)
-      .where(eq(marketplacePlugins.enabled, 0))
+      .where(eq(marketplacePlugins.enabled, false))
       .orderBy(asc(marketplacePlugins.discoveredAt));
     return rows.map(rowToDomain);
   }
@@ -70,8 +70,8 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
 
   async update(pluginId: string, patch: Partial<MarketplacePlugin>): Promise<MarketplacePlugin> {
     const updates: Record<string, unknown> = {};
-    if (patch.enabled !== undefined) updates.enabled = patch.enabled ? 1 : 0;
-    if (patch.featured !== undefined) updates.featured = patch.featured ? 1 : 0;
+    if (patch.enabled !== undefined) updates.enabled = patch.enabled;
+    if (patch.featured !== undefined) updates.featured = patch.featured;
     if (patch.sortOrder !== undefined) updates.sortOrder = patch.sortOrder;
     if (patch.category !== undefined) updates.category = patch.category;
     if (patch.enabledBy !== undefined) updates.enabledBy = patch.enabledBy;

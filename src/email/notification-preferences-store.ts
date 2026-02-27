@@ -46,13 +46,13 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
     if (!row) return { ...DEFAULTS };
 
     return {
-      billing_low_balance: row.billingLowBalance === 1,
-      billing_receipts: row.billingReceipts === 1,
-      billing_auto_topup: row.billingAutoTopup === 1,
-      agent_channel_disconnect: row.agentChannelDisconnect === 1,
-      agent_status_changes: row.agentStatusChanges === 1,
-      account_role_changes: row.accountRoleChanges === 1,
-      account_team_invites: row.accountTeamInvites === 1,
+      billing_low_balance: row.billingLowBalance,
+      billing_receipts: row.billingReceipts,
+      billing_auto_topup: row.billingAutoTopup,
+      agent_channel_disconnect: row.agentChannelDisconnect,
+      agent_status_changes: row.agentStatusChanges,
+      account_role_changes: row.accountRoleChanges,
+      account_team_invites: row.accountTeamInvites,
     };
   }
 
@@ -60,14 +60,13 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
   async update(tenantId: string, prefs: Partial<NotificationPrefs>): Promise<void> {
     const values: Partial<NotificationPrefsRow> = { tenantId, updatedAt: Math.floor(Date.now() / 1000) };
 
-    if (prefs.billing_low_balance !== undefined) values.billingLowBalance = prefs.billing_low_balance ? 1 : 0;
-    if (prefs.billing_receipts !== undefined) values.billingReceipts = prefs.billing_receipts ? 1 : 0;
-    if (prefs.billing_auto_topup !== undefined) values.billingAutoTopup = prefs.billing_auto_topup ? 1 : 0;
-    if (prefs.agent_channel_disconnect !== undefined)
-      values.agentChannelDisconnect = prefs.agent_channel_disconnect ? 1 : 0;
-    if (prefs.agent_status_changes !== undefined) values.agentStatusChanges = prefs.agent_status_changes ? 1 : 0;
-    if (prefs.account_role_changes !== undefined) values.accountRoleChanges = prefs.account_role_changes ? 1 : 0;
-    if (prefs.account_team_invites !== undefined) values.accountTeamInvites = prefs.account_team_invites ? 1 : 0;
+    if (prefs.billing_low_balance !== undefined) values.billingLowBalance = prefs.billing_low_balance;
+    if (prefs.billing_receipts !== undefined) values.billingReceipts = prefs.billing_receipts;
+    if (prefs.billing_auto_topup !== undefined) values.billingAutoTopup = prefs.billing_auto_topup;
+    if (prefs.agent_channel_disconnect !== undefined) values.agentChannelDisconnect = prefs.agent_channel_disconnect;
+    if (prefs.agent_status_changes !== undefined) values.agentStatusChanges = prefs.agent_status_changes;
+    if (prefs.account_role_changes !== undefined) values.accountRoleChanges = prefs.account_role_changes;
+    if (prefs.account_team_invites !== undefined) values.accountTeamInvites = prefs.account_team_invites;
 
     // Get existing row to merge with defaults
     const existing = await this.db
@@ -82,13 +81,13 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
       // Insert with defaults for unspecified fields
       const insertValues: NotificationPrefsRow = {
         tenantId,
-        billingLowBalance: DEFAULTS.billing_low_balance ? 1 : 0,
-        billingReceipts: DEFAULTS.billing_receipts ? 1 : 0,
-        billingAutoTopup: DEFAULTS.billing_auto_topup ? 1 : 0,
-        agentChannelDisconnect: DEFAULTS.agent_channel_disconnect ? 1 : 0,
-        agentStatusChanges: DEFAULTS.agent_status_changes ? 1 : 0,
-        accountRoleChanges: DEFAULTS.account_role_changes ? 1 : 0,
-        accountTeamInvites: DEFAULTS.account_team_invites ? 1 : 0,
+        billingLowBalance: DEFAULTS.billing_low_balance,
+        billingReceipts: DEFAULTS.billing_receipts,
+        billingAutoTopup: DEFAULTS.billing_auto_topup,
+        agentChannelDisconnect: DEFAULTS.agent_channel_disconnect,
+        agentStatusChanges: DEFAULTS.agent_status_changes,
+        accountRoleChanges: DEFAULTS.account_role_changes,
+        accountTeamInvites: DEFAULTS.account_team_invites,
         updatedAt: Math.floor(Date.now() / 1000),
         ...values,
       };

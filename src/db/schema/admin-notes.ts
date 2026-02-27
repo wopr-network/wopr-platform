@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Internal admin notes per tenant — visible only to platform operators.
@@ -12,7 +12,7 @@ export const adminNotes = pgTable(
     tenantId: text("tenant_id").notNull(),
     authorId: text("author_id").notNull(),
     content: text("content").notNull(),
-    isPinned: integer("is_pinned").notNull().default(0),
+    isPinned: boolean("is_pinned").notNull().default(false),
     createdAt: bigint("created_at", { mode: "number" }).notNull().default(sql`(extract(epoch from now()))::bigint`),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull().default(sql`(extract(epoch from now()))::bigint`),
   },

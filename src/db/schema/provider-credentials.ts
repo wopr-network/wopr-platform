@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Provider credentials table — stores encrypted platform-level API keys
@@ -23,7 +23,7 @@ export const providerCredentials = pgTable(
     /** HTTP header name for injection (e.g. "x-api-key", "Authorization") */
     authHeader: text("auth_header"),
     /** Whether this credential is active and eligible for use */
-    isActive: integer("is_active").notNull().default(1),
+    isActive: boolean("is_active").notNull().default(true),
     /** ISO timestamp of last successful validation */
     lastValidated: text("last_validated"),
     /** ISO timestamp of record creation */
