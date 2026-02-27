@@ -30,6 +30,13 @@ function makeDeps(overrides: Partial<SetupRouteDeps> = {}): SetupRouteDeps {
     onboardingService: {
       inject: vi.fn().mockResolvedValue("ok"),
     },
+    setupService: {
+      rollback: vi.fn().mockResolvedValue({ sessionId: "setup-1", configKeysRemoved: [], dependenciesRemoved: [] }),
+      recordError: vi.fn().mockResolvedValue(0),
+      recordSuccess: vi.fn().mockResolvedValue(undefined),
+      cleanupStaleSessions: vi.fn().mockResolvedValue([]),
+      checkForResumable: vi.fn().mockResolvedValue({ hasStaleSession: false }),
+    } as any,
     checkProvider: vi.fn().mockResolvedValue({ configured: false }),
     ...overrides,
   };
