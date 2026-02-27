@@ -32,13 +32,15 @@ export class DrizzleDividendRepository implements IDividendRepository {
     // 1. Pool = sum of purchase amounts from yesterday UTC
     const poolRow = (
       await this.db
+        // raw SQL: Drizzle cannot express COALESCE(SUM(...), 0) aggregate
         .select({ total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)` })
         .from(creditTransactions)
         .where(
           and(
             eq(creditTransactions.type, "purchase"),
-            sql`${creditTransactions.createdAt}::timestamp >= date_trunc('day', NOW()) - INTERVAL '1 day'`,
-            sql`${creditTransactions.createdAt}::timestamp < date_trunc('day', NOW())`,
+            // raw SQL: Drizzle cannot express date_trunc with interval arithmetic
+            sql`${creditTransactions.createdAt}::timestamp >= date_trunc('day', timezone('UTC', now())) - INTERVAL '1 day'`,
+            sql`${creditTransactions.createdAt}::timestamp < date_trunc('day', timezone('UTC', now()))`,
           ),
         )
     )[0];
@@ -47,12 +49,14 @@ export class DrizzleDividendRepository implements IDividendRepository {
     // 2. Active users = distinct tenants with a purchase in the last 7 days
     const activeRow = (
       await this.db
+        // raw SQL: Drizzle cannot express COUNT(DISTINCT col)
         .select({ count: sql<number>`COUNT(DISTINCT ${creditTransactions.tenantId})` })
         .from(creditTransactions)
         .where(
           and(
             eq(creditTransactions.type, "purchase"),
-            sql`${creditTransactions.createdAt}::timestamp >= NOW() - INTERVAL '7 days'`,
+            // raw SQL: Drizzle cannot express timestamp comparison with interval arithmetic
+            sql`${creditTransactions.createdAt}::timestamp >= timezone('UTC', now()) - INTERVAL '7 days'`,
           ),
         )
     )[0];
@@ -125,6 +129,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
   async getLifetimeTotalCents(tenantId: string): Promise<number> {
     const row = (
       await this.db
+        // raw SQL: Drizzle cannot express COALESCE(SUM(...), 0) aggregate
         .select({ total: sql<number>`COALESCE(SUM(${dividendDistributions.amountCents}), 0)` })
         .from(dividendDistributions)
         .where(eq(dividendDistributions.tenantId, tenantId))
@@ -136,6 +141,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
     return this.db
       .select({
         tenantId: dividendDistributions.tenantId,
+        // raw SQL: Drizzle cannot express SUM/COUNT(DISTINCT)/AVG with CAST aggregates
         totalCents: sql<number>`SUM(${dividendDistributions.amountCents})`,
         distributionCount: sql<number>`COUNT(DISTINCT ${dividendDistributions.date})`,
         avgPoolCents: sql<number>`CAST(AVG(${dividendDistributions.poolCents}) AS INTEGER)`,
