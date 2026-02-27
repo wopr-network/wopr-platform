@@ -29,15 +29,15 @@ export interface RuntimeCronConfig {
   /** Called when balance hits exactly 0 or goes negative. */
   onCreditsExhausted?: (tenantId: string) => void | Promise<void>;
   /**
-   * Optional: returns total daily resource tier surcharge in cents for a tenant.
+   * Optional: returns total daily resource tier surcharge for a tenant.
    * Sum of all active bots' tier surcharges. If not provided, no surcharge is applied.
    */
-  getResourceTierCosts?: (tenantId: string) => number | Promise<number>;
+  getResourceTierCosts?: (tenantId: string) => Credit | Promise<Credit>;
   /**
-   * Optional: returns total daily storage tier surcharge in cents for a tenant.
+   * Optional: returns total daily storage tier surcharge for a tenant.
    * Sum of all active bots' storage tier costs. If not provided, no surcharge applied.
    */
-  getStorageTierCosts?: (tenantId: string) => number | Promise<number>;
+  getStorageTierCosts?: (tenantId: string) => Credit | Promise<Credit>;
 }
 
 export interface RuntimeCronResult {
@@ -56,14 +56,14 @@ export interface RuntimeCronResult {
 export function buildResourceTierCosts(
   botInstanceRepo: IBotInstanceRepository,
   getBotBillingActiveIds: (tenantId: string) => Promise<string[]>,
-): (tenantId: string) => Promise<number> {
-  return async (tenantId: string): Promise<number> => {
+): (tenantId: string) => Promise<Credit> {
+  return async (tenantId: string): Promise<Credit> => {
     const botIds = await getBotBillingActiveIds(tenantId);
-    let total = 0;
+    let total = Credit.ZERO;
     for (const botId of botIds) {
       const tier = (await botInstanceRepo.getResourceTier(botId)) ?? "standard";
       const tierKey = tier in RESOURCE_TIERS ? (tier as keyof typeof RESOURCE_TIERS) : "standard";
-      total += RESOURCE_TIERS[tierKey].dailyCostCents;
+      total = total.add(RESOURCE_TIERS[tierKey].dailyCost);
     }
     return total;
   };
@@ -74,7 +74,7 @@ export function buildResourceTierCosts(
  *
  * For each tenant with a positive balance:
  * 1. Look up active bot count
- * 2. Debit (bots * DAILY_BOT_COST_CENTS) from their balance
+ * 2. Debit (bots * DAILY_BOT_COST) from their balance
  * 3. If balance is insufficient, debit what's available and trigger suspension
  */
 export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<RuntimeCronResult> {
@@ -104,9 +104,8 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
 
         // Debit resource tier surcharges (if any)
         if (cfg.getResourceTierCosts) {
-          const tierCostCents = await cfg.getResourceTierCosts(tenantId);
-          if (tierCostCents > 0) {
-            const tierCost = Credit.fromCents(tierCostCents);
+          const tierCost = await cfg.getResourceTierCosts(tenantId);
+          if (!tierCost.isZero()) {
             const balanceAfterRuntime = await cfg.ledger.balance(tenantId);
             if (!balanceAfterRuntime.lessThan(tierCost)) {
               await cfg.ledger.debit(tenantId, tierCost, "resource_upgrade", "Daily resource tier surcharge");
@@ -140,9 +139,8 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
 
         // Debit storage tier surcharges (if any)
         if (cfg.getStorageTierCosts) {
-          const storageCostCents = await cfg.getStorageTierCosts(tenantId);
-          if (storageCostCents > 0) {
-            const storageCost = Credit.fromCents(storageCostCents);
+          const storageCost = await cfg.getStorageTierCosts(tenantId);
+          if (!storageCost.isZero()) {
             const currentBalance = await cfg.ledger.balance(tenantId);
             if (!currentBalance.lessThan(storageCost)) {
               await cfg.ledger.debit(tenantId, storageCost, "storage_upgrade", "Daily storage tier surcharge");

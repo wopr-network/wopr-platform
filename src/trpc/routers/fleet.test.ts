@@ -539,7 +539,7 @@ describe("fleet.getStorageTier", () => {
   it("returns standard tier when billing is null", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.getStorageTier({ id: TEST_BOT_ID });
-    expect(result).toEqual({ tier: "standard", limitGb: 5, dailyCostCents: 0 });
+    expect(result).toEqual({ tier: "standard", limitGb: 5, dailyCost: 0 });
   });
 
   it("returns tier from billing when available", async () => {
@@ -552,7 +552,7 @@ describe("fleet.getStorageTier", () => {
     });
     const caller = createCaller(authedContext());
     const result = await caller.fleet.getStorageTier({ id: TEST_BOT_ID });
-    expect(result).toEqual({ tier: "pro", limitGb: 50, dailyCostCents: 8 });
+    expect(result).toEqual({ tier: "pro", limitGb: 50, dailyCost: 8 });
   });
 
   it("throws NOT_FOUND for non-owned bot", async () => {
@@ -627,7 +627,7 @@ describe("fleet.setStorageTier", () => {
     });
     const caller = createCaller(authedContext());
     const result = await caller.fleet.setStorageTier({ id: TEST_BOT_ID, tier: "plus" });
-    expect(result).toEqual({ tier: "plus", limitGb: 20, dailyCostCents: 3 });
+    expect(result).toEqual({ tier: "plus", limitGb: 20, dailyCost: 3 });
     expect(mockBilling.setStorageTier).toHaveBeenCalledWith(TEST_BOT_ID, "plus");
   });
 });
@@ -647,7 +647,7 @@ describe("fleet.getStorageUsage", () => {
       usedBytes: 0,
       usedGb: 0,
       percentUsed: 0,
-      dailyCostCents: 0,
+      dailyCost: 0,
     });
   });
 

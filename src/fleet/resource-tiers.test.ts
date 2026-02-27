@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Credit } from "../monetization/credit.js";
 import { DEFAULT_RESOURCE_TIER, RESOURCE_TIER_KEYS, RESOURCE_TIERS, tierToResourceLimits } from "./resource-tiers.js";
 
 describe("resource-tiers", () => {
@@ -12,11 +13,11 @@ describe("resource-tiers", () => {
   });
 
   it("standard tier has zero daily cost", () => {
-    expect(RESOURCE_TIERS.standard.dailyCostCents).toBe(0);
+    expect(RESOURCE_TIERS.standard.dailyCost.equals(Credit.ZERO)).toBe(true);
   });
 
   it("tiers are ordered by ascending cost", () => {
-    const costs = RESOURCE_TIER_KEYS.map((k) => RESOURCE_TIERS[k].dailyCostCents);
+    const costs = RESOURCE_TIER_KEYS.map((k) => RESOURCE_TIERS[k].dailyCost.toCents());
     for (let i = 1; i < costs.length; i++) {
       expect(costs[i]).toBeGreaterThan(costs[i - 1]);
     }
