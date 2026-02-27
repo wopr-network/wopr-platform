@@ -10,8 +10,8 @@ import { z } from "zod";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import {
   ALLOWED_SCHEDULE_INTERVALS,
-  ALLOWED_THRESHOLD_CENTS,
-  ALLOWED_TOPUP_AMOUNTS_CENTS,
+  ALLOWED_THRESHOLD_CREDITS,
+  ALLOWED_TOPUP_AMOUNTS_CREDITS,
   computeNextScheduleAt,
   type IAutoTopupSettingsRepository,
 } from "../../monetization/credits/auto-topup-settings-repository.js";
@@ -180,7 +180,7 @@ export const billingRouter = router({
       const daily_burn_cents = Math.round(totalCharge / 7);
       const runway_days = daily_burn_cents > 0 ? Math.floor(balance / daily_burn_cents) : null;
 
-      return { tenant, balance_cents: balance, daily_burn_cents, runway_days };
+      return { tenant, balance_credits: balance, daily_burn_cents, runway_days };
     }),
 
   /** Get credit transaction history for a tenant. Tenant defaults to ctx.tenantId when omitted. */
@@ -213,7 +213,7 @@ export const billingRouter = router({
     const options: Array<{
       priceId: string;
       label: string;
-      amountCents: number;
+      amountCredits: number;
       creditCents: number;
       bonusPercent: number;
     }> = [];
@@ -221,13 +221,13 @@ export const billingRouter = router({
       options.push({
         priceId,
         label: point.label,
-        amountCents: point.amountCents,
+        amountCredits: point.amountCredits,
         creditCents: point.creditCents,
         bonusPercent: point.bonusPercent,
       });
     }
-    // Sort by amountCents ascending for consistent ordering
-    options.sort((a, b) => a.amountCents - b.amountCents);
+    // Sort by amountCredits ascending for consistent ordering
+    options.sort((a, b) => a.amountCredits - b.amountCredits);
     return options;
   }),
 
@@ -636,10 +636,10 @@ export const billingRouter = router({
 
     return {
       usage_enabled: settings?.usageEnabled ?? false,
-      usage_threshold_cents: settings?.usageThresholdCents ?? 500,
-      usage_topup_cents: settings?.usageTopupCents ?? 2000,
+      usage_threshold_credits: settings?.usageThresholdCredits ?? 500,
+      usage_topup_credits: settings?.usageTopupCredits ?? 2000,
       schedule_enabled: settings?.scheduleEnabled ?? false,
-      schedule_amount_cents: settings?.scheduleAmountCents ?? null,
+      schedule_amount_credits: settings?.scheduleAmountCredits ?? null,
       schedule_next_at: settings?.scheduleNextAt ?? null,
       payment_method_last4: paymentMethodLast4,
     };
@@ -650,27 +650,27 @@ export const billingRouter = router({
     .input(
       z.object({
         usage_enabled: z.boolean().optional(),
-        usage_threshold_cents: z
+        usage_threshold_credits: z
           .number()
           .int()
-          .refine((v) => (ALLOWED_THRESHOLD_CENTS as readonly number[]).includes(v), {
-            message: `Must be one of: ${ALLOWED_THRESHOLD_CENTS.join(", ")}`,
+          .refine((v) => (ALLOWED_THRESHOLD_CREDITS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_THRESHOLD_CREDITS.join(", ")}`,
           })
           .optional(),
-        usage_topup_cents: z
+        usage_topup_credits: z
           .number()
           .int()
-          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CENTS as readonly number[]).includes(v), {
-            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CENTS.join(", ")}`,
+          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CREDITS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CREDITS.join(", ")}`,
           })
           .optional(),
         schedule_enabled: z.boolean().optional(),
         schedule_interval: z.enum(ALLOWED_SCHEDULE_INTERVALS).nullable().optional(),
-        schedule_amount_cents: z
+        schedule_amount_credits: z
           .number()
           .int()
-          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CENTS as readonly number[]).includes(v), {
-            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CENTS.join(", ")}`,
+          .refine((v) => (ALLOWED_TOPUP_AMOUNTS_CREDITS as readonly number[]).includes(v), {
+            message: `Must be one of: ${ALLOWED_TOPUP_AMOUNTS_CREDITS.join(", ")}`,
           })
           .nullable()
           .optional(),
@@ -706,20 +706,20 @@ export const billingRouter = router({
 
       await autoTopupSettingsStore.upsert(tenant, {
         usageEnabled: input.usage_enabled,
-        usageThresholdCents: input.usage_threshold_cents,
-        usageTopupCents: input.usage_topup_cents,
+        usageThresholdCredits: input.usage_threshold_credits,
+        usageTopupCredits: input.usage_topup_credits,
         scheduleEnabled: input.schedule_enabled,
-        scheduleAmountCents: input.schedule_amount_cents ?? undefined,
+        scheduleAmountCredits: input.schedule_amount_credits ?? undefined,
         scheduleNextAt: scheduleNextAt,
       });
 
       const updated = await autoTopupSettingsStore.getByTenant(tenant);
       return {
         usage_enabled: updated?.usageEnabled ?? false,
-        usage_threshold_cents: updated?.usageThresholdCents ?? 500,
-        usage_topup_cents: updated?.usageTopupCents ?? 2000,
+        usage_threshold_credits: updated?.usageThresholdCredits ?? 500,
+        usage_topup_credits: updated?.usageTopupCredits ?? 2000,
         schedule_enabled: updated?.scheduleEnabled ?? false,
-        schedule_amount_cents: updated?.scheduleAmountCents ?? null,
+        schedule_amount_credits: updated?.scheduleAmountCredits ?? null,
         schedule_next_at: updated?.scheduleNextAt ?? null,
         payment_method_last4: null,
       };
@@ -736,9 +736,9 @@ export const billingRouter = router({
       const { dividendRepo } = deps();
       const stats = await dividendRepo.getStats(tenant);
       return {
-        pool_cents: stats.poolCents,
+        pool_cents: stats.poolCredits,
         active_users: stats.activeUsers,
-        per_user_cents: stats.perUserCents,
+        per_user_cents: stats.perUserCredits,
         next_distribution_at: stats.nextDistributionAt,
         user_eligible: stats.userEligible,
         user_last_purchase_at: stats.userLastPurchaseAt,
@@ -776,7 +776,7 @@ export const billingRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
-      const total = await dividendRepo.getLifetimeTotalCents(tenant);
+      const total = await dividendRepo.getLifetimeTotalCredits(tenant);
       return { total_cents: total, tenant };
     }),
 

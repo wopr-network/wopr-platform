@@ -4,8 +4,8 @@ export type {
 } from "./auto-topup-settings-repository.js";
 export {
   ALLOWED_SCHEDULE_INTERVALS,
-  ALLOWED_THRESHOLD_CENTS,
-  ALLOWED_TOPUP_AMOUNTS_CENTS,
+  ALLOWED_THRESHOLD_CREDITS,
+  ALLOWED_TOPUP_AMOUNTS_CREDITS,
   computeNextScheduleAt,
   DrizzleAutoTopupSettingsRepository,
 } from "./auto-topup-settings-repository.js";

@@ -9,16 +9,16 @@ export type { DividendHistoryEntry, DividendStats };
 
 export interface DigestTenantRow {
   tenantId: string;
-  totalCents: number;
+  totalCredits: number;
   distributionCount: number;
-  avgPoolCents: number;
+  avgPoolCredits: number;
   avgActiveUsers: number;
 }
 
 export interface IDividendRepository {
   getStats(tenantId: string): Promise<DividendStats>;
   getHistory(tenantId: string, limit: number, offset: number): Promise<DividendHistoryEntry[]>;
-  getLifetimeTotalCents(tenantId: string): Promise<number>;
+  getLifetimeTotalCredits(tenantId: string): Promise<number>;
   /** Aggregate dividend distributions per tenant for a date window [windowStart, windowEnd). */
   getDigestTenantAggregates(windowStart: string, windowEnd: string): Promise<DigestTenantRow[]>;
   /** Resolve email for a tenant from admin_users. Returns undefined if no row exists. */
@@ -32,7 +32,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
     // 1. Pool = sum of purchase amounts from yesterday UTC
     const poolRow = (
       await this.db
-        .select({ total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)` })
+        .select({ total: sql<number>`COALESCE(SUM(${creditTransactions.amountCredits}), 0)` })
         .from(creditTransactions)
         .where(
           and(
@@ -42,7 +42,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
           ),
         )
     )[0];
-    const poolCents = poolRow?.total ?? 0;
+    const poolCredits = poolRow?.total ?? 0;
 
     // 2. Active users = distinct tenants with a purchase in the last 7 days
     const activeRow = (
@@ -59,7 +59,7 @@ export class DrizzleDividendRepository implements IDividendRepository {
     const activeUsers = activeRow?.count ?? 0;
 
     // 3. Per-user projection (avoid division by zero)
-    const perUserCents = activeUsers > 0 ? Math.floor(poolCents / activeUsers) : 0;
+    const perUserCredits = activeUsers > 0 ? Math.floor(poolCredits / activeUsers) : 0;
 
     // 4. Next distribution = midnight UTC tonight
     const now = new Date();
@@ -94,9 +94,9 @@ export class DrizzleDividendRepository implements IDividendRepository {
     }
 
     return {
-      poolCents,
+      poolCredits,
       activeUsers,
-      perUserCents,
+      perUserCredits,
       nextDistributionAt,
       userEligible,
       userLastPurchaseAt,
@@ -111,8 +111,8 @@ export class DrizzleDividendRepository implements IDividendRepository {
     return this.db
       .select({
         date: dividendDistributions.date,
-        amountCents: dividendDistributions.amountCents,
-        poolCents: dividendDistributions.poolCents,
+        amountCredits: dividendDistributions.amountCredits,
+        poolCredits: dividendDistributions.poolCredits,
         activeUsers: dividendDistributions.activeUsers,
       })
       .from(dividendDistributions)
@@ -122,10 +122,10 @@ export class DrizzleDividendRepository implements IDividendRepository {
       .offset(safeOffset);
   }
 
-  async getLifetimeTotalCents(tenantId: string): Promise<number> {
+  async getLifetimeTotalCredits(tenantId: string): Promise<number> {
     const row = (
       await this.db
-        .select({ total: sql<number>`COALESCE(SUM(${dividendDistributions.amountCents}), 0)` })
+        .select({ total: sql<number>`COALESCE(SUM(${dividendDistributions.amountCredits}), 0)` })
         .from(dividendDistributions)
         .where(eq(dividendDistributions.tenantId, tenantId))
     )[0];
@@ -136,9 +136,9 @@ export class DrizzleDividendRepository implements IDividendRepository {
     return this.db
       .select({
         tenantId: dividendDistributions.tenantId,
-        totalCents: sql<number>`SUM(${dividendDistributions.amountCents})`,
+        totalCredits: sql<number>`SUM(${dividendDistributions.amountCredits})`,
         distributionCount: sql<number>`COUNT(DISTINCT ${dividendDistributions.date})`,
-        avgPoolCents: sql<number>`CAST(AVG(${dividendDistributions.poolCents}) AS INTEGER)`,
+        avgPoolCredits: sql<number>`CAST(AVG(${dividendDistributions.poolCredits}) AS INTEGER)`,
         avgActiveUsers: sql<number>`CAST(AVG(${dividendDistributions.activeUsers}) AS INTEGER)`,
       })
       .from(dividendDistributions)

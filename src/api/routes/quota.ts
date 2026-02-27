@@ -59,7 +59,7 @@ quotaRoutes.get("/", async (c) => {
   const balance = await getLedger().balance(tenantId);
 
   return c.json({
-    balanceCents: balance,
+    balanceCredits: balance,
     instances: {
       current: activeInstances,
       max: DEFAULT_INSTANCE_LIMITS.maxInstances,
@@ -129,7 +129,7 @@ quotaRoutes.post("/check", async (c) => {
 quotaRoutes.get("/balance/:tenant", async (c) => {
   const tenantId = c.req.param("tenant");
   const balance = await getLedger().balance(tenantId);
-  return c.json({ tenantId, balanceCents: balance });
+  return c.json({ tenantId, balanceCredits: balance });
 });
 
 /**

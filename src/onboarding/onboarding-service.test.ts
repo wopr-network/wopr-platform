@@ -11,7 +11,7 @@ function mockConfig(): OnboardingConfig {
     woprPort: 3847,
     llmProvider: "anthropic",
     llmModel: "test",
-    budgetCapCents: 100,
+    budgetCapCredits: 100,
     woprDataDir: "/tmp",
     enabled: true,
   };
@@ -27,7 +27,7 @@ function mockSessionRepo(): IOnboardingSessionRepository {
       ...data,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      budgetUsedCents: 0,
+      budgetUsedCredits: 0,
     })),
     upgradeAnonymousToUser: vi.fn().mockResolvedValue(null),
     updateBudgetUsed: vi.fn().mockResolvedValue(undefined),

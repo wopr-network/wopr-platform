@@ -10,7 +10,7 @@ export interface OnboardingSession {
   status: "active" | "transferred" | "expired";
   createdAt: number;
   updatedAt: number;
-  budgetUsedCents: number;
+  budgetUsedCredits: number;
 }
 
 export interface IOnboardingSessionRepository {
@@ -18,9 +18,9 @@ export interface IOnboardingSessionRepository {
   getByUserId(userId: string): Promise<OnboardingSession | null>;
   getByAnonymousId(anonymousId: string): Promise<OnboardingSession | null>;
   getActiveByAnonymousId(anonymousId: string): Promise<OnboardingSession | null>;
-  create(data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">): Promise<OnboardingSession>;
+  create(data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCredits">): Promise<OnboardingSession>;
   upgradeAnonymousToUser(anonymousId: string, userId: string): Promise<OnboardingSession | null>;
-  updateBudgetUsed(id: string, budgetUsedCents: number): Promise<void>;
+  updateBudgetUsed(id: string, budgetUsedCredits: number): Promise<void>;
   setStatus(id: string, status: OnboardingSession["status"]): Promise<void>;
 }
 
@@ -35,7 +35,7 @@ function toSession(row: DbRow): OnboardingSession {
     status: row.status as OnboardingSession["status"],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    budgetUsedCents: row.budgetUsedCents,
+    budgetUsedCredits: row.budgetUsedCredits,
   };
 }
 
@@ -73,7 +73,7 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
   }
 
   async create(
-    data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCents">,
+    data: Omit<OnboardingSession, "createdAt" | "updatedAt" | "budgetUsedCredits">,
   ): Promise<OnboardingSession> {
     const now = Date.now();
     const rows = await this.db
@@ -86,7 +86,7 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
         status: data.status,
         createdAt: now,
         updatedAt: now,
-        budgetUsedCents: 0,
+        budgetUsedCredits: 0,
       })
       .returning();
     return toSession(rows[0]);
@@ -102,10 +102,10 @@ export class DrizzleOnboardingSessionRepository implements IOnboardingSessionRep
     return rows[0] ? toSession(rows[0]) : null;
   }
 
-  async updateBudgetUsed(id: string, budgetUsedCents: number): Promise<void> {
+  async updateBudgetUsed(id: string, budgetUsedCredits: number): Promise<void> {
     await this.db
       .update(onboardingSessions)
-      .set({ budgetUsedCents, updatedAt: Date.now() })
+      .set({ budgetUsedCredits, updatedAt: Date.now() })
       .where(eq(onboardingSessions.id, id));
   }
 

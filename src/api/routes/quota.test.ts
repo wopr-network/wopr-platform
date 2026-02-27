@@ -54,7 +54,7 @@ describe("quota routes", () => {
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.balanceCents).toBe(0);
+      expect(body.balanceCredits).toBe(0);
       expect(body.instances.current).toBe(0);
       // Default maxInstances=0 means unlimited, remaining=-1
       expect(body.instances.remaining).toBe(-1);
@@ -67,7 +67,7 @@ describe("quota routes", () => {
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.balanceCents).toBe(5000);
+      expect(body.balanceCredits).toBe(5000);
       expect(body.instances.current).toBe(2);
     });
 
@@ -134,7 +134,7 @@ describe("quota routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.tenantId).toBe("t-new");
-      expect(body.balanceCents).toBe(0);
+      expect(body.balanceCredits).toBe(0);
     });
 
     it("returns current balance for tenant with credits", async () => {
@@ -142,7 +142,7 @@ describe("quota routes", () => {
       const res = await quotaRoutes.request("/balance/t-1", { headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.balanceCents).toBe(2500);
+      expect(body.balanceCredits).toBe(2500);
     });
   });
 

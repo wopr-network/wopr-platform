@@ -96,7 +96,7 @@ export class OnboardingService {
       }
     } else {
       // Fallback: cent-based check
-      const remaining = this.config.budgetCapCents - session.budgetUsedCents;
+      const remaining = this.config.budgetCapCredits - session.budgetUsedCredits;
       if (remaining <= 0) {
         throw new Error(`Session ${sessionId} has exceeded its budget cap`);
       }
@@ -134,7 +134,7 @@ export class OnboardingService {
       });
     }
 
-    await this.repo.updateBudgetUsed(sessionId, session.budgetUsedCents + 1);
+    await this.repo.updateBudgetUsed(sessionId, session.budgetUsedCredits + 1);
     return response;
   }
 

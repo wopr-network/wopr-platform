@@ -17,9 +17,9 @@ export type { IPayRamChargeStore, PayRamChargeRecord } from "./payram/charge-sto
 export type { ITenantCustomerStore } from "./stripe/tenant-store.js";
 
 export interface DividendStats {
-  poolCents: number;
+  poolCredits: number;
   activeUsers: number;
-  perUserCents: number;
+  perUserCredits: number;
   nextDistributionAt: string;
   userEligible: boolean;
   userLastPurchaseAt: string | null;
@@ -28,8 +28,8 @@ export interface DividendStats {
 
 export interface DividendHistoryEntry {
   date: string;
-  amountCents: number;
-  poolCents: number;
+  amountCredits: number;
+  poolCredits: number;
   activeUsers: number;
 }
 

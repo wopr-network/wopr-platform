@@ -34,10 +34,10 @@ describe("CreditLedger.debit with allowNegative", () => {
     expect(await ledger.balance("t1")).toBe(-5);
   });
 
-  it("debit with allowNegative=true records correct transaction with negative amountCents and negative balanceAfterCents", async () => {
+  it("debit with allowNegative=true records correct transaction with negative amountCredits and negative balanceAfterCredits", async () => {
     await ledger.credit("t1", 5, "purchase", "setup");
     const txn = await ledger.debit("t1", 10, "adapter_usage", "test", undefined, true);
-    expect(txn.amountCents).toBe(-10);
-    expect(txn.balanceAfterCents).toBe(-5);
+    expect(txn.amountCredits).toBe(-10);
+    expect(txn.balanceAfterCredits).toBe(-5);
   });
 });

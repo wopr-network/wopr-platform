@@ -59,7 +59,7 @@ export interface TenantStatusRecord {
 export interface UndoableGrant {
   operationId: string;
   tenantIds: string; // JSON-encoded string[]
-  amountCents: number;
+  amountCredits: number;
   adminUser: string;
   createdAt: number;
   undoDeadline: number;
@@ -72,7 +72,7 @@ export interface AdminUserRow {
   email: string;
   status: string;
   role: string;
-  creditBalanceCents: number;
+  creditBalanceCredits: number;
   agentCount: number;
   lastSeen: number | null;
   createdAt: number;

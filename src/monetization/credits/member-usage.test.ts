@@ -28,11 +28,11 @@ describe("DrizzleCreditLedger.memberUsage", () => {
     expect(result).toHaveLength(2);
 
     const userA = result.find((r) => r.userId === "user-a");
-    expect(userA?.totalDebitCents).toBe(300);
+    expect(userA?.totalDebitCredits).toBe(300);
     expect(userA?.transactionCount).toBe(2);
 
     const userB = result.find((r) => r.userId === "user-b");
-    expect(userB?.totalDebitCents).toBe(300);
+    expect(userB?.totalDebitCredits).toBe(300);
     expect(userB?.transactionCount).toBe(1);
   });
 

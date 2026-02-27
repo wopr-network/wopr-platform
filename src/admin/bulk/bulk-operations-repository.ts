@@ -64,7 +64,7 @@ export class DrizzleBulkOperationsRepository implements IBulkOperationsRepositor
       email: r.email,
       status: r.status,
       role: r.role,
-      creditBalanceCents: r.creditBalanceCents,
+      creditBalanceCredits: r.creditBalanceCredits,
       agentCount: r.agentCount,
       lastSeen: r.lastSeen,
       createdAt: r.createdAt,
@@ -93,12 +93,12 @@ export class DrizzleBulkOperationsRepository implements IBulkOperationsRepositor
       conditions.push(eq(adminUsers.role, filters.role));
     }
     if (filters.hasCredits === true) {
-      conditions.push(gt(adminUsers.creditBalanceCents, 0));
+      conditions.push(gt(adminUsers.creditBalanceCredits, 0));
     } else if (filters.hasCredits === false) {
-      conditions.push(eq(adminUsers.creditBalanceCents, 0));
+      conditions.push(eq(adminUsers.creditBalanceCredits, 0));
     }
     if (filters.lowBalance === true) {
-      conditions.push(lt(adminUsers.creditBalanceCents, 500));
+      conditions.push(lt(adminUsers.creditBalanceCredits, 500));
     }
 
     const base = this.db.select({ tenantId: adminUsers.tenantId }).from(adminUsers);
@@ -110,7 +110,7 @@ export class DrizzleBulkOperationsRepository implements IBulkOperationsRepositor
     await this.db.insert(bulkUndoGrants).values({
       operationId: grant.operationId,
       tenantIds: grant.tenantIds,
-      amountCents: grant.amountCents,
+      amountCredits: grant.amountCredits,
       adminUser: grant.adminUser,
       createdAt: grant.createdAt,
       undoDeadline: grant.undoDeadline,
@@ -125,7 +125,7 @@ export class DrizzleBulkOperationsRepository implements IBulkOperationsRepositor
     return {
       operationId: row.operationId,
       tenantIds: row.tenantIds,
-      amountCents: row.amountCents,
+      amountCredits: row.amountCredits,
       adminUser: row.adminUser,
       createdAt: row.createdAt,
       undoDeadline: row.undoDeadline,

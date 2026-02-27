@@ -56,8 +56,8 @@ function makeMockLedger(): ICreditLedger {
   const txns: Array<{
     id: string;
     tenantId: string;
-    amountCents: number;
-    balanceAfterCents: number;
+    amountCredits: number;
+    balanceAfterCredits: number;
     type: string;
     description: string | null;
     referenceId: null;
@@ -65,13 +65,13 @@ function makeMockLedger(): ICreditLedger {
     createdAt: string;
   }> = [];
   return {
-    async credit(tenantId, amountCents, type, description) {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+    async credit(tenantId, amountCredits, type, description) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCredits);
       const tx = {
         id: crypto.randomUUID(),
         tenantId,
-        amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amountCredits,
+        balanceAfterCredits: balances.get(tenantId) ?? 0,
         type: type ?? "signup_grant",
         description: description ?? null,
         referenceId: null,
@@ -81,13 +81,13 @@ function makeMockLedger(): ICreditLedger {
       txns.push(tx as never);
       return tx as never;
     },
-    async debit(tenantId, amountCents, type, description) {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+    async debit(tenantId, amountCredits, type, description) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCredits);
       const tx = {
         id: crypto.randomUUID(),
         tenantId,
-        amountCents: -amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amountCredits: -amountCredits,
+        balanceAfterCredits: balances.get(tenantId) ?? 0,
         type: type ?? "correction",
         description: description ?? null,
         referenceId: null,
@@ -201,44 +201,44 @@ describe("tRPC appRouter", () => {
     it("creditsBalance returns 0 for new tenant", async () => {
       const caller = createCaller(authedContext());
       const result = await caller.admin.creditsBalance({ tenantId: "new-tenant" });
-      expect(result.balance_cents).toBe(0);
+      expect(result.balance_credits).toBe(0);
       expect(result.tenant).toBe("new-tenant");
     });
 
     it("creditsGrant grants credits", async () => {
       const caller = createCaller(authedContext());
-      await caller.admin.creditsGrant({ tenantId: "t1", amount_cents: 5000, reason: "Test grant" });
+      await caller.admin.creditsGrant({ tenantId: "t1", amount_credits: 5000, reason: "Test grant" });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t1" });
-      expect(balance.balance_cents).toBe(5000);
+      expect(balance.balance_credits).toBe(5000);
     });
 
     it("creditsRefund refunds credits", async () => {
       const caller = createCaller(authedContext());
-      await caller.admin.creditsGrant({ tenantId: "t2", amount_cents: 10000, reason: "Initial" });
-      await caller.admin.creditsRefund({ tenantId: "t2", amount_cents: 3000, reason: "Refund" });
+      await caller.admin.creditsGrant({ tenantId: "t2", amount_credits: 10000, reason: "Initial" });
+      await caller.admin.creditsRefund({ tenantId: "t2", amount_credits: 3000, reason: "Refund" });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t2" });
-      expect(balance.balance_cents).toBe(7000);
+      expect(balance.balance_credits).toBe(7000);
     });
 
     it("creditsCorrection applies correction", async () => {
       const caller = createCaller(authedContext());
-      await caller.admin.creditsGrant({ tenantId: "t3", amount_cents: 5000, reason: "Initial" });
+      await caller.admin.creditsGrant({ tenantId: "t3", amount_credits: 5000, reason: "Initial" });
       await caller.admin.creditsCorrection({
         tenantId: "t3",
-        amount_cents: -2000,
+        amount_credits: -2000,
         reason: "Correction",
       });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t3" });
-      expect(balance.balance_cents).toBe(3000);
+      expect(balance.balance_credits).toBe(3000);
     });
 
     it("creditsTransactions returns history", async () => {
       const caller = createCaller(authedContext());
-      await caller.admin.creditsGrant({ tenantId: "t4", amount_cents: 1000, reason: "First" });
-      await caller.admin.creditsGrant({ tenantId: "t4", amount_cents: 2000, reason: "Second" });
+      await caller.admin.creditsGrant({ tenantId: "t4", amount_credits: 1000, reason: "First" });
+      await caller.admin.creditsGrant({ tenantId: "t4", amount_credits: 2000, reason: "Second" });
 
       const result = await caller.admin.creditsTransactions({ tenantId: "t4" });
       expect(result.entries).toHaveLength(2);
@@ -246,7 +246,7 @@ describe("tRPC appRouter", () => {
 
     it("creditsGrant rejects unauthenticated", async () => {
       const caller = createCaller(unauthContext());
-      await expect(caller.admin.creditsGrant({ tenantId: "t1", amount_cents: 5000, reason: "Test" })).rejects.toThrow(
+      await expect(caller.admin.creditsGrant({ tenantId: "t1", amount_credits: 5000, reason: "Test" })).rejects.toThrow(
         "Authentication required",
       );
     });
@@ -283,16 +283,16 @@ describe("tRPC appRouter", () => {
         autoTopupSettingsStore,
         dividendRepo: {
           getStats: async () => ({
-            poolCents: 0,
+            poolCredits: 0,
             activeUsers: 0,
-            perUserCents: 0,
+            perUserCredits: 0,
             nextDistributionAt: new Date().toISOString(),
             userEligible: false,
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
           getHistory: async () => [],
-          getLifetimeTotalCents: async () => 0,
+          getLifetimeTotalCredits: async () => 0,
           getDigestTenantAggregates: async () => [],
           getTenantEmail: async () => undefined,
         },
@@ -304,7 +304,7 @@ describe("tRPC appRouter", () => {
     it("creditsBalance returns 0 for new tenant", async () => {
       const caller = createCaller(authedContext({ tenantId: undefined }));
       const result = await caller.billing.creditsBalance({ tenant: "test-user" });
-      expect(result.balance_cents).toBe(0);
+      expect(result.balance_credits).toBe(0);
     });
 
     it("creditsBalance includes daily_burn_cents and runway_days", async () => {
@@ -362,7 +362,7 @@ describe("tRPC appRouter", () => {
     it("creditsBalance uses ctx.tenantId when tenant omitted", async () => {
       const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
       const result = await caller.billing.creditsBalance({});
-      expect(result.balance_cents).toBe(0);
+      expect(result.balance_credits).toBe(0);
       expect(result.tenant).toBe("ctx-tenant");
     });
 
@@ -595,8 +595,8 @@ describe("tRPC appRouter", () => {
         const caller = createCaller(authedContext());
         const result = await caller.billing.autoTopupSettings();
         expect(result.usage_enabled).toBe(false);
-        expect(result.usage_threshold_cents).toBe(500);
-        expect(result.usage_topup_cents).toBe(2000);
+        expect(result.usage_threshold_credits).toBe(500);
+        expect(result.usage_topup_credits).toBe(2000);
         expect(result.schedule_enabled).toBe(false);
         expect(result.payment_method_last4).toBeNull();
       });
@@ -623,16 +623,16 @@ describe("tRPC appRouter", () => {
           autoTopupSettingsStore,
           dividendRepo: {
             getStats: async () => ({
-              poolCents: 0,
+              poolCredits: 0,
               activeUsers: 0,
-              perUserCents: 0,
+              perUserCredits: 0,
               nextDistributionAt: new Date().toISOString(),
               userEligible: false,
               userLastPurchaseAt: null,
               userWindowExpiresAt: null,
             }),
             getHistory: async () => [],
-            getLifetimeTotalCents: async () => 0,
+            getLifetimeTotalCredits: async () => 0,
             getDigestTenantAggregates: async () => [],
             getTenantEmail: async () => undefined,
           },
@@ -655,12 +655,12 @@ describe("tRPC appRouter", () => {
 
       it("rejects invalid topup amount", async () => {
         const caller = createCaller(authedContext());
-        await expect(caller.billing.updateAutoTopupSettings({ usage_topup_cents: 999 })).rejects.toThrow();
+        await expect(caller.billing.updateAutoTopupSettings({ usage_topup_credits: 999 })).rejects.toThrow();
       });
 
       it("rejects invalid threshold", async () => {
         const caller = createCaller(authedContext());
-        await expect(caller.billing.updateAutoTopupSettings({ usage_threshold_cents: 300 })).rejects.toThrow();
+        await expect(caller.billing.updateAutoTopupSettings({ usage_threshold_credits: 300 })).rejects.toThrow();
       });
 
       it("persists usage-based settings when payment method exists", async () => {
@@ -685,16 +685,16 @@ describe("tRPC appRouter", () => {
           autoTopupSettingsStore,
           dividendRepo: {
             getStats: async () => ({
-              poolCents: 0,
+              poolCredits: 0,
               activeUsers: 0,
-              perUserCents: 0,
+              perUserCredits: 0,
               nextDistributionAt: new Date().toISOString(),
               userEligible: false,
               userLastPurchaseAt: null,
               userWindowExpiresAt: null,
             }),
             getHistory: async () => [],
-            getLifetimeTotalCents: async () => 0,
+            getLifetimeTotalCredits: async () => 0,
             getDigestTenantAggregates: async () => [],
             getTenantEmail: async () => undefined,
           },
@@ -704,13 +704,13 @@ describe("tRPC appRouter", () => {
 
         const result = await caller.billing.updateAutoTopupSettings({
           usage_enabled: true,
-          usage_threshold_cents: 1000,
-          usage_topup_cents: 5000,
+          usage_threshold_credits: 1000,
+          usage_topup_credits: 5000,
         });
 
         expect(result.usage_enabled).toBe(true);
-        expect(result.usage_threshold_cents).toBe(1000);
-        expect(result.usage_topup_cents).toBe(5000);
+        expect(result.usage_threshold_credits).toBe(1000);
+        expect(result.usage_topup_credits).toBe(5000);
       });
 
       it("computes schedule_next_at when enabling schedule", async () => {
@@ -735,16 +735,16 @@ describe("tRPC appRouter", () => {
           autoTopupSettingsStore,
           dividendRepo: {
             getStats: async () => ({
-              poolCents: 0,
+              poolCredits: 0,
               activeUsers: 0,
-              perUserCents: 0,
+              perUserCredits: 0,
               nextDistributionAt: new Date().toISOString(),
               userEligible: false,
               userLastPurchaseAt: null,
               userWindowExpiresAt: null,
             }),
             getHistory: async () => [],
-            getLifetimeTotalCents: async () => 0,
+            getLifetimeTotalCredits: async () => 0,
             getDigestTenantAggregates: async () => [],
             getTenantEmail: async () => undefined,
           },
@@ -755,7 +755,7 @@ describe("tRPC appRouter", () => {
         const result = await caller.billing.updateAutoTopupSettings({
           schedule_enabled: true,
           schedule_interval: "weekly",
-          schedule_amount_cents: 2000,
+          schedule_amount_credits: 2000,
         });
 
         expect(result.schedule_enabled).toBe(true);
@@ -795,7 +795,7 @@ describe("tRPC appRouter", () => {
   // ---- creditOptions (WOP-916) ----
 
   describe("creditOptions", () => {
-    it("returns configured credit tiers sorted by amountCents", async () => {
+    it("returns configured credit tiers sorted by amountCredits", async () => {
       vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_test_5");
       vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_test_10");
       vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_test_25");
@@ -819,16 +819,16 @@ describe("tRPC appRouter", () => {
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         dividendRepo: {
           getStats: async () => ({
-            poolCents: 0,
+            poolCredits: 0,
             activeUsers: 0,
-            perUserCents: 0,
+            perUserCredits: 0,
             nextDistributionAt: new Date().toISOString(),
             userEligible: false,
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
           getHistory: async () => [],
-          getLifetimeTotalCents: async () => 0,
+          getLifetimeTotalCredits: async () => 0,
           getDigestTenantAggregates: async () => [],
           getTenantEmail: async () => undefined,
         },
@@ -843,21 +843,21 @@ describe("tRPC appRouter", () => {
       expect(options[0]).toEqual({
         priceId: "price_test_5",
         label: "$5",
-        amountCents: 500,
+        amountCredits: 500,
         creditCents: 500,
         bonusPercent: 0,
       });
       expect(options[2]).toEqual({
         priceId: "price_test_25",
         label: "$25",
-        amountCents: 2500,
+        amountCredits: 2500,
         creditCents: 2550,
         bonusPercent: 2,
       });
       expect(options[4]).toEqual({
         priceId: "price_test_100",
         label: "$100",
-        amountCents: 10000,
+        amountCredits: 10000,
         creditCents: 11000,
         bonusPercent: 10,
       });
@@ -889,16 +889,16 @@ describe("tRPC appRouter", () => {
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         dividendRepo: {
           getStats: async () => ({
-            poolCents: 0,
+            poolCredits: 0,
             activeUsers: 0,
-            perUserCents: 0,
+            perUserCredits: 0,
             nextDistributionAt: new Date().toISOString(),
             userEligible: false,
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
           getHistory: async () => [],
-          getLifetimeTotalCents: async () => 0,
+          getLifetimeTotalCredits: async () => 0,
           getDigestTenantAggregates: async () => [],
           getTenantEmail: async () => undefined,
         },
@@ -930,16 +930,16 @@ describe("tRPC appRouter", () => {
         autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
         dividendRepo: {
           getStats: async () => ({
-            poolCents: 0,
+            poolCredits: 0,
             activeUsers: 0,
-            perUserCents: 0,
+            perUserCredits: 0,
             nextDistributionAt: new Date().toISOString(),
             userEligible: false,
             userLastPurchaseAt: null,
             userWindowExpiresAt: null,
           }),
           getHistory: async () => [],
-          getLifetimeTotalCents: async () => 0,
+          getLifetimeTotalCredits: async () => 0,
           getDigestTenantAggregates: async () => [],
           getTenantEmail: async () => undefined,
         },

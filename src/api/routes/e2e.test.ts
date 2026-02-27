@@ -557,7 +557,7 @@ describe("E2E: Billing flow (credit model)", () => {
     });
     expect(quotaRes.status).toBe(200);
     const quota = await quotaRes.json();
-    expect(quota.balanceCents).toBe(0);
+    expect(quota.balanceCredits).toBe(0);
 
     // Step 2: Verify zero balance blocks instance creation
     const quotaCheckRes = await app.request("/api/quota/check", {
@@ -625,7 +625,7 @@ describe("E2E: Billing flow (credit model)", () => {
     });
     expect(balanceRes.status).toBe(200);
     const balanceBody = await balanceRes.json();
-    expect(balanceBody.balanceCents).toBe(2500);
+    expect(balanceBody.balanceCredits).toBe(2500);
 
     // Step 8: Access billing portal
     mockPortalCreate.mockResolvedValue({

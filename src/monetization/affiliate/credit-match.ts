@@ -13,7 +13,7 @@ export interface AffiliateCreditMatchDeps {
 
 export interface AffiliateCreditMatchResult {
   referrerTenantId: string;
-  matchAmountCents: number;
+  matchAmountCredits: number;
 }
 
 /**
@@ -44,13 +44,13 @@ export async function processAffiliateCreditMatch(
   if (await ledger.hasReferenceId(refId)) return null;
 
   // 5. Compute match
-  const matchAmountCents = Math.floor(purchaseAmountCents * matchRate);
-  if (matchAmountCents <= 0) return null;
+  const matchAmountCredits = Math.floor(purchaseAmountCents * matchRate);
+  if (matchAmountCredits <= 0) return null;
 
   // 6. Credit the referrer
   await ledger.credit(
     referral.referrerTenantId,
-    matchAmountCents,
+    matchAmountCredits,
     "affiliate_match",
     `Affiliate match for referred tenant ${tenantId}`,
     refId,
@@ -58,10 +58,10 @@ export async function processAffiliateCreditMatch(
 
   // 7. Update referral record
   await affiliateRepo.markFirstPurchase(tenantId);
-  await affiliateRepo.recordMatch(tenantId, matchAmountCents);
+  await affiliateRepo.recordMatch(tenantId, matchAmountCredits);
 
   return {
     referrerTenantId: referral.referrerTenantId,
-    matchAmountCents,
+    matchAmountCredits,
   };
 }

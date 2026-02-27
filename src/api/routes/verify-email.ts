@@ -77,7 +77,7 @@ function buildRoutes(authDbFactory: () => DatabaseType.Database, creditLedgerFac
     try {
       const ledger = creditLedgerFactory();
       ledger.credit(result.userId, SIGNUP_CREDIT_CENTS, "signup_grant", "Signup verification credit");
-      logger.info("Signup credit granted", { userId: result.userId, amountCents: SIGNUP_CREDIT_CENTS });
+      logger.info("Signup credit granted", { userId: result.userId, amountCredits: SIGNUP_CREDIT_CENTS });
     } catch (err) {
       logger.error("Failed to grant signup credit", {
         userId: result.userId,

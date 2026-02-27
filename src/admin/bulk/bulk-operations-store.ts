@@ -40,7 +40,7 @@ export interface BulkExportResult {
 
 export interface BulkGrantInput {
   tenantIds: string[];
-  amountCents: number;
+  amountCredits: number;
   reason: string;
   notifyByEmail: boolean;
 }
@@ -109,7 +109,7 @@ export class BulkOperationsStore {
 
     for (const tenantId of input.tenantIds) {
       try {
-        await this.creditStore.credit(tenantId, input.amountCents, "signup_grant", input.reason);
+        await this.creditStore.credit(tenantId, input.amountCredits, "signup_grant", input.reason);
         succeeded++;
         succeededIds.push(tenantId);
       } catch (err) {
@@ -123,7 +123,7 @@ export class BulkOperationsStore {
     await this.repo.insertUndoableGrant({
       operationId,
       tenantIds: JSON.stringify(succeededIds),
-      amountCents: input.amountCents,
+      amountCredits: input.amountCredits,
       adminUser,
       createdAt: now,
       undoDeadline,
@@ -137,7 +137,7 @@ export class BulkOperationsStore {
       details: {
         operationId,
         tenantIds: input.tenantIds,
-        amountCents: input.amountCents,
+        amountCredits: input.amountCredits,
         reason: input.reason,
         notifyByEmail: input.notifyByEmail,
         succeeded,
@@ -153,7 +153,7 @@ export class BulkOperationsStore {
       succeeded,
       failed: errors.length,
       errors,
-      totalAmountCents: input.amountCents * succeeded,
+      totalAmountCents: input.amountCredits * succeeded,
       undoDeadline,
     };
   }
@@ -173,7 +173,7 @@ export class BulkOperationsStore {
 
     for (const tenantId of tenantIds) {
       try {
-        await this.creditStore.debit(tenantId, grant.amountCents, "correction", `Undo bulk grant ${operationId}`);
+        await this.creditStore.debit(tenantId, grant.amountCredits, "correction", `Undo bulk grant ${operationId}`);
         succeeded++;
       } catch (err) {
         errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
@@ -191,7 +191,7 @@ export class BulkOperationsStore {
       details: {
         operationId,
         tenantIds,
-        amountCents: grant.amountCents,
+        amountCredits: grant.amountCredits,
         succeeded,
         failed: errors.length,
       },
@@ -318,7 +318,7 @@ export class BulkOperationsStore {
 
     const headers: string[] = ["tenant_id"];
     if (enabledKeys.has("account_info")) headers.push("name", "email", "status", "role");
-    if (enabledKeys.has("credit_balance")) headers.push("credit_balance_cents");
+    if (enabledKeys.has("credit_balance")) headers.push("credit_balance_credits");
     if (enabledKeys.has("monthly_products")) headers.push("agent_count");
     if (enabledKeys.has("lifetime_spend")) headers.push("lifetime_spend_cents");
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
@@ -335,7 +335,7 @@ export class BulkOperationsStore {
           csvEscape(String(r.role ?? "")),
         );
       }
-      if (enabledKeys.has("credit_balance")) fields.push(String(r.creditBalanceCents ?? 0));
+      if (enabledKeys.has("credit_balance")) fields.push(String(r.creditBalanceCredits ?? 0));
       if (enabledKeys.has("monthly_products")) fields.push(String(r.agentCount ?? 0));
       if (enabledKeys.has("lifetime_spend")) {
         const spend = await this.creditStore.balance(String(r.tenantId));

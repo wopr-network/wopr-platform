@@ -244,7 +244,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       // Referral record should be updated
       const ref = await affiliateRepo.getReferralByReferred("tenant-123");
-      expect(ref?.matchAmountCents).toBe(2000);
+      expect(ref?.matchAmountCredits).toBe(2000);
       expect(ref?.matchedAt).not.toBeNull();
     });
   });

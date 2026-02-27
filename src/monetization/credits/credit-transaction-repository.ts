@@ -5,7 +5,7 @@ import { creditTransactions } from "../../db/schema/credits.js";
 export interface ICreditTransactionRepository {
   /** Check if any transaction exists with a referenceId matching a LIKE pattern. */
   existsByReferenceIdLike(pattern: string): Promise<boolean>;
-  /** Sum amountCents for 'purchase' transactions within [startTs, endTs). */
+  /** Sum amountCredits for 'purchase' transactions within [startTs, endTs). */
   sumPurchasesForPeriod(startTs: string, endTs: string): Promise<number>;
   /** Get distinct tenantIds that had a 'purchase' transaction within [startTs, endTs). */
   getActiveTenantIdsInWindow(startTs: string, endTs: string): Promise<string[]>;
@@ -29,7 +29,7 @@ export class DrizzleCreditTransactionRepository implements ICreditTransactionRep
     const row = (
       await this.db
         .select({
-          total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)`,
+          total: sql<number>`COALESCE(SUM(${creditTransactions.amountCredits}), 0)`,
         })
         .from(creditTransactions)
         .where(

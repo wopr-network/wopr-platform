@@ -4,7 +4,7 @@ import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
 
 export interface AutoTopupEventLogEntry {
   tenantId: string;
-  amountCents: number;
+  amountCredits: number;
   status: "success" | "failed";
   failureReason?: string | null;
   paymentReference?: string | null;
@@ -21,7 +21,7 @@ export class DrizzleAutoTopupEventLogRepository implements IAutoTopupEventLogRep
     await this.db.insert(creditAutoTopup).values({
       id: crypto.randomUUID(),
       tenantId: entry.tenantId,
-      amountCents: entry.amountCents,
+      amountCredits: entry.amountCredits,
       status: entry.status,
       failureReason: entry.failureReason ?? null,
       paymentReference: entry.paymentReference ?? null,

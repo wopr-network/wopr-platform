@@ -7,13 +7,18 @@ import { CreditLedger } from "./credit-ledger.js";
 import { DrizzleCreditTransactionRepository } from "./credit-transaction-repository.js";
 import { type DividendCronConfig, runDividendCron } from "./dividend-cron.js";
 
-async function insertPurchase(db: DrizzleDb, tenantId: string, amountCents: number, createdAt: string): Promise<void> {
+async function insertPurchase(
+  db: DrizzleDb,
+  tenantId: string,
+  amountCredits: number,
+  createdAt: string,
+): Promise<void> {
   const id = `test-${tenantId}-${Date.now()}-${Math.random()}`;
   await db.insert(creditTransactions).values({
     id,
     tenantId,
-    amountCents,
-    balanceAfterCents: amountCents,
+    amountCredits,
+    balanceAfterCredits: amountCredits,
     type: "purchase",
     createdAt,
   });
@@ -25,10 +30,10 @@ async function insertPurchase(db: DrizzleDb, tenantId: string, amountCents: numb
   if (existing.length > 0) {
     await db
       .update(creditBalances)
-      .set({ balanceCents: existing[0].balanceCents + amountCents })
+      .set({ balanceCredits: existing[0].balanceCredits + amountCredits })
       .where((await import("drizzle-orm")).eq(creditBalances.tenantId, tenantId));
   } else {
-    await db.insert(creditBalances).values({ tenantId, balanceCents: amountCents });
+    await db.insert(creditBalances).values({ tenantId, balanceCredits: amountCredits });
   }
 }
 
@@ -64,8 +69,8 @@ describe("runDividendCron", () => {
     const result = await runDividendCron(makeConfig());
 
     expect(result.distributed).toBe(1);
-    expect(result.poolCents).toBe(1000);
-    expect(result.perUserCents).toBe(1000);
+    expect(result.poolCredits).toBe(1000);
+    expect(result.perUserCredits).toBe(1000);
     expect(result.activeCount).toBe(1);
   });
 
@@ -92,9 +97,9 @@ describe("runDividendCron", () => {
 
     const result = await runDividendCron(makeConfig());
 
-    expect(result.poolCents).toBe(100);
+    expect(result.poolCredits).toBe(100);
     expect(result.activeCount).toBe(3);
-    expect(result.perUserCents).toBe(33);
+    expect(result.perUserCredits).toBe(33);
     expect(result.distributed).toBe(3);
   });
 
@@ -104,9 +109,9 @@ describe("runDividendCron", () => {
 
     const result = await runDividendCron(makeConfig());
 
-    expect(result.poolCents).toBe(0);
+    expect(result.poolCredits).toBe(0);
     expect(result.activeCount).toBe(1);
-    expect(result.perUserCents).toBe(0);
+    expect(result.perUserCredits).toBe(0);
     expect(result.distributed).toBe(0);
   });
 
@@ -117,9 +122,9 @@ describe("runDividendCron", () => {
 
     const result = await runDividendCron(makeConfig({ matchRate: 1.0 }));
 
-    expect(result.poolCents).toBe(1);
+    expect(result.poolCredits).toBe(1);
     expect(result.activeCount).toBe(3);
-    expect(result.perUserCents).toBe(0);
+    expect(result.perUserCredits).toBe(0);
     expect(result.distributed).toBe(0);
   });
 
@@ -132,7 +137,7 @@ describe("runDividendCron", () => {
     expect(history).toHaveLength(1);
     expect(history[0].type).toBe("community_dividend");
     expect(history[0].referenceId).toBe("dividend:2026-02-20:t1");
-    expect(history[0].amountCents).toBe(1000);
+    expect(history[0].amountCredits).toBe(1000);
     expect(history[0].description).toContain("Community dividend");
   });
 

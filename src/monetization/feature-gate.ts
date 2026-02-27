@@ -33,7 +33,7 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
   /**
    * Middleware that rejects requests when the user's credit balance is zero.
    * Optionally requires a minimum balance (in cents).
-   * On success, sets `c.set('balance', balanceCents)` for downstream handlers.
+   * On success, sets `c.set('balance', balanceCredits)` for downstream handlers.
    */
   const requireBalance = (minBalanceCents = 0) => {
     return async (c: Context, next: Next) => {
@@ -47,13 +47,13 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
         return c.json({ error: "Authentication required" }, 401);
       }
 
-      const balanceCents = await cfg.getUserBalance(tenantId);
+      const balanceCredits = await cfg.getUserBalance(tenantId);
 
-      if (balanceCents <= minBalanceCents) {
+      if (balanceCredits <= minBalanceCents) {
         return c.json(
           {
             error: "Insufficient credit balance",
-            currentBalanceCents: balanceCents,
+            currentBalanceCents: balanceCredits,
             requiredBalanceCents: minBalanceCents,
             purchaseUrl: "/settings/billing",
           },
@@ -61,7 +61,7 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
         );
       }
 
-      c.set("balance", balanceCents);
+      c.set("balance", balanceCredits);
       return next();
     };
   };

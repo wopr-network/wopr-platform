@@ -5,7 +5,7 @@ import type { IAutoTopupSettingsRepository } from "./auto-topup-settings-reposit
 
 export interface ScheduleTopupDeps {
   settingsRepo: IAutoTopupSettingsRepository;
-  chargeAutoTopup: (tenantId: string, amountCents: number, source: string) => Promise<AutoTopupChargeResult>;
+  chargeAutoTopup: (tenantId: string, amountCredits: number, source: string) => Promise<AutoTopupChargeResult>;
 }
 
 export interface ScheduleTopupResult {
@@ -40,7 +40,7 @@ export async function runScheduledTopups(deps: ScheduleTopupDeps): Promise<Sched
     try {
       const chargeResult = await deps.chargeAutoTopup(
         settings.tenantId,
-        settings.scheduleAmountCents,
+        settings.scheduleAmountCredits,
         "auto_topup_schedule",
       );
 

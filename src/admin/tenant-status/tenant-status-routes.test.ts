@@ -55,18 +55,18 @@ function makeMockLedger(): ICreditLedger {
   return {
     async credit(
       tenantId: string,
-      amountCents: number,
+      amountCredits: number,
       _type: CreditType,
       _description?: string,
       _referenceId?: string,
       _fundingSource?: string,
     ): Promise<CreditTransaction> {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCredits);
       return {
         id: "tx-1",
         tenantId,
-        amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amountCredits,
+        balanceAfterCredits: balances.get(tenantId) ?? 0,
         type: "signup_grant",
         description: null,
         referenceId: null,
@@ -77,18 +77,18 @@ function makeMockLedger(): ICreditLedger {
     },
     async debit(
       tenantId: string,
-      amountCents: number,
+      amountCredits: number,
       _type: DebitType,
       _description?: string,
       _referenceId?: string,
       _allowNegative?: boolean,
     ): Promise<CreditTransaction> {
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCredits);
       return {
         id: "tx-2",
         tenantId,
-        amountCents: -amountCents,
-        balanceAfterCents: balances.get(tenantId) ?? 0,
+        amountCredits: -amountCredits,
+        balanceAfterCredits: balances.get(tenantId) ?? 0,
         type: "correction",
         description: null,
         referenceId: null,
@@ -106,7 +106,7 @@ function makeMockLedger(): ICreditLedger {
     async history(_tenantId: string, _opts?: HistoryOptions): Promise<CreditTransaction[]> {
       return [];
     },
-    async tenantsWithBalance(): Promise<Array<{ tenantId: string; balanceCents: number }>> {
+    async tenantsWithBalance(): Promise<Array<{ tenantId: string; balanceCredits: number }>> {
       return [];
     },
     async memberUsage(_tenantId: string) {

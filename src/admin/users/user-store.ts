@@ -25,7 +25,7 @@ export interface AdminUserSummary {
   tenant_id: string;
   status: string;
   role: string;
-  credit_balance_cents: number;
+  credit_balance_credits: number;
   agent_count: number;
   last_seen: number | null;
   created_at: number;
@@ -80,13 +80,13 @@ export class AdminUserStore {
     }
 
     if (filters.hasCredits === true) {
-      conditions.push(gt(adminUsers.creditBalanceCents, 0));
+      conditions.push(gt(adminUsers.creditBalanceCredits, 0));
     } else if (filters.hasCredits === false) {
-      conditions.push(eq(adminUsers.creditBalanceCents, 0));
+      conditions.push(eq(adminUsers.creditBalanceCredits, 0));
     }
 
     if (filters.lowBalance === true) {
-      conditions.push(lt(adminUsers.creditBalanceCents, 500));
+      conditions.push(lt(adminUsers.creditBalanceCredits, 500));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -102,13 +102,13 @@ export class AdminUserStore {
     type SortableColumn =
       | typeof adminUsers.lastSeen
       | typeof adminUsers.createdAt
-      | typeof adminUsers.creditBalanceCents
+      | typeof adminUsers.creditBalanceCredits
       | typeof adminUsers.agentCount;
 
     const sortColumnMap: Record<string, SortableColumn> = {
       last_seen: adminUsers.lastSeen,
       created_at: adminUsers.createdAt,
-      balance: adminUsers.creditBalanceCents,
+      balance: adminUsers.creditBalanceCredits,
       agent_count: adminUsers.agentCount,
     };
     const sortCol = sortColumnMap[filters.sortBy ?? "created_at"] ?? adminUsers.createdAt;
@@ -129,7 +129,7 @@ export class AdminUserStore {
       tenant_id: row.tenantId,
       status: row.status,
       role: row.role,
-      credit_balance_cents: row.creditBalanceCents,
+      credit_balance_credits: row.creditBalanceCredits,
       agent_count: row.agentCount,
       last_seen: row.lastSeen,
       created_at: row.createdAt,
@@ -154,7 +154,7 @@ export class AdminUserStore {
       tenant_id: row.tenantId,
       status: row.status,
       role: row.role,
-      credit_balance_cents: row.creditBalanceCents,
+      credit_balance_credits: row.creditBalanceCredits,
       agent_count: row.agentCount,
       last_seen: row.lastSeen,
       created_at: row.createdAt,
@@ -173,7 +173,7 @@ export class AdminUserStore {
       tenant_id: row.tenantId,
       status: row.status,
       role: row.role,
-      credit_balance_cents: row.creditBalanceCents,
+      credit_balance_credits: row.creditBalanceCredits,
       agent_count: row.agentCount,
       last_seen: row.lastSeen,
       created_at: row.createdAt,

@@ -32,7 +32,7 @@ describe("runScheduledTopups", () => {
 
   it("charges tenant whose schedule_next_at is in the past", async () => {
     const past = "2026-02-20T00:00:00.000Z";
-    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCents: 1000, scheduleNextAt: past });
+    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCredits: 1000, scheduleNextAt: past });
 
     const mockCharge = vi.fn().mockResolvedValue({ success: true, paymentReference: "pi_abc" });
     const deps: ScheduleTopupDeps = { settingsRepo, chargeAutoTopup: mockCharge };
@@ -45,7 +45,7 @@ describe("runScheduledTopups", () => {
 
   it("resets failure counter on success", async () => {
     const past = "2026-02-20T00:00:00.000Z";
-    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCents: 500, scheduleNextAt: past });
+    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCredits: 500, scheduleNextAt: past });
     await settingsRepo.incrementScheduleFailures("t1");
     await settingsRepo.incrementScheduleFailures("t1");
 
@@ -58,7 +58,7 @@ describe("runScheduledTopups", () => {
 
   it("disables schedule after 3 consecutive failures", async () => {
     const past = "2026-02-20T00:00:00.000Z";
-    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCents: 500, scheduleNextAt: past });
+    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCredits: 500, scheduleNextAt: past });
     await settingsRepo.incrementScheduleFailures("t1");
     await settingsRepo.incrementScheduleFailures("t1");
 
@@ -71,8 +71,8 @@ describe("runScheduledTopups", () => {
 
   it("processes multiple tenants independently", async () => {
     const past = "2026-02-20T00:00:00.000Z";
-    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCents: 500, scheduleNextAt: past });
-    await settingsRepo.upsert("t2", { scheduleEnabled: true, scheduleAmountCents: 1000, scheduleNextAt: past });
+    await settingsRepo.upsert("t1", { scheduleEnabled: true, scheduleAmountCredits: 500, scheduleNextAt: past });
+    await settingsRepo.upsert("t2", { scheduleEnabled: true, scheduleAmountCredits: 1000, scheduleNextAt: past });
 
     const mockCharge = vi
       .fn()

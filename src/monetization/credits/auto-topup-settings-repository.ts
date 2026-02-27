@@ -2,8 +2,8 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditAutoTopupSettings } from "../../db/schema/credit-auto-topup-settings.js";
 
-export const ALLOWED_TOPUP_AMOUNTS_CENTS = [500, 1000, 2000, 5000, 10000, 20000, 50000] as const;
-export const ALLOWED_THRESHOLD_CENTS = [200, 500, 1000] as const;
+export const ALLOWED_TOPUP_AMOUNTS_CREDITS = [500, 1000, 2000, 5000, 10000, 20000, 50000] as const;
+export const ALLOWED_THRESHOLD_CREDITS = [200, 500, 1000] as const;
 export const ALLOWED_SCHEDULE_INTERVALS = ["daily", "weekly", "monthly"] as const;
 
 export function computeNextScheduleAt(
@@ -29,12 +29,12 @@ export function computeNextScheduleAt(
 export interface AutoTopupSettings {
   tenantId: string;
   usageEnabled: boolean;
-  usageThresholdCents: number;
-  usageTopupCents: number;
+  usageThresholdCredits: number;
+  usageTopupCredits: number;
   usageConsecutiveFailures: number;
   usageChargeInFlight: boolean;
   scheduleEnabled: boolean;
-  scheduleAmountCents: number;
+  scheduleAmountCredits: number;
   scheduleIntervalHours: number;
   scheduleNextAt: string | null;
   scheduleConsecutiveFailures: number;
@@ -84,21 +84,21 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
       values.usageEnabled = settings.usageEnabled ? 1 : 0;
       updateSet.usageEnabled = values.usageEnabled;
     }
-    if (settings.usageThresholdCents !== undefined) {
-      values.usageThresholdCents = settings.usageThresholdCents;
-      updateSet.usageThresholdCents = settings.usageThresholdCents;
+    if (settings.usageThresholdCredits !== undefined) {
+      values.usageThresholdCredits = settings.usageThresholdCredits;
+      updateSet.usageThresholdCredits = settings.usageThresholdCredits;
     }
-    if (settings.usageTopupCents !== undefined) {
-      values.usageTopupCents = settings.usageTopupCents;
-      updateSet.usageTopupCents = settings.usageTopupCents;
+    if (settings.usageTopupCredits !== undefined) {
+      values.usageTopupCredits = settings.usageTopupCredits;
+      updateSet.usageTopupCredits = settings.usageTopupCredits;
     }
     if (settings.scheduleEnabled !== undefined) {
       values.scheduleEnabled = settings.scheduleEnabled ? 1 : 0;
       updateSet.scheduleEnabled = values.scheduleEnabled;
     }
-    if (settings.scheduleAmountCents !== undefined) {
-      values.scheduleAmountCents = settings.scheduleAmountCents;
-      updateSet.scheduleAmountCents = settings.scheduleAmountCents;
+    if (settings.scheduleAmountCredits !== undefined) {
+      values.scheduleAmountCredits = settings.scheduleAmountCredits;
+      updateSet.scheduleAmountCredits = settings.scheduleAmountCredits;
     }
     if (settings.scheduleIntervalHours !== undefined) {
       values.scheduleIntervalHours = settings.scheduleIntervalHours;
@@ -200,12 +200,12 @@ function mapRow(row: typeof creditAutoTopupSettings.$inferSelect): AutoTopupSett
   return {
     tenantId: row.tenantId,
     usageEnabled: row.usageEnabled === 1,
-    usageThresholdCents: row.usageThresholdCents,
-    usageTopupCents: row.usageTopupCents,
+    usageThresholdCredits: row.usageThresholdCredits,
+    usageTopupCredits: row.usageTopupCredits,
     usageConsecutiveFailures: row.usageConsecutiveFailures,
     usageChargeInFlight: row.usageChargeInFlight === 1,
     scheduleEnabled: row.scheduleEnabled === 1,
-    scheduleAmountCents: row.scheduleAmountCents,
+    scheduleAmountCredits: row.scheduleAmountCredits,
     scheduleIntervalHours: row.scheduleIntervalHours,
     scheduleNextAt: row.scheduleNextAt,
     scheduleConsecutiveFailures: row.scheduleConsecutiveFailures,

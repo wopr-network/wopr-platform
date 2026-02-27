@@ -18,7 +18,7 @@ export function initAffiliateSchema(db: Database.Database): void {
       code TEXT NOT NULL,
       signed_up_at TEXT NOT NULL DEFAULT (datetime('now')),
       first_purchase_at TEXT,
-      match_amount_cents INTEGER,
+      match_amount_credits INTEGER,
       matched_at TEXT
     )
   `);

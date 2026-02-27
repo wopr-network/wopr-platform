@@ -63,10 +63,10 @@ export class StripePaymentProcessor implements IPaymentProcessor {
 
     if (!priceId) {
       // Fall back to looking up by amount when no explicit priceId provided.
-      const amountCents = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
+      const amountCredits = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
 
       for (const [id, point] of this.priceMap.entries()) {
-        if (point.creditCents === amountCents || point.amountCents === amountCents) {
+        if (point.creditCents === amountCredits || point.amountCredits === amountCredits) {
           priceId = id;
           break;
         }
@@ -74,7 +74,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
 
       if (!priceId) {
         throw new Error(
-          `No Stripe price tier matches amount ${amountCents} cents. Configure STRIPE_CREDIT_PRICE_* env vars.`,
+          `No Stripe price tier matches amount ${amountCredits} cents. Configure STRIPE_CREDIT_PRICE_* env vars.`,
         );
       }
     }
@@ -181,7 +181,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
       throw new Error("autoTopupEventLog is required for charge()");
     }
 
-    const amountCents = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
+    const amountCredits = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
 
     const result = await chargeAutoTopup(
       {
@@ -191,7 +191,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
         eventLogRepo: this.autoTopupEventLog,
       },
       opts.tenant,
-      amountCents,
+      amountCredits,
       opts.source,
     );
 

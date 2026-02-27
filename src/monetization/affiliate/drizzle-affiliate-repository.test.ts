@@ -133,11 +133,11 @@ describe("DrizzleAffiliateRepository", () => {
   });
 
   describe("recordMatch", () => {
-    it("sets matchAmountCents and matchedAt", async () => {
+    it("sets matchAmountCredits and matchedAt", async () => {
       await repo.recordReferral("referrer-1", "referred-1", "abc123");
       await repo.recordMatch("referred-1", 1500);
       const list = await repo.listReferrals("referrer-1");
-      expect(list[0].matchAmountCents).toBe(1500);
+      expect(list[0].matchAmountCredits).toBe(1500);
       expect(list[0].matchedAt).toBeTruthy();
     });
 
@@ -147,7 +147,7 @@ describe("DrizzleAffiliateRepository", () => {
       await repo.recordMatch("referred-1", 9999);
       const list = await repo.listReferrals("referrer-1");
       // First call wins; isNull(matchedAt) guard blocks the second update
-      expect(list[0].matchAmountCents).toBe(1500);
+      expect(list[0].matchAmountCredits).toBe(1500);
     });
   });
 
@@ -177,7 +177,7 @@ describe("DrizzleAffiliateRepository", () => {
       expect(ref?.referredTenantId).toBe("referred-1");
       expect(ref?.code).toBe("abc123");
       expect(ref?.firstPurchaseAt).toBeNull();
-      expect(ref?.matchAmountCents).toBeNull();
+      expect(ref?.matchAmountCredits).toBeNull();
       expect(ref?.matchedAt).toBeNull();
     });
   });

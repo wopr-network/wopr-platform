@@ -83,7 +83,7 @@ describe("chargeAutoTopup", () => {
       .where((await import("drizzle-orm")).eq(creditAutoTopup.tenantId, "t1"));
     expect(events).toHaveLength(1);
     expect(events[0].status).toBe("success");
-    expect(events[0].amountCents).toBe(500);
+    expect(events[0].amountCredits).toBe(500);
   });
 
   it("returns failure result and writes failure event on Stripe error", async () => {

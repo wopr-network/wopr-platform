@@ -33,13 +33,13 @@ describe("BulkOperationsStore", () => {
 
     const balances = new Map<string, number>();
     creditStore = {
-      async credit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCents);
+      async credit(tenantId, amountCredits) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) + amountCredits);
         return {
           id: "tx-1",
           tenantId,
-          amountCents,
-          balanceAfterCents: balances.get(tenantId) ?? 0,
+          amountCredits,
+          balanceAfterCredits: balances.get(tenantId) ?? 0,
           type: "signup_grant" as const,
           description: null,
           referenceId: null,
@@ -48,13 +48,13 @@ describe("BulkOperationsStore", () => {
           createdAt: new Date().toISOString(),
         };
       },
-      async debit(tenantId, amountCents) {
-        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCents);
+      async debit(tenantId, amountCredits) {
+        balances.set(tenantId, (balances.get(tenantId) ?? 0) - amountCredits);
         return {
           id: "tx-2",
           tenantId,
-          amountCents: -amountCents,
-          balanceAfterCents: balances.get(tenantId) ?? 0,
+          amountCredits: -amountCredits,
+          balanceAfterCredits: balances.get(tenantId) ?? 0,
           type: "correction" as const,
           description: null,
           referenceId: null,
@@ -94,7 +94,7 @@ describe("BulkOperationsStore", () => {
         tenantId: "tenant-1",
         status: "active",
         role: "user",
-        creditBalanceCents: 1000,
+        creditBalanceCredits: 1000,
         agentCount: 2,
         createdAt: now,
       },
@@ -105,7 +105,7 @@ describe("BulkOperationsStore", () => {
         tenantId: "tenant-2",
         status: "active",
         role: "user",
-        creditBalanceCents: 500,
+        creditBalanceCredits: 500,
         agentCount: 1,
         createdAt: now,
       },
@@ -116,7 +116,7 @@ describe("BulkOperationsStore", () => {
         tenantId: "tenant-3",
         status: "suspended",
         role: "user",
-        creditBalanceCents: 0,
+        creditBalanceCredits: 0,
         agentCount: 0,
         createdAt: now,
       },
@@ -127,7 +127,7 @@ describe("BulkOperationsStore", () => {
         tenantId: "tenant-4",
         status: "active",
         role: "tenant_admin",
-        creditBalanceCents: 200,
+        creditBalanceCredits: 200,
         agentCount: 3,
         createdAt: now,
       },
@@ -138,7 +138,7 @@ describe("BulkOperationsStore", () => {
         tenantId: "tenant-5",
         status: "dormant",
         role: "user",
-        creditBalanceCents: 0,
+        creditBalanceCredits: 0,
         agentCount: 0,
         createdAt: now,
       },
@@ -156,14 +156,14 @@ describe("BulkOperationsStore", () => {
   describe("validation", () => {
     it("rejects empty tenant IDs array", async () => {
       await expect(() =>
-        store.bulkGrant({ tenantIds: [], amountCents: 100, reason: "test", notifyByEmail: false }, "admin"),
+        store.bulkGrant({ tenantIds: [], amountCredits: 100, reason: "test", notifyByEmail: false }, "admin"),
       ).rejects.toThrow("At least one tenant must be selected");
     });
 
     it("rejects >500 tenant IDs", async () => {
       const ids = Array.from({ length: 501 }, (_, i) => `tenant-${i}`);
       await expect(() =>
-        store.bulkGrant({ tenantIds: ids, amountCents: 100, reason: "test", notifyByEmail: false }, "admin"),
+        store.bulkGrant({ tenantIds: ids, amountCredits: 100, reason: "test", notifyByEmail: false }, "admin"),
       ).rejects.toThrow(`Maximum ${MAX_BULK_SIZE} tenants per bulk operation`);
     });
   });
@@ -175,7 +175,7 @@ describe("BulkOperationsStore", () => {
   describe("bulkGrant", () => {
     it("grants credits to multiple tenants and returns correct counts", async () => {
       const result = await store.bulkGrant(
-        { tenantIds: ["tenant-1", "tenant-2"], amountCents: 500, reason: "Outage comp", notifyByEmail: false },
+        { tenantIds: ["tenant-1", "tenant-2"], amountCredits: 500, reason: "Outage comp", notifyByEmail: false },
         "admin-1",
       );
       expect(result.action).toBe("grant");
@@ -192,7 +192,7 @@ describe("BulkOperationsStore", () => {
 
     it("creates an audit log entry with category bulk", async () => {
       await store.bulkGrant(
-        { tenantIds: ["tenant-1"], amountCents: 100, reason: "test", notifyByEmail: true },
+        { tenantIds: ["tenant-1"], amountCredits: 100, reason: "test", notifyByEmail: true },
         "admin-1",
       );
       const logs = await auditLog.query({ action: "bulk.grant" });
@@ -211,7 +211,7 @@ describe("BulkOperationsStore", () => {
   describe("undoGrant", () => {
     it("reverses a grant within the 5-minute window", async () => {
       const grant = await store.bulkGrant(
-        { tenantIds: ["tenant-1", "tenant-2"], amountCents: 300, reason: "test", notifyByEmail: false },
+        { tenantIds: ["tenant-1", "tenant-2"], amountCredits: 300, reason: "test", notifyByEmail: false },
         "admin-1",
       );
       expect(await creditStore.balance("tenant-1")).toBe(300);
@@ -226,7 +226,7 @@ describe("BulkOperationsStore", () => {
     it("fails after 5-minute window expires", async () => {
       vi.useFakeTimers();
       const grant = await store.bulkGrant(
-        { tenantIds: ["tenant-1"], amountCents: 100, reason: "test", notifyByEmail: false },
+        { tenantIds: ["tenant-1"], amountCredits: 100, reason: "test", notifyByEmail: false },
         "admin-1",
       );
       vi.advanceTimersByTime(UNDO_WINDOW_MS + 1000);
@@ -235,7 +235,7 @@ describe("BulkOperationsStore", () => {
 
     it("fails if already undone", async () => {
       const grant = await store.bulkGrant(
-        { tenantIds: ["tenant-1"], amountCents: 100, reason: "test", notifyByEmail: false },
+        { tenantIds: ["tenant-1"], amountCredits: 100, reason: "test", notifyByEmail: false },
         "admin-1",
       );
       await store.undoGrant(grant.operationId, "admin-1");
@@ -367,7 +367,7 @@ describe("BulkOperationsStore", () => {
       );
       expect(result.rowCount).toBe(2);
       const lines = result.csv.split("\n");
-      expect(lines[0]).toBe("tenant_id,name,email,status,role,credit_balance_cents");
+      expect(lines[0]).toBe("tenant_id,name,email,status,role,credit_balance_credits");
       expect(lines.length).toBe(3); // header + 2 data rows
     });
 
@@ -387,7 +387,7 @@ describe("BulkOperationsStore", () => {
         "admin-1",
       );
       expect(result.csv).toContain(
-        "tenant_id,name,email,status,role,credit_balance_cents,agent_count,lifetime_spend_cents,last_seen",
+        "tenant_id,name,email,status,role,credit_balance_credits,agent_count,lifetime_spend_cents,last_seen",
       );
     });
 

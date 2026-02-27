@@ -108,7 +108,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         // Match the paid amount against known tiers in the price map.
         let matched: number | null = null;
         for (const point of deps.priceMap.values()) {
-          if (point.amountCents === amountPaid) {
+          if (point.amountCredits === amountPaid) {
             matched = point.creditCents;
             break;
           }
@@ -155,7 +155,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         if (matchResult && deps.notificationService && deps.getEmailForTenant) {
           const referrerEmail = await deps.getEmailForTenant(matchResult.referrerTenantId);
           if (referrerEmail) {
-            const amountDollars = (matchResult.matchAmountCents / 100).toFixed(2);
+            const amountDollars = (matchResult.matchAmountCredits / 100).toFixed(2);
             deps.notificationService.notifyAffiliateCreditMatch(
               matchResult.referrerTenantId,
               referrerEmail,

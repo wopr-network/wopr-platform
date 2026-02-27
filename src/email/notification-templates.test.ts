@@ -217,10 +217,10 @@ describe("renderNotificationTemplate", () => {
       const result = renderNotificationTemplate("dividend-weekly-digest", {
         email: "alice@example.com",
         weeklyTotalDollars: "$3.50",
-        weeklyTotalCents: 350,
+        weeklyTotalCredits: 350,
         lifetimeTotalDollars: "$42.00",
         distributionCount: 5,
-        poolAvgCents: 2000,
+        poolAvgCredits: 2000,
         activeUsersAvg: 10,
         nextDividendDate: "Tuesday, February 25, 2026",
         weekStartDate: "February 17",

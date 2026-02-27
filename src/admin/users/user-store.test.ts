@@ -24,7 +24,7 @@ async function insertUser(
     tenantId: string;
     status: string;
     role: string;
-    creditBalanceCents: number;
+    creditBalanceCredits: number;
     agentCount: number;
     lastSeen: number | null;
     createdAt: number;
@@ -37,7 +37,7 @@ async function insertUser(
     tenantId: "tenant-1",
     status: "active",
     role: "user",
-    creditBalanceCents: 1000,
+    creditBalanceCredits: 1000,
     agentCount: 2,
     lastSeen: Date.now(),
     createdAt: Date.now(),
@@ -59,7 +59,7 @@ describe("admin_users schema (via Drizzle migration)", () => {
         tenantId: "t1",
         status: "invalid_status",
         role: "user",
-        creditBalanceCents: 0,
+        creditBalanceCredits: 0,
         agentCount: 0,
         createdAt: Date.now(),
       }),
@@ -76,7 +76,7 @@ describe("admin_users schema (via Drizzle migration)", () => {
         tenantId: "t1",
         status: "active",
         role: "invalid_role",
-        creditBalanceCents: 0,
+        creditBalanceCredits: 0,
         agentCount: 0,
         createdAt: Date.now(),
       }),
@@ -118,14 +118,14 @@ describe("admin_users schema (via Drizzle migration)", () => {
       .select({
         status: adminUsers.status,
         role: adminUsers.role,
-        creditBalanceCents: adminUsers.creditBalanceCents,
+        creditBalanceCredits: adminUsers.creditBalanceCredits,
         agentCount: adminUsers.agentCount,
       })
       .from(adminUsers)
       .where(((t) => require("drizzle-orm").eq(t.id, "u-defaults"))(adminUsers));
     expect(rows[0].status).toBe("active");
     expect(rows[0].role).toBe("user");
-    expect(rows[0].creditBalanceCents).toBe(0);
+    expect(rows[0].creditBalanceCredits).toBe(0);
     expect(rows[0].agentCount).toBe(0);
     await pool.close();
   });
@@ -217,8 +217,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("filters by hasCredits", async () => {
-    await insertUser(db, { id: "rich", creditBalanceCents: 5000 });
-    await insertUser(db, { id: "broke", creditBalanceCents: 0 });
+    await insertUser(db, { id: "rich", creditBalanceCredits: 5000 });
+    await insertUser(db, { id: "broke", creditBalanceCredits: 0 });
 
     const result = await store.list({ hasCredits: true });
     expect(result.users).toHaveLength(1);
@@ -226,8 +226,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("filters users with no credits when hasCredits is false", async () => {
-    await insertUser(db, { id: "rich", creditBalanceCents: 5000 });
-    await insertUser(db, { id: "broke", creditBalanceCents: 0 });
+    await insertUser(db, { id: "rich", creditBalanceCredits: 5000 });
+    await insertUser(db, { id: "broke", creditBalanceCredits: 0 });
 
     const result = await store.list({ hasCredits: false });
     expect(result.users).toHaveLength(1);
@@ -235,9 +235,9 @@ describe("AdminUserStore.list", () => {
   });
 
   it("filters by lowBalance", async () => {
-    await insertUser(db, { id: "low", creditBalanceCents: 200 });
-    await insertUser(db, { id: "high", creditBalanceCents: 5000 });
-    await insertUser(db, { id: "zero", creditBalanceCents: 0 });
+    await insertUser(db, { id: "low", creditBalanceCredits: 200 });
+    await insertUser(db, { id: "high", creditBalanceCredits: 5000 });
+    await insertUser(db, { id: "zero", creditBalanceCredits: 0 });
 
     const result = await store.list({ lowBalance: true });
     expect(result.users).toHaveLength(2);
@@ -292,8 +292,8 @@ describe("AdminUserStore.list", () => {
   });
 
   it("sorts by balance", async () => {
-    await insertUser(db, { id: "low", creditBalanceCents: 100, createdAt: 1000 });
-    await insertUser(db, { id: "high", creditBalanceCents: 5000, createdAt: 2000 });
+    await insertUser(db, { id: "low", creditBalanceCredits: 100, createdAt: 1000 });
+    await insertUser(db, { id: "high", creditBalanceCredits: 5000, createdAt: 2000 });
 
     const result = await store.list({ sortBy: "balance", sortOrder: "desc" });
     expect(result.users[0].id).toBe("high");
@@ -319,10 +319,10 @@ describe("AdminUserStore.list", () => {
   });
 
   it("combines multiple filters", async () => {
-    await insertUser(db, { id: "match", status: "active", role: "user", creditBalanceCents: 5000 });
-    await insertUser(db, { id: "wrong-status", status: "suspended", role: "user", creditBalanceCents: 5000 });
-    await insertUser(db, { id: "wrong-role", status: "active", role: "platform_admin", creditBalanceCents: 5000 });
-    await insertUser(db, { id: "no-credits", status: "active", role: "user", creditBalanceCents: 0 });
+    await insertUser(db, { id: "match", status: "active", role: "user", creditBalanceCredits: 5000 });
+    await insertUser(db, { id: "wrong-status", status: "suspended", role: "user", creditBalanceCredits: 5000 });
+    await insertUser(db, { id: "wrong-role", status: "active", role: "platform_admin", creditBalanceCredits: 5000 });
+    await insertUser(db, { id: "no-credits", status: "active", role: "user", creditBalanceCredits: 0 });
 
     const result = await store.list({ status: "active", role: "user", hasCredits: true });
     expect(result.users).toHaveLength(1);
@@ -428,7 +428,7 @@ describe("AdminUserStore.getById", () => {
       tenantId: "acme",
       status: "active",
       role: "user",
-      creditBalanceCents: 1500,
+      creditBalanceCredits: 1500,
       agentCount: 3,
       lastSeen: 1700000000000,
       createdAt: 1600000000000,
@@ -442,7 +442,7 @@ describe("AdminUserStore.getById", () => {
     expect(user?.tenant_id).toBe("acme");
     expect(user?.status).toBe("active");
     expect(user?.role).toBe("user");
-    expect(user?.credit_balance_cents).toBe(1500);
+    expect(user?.credit_balance_credits).toBe(1500);
     expect(user?.agent_count).toBe(3);
     expect(user?.last_seen).toBe(1700000000000);
     expect(user?.created_at).toBe(1600000000000);
@@ -533,8 +533,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports hasCredits filter", async () => {
-    await insertUser(db, { id: "rich", creditBalanceCents: 5000 });
-    await insertUser(db, { id: "broke", creditBalanceCents: 0 });
+    await insertUser(db, { id: "rich", creditBalanceCredits: 5000 });
+    await insertUser(db, { id: "broke", creditBalanceCredits: 0 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));
@@ -609,8 +609,8 @@ describe("admin users API routes", () => {
   });
 
   it("GET / supports lowBalance filter", async () => {
-    await insertUser(db, { id: "low", creditBalanceCents: 200 });
-    await insertUser(db, { id: "high", creditBalanceCents: 5000 });
+    await insertUser(db, { id: "low", creditBalanceCredits: 200 });
+    await insertUser(db, { id: "high", creditBalanceCredits: 5000 });
 
     const app = new Hono();
     app.route("/admin/users", createAdminUsersApiRoutes(db));

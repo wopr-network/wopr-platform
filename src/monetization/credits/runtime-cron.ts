@@ -24,7 +24,7 @@ export interface RuntimeCronConfig {
   getActiveBotCount: GetActiveBotCount;
   onSuspend?: OnSuspend;
   /** Called when balance drops below LOW_BALANCE_THRESHOLD_CENTS ($1.00). */
-  onLowBalance?: (tenantId: string, balanceCents: number) => void | Promise<void>;
+  onLowBalance?: (tenantId: string, balanceCredits: number) => void | Promise<void>;
   /** Called when balance hits exactly 0 or goes negative. */
   onCreditsExhausted?: (tenantId: string) => void | Promise<void>;
   /**
@@ -85,14 +85,14 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
 
   const tenants = await cfg.ledger.tenantsWithBalance();
 
-  for (const { tenantId, balanceCents } of tenants) {
+  for (const { tenantId, balanceCredits } of tenants) {
     try {
       const botCount = await cfg.getActiveBotCount(tenantId);
       if (botCount <= 0) continue;
 
       const totalCost = botCount * DAILY_BOT_COST_CENTS;
 
-      if (balanceCents >= totalCost) {
+      if (balanceCredits >= totalCost) {
         // Full deduction
         await cfg.ledger.debit(
           tenantId,
@@ -125,14 +125,14 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
         if (
           newBalance > 0 &&
           newBalance <= LOW_BALANCE_THRESHOLD_CENTS &&
-          balanceCents > LOW_BALANCE_THRESHOLD_CENTS &&
+          balanceCredits > LOW_BALANCE_THRESHOLD_CENTS &&
           cfg.onLowBalance
         ) {
           await cfg.onLowBalance(tenantId, newBalance);
         }
 
         // Fire onCreditsExhausted if balance just hit 0
-        if (newBalance <= 0 && balanceCents > 0 && cfg.onCreditsExhausted) {
+        if (newBalance <= 0 && balanceCredits > 0 && cfg.onCreditsExhausted) {
           await cfg.onCreditsExhausted(tenantId);
         }
 
@@ -160,10 +160,10 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
         }
       } else {
         // Partial deduction — debit remaining balance, then suspend
-        if (balanceCents > 0) {
+        if (balanceCredits > 0) {
           await cfg.ledger.debit(
             tenantId,
-            balanceCents,
+            balanceCredits,
             "bot_runtime",
             `Partial daily runtime (balance exhausted): ${botCount} bot(s)`,
           );

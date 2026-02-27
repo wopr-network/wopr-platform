@@ -12,12 +12,12 @@ async function insertDistribution(
   db: DrizzleDb,
   tenantId: string,
   date: string,
-  amountCents: number,
-  poolCents: number,
+  amountCredits: number,
+  poolCredits: number,
   activeUsers: number,
 ): Promise<void> {
   const id = `dist-${tenantId}-${date}-${Math.random()}`;
-  await db.insert(dividendDistributions).values({ id, tenantId, date, amountCents, poolCents, activeUsers });
+  await db.insert(dividendDistributions).values({ id, tenantId, date, amountCredits, poolCredits, activeUsers });
 }
 
 async function insertUser(db: DrizzleDb, tenantId: string, email: string): Promise<void> {

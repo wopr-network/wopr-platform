@@ -151,8 +151,8 @@ describe("requireBalance middleware", () => {
 // requireCredits middleware (WOP-380)
 // ---------------------------------------------------------------------------
 
-function createCreditApp(balanceCents: number, minCents?: number) {
-  const mockLedger = { balance: vi.fn().mockReturnValue(balanceCents) } as unknown as CreditLedger;
+function createCreditApp(balanceCredits: number, minCents?: number) {
+  const mockLedger = { balance: vi.fn().mockReturnValue(balanceCredits) } as unknown as CreditLedger;
   const { requireCredits } = createCreditGate({
     ledger: mockLedger,
     resolveTenantId: (c) => c.req.header("x-tenant-id"),

@@ -151,7 +151,7 @@ export const adminRouter = router({
   creditsBalance: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getCreditLedger } = deps();
     const balance = await getCreditLedger().balance(input.tenantId);
-    return { tenant: input.tenantId, balance_cents: balance };
+    return { tenant: input.tenantId, balance_credits: balance };
   }),
 
   /** Grant credits to a tenant. */
@@ -159,7 +159,7 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        amount_cents: z.number().int().positive(),
+        amount_credits: z.number().int().positive(),
         reason: z.string().min(1),
       }),
     )
@@ -167,13 +167,18 @@ export const adminRouter = router({
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = await getCreditLedger().credit(input.tenantId, input.amount_cents, "signup_grant", input.reason);
+        const result = await getCreditLedger().credit(
+          input.tenantId,
+          input.amount_credits,
+          "signup_grant",
+          input.reason,
+        );
         getAuditLog().log({
           adminUser,
           action: "credits.grant",
           category: "credits",
           targetTenant: input.tenantId,
-          details: { amount_cents: input.amount_cents, reason: input.reason },
+          details: { amount_credits: input.amount_credits, reason: input.reason },
           outcome: "success",
         });
         return result;
@@ -183,7 +188,7 @@ export const adminRouter = router({
           action: "credits.grant",
           category: "credits",
           targetTenant: input.tenantId,
-          details: { amount_cents: input.amount_cents, reason: input.reason, error: String(err) },
+          details: { amount_credits: input.amount_credits, reason: input.reason, error: String(err) },
           outcome: "failure",
         });
         throw err;
@@ -195,7 +200,7 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        amount_cents: z.number().int().positive(),
+        amount_credits: z.number().int().positive(),
         reason: z.string().min(1),
         reference_ids: z.array(z.string()).optional(),
       }),
@@ -204,13 +209,13 @@ export const adminRouter = router({
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = await getCreditLedger().debit(input.tenantId, input.amount_cents, "refund", input.reason);
+        const result = await getCreditLedger().debit(input.tenantId, input.amount_credits, "refund", input.reason);
         getAuditLog().log({
           adminUser,
           action: "credits.refund",
           category: "credits",
           targetTenant: input.tenantId,
-          details: { amount_cents: input.amount_cents, reason: input.reason, reference_ids: input.reference_ids },
+          details: { amount_credits: input.amount_credits, reason: input.reason, reference_ids: input.reference_ids },
           outcome: "success",
         });
         return result;
@@ -221,7 +226,7 @@ export const adminRouter = router({
           category: "credits",
           targetTenant: input.tenantId,
           details: {
-            amount_cents: input.amount_cents,
+            amount_credits: input.amount_credits,
             reason: input.reason,
             reference_ids: input.reference_ids,
             error: String(err),
@@ -237,7 +242,7 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        amount_cents: z.number().int(),
+        amount_credits: z.number().int(),
         reason: z.string().min(1),
       }),
     )
@@ -245,15 +250,15 @@ export const adminRouter = router({
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = await (input.amount_cents >= 0
-          ? getCreditLedger().credit(input.tenantId, input.amount_cents || 1, "promo", input.reason)
-          : getCreditLedger().debit(input.tenantId, Math.abs(input.amount_cents), "correction", input.reason));
+        const result = await (input.amount_credits >= 0
+          ? getCreditLedger().credit(input.tenantId, input.amount_credits || 1, "promo", input.reason)
+          : getCreditLedger().debit(input.tenantId, Math.abs(input.amount_credits), "correction", input.reason));
         getAuditLog().log({
           adminUser,
           action: "credits.correction",
           category: "credits",
           targetTenant: input.tenantId,
-          details: { amount_cents: input.amount_cents, reason: input.reason },
+          details: { amount_credits: input.amount_credits, reason: input.reason },
           outcome: "success",
         });
         return result;
@@ -263,7 +268,7 @@ export const adminRouter = router({
           action: "credits.correction",
           category: "credits",
           targetTenant: input.tenantId,
-          details: { amount_cents: input.amount_cents, reason: input.reason, error: String(err) },
+          details: { amount_credits: input.amount_credits, reason: input.reason, error: String(err) },
           outcome: "failure",
         });
         throw err;
@@ -947,7 +952,7 @@ export const adminRouter = router({
 
     return {
       user: user ?? null,
-      credits: { balance_cents: balance, recent_transactions: recentTransactions },
+      credits: { balance_credits: balance, recent_transactions: recentTransactions },
       status: status ?? { tenantId: input.tenantId, status: "active" },
       usage: { summaries: usageSummaries, total: usageTotal },
     };
@@ -1163,14 +1168,14 @@ export const adminRouter = router({
       const { tenantId, ...filters } = input;
       const entries = await getCreditLedger().history(tenantId, { ...filters, limit: 10000 });
 
-      const header = "id,tenantId,type,amountCents,description,referenceId,createdAt";
+      const header = "id,tenantId,type,amountCredits,description,referenceId,createdAt";
       const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
       const lines = entries.map((r) =>
         [
           csvEscape(r.id),
           csvEscape(r.tenantId),
           csvEscape(r.type),
-          String(r.amountCents),
+          String(r.amountCredits),
           csvEscape(r.description ?? ""),
           csvEscape(r.referenceId ?? ""),
           csvEscape(r.createdAt),
@@ -1217,7 +1222,7 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantIds: z.array(tenantIdSchema).min(1).max(500),
-        amountCents: z.number().int().positive().max(100_000_00),
+        amountCredits: z.number().int().positive().max(100_000_00),
         reason: z.string().min(1).max(1000),
         notifyByEmail: z.boolean().default(false),
       }),

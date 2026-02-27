@@ -491,14 +491,14 @@ function dividendWeeklyDigestTemplate(data: Record<string, unknown>): TemplateRe
   const weeklyTotal = escapeHtml((data.weeklyTotalDollars as string) || "$0.00");
   const lifetimeTotal = escapeHtml((data.lifetimeTotalDollars as string) || "$0.00");
   const distributionCount = Number(data.distributionCount) || 0;
-  const poolAvgCents = Number(data.poolAvgCents) || 0;
+  const poolAvgCredits = Number(data.poolAvgCredits) || 0;
   const activeUsersAvg = Number(data.activeUsersAvg) || 0;
   const nextDividendDate = escapeHtml((data.nextDividendDate as string) || "");
   const weekStart = escapeHtml((data.weekStartDate as string) || "");
   const weekEnd = escapeHtml((data.weekEndDate as string) || "");
   const creditsUrl = (data.creditsUrl as string) || "";
   const unsubscribeUrl = (data.unsubscribeUrl as string) || "";
-  const poolAvgDollars = `$${(poolAvgCents / 100).toFixed(2)}`;
+  const poolAvgDollars = `$${(poolAvgCredits / 100).toFixed(2)}`;
 
   const parts = [
     heading(`WOPR Paid You ${weeklyTotal} This Week`),

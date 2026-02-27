@@ -47,13 +47,13 @@ function makeManager(overrides: Record<string, unknown> = {}): SnapshotManager {
   } as unknown as SnapshotManager;
 }
 
-function makeLedger(balanceCents = 100): CreditLedger {
-  return { balance: vi.fn().mockResolvedValue(balanceCents) } as unknown as CreditLedger;
+function makeLedger(balanceCredits = 100): CreditLedger {
+  return { balance: vi.fn().mockResolvedValue(balanceCredits) } as unknown as CreditLedger;
 }
 
-function makeService(managerOverrides: Record<string, unknown> = {}, balanceCents = 100) {
+function makeService(managerOverrides: Record<string, unknown> = {}, balanceCredits = 100) {
   const manager = makeManager(managerOverrides);
-  const ledger = makeLedger(balanceCents);
+  const ledger = makeLedger(balanceCredits);
   const service = new OnDemandSnapshotService({ manager, ledger });
   return { service, manager, ledger };
 }

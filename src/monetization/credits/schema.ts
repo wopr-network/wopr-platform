@@ -6,8 +6,8 @@ export function initCreditSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS credit_transactions (
       id TEXT PRIMARY KEY,
       tenant_id TEXT NOT NULL,
-      amount_cents INTEGER NOT NULL,
-      balance_after_cents INTEGER NOT NULL,
+      amount_credits INTEGER NOT NULL,
+      balance_after_credits INTEGER NOT NULL,
       type TEXT NOT NULL,
       description TEXT,
       reference_id TEXT UNIQUE,
@@ -35,7 +35,7 @@ export function initCreditSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS credit_balances (
       tenant_id TEXT PRIMARY KEY,
-      balance_cents INTEGER NOT NULL DEFAULT 0,
+      balance_credits INTEGER NOT NULL DEFAULT 0,
       last_updated TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);

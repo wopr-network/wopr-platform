@@ -20,7 +20,7 @@ export interface AffiliateReferral {
   code: string;
   signedUpAt: string;
   firstPurchaseAt: string | null;
-  matchAmountCents: number | null;
+  matchAmountCredits: number | null;
   matchedAt: string | null;
 }
 
@@ -58,7 +58,7 @@ export interface IAffiliateRepository {
   markFirstPurchase(referredTenantId: string): Promise<void>;
 
   /** Record a match payout on a referral. */
-  recordMatch(referredTenantId: string, amountCents: number): Promise<void>;
+  recordMatch(referredTenantId: string, amountCredits: number): Promise<void>;
 
   /** Look up a referral by the referred tenant. Returns null if not referred. */
   getReferralByReferred(referredTenantId: string): Promise<AffiliateReferral | null>;
@@ -178,7 +178,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       code: row.code,
       signedUpAt: row.signedUpAt,
       firstPurchaseAt: row.firstPurchaseAt,
-      matchAmountCents: row.matchAmountCents,
+      matchAmountCredits: row.matchAmountCredits,
       matchedAt: row.matchedAt,
     };
   }
@@ -202,7 +202,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
 
     const earnedRow = (
       await this.db
-        .select({ earned: sum(affiliateReferrals.matchAmountCents) })
+        .select({ earned: sum(affiliateReferrals.matchAmountCredits) })
         .from(affiliateReferrals)
         .where(eq(affiliateReferrals.referrerTenantId, tenantId))
     )[0];
@@ -228,7 +228,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       code: row.code,
       signedUpAt: row.signedUpAt,
       firstPurchaseAt: row.firstPurchaseAt,
-      matchAmountCents: row.matchAmountCents,
+      matchAmountCredits: row.matchAmountCredits,
       matchedAt: row.matchedAt,
     }));
   }
@@ -255,16 +255,16 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       code: row.code,
       signedUpAt: row.signedUpAt,
       firstPurchaseAt: row.firstPurchaseAt,
-      matchAmountCents: row.matchAmountCents,
+      matchAmountCredits: row.matchAmountCredits,
       matchedAt: row.matchedAt,
     };
   }
 
-  async recordMatch(referredTenantId: string, amountCents: number): Promise<void> {
+  async recordMatch(referredTenantId: string, amountCredits: number): Promise<void> {
     await this.db
       .update(affiliateReferrals)
       .set({
-        matchAmountCents: amountCents,
+        matchAmountCredits: amountCredits,
         matchedAt: sql`now()`,
       })
       .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.matchedAt)));

@@ -64,12 +64,12 @@ describe("processAffiliateCreditMatch", () => {
     });
 
     expect(result).not.toBeNull();
-    expect(result?.matchAmountCents).toBe(2000);
+    expect(result?.matchAmountCredits).toBe(2000);
     expect(result?.referrerTenantId).toBe("referrer");
     expect(await ledger.balance("referrer")).toBe(2000);
 
     const ref = await affiliateRepo.getReferralByReferred("buyer");
-    expect(ref?.matchAmountCents).toBe(2000);
+    expect(ref?.matchAmountCredits).toBe(2000);
     expect(ref?.matchedAt).not.toBeNull();
     expect(ref?.firstPurchaseAt).not.toBeNull();
   });
@@ -86,7 +86,7 @@ describe("processAffiliateCreditMatch", () => {
       matchRate: 0.5,
     });
 
-    expect(result?.matchAmountCents).toBe(1000);
+    expect(result?.matchAmountCredits).toBe(1000);
     expect(await ledger.balance("referrer")).toBe(1000);
   });
 

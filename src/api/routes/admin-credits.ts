@@ -38,11 +38,11 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const amountCents = body.amount_cents;
+    const amountCredits = body.amount_credits;
     const reason = body.reason;
 
-    if (typeof amountCents !== "number" || !Number.isInteger(amountCents) || amountCents <= 0) {
-      return c.json({ error: "amount_cents must be a positive integer" }, 400);
+    if (typeof amountCredits !== "number" || !Number.isInteger(amountCredits) || amountCredits <= 0) {
+      return c.json({ error: "amount_credits must be a positive integer" }, 400);
     }
 
     if (typeof reason !== "string" || !reason.trim()) {
@@ -54,7 +54,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       const adminUser = user?.id ?? "unknown";
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        result = await ledger.credit(tenant, amountCents, "signup_grant", reason);
+        result = await ledger.credit(tenant, amountCredits, "signup_grant", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -62,7 +62,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
             action: "credits.grant",
             category: "credits",
             targetTenant: tenant,
-            details: { amount_cents: amountCents, reason, error: String(err) },
+            details: { amount_credits: amountCredits, reason, error: String(err) },
             outcome: "failure",
           });
         } catch {
@@ -76,7 +76,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
           action: "credits.grant",
           category: "credits",
           targetTenant: tenant,
-          details: { amount_cents: amountCents, reason },
+          details: { amount_credits: amountCredits, reason },
           outcome: "success",
         });
       } catch {
@@ -100,11 +100,11 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const amountCents = body.amount_cents;
+    const amountCredits = body.amount_credits;
     const reason = body.reason;
 
-    if (typeof amountCents !== "number" || !Number.isInteger(amountCents) || amountCents <= 0) {
-      return c.json({ error: "amount_cents must be a positive integer" }, 400);
+    if (typeof amountCredits !== "number" || !Number.isInteger(amountCredits) || amountCredits <= 0) {
+      return c.json({ error: "amount_credits must be a positive integer" }, 400);
     }
 
     if (typeof reason !== "string" || !reason.trim()) {
@@ -116,7 +116,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       const adminUser = user?.id ?? "unknown";
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        result = await ledger.credit(tenant, amountCents, "purchase", reason);
+        result = await ledger.credit(tenant, amountCredits, "purchase", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -124,7 +124,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
             action: "credits.refund",
             category: "credits",
             targetTenant: tenant,
-            details: { amount_cents: amountCents, reason, error: String(err) },
+            details: { amount_credits: amountCredits, reason, error: String(err) },
             outcome: "failure",
           });
         } catch {
@@ -138,7 +138,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
           action: "credits.refund",
           category: "credits",
           targetTenant: tenant,
-          details: { amount_cents: amountCents, reason },
+          details: { amount_credits: amountCredits, reason },
           outcome: "success",
         });
       } catch {
@@ -165,11 +165,11 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       return c.json({ error: "Invalid JSON body" }, 400);
     }
 
-    const amountCents = body.amount_cents;
+    const amountCredits = body.amount_credits;
     const reason = body.reason;
 
-    if (typeof amountCents !== "number" || !Number.isInteger(amountCents)) {
-      return c.json({ error: "amount_cents must be an integer" }, 400);
+    if (typeof amountCredits !== "number" || !Number.isInteger(amountCredits)) {
+      return c.json({ error: "amount_credits must be an integer" }, 400);
     }
 
     if (typeof reason !== "string" || !reason.trim()) {
@@ -181,10 +181,10 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       const adminUser = user?.id ?? "unknown";
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        if (amountCents >= 0) {
-          result = await ledger.credit(tenant, amountCents || 1, "promo", reason);
+        if (amountCredits >= 0) {
+          result = await ledger.credit(tenant, amountCredits || 1, "promo", reason);
         } else {
-          result = await ledger.debit(tenant, Math.abs(amountCents), "correction", reason);
+          result = await ledger.debit(tenant, Math.abs(amountCredits), "correction", reason);
         }
       } catch (err) {
         try {
@@ -193,7 +193,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
             action: "credits.correction",
             category: "credits",
             targetTenant: tenant,
-            details: { amount_cents: amountCents, reason, error: String(err) },
+            details: { amount_credits: amountCredits, reason, error: String(err) },
             outcome: "failure",
           });
         } catch {
@@ -207,7 +207,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
           action: "credits.correction",
           category: "credits",
           targetTenant: tenant,
-          details: { amount_cents: amountCents, reason },
+          details: { amount_credits: amountCredits, reason },
           outcome: "success",
         });
       } catch {
@@ -229,7 +229,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
 
     try {
       const balance = await ledger.balance(tenant);
-      return c.json({ tenant, balance_cents: balance });
+      return c.json({ tenant, balance_credits: balance });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
     }
