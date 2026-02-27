@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { AuditEnv } from "../../audit/types.js";
 import { logger } from "../../config/logger.js";
 import { getMarketplacePluginRepo } from "../../fleet/services.js";
-import { pluginRegistry } from "./marketplace-registry.js";
+import { type PluginCategory, type PluginManifest, pluginRegistry } from "./marketplace-registry.js";
 
 // BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
 // The UI calls GET /api/marketplace/plugins via session cookie. Should become
@@ -24,29 +24,56 @@ marketplaceRoutes.get("/plugins", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-  // Filter by DB-enabled status when the repo is available.
-  // Plugins with no DB record are shown by default (backwards compat for static/first-party plugins).
-  let plugins: typeof pluginRegistry;
+  let merged: PluginManifest[];
   try {
     const repo = getMarketplacePluginRepo();
-    const dbRecords = await Promise.all(pluginRegistry.map((p) => repo.findById(p.id)));
-    plugins = pluginRegistry.filter((_, i) => {
-      const dbRecord = dbRecords[i];
-      return dbRecord ? dbRecord.enabled : true;
+    const dbPlugins = await repo.findEnabled();
+    const staticById = new Map(pluginRegistry.map((p) => [p.id, p]));
+
+    merged = dbPlugins.map((dbp) => {
+      const staticManifest = staticById.get(dbp.pluginId);
+      if (staticManifest) {
+        return { ...staticManifest };
+      }
+      return {
+        id: dbp.pluginId,
+        name: dbp.npmPackage.replace(/^@wopr-network\/wopr-plugin-/, ""),
+        description: dbp.notes ?? "",
+        version: dbp.version,
+        author: "Community",
+        icon: "Package",
+        color: "#6B7280",
+        category: (dbp.category ?? "integration") as PluginCategory,
+        tags: dbp.category ? [dbp.category] : [],
+        capabilities: [],
+        requires: [],
+        install: [],
+        configSchema: [],
+        setup: [],
+        installCount: 0,
+        changelog: [],
+      } satisfies PluginManifest;
     });
+
+    // Include static plugins with no DB record (backwards compat for first-party plugins)
+    for (const sp of pluginRegistry) {
+      if (!dbPlugins.some((dbp) => dbp.pluginId === sp.id)) {
+        merged.push(sp);
+      }
+    }
   } catch {
-    // DB not available (e.g. test environment without a live DB) — serve all static plugins
-    plugins = pluginRegistry;
+    // DB not available — fallback to static registry
+    merged = [...pluginRegistry];
   }
 
   const category = c.req.query("category");
   if (category) {
-    plugins = plugins.filter((p) => p.category === category);
+    merged = merged.filter((p) => p.category === category);
   }
 
   const search = c.req.query("search")?.toLowerCase();
   if (search) {
-    plugins = plugins.filter(
+    merged = merged.filter(
       (p) =>
         p.name.toLowerCase().includes(search) ||
         p.description.toLowerCase().includes(search) ||
@@ -54,7 +81,7 @@ marketplaceRoutes.get("/plugins", async (c) => {
     );
   }
 
-  return c.json(plugins);
+  return c.json(merged);
 });
 
 /**
@@ -62,15 +89,45 @@ marketplaceRoutes.get("/plugins", async (c) => {
  *
  * Get a single plugin manifest by ID.
  */
-marketplaceRoutes.get("/plugins/:id", (c) => {
+marketplaceRoutes.get("/plugins/:id", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const id = c.req.param("id");
-  const plugin = pluginRegistry.find((p) => p.id === id);
-  if (!plugin) return c.json({ error: "Plugin not found" }, 404);
 
-  return c.json(plugin);
+  // Check static registry first (rich manifest)
+  const staticPlugin = pluginRegistry.find((p) => p.id === id);
+  if (staticPlugin) return c.json(staticPlugin);
+
+  // Check DB for dynamic plugins
+  try {
+    const repo = getMarketplacePluginRepo();
+    const dbPlugin = await repo.findById(id);
+    if (dbPlugin) {
+      return c.json({
+        id: dbPlugin.pluginId,
+        name: dbPlugin.npmPackage.replace(/^@wopr-network\/wopr-plugin-/, ""),
+        description: dbPlugin.notes ?? "",
+        version: dbPlugin.version,
+        author: "Community",
+        icon: "Package",
+        color: "#6B7280",
+        category: (dbPlugin.category ?? "integration") as PluginCategory,
+        tags: dbPlugin.category ? [dbPlugin.category] : [],
+        capabilities: [],
+        requires: [],
+        install: [],
+        configSchema: [],
+        setup: [],
+        installCount: 0,
+        changelog: [],
+      } satisfies PluginManifest);
+    }
+  } catch {
+    // DB unavailable — only static lookup available
+  }
+
+  return c.json({ error: "Plugin not found" }, 404);
 });
 
 /**

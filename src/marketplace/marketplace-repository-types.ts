@@ -12,6 +12,8 @@ export interface MarketplacePlugin {
   enabledAt: number | null;
   enabledBy: string | null;
   notes: string | null;
+  installedAt: number | null;
+  installError: string | null;
 }
 
 export interface NewMarketplacePlugin {

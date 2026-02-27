@@ -14,6 +14,8 @@ export const marketplacePlugins = pgTable(
     enabledAt: bigint("enabled_at", { mode: "number" }),
     enabledBy: text("enabled_by"),
     notes: text("notes"),
+    installedAt: bigint("installed_at", { mode: "number" }),
+    installError: text("install_error"),
   },
   (t) => [index("marketplace_plugins_enabled_idx").on(t.enabled)],
 );
