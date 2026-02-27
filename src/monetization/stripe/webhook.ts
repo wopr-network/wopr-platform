@@ -24,8 +24,8 @@ export interface WebhookResult {
   reactivatedBots?: string[];
   /** True when this event was a duplicate / replay. */
   duplicate?: boolean;
-  /** Bonus cents granted to referred user on first purchase (WOP-950). */
-  affiliateBonusCents?: number;
+  /** Bonus credits granted to referred user on first purchase (WOP-950). */
+  affiliateBonus?: Credit;
 }
 
 /**
@@ -132,16 +132,16 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
 
       // New-user first-purchase bonus for referred users (WOP-950).
       // Must run before credit match so markFirstPurchase hasn't been called yet.
-      let affiliateBonusCents: number | undefined;
+      let affiliateBonusCredit: Credit | undefined;
       if (deps.affiliateRepo) {
         const bonusResult = await grantNewUserBonus({
           ledger: deps.creditLedger,
           affiliateRepo: deps.affiliateRepo,
           referredTenantId: tenant,
-          purchaseAmountCents: creditCents,
+          purchaseAmount: Credit.fromCents(creditCents),
         });
         if (bonusResult.granted) {
-          affiliateBonusCents = bonusResult.bonusCents;
+          affiliateBonusCredit = bonusResult.bonus;
         }
       }
 
@@ -149,14 +149,14 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       if (deps.affiliateRepo) {
         const matchResult = await processAffiliateCreditMatch({
           tenantId: tenant,
-          purchaseAmountCents: creditCents,
+          purchaseAmount: Credit.fromCents(creditCents),
           ledger: deps.creditLedger,
           affiliateRepo: deps.affiliateRepo,
         });
         if (matchResult && deps.notificationService && deps.getEmailForTenant) {
           const referrerEmail = await deps.getEmailForTenant(matchResult.referrerTenantId);
           if (referrerEmail) {
-            const amountDollars = (matchResult.matchAmountCents / 100).toFixed(2);
+            const amountDollars = (matchResult.matchAmount.toCents() / 100).toFixed(2);
             deps.notificationService.notifyAffiliateCreditMatch(
               matchResult.referrerTenantId,
               referrerEmail,
@@ -179,7 +179,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         tenant,
         creditedCents: creditCents,
         reactivatedBots,
-        affiliateBonusCents,
+        affiliateBonus: affiliateBonusCredit,
       };
       break;
     }

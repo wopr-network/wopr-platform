@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { and, count, eq, isNotNull, isNull, sql, sum } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateCodes, affiliateReferrals } from "../../db/schema/affiliate.js";
+import { Credit } from "../credit.js";
 
 const AFFILIATE_BASE_URL = process.env.AFFILIATE_BASE_URL ?? "https://wopr.network/join?ref=";
 const CODE_LENGTH = 6;
@@ -20,7 +21,7 @@ export interface AffiliateReferral {
   code: string;
   signedUpAt: string;
   firstPurchaseAt: string | null;
-  matchAmountCents: number | null;
+  matchAmount: Credit | null;
   matchedAt: string | null;
 }
 
@@ -29,7 +30,7 @@ export interface AffiliateStats {
   link: string;
   referrals_total: number;
   referrals_converted: number;
-  credits_earned_cents: number;
+  creditsEarned: Credit;
 }
 
 export interface IAffiliateRepository {
@@ -58,7 +59,7 @@ export interface IAffiliateRepository {
   markFirstPurchase(referredTenantId: string): Promise<void>;
 
   /** Record a match payout on a referral. */
-  recordMatch(referredTenantId: string, amountCents: number): Promise<void>;
+  recordMatch(referredTenantId: string, amount: Credit): Promise<void>;
 
   /** Look up a referral by the referred tenant. Returns null if not referred. */
   getReferralByReferred(referredTenantId: string): Promise<AffiliateReferral | null>;
@@ -178,7 +179,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       code: row.code,
       signedUpAt: row.signedUpAt,
       firstPurchaseAt: row.firstPurchaseAt,
-      matchAmountCents: row.matchAmountCents,
+      matchAmount: row.matchAmountCents != null ? Credit.fromCents(row.matchAmountCents) : null,
       matchedAt: row.matchedAt,
     };
   }
@@ -212,7 +213,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       link: `${AFFILIATE_BASE_URL}${codeRow.code}`,
       referrals_total: totalRow?.total ?? 0,
       referrals_converted: convertedRow?.converted ?? 0,
-      credits_earned_cents: Number(earnedRow?.earned ?? 0),
+      creditsEarned: Credit.fromCents(Number(earnedRow?.earned ?? 0)),
     };
   }
 
@@ -228,7 +229,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       code: row.code,
       signedUpAt: row.signedUpAt,
       firstPurchaseAt: row.firstPurchaseAt,
-      matchAmountCents: row.matchAmountCents,
+      matchAmount: row.matchAmountCents != null ? Credit.fromCents(row.matchAmountCents) : null,
       matchedAt: row.matchedAt,
     }));
   }
@@ -255,16 +256,16 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       code: row.code,
       signedUpAt: row.signedUpAt,
       firstPurchaseAt: row.firstPurchaseAt,
-      matchAmountCents: row.matchAmountCents,
+      matchAmount: row.matchAmountCents != null ? Credit.fromCents(row.matchAmountCents) : null,
       matchedAt: row.matchedAt,
     };
   }
 
-  async recordMatch(referredTenantId: string, amountCents: number): Promise<void> {
+  async recordMatch(referredTenantId: string, amount: Credit): Promise<void> {
     await this.db
       .update(affiliateReferrals)
       .set({
-        matchAmountCents: amountCents,
+        matchAmountCents: Math.round(amount.toCents()),
         matchedAt: sql`now()`,
       })
       .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.matchedAt)));

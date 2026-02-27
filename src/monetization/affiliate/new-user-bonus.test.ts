@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";
 import { DEFAULT_BONUS_RATE, grantNewUserBonus } from "./new-user-bonus.js";
@@ -35,10 +36,11 @@ describe("grantNewUserBonus", () => {
       ledger,
       affiliateRepo,
       referredTenantId: "referred-1",
-      purchaseAmountCents: 5000,
+      purchaseAmount: Credit.fromCents(5000),
     });
 
-    expect(result).toEqual({ granted: true, bonusCents: 1000 });
+    expect(result.granted).toBe(true);
+    expect(result.bonus.toCents()).toBe(1000);
     expect((await ledger.balance("referred-1")).toCents()).toBe(1000);
 
     const txns = await ledger.history("referred-1");
@@ -53,10 +55,11 @@ describe("grantNewUserBonus", () => {
       ledger,
       affiliateRepo,
       referredTenantId: "organic-user",
-      purchaseAmountCents: 5000,
+      purchaseAmount: Credit.fromCents(5000),
     });
 
-    expect(result).toEqual({ granted: false, bonusCents: 0 });
+    expect(result.granted).toBe(false);
+    expect(result.bonus.toCents()).toBe(0);
     expect((await ledger.balance("organic-user")).toCents()).toBe(0);
   });
 
@@ -65,15 +68,21 @@ describe("grantNewUserBonus", () => {
     const code = (await affiliateRepo.getOrCreateCode("referrer-1")).code;
     await affiliateRepo.recordReferral("referrer-1", "referred-1", code);
 
-    await grantNewUserBonus({ ledger, affiliateRepo, referredTenantId: "referred-1", purchaseAmountCents: 5000 });
+    await grantNewUserBonus({
+      ledger,
+      affiliateRepo,
+      referredTenantId: "referred-1",
+      purchaseAmount: Credit.fromCents(5000),
+    });
     const result = await grantNewUserBonus({
       ledger,
       affiliateRepo,
       referredTenantId: "referred-1",
-      purchaseAmountCents: 10000,
+      purchaseAmount: Credit.fromCents(10000),
     });
 
-    expect(result).toEqual({ granted: false, bonusCents: 0 });
+    expect(result.granted).toBe(false);
+    expect(result.bonus.toCents()).toBe(0);
     expect((await ledger.balance("referred-1")).toCents()).toBe(1000);
   });
 
@@ -87,10 +96,11 @@ describe("grantNewUserBonus", () => {
       ledger,
       affiliateRepo,
       referredTenantId: "referred-1",
-      purchaseAmountCents: 5000,
+      purchaseAmount: Credit.fromCents(5000),
     });
 
-    expect(result).toEqual({ granted: false, bonusCents: 0 });
+    expect(result.granted).toBe(false);
+    expect(result.bonus.toCents()).toBe(0);
   });
 
   it("uses custom bonus rate", async () => {
@@ -102,14 +112,15 @@ describe("grantNewUserBonus", () => {
       ledger,
       affiliateRepo,
       referredTenantId: "referred-1",
-      purchaseAmountCents: 5000,
+      purchaseAmount: Credit.fromCents(5000),
       bonusRate: 0.1,
     });
 
-    expect(result).toEqual({ granted: true, bonusCents: 500 });
+    expect(result.granted).toBe(true);
+    expect(result.bonus.toCents()).toBe(500);
   });
 
-  it("skips bonus when computed amount rounds to zero", async () => {
+  it("skips bonus when purchase amount is zero", async () => {
     await affiliateRepo.getOrCreateCode("referrer-1");
     const code = (await affiliateRepo.getOrCreateCode("referrer-1")).code;
     await affiliateRepo.recordReferral("referrer-1", "referred-1", code);
@@ -118,10 +129,11 @@ describe("grantNewUserBonus", () => {
       ledger,
       affiliateRepo,
       referredTenantId: "referred-1",
-      purchaseAmountCents: 1,
+      purchaseAmount: Credit.ZERO,
     });
 
-    expect(result).toEqual({ granted: false, bonusCents: 0 });
+    expect(result.granted).toBe(false);
+    expect(result.bonus.toCents()).toBe(0);
   });
 
   it("marks firstPurchaseAt on the referral row", async () => {
@@ -129,7 +141,12 @@ describe("grantNewUserBonus", () => {
     const code = (await affiliateRepo.getOrCreateCode("referrer-1")).code;
     await affiliateRepo.recordReferral("referrer-1", "referred-1", code);
 
-    await grantNewUserBonus({ ledger, affiliateRepo, referredTenantId: "referred-1", purchaseAmountCents: 5000 });
+    await grantNewUserBonus({
+      ledger,
+      affiliateRepo,
+      referredTenantId: "referred-1",
+      purchaseAmount: Credit.fromCents(5000),
+    });
 
     const referrals = await affiliateRepo.listReferrals("referrer-1");
     expect(referrals).toHaveLength(1);
