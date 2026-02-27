@@ -16,10 +16,12 @@ export type { IMeterEmitter } from "./metering/emitter.js";
 export type { IPayRamChargeStore, PayRamChargeRecord } from "./payram/charge-store.js";
 export type { ITenantCustomerStore } from "./stripe/tenant-store.js";
 
+import type { Credit } from "./credit.js";
+
 export interface DividendStats {
-  poolCents: number;
+  pool: Credit;
   activeUsers: number;
-  perUserCents: number;
+  perUser: Credit;
   nextDistributionAt: string;
   userEligible: boolean;
   userLastPurchaseAt: string | null;
@@ -28,8 +30,8 @@ export interface DividendStats {
 
 export interface DividendHistoryEntry {
   date: string;
-  amountCents: number;
-  poolCents: number;
+  amount: Credit;
+  pool: Credit;
   activeUsers: number;
 }
 
