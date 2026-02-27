@@ -10,7 +10,7 @@ export const adminUsers = pgTable(
     tenantId: text("tenant_id").notNull(),
     status: text("status").notNull().default("active"),
     role: text("role").notNull().default("user"),
-    creditBalanceCents: integer("credit_balance_cents").notNull().default(0),
+    creditBalanceCredits: integer("credit_balance_credits").notNull().default(0),
     agentCount: integer("agent_count").notNull().default(0),
     lastSeen: bigint("last_seen", { mode: "number" }),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),

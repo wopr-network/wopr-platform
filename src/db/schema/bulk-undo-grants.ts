@@ -5,7 +5,7 @@ export const bulkUndoGrants = pgTable(
   {
     operationId: text("operation_id").primaryKey(),
     tenantIds: text("tenant_ids").notNull(),
-    amountCents: integer("amount_cents").notNull(),
+    amountCredits: integer("amount_credits").notNull(),
     adminUser: text("admin_user").notNull(),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     undoDeadline: bigint("undo_deadline", { mode: "number" }).notNull(),

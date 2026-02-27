@@ -64,6 +64,13 @@
       "when": 1772160000000,
       "tag": "0045_setup_sessions_error_count",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1772200000000,
+      "tag": "0046_credits_rename",
+      "breakpoints": true
     }
   ]
 }

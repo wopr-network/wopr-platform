@@ -11,13 +11,13 @@ export const creditAutoTopupSettings = pgTable(
     tenantId: text("tenant_id").primaryKey(),
     // Usage-based trigger
     usageEnabled: integer("usage_enabled").notNull().default(0),
-    usageThresholdCents: integer("usage_threshold_cents").notNull().default(100),
-    usageTopupCents: integer("usage_topup_cents").notNull().default(500),
+    usageThresholdCredits: integer("usage_threshold_credits").notNull().default(100),
+    usageTopupCredits: integer("usage_topup_credits").notNull().default(500),
     usageConsecutiveFailures: integer("usage_consecutive_failures").notNull().default(0),
     usageChargeInFlight: integer("usage_charge_in_flight").notNull().default(0),
     // Schedule-based trigger
     scheduleEnabled: integer("schedule_enabled").notNull().default(0),
-    scheduleAmountCents: integer("schedule_amount_cents").notNull().default(500),
+    scheduleAmountCredits: integer("schedule_amount_credits").notNull().default(500),
     scheduleIntervalHours: integer("schedule_interval_hours").notNull().default(168),
     scheduleNextAt: text("schedule_next_at"),
     scheduleConsecutiveFailures: integer("schedule_consecutive_failures").notNull().default(0),

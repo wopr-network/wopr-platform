@@ -10,7 +10,7 @@ export const creditAutoTopup = pgTable(
   {
     id: text("id").primaryKey(),
     tenantId: text("tenant_id").notNull(),
-    amountCents: integer("amount_cents").notNull(),
+    amountCredits: integer("amount_credits").notNull(),
     status: text("status").notNull(), // "success" | "failed"
     failureReason: text("failure_reason"),
     /** Stripe payment intent or charge ID, if applicable */

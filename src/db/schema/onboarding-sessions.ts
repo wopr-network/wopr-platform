@@ -10,7 +10,7 @@ export const onboardingSessions = pgTable(
     status: text("status").notNull().default("active"),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
-    budgetUsedCents: integer("budget_used_cents").notNull().default(0),
+    budgetUsedCredits: integer("budget_used_credits").notNull().default(0),
   },
   (t) => [
     index("onboarding_sessions_user_id_idx").on(t.userId),

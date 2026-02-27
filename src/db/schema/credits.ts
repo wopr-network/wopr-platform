@@ -3,15 +3,15 @@ import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Credit transaction ledger — every credit/debit is an immutable row.
- * Positive amountCents = credit (money in), negative = debit (money out).
+ * Positive amountCredits = credit (money in), negative = debit (money out).
  */
 export const creditTransactions = pgTable(
   "credit_transactions",
   {
     id: text("id").primaryKey(),
     tenantId: text("tenant_id").notNull(),
-    amountCents: integer("amount_cents").notNull(),
-    balanceAfterCents: integer("balance_after_cents").notNull(),
+    amountCredits: integer("amount_credits").notNull(),
+    balanceAfterCredits: integer("balance_after_credits").notNull(),
     type: text("type").notNull(), // signup_grant | purchase | bounty | referral | promo | community_dividend | bot_runtime | adapter_usage | addon | refund | correction
     description: text("description"),
     referenceId: text("reference_id").unique(),
@@ -34,6 +34,6 @@ export const creditTransactions = pgTable(
  */
 export const creditBalances = pgTable("credit_balances", {
   tenantId: text("tenant_id").primaryKey(),
-  balanceCents: integer("balance_cents").notNull().default(0),
+  balanceCredits: integer("balance_credits").notNull().default(0),
   lastUpdated: text("last_updated").notNull().default(sql`(now())`),
 });

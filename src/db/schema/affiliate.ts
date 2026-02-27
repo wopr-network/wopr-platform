@@ -24,7 +24,7 @@ export const affiliateReferrals = pgTable(
     code: text("code").notNull(),
     signedUpAt: text("signed_up_at").notNull().default(sql`(now())`),
     firstPurchaseAt: text("first_purchase_at"),
-    matchAmountCents: integer("match_amount_cents"),
+    matchAmountCredits: integer("match_amount_credits"),
     matchedAt: text("matched_at"),
   },
   (table) => [
