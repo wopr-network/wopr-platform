@@ -20,11 +20,10 @@ import { getEmailClient } from "../../email/client.js";
 import { welcomeTemplate } from "../../email/templates.js";
 import { verifyToken } from "../../email/verification.js";
 import { getCreditLedger, getPool } from "../../fleet/services.js";
-import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { SIGNUP_GRANT } from "../../monetization/credits/signup-grant.js";
 
 const UI_ORIGIN = process.env.UI_ORIGIN || "http://localhost:3001";
-const SIGNUP_CREDIT_CENTS = 500; // $5.00
 
 export interface VerifyEmailRouteDeps {
   pool: Pool;
@@ -64,8 +63,8 @@ function buildRoutes(poolFactory: () => Pool, creditLedgerFactory: () => ICredit
     // Grant $5 signup credit
     try {
       const ledger = creditLedgerFactory();
-      ledger.credit(result.userId, Credit.fromCents(SIGNUP_CREDIT_CENTS), "signup_grant", "Signup verification credit");
-      logger.info("Signup credit granted", { userId: result.userId, amountCents: SIGNUP_CREDIT_CENTS });
+      ledger.credit(result.userId, SIGNUP_GRANT, "signup_grant", "Signup verification credit");
+      logger.info("Signup credit granted", { userId: result.userId, amount: SIGNUP_GRANT.toCents() });
     } catch (err) {
       logger.error("Failed to grant signup credit", {
         userId: result.userId,
