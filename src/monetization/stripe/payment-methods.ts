@@ -54,11 +54,23 @@ export async function detachAllPaymentMethods(
   const mapping = await tenantStore.getByTenant(tenantId);
   if (!mapping) return 0;
 
-  const methods = await stripe.customers.listPaymentMethods(mapping.processor_customer_id, { limit: 100 });
+  let detached = 0;
+  let startingAfter: string | undefined;
 
-  for (const pm of methods.data) {
-    await stripe.paymentMethods.detach(pm.id);
+  while (true) {
+    const methods = await stripe.customers.listPaymentMethods(mapping.processor_customer_id, {
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    for (const pm of methods.data) {
+      await stripe.paymentMethods.detach(pm.id);
+      detached++;
+    }
+
+    if (!methods.has_more) break;
+    startingAfter = methods.data[methods.data.length - 1].id;
   }
 
-  return methods.data.length;
+  return detached;
 }

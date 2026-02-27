@@ -636,6 +636,38 @@ if (process.env.NODE_ENV !== "test") {
         logger.info("tRPC admin router initialized");
       }
 
+      // Hourly auto-topup schedule cron — charges tenants with schedule-based auto-topup due.
+      // checkTenantStatus guard ensures banned/suspended tenants are skipped (WOP-1064).
+      {
+        const { runScheduledTopups } = await import("./monetization/credits/auto-topup-schedule.js");
+        const { chargeAutoTopup } = await import("./monetization/credits/auto-topup-charge.js");
+        const { getTenantStatusRepo, getAutoTopupEventLogRepo } = await import("./fleet/services.js");
+        const { checkTenantStatus } = await import("./admin/tenant-status/tenant-status-middleware.js");
+        const HOUR_MS = 60 * 60 * 1000;
+        setInterval(() => {
+          void runScheduledTopups({
+            settingsRepo: autoTopupSettingsStore,
+            chargeAutoTopup: (tenantId, amountCents, source) =>
+              chargeAutoTopup(
+                { stripe, tenantStore, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
+                tenantId,
+                amountCents,
+                source,
+              ),
+            checkTenantStatus: (tenantId) => checkTenantStatus(getTenantStatusRepo(), tenantId),
+          })
+            .then((result) => {
+              logger.info("Scheduled auto-topup cron complete", result);
+            })
+            .catch((err) => {
+              logger.error("Scheduled auto-topup cron failed", {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
+        }, HOUR_MS);
+        logger.info("Hourly scheduled auto-topup cron started");
+      }
+
       // Wire REST billing routes (Stripe webhooks, checkout, portal).
       // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).
 
