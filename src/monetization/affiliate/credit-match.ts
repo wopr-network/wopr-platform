@@ -1,4 +1,4 @@
-import { Credit } from "../credit.js";
+import type { Credit } from "../credit.js";
 import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IAffiliateFraudRepository } from "./affiliate-fraud-repository.js";
 import type { IAffiliateRepository } from "./drizzle-affiliate-repository.js";
@@ -10,7 +10,7 @@ const DEFAULT_MAX_MATCH_CREDITS_30D = Number.parseInt(process.env.AFFILIATE_MAX_
 
 export interface AffiliateCreditMatchDeps {
   tenantId: string;
-  purchaseAmountCents: number;
+  purchaseAmount: Credit;
   ledger: ICreditLedger;
   affiliateRepo: IAffiliateRepository;
   matchRate?: number;
@@ -27,7 +27,7 @@ export interface AffiliateCreditMatchDeps {
 
 export interface AffiliateCreditMatchResult {
   referrerTenantId: string;
-  matchAmountCents: number;
+  matchAmount: Credit;
 }
 
 /**
@@ -39,7 +39,7 @@ export interface AffiliateCreditMatchResult {
 export async function processAffiliateCreditMatch(
   deps: AffiliateCreditMatchDeps,
 ): Promise<AffiliateCreditMatchResult | null> {
-  const { tenantId, purchaseAmountCents, ledger, affiliateRepo } = deps;
+  const { tenantId, purchaseAmount, ledger, affiliateRepo } = deps;
   const matchRate = deps.matchRate ?? DEFAULT_MATCH_RATE;
 
   // 1. Check if tenant has a referral record
@@ -118,13 +118,13 @@ export async function processAffiliateCreditMatch(
   if (await ledger.hasReferenceId(refId)) return null;
 
   // 5. Compute match
-  const matchAmountCents = Math.floor(purchaseAmountCents * matchRate);
-  if (matchAmountCents <= 0) return null;
+  const matchAmount = purchaseAmount.multiply(matchRate);
+  if (matchAmount.isZero() || matchAmount.isNegative()) return null;
 
   // 6. Credit the referrer
   await ledger.credit(
     referral.referrerTenantId,
-    Credit.fromCents(matchAmountCents),
+    matchAmount,
     "affiliate_match",
     `Affiliate match for referred tenant ${tenantId}`,
     refId,
@@ -132,10 +132,10 @@ export async function processAffiliateCreditMatch(
 
   // 7. Update referral record
   await affiliateRepo.markFirstPurchase(tenantId);
-  await affiliateRepo.recordMatch(tenantId, matchAmountCents);
+  await affiliateRepo.recordMatch(tenantId, matchAmount);
 
   return {
     referrerTenantId: referral.referrerTenantId,
-    matchAmountCents,
+    matchAmount,
   };
 }
