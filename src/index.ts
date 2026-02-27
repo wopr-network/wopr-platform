@@ -73,6 +73,8 @@ import {
   MetricsCollector,
   PagerDutyNotifier,
 } from "./observability/index.js";
+import { DrizzleTenantKeyLookup } from "./onboarding/drizzle-tenant-key-repository.js";
+import { checkProviderConfigured } from "./onboarding/provider-check.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
@@ -736,13 +738,27 @@ if (process.env.NODE_ENV !== "test") {
     const { loadOnboardingConfig } = await import("./onboarding/config.js");
     const onboardingCfg = loadOnboardingConfig();
     setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo(), getGraduationService());
-    // Wire setup route deps (WOP-1034)
+    // Wire setup route deps (WOP-1034, WOP-1035)
     const { pluginRegistry } = await import("./api/routes/marketplace-registry.js");
+    const onboardingSessionRepoForSetup = getOnboardingSessionRepo();
+    const setupSessionRepoForCheck = getSetupSessionRepo();
+    const tenantKeyLookup = new DrizzleTenantKeyLookup(getDb());
     setSetupDeps({
       pluginRegistry,
-      setupSessionRepo: getSetupSessionRepo(),
+      setupSessionRepo: setupSessionRepoForCheck,
       onboardingService: getOnboardingService(),
       setupService: getSetupService(),
+      checkProvider: async (sessionId: string) => {
+        // Look up the onboarding session to get the userId (which is the tenantId)
+        const onboardingSession = await onboardingSessionRepoForSetup.getById(sessionId);
+        if (!onboardingSession?.userId) {
+          return { configured: false };
+        }
+        return checkProviderConfigured(tenantKeyLookup, onboardingSession.userId, {
+          setupRepo: setupSessionRepoForCheck,
+          sessionId,
+        });
+      },
     });
 
     // Setup session cleanup — rolls back sessions stale >30 minutes (WOP-1037)

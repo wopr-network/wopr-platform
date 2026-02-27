@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { logger } from "../../config/logger.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
+import type { ProviderStatus } from "../../onboarding/provider-check.js";
 import type { SetupService } from "../../setup/setup-service.js";
 import type { ISetupSessionRepository } from "../../setup/setup-session-repository.js";
 import type { PluginManifest } from "./marketplace-registry.js";
@@ -19,6 +20,7 @@ export interface SetupRouteDeps {
   setupSessionRepo: ISetupSessionRepository;
   onboardingService: Pick<OnboardingService, "inject">;
   setupService: SetupService;
+  checkProvider?: (sessionId: string) => Promise<ProviderStatus>;
 }
 
 export function createSetupRoutes(deps: SetupRouteDeps): Hono {
@@ -91,8 +93,31 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       `If the user cancels, call setup.rollback().`,
     ].join("\n");
 
+    // 5b. Check provider status and append hint
+    let providerHint = "";
+    if (deps.checkProvider) {
+      const providerStatus = await deps.checkProvider(sessionId);
+      if (providerStatus.configured) {
+        providerHint = `\n\nPROVIDER ALREADY CONFIGURED: ${providerStatus.provider}. Skip the provider question and proceed directly with plugin-specific setup.`;
+      } else {
+        providerHint = [
+          "",
+          "",
+          "PROVIDER NOT CONFIGURED: Before proceeding with plugin setup, ask the user to choose an AI provider.",
+          "Options:",
+          "1. BYOK (Anthropic, OpenAI, Google) — user brings their own API key. Validate with setup.validateKey() before saving.",
+          '2. WOPR hosted — no key needed, save provider as "wopr-hosted" via setup.saveConfig("provider", "wopr-hosted").',
+          "",
+          "If the user provides an invalid key, ask again gracefully. After 3 failed attempts, offer hosted as a fallback.",
+          "Once provider is set, continue with plugin-specific setup immediately.",
+        ].join("\n");
+      }
+    }
+
+    const fullSystemMessage = systemMessage + providerHint;
+
     try {
-      await deps.onboardingService.inject(sessionId, systemMessage, { from: "system" });
+      await deps.onboardingService.inject(sessionId, fullSystemMessage, { from: "system" });
     } catch (err) {
       logger.error("Failed to inject setup context into WOPR session", {
         sessionId,
