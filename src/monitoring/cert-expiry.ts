@@ -38,7 +38,8 @@ export function checkCertExpiry(hostname: string, port: number, timeoutMs = 5000
           valid: true,
           daysRemaining,
           expiresAt,
-          issuer: cert.issuer?.O || cert.issuer?.CN || "unknown",
+          issuer:
+            [cert.issuer?.O, cert.issuer?.CN].map((v) => (Array.isArray(v) ? v[0] : v)).find(Boolean) ?? "unknown",
         });
       },
     );
