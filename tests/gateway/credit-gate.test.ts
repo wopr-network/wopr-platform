@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
 import { creditBalanceCheck, debitCredits, type CreditGateDeps } from "../../src/gateway/credit-gate.js";
 import type { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { Credit } from "../../src/monetization/credit.js";
 import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
 import type { GatewayTenant } from "../../src/gateway/types.js";
 
@@ -15,24 +16,24 @@ const TENANT: GatewayTenant = {
 };
 
 class StubCreditLedger implements CreditLedger {
-  private balances = new Map<string, number>();
+  private balances = new Map<string, Credit>();
 
-  constructor(initialBalance: number) {
-    this.balances.set(TENANT.id, initialBalance);
+  constructor(initialBalanceCents: number) {
+    this.balances.set(TENANT.id, Credit.fromCents(initialBalanceCents));
   }
 
-  balance(tenantId: string): number {
-    return this.balances.get(tenantId) ?? 0;
+  async balance(tenantId: string): Promise<Credit> {
+    return this.balances.get(tenantId) ?? Credit.ZERO;
   }
 
-  credit(tenantId: string, cents: number): void {
-    const current = this.balances.get(tenantId) ?? 0;
-    this.balances.set(tenantId, current + cents);
+  async credit(tenantId: string, amount: Credit): Promise<void> {
+    const current = this.balances.get(tenantId) ?? Credit.ZERO;
+    this.balances.set(tenantId, current.add(amount));
   }
 
-  debit(tenantId: string, cents: number): void {
-    const current = this.balances.get(tenantId) ?? 0;
-    this.balances.set(tenantId, current - cents);
+  async debit(tenantId: string, amount: Credit): Promise<void> {
+    const current = this.balances.get(tenantId) ?? Credit.ZERO;
+    this.balances.set(tenantId, current.subtract(amount));
   }
 
   transactions(): Array<{ tenantId: string; amountCents: number; type: string; description: string; timestamp: number }> {
@@ -162,38 +163,38 @@ describe("debitCredits", () => {
     };
   });
 
-  it("debits credits successfully", () => {
+  it("debits credits successfully", async () => {
     const costUsd = 0.05; // 5 cents
     const margin = 1.3;
 
-    debitCredits(deps, TENANT.id, costUsd, margin, "test-capability", "test-provider");
+    await debitCredits(deps, TENANT.id, costUsd, margin, "test-capability", "test-provider");
 
     // Expected: ceil(0.05 * 1.3 * 100) = ceil(6.5) = 7 cents
-    const expectedBalance = 10000 - 7;
-    expect(ledger.balance(TENANT.id)).toBe(expectedBalance);
+    const expectedBalanceCents = 10000 - 7;
+    expect((await ledger.balance(TENANT.id)).toCents()).toBe(expectedBalanceCents);
   });
 
-  it("does nothing when credit ledger is not configured", () => {
+  it("does nothing when credit ledger is not configured", async () => {
     const noDeps: CreditGateDeps = { topUpUrl: "/credits" };
-    debitCredits(noDeps, TENANT.id, 1.0, 1.3, "test", "test");
+    await debitCredits(noDeps, TENANT.id, 1.0, 1.3, "test", "test");
     // Should not throw
   });
 
-  it("does nothing when charge is zero or negative", () => {
-    const initialBalance = ledger.balance(TENANT.id);
-    debitCredits(deps, TENANT.id, 0, 1.3, "test", "test");
-    expect(ledger.balance(TENANT.id)).toBe(initialBalance);
+  it("does nothing when charge is zero or negative", async () => {
+    const initialBalance = await ledger.balance(TENANT.id);
+    await debitCredits(deps, TENANT.id, 0, 1.3, "test", "test");
+    expect((await ledger.balance(TENANT.id)).equals(initialBalance)).toBe(true);
   });
 
-  it("handles insufficient balance gracefully (fire-and-forget)", () => {
+  it("handles insufficient balance gracefully (fire-and-forget)", async () => {
     ledger = new StubCreditLedger(5); // Only 5 cents
     deps.creditLedger = ledger;
 
     // Try to debit 10 cents
-    debitCredits(deps, TENANT.id, 0.1, 1.0, "test", "test");
+    await debitCredits(deps, TENANT.id, 0.1, 1.0, "test", "test");
 
     // Balance goes negative (fire-and-forget pattern)
-    expect(ledger.balance(TENANT.id)).toBeLessThan(0);
+    expect((await ledger.balance(TENANT.id)).isNegative()).toBe(true);
   });
 });
 
@@ -223,12 +224,15 @@ describe("credit gate integration with streaming", () => {
       return c.json({ streamed: true });
     });
 
-    const initialBalance = ledger.balance(TENANT.id);
+    const initialBalance = await ledger.balance(TENANT.id);
     const res = await app.request("/stream", { method: "POST" });
     expect(res.status).toBe(200);
 
-    const finalBalance = ledger.balance(TENANT.id);
-    expect(finalBalance).toBeLessThan(initialBalance);
-    expect(initialBalance - finalBalance).toBeGreaterThan(0);
+    // Allow fire-and-forget debit to settle
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const finalBalance = await ledger.balance(TENANT.id);
+    expect(finalBalance.toCents()).toBeLessThan(initialBalance.toCents());
+    expect(initialBalance.toCents() - finalBalance.toCents()).toBeGreaterThan(0);
   });
 });
