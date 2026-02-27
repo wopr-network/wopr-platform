@@ -738,11 +738,14 @@ if (process.env.NODE_ENV !== "test") {
     const { loadOnboardingConfig } = await import("./onboarding/config.js");
     const onboardingCfg = loadOnboardingConfig();
     setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo(), getGraduationService());
-    // Wire setup route deps (WOP-1034, WOP-1035)
+    // Wire setup route deps (WOP-1034, WOP-1035, WOP-1055)
     const { pluginRegistry } = await import("./api/routes/marketplace-registry.js");
     const onboardingSessionRepoForSetup = getOnboardingSessionRepo();
     const setupSessionRepoForCheck = getSetupSessionRepo();
     const tenantKeyLookup = new DrizzleTenantKeyLookup(getDb());
+    const { ProfileStore: SetupProfileStore } = await import("./fleet/profile-store.js");
+    const { dispatchEnvUpdate: dispatchEnvUpdateFn } = await import("./fleet/dispatch-env-update.js");
+    const { getPluginConfigRepo } = await import("./fleet/services.js");
     setSetupDeps({
       pluginRegistry,
       setupSessionRepo: setupSessionRepoForCheck,
@@ -759,6 +762,10 @@ if (process.env.NODE_ENV !== "test") {
           sessionId,
         });
       },
+      pluginConfigRepo: getPluginConfigRepo(),
+      profileStore: new SetupProfileStore(process.env.FLEET_DATA_DIR || "/data/fleet"),
+      dispatchEnvUpdate: dispatchEnvUpdateFn,
+      platformEncryptionSecret: process.env.PLATFORM_ENCRYPTION_SECRET ?? "",
     });
 
     // Setup session cleanup — rolls back sessions stale >30 minutes (WOP-1037)

@@ -30,6 +30,7 @@ export * from "./onboarding-sessions.js";
 export * from "./org-memberships.js";
 export * from "./organization-members.js";
 export * from "./payram.js";
+export * from "./plugin-configs.js";
 export * from "./plugin-marketplace-content.js";
 export * from "./provider-credentials.js";
 export * from "./provider-health-overrides.js";

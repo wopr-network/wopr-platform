@@ -4,6 +4,8 @@ import { z } from "zod";
 import { logger } from "../../config/logger.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
 import type { ProviderStatus } from "../../onboarding/provider-check.js";
+import { deriveInstanceKey, encrypt } from "../../security/encryption.js";
+import type { IPluginConfigRepository } from "../../setup/plugin-config-repository.js";
 import type { SetupService } from "../../setup/setup-service.js";
 import type { ISetupSessionRepository } from "../../setup/setup-session-repository.js";
 import type { PluginManifest } from "./marketplace-registry.js";
@@ -15,12 +17,31 @@ const setupRequestSchema = z.object({
 
 const sessionIdSchema = z.object({ setupSessionId: z.string().min(1) });
 
+const saveConfigSchema = z.object({
+  setupSessionId: z.string().min(1),
+  botId: z.string().uuid(),
+  values: z.record(z.string(), z.unknown()),
+});
+
+type ProfileStoreLike = {
+  get(id: string): Promise<{ id: string; tenantId: string; env: Record<string, string> } | null>;
+  save(profile: { id: string; tenantId: string; env: Record<string, string> }): Promise<void>;
+};
+
 export interface SetupRouteDeps {
   pluginRegistry: PluginManifest[];
   setupSessionRepo: ISetupSessionRepository;
   onboardingService: Pick<OnboardingService, "inject">;
   setupService: SetupService;
   checkProvider?: (sessionId: string) => Promise<ProviderStatus>;
+  pluginConfigRepo: IPluginConfigRepository;
+  profileStore: ProfileStoreLike;
+  dispatchEnvUpdate: (
+    botId: string,
+    tenantId: string,
+    env: Record<string, string>,
+  ) => Promise<{ dispatched: boolean; dispatchError?: string }>;
+  platformEncryptionSecret: string;
 }
 
 export function createSetupRoutes(deps: SetupRouteDeps): Hono {
@@ -206,6 +227,103 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
     if (!sessionId) return c.json({ error: "sessionId query param required" }, 400);
     const result = await deps.setupService.checkForResumable(sessionId);
     return c.json(result);
+  });
+
+  // POST /save — persist validated config, encrypt secrets, inject env vars
+  routes.post("/save", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const parsed = saveConfigSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+    }
+
+    const { setupSessionId, botId, values } = parsed.data;
+
+    // 1. Look up setup session
+    const session = await deps.setupSessionRepo.findById(setupSessionId);
+    if (!session) {
+      return c.json({ error: `Setup session not found: ${setupSessionId}` }, 404);
+    }
+    if (session.status !== "in_progress") {
+      return c.json({ error: `Setup session is not in progress (status: ${session.status})` }, 400);
+    }
+
+    // 2. Look up plugin manifest for configSchema
+    const manifest = deps.pluginRegistry.find((p) => p.id === session.pluginId);
+    if (!manifest) {
+      return c.json({ error: `Plugin not found: ${session.pluginId}` }, 404);
+    }
+
+    // 3. Encrypt secret fields
+    if (!deps.platformEncryptionSecret) {
+      return c.json({ error: "Platform encryption not configured" }, 503);
+    }
+    const key = deriveInstanceKey(botId, deps.platformEncryptionSecret);
+    const encryptedFields: Record<string, unknown> = {};
+    const configValues: Record<string, unknown> = {};
+
+    for (const field of manifest.configSchema) {
+      const val = values[field.key];
+      if (val === undefined) continue;
+      configValues[field.key] = val;
+      if (field.secret && typeof val === "string") {
+        encryptedFields[field.key] = encrypt(val, key);
+      }
+    }
+
+    // 4. Upsert into plugin_configs
+    await deps.pluginConfigRepo.upsert({
+      id: randomUUID(),
+      botId,
+      pluginId: session.pluginId,
+      configJson: JSON.stringify(configValues),
+      encryptedFieldsJson: Object.keys(encryptedFields).length > 0 ? JSON.stringify(encryptedFields) : null,
+      setupSessionId,
+    });
+
+    // 5. Inject env vars into bot profile
+    const profile = await deps.profileStore.get(botId);
+    if (!profile) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+
+    const envUpdates: Record<string, string> = {};
+    for (const field of manifest.configSchema) {
+      if (field.env && values[field.key] !== undefined) {
+        envUpdates[field.env] = String(values[field.key]);
+      }
+    }
+
+    if (Object.keys(envUpdates).length > 0) {
+      const updatedEnv = { ...profile.env, ...envUpdates };
+      await deps.profileStore.save({ ...profile, env: updatedEnv });
+
+      // 6. Dispatch env update for zero-downtime restart
+      await deps.dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
+    }
+
+    // 7. Update collected on setup session
+    await deps.setupSessionRepo.update(setupSessionId, {
+      collected: JSON.stringify(configValues),
+    });
+
+    // 8. Record success (resets error count)
+    await deps.setupService.recordSuccess(setupSessionId);
+
+    logger.info("Saved plugin config via setup", {
+      setupSessionId,
+      botId,
+      pluginId: session.pluginId,
+      envKeysInjected: Object.keys(envUpdates),
+    });
+
+    return c.json({ ok: true, envKeysInjected: Object.keys(envUpdates) });
   });
 
   return routes;

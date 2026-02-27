@@ -1,14 +1,12 @@
-import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { botInstances } from "../../db/schema/index.js";
 import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
+import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
-import { getCommandBus, getDb } from "../../fleet/services.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
@@ -54,40 +52,6 @@ const installPluginSchema = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
   providerChoices: z.record(z.string(), z.enum(["byok", "hosted"])).default({}),
 });
-
-/**
- * Dispatch a bot.update command to the node running this bot.
- * Returns { dispatched: true } on success, { dispatched: false, dispatchError } on failure.
- * Never throws -- dispatch failure is non-fatal (DB is source of truth).
- */
-async function dispatchEnvUpdate(
-  botId: string,
-  tenantId: string,
-  env: Record<string, string>,
-): Promise<{ dispatched: boolean; dispatchError?: string }> {
-  try {
-    const db = getDb();
-    const instance = (await db.select().from(botInstances).where(eq(botInstances.id, botId)))[0];
-
-    if (!instance?.nodeId) {
-      return { dispatched: false, dispatchError: "bot_not_deployed" };
-    }
-
-    await getCommandBus().send(instance.nodeId, {
-      type: "bot.update",
-      payload: {
-        name: `tenant_${tenantId}`,
-        env,
-      },
-    });
-
-    return { dispatched: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`Failed to dispatch bot.update for ${botId}: ${message}`);
-    return { dispatched: false, dispatchError: message };
-  }
-}
 
 /** POST /fleet/bots/:botId/plugins/:pluginId — Install a plugin on a bot */
 botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {

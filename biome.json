@@ -148,7 +148,9 @@
         "src/org/drizzle-org-repository.ts",
         "src/marketplace/drizzle-marketplace-plugin-repository.ts",
         "src/setup/setup-session-repository.ts",
-        "src/auth/user-role-repository.ts"
+        "src/auth/user-role-repository.ts",
+        "src/setup/plugin-config-repository.ts",
+        "src/fleet/dispatch-env-update.ts"
       ],
       "linter": {
         "rules": {
