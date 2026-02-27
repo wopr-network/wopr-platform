@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSetupRoutes, type SetupRouteDeps } from "./setup.js";
 
-const TEST_BOT_ID = "00000000-0000-0000-0000-000000000001";
+const TEST_BOT_ID = "a1b2c3d4-e5f6-4789-8abc-def012345678";
 
 const TEST_PLUGIN = {
   id: "test-plugin",
