@@ -305,7 +305,10 @@ async function togglePluginHandler(c: Context): Promise<Response> {
   await store.save(updated);
 
   // Dispatch env update to the correct node
-  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv, botInstanceRepo!);
+  if (!botInstanceRepo) {
+    return c.json({ error: "Bot instance repository not configured" }, 503);
+  }
+  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv, botInstanceRepo);
 
   logger.info(`Toggled plugin ${pluginId} on bot ${botId}: enabled=${parsed.data.enabled}`, {
     botId,
