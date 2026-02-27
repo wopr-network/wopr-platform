@@ -17,10 +17,10 @@ import type { GatewayAuthEnv } from "./service-key-auth.js";
 export interface CreditGateDeps {
   creditLedger?: CreditLedger;
   topUpUrl: string;
-  /** Maximum negative balance allowed before hard-stop, in cents. Default: 50 (-$0.50). */
-  graceBufferCents?: number;
+  /** Maximum negative balance allowed before hard-stop. Default: Credit.fromCents(50) (-$0.50). */
+  graceBuffer?: Credit;
   /** Called when a debit causes balance to cross the zero threshold. */
-  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
+  onBalanceExhausted?: (tenantId: string, newBalance: Credit) => void;
   /** Called after every successful debit (fire-and-forget auto-topup trigger). */
   onDebitComplete?: (tenantId: string) => void;
   metrics?: import("../observability/metrics.js").MetricsCollector;
@@ -32,8 +32,8 @@ export interface CreditError {
   code: string;
   needsCredits: boolean;
   topUpUrl: string;
-  currentBalanceCents: number;
-  requiredCents: number;
+  currentBalance: number;
+  required: number;
 }
 
 /**
@@ -48,38 +48,38 @@ export interface CreditError {
 export async function creditBalanceCheck(
   c: Context<GatewayAuthEnv>,
   deps: CreditGateDeps,
-  estimatedCostCents: number = 0,
+  estimatedCost: Credit = Credit.ZERO,
 ): Promise<CreditError | null> {
   if (!deps.creditLedger) return null;
 
   const tenant = c.get("gatewayTenant");
   const balance = await deps.creditLedger.balance(tenant.id);
-  const required = Math.max(0, estimatedCostCents);
-  const graceBuffer = deps.graceBufferCents ?? 50; // default -$0.50
+  const graceBuffer = deps.graceBuffer ?? Credit.fromCents(50); // default -$0.50
+  const negativeGrace = Credit.ZERO.subtract(graceBuffer);
 
   // Hard stop: balance has exceeded the grace buffer
-  if (balance.lessThan(Credit.fromCents(-graceBuffer)) || balance.equals(Credit.fromCents(-graceBuffer))) {
+  if (balance.lessThanOrEqual(negativeGrace)) {
     return {
       message: "Your credits are exhausted. Add credits to continue using your bot.",
       type: "billing_error",
       code: "credits_exhausted",
       needsCredits: true,
       topUpUrl: deps.topUpUrl,
-      currentBalanceCents: Math.round(balance.toCents()),
-      requiredCents: required,
+      currentBalance: balance.toRaw(),
+      required: estimatedCost.toRaw(),
     };
   }
 
   // Soft check: balance is positive but below estimated cost (no grace buffer needed yet)
-  if (!balance.isNegative() && balance.lessThan(Credit.fromCents(required))) {
+  if (!balance.isNegative() && balance.lessThan(estimatedCost)) {
     return {
       message: "Insufficient credits. Please add credits to continue.",
       type: "billing_error",
       code: "insufficient_credits",
       needsCredits: true,
       topUpUrl: deps.topUpUrl,
-      currentBalanceCents: balance.toCents(),
-      requiredCents: required,
+      currentBalance: balance.toRaw(),
+      required: estimatedCost.toRaw(),
     };
   }
 
@@ -103,10 +103,9 @@ export async function debitCredits(
   if (!deps.creditLedger) return;
 
   const chargeUsd = withMargin(costUsd, margin);
-  const chargeCents = Math.ceil(chargeUsd * 100);
+  const chargeCredit = Credit.fromCents(Math.ceil(chargeUsd * 100));
 
-  if (chargeCents <= 0) return;
-  const chargeCredit = Credit.fromCents(chargeCents);
+  if (chargeCredit.isZero()) return;
 
   try {
     await deps.creditLedger.debit(
@@ -124,7 +123,7 @@ export async function debitCredits(
       const newBalance = await deps.creditLedger.balance(tenantId);
       const balanceBefore = newBalance.add(chargeCredit);
       if (balanceBefore.greaterThan(Credit.ZERO) && (newBalance.isNegative() || newBalance.isZero())) {
-        deps.onBalanceExhausted(tenantId, Math.round(newBalance.toCents()));
+        deps.onBalanceExhausted(tenantId, newBalance);
       }
     }
 
@@ -136,7 +135,7 @@ export async function debitCredits(
     if (error instanceof InsufficientBalanceError) {
       logger.warn("Credit debit failed after proxy (insufficient balance)", {
         tenantId,
-        chargeCents,
+        charge: chargeCredit.toString(),
         currentBalance: error.currentBalance,
         capability,
         provider,
@@ -145,7 +144,7 @@ export async function debitCredits(
     } else {
       logger.error("Credit debit failed after proxy", {
         tenantId,
-        chargeCents,
+        charge: chargeCredit.toString(),
         capability,
         provider,
         error,

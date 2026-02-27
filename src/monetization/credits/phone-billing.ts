@@ -44,11 +44,11 @@ export async function runMonthlyPhoneBilling(
 
     try {
       const chargeUsd = withMargin(PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN);
-      const chargeCents = Math.ceil(chargeUsd * 100);
+      const charge = Credit.fromCents(Math.ceil(chargeUsd * 100));
 
       await ledger.debit(
         number.tenantId,
-        Credit.fromCents(chargeCents),
+        charge,
         "addon",
         "Monthly phone number fee",
         `phone-billing:${number.sid}:${now.toISOString().slice(0, 7)}`,
