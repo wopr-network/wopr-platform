@@ -6,7 +6,7 @@ export const creditColumn = customType<{
   driverData: number;
 }>({
   dataType() {
-    return "integer";
+    return "bigint"; // nanodollar values exceed int4 range
   },
   toDriver(value: Credit): number {
     return value.toRaw();

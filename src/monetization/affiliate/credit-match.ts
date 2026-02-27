@@ -1,3 +1,4 @@
+import { Credit } from "../credit.js";
 import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IAffiliateRepository } from "./drizzle-affiliate-repository.js";
 
@@ -50,7 +51,7 @@ export async function processAffiliateCreditMatch(
   // 6. Credit the referrer
   await ledger.credit(
     referral.referrerTenantId,
-    matchAmountCents,
+    Credit.fromCents(matchAmountCents),
     "affiliate_match",
     `Affiliate match for referred tenant ${tenantId}`,
     refId,

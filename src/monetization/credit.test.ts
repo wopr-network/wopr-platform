@@ -5,22 +5,22 @@ describe("Credit", () => {
   describe("factory methods", () => {
     it("fromDollars creates correct raw value", () => {
       const c = Credit.fromDollars(1);
-      expect(c.toRaw()).toBe(1_000_000);
+      expect(c.toRaw()).toBe(1_000_000_000);
     });
 
     it("fromDollars handles sub-cent precision", () => {
       const c = Credit.fromDollars(0.001); // 1 mill
-      expect(c.toRaw()).toBe(1_000);
+      expect(c.toRaw()).toBe(1_000_000);
     });
 
     it("fromCents creates correct raw value", () => {
       const c = Credit.fromCents(1);
-      expect(c.toRaw()).toBe(10_000);
+      expect(c.toRaw()).toBe(10_000_000);
     });
 
     it("fromCents handles fractional cents", () => {
       const c = Credit.fromCents(0.5);
-      expect(c.toRaw()).toBe(5_000);
+      expect(c.toRaw()).toBe(5_000_000);
     });
 
     it("fromRaw stores exact value", () => {
@@ -43,19 +43,19 @@ describe("Credit", () => {
 
   describe("conversion", () => {
     it("toDollars converts correctly", () => {
-      const c = Credit.fromRaw(1_000_000);
+      const c = Credit.fromRaw(1_000_000_000);
       expect(c.toDollars()).toBe(1);
     });
 
     it("toCents converts correctly", () => {
-      const c = Credit.fromRaw(10_000);
+      const c = Credit.fromRaw(10_000_000);
       expect(c.toCents()).toBe(1);
     });
 
     it("sub-cent value round-trips through fromCents/toCents", () => {
       const c = Credit.fromCents(0.123);
-      // 0.123 cents = 1230 raw, toCents = 1230/10000 = 0.123
-      expect(c.toRaw()).toBe(1230);
+      // 0.123 cents * 10_000_000 raw-per-cent = 1_230_000
+      expect(c.toRaw()).toBe(1_230_000);
       expect(c.toCents()).toBeCloseTo(0.123, 10);
     });
 
@@ -64,10 +64,10 @@ describe("Credit", () => {
     });
 
     it("toDisplayString rounds sub-cent to two decimals", () => {
-      // 1 raw unit = $0.000001, should display as $0.00
+      // 1 raw unit = $0.000000001, should display as $0.00
       expect(Credit.fromRaw(1).toDisplayString()).toBe("$0.00");
       // $0.999 should display as $1.00
-      expect(Credit.fromRaw(999_000).toDisplayString()).toBe("$1.00");
+      expect(Credit.fromRaw(999_000_000).toDisplayString()).toBe("$1.00");
     });
   });
 
@@ -75,13 +75,13 @@ describe("Credit", () => {
     it("add combines two credits", () => {
       const a = Credit.fromCents(10);
       const b = Credit.fromCents(20);
-      expect(a.add(b).toRaw()).toBe(300_000);
+      expect(a.add(b).toRaw()).toBe(300_000_000);
     });
 
     it("subtract removes credits", () => {
       const a = Credit.fromCents(30);
       const b = Credit.fromCents(10);
-      expect(a.subtract(b).toRaw()).toBe(200_000);
+      expect(a.subtract(b).toRaw()).toBe(200_000_000);
     });
 
     it("subtract can produce negative", () => {
@@ -92,7 +92,7 @@ describe("Credit", () => {
 
     it("multiply scales by factor", () => {
       const c = Credit.fromDollars(1);
-      expect(c.multiply(2.5).toRaw()).toBe(2_500_000);
+      expect(c.multiply(2.5).toRaw()).toBe(2_500_000_000);
     });
 
     it("multiply rounds to integer raw", () => {
@@ -157,15 +157,23 @@ describe("Credit", () => {
     });
   });
 
+  describe("toJSON", () => {
+    it("toJSON returns raw value", () => {
+      const c = Credit.fromDollars(1);
+      expect(c.toJSON()).toBe(1_000_000_000);
+      expect(JSON.stringify({ amount: c })).toBe('{"amount":1000000000}');
+    });
+  });
+
   describe("sub-cent precision proof", () => {
     it("$0.001 charge does not round to zero", () => {
       const charge = Credit.fromDollars(0.001);
       expect(charge.isZero()).toBe(false);
-      expect(charge.toRaw()).toBe(1_000);
+      expect(charge.toRaw()).toBe(1_000_000);
     });
 
-    it("$0.000001 charge (1 raw unit) does not round to zero", () => {
-      const charge = Credit.fromDollars(0.000001);
+    it("$0.000000001 charge (1 raw unit) does not round to zero", () => {
+      const charge = Credit.fromDollars(0.000000001);
       expect(charge.isZero()).toBe(false);
       expect(charge.toRaw()).toBe(1);
     });
@@ -177,18 +185,18 @@ describe("Credit", () => {
 
       // In new system: preserved
       const credit = Credit.fromDollars(0.001);
-      expect(credit.toRaw()).toBe(1_000);
+      expect(credit.toRaw()).toBe(1_000_000);
       expect(credit.isZero()).toBe(false);
     });
 
     it("accumulates sub-cent charges without loss", () => {
-      const tiny = Credit.fromDollars(0.0001); // 100 raw
+      const tiny = Credit.fromDollars(0.0001); // 100_000 raw
       let total = Credit.ZERO;
       for (let i = 0; i < 10_000; i++) {
         total = total.add(tiny);
       }
       expect(total.toDollars()).toBeCloseTo(1.0);
-      expect(total.toRaw()).toBe(1_000_000);
+      expect(total.toRaw()).toBe(1_000_000_000);
     });
   });
 });

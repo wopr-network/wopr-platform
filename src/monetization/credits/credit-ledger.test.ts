@@ -6,6 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 
 describe("CreditLedger.debit with allowNegative", () => {
@@ -23,21 +24,23 @@ describe("CreditLedger.debit with allowNegative", () => {
   });
 
   it("debit with allowNegative=false (default) throws InsufficientBalanceError when balance insufficient", async () => {
-    await ledger.credit("t1", 5, "purchase", "setup");
-    await expect(ledger.debit("t1", 10, "adapter_usage", "test")).rejects.toThrow(InsufficientBalanceError);
+    await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup");
+    await expect(ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "test")).rejects.toThrow(
+      InsufficientBalanceError,
+    );
   });
 
   it("debit with allowNegative=true allows negative balance", async () => {
-    await ledger.credit("t1", 5, "purchase", "setup");
-    const txn = await ledger.debit("t1", 10, "adapter_usage", "test", undefined, true);
+    await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup");
+    const txn = await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "test", undefined, true);
     expect(txn).toBeDefined();
-    expect(await ledger.balance("t1")).toBe(-5);
+    expect((await ledger.balance("t1")).toCents()).toBe(-5);
   });
 
-  it("debit with allowNegative=true records correct transaction with negative amountCents and negative balanceAfterCents", async () => {
-    await ledger.credit("t1", 5, "purchase", "setup");
-    const txn = await ledger.debit("t1", 10, "adapter_usage", "test", undefined, true);
-    expect(txn.amountCents).toBe(-10);
-    expect(txn.balanceAfterCents).toBe(-5);
+  it("debit with allowNegative=true records correct transaction with negative amount and negative balanceAfter", async () => {
+    await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup");
+    const txn = await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "test", undefined, true);
+    expect(txn.amount.toCents()).toBe(-10);
+    expect(txn.balanceAfter.toCents()).toBe(-5);
   });
 });

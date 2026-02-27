@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 import { maybeTriggerUsageTopup, type UsageTopupDeps } from "./auto-topup-usage.js";
 import { CreditLedger } from "./credit-ledger.js";
@@ -32,7 +33,7 @@ describe("maybeTriggerUsageTopup", () => {
 
   it("does nothing when usage_enabled is false", async () => {
     await settingsRepo.upsert("t1", { usageEnabled: false });
-    await ledger.credit("t1", 50, "purchase", "buy", "ref-1", "stripe");
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
     const mockCharge = vi.fn();
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
@@ -42,7 +43,7 @@ describe("maybeTriggerUsageTopup", () => {
 
   it("does nothing when balance is above threshold", async () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
-    await ledger.credit("t1", 200, "purchase", "buy", "ref-1", "stripe");
+    await ledger.credit("t1", Credit.fromCents(200), "purchase", "buy", "ref-1", "stripe");
     const mockCharge = vi.fn();
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
@@ -52,7 +53,7 @@ describe("maybeTriggerUsageTopup", () => {
 
   it("triggers charge when balance drops below threshold", async () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
-    await ledger.credit("t1", 50, "purchase", "buy", "ref-1", "stripe");
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
     const mockCharge = vi.fn().mockResolvedValue({ success: true, paymentReference: "pi_123" });
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
@@ -63,7 +64,7 @@ describe("maybeTriggerUsageTopup", () => {
   it("skips when charge is already in-flight", async () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100 });
     await settingsRepo.setUsageChargeInFlight("t1", true);
-    await ledger.credit("t1", 50, "purchase", "buy", "ref-1", "stripe");
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
     const mockCharge = vi.fn();
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
@@ -75,7 +76,7 @@ describe("maybeTriggerUsageTopup", () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
     await settingsRepo.incrementUsageFailures("t1");
     await settingsRepo.incrementUsageFailures("t1");
-    await ledger.credit("t1", 50, "purchase", "buy", "ref-1", "stripe");
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
     const mockCharge = vi.fn().mockResolvedValue({ success: true });
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
@@ -85,7 +86,7 @@ describe("maybeTriggerUsageTopup", () => {
 
   it("increments failure counter on charge failure", async () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
-    await ledger.credit("t1", 50, "purchase", "buy", "ref-1", "stripe");
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
     const mockCharge = vi.fn().mockResolvedValue({ success: false, error: "declined" });
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 
@@ -97,7 +98,7 @@ describe("maybeTriggerUsageTopup", () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
     await settingsRepo.incrementUsageFailures("t1");
     await settingsRepo.incrementUsageFailures("t1");
-    await ledger.credit("t1", 50, "purchase", "buy", "ref-1", "stripe");
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
     const mockCharge = vi.fn().mockResolvedValue({ success: false, error: "declined" });
     const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
 

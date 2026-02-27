@@ -1,4 +1,5 @@
 import { logger } from "../../config/logger.js";
+import { Credit } from "../credit.js";
 import type { CreditLedger } from "./credit-ledger.js";
 import type { ICreditTransactionRepository } from "./credit-transaction-repository.js";
 
@@ -12,9 +13,9 @@ export interface DividendCronConfig {
 }
 
 export interface DividendCronResult {
-  poolCents: number;
+  pool: Credit;
   activeCount: number;
-  perUserCents: number;
+  perUser: Credit;
   distributed: number;
   skippedAlreadyRun: boolean;
   errors: string[];
@@ -31,9 +32,9 @@ export interface DividendCronResult {
  */
 export async function runDividendCron(cfg: DividendCronConfig): Promise<DividendCronResult> {
   const result: DividendCronResult = {
-    poolCents: 0,
+    pool: Credit.ZERO,
     activeCount: 0,
-    perUserCents: 0,
+    perUser: Credit.ZERO,
     distributed: 0,
     skippedAlreadyRun: false,
     errors: [],
@@ -54,8 +55,8 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   const dayStart = `${cfg.targetDate} 00:00:00`;
   const dayEnd = `${cfg.targetDate} 24:00:00`;
 
-  const dailyPurchaseTotal = await cfg.creditTransactionRepo.sumPurchasesForPeriod(dayStart, dayEnd);
-  result.poolCents = Math.floor(dailyPurchaseTotal * cfg.matchRate);
+  const dailyPurchaseTotalCredit = await cfg.creditTransactionRepo.sumPurchasesForPeriod(dayStart, dayEnd);
+  result.pool = dailyPurchaseTotalCredit.multiply(cfg.matchRate);
 
   // Step 2: Find all active tenants (purchased in last 7 days from target date).
   // The 7-day window is: [targetDate - 6 days 00:00:00, targetDate 24:00:00)
@@ -67,21 +68,21 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
   result.activeCount = activeTenantIds.length;
 
   // Step 3: Compute per-user share.
-  if (result.poolCents <= 0 || result.activeCount <= 0) {
+  if (result.pool.isZero() || result.activeCount <= 0) {
     logger.info("Dividend cron: no pool or no active tenants", {
       targetDate: cfg.targetDate,
-      poolCents: result.poolCents,
+      pool: result.pool.toCents(),
       activeCount: result.activeCount,
     });
     return result;
   }
 
-  result.perUserCents = Math.floor(result.poolCents / result.activeCount);
+  result.perUser = Credit.fromCents(Math.floor(result.pool.toCents() / result.activeCount));
 
-  if (result.perUserCents <= 0) {
+  if (result.perUser.isZero()) {
     logger.info("Dividend cron: per-user share rounds to zero", {
       targetDate: cfg.targetDate,
-      poolCents: result.poolCents,
+      pool: result.pool.toCents(),
       activeCount: result.activeCount,
     });
     return result;
@@ -93,9 +94,9 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
     try {
       await cfg.ledger.credit(
         tenantId,
-        result.perUserCents,
+        result.perUser,
         "community_dividend",
-        `Community dividend for ${cfg.targetDate}: pool ${result.poolCents}c / ${result.activeCount} users`,
+        `Community dividend for ${cfg.targetDate}: pool ${result.pool.toCents()}c / ${result.activeCount} users`,
         perUserRef,
       );
       result.distributed++;
@@ -108,11 +109,10 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
 
   logger.info("Dividend cron complete", {
     targetDate: cfg.targetDate,
-    poolCents: result.poolCents,
+    pool: result.pool.toCents(),
     activeCount: result.activeCount,
-    perUserCents: result.perUserCents,
+    perUser: result.perUser.toCents(),
     distributed: result.distributed,
-    totalDistributed: result.distributed * result.perUserCents,
     errors: result.errors.length,
   });
 

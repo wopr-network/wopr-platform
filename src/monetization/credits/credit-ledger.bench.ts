@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, bench, describe } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { CreditLedger } from "./credit-ledger.js";
 
 describe("CreditLedger throughput", () => {
@@ -25,7 +26,7 @@ describe("CreditLedger throughput", () => {
     "credit operation",
     async () => {
       const tenant = `tenant-${creditIdx++ % 100}`;
-      await ledger.credit(tenant, 100, "purchase", "bench");
+      await ledger.credit(tenant, Credit.fromCents(100), "purchase", "bench");
     },
     { iterations: 1_000 },
   );
@@ -34,7 +35,7 @@ describe("CreditLedger throughput", () => {
     "debit operation",
     async () => {
       const tenant = `tenant-${debitIdx++ % 100}`;
-      await ledger.debit(tenant, 1, "adapter_usage", "bench");
+      await ledger.debit(tenant, Credit.fromCents(1), "adapter_usage", "bench");
     },
     { iterations: 1_000 },
   );

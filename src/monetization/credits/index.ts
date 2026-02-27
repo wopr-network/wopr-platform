@@ -23,5 +23,5 @@ export { CreditLedger, DrizzleCreditLedger, InsufficientBalanceError } from "./c
 export type { DividendDigestConfig, DividendDigestResult } from "./dividend-digest-cron.js";
 export { runDividendDigestCron } from "./dividend-digest-cron.js";
 export type { GetActiveBotCount, OnSuspend, RuntimeCronConfig, RuntimeCronResult } from "./runtime-cron.js";
-export { buildResourceTierCosts, DAILY_BOT_COST_CENTS, runRuntimeDeductions } from "./runtime-cron.js";
-export { grantSignupCredits, SIGNUP_GRANT_CENTS } from "./signup-grant.js";
+export { buildResourceTierCosts, DAILY_BOT_COST, runRuntimeDeductions } from "./runtime-cron.js";
+export { grantSignupCredits, SIGNUP_GRANT } from "./signup-grant.js";

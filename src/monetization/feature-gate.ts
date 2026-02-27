@@ -1,10 +1,11 @@
 import type { Context, Next } from "hono";
+import { Credit } from "./credit.js";
 import type { CreditLedger } from "./credits/credit-ledger.js";
 
 /**
- * Callback to resolve the user's current credit balance in cents.
+ * Callback to resolve the user's current credit balance.
  */
-export type GetUserBalance = (tenantId: string) => number | Promise<number>;
+export type GetUserBalance = (tenantId: string) => Credit | Promise<Credit>;
 
 export interface FeatureGateConfig {
   /** Resolve the authenticated tenant's credit balance in cents */
@@ -49,11 +50,14 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
 
       const balanceCents = await cfg.getUserBalance(tenantId);
 
-      if (balanceCents <= minBalanceCents) {
+      if (
+        balanceCents.lessThan(Credit.fromCents(minBalanceCents)) ||
+        balanceCents.equals(Credit.fromCents(minBalanceCents))
+      ) {
         return c.json(
           {
             error: "Insufficient credit balance",
-            currentBalanceCents: balanceCents,
+            currentBalanceCents: Math.round(balanceCents.toCents()),
             requiredBalanceCents: minBalanceCents,
             purchaseUrl: "/settings/billing",
           },
@@ -122,7 +126,7 @@ export function createCreditGate(cfg: CreditGateConfig) {
 
       const balance = await cfg.ledger.balance(tenantId);
 
-      if (balance < minCents) {
+      if (balance.lessThan(Credit.fromCents(minCents))) {
         return c.json(
           {
             error: "insufficient_credits",

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { getAdminAuditLog, getCreditLedger } from "../../fleet/services.js";
+import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { InsufficientBalanceError } from "../../monetization/credits/credit-ledger.js";
 
@@ -54,7 +55,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       const adminUser = user?.id ?? "unknown";
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        result = await ledger.credit(tenant, amountCents, "signup_grant", reason);
+        result = await ledger.credit(tenant, Credit.fromCents(amountCents), "signup_grant", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -116,7 +117,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       const adminUser = user?.id ?? "unknown";
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        result = await ledger.credit(tenant, amountCents, "purchase", reason);
+        result = await ledger.credit(tenant, Credit.fromCents(amountCents), "purchase", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({
@@ -182,9 +183,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
         if (amountCents >= 0) {
-          result = await ledger.credit(tenant, amountCents || 1, "promo", reason);
+          result = await ledger.credit(tenant, Credit.fromCents(amountCents || 1), "promo", reason);
         } else {
-          result = await ledger.debit(tenant, Math.abs(amountCents), "correction", reason);
+          result = await ledger.debit(tenant, Credit.fromCents(Math.abs(amountCents)), "correction", reason);
         }
       } catch (err) {
         try {

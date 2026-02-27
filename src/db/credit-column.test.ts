@@ -21,7 +21,7 @@ describe("creditColumn", () => {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS test_credits (
         id TEXT PRIMARY KEY,
-        amount INTEGER NOT NULL
+        amount BIGINT NOT NULL
       )
     `);
   });
@@ -39,7 +39,7 @@ describe("creditColumn", () => {
     const credit = Credit.fromDollars(0.5);
     await db.insert(testTable).values({ id: "t2", amount: credit });
     const result = await pool.query<{ amount: number }>("SELECT amount FROM test_credits WHERE id = $1", ["t2"]);
-    expect(result.rows[0]?.amount).toBe(500_000);
+    expect(result.rows[0]?.amount).toBe(500_000_000);
   });
 
   it("round-trips Credit.ZERO", async () => {
@@ -52,7 +52,7 @@ describe("creditColumn", () => {
     const credit = Credit.fromDollars(0.001);
     await db.insert(testTable).values({ id: "t4", amount: credit });
     const rows = await db.select().from(testTable).where(eq(testTable.id, "t4"));
-    expect(rows[0]?.amount.toRaw()).toBe(1_000);
+    expect(rows[0]?.amount.toRaw()).toBe(1_000_000);
     expect(rows[0]?.amount.isZero()).toBe(false);
   });
 

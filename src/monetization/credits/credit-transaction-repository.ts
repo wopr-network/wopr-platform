@@ -1,12 +1,13 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditTransactions } from "../../db/schema/credits.js";
+import { Credit } from "../credit.js";
 
 export interface ICreditTransactionRepository {
   /** Check if any transaction exists with a referenceId matching a LIKE pattern. */
   existsByReferenceIdLike(pattern: string): Promise<boolean>;
-  /** Sum amountCents for 'purchase' transactions within [startTs, endTs). */
-  sumPurchasesForPeriod(startTs: string, endTs: string): Promise<number>;
+  /** Sum amount for 'purchase' transactions within [startTs, endTs). */
+  sumPurchasesForPeriod(startTs: string, endTs: string): Promise<Credit>;
   /** Get distinct tenantIds that had a 'purchase' transaction within [startTs, endTs). */
   getActiveTenantIdsInWindow(startTs: string, endTs: string): Promise<string[]>;
 }
@@ -25,11 +26,11 @@ export class DrizzleCreditTransactionRepository implements ICreditTransactionRep
     return row != null;
   }
 
-  async sumPurchasesForPeriod(startTs: string, endTs: string): Promise<number> {
+  async sumPurchasesForPeriod(startTs: string, endTs: string): Promise<Credit> {
     const row = (
       await this.db
         .select({
-          total: sql<number>`COALESCE(SUM(${creditTransactions.amountCents}), 0)`,
+          total: sql<number>`COALESCE(SUM(${creditTransactions.amount}), 0)`,
         })
         .from(creditTransactions)
         .where(
@@ -40,7 +41,7 @@ export class DrizzleCreditTransactionRepository implements ICreditTransactionRep
           ),
         )
     )[0];
-    return row?.total ?? 0;
+    return Credit.fromRaw(Math.round(row?.total ?? 0));
   }
 
   async getActiveTenantIdsInWindow(startTs: string, endTs: string): Promise<string[]> {

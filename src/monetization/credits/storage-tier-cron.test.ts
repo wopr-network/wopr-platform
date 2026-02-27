@@ -1,6 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { CreditLedger } from "./credit-ledger.js";
 import { runRuntimeDeductions } from "./runtime-cron.js";
 
@@ -19,7 +20,7 @@ describe("runtime cron with storage tiers", () => {
   });
 
   it("debits base cost plus storage surcharge for pro tier", async () => {
-    await ledger.credit("t1", 1000, "purchase");
+    await ledger.credit("t1", Credit.fromCents(1000), "purchase");
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
@@ -28,32 +29,32 @@ describe("runtime cron with storage tiers", () => {
     expect(result.processed).toBe(1);
     const balance = await ledger.balance("t1");
     // 1000 - 17 (base) - 8 (pro storage surcharge) = 975
-    expect(balance).toBe(975);
+    expect(balance.toCents()).toBe(975);
   });
 
   it("debits only base cost for standard storage tier (zero surcharge)", async () => {
-    await ledger.credit("t1", 1000, "purchase");
+    await ledger.credit("t1", Credit.fromCents(1000), "purchase");
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
       getStorageTierCosts: async () => 0,
     });
     expect(result.processed).toBe(1);
-    expect(await ledger.balance("t1")).toBe(983); // 1000 - 17
+    expect((await ledger.balance("t1")).toCents()).toBe(983); // 1000 - 17
   });
 
   it("skips storage surcharge when callback not provided (backward compat)", async () => {
-    await ledger.credit("t1", 1000, "purchase");
+    await ledger.credit("t1", Credit.fromCents(1000), "purchase");
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
     });
     expect(result.processed).toBe(1);
-    expect(await ledger.balance("t1")).toBe(983); // 1000 - 17
+    expect((await ledger.balance("t1")).toCents()).toBe(983); // 1000 - 17
   });
 
   it("suspends tenant when storage surcharge exhausts remaining balance", async () => {
-    await ledger.credit("t1", 20, "purchase"); // Only 20 cents
+    await ledger.credit("t1", Credit.fromCents(20), "purchase"); // Only 20 cents
     const suspended: string[] = [];
     const result = await runRuntimeDeductions({
       ledger,
@@ -66,6 +67,6 @@ describe("runtime cron with storage tiers", () => {
     // 20 - 17 = 3 remaining, then 8 surcharge > 3, so partial debit + suspend
     expect(result.processed).toBe(1);
     expect(result.suspended).toContain("t1");
-    expect(await ledger.balance("t1")).toBe(0);
+    expect((await ledger.balance("t1")).toCents()).toBe(0);
   });
 });

@@ -4,6 +4,7 @@ import type { IVpsRepository } from "../../fleet/vps-repository.js";
 import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
 import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
+import { Credit } from "../credit.js";
 import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditLedger } from "../credits/credit-ledger.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
@@ -122,7 +123,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       // Credit the ledger with session ID as reference for idempotency.
       await deps.creditLedger.credit(
         tenant,
-        creditCents,
+        Credit.fromCents(creditCents),
         "purchase",
         `Stripe credit purchase (session: ${stripeSessionId})`,
         stripeSessionId,

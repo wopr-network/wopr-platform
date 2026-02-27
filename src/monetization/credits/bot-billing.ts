@@ -104,7 +104,7 @@ export class DrizzleBotBilling implements IBotBilling {
    */
   async checkReactivation(tenantId: string, ledger: ICreditLedger): Promise<string[]> {
     const balance = await ledger.balance(tenantId);
-    if (balance <= 0) return [];
+    if (balance.isNegative() || balance.isZero()) return [];
 
     const suspended = await this.db
       .select({ id: botInstances.id })

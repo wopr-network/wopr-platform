@@ -1,5 +1,6 @@
 import { logger } from "../../config/logger.js";
 import { withMargin } from "../adapters/types.js";
+import { Credit } from "../credit.js";
 import type { IMeterEmitter } from "../metering/emitter.js";
 import type { ICreditLedger } from "./credit-ledger.js";
 import { InsufficientBalanceError } from "./credit-ledger.js";
@@ -45,9 +46,9 @@ export async function runMonthlyPhoneBilling(
       const chargeUsd = withMargin(PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN);
       const chargeCents = Math.ceil(chargeUsd * 100);
 
-      ledger.debit(
+      await ledger.debit(
         number.tenantId,
-        chargeCents,
+        Credit.fromCents(chargeCents),
         "addon",
         "Monthly phone number fee",
         `phone-billing:${number.sid}:${now.toISOString().slice(0, 7)}`,

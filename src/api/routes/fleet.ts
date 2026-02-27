@@ -14,6 +14,7 @@ import { ProfileStore } from "../../fleet/profile-store.js";
 import { getRecoveryOrchestrator } from "../../fleet/services.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
+import { Credit } from "../../monetization/credit.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
@@ -201,7 +202,7 @@ fleetRoutes.post(
 
       // Payment gate (WOP-380): require minimum 17 cents (1 day of bot runtime)
       const balance = await getDeps().creditLedger.balance(tenantId);
-      if (balance < 17) {
+      if (balance.lessThan(Credit.fromCents(17))) {
         return c.json(
           {
             error: "insufficient_credits",
@@ -362,7 +363,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
     const tenantId = profile?.tenantId;
     if (!tenantId) return c.json({ error: "Missing tenant" }, 400);
     const balance = await getDeps().creditLedger.balance(tenantId);
-    if (balance < 17) {
+    if (balance.lessThan(Credit.fromCents(17))) {
       return c.json(
         {
           error: "insufficient_credits",
