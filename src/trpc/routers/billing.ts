@@ -177,10 +177,10 @@ export const billingRouter = router({
       // Compute 7-day average daily burn from usage summaries.
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const { totalCharge } = await meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
-      const daily_burn_cents = Math.round(totalCharge / 7);
-      const runway_days = daily_burn_cents > 0 ? Math.floor(balance / daily_burn_cents) : null;
+      const daily_burn_credits = Math.round(totalCharge / 7);
+      const runway_days = daily_burn_credits > 0 ? Math.floor(balance / daily_burn_credits) : null;
 
-      return { tenant, balance_credits: balance, daily_burn_cents, runway_days };
+      return { tenant, balance_credits: balance, daily_burn_credits, runway_days };
     }),
 
   /** Get credit transaction history for a tenant. Tenant defaults to ctx.tenantId when omitted. */
@@ -213,7 +213,7 @@ export const billingRouter = router({
     const options: Array<{
       priceId: string;
       label: string;
-      amountCredits: number;
+      amountCents: number;
       creditCents: number;
       bonusPercent: number;
     }> = [];
@@ -221,13 +221,13 @@ export const billingRouter = router({
       options.push({
         priceId,
         label: point.label,
-        amountCredits: point.amountCredits,
+        amountCents: point.amountCents,
         creditCents: point.creditCents,
         bonusPercent: point.bonusPercent,
       });
     }
-    // Sort by amountCredits ascending for consistent ordering
-    options.sort((a, b) => a.amountCredits - b.amountCredits);
+    // Sort by amountCents ascending for consistent ordering
+    options.sort((a, b) => a.amountCents - b.amountCents);
     return options;
   }),
 

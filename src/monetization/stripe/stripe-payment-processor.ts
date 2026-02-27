@@ -66,7 +66,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
       const amountCredits = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
 
       for (const [id, point] of this.priceMap.entries()) {
-        if (point.creditCents === amountCredits || point.amountCredits === amountCredits) {
+        if (point.creditCents === amountCredits || point.amountCents === amountCredits) {
           priceId = id;
           break;
         }

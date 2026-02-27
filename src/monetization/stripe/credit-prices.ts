@@ -13,7 +13,7 @@ export interface CreditPricePoint {
   /** Human-readable label. */
   label: string;
   /** Amount charged in cents (USD). */
-  amountCredits: number;
+  amountCents: number;
   /** Credits granted in cents (includes bonus). */
   creditCents: number;
   /** Bonus percentage (0 for no bonus). */
@@ -31,11 +31,11 @@ export interface CreditPricePoint {
  *   $100 -> $110.00 credit (10% bonus)
  */
 export const CREDIT_PRICE_POINTS: readonly CreditPricePoint[] = [
-  { label: "$5", amountCredits: 500, creditCents: 500, bonusPercent: 0 },
-  { label: "$10", amountCredits: 1000, creditCents: 1000, bonusPercent: 0 },
-  { label: "$25", amountCredits: 2500, creditCents: 2550, bonusPercent: 2 },
-  { label: "$50", amountCredits: 5000, creditCents: 5250, bonusPercent: 5 },
-  { label: "$100", amountCredits: 10000, creditCents: 11000, bonusPercent: 10 },
+  { label: "$5", amountCents: 500, creditCents: 500, bonusPercent: 0 },
+  { label: "$10", amountCents: 1000, creditCents: 1000, bonusPercent: 0 },
+  { label: "$25", amountCents: 2500, creditCents: 2550, bonusPercent: 2 },
+  { label: "$50", amountCents: 5000, creditCents: 5250, bonusPercent: 5 },
+  { label: "$100", amountCents: 10000, creditCents: 11000, bonusPercent: 10 },
 ] as const;
 
 /**
@@ -79,7 +79,7 @@ export function loadCreditPriceMap(): CreditPriceMap {
  * Falls back to 1:1 if no matching tier is found.
  */
 export function getCreditAmountForPurchase(amountCredits: number): number {
-  const tier = CREDIT_PRICE_POINTS.find((p) => p.amountCredits === amountCredits);
+  const tier = CREDIT_PRICE_POINTS.find((p) => p.amountCents === amountCredits);
   return tier ? tier.creditCents : amountCredits;
 }
 

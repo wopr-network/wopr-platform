@@ -108,7 +108,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         // Match the paid amount against known tiers in the price map.
         let matched: number | null = null;
         for (const point of deps.priceMap.values()) {
-          if (point.amountCredits === amountPaid) {
+          if (point.amountCents === amountPaid) {
             matched = point.creditCents;
             break;
           }

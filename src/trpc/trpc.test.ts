@@ -307,12 +307,12 @@ describe("tRPC appRouter", () => {
       expect(result.balance_credits).toBe(0);
     });
 
-    it("creditsBalance includes daily_burn_cents and runway_days", async () => {
+    it("creditsBalance includes daily_burn_credits and runway_days", async () => {
       const caller = createCaller(authedContext({ tenantId: undefined }));
       const result = await caller.billing.creditsBalance({ tenant: "test-user" });
-      expect(result).toHaveProperty("daily_burn_cents");
+      expect(result).toHaveProperty("daily_burn_credits");
       expect(result).toHaveProperty("runway_days");
-      expect(typeof result.daily_burn_cents).toBe("number");
+      expect(typeof result.daily_burn_credits).toBe("number");
       // runway_days is null when burn is 0
       expect(result.runway_days).toBeNull();
     });
@@ -320,8 +320,8 @@ describe("tRPC appRouter", () => {
     it("creditsBalance returns null runway_days when daily_burn is zero", async () => {
       const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
       const result = await caller.billing.creditsBalance({});
-      // No usage events → daily_burn_cents = 0 → runway_days = null
-      expect(result.daily_burn_cents).toBe(0);
+      // No usage events → daily_burn_credits = 0 → runway_days = null
+      expect(result.daily_burn_credits).toBe(0);
       expect(result.runway_days).toBeNull();
     });
 
@@ -843,21 +843,21 @@ describe("tRPC appRouter", () => {
       expect(options[0]).toEqual({
         priceId: "price_test_5",
         label: "$5",
-        amountCredits: 500,
+        amountCents: 500,
         creditCents: 500,
         bonusPercent: 0,
       });
       expect(options[2]).toEqual({
         priceId: "price_test_25",
         label: "$25",
-        amountCredits: 2500,
+        amountCents: 2500,
         creditCents: 2550,
         bonusPercent: 2,
       });
       expect(options[4]).toEqual({
         priceId: "price_test_100",
         label: "$100",
-        amountCredits: 10000,
+        amountCents: 10000,
         creditCents: 11000,
         bonusPercent: 10,
       });

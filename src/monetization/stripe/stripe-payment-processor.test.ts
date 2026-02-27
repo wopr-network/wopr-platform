@@ -95,7 +95,7 @@ describe("StripePaymentProcessor", () => {
       };
       (stripe.checkout.sessions.create as ReturnType<typeof vi.fn>).mockResolvedValue(mockSession);
 
-      const priceMap = new Map([["price_500", { label: "$5", amountCredits: 500, creditCents: 500, bonusPercent: 0 }]]);
+      const priceMap = new Map([["price_500", { label: "$5", amountCents: 500, creditCents: 500, bonusPercent: 0 }]]);
       const proc = new StripePaymentProcessor({
         stripe,
         tenantStore,
