@@ -884,3 +884,18 @@ export function getSetupSessionRepo(): ISetupSessionRepository {
   }
   return _setupSessionRepo;
 }
+
+// ---------------------------------------------------------------------------
+// Setup Service (WOP-1037)
+// ---------------------------------------------------------------------------
+
+import { SetupService } from "../setup/setup-service.js";
+
+let _setupService: SetupService | null = null;
+
+export function getSetupService(): SetupService {
+  if (!_setupService) {
+    _setupService = new SetupService(getSetupSessionRepo());
+  }
+  return _setupService;
+}

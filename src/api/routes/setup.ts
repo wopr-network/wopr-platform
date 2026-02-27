@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { logger } from "../../config/logger.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
+import type { SetupService } from "../../setup/setup-service.js";
 import type { ISetupSessionRepository } from "../../setup/setup-session-repository.js";
 import type { PluginManifest } from "./marketplace-registry.js";
 
@@ -11,10 +12,13 @@ const setupRequestSchema = z.object({
   pluginId: z.string().min(1),
 });
 
+const sessionIdSchema = z.object({ setupSessionId: z.string().min(1) });
+
 export interface SetupRouteDeps {
   pluginRegistry: PluginManifest[];
   setupSessionRepo: ISetupSessionRepository;
   onboardingService: Pick<OnboardingService, "inject">;
+  setupService: SetupService;
 }
 
 export function createSetupRoutes(deps: SetupRouteDeps): Hono {
@@ -90,13 +94,93 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
     try {
       await deps.onboardingService.inject(sessionId, systemMessage, { from: "system" });
     } catch (err) {
-      logger.error("Failed to inject setup context into WOPR session", { sessionId, pluginId, err });
+      logger.error("Failed to inject setup context into WOPR session", {
+        sessionId,
+        pluginId,
+        err,
+      });
       await deps.setupSessionRepo.markRolledBack(setupId);
       return c.json({ error: `Failed to inject setup context: ${String(err)}` }, 500);
     }
 
     // 6. Return success — bot's response comes via SSE stream
     return c.json({ ok: true, setupSessionId: setupSession.id });
+  });
+
+  // POST /rollback — explicit user cancellation
+  routes.post("/rollback", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = sessionIdSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+    }
+    try {
+      const result = await deps.setupService.rollback(parsed.data.setupSessionId);
+      return c.json({ ok: true, ...result });
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("not found")) return c.json({ error: msg }, 404);
+      throw err;
+    }
+  });
+
+  // POST /complete — successful setup completion
+  routes.post("/complete", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = sessionIdSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+    }
+    try {
+      await deps.setupSessionRepo.markComplete(parsed.data.setupSessionId);
+      return c.json({ ok: true });
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("not found")) return c.json({ error: msg }, 404);
+      throw err;
+    }
+  });
+
+  // POST /error — record a setup error (auto-rollback at 3)
+  routes.post("/error", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const parsed = sessionIdSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+    }
+    let count: number;
+    try {
+      count = await deps.setupService.recordError(parsed.data.setupSessionId);
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("not found")) return c.json({ error: msg }, 404);
+      throw err;
+    }
+    const session = await deps.setupSessionRepo.findById(parsed.data.setupSessionId);
+    return c.json({ ok: true, errorCount: count, rolledBack: session?.status === "rolled_back" });
+  });
+
+  // GET /resume?sessionId=xxx — check for resumable session
+  routes.get("/resume", async (c) => {
+    const sessionId = c.req.query("sessionId");
+    if (!sessionId) return c.json({ error: "sessionId query param required" }, 400);
+    const result = await deps.setupService.checkForResumable(sessionId);
+    return c.json(result);
   });
 
   return routes;

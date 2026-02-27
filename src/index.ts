@@ -48,6 +48,7 @@ import {
   getPool,
   getRateLimitRepo,
   getRegistrationTokenStore,
+  getSetupService,
   getSetupSessionRepo,
   getSystemResourceMonitor,
   initFleet,
@@ -743,7 +744,30 @@ if (process.env.NODE_ENV !== "test") {
       pluginRegistry,
       setupSessionRepo: getSetupSessionRepo(),
       onboardingService: getOnboardingService(),
+      setupService: getSetupService(),
     });
+
+    // Setup session cleanup — rolls back sessions stale >30 minutes (WOP-1037)
+    {
+      const CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+      const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+      setInterval(() => {
+        void getSetupService()
+          .cleanupStaleSessions(STALE_THRESHOLD_MS)
+          .then((results) => {
+            if (results.length > 0) {
+              logger.info("Stale setup sessions rolled back", { count: results.length });
+            }
+          })
+          .catch((err) => {
+            logger.error("Setup session cleanup failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+      }, CLEANUP_INTERVAL_MS);
+      logger.info("Setup session cleanup scheduled (15m interval, 30m stale threshold)");
+    }
+
     // Wire chat deps (echo backend until WOPR instance integration)
     setChatDeps({ backend: new EchoChatBackend() });
     if (onboardingCfg.enabled) {
