@@ -145,7 +145,7 @@ function messagesHandler(deps: ProtocolDeps) {
     }
 
     // Credit balance check (estimate minimum 1 cent for LLM calls)
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       // Convert to Anthropic error format
       const mapped = mapToAnthropicError(402, creditErr.message);

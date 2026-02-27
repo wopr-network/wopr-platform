@@ -54,7 +54,7 @@ describe("creditBalanceCheck grace buffer", () => {
     await ledger.credit("t1", Credit.fromCents(500), "purchase", "setup");
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
-    expect(await creditBalanceCheck(c, deps, 1)).toBeNull();
+    expect(await creditBalanceCheck(c, deps)).toBeNull();
   });
 
   it("returns null when balance is zero but within default grace buffer (passes)", async () => {
@@ -64,7 +64,7 @@ describe("creditBalanceCheck grace buffer", () => {
     await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "drain");
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
-    expect(await creditBalanceCheck(c, deps, 0)).toBeNull();
+    expect(await creditBalanceCheck(c, deps)).toBeNull();
   });
 
   it("returns null when balance is -49 (within 50-cent grace buffer)", async () => {
@@ -73,7 +73,7 @@ describe("creditBalanceCheck grace buffer", () => {
     await ledger.debit("t1", Credit.fromCents(50), "adapter_usage", "drain", undefined, true); // balance = -49
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
-    expect(await creditBalanceCheck(c, deps, 0)).toBeNull();
+    expect(await creditBalanceCheck(c, deps)).toBeNull();
   });
 
   it("returns credits_exhausted when balance is at -50 (at grace buffer limit)", async () => {
@@ -82,7 +82,7 @@ describe("creditBalanceCheck grace buffer", () => {
     await ledger.debit("t1", Credit.fromCents(51), "adapter_usage", "drain", undefined, true); // balance = -50
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
-    const result = await creditBalanceCheck(c, deps, 0);
+    const result = await creditBalanceCheck(c, deps);
     expect(result).not.toBeNull();
     expect(result?.code).toBe("credits_exhausted");
   });
@@ -93,18 +93,18 @@ describe("creditBalanceCheck grace buffer", () => {
     await ledger.debit("t1", Credit.fromCents(52), "adapter_usage", "drain", undefined, true); // balance = -51
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
-    const result = await creditBalanceCheck(c, deps, 0);
+    const result = await creditBalanceCheck(c, deps);
     expect(result).not.toBeNull();
     expect(result?.code).toBe("credits_exhausted");
   });
 
-  it("returns credits_exhausted when custom graceBufferCents=0 and balance is 0", async () => {
+  it("returns credits_exhausted when custom graceBuffer=Credit.ZERO and balance is 0", async () => {
     const ledger = new CreditLedger(db);
     await ledger.credit("t1", Credit.fromCents(10), "purchase", "setup");
     await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "drain"); // balance = 0
     const c = await buildHonoContext("t1");
-    const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing", graceBufferCents: 0 };
-    const result = await creditBalanceCheck(c, deps, 0);
+    const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing", graceBuffer: Credit.ZERO };
+    const result = await creditBalanceCheck(c, deps);
     expect(result).not.toBeNull();
     expect(result?.code).toBe("credits_exhausted");
   });
@@ -114,7 +114,7 @@ describe("creditBalanceCheck grace buffer", () => {
     await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup");
     const c = await buildHonoContext("t1");
     const deps: CreditGateDeps = { creditLedger: ledger, topUpUrl: "/billing" };
-    const result = await creditBalanceCheck(c, deps, 10);
+    const result = await creditBalanceCheck(c, deps, Credit.fromCents(10));
     expect(result).not.toBeNull();
     expect(result?.code).toBe("insufficient_credits");
   });
@@ -164,7 +164,7 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
       "openrouter",
     );
 
-    expect(onBalanceExhausted).toHaveBeenCalledWith("t1", -5);
+    expect(onBalanceExhausted).toHaveBeenCalledWith("t1", Credit.fromCents(-5));
   });
 
   it("does NOT fire onBalanceExhausted when balance stays positive after debit", async () => {

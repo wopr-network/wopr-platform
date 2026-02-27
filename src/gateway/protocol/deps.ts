@@ -21,7 +21,7 @@ export interface ProtocolDeps {
   budgetChecker: BudgetChecker;
   creditLedger?: CreditLedger;
   topUpUrl: string;
-  graceBufferCents?: number;
+  graceBuffer?: import("../../monetization/credit.js").Credit;
   providers: ProviderConfig;
   defaultMargin: number;
   fetchFn: FetchFn;

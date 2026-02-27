@@ -65,7 +65,7 @@ export interface ProxyDeps {
   budgetChecker: BudgetChecker;
   creditLedger?: CreditLedger;
   topUpUrl: string;
-  graceBufferCents?: number;
+  graceBuffer?: import("../monetization/credit.js").Credit;
   providers: ProviderConfig;
   defaultMargin: number;
   fetchFn: FetchFn;
@@ -83,7 +83,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     budgetChecker: config.budgetChecker,
     creditLedger: config.creditLedger,
     topUpUrl: config.topUpUrl ?? "/dashboard/credits",
-    graceBufferCents: config.graceBufferCents,
+    graceBuffer: config.graceBuffer,
     providers: config.providers,
     defaultMargin: config.defaultMargin ?? DEFAULT_MARGIN,
     fetchFn: config.fetchFn ?? fetch,
@@ -151,7 +151,7 @@ export function chatCompletions(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for chat completions
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -365,7 +365,7 @@ export function textCompletions(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for text completions
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -465,7 +465,7 @@ export function embeddings(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for embeddings
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -553,7 +553,7 @@ export function audioTranscriptions(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for STT
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -650,7 +650,7 @@ export function audioSpeech(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for TTS
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -834,7 +834,7 @@ export function imageGenerations(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for image generation
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -935,7 +935,7 @@ export function videoGenerations(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for image generation
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1021,7 +1021,7 @@ export function phoneOutbound(deps: ProxyDeps) {
     const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1329,7 +1329,7 @@ export function smsOutbound(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for SMS/MMS
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1583,7 +1583,7 @@ export function phoneNumberProvision(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for phone number provision
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }

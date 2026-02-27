@@ -164,7 +164,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
     }
 
     // Credit balance check (estimate minimum 1 cent for LLM calls)
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       // Convert to OpenAI error format
       return c.json(
@@ -327,7 +327,7 @@ function embeddingsHandler(deps: ProtocolDeps) {
     }
 
     // Credit balance check (estimate minimum 1 cent for LLM calls)
-    const creditErr = await creditBalanceCheck(c, deps, 1);
+    const creditErr = await creditBalanceCheck(c, deps);
     if (creditErr) {
       // Convert to OpenAI error format
       return c.json(

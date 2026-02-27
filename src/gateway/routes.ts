@@ -58,7 +58,7 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
     budgetChecker: config.budgetChecker,
     creditLedger: config.creditLedger,
     topUpUrl: config.topUpUrl ?? "/dashboard/credits",
-    graceBufferCents: config.graceBufferCents,
+    graceBuffer: config.graceBuffer,
     providers: config.providers,
     defaultMargin: config.defaultMargin ?? 1.3,
     fetchFn: config.fetchFn ?? fetch,
