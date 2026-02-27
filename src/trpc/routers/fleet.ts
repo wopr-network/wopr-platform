@@ -450,7 +450,7 @@ export const fleetRouter = router({
       label: cfg.label,
       memoryLimitMb: cfg.memoryLimitMb,
       cpuQuota: cfg.cpuQuota,
-      dailyCostCents: cfg.dailyCostCents,
+      dailyCost: cfg.dailyCost.toCents(),
       description: cfg.description,
     }));
   }),
@@ -487,18 +487,18 @@ export const fleetRouter = router({
       const tierConfig = RESOURCE_TIERS[input.tier];
 
       // Credit check for non-standard tiers
-      if (tierConfig.dailyCostCents > 0) {
+      if (!tierConfig.dailyCost.isZero()) {
         try {
           const ledger = getCreditLedger();
           if (ledger) {
             const balance = await ledger.balance(ctx.tenantId);
-            if (balance.lessThan(Credit.fromCents(tierConfig.dailyCostCents))) {
+            if (balance.lessThan(tierConfig.dailyCost)) {
               throw new TRPCError({
                 code: "PAYMENT_REQUIRED",
                 message: "Insufficient credits for this resource tier",
                 cause: {
                   balance,
-                  required: tierConfig.dailyCostCents,
+                  required: tierConfig.dailyCost.toCents(),
                   buyUrl: "/dashboard/credits",
                 },
               });
@@ -561,7 +561,7 @@ export const fleetRouter = router({
         });
       }
 
-      return { tier: input.tier, dailyCostCents: tierConfig.dailyCostCents };
+      return { tier: input.tier, dailyCost: tierConfig.dailyCost.toCents() };
     }),
 
   /** Get current storage tier for a bot. */
@@ -578,7 +578,7 @@ export const fleetRouter = router({
     return {
       tier: tierKey,
       limitGb: tierConfig.storageLimitGb,
-      dailyCostCents: tierConfig.dailyCostCents,
+      dailyCost: tierConfig.dailyCost.toCents(),
     };
   }),
 
@@ -619,17 +619,17 @@ export const fleetRouter = router({
       }
 
       // Credit check for non-standard tiers
-      if (newTierConfig.dailyCostCents > 0) {
+      if (!newTierConfig.dailyCost.isZero()) {
         const ledger = getCreditLedger();
         if (ledger) {
           const balance = await ledger.balance(ctx.tenantId);
-          if (balance.lessThan(Credit.fromCents(newTierConfig.dailyCostCents))) {
+          if (balance.lessThan(newTierConfig.dailyCost)) {
             throw new TRPCError({
               code: "PAYMENT_REQUIRED",
               message: "Insufficient credits for this storage tier",
               cause: {
                 balance,
-                required: newTierConfig.dailyCostCents,
+                required: newTierConfig.dailyCost.toCents(),
                 buyUrl: "/dashboard/credits",
               },
             });
@@ -644,7 +644,7 @@ export const fleetRouter = router({
       return {
         tier: input.tier,
         limitGb: newTierConfig.storageLimitGb,
-        dailyCostCents: newTierConfig.dailyCostCents,
+        dailyCost: newTierConfig.dailyCost.toCents(),
       };
     }),
 
@@ -673,7 +673,7 @@ export const fleetRouter = router({
       usedBytes,
       usedGb: Math.round(usedGb * 100) / 100,
       percentUsed: Math.min(percentUsed, 100),
-      dailyCostCents: tierConfig.dailyCostCents,
+      dailyCost: tierConfig.dailyCost.toCents(),
     };
   }),
   activateCapability: tenantProcedure

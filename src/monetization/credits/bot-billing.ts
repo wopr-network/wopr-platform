@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
+import { Credit } from "../credit.js";
 import type { ICreditLedger } from "./credit-ledger.js";
 
 /** Billing state literals */
@@ -23,7 +24,7 @@ export interface IBotBilling {
   registerBot(botId: string, tenantId: string, name: string): Promise<void>;
   getStorageTier(botId: string): Promise<string | null>;
   setStorageTier(botId: string, tier: string): Promise<void>;
-  getStorageTierCostsForTenant(tenantId: string): Promise<number>;
+  getStorageTierCostsForTenant(tenantId: string): Promise<Credit>;
 }
 
 /**
@@ -182,16 +183,16 @@ export class DrizzleBotBilling implements IBotBilling {
   }
 
   /** Sum daily storage tier costs for all active bots for a tenant. */
-  async getStorageTierCostsForTenant(tenantId: string): Promise<number> {
+  async getStorageTierCostsForTenant(tenantId: string): Promise<Credit> {
     const activeBots = await this.db
       .select({ storageTier: botInstances.storageTier })
       .from(botInstances)
       .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "active")));
 
-    let total = 0;
+    let total = Credit.ZERO;
     for (const bot of activeBots) {
       const tier = bot.storageTier as StorageTierKey;
-      total += STORAGE_TIERS[tier]?.dailyCostCents ?? 0;
+      total = total.add(STORAGE_TIERS[tier]?.dailyCost ?? Credit.ZERO);
     }
     return total;
   }
