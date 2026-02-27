@@ -72,6 +72,45 @@ describe("maybeTriggerUsageTopup", () => {
     expect(mockCharge).not.toHaveBeenCalled();
   });
 
+  it("clears in-flight flag after successful charge (second call triggers new charge)", async () => {
+    await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
+    const mockCharge = vi.fn().mockResolvedValue({ success: true, paymentReference: "pi_123" });
+    const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
+
+    // First call — triggers charge, flag set then cleared
+    await maybeTriggerUsageTopup(deps, "t1");
+    expect(mockCharge).toHaveBeenCalledTimes(1);
+
+    // Verify flag is cleared in the database
+    expect((await settingsRepo.getByTenant("t1"))?.usageChargeInFlight).toBe(false);
+
+    // Second call — if flag was cleared, this triggers another charge
+    await maybeTriggerUsageTopup(deps, "t1");
+    expect(mockCharge).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears in-flight flag after charge throws error (second call triggers new charge)", async () => {
+    await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
+    await ledger.credit("t1", Credit.fromCents(50), "purchase", "buy", "ref-1", "stripe");
+    const mockCharge = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Stripe network error"))
+      .mockResolvedValueOnce({ success: true, paymentReference: "pi_456" });
+    const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
+
+    // First call — charge throws, caught by catch block, finally clears flag
+    await maybeTriggerUsageTopup(deps, "t1");
+    expect(mockCharge).toHaveBeenCalledTimes(1);
+
+    // Verify flag is cleared in the database despite the error
+    expect((await settingsRepo.getByTenant("t1"))?.usageChargeInFlight).toBe(false);
+
+    // Second call — if flag was cleared, this triggers another charge
+    await maybeTriggerUsageTopup(deps, "t1");
+    expect(mockCharge).toHaveBeenCalledTimes(2);
+  });
+
   it("resets failure counter on success", async () => {
     await settingsRepo.upsert("t1", { usageEnabled: true, usageThresholdCents: 100, usageTopupCents: 500 });
     await settingsRepo.incrementUsageFailures("t1");
