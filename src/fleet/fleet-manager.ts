@@ -7,6 +7,7 @@ import type { ContainerResourceLimits } from "../monetization/quotas/resource-li
 import type { NetworkPolicy } from "../network/network-policy.js";
 import type { ProxyManagerInterface } from "../proxy/types.js";
 import type { ProfileStore } from "./profile-store.js";
+import { getSharedVolumeConfig } from "./shared-volume-config.js";
 import type { BotProfile, BotStatus, ContainerStats } from "./types.js";
 
 const CONTAINER_LABEL = "wopr.managed";
@@ -357,6 +358,12 @@ export class FleetManager {
       binds.push(`${profile.volumeName}:/data`);
     }
 
+    // Mount shared node_modules volume read-only (WOP-973)
+    const sharedVolConfig = getSharedVolumeConfig();
+    if (sharedVolConfig.enabled) {
+      binds.push(`${sharedVolConfig.volumeName}:${sharedVolConfig.mountPath}:ro`);
+    }
+
     const hostConfig: Docker.ContainerCreateOptions["HostConfig"] = {
       RestartPolicy: {
         Name: restartPolicyMap[profile.restartPolicy] || "",
@@ -389,7 +396,8 @@ export class FleetManager {
     // discoveryEnv overrides profile.env (spread order matters).
     // Empty-string values mean "explicitly remove" — filter them out.
     const discoveryEnv = buildDiscoveryEnv(profile.discovery, this.platformDiscovery);
-    const mergedEnv = { ...profile.env, ...discoveryEnv };
+    const sharedNodePath = sharedVolConfig.enabled ? { NODE_PATH: sharedVolConfig.mountPath } : {};
+    const mergedEnv = { ...profile.env, ...sharedNodePath, ...discoveryEnv };
 
     const container = await this.docker.createContainer({
       Image: profile.image,
