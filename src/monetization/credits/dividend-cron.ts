@@ -77,7 +77,7 @@ export async function runDividendCron(cfg: DividendCronConfig): Promise<Dividend
     return result;
   }
 
-  result.perUser = Credit.fromCents(Math.floor(result.pool.toCents() / result.activeCount));
+  result.perUser = Credit.fromRaw(Math.floor(result.pool.toRaw() / result.activeCount));
 
   if (result.perUser.isZero()) {
     logger.info("Dividend cron: per-user share rounds to zero", {

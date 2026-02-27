@@ -8,8 +8,8 @@ ALTER TABLE "credit_transactions"
 --> statement-breakpoint
 
 UPDATE "credit_transactions"
-  SET "amount_credits" = "amount_cents"::bigint * 1000000,
-      "balance_after_credits" = "balance_after_cents"::bigint * 1000000;
+  SET "amount_credits" = "amount_cents"::bigint * 10000000,
+      "balance_after_credits" = "balance_after_cents"::bigint * 10000000;
 --> statement-breakpoint
 
 ALTER TABLE "credit_transactions"
@@ -27,7 +27,7 @@ ALTER TABLE "credit_balances"
 --> statement-breakpoint
 
 UPDATE "credit_balances"
-  SET "balance_credits" = "balance_cents"::bigint * 1000000;
+  SET "balance_credits" = "balance_cents"::bigint * 10000000;
 --> statement-breakpoint
 
 ALTER TABLE "credit_balances"

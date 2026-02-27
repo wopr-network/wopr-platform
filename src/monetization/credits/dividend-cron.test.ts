@@ -96,7 +96,9 @@ describe("runDividendCron", () => {
 
     expect(result.pool.toCents()).toBe(100);
     expect(result.activeCount).toBe(3);
-    expect(result.perUser.toCents()).toBe(33);
+    // Nanodollar precision: floor(1_000_000_000 raw / 3) = 333_333_333 raw each
+    // Remainder = 1 nanodollar (not 1 cent — far less wasted with higher scale)
+    expect(result.perUser.toRaw()).toBe(333_333_333);
     expect(result.distributed).toBe(3);
   });
 
@@ -112,7 +114,9 @@ describe("runDividendCron", () => {
     expect(result.distributed).toBe(0);
   });
 
-  it("skips distribution when per-user share rounds to zero", async () => {
+  it("distributes sub-cent amounts at nanodollar precision", async () => {
+    // 1 cent purchase, 3 active users: pool = 10_000_000 raw
+    // floor(10_000_000 / 3) = 3_333_333 raw each — non-zero, gets distributed
     await insertPurchase(db, "t1", 1, "2026-02-20 12:00:00");
     await insertPurchase(db, "t2", 500, "2026-02-18 12:00:00");
     await insertPurchase(db, "t3", 500, "2026-02-17 12:00:00");
@@ -121,8 +125,8 @@ describe("runDividendCron", () => {
 
     expect(result.pool.toCents()).toBe(1);
     expect(result.activeCount).toBe(3);
-    expect(result.perUser.toCents()).toBe(0);
-    expect(result.distributed).toBe(0);
+    expect(result.perUser.toRaw()).toBe(3_333_333);
+    expect(result.distributed).toBe(3);
   });
 
   it("records transactions with correct type and referenceId", async () => {
