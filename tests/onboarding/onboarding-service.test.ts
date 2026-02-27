@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IDaemonManager } from "../../src/onboarding/daemon-manager.js";
 import type { OnboardingConfig } from "../../src/onboarding/config.js";
 import type { IWoprClient } from "../../src/onboarding/wopr-client.js";
-import type { IOnboardingSessionRepository, OnboardingSession } from "../../src/onboarding/onboarding-session-repository.js";
+import type { IOnboardingSessionRepository, OnboardingSession } from "../../src/onboarding/drizzle-onboarding-session-repository.js";
+import type { ISessionUsageRepository } from "../../src/inference/session-usage-repository.js";
 import { OnboardingService } from "../../src/onboarding/onboarding-service.js";
 
 function makeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSession {
@@ -14,7 +15,9 @@ function makeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSess
     status: "active",
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    budgetUsedCents: 0,
+    graduatedAt: null,
+    graduationPath: null,
+    totalPlatformCostUsd: null,
     ...overrides,
   };
 }
@@ -25,10 +28,11 @@ function makeRepo(overrides: Partial<IOnboardingSessionRepository> = {}): IOnboa
     getByUserId: vi.fn().mockResolvedValue(null),
     getByAnonymousId: vi.fn().mockResolvedValue(null),
     getActiveByAnonymousId: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockImplementation(async (d) => makeSession({ ...d, createdAt: Date.now(), updatedAt: Date.now(), budgetUsedCents: 0 })),
+    create: vi.fn().mockImplementation(async (d) => makeSession({ ...d, createdAt: Date.now(), updatedAt: Date.now() })),
     upgradeAnonymousToUser: vi.fn().mockResolvedValue(null),
-    updateBudgetUsed: vi.fn().mockResolvedValue(undefined),
     setStatus: vi.fn().mockResolvedValue(undefined),
+    graduate: vi.fn().mockResolvedValue(null),
+    getGraduatedByUserId: vi.fn().mockResolvedValue(null),
     ...overrides,
   };
 }
@@ -52,11 +56,22 @@ function makeDaemon(ready = true): IDaemonManager {
   };
 }
 
+function makeUsageRepo(sumCostBySession = 0): ISessionUsageRepository {
+  return {
+    insert: vi.fn().mockResolvedValue({ id: "u1", sessionId: "s1", userId: "u1", page: null, inputTokens: 10, outputTokens: 10, cachedTokens: 0, cacheWriteTokens: 0, model: "claude-sonnet-4-20250514", costUsd: 0.01, createdAt: Date.now() }),
+    findBySessionId: vi.fn().mockResolvedValue([]),
+    sumCostByUser: vi.fn().mockResolvedValue(0),
+    sumCostBySession: vi.fn().mockResolvedValue(sumCostBySession),
+    aggregateByDay: vi.fn().mockResolvedValue([]),
+    aggregateByPage: vi.fn().mockResolvedValue([]),
+    cacheHitRate: vi.fn().mockResolvedValue(0),
+  };
+}
+
 const defaultConfig: OnboardingConfig = {
   woprPort: 3847,
   llmProvider: "anthropic",
   llmModel: "claude-sonnet-4-20250514",
-  budgetCapCents: 100,
   woprDataDir: "/data/onboarding",
   enabled: true,
 };
@@ -151,11 +166,11 @@ describe("OnboardingService", () => {
       await expect(service.inject("s1", "hi")).rejects.toThrow("not active");
     });
 
-    it("throws if budget exceeded", async () => {
-      (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(
-        makeSession({ budgetUsedCents: 100 }),
-      );
-      await expect(service.inject("s1", "hi")).rejects.toThrow("budget cap");
+    it("throws if budget exceeded (via session_usage)", async () => {
+      const usageRepo = makeUsageRepo(1.0); // $1.00 — exceeds $0.25 free cap
+      (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(makeSession({ userId: "u1" }));
+      service = new OnboardingService(repo, client, defaultConfig, daemon, usageRepo);
+      await expect(service.inject("s1", "hi")).rejects.toThrow("budget exceeded");
     });
 
     it("throws if daemon not ready", async () => {
@@ -224,6 +239,76 @@ describe("OnboardingService", () => {
 
       expect(result).not.toBeNull();
       expect(repo.upgradeAnonymousToUser).toHaveBeenCalledWith("anon-1", "u1");
+    });
+  });
+
+  describe("credit ledger debit", () => {
+    it("debits credit ledger for authenticated user after inject", async () => {
+      const usageRepo = makeUsageRepo(0);
+      const ledger = {
+        credit: vi.fn(),
+        debit: vi.fn().mockResolvedValue({ id: "tx1", tenantId: "t1", amountCents: -1, balanceAfterCents: 99, type: "onboarding_llm", description: null, referenceId: null, fundingSource: null, attributedUserId: null, createdAt: new Date().toISOString() }),
+        balance: vi.fn().mockResolvedValue(100),
+        hasReferenceId: vi.fn().mockResolvedValue(false),
+        history: vi.fn().mockResolvedValue([]),
+        tenantsWithBalance: vi.fn().mockResolvedValue([]),
+        memberUsage: vi.fn().mockResolvedValue([]),
+      };
+      const tenantResolver = vi.fn().mockResolvedValue("tenant-1");
+      (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(makeSession({ userId: "u1" }));
+
+      service = new OnboardingService(repo, client, defaultConfig, daemon, usageRepo, undefined, ledger, tenantResolver);
+      await service.inject("s1", "Hello");
+
+      expect(ledger.debit).toHaveBeenCalledOnce();
+      const [tenantId, costCents, type, description, , allowNegative, attributedUserId] = (ledger.debit as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(tenantId).toBe("tenant-1");
+      expect(typeof costCents).toBe("number");
+      expect(costCents).toBeGreaterThan(0);
+      expect(type).toBe("onboarding_llm");
+      expect(description.toLowerCase()).toContain("onboarding");
+      expect(allowNegative).toBe(true);
+      expect(attributedUserId).toBe("u1");
+    });
+
+    it("skips credit ledger debit for anonymous users", async () => {
+      const usageRepo = makeUsageRepo(0);
+      const ledger = {
+        credit: vi.fn(),
+        debit: vi.fn(),
+        balance: vi.fn().mockResolvedValue(100),
+        hasReferenceId: vi.fn().mockResolvedValue(false),
+        history: vi.fn().mockResolvedValue([]),
+        tenantsWithBalance: vi.fn().mockResolvedValue([]),
+        memberUsage: vi.fn().mockResolvedValue([]),
+      };
+      const tenantResolver = vi.fn().mockResolvedValue("tenant-1");
+      (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(makeSession({ userId: null, anonymousId: "anon-1" }));
+
+      service = new OnboardingService(repo, client, defaultConfig, daemon, usageRepo, undefined, ledger, tenantResolver);
+      await service.inject("s1", "Hello");
+
+      expect(ledger.debit).not.toHaveBeenCalled();
+    });
+
+    it("skips credit ledger debit when tenantId cannot be resolved", async () => {
+      const usageRepo = makeUsageRepo(0);
+      const ledger = {
+        credit: vi.fn(),
+        debit: vi.fn(),
+        balance: vi.fn().mockResolvedValue(100),
+        hasReferenceId: vi.fn().mockResolvedValue(false),
+        history: vi.fn().mockResolvedValue([]),
+        tenantsWithBalance: vi.fn().mockResolvedValue([]),
+        memberUsage: vi.fn().mockResolvedValue([]),
+      };
+      const tenantResolver = vi.fn().mockResolvedValue(null); // no tenant found
+      (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(makeSession({ userId: "u1" }));
+
+      service = new OnboardingService(repo, client, defaultConfig, daemon, usageRepo, undefined, ledger, tenantResolver);
+      await service.inject("s1", "Hello");
+
+      expect(ledger.debit).not.toHaveBeenCalled();
     });
   });
 });

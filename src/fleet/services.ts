@@ -799,6 +799,8 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
 // Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
 
+import type { IUserRoleRepository } from "../auth/user-role-repository.js";
+import { DrizzleUserRoleRepository } from "../auth/user-role-repository.js";
 import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
 import { DrizzleSessionUsageRepository } from "../inference/session-usage-repository.js";
 import { loadOnboardingConfig } from "../onboarding/config.js";
@@ -818,6 +820,14 @@ let _daemonManager: IDaemonManager | null = null;
 let _onboardingService: OnboardingService | null = null;
 let _sessionUsageRepo: ISessionUsageRepository | null = null; // NOSONAR
 let _graduationService: GraduationService | null = null;
+let _userRoleRepo: IUserRoleRepository | null = null;
+
+export function getUserRoleRepo(): IUserRoleRepository {
+  if (!_userRoleRepo) {
+    _userRoleRepo = new DrizzleUserRoleRepository(getDb());
+  }
+  return _userRoleRepo;
+}
 
 export function getGraduationService(): GraduationService {
   if (!_graduationService) {
@@ -873,6 +883,8 @@ export function getOnboardingService(): OnboardingService {
       getDaemonManager(),
       getSessionUsageRepo(),
       getOnboardingScriptRepo(),
+      getCreditLedger(),
+      (userId: string) => getUserRoleRepo().getTenantIdByUserId(userId),
     );
   }
   return _onboardingService;

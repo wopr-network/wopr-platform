@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import type { OnboardingSession } from "../../../src/onboarding/onboarding-session-repository.js";
+import type { OnboardingSession } from "../../../src/onboarding/drizzle-onboarding-session-repository.js";
 
 function makeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSession {
   return {
@@ -11,7 +11,9 @@ function makeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSess
     status: "active",
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    budgetUsedCents: 0,
+    graduatedAt: null,
+    graduationPath: null,
+    totalPlatformCostUsd: null,
     ...overrides,
   };
 }

@@ -1,4 +1,4 @@
-import { bigint, index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
 
 export const onboardingSessions = pgTable(
   "onboarding_sessions",
@@ -10,7 +10,6 @@ export const onboardingSessions = pgTable(
     status: text("status").notNull().default("active"),
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
     updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
-    budgetUsedCents: integer("budget_used_cents").notNull().default(0),
     graduatedAt: bigint("graduated_at", { mode: "number" }),
     graduationPath: text("graduation_path"),
     totalPlatformCostUsd: text("total_platform_cost_usd"),

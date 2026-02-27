@@ -3,6 +3,7 @@ import type { BudgetTier } from "../inference/budget-guard.js";
 import { checkSessionBudget } from "../inference/budget-guard.js";
 import { computeInferenceCost } from "../inference/inference-cost.js";
 import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { OnboardingConfig } from "./config.js";
 import type { IDaemonManager } from "./daemon-manager.js";
 import type { IOnboardingScriptRepository } from "./drizzle-onboarding-script-repository.js";
@@ -28,6 +29,8 @@ export class OnboardingService {
     private readonly daemon: IDaemonManager,
     private readonly usageRepo?: ISessionUsageRepository,
     private readonly scriptRepo: IOnboardingScriptRepository = OnboardingService.DEFAULT_SCRIPT_REPO,
+    private readonly creditLedger?: ICreditLedger,
+    private readonly resolveTenantId?: (userId: string) => Promise<string | null>,
   ) {}
 
   async createSession(opts: { userId?: string; anonymousId?: string }): Promise<OnboardingSession> {
@@ -94,12 +97,6 @@ export class OnboardingService {
             : `Session budget exceeded ($${budgetCheck.capUsd.toFixed(2)} cap). Sign up for a free account to continue.`,
         );
       }
-    } else {
-      // Fallback: cent-based check
-      const remaining = this.config.budgetCapCents - session.budgetUsedCents;
-      if (remaining <= 0) {
-        throw new Error(`Session ${sessionId} has exceeded its budget cap`);
-      }
     }
 
     if (!this.daemon.isReady()) {
@@ -110,7 +107,7 @@ export class OnboardingService {
       from: opts.from,
     });
 
-    // Record estimated token usage
+    // Record estimated token usage and debit credit ledger
     if (this.usageRepo) {
       const inputTokensEst = Math.ceil(message.length / 4);
       const outputTokensEst = Math.ceil(response.length / 4);
@@ -132,9 +129,27 @@ export class OnboardingService {
         model: this.config.llmModel,
         costUsd: cost,
       });
+
+      // Debit credit ledger for authenticated users only
+      if (this.creditLedger && this.resolveTenantId && session.userId) {
+        const costCents = Math.ceil(cost * 100);
+        if (costCents > 0) {
+          const tenantId = await this.resolveTenantId(session.userId);
+          if (tenantId) {
+            await this.creditLedger.debit(
+              tenantId,
+              costCents,
+              "onboarding_llm",
+              `Onboarding session ${sessionId}`,
+              `onboarding-${sessionId}-${Date.now()}`,
+              true, // allowNegative — don't block onboarding mid-conversation
+              session.userId,
+            );
+          }
+        }
+      }
     }
 
-    await this.repo.updateBudgetUsed(sessionId, session.budgetUsedCents + 1);
     return response;
   }
 

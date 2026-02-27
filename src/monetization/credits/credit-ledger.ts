@@ -22,7 +22,8 @@ export type DebitType =
   | "refund"
   | "correction"
   | "resource_upgrade"
-  | "storage_upgrade";
+  | "storage_upgrade"
+  | "onboarding_llm";
 
 export type TransactionType = CreditType | DebitType;
 
