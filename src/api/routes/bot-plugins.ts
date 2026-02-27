@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
 import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
@@ -21,13 +22,16 @@ let credentialVault: {
   getActiveForProvider(provider: string): Promise<Array<Pick<DecryptedCredential, "plaintextKey">>>;
 } | null = null;
 let meterEmitter: { emit(event: MeterEvent): void } | null = null;
+let botInstanceRepo: IBotInstanceRepository | null = null;
 
 export function setBotPluginDeps(deps: {
   credentialVault: typeof credentialVault;
   meterEmitter: typeof meterEmitter;
+  botInstanceRepo: IBotInstanceRepository;
 }): void {
   credentialVault = deps.credentialVault;
   meterEmitter = deps.meterEmitter;
+  botInstanceRepo = deps.botInstanceRepo;
 }
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -301,7 +305,7 @@ async function togglePluginHandler(c: Context): Promise<Response> {
   await store.save(updated);
 
   // Dispatch env update to the correct node
-  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
+  const dispatch = await dispatchEnvUpdate(botId, profile.tenantId, updatedEnv, botInstanceRepo!);
 
   logger.info(`Toggled plugin ${pluginId} on bot ${botId}: enabled=${parsed.data.enabled}`, {
     botId,

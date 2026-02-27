@@ -316,7 +316,7 @@ if (process.env.NODE_ENV !== "test") {
     const vaultKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const credentialRepo = new DrizzleCredentialRepository(getDb());
     const credentialVault = new CredentialVaultStore(credentialRepo, vaultKey);
-    setBotPluginDeps({ credentialVault, meterEmitter: meter });
+    setBotPluginDeps({ credentialVault, meterEmitter: meter, botInstanceRepo: getBotInstanceRepo() });
 
     mountGateway(app, {
       meter,
@@ -764,7 +764,7 @@ if (process.env.NODE_ENV !== "test") {
       },
       pluginConfigRepo: getPluginConfigRepo(),
       profileStore: new SetupProfileStore(process.env.FLEET_DATA_DIR || "/data/fleet"),
-      dispatchEnvUpdate: dispatchEnvUpdateFn,
+      dispatchEnvUpdate: (botId, tenantId, env) => dispatchEnvUpdateFn(botId, tenantId, env, getBotInstanceRepo()),
       platformEncryptionSecret: process.env.PLATFORM_ENCRYPTION_SECRET ?? "",
     });
 

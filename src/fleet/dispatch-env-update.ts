@@ -1,7 +1,6 @@
-import { eq } from "drizzle-orm";
 import { logger } from "../config/logger.js";
-import { botInstances } from "../db/schema/index.js";
-import { getCommandBus, getDb } from "./services.js";
+import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import { getCommandBus } from "./services.js";
 
 /**
  * Dispatch a bot.update command to the node running this bot.
@@ -12,10 +11,10 @@ export async function dispatchEnvUpdate(
   botId: string,
   tenantId: string,
   env: Record<string, string>,
+  botInstanceRepo: IBotInstanceRepository,
 ): Promise<{ dispatched: boolean; dispatchError?: string }> {
   try {
-    const db = getDb();
-    const instance = (await db.select().from(botInstances).where(eq(botInstances.id, botId)))[0];
+    const instance = await botInstanceRepo.getById(botId);
 
     if (!instance?.nodeId) {
       return { dispatched: false, dispatchError: "bot_not_deployed" };
