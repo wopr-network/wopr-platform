@@ -37,7 +37,7 @@ describe("RateStore - Sell Rates", () => {
 		expect(result.display_name).toBe("GPT-4");
 		expect(result.unit).toBe("1M tokens");
 		expect(result.price_usd).toBe(10.0);
-		expect(result.is_active).toBe(1);
+		expect(result.is_active).toBe(true);
 		expect(result.sort_order).toBe(0);
 	});
 
@@ -234,7 +234,7 @@ describe("RateStore - Sell Rates", () => {
 		const result = await store.listSellRates({ isActive: true });
 
 		expect(result.entries).toHaveLength(1);
-		expect(result.entries[0].is_active).toBe(1);
+		expect(result.entries[0].is_active).toBe(true);
 		expect(result.total).toBe(1);
 	});
 
@@ -334,7 +334,7 @@ describe("RateStore - Provider Costs", () => {
 		expect(result.cost_usd).toBe(8.0);
 		expect(result.priority).toBe(0);
 		expect(result.latency_class).toBe("standard");
-		expect(result.is_active).toBe(1);
+		expect(result.is_active).toBe(true);
 	});
 
 	it("rejects negative costUsd", async () => {
