@@ -78,9 +78,9 @@ export function loadCreditPriceMap(): CreditPriceMap {
  * Uses the bonus tiers to determine the credit value.
  * Falls back to 1:1 if no matching tier is found.
  */
-export function getCreditAmountForPurchase(amountCredits: number): number {
-  const tier = CREDIT_PRICE_POINTS.find((p) => p.amountCents === amountCredits);
-  return tier ? tier.creditCents : amountCredits;
+export function getCreditAmountForPurchase(amountCents: number): number {
+  const tier = CREDIT_PRICE_POINTS.find((p) => p.amountCents === amountCents);
+  return tier ? tier.creditCents : amountCents;
 }
 
 /**
