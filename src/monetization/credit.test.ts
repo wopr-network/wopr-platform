@@ -148,6 +148,18 @@ describe("Credit", () => {
     it("equals: fromDollars(1) equals fromCents(100)", () => {
       expect(Credit.fromDollars(1).equals(Credit.fromCents(100))).toBe(true);
     });
+
+    it("lessThanOrEqual compares correctly", () => {
+      expect(Credit.fromCents(5).lessThanOrEqual(Credit.fromCents(5))).toBe(true);
+      expect(Credit.fromCents(5).lessThanOrEqual(Credit.fromCents(10))).toBe(true);
+      expect(Credit.fromCents(10).lessThanOrEqual(Credit.fromCents(5))).toBe(false);
+    });
+
+    it("greaterThanOrEqual compares correctly", () => {
+      expect(Credit.fromCents(10).greaterThanOrEqual(Credit.fromCents(5))).toBe(true);
+      expect(Credit.fromCents(5).greaterThanOrEqual(Credit.fromCents(5))).toBe(true);
+      expect(Credit.fromCents(5).greaterThanOrEqual(Credit.fromCents(10))).toBe(false);
+    });
   });
 
   describe("toString", () => {
