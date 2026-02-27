@@ -21,7 +21,7 @@ CREATE TABLE "admin_audit_log" (
 	"details" text DEFAULT '{}' NOT NULL,
 	"ip_address" text,
 	"user_agent" text,
-	"created_at" bigint DEFAULT 0 NOT NULL,
+	"created_at" bigint DEFAULT (extract(epoch from now()) * 1000)::bigint NOT NULL,
 	"outcome" text
 );
 --> statement-breakpoint
@@ -30,9 +30,9 @@ CREATE TABLE "admin_notes" (
 	"tenant_id" text NOT NULL,
 	"author_id" text NOT NULL,
 	"content" text NOT NULL,
-	"is_pinned" integer DEFAULT 0 NOT NULL,
-	"created_at" bigint DEFAULT 0 NOT NULL,
-	"updated_at" bigint DEFAULT 0 NOT NULL
+	"is_pinned" boolean DEFAULT false NOT NULL,
+	"created_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL,
+	"updated_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "admin_users" (
@@ -106,7 +106,8 @@ CREATE TABLE "bot_instances" (
 	"resource_tier" text DEFAULT 'standard' NOT NULL,
 	"storage_tier" text DEFAULT 'standard' NOT NULL,
 	"created_at" text DEFAULT (now()) NOT NULL,
-	"updated_at" text DEFAULT (now()) NOT NULL
+	"updated_at" text DEFAULT (now()) NOT NULL,
+	"created_by_user_id" text
 );
 --> statement-breakpoint
 CREATE TABLE "bot_profiles" (
@@ -132,7 +133,7 @@ CREATE TABLE "bulk_undo_grants" (
 	"admin_user" text NOT NULL,
 	"created_at" bigint NOT NULL,
 	"undo_deadline" bigint NOT NULL,
-	"undone" integer DEFAULT 0 NOT NULL
+	"undone" boolean DEFAULT false NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "circuit_breaker_states" (
@@ -144,12 +145,12 @@ CREATE TABLE "circuit_breaker_states" (
 --> statement-breakpoint
 CREATE TABLE "credit_auto_topup_settings" (
 	"tenant_id" text PRIMARY KEY NOT NULL,
-	"usage_enabled" integer DEFAULT 0 NOT NULL,
+	"usage_enabled" boolean DEFAULT false NOT NULL,
 	"usage_threshold_cents" integer DEFAULT 100 NOT NULL,
 	"usage_topup_cents" integer DEFAULT 500 NOT NULL,
 	"usage_consecutive_failures" integer DEFAULT 0 NOT NULL,
-	"usage_charge_in_flight" integer DEFAULT 0 NOT NULL,
-	"schedule_enabled" integer DEFAULT 0 NOT NULL,
+	"usage_charge_in_flight" boolean DEFAULT false NOT NULL,
+	"schedule_enabled" boolean DEFAULT false NOT NULL,
 	"schedule_amount_cents" integer DEFAULT 500 NOT NULL,
 	"schedule_interval_hours" integer DEFAULT 168 NOT NULL,
 	"schedule_next_at" text,
@@ -170,19 +171,20 @@ CREATE TABLE "credit_auto_topup" (
 --> statement-breakpoint
 CREATE TABLE "credit_balances" (
 	"tenant_id" text PRIMARY KEY NOT NULL,
-	"balance_cents" integer DEFAULT 0 NOT NULL,
+	"balance_credits" bigint DEFAULT 0 NOT NULL,
 	"last_updated" text DEFAULT (now()) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "credit_transactions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"tenant_id" text NOT NULL,
-	"amount_cents" integer NOT NULL,
-	"balance_after_cents" integer NOT NULL,
+	"amount_credits" bigint NOT NULL,
+	"balance_after_credits" bigint NOT NULL,
 	"type" text NOT NULL,
 	"description" text,
 	"reference_id" text,
 	"funding_source" text,
+	"attributed_user_id" text,
 	"created_at" text DEFAULT (now()) NOT NULL,
 	CONSTRAINT "credit_transactions_reference_id_unique" UNIQUE("reference_id")
 );
@@ -209,7 +211,7 @@ CREATE TABLE "email_notifications" (
 CREATE TABLE "fleet_events" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"event_type" text NOT NULL,
-	"fired" integer DEFAULT 0 NOT NULL,
+	"fired" boolean DEFAULT false NOT NULL,
 	"created_at" bigint NOT NULL,
 	"cleared_at" bigint
 );
@@ -235,8 +237,8 @@ CREATE TABLE "gpu_nodes" (
 	"monthly_cost_cents" integer,
 	"last_health_at" bigint,
 	"last_error" text,
-	"created_at" bigint DEFAULT 0 NOT NULL,
-	"updated_at" bigint DEFAULT 0 NOT NULL
+	"created_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL,
+	"updated_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "billing_period_summaries" (
@@ -286,7 +288,7 @@ CREATE TABLE "node_registration_tokens" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"label" text,
-	"created_at" bigint DEFAULT 0 NOT NULL,
+	"created_at" bigint DEFAULT (extract(epoch from now())::bigint) NOT NULL,
 	"expires_at" bigint NOT NULL,
 	"used" boolean DEFAULT false NOT NULL,
 	"node_id" text,
@@ -311,8 +313,8 @@ CREATE TABLE "nodes" (
 	"used_mb" integer DEFAULT 0 NOT NULL,
 	"agent_version" text,
 	"last_heartbeat_at" bigint,
-	"registered_at" bigint DEFAULT 0 NOT NULL,
-	"updated_at" bigint DEFAULT 0 NOT NULL,
+	"registered_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL,
+	"updated_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL,
 	"droplet_id" text,
 	"region" text,
 	"size" text,
@@ -329,14 +331,14 @@ CREATE TABLE "nodes" (
 --> statement-breakpoint
 CREATE TABLE "notification_preferences" (
 	"tenant_id" text PRIMARY KEY NOT NULL,
-	"billing_low_balance" integer DEFAULT 1 NOT NULL,
-	"billing_receipts" integer DEFAULT 1 NOT NULL,
-	"billing_auto_topup" integer DEFAULT 1 NOT NULL,
-	"agent_channel_disconnect" integer DEFAULT 1 NOT NULL,
-	"agent_status_changes" integer DEFAULT 0 NOT NULL,
-	"account_role_changes" integer DEFAULT 1 NOT NULL,
-	"account_team_invites" integer DEFAULT 1 NOT NULL,
-	"updated_at" bigint DEFAULT 0 NOT NULL
+	"billing_low_balance" boolean DEFAULT true NOT NULL,
+	"billing_receipts" boolean DEFAULT true NOT NULL,
+	"billing_auto_topup" boolean DEFAULT true NOT NULL,
+	"agent_channel_disconnect" boolean DEFAULT true NOT NULL,
+	"agent_status_changes" boolean DEFAULT false NOT NULL,
+	"account_role_changes" boolean DEFAULT true NOT NULL,
+	"account_team_invites" boolean DEFAULT true NOT NULL,
+	"updated_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "notification_queue" (
@@ -351,7 +353,7 @@ CREATE TABLE "notification_queue" (
 	"last_attempt_at" bigint,
 	"last_error" text,
 	"retry_after" bigint,
-	"created_at" bigint DEFAULT 0 NOT NULL,
+	"created_at" bigint DEFAULT (extract(epoch from now()) * 1000)::bigint NOT NULL,
 	"sent_at" bigint
 );
 --> statement-breakpoint
@@ -381,7 +383,7 @@ CREATE TABLE "organization_invites" (
 	"invited_by" text NOT NULL,
 	"token" text NOT NULL,
 	"expires_at" bigint NOT NULL,
-	"created_at" bigint DEFAULT 0 NOT NULL,
+	"created_at" bigint DEFAULT (extract(epoch from now()) * 1000)::bigint NOT NULL,
 	CONSTRAINT "organization_invites_token_unique" UNIQUE("token")
 );
 --> statement-breakpoint
@@ -390,7 +392,7 @@ CREATE TABLE "organization_members" (
 	"org_id" text NOT NULL,
 	"user_id" text NOT NULL,
 	"role" text DEFAULT 'member' NOT NULL,
-	"joined_at" bigint DEFAULT 0 NOT NULL
+	"joined_at" bigint DEFAULT (extract(epoch from now()) * 1000)::bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "payram_charges" (
@@ -420,7 +422,7 @@ CREATE TABLE "provider_credentials" (
 	"encrypted_value" text NOT NULL,
 	"auth_type" text NOT NULL,
 	"auth_header" text,
-	"is_active" integer DEFAULT 1 NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
 	"last_validated" text,
 	"created_at" text DEFAULT (now()) NOT NULL,
 	"rotated_at" text,
@@ -458,7 +460,7 @@ CREATE TABLE "provider_costs" (
 	"cost_usd" real NOT NULL,
 	"priority" integer DEFAULT 0 NOT NULL,
 	"latency_class" text DEFAULT 'standard' NOT NULL,
-	"is_active" integer DEFAULT 1 NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
 	"created_at" text DEFAULT (now()) NOT NULL,
 	"updated_at" text DEFAULT (now()) NOT NULL
 );
@@ -470,7 +472,7 @@ CREATE TABLE "sell_rates" (
 	"unit" text NOT NULL,
 	"price_usd" real NOT NULL,
 	"model" text,
-	"is_active" integer DEFAULT 1 NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
 	"sort_order" integer DEFAULT 0 NOT NULL,
 	"created_at" text DEFAULT (now()) NOT NULL,
 	"updated_at" text DEFAULT (now()) NOT NULL
@@ -606,8 +608,8 @@ CREATE TABLE "tenant_status" (
 	"status_changed_by" text,
 	"grace_deadline" text,
 	"data_delete_after" text,
-	"created_at" bigint DEFAULT 0 NOT NULL,
-	"updated_at" bigint DEFAULT 0 NOT NULL
+	"created_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL,
+	"updated_at" bigint DEFAULT (extract(epoch from now()))::bigint NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "tenants" (
@@ -616,7 +618,7 @@ CREATE TABLE "tenants" (
 	"slug" text,
 	"type" text NOT NULL,
 	"owner_id" text NOT NULL,
-	"created_at" bigint DEFAULT 0 NOT NULL,
+	"created_at" bigint DEFAULT (extract(epoch from now()) * 1000)::bigint NOT NULL,
 	CONSTRAINT "tenants_slug_unique" UNIQUE("slug"),
 	CONSTRAINT "chk_tenants_type" CHECK ("tenants"."type" IN ('personal', 'org'))
 );
@@ -659,6 +661,63 @@ CREATE TABLE "webhook_sig_penalties" (
 	"blocked_until" bigint DEFAULT 0 NOT NULL,
 	"updated_at" bigint NOT NULL,
 	CONSTRAINT "webhook_sig_penalties_ip_source_pk" PRIMARY KEY("ip","source")
+);
+--> statement-breakpoint
+CREATE TABLE "marketplace_plugins" (
+	"plugin_id" text PRIMARY KEY NOT NULL,
+	"npm_package" text NOT NULL,
+	"version" text NOT NULL,
+	"enabled" boolean DEFAULT false NOT NULL,
+	"featured" boolean DEFAULT false NOT NULL,
+	"sort_order" integer DEFAULT 999 NOT NULL,
+	"category" text,
+	"discovered_at" bigint NOT NULL,
+	"enabled_at" bigint,
+	"enabled_by" text,
+	"notes" text,
+	"installed_at" bigint,
+	"install_error" text
+);
+--> statement-breakpoint
+CREATE TABLE "onboarding_sessions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"user_id" text,
+	"anonymous_id" text,
+	"wopr_session_name" text NOT NULL,
+	"status" text DEFAULT 'active' NOT NULL,
+	"created_at" bigint NOT NULL,
+	"updated_at" bigint NOT NULL,
+	"graduated_at" bigint,
+	"graduation_path" text,
+	"total_platform_cost_usd" text,
+	CONSTRAINT "onboarding_sessions_wopr_session_name_unique" UNIQUE("wopr_session_name")
+);
+--> statement-breakpoint
+CREATE TABLE "session_usage" (
+	"id" text PRIMARY KEY NOT NULL,
+	"session_id" text NOT NULL,
+	"user_id" text,
+	"page" text,
+	"input_tokens" integer DEFAULT 0 NOT NULL,
+	"output_tokens" integer DEFAULT 0 NOT NULL,
+	"cached_tokens" integer DEFAULT 0 NOT NULL,
+	"cache_write_tokens" integer DEFAULT 0 NOT NULL,
+	"model" text NOT NULL,
+	"cost_usd" double precision DEFAULT 0 NOT NULL,
+	"created_at" bigint NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "setup_sessions" (
+	"id" text PRIMARY KEY NOT NULL,
+	"session_id" text NOT NULL,
+	"plugin_id" text NOT NULL,
+	"status" text DEFAULT 'in_progress' NOT NULL,
+	"collected" text,
+	"dependencies_installed" text,
+	"error_count" bigint DEFAULT 0 NOT NULL,
+	"started_at" bigint NOT NULL,
+	"completed_at" bigint,
+	CONSTRAINT "setup_sessions_session_in_progress_uniq" UNIQUE("session_id","status")
 );
 --> statement-breakpoint
 CREATE INDEX "idx_acct_del_tenant" ON "account_deletion_requests" USING btree ("tenant_id");--> statement-breakpoint
@@ -787,4 +846,13 @@ CREATE INDEX "idx_user_roles_role" ON "user_roles" USING btree ("role");--> stat
 CREATE INDEX "idx_vps_sub_tenant" ON "vps_subscriptions" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "idx_vps_sub_stripe" ON "vps_subscriptions" USING btree ("stripe_subscription_id");--> statement-breakpoint
 CREATE INDEX "idx_webhook_seen_expires" ON "webhook_seen_events" USING btree ("seen_at");--> statement-breakpoint
-CREATE INDEX "idx_sig_penalties_blocked" ON "webhook_sig_penalties" USING btree ("blocked_until");
+CREATE INDEX "idx_sig_penalties_blocked" ON "webhook_sig_penalties" USING btree ("blocked_until");--> statement-breakpoint
+CREATE INDEX "marketplace_plugins_enabled_idx" ON "marketplace_plugins" USING btree ("enabled");--> statement-breakpoint
+CREATE INDEX "onboarding_sessions_user_id_idx" ON "onboarding_sessions" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "onboarding_sessions_anonymous_id_idx" ON "onboarding_sessions" USING btree ("anonymous_id");--> statement-breakpoint
+CREATE INDEX "idx_session_usage_session" ON "session_usage" USING btree ("session_id");--> statement-breakpoint
+CREATE INDEX "idx_session_usage_user" ON "session_usage" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "idx_session_usage_created" ON "session_usage" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "idx_session_usage_page" ON "session_usage" USING btree ("page");--> statement-breakpoint
+CREATE INDEX "setup_sessions_session_id_idx" ON "setup_sessions" USING btree ("session_id");--> statement-breakpoint
+CREATE INDEX "setup_sessions_plugin_id_idx" ON "setup_sessions" USING btree ("plugin_id");

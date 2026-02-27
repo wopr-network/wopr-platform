@@ -1,5 +1,5 @@
 {
-  "id": "b899a698-41df-4ad2-ab0c-acc2da649244",
+  "id": "a3abe909-3c23-44c1-ab33-1450ffb9bfed",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -307,21 +307,21 @@
         },
         "is_pinned": {
           "name": "is_pinned",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
@@ -451,13 +451,13 @@
         },
         "last_seen": {
           "name": "last_seen",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -723,7 +723,7 @@
         },
         "timestamp": {
           "name": "timestamp",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -1033,6 +1033,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "(now())"
+        },
+        "created_by_user_id": {
+          "name": "created_by_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -1284,22 +1290,22 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "undo_deadline": {
           "name": "undo_deadline",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "undone": {
           "name": "undone",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": false
         }
       },
       "indexes": {
@@ -1345,13 +1351,13 @@
         },
         "window_start": {
           "name": "window_start",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "tripped_at": {
           "name": "tripped_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
@@ -1392,10 +1398,10 @@
         },
         "usage_enabled": {
           "name": "usage_enabled",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": false
         },
         "usage_threshold_cents": {
           "name": "usage_threshold_cents",
@@ -1420,17 +1426,17 @@
         },
         "usage_charge_in_flight": {
           "name": "usage_charge_in_flight",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": false
         },
         "schedule_enabled": {
           "name": "schedule_enabled",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": false
         },
         "schedule_amount_cents": {
           "name": "schedule_amount_cents",
@@ -1652,12 +1658,12 @@
           "primaryKey": true,
           "notNull": true
         },
-        "balance_cents": {
-          "name": "balance_cents",
-          "type": "integer",
+        "balance_credits": {
+          "name": "balance_credits",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": "0"
         },
         "last_updated": {
           "name": "last_updated",
@@ -1691,15 +1697,15 @@
           "primaryKey": false,
           "notNull": true
         },
-        "amount_cents": {
-          "name": "amount_cents",
-          "type": "integer",
+        "amount_credits": {
+          "name": "amount_credits",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
-        "balance_after_cents": {
-          "name": "balance_after_cents",
-          "type": "integer",
+        "balance_after_credits": {
+          "name": "balance_after_credits",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -1723,6 +1729,12 @@
         },
         "funding_source": {
           "name": "funding_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attributed_user_id": {
+          "name": "attributed_user_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -2044,20 +2056,20 @@
         },
         "fired": {
           "name": "fired",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "cleared_at": {
           "name": "cleared_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
@@ -2082,7 +2094,7 @@
         },
         "minute_key": {
           "name": "minute_key",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -2221,7 +2233,7 @@
         },
         "last_health_at": {
           "name": "last_health_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
@@ -2233,14 +2245,14 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
@@ -2340,19 +2352,19 @@
         },
         "period_start": {
           "name": "period_start",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "period_end": {
           "name": "period_end",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -2483,7 +2495,7 @@
         },
         "timestamp": {
           "name": "timestamp",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -2684,13 +2696,13 @@
         },
         "window_start": {
           "name": "window_start",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "window_end": {
           "name": "window_end",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -2770,14 +2782,14 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now())::bigint)"
         },
         "expires_at": {
           "name": "expires_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -2796,7 +2808,7 @@
         },
         "used_at": {
           "name": "used_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
@@ -2882,7 +2894,7 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -2970,20 +2982,20 @@
         },
         "last_heartbeat_at": {
           "name": "last_heartbeat_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
         "registered_at": {
           "name": "registered_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
@@ -3127,56 +3139,56 @@
         },
         "billing_low_balance": {
           "name": "billing_low_balance",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "billing_receipts": {
           "name": "billing_receipts",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "billing_auto_topup": {
           "name": "billing_auto_topup",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "agent_channel_disconnect": {
           "name": "agent_channel_disconnect",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "agent_status_changes": {
           "name": "agent_status_changes",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 0
+          "default": false
         },
         "account_role_changes": {
           "name": "account_role_changes",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "account_team_invites": {
           "name": "account_team_invites",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
@@ -3396,13 +3408,13 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "expires_at": {
           "name": "expires_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -3449,7 +3461,7 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -3544,7 +3556,7 @@
         },
         "expires_at": {
           "name": "expires_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -3846,7 +3858,7 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -3901,10 +3913,10 @@
         },
         "is_active": {
           "name": "is_active",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "last_validated": {
           "name": "last_validated",
@@ -4011,7 +4023,7 @@
         },
         "marked_at": {
           "name": "marked_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -4124,7 +4136,7 @@
         },
         "window_start": {
           "name": "window_start",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -4217,10 +4229,10 @@
         },
         "is_active": {
           "name": "is_active",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -4360,10 +4372,10 @@
         },
         "is_active": {
           "name": "is_active",
-          "type": "integer",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": 1
+          "default": true
         },
         "sort_order": {
           "name": "sort_order",
@@ -4501,13 +4513,13 @@
         },
         "started_at": {
           "name": "started_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "completed_at": {
           "name": "completed_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
@@ -4618,13 +4630,13 @@
         },
         "started_at": {
           "name": "started_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
         "completed_at": {
           "name": "completed_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
@@ -4698,7 +4710,7 @@
         },
         "restored_at": {
           "name": "restored_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -4779,7 +4791,7 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -4894,13 +4906,13 @@
         },
         "expires_at": {
           "name": "expires_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
         "deleted_at": {
           "name": "deleted_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         }
@@ -5034,7 +5046,7 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5084,13 +5096,13 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5180,7 +5192,7 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5231,13 +5243,13 @@
         },
         "period_start": {
           "name": "period_start",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "period_end": {
           "name": "period_end",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -5255,7 +5267,7 @@
         },
         "reported_at": {
           "name": "reported_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5369,13 +5381,13 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5469,7 +5481,7 @@
         },
         "status_changed_at": {
           "name": "status_changed_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
@@ -5493,14 +5505,14 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": "(extract(epoch from now()))::bigint"
@@ -5699,7 +5711,7 @@
         },
         "granted_at": {
           "name": "granted_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5891,7 +5903,7 @@
         },
         "seen_at": {
           "name": "seen_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5953,14 +5965,14 @@
         },
         "blocked_until": {
           "name": "blocked_until",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         }
@@ -5993,6 +6005,483 @@
         }
       },
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.marketplace_plugins": {
+      "name": "marketplace_plugins",
+      "schema": "",
+      "columns": {
+        "plugin_id": {
+          "name": "plugin_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "npm_package": {
+          "name": "npm_package",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "featured": {
+          "name": "featured",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 999
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discovered_at": {
+          "name": "discovered_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled_at": {
+          "name": "enabled_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled_by": {
+          "name": "enabled_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "installed_at": {
+          "name": "installed_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "install_error": {
+          "name": "install_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "marketplace_plugins_enabled_idx": {
+          "name": "marketplace_plugins_enabled_idx",
+          "columns": [
+            {
+              "expression": "enabled",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.onboarding_sessions": {
+      "name": "onboarding_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "anonymous_id": {
+          "name": "anonymous_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wopr_session_name": {
+          "name": "wopr_session_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "graduated_at": {
+          "name": "graduated_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "graduation_path": {
+          "name": "graduation_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_platform_cost_usd": {
+          "name": "total_platform_cost_usd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "onboarding_sessions_user_id_idx": {
+          "name": "onboarding_sessions_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "onboarding_sessions_anonymous_id_idx": {
+          "name": "onboarding_sessions_anonymous_id_idx",
+          "columns": [
+            {
+              "expression": "anonymous_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "onboarding_sessions_wopr_session_name_unique": {
+          "name": "onboarding_sessions_wopr_session_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "wopr_session_name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.session_usage": {
+      "name": "session_usage",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page": {
+          "name": "page",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cached_tokens": {
+          "name": "cached_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cache_write_tokens": {
+          "name": "cache_write_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cost_usd": {
+          "name": "cost_usd",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "idx_session_usage_session": {
+          "name": "idx_session_usage_session",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_session_usage_user": {
+          "name": "idx_session_usage_user",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_session_usage_created": {
+          "name": "idx_session_usage_created",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_session_usage_page": {
+          "name": "idx_session_usage_page",
+          "columns": [
+            {
+              "expression": "page",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.setup_sessions": {
+      "name": "setup_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plugin_id": {
+          "name": "plugin_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'in_progress'"
+        },
+        "collected": {
+          "name": "collected",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dependencies_installed": {
+          "name": "dependencies_installed",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_count": {
+          "name": "error_count",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "setup_sessions_session_id_idx": {
+          "name": "setup_sessions_session_id_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "setup_sessions_plugin_id_idx": {
+          "name": "setup_sessions_plugin_id_idx",
+          "columns": [
+            {
+              "expression": "plugin_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "setup_sessions_session_in_progress_uniq": {
+          "name": "setup_sessions_session_in_progress_uniq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "session_id",
+            "status"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

@@ -2,20 +2,12 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
-    {"idx": 0, "version": "7", "when": 1772054647409, "tag": "0000_blushing_firedrake", "breakpoints": true},
-    {"idx": 38, "version": "6", "when": 1771997035470, "tag": "0038_unique_vengeance", "breakpoints": true},
-    {"idx": 39, "version": "6", "when": 1772001000000, "tag": "0039_solid_black_knight", "breakpoints": true},
-    {"idx": 40, "version": "6", "when": 1771993927132, "tag": "0040_tearful_nebula", "breakpoints": true},
-    {"idx": 41, "version": "6", "when": 1771991927360, "tag": "0041_massive_mandrill", "breakpoints": true},
-    {"idx": 42, "version": "7", "when": 1772002000000, "tag": "0042_session_usage", "breakpoints": true},
-    {"idx": 43, "version": "7", "when": 1772100000000, "tag": "0043_setup_sessions", "breakpoints": true},
-    {"idx": 44, "version": "7", "when": 1772100000000, "tag": "0044_onboarding_scripts", "breakpoints": true},
-    {"idx": 45, "version": "7", "when": 1772160000000, "tag": "0045_setup_sessions_error_count", "breakpoints": true},
-    {"idx": 46, "version": "7", "when": 1772220000000, "tag": "0046_onboarding_graduation", "breakpoints": true},
-    {"idx": 47, "version": "7", "when": 1772220001000, "tag": "0047_marketplace_plugins_install_tracking", "breakpoints": true},
-    {"idx": 48, "version": "7", "when": 1772220002000, "tag": "0048_remove_budget_used_cents", "breakpoints": true},
-    {"idx": 49, "version": "7", "when": 1772220003000, "tag": "0049_credit_value_object", "breakpoints": true},
-    {"idx": 50, "version": "7", "when": 1772220004000, "tag": "0050_boolean_columns", "breakpoints": true},
-    {"idx": 51, "version": "7", "when": 1772220005000, "tag": "0051_plugin_configs", "breakpoints": true}
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1772235892631,
+      "tag": "0000_init",
+      "breakpoints": true
+    }
   ]
 }
