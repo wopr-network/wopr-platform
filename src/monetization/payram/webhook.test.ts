@@ -65,7 +65,7 @@ describe("handlePayRamWebhook", () => {
       expect(result.creditedCents).toBe(2500);
 
       const balance = await creditLedger.balance("tenant-a");
-      expect(balance).toBe(2500);
+      expect(balance.toCents()).toBe(2500);
     });
 
     it("uses payram: prefix on reference ID in credit transaction", async () => {
@@ -97,7 +97,7 @@ describe("handlePayRamWebhook", () => {
       expect(result2.creditedCents).toBe(0);
 
       const balance = await creditLedger.balance("tenant-a");
-      expect(balance).toBe(2500); // Only credited once
+      expect(balance.toCents()).toBe(2500); // Only credited once
     });
   });
 
@@ -117,7 +117,7 @@ describe("handlePayRamWebhook", () => {
 
       expect(result.handled).toBe(true);
       expect(result.creditedCents).toBe(1000); // Only the requested amount
-      expect(await creditLedger.balance("tenant-b")).toBe(1000);
+      expect((await creditLedger.balance("tenant-b")).toCents()).toBe(1000);
     });
   });
 
@@ -132,7 +132,7 @@ describe("handlePayRamWebhook", () => {
       expect(result.handled).toBe(true);
       expect(result.tenant).toBe("tenant-a");
       expect(result.creditedCents).toBeUndefined();
-      expect(await creditLedger.balance("tenant-a")).toBe(0);
+      expect((await creditLedger.balance("tenant-a")).toCents()).toBe(0);
     });
   });
 
@@ -142,7 +142,7 @@ describe("handlePayRamWebhook", () => {
 
       expect(result.handled).toBe(true);
       expect(result.creditedCents).toBeUndefined();
-      expect(await creditLedger.balance("tenant-a")).toBe(0);
+      expect((await creditLedger.balance("tenant-a")).toCents()).toBe(0);
     });
   });
 
@@ -152,7 +152,7 @@ describe("handlePayRamWebhook", () => {
 
       expect(result.handled).toBe(true);
       expect(result.creditedCents).toBeUndefined();
-      expect(await creditLedger.balance("tenant-a")).toBe(0);
+      expect((await creditLedger.balance("tenant-a")).toCents()).toBe(0);
     });
   });
 
@@ -162,7 +162,7 @@ describe("handlePayRamWebhook", () => {
 
       expect(result.handled).toBe(true);
       expect(result.creditedCents).toBeUndefined();
-      expect(await creditLedger.balance("tenant-a")).toBe(0);
+      expect((await creditLedger.balance("tenant-a")).toCents()).toBe(0);
     });
   });
 
@@ -212,8 +212,8 @@ describe("handlePayRamWebhook", () => {
       await handlePayRamWebhook(deps, makePayload({ reference_id: "ref-b-001", status: "FILLED" }));
       await handlePayRamWebhook(deps, makePayload({ reference_id: "ref-c-001", status: "FILLED" }));
 
-      expect(await creditLedger.balance("tenant-b")).toBe(5000);
-      expect(await creditLedger.balance("tenant-c")).toBe(1500);
+      expect((await creditLedger.balance("tenant-b")).toCents()).toBe(5000);
+      expect((await creditLedger.balance("tenant-c")).toCents()).toBe(1500);
     });
   });
 
@@ -237,7 +237,7 @@ describe("handlePayRamWebhook", () => {
       expect(second.creditedCents).toBeUndefined();
 
       // Only credited once
-      expect(await creditLedger.balance("tenant-a")).toBe(2500);
+      expect((await creditLedger.balance("tenant-a")).toCents()).toBe(2500);
     });
 
     it("same reference_id with different status is not blocked by replay guard", async () => {

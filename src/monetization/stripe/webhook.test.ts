@@ -79,7 +79,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       // Verify credits were granted
       const balance = await creditLedger.balance("tenant-123");
-      expect(balance).toBe(2500);
+      expect(balance.toCents()).toBe(2500);
     });
 
     it("applies bonus tiers when priceMap is provided", async () => {
@@ -139,7 +139,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.tenant).toBe("tenant-from-metadata");
 
       const balance = await creditLedger.balance("tenant-from-metadata");
-      expect(balance).toBe(2500);
+      expect(balance.toCents()).toBe(2500);
     });
 
     it("handles customer object instead of string", async () => {
@@ -207,7 +207,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       // Only credited once despite duplicate webhook delivery
       const balance = await creditLedger.balance("tenant-123");
-      expect(balance).toBe(500);
+      expect(balance.toCents()).toBe(500);
     });
 
     it("grants 1:1 credits when no priceMap is provided", async () => {
@@ -240,7 +240,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.creditedCents).toBe(2000);
 
       // Referrer should have received matching credits
-      expect(await creditLedger.balance("referrer-tenant")).toBe(2000);
+      expect((await creditLedger.balance("referrer-tenant")).toCents()).toBe(2000);
 
       // Referral record should be updated
       const ref = await affiliateRepo.getReferralByReferred("tenant-123");
@@ -293,7 +293,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       // Only credited once
       const balance = await creditLedger.balance("tenant-replay");
-      expect(balance).toBe(1000);
+      expect(balance.toCents()).toBe(1000);
     });
 
     it("returns idempotent 200-style response for duplicates (not error)", async () => {
@@ -323,7 +323,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(r2.duplicate).toBeUndefined();
 
       const balance = await creditLedger.balance("tenant-replay");
-      expect(balance).toBe(2000);
+      expect(balance.toCents()).toBe(2000);
     });
 
     it("blocks replay of unhandled event types too", async () => {
@@ -421,7 +421,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.affiliateBonusCents).toBe(1000); // 20% of 5000
 
       // Total balance = purchase + bonus
-      expect(await creditLedger.balance("tenant-123")).toBe(6000);
+      expect((await creditLedger.balance("tenant-123")).toCents()).toBe(6000);
     });
 
     it("does not grant bonus to non-referred user", async () => {
@@ -429,7 +429,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const result = await handleWebhookEvent(depsWithAffiliate, event);
 
       expect(result.affiliateBonusCents).toBeUndefined();
-      expect(await creditLedger.balance("tenant-123")).toBe(5000);
+      expect((await creditLedger.balance("tenant-123")).toCents()).toBe(5000);
     });
 
     it("does not grant bonus on second purchase", async () => {
@@ -445,7 +445,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       expect(result2.affiliateBonusCents).toBeUndefined();
       // Balance = 5000 (first purchase) + 1000 (bonus) + 3000 (second purchase) = 9000
-      expect(await creditLedger.balance("tenant-123")).toBe(9000);
+      expect((await creditLedger.balance("tenant-123")).toCents()).toBe(9000);
     });
 
     it("works without affiliateRepo in deps (backwards compatible)", async () => {
