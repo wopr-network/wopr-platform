@@ -8,7 +8,7 @@
 
 import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import type { BudgetChecker, SpendLimits } from "../monetization/budget/budget-checker.js";
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { CapabilityRateLimitConfig } from "./capability-rate-limit.js";
 import type { CircuitBreakerConfig } from "./circuit-breaker.js";
@@ -99,7 +99,7 @@ export interface GatewayConfig {
   /** BudgetChecker instance for pre-call budget validation */
   budgetChecker: BudgetChecker;
   /** CreditLedger instance for deducting credits after proxy calls (optional — if absent, credit deduction is skipped) */
-  creditLedger?: CreditLedger;
+  creditLedger?: ICreditLedger;
   /** URL to direct users to when they need to add credits (default: "/dashboard/credits") */
   topUpUrl?: string;
   /** Maximum negative credit balance (in cents) before hard-stop. Default: 50 (-$0.50). */

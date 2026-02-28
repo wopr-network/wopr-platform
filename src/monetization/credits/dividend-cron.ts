@@ -1,11 +1,11 @@
 import { logger } from "../../config/logger.js";
 import { Credit } from "../credit.js";
-import type { CreditLedger } from "./credit-ledger.js";
+import type { ICreditLedger } from "./credit-ledger.js";
 import type { ICreditTransactionRepository } from "./credit-transaction-repository.js";
 
 export interface DividendCronConfig {
   creditTransactionRepo: ICreditTransactionRepository;
-  ledger: CreditLedger;
+  ledger: ICreditLedger;
   /** Fraction of daily purchases matched as dividend pool. Default 1.0 (100%). */
   matchRate: number;
   /** The date to compute dividend for, as YYYY-MM-DD string. Typically yesterday. */
