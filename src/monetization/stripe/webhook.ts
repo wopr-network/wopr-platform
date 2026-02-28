@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { IVpsRepository } from "../../fleet/vps-repository.js";
+import type { IAffiliateFraudRepository } from "../affiliate/affiliate-fraud-repository.js";
 import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
 import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
@@ -42,6 +43,8 @@ export interface WebhookDeps {
   replayGuard?: IWebhookSeenRepository;
   /** Affiliate repository for credit match (WOP-949) and new-user bonus (WOP-950). */
   affiliateRepo?: IAffiliateRepository;
+  /** Fraud repository for self-referral detection at payout time (WOP-1061). */
+  fraudRepo?: IAffiliateFraudRepository;
   /** Notification service for sending affiliate credit match emails (WOP-949). */
   notificationService?: NotificationService;
   /** Look up email address for a tenant ID (required for affiliate match notifications). */
@@ -152,6 +155,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
           purchaseAmountCents: creditCents,
           ledger: deps.creditLedger,
           affiliateRepo: deps.affiliateRepo,
+          fraudRepo: deps.fraudRepo,
         });
         if (matchResult && deps.notificationService && deps.getEmailForTenant) {
           const referrerEmail = await deps.getEmailForTenant(matchResult.referrerTenantId);

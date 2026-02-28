@@ -23,6 +23,7 @@ import { runMigrations } from "./db/migrate.js";
 import * as schema from "./db/schema/index.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
+  getAffiliateFraudRepo,
   getAffiliateRepo,
   getBackupVerifier,
   getBotInstanceRepo,
@@ -587,6 +588,8 @@ if (process.env.NODE_ENV !== "test") {
         webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
         priceMap,
         creditLedger: getCreditLedger(),
+        affiliateRepo: getAffiliateRepo(),
+        fraudRepo: getAffiliateFraudRepo(),
       });
 
       // Create PayRam deps before tRPC router so both REST and tRPC can share them.

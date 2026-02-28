@@ -327,6 +327,11 @@ async function createTRPCContext(req: Request): Promise<TRPCContext> {
   let user: AuthUser | undefined;
   let tenantId: string | undefined;
 
+  // Extract client IP from x-forwarded-for (first entry) or x-real-ip header.
+  const xff = req.headers.get("x-forwarded-for");
+  const ip: string | undefined =
+    (xff ? xff.split(",")[0]?.trim() : undefined) ?? req.headers.get("x-real-ip") ?? undefined;
+
   // 1. Try bearer token
   const authHeader = req.headers.get("Authorization") ?? undefined;
   const token = extractBearerToken(authHeader);
@@ -359,7 +364,7 @@ async function createTRPCContext(req: Request): Promise<TRPCContext> {
     }
   }
 
-  return { user, tenantId };
+  return { user, tenantId, ip };
 }
 
 app.all("/trpc/*", async (c) => {

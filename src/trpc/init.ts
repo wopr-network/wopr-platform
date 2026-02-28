@@ -17,6 +17,8 @@ export interface TRPCContext {
   user: AuthUser | undefined;
   /** Tenant ID associated with the bearer token, if any. */
   tenantId: string | undefined;
+  /** Client IP address extracted from x-forwarded-for or remote address, if available. */
+  ip?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,7 +38,7 @@ const isAuthed = t.middleware(({ ctx, next }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Authentication required" });
   }
-  return next({ ctx: { user: ctx.user, tenantId: ctx.tenantId } });
+  return next({ ctx: { user: ctx.user, tenantId: ctx.tenantId, ip: ctx.ip } });
 });
 
 /** Procedure that requires a valid authenticated user. */
@@ -53,7 +55,7 @@ const isAuthedWithTenant = t.middleware(({ ctx, next }) => {
   if (!ctx.tenantId) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Tenant context required" });
   }
-  return next({ ctx: { user: ctx.user, tenantId: ctx.tenantId } });
+  return next({ ctx: { user: ctx.user, tenantId: ctx.tenantId, ip: ctx.ip } });
 });
 
 /** Procedure that requires authentication + a tenant context. */

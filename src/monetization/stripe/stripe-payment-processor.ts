@@ -1,4 +1,6 @@
 import type Stripe from "stripe";
+import type { IAffiliateFraudRepository } from "../affiliate/affiliate-fraud-repository.js";
+import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { Credit } from "../credit.js";
 import { chargeAutoTopup } from "../credits/auto-topup-charge.js";
 import type { IAutoTopupEventLogRepository } from "../credits/auto-topup-event-log-repository.js";
@@ -33,6 +35,10 @@ export interface StripePaymentProcessorDeps {
   botBilling?: BotBilling;
   replayGuard?: IWebhookSeenRepository;
   autoTopupEventLog?: IAutoTopupEventLogRepository;
+  /** Affiliate repository for credit match on first purchase (WOP-949). */
+  affiliateRepo?: IAffiliateRepository;
+  /** Fraud repository for self-referral detection (WOP-1061). */
+  fraudRepo?: IAffiliateFraudRepository;
 }
 
 export class StripePaymentProcessor implements IPaymentProcessor {
@@ -46,6 +52,8 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   private readonly botBilling?: BotBilling;
   private readonly replayGuard?: IWebhookSeenRepository;
   private readonly autoTopupEventLog?: IAutoTopupEventLogRepository;
+  private readonly affiliateRepo?: IAffiliateRepository;
+  private readonly fraudRepo?: IAffiliateFraudRepository;
 
   constructor(deps: StripePaymentProcessorDeps) {
     this.stripe = deps.stripe;
@@ -56,6 +64,8 @@ export class StripePaymentProcessor implements IPaymentProcessor {
     this.botBilling = deps.botBilling;
     this.replayGuard = deps.replayGuard;
     this.autoTopupEventLog = deps.autoTopupEventLog;
+    this.affiliateRepo = deps.affiliateRepo;
+    this.fraudRepo = deps.fraudRepo;
   }
 
   async createCheckoutSession(opts: CheckoutOpts): Promise<CheckoutSession> {
@@ -106,6 +116,8 @@ export class StripePaymentProcessor implements IPaymentProcessor {
         priceMap: this.priceMap.size > 0 ? this.priceMap : undefined,
         botBilling: this.botBilling,
         replayGuard: this.replayGuard,
+        affiliateRepo: this.affiliateRepo,
+        fraudRepo: this.fraudRepo,
       },
       event,
     );
