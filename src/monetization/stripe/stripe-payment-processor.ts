@@ -31,7 +31,7 @@ export interface StripePaymentProcessorDeps {
   priceMap?: CreditPriceMap;
   creditLedger: ICreditLedger;
   botBilling?: BotBilling;
-  replayGuard?: IWebhookSeenRepository;
+  replayGuard: IWebhookSeenRepository;
   autoTopupEventLog?: IAutoTopupEventLogRepository;
 }
 
@@ -44,7 +44,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   private readonly priceMap: CreditPriceMap;
   private readonly creditLedger: ICreditLedger;
   private readonly botBilling?: BotBilling;
-  private readonly replayGuard?: IWebhookSeenRepository;
+  private readonly replayGuard: IWebhookSeenRepository;
   private readonly autoTopupEventLog?: IAutoTopupEventLogRepository;
 
   constructor(deps: StripePaymentProcessorDeps) {

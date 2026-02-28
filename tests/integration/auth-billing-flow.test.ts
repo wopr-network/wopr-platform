@@ -17,6 +17,7 @@ import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { TenantCustomerStore } from "../../src/monetization/stripe/tenant-store.js";
 import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
+import { noOpReplayGuard } from "../../src/monetization/webhook-seen-repository.js";
 
 describe("integration: auth → billing → credit flow", () => {
   let pool: PGlite;
@@ -29,7 +30,7 @@ describe("integration: auth → billing → credit flow", () => {
     ({ db, pool } = await createTestDb());
     tenantStore = new TenantCustomerStore(db);
     creditLedger = new CreditLedger(db);
-    deps = { tenantStore, creditLedger };
+    deps = { tenantStore, creditLedger, replayGuard: noOpReplayGuard };
   });
 
   afterEach(async () => {

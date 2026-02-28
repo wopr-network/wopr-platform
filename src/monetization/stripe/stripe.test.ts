@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb as createPgTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
+import { noOpReplayGuard } from "../webhook-seen-repository.js";
 import { createCreditCheckoutSession } from "./checkout.js";
 import { loadStripeConfig } from "./client.js";
 import {
@@ -373,7 +374,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditLedger, replayGuard: noOpReplayGuard }, event);
 
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-1");
@@ -402,7 +403,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditLedger, replayGuard: noOpReplayGuard }, event);
     expect(result.handled).toBe(true);
     expect(result.tenant).toBe("t-2");
     expect(result.creditedCents).toBe(500);
@@ -422,7 +423,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditLedger, replayGuard: noOpReplayGuard }, event);
     expect(result.handled).toBe(false);
   });
 
@@ -437,7 +438,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditLedger, replayGuard: noOpReplayGuard }, event);
     expect(result.handled).toBe(false);
   });
 
@@ -447,7 +448,7 @@ describe("handleWebhookEvent (credit model)", () => {
       data: { object: {} },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditLedger, replayGuard: noOpReplayGuard }, event);
     expect(result.handled).toBe(false);
     expect(result.event_type).toBe("payment_intent.succeeded");
   });
@@ -466,7 +467,7 @@ describe("handleWebhookEvent (credit model)", () => {
       },
     } as unknown as Stripe.Event;
 
-    const result = await handleWebhookEvent({ tenantStore, creditLedger }, event);
+    const result = await handleWebhookEvent({ tenantStore, creditLedger, replayGuard: noOpReplayGuard }, event);
     expect(result.handled).toBe(true);
     const mapping = await tenantStore.getByTenant("t-1");
     expect(mapping?.processor_customer_id).toBe("cus_abc123");
