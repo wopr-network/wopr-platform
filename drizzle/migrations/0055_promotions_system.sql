@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS "coupon_codes" (
   "assigned_tenant_id" text,
   "assigned_email" text,
   "redeemed_at" timestamp with time zone,
-  "redeemed_by_tenant_id" text
+  "redeemed_by_tenant_id" text,
+  "created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "coupon_codes_promotion_idx" ON "coupon_codes" ("promotion_id");
