@@ -17,4 +17,5 @@ export interface IBotInstanceRepository {
   setBillingState(id: string, state: BillingState): Promise<BotInstance>;
   getResourceTier(botId: string): Promise<string | null>;
   setResourceTier(botId: string, tier: string): Promise<void>;
+  deleteAllByTenant(tenantId: string): Promise<void>;
 }

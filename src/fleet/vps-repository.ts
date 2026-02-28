@@ -12,6 +12,7 @@ export interface IVpsRepository {
   setSshPublicKey(botId: string, key: string): Promise<void>;
   setTunnelId(botId: string, tunnelId: string): Promise<void>;
   delete(botId: string): Promise<void>;
+  deleteAllByTenant(tenantId: string): Promise<void>;
 }
 
 export class DrizzleVpsRepository implements IVpsRepository {
@@ -65,6 +66,10 @@ export class DrizzleVpsRepository implements IVpsRepository {
 
   async delete(botId: string): Promise<void> {
     await this.db.delete(vpsSubscriptions).where(eq(vpsSubscriptions.botId, botId));
+  }
+
+  async deleteAllByTenant(tenantId: string): Promise<void> {
+    await this.db.delete(vpsSubscriptions).where(eq(vpsSubscriptions.tenantId, tenantId));
   }
 }
 

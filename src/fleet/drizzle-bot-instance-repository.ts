@@ -104,6 +104,10 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
       })
       .where(eq(botInstances.id, botId));
   }
+
+  async deleteAllByTenant(tenantId: string): Promise<void> {
+    await this.db.delete(botInstances).where(eq(botInstances.tenantId, tenantId));
+  }
 }
 
 // ---------------------------------------------------------------------------

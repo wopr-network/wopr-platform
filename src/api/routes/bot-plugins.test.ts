@@ -97,6 +97,7 @@ const mockBotInstanceRepo = {
   setBillingState: vi.fn(),
   getResourceTier: vi.fn(),
   setResourceTier: vi.fn(),
+  deleteAllByTenant: vi.fn(),
 };
 
 // Wire in mock deps

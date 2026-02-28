@@ -6,7 +6,9 @@
 
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
+import type { IBotInstanceRepository } from "../fleet/bot-instance-repository.js";
 import type { IOrgMemberRepository, OrgInviteRow } from "../fleet/org-member-repository.js";
+import type { IVpsRepository } from "../fleet/vps-repository.js";
 import type { IOrgRepository, Tenant } from "./drizzle-org-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -44,6 +46,8 @@ export class OrgService {
   constructor(
     private readonly orgRepo: IOrgRepository,
     private readonly memberRepo: IOrgMemberRepository,
+    private readonly botInstanceRepo?: IBotInstanceRepository,
+    private readonly vpsRepo?: IVpsRepository,
   ) {}
 
   /**
@@ -87,6 +91,10 @@ export class OrgService {
     if (org.ownerId !== actorUserId) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can delete the organization" });
     }
+    // Clean up bot instances and VPS subscriptions before deleting the tenant row
+    // (no FK cascade on tenant_id in these tables).
+    await this.botInstanceRepo?.deleteAllByTenant(orgId);
+    await this.vpsRepo?.deleteAllByTenant(orgId);
     await this.memberRepo.deleteAllInvites(orgId);
     await this.memberRepo.deleteAllMembers(orgId);
     await this.orgRepo.deleteOrg(orgId);
