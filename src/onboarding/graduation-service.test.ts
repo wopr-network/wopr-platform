@@ -90,6 +90,7 @@ function mockBotInstanceRepo(hasBots: boolean): IBotInstanceRepository {
     setBillingState: vi.fn(),
     getResourceTier: vi.fn(async () => null),
     setResourceTier: vi.fn(),
+    deleteAllByTenant: vi.fn(),
   };
 }
 

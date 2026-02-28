@@ -9,7 +9,7 @@ import { OrgService } from "./org-service.js";
 async function setup(db: DrizzleDb) {
   const orgRepo = new DrizzleOrgRepository(db);
   const memberRepo = new DrizzleOrgMemberRepository(db);
-  const service = new OrgService(orgRepo, memberRepo);
+  const service = new OrgService(orgRepo, memberRepo, db);
   return { service, orgRepo, memberRepo };
 }
 
@@ -52,7 +52,7 @@ describe("OrgService", () => {
     it("persists name change to DB", async () => {
       // Create an org, then update it
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-1";
       const org = await orgRepo.createOrg(owner, "Original", "original-slug");
       await memberRepo.addMember({
@@ -74,7 +74,7 @@ describe("OrgService", () => {
 
     it("persists slug change to DB", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-2";
       const org = await orgRepo.createOrg(owner, "My Org", "my-org");
       await memberRepo.addMember({
@@ -94,7 +94,7 @@ describe("OrgService", () => {
 
     it("throws FORBIDDEN when non-admin tries to update", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-3";
       const org = await orgRepo.createOrg(owner, "Org", "org-slug");
       await memberRepo.addMember({
@@ -110,7 +110,7 @@ describe("OrgService", () => {
 
     it("throws CONFLICT when slug is already taken", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-4";
       await orgRepo.createOrg("other", "Other Org", "taken-slug");
       const org = await orgRepo.createOrg(owner, "My Org", "mine-slug");
@@ -129,7 +129,7 @@ describe("OrgService", () => {
   describe("transferOwnership", () => {
     it("updates member roles AND persists new ownerId to tenants table", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-5";
       const newOwner = "new-owner-5";
       const org = await orgRepo.createOrg(owner, "Transfer Org", "transfer-org");
@@ -162,7 +162,7 @@ describe("OrgService", () => {
 
     it("throws FORBIDDEN if non-owner tries to transfer", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-6";
       const other = "other-6";
       const org = await orgRepo.createOrg(owner, "Org6", "org6");
@@ -186,7 +186,7 @@ describe("OrgService", () => {
 
     it("throws NOT_FOUND if target member does not exist", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-7";
       const org = await orgRepo.createOrg(owner, "Org7", "org7");
       await memberRepo.addMember({
@@ -218,7 +218,7 @@ describe("OrgService", () => {
   describe("getOrg", () => {
     it("returns org with members and invites", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-g1";
       const org = await orgRepo.createOrg(owner, "Get Org", "get-org");
       await memberRepo.addMember({
@@ -241,11 +241,10 @@ describe("OrgService", () => {
   });
 
   describe("deleteOrg", () => {
-    it("throws FORBIDDEN when non-owner tries to delete", async () => {
+    it("deletes org when called by owner", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-d1";
-      const other = "other-d1";
       const org = await orgRepo.createOrg(owner, "Del Org", "del-org");
       await memberRepo.addMember({
         id: "md1",
@@ -254,8 +253,69 @@ describe("OrgService", () => {
         role: "owner",
         joinedAt: Date.now(),
       });
+
+      await svc.deleteOrg(org.id, owner);
+
+      // Org should be gone
+      const found = await orgRepo.getById(org.id);
+      expect(found).toBeNull();
+      // Members should be gone
+      const members = await memberRepo.listMembers(org.id);
+      expect(members).toHaveLength(0);
+    });
+
+    it("deletes org with members and invites", async () => {
+      const { orgRepo, memberRepo } = await setup(db);
+      const svc = new OrgService(orgRepo, memberRepo, db);
+      const owner = "owner-d3";
+      const member = "member-d3";
+      const org = await orgRepo.createOrg(owner, "Del Org 3", "del-org-3");
       await memberRepo.addMember({
-        id: "md2",
+        id: "md4",
+        orgId: org.id,
+        userId: owner,
+        role: "owner",
+        joinedAt: Date.now(),
+      });
+      await memberRepo.addMember({
+        id: "md5",
+        orgId: org.id,
+        userId: member,
+        role: "member",
+        joinedAt: Date.now(),
+      });
+      await memberRepo.createInvite({
+        id: "inv-d3",
+        orgId: org.id,
+        email: "invited@example.com",
+        role: "member",
+        invitedBy: owner,
+        token: "tok-d3",
+        expiresAt: Date.now() + 86400000,
+        createdAt: Date.now(),
+      });
+
+      await svc.deleteOrg(org.id, owner);
+
+      expect(await orgRepo.getById(org.id)).toBeNull();
+      expect(await memberRepo.listMembers(org.id)).toHaveLength(0);
+    });
+
+    it("throws FORBIDDEN when non-owner tries to delete", async () => {
+      const { orgRepo, memberRepo } = await setup(db);
+      const svc = new OrgService(orgRepo, memberRepo, db);
+      const owner = "owner-d1b";
+      const other = "other-d1b";
+      const org = await orgRepo.createOrg(owner, "Del Org B", "del-org-b");
+      await memberRepo.addMember({
+        id: "md1b",
+        orgId: org.id,
+        userId: owner,
+        role: "owner",
+        joinedAt: Date.now(),
+      });
+      await memberRepo.addMember({
+        id: "md2b",
         orgId: org.id,
         userId: other,
         role: "admin",
@@ -265,27 +325,15 @@ describe("OrgService", () => {
       await expect(svc.deleteOrg(org.id, other)).rejects.toThrow();
     });
 
-    it("throws METHOD_NOT_SUPPORTED for owner (delete not implemented)", async () => {
-      const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
-      const owner = "owner-d2";
-      const org = await orgRepo.createOrg(owner, "Del Org 2", "del-org-2");
-      await memberRepo.addMember({
-        id: "md3",
-        orgId: org.id,
-        userId: owner,
-        role: "owner",
-        joinedAt: Date.now(),
-      });
-
-      await expect(svc.deleteOrg(org.id, owner)).rejects.toThrow();
+    it("throws NOT_FOUND for nonexistent org", async () => {
+      await expect(service.deleteOrg("nonexistent", userId)).rejects.toThrow();
     });
   });
 
   describe("inviteMember", () => {
     it("creates an invite and returns it", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-i1";
       const org = await orgRepo.createOrg(owner, "Invite Org", "invite-org");
       await memberRepo.addMember({
@@ -303,7 +351,7 @@ describe("OrgService", () => {
 
     it("throws FORBIDDEN when non-admin invites", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-i2";
       const org = await orgRepo.createOrg(owner, "Org I2", "org-i2");
       await memberRepo.addMember({
@@ -321,7 +369,7 @@ describe("OrgService", () => {
   describe("revokeInvite", () => {
     it("revokes an existing invite", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-r1";
       const org = await orgRepo.createOrg(owner, "Revoke Org", "revoke-org");
       await memberRepo.addMember({
@@ -338,7 +386,7 @@ describe("OrgService", () => {
 
     it("throws NOT_FOUND for unknown invite", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-r2";
       const org = await orgRepo.createOrg(owner, "Revoke Org 2", "revoke-org-2");
       await memberRepo.addMember({
@@ -356,7 +404,7 @@ describe("OrgService", () => {
   describe("changeRole", () => {
     it("changes a member's role", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-c1";
       const member = "member-c1";
       const org = await orgRepo.createOrg(owner, "Change Org", "change-org");
@@ -381,7 +429,7 @@ describe("OrgService", () => {
 
     it("throws BAD_REQUEST when trying to change owner's role", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-c2";
       const org = await orgRepo.createOrg(owner, "Change Org 2", "change-org-2");
       await memberRepo.addMember({
@@ -397,7 +445,7 @@ describe("OrgService", () => {
 
     it("throws NOT_FOUND when target member does not exist", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-c3";
       const org = await orgRepo.createOrg(owner, "Change Org 3", "change-org-3");
       await memberRepo.addMember({
@@ -415,7 +463,7 @@ describe("OrgService", () => {
   describe("removeMember", () => {
     it("removes a regular member", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-rm1";
       const member = "member-rm1";
       const org = await orgRepo.createOrg(owner, "Remove Org", "remove-org");
@@ -439,7 +487,7 @@ describe("OrgService", () => {
 
     it("throws BAD_REQUEST when trying to remove the owner", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-rm2";
       const org = await orgRepo.createOrg(owner, "Remove Org 2", "remove-org-2");
       await memberRepo.addMember({
@@ -455,7 +503,7 @@ describe("OrgService", () => {
 
     it("throws NOT_FOUND when target member does not exist", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-rm3";
       const org = await orgRepo.createOrg(owner, "Remove Org 3", "remove-org-3");
       await memberRepo.addMember({
@@ -471,7 +519,7 @@ describe("OrgService", () => {
 
     it("allows removing an admin when the owner is still present (count > 1)", async () => {
       const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
+      const svc = new OrgService(orgRepo, memberRepo, db);
       const owner = "owner-rm4";
       const admin = "admin-rm4";
       const org = await orgRepo.createOrg(owner, "Remove Org 4", "remove-org-4");

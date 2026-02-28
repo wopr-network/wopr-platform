@@ -155,6 +155,7 @@
         "src/email/notification-queue-store.ts",
         "src/email/drizzle-billing-email-repository.ts",
         "src/org/drizzle-org-repository.ts",
+        "src/org/org-service.ts",
         "src/marketplace/drizzle-marketplace-plugin-repository.ts",
         "src/setup/setup-session-repository.ts",
         "src/auth/user-role-repository.ts",

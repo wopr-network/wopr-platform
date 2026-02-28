@@ -50,6 +50,8 @@ export interface IOrgMemberRepository {
   findInviteById(inviteId: string): Promise<OrgInviteRow | null>;
   findInviteByToken(token: string): Promise<OrgInviteRow | null>;
   deleteInvite(inviteId: string): Promise<void>;
+  deleteAllMembers(orgId: string): Promise<void>;
+  deleteAllInvites(orgId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,5 +147,13 @@ export class DrizzleOrgMemberRepository implements IOrgMemberRepository {
 
   async deleteInvite(inviteId: string): Promise<void> {
     await this.db.delete(organizationInvites).where(eq(organizationInvites.id, inviteId));
+  }
+
+  async deleteAllMembers(orgId: string): Promise<void> {
+    await this.db.delete(organizationMembers).where(eq(organizationMembers.orgId, orgId));
+  }
+
+  async deleteAllInvites(orgId: string): Promise<void> {
+    await this.db.delete(organizationInvites).where(eq(organizationInvites.orgId, orgId));
   }
 }

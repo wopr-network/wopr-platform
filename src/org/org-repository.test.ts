@@ -141,4 +141,17 @@ describe("DrizzleOrgRepository", () => {
       expect(updated?.ownerId).toBe("user-2");
     });
   });
+
+  describe("deleteOrg", () => {
+    it("deletes an existing org", async () => {
+      const org = await repo.createOrg("user-1", "Doomed Org", "doomed-org");
+      await repo.deleteOrg(org.id);
+      const found = await repo.getById(org.id);
+      expect(found).toBeNull();
+    });
+
+    it("silently succeeds when org does not exist", async () => {
+      await expect(repo.deleteOrg("nonexistent")).resolves.not.toThrow();
+    });
+  });
 });

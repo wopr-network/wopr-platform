@@ -6,6 +6,15 @@
 
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
+import type { DrizzleDb } from "../db/index.js";
+import {
+  botInstances,
+  organizationInvites,
+  organizationMembers,
+  tenants,
+  vpsSubscriptions,
+} from "../db/schema/index.js";
 import type { IOrgMemberRepository, OrgInviteRow } from "../fleet/org-member-repository.js";
 import type { IOrgRepository, Tenant } from "./drizzle-org-repository.js";
 
@@ -44,6 +53,7 @@ export class OrgService {
   constructor(
     private readonly orgRepo: IOrgRepository,
     private readonly memberRepo: IOrgMemberRepository,
+    private readonly db: DrizzleDb,
   ) {}
 
   /**
@@ -87,10 +97,15 @@ export class OrgService {
     if (org.ownerId !== actorUserId) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can delete the organization" });
     }
-    // cascade handled by DB FK; just delete the tenant
-    // NOTE: The existing IOrgRepository has no delete method yet.
-    // This is a no-op until extended — throw NOT_IMPLEMENTED for now.
-    throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "Org deletion requires IOrgRepository.deleteOrg" });
+    await this.db.transaction(async (tx) => {
+      // Clean up bot instances and VPS subscriptions before deleting the tenant row
+      // (no FK cascade on tenant_id in these tables).
+      await tx.delete(botInstances).where(eq(botInstances.tenantId, orgId));
+      await tx.delete(vpsSubscriptions).where(eq(vpsSubscriptions.tenantId, orgId));
+      await tx.delete(organizationInvites).where(eq(organizationInvites.orgId, orgId));
+      await tx.delete(organizationMembers).where(eq(organizationMembers.orgId, orgId));
+      await tx.delete(tenants).where(eq(tenants.id, orgId));
+    });
   }
 
   async inviteMember(
