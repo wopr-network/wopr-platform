@@ -63,6 +63,26 @@ describe("Credit", () => {
       expect(Credit.fromDollars(1.5).toDisplayString()).toBe("$1.50");
     });
 
+    it("toCentsRounded rounds to nearest integer cent", () => {
+      // 0.123 cents -> rounds to 0
+      expect(Credit.fromCents(0.123).toCentsRounded()).toBe(0);
+      // 0.5 cents -> rounds to 1 (banker's rounding irrelevant, Math.round rounds 0.5 up)
+      expect(Credit.fromCents(0.5).toCentsRounded()).toBe(1);
+      // 0.7 cents -> rounds to 1
+      expect(Credit.fromCents(0.7).toCentsRounded()).toBe(1);
+      // exact integer cents pass through unchanged
+      expect(Credit.fromCents(500).toCentsRounded()).toBe(500);
+    });
+
+    it("toCentsFloor truncates toward negative infinity", () => {
+      // 0.9 cents -> floors to 0
+      expect(Credit.fromCents(0.9).toCentsFloor()).toBe(0);
+      // exact integer cents pass through unchanged
+      expect(Credit.fromCents(500).toCentsFloor()).toBe(500);
+      // negative: -0.1 cents -> floors to -1
+      expect(Credit.fromCents(-0.1).toCentsFloor()).toBe(-1);
+    });
+
     it("toDisplayString rounds sub-cent to two decimals", () => {
       // 1 raw unit = $0.000000001, should display as $0.00
       expect(Credit.fromRaw(1).toDisplayString()).toBe("$0.00");
