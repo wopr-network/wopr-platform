@@ -125,17 +125,23 @@ describe("DrizzleMeterAggregator edge cases", () => {
     expect(real).toHaveLength(2);
 
     const tenantA = real.find((s) => s.tenant === "tenant-A");
-    expect(tenantA).toBeDefined();
+    expect(tenantA).toEqual(
+      expect.objectContaining({
+        tenant: "tenant-A",
+        eventCount: 2,
+        totalCost: 4_000_000,
+        totalCharge: 6_000_000,
+      }),
+    );
     const tenantB = real.find((s) => s.tenant === "tenant-B");
-    expect(tenantB).toBeDefined();
-
-    expect(tenantA?.eventCount).toBe(2);
-    expect(tenantA?.totalCost).toBe(4_000_000);
-    expect(tenantA?.totalCharge).toBe(6_000_000);
-
-    expect(tenantB?.eventCount).toBe(1);
-    expect(tenantB?.totalCost).toBe(5_000_000);
-    expect(tenantB?.totalCharge).toBe(6_000_000);
+    expect(tenantB).toEqual(
+      expect.objectContaining({
+        tenant: "tenant-B",
+        eventCount: 1,
+        totalCost: 5_000_000,
+        totalCharge: 6_000_000,
+      }),
+    );
   });
 
   it("includes events at window start, excludes events at window end", async () => {
@@ -149,17 +155,84 @@ describe("DrizzleMeterAggregator edge cases", () => {
     const real = summaries.filter((s) => s.tenant !== "__sentinel__");
 
     const window0 = real.find((s) => s.windowStart === 0);
-    expect(window0).toBeDefined();
-    expect(window0?.eventCount).toBe(2);
-    expect(window0?.totalCost).toBe(3_000_000);
+    expect(window0).toEqual(
+      expect.objectContaining({
+        windowStart: 0,
+        eventCount: 2,
+        totalCost: 3_000_000,
+      }),
+    );
 
     const window1 = real.find((s) => s.windowStart === 60_000);
-    expect(window1).toBeDefined();
-    expect(window1?.eventCount).toBe(1);
-    expect(window1?.totalCost).toBe(100_000_000);
+    expect(window1).toEqual(
+      expect.objectContaining({
+        windowStart: 60_000,
+        eventCount: 1,
+        totalCost: 100_000_000,
+      }),
+    );
 
     // window0: 1 tenant/capability/provider group = 1 row
     // window1: 1 tenant/capability/provider group = 1 row
     expect(inserted).toBe(2);
+  });
+
+  it("aggregates zero-cost events correctly", async () => {
+    await insertEvent({ timestamp: 10_000, cost: 0, charge: 0 });
+    await insertEvent({ timestamp: 20_000, cost: 0, charge: 0 });
+
+    const inserted = await aggregator.aggregate(WINDOW_MS + 1);
+    expect(inserted).toBe(1);
+
+    const summaries = await db.select().from(usageSummaries);
+    const real = summaries.filter((s) => s.tenant !== "__sentinel__");
+    expect(real).toHaveLength(1);
+    expect(real[0].totalCost).toBe(0);
+    expect(real[0].totalCharge).toBe(0);
+    expect(real[0].eventCount).toBe(2);
+  });
+
+  it("handles a single event exactly at window boundary", async () => {
+    // Event at timestamp 0 (window start) — should be in window [0, WINDOW_MS)
+    await insertEvent({ timestamp: 0, cost: 1_000_000, charge: 2_000_000 });
+
+    const inserted = await aggregator.aggregate(WINDOW_MS + 1);
+    expect(inserted).toBe(1);
+
+    const summaries = await db.select().from(usageSummaries);
+    const real = summaries.filter((s) => s.tenant !== "__sentinel__");
+    expect(real).toHaveLength(1);
+    expect(real[0].eventCount).toBe(1);
+    expect(real[0].totalCost).toBe(1_000_000);
+  });
+
+  it("handles event one unit before window end", async () => {
+    // Event at WINDOW_MS - 1 should be included in first window
+    await insertEvent({ timestamp: WINDOW_MS - 1, cost: 500_000, charge: 600_000 });
+
+    const inserted = await aggregator.aggregate(WINDOW_MS + 1);
+    expect(inserted).toBe(1);
+
+    const summaries = await db.select().from(usageSummaries);
+    const real = summaries.filter((s) => s.tenant !== "__sentinel__");
+    expect(real).toHaveLength(1);
+    expect(real[0].windowStart).toBe(0);
+    expect(real[0].eventCount).toBe(1);
+    expect(real[0].totalCost).toBe(500_000);
+  });
+
+  it("handles event exactly at window end (goes to next window)", async () => {
+    // Event at exactly WINDOW_MS should be in window [WINDOW_MS, 2*WINDOW_MS)
+    await insertEvent({ timestamp: WINDOW_MS, cost: 700_000, charge: 800_000 });
+
+    await aggregator.aggregate(2 * WINDOW_MS + 1);
+
+    const summaries = await db.select().from(usageSummaries);
+    const real = summaries.filter((s) => s.tenant !== "__sentinel__");
+    // Should be in second window, not first
+    expect(real).toHaveLength(1);
+    expect(real[0].windowStart).toBe(WINDOW_MS);
+    expect(real[0].eventCount).toBe(1);
+    expect(real[0].totalCost).toBe(700_000);
   });
 });

@@ -7,8 +7,8 @@ describe("RATE_TABLE", () => {
     const standardTTS = RATE_TABLE.find((e) => e.capability === "tts" && e.tier === "standard");
     const premiumTTS = RATE_TABLE.find((e) => e.capability === "tts" && e.tier === "premium");
 
-    expect(standardTTS).toBeDefined();
-    expect(premiumTTS).toBeDefined();
+    expect(standardTTS).toEqual(expect.objectContaining({ capability: "tts", tier: "standard" }));
+    expect(premiumTTS).toEqual(expect.objectContaining({ capability: "tts", tier: "premium" }));
   });
 
   it("standard tier is cheaper than premium tier for same capability", () => {
@@ -62,18 +62,24 @@ describe("RATE_TABLE", () => {
 describe("lookupRate", () => {
   it("finds standard tier TTS rate", () => {
     const rate = lookupRate("tts", "standard");
-    expect(rate).toBeDefined();
-    expect(rate?.capability).toBe("tts");
-    expect(rate?.tier).toBe("standard");
-    expect(rate?.provider).toBe("chatterbox-tts");
+    expect(rate).toEqual(
+      expect.objectContaining({
+        capability: "tts",
+        tier: "standard",
+        provider: "chatterbox-tts",
+      }),
+    );
   });
 
   it("finds premium tier TTS rate", () => {
     const rate = lookupRate("tts", "premium");
-    expect(rate).toBeDefined();
-    expect(rate?.capability).toBe("tts");
-    expect(rate?.tier).toBe("premium");
-    expect(rate?.provider).toBe("elevenlabs");
+    expect(rate).toEqual(
+      expect.objectContaining({
+        capability: "tts",
+        tier: "premium",
+        provider: "elevenlabs",
+      }),
+    );
   });
 
   it("returns undefined for non-existent capability", () => {

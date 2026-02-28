@@ -42,7 +42,7 @@ describe("MeterWAL", () => {
     const event = makeEvent();
     const result = wal.append(event);
 
-    expect(result.id).toBeDefined();
+    expect(result.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(result.tenant).toBe("tenant-1");
     expect(wal.count()).toBe(1);
   });
