@@ -1,12 +1,13 @@
+import { config } from "../../config/index.js";
 import type { Credit } from "../credit.js";
 import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IAffiliateFraudRepository } from "./affiliate-fraud-repository.js";
 import type { IAffiliateRepository } from "./drizzle-affiliate-repository.js";
 import { checkSelfReferral } from "./self-referral-detector.js";
 
-const DEFAULT_MATCH_RATE = Number.parseFloat(process.env.AFFILIATE_MATCH_RATE ?? "1.0");
-const DEFAULT_MAX_REFERRALS_30D = Number.parseInt(process.env.AFFILIATE_MAX_REFERRALS_30D ?? "20", 10);
-const DEFAULT_MAX_MATCH_CREDITS_30D = Number.parseInt(process.env.AFFILIATE_MAX_MATCH_CREDITS_30D ?? "20000", 10);
+const DEFAULT_MATCH_RATE = config.billing.affiliateMatchRate;
+const DEFAULT_MAX_REFERRALS_30D = config.billing.affiliateMaxReferrals30d;
+const DEFAULT_MAX_MATCH_CREDITS_30D = config.billing.affiliateMaxMatchCredits30d;
 
 export interface AffiliateCreditMatchDeps {
   tenantId: string;

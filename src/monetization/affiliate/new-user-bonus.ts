@@ -1,9 +1,10 @@
+import { config } from "../../config/index.js";
 import { Credit } from "../credit.js";
 import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IAffiliateRepository } from "./drizzle-affiliate-repository.js";
 
 /** Default bonus rate: 20% of purchase amount. Override with AFFILIATE_NEW_USER_BONUS_RATE env var. */
-export const DEFAULT_BONUS_RATE = Number(process.env.AFFILIATE_NEW_USER_BONUS_RATE ?? "0.20");
+export const DEFAULT_BONUS_RATE = config.billing.affiliateNewUserBonusRate;
 
 export interface NewUserBonusParams {
   ledger: ICreditLedger;

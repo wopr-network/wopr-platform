@@ -911,7 +911,7 @@ if (process.env.NODE_ENV !== "test") {
   // Daily community dividend distribution — pool = sum(purchases) × matchRate, split among active users.
   // Runs once every 24h. Idempotent: skips if already ran for the target date.
   {
-    const dividendMatchRate = Number.parseFloat(process.env.DIVIDEND_MATCH_RATE ?? "1.0");
+    const dividendMatchRate = config.billing.dividendMatchRate;
     const dividendTxRepo = getCreditTransactionRepo();
     const dividendLedger = getCreditLedger();
     const DAILY_MS = 24 * 60 * 60 * 1000;
