@@ -138,14 +138,14 @@ export class DrizzleCreditLedger implements ICreditLedger {
     tx: Parameters<Parameters<DrizzleDb["transaction"]>[0]>[0],
     tenantId: string,
   ): Promise<Credit> {
-    // Ensure row exists (no-op if already present)
+    // raw SQL: Drizzle cannot express INSERT ... ON CONFLICT DO NOTHING for atomic upsert
     await tx.execute(
       sql`INSERT INTO credit_balances (tenant_id, balance_credits, last_updated)
           VALUES (${tenantId}, 0, now())
           ON CONFLICT (tenant_id) DO NOTHING`,
     );
 
-    // Lock and read
+    // raw SQL: Drizzle cannot express SELECT FOR UPDATE for row-level locking
     const rows = (await tx.execute(
       sql`SELECT balance_credits FROM credit_balances
           WHERE tenant_id = ${tenantId} FOR UPDATE`,
