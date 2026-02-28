@@ -1,4 +1,5 @@
 import type { Context, Next } from "hono";
+import { getClientIpFromContext } from "../api/middleware/get-client-ip.js";
 import type { AuditLogger } from "./logger.js";
 import type { AuditAction, ResourceType } from "./schema.js";
 import type { AuditEnv } from "./types.js";
@@ -43,13 +44,14 @@ export function auditLog(logger: AuditLogger, action: AuditAction) {
     }
 
     try {
+      const clientIp = getClientIpFromContext(c);
       await logger.log({
         userId: user.id,
         authMethod,
         action,
         resourceType: extractResourceType(c.req.path),
         resourceId: c.req.param("id") ?? null,
-        ipAddress: c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? null,
+        ipAddress: clientIp === "unknown" ? null : clientIp,
         userAgent: c.req.header("user-agent") ?? null,
       });
     } catch {

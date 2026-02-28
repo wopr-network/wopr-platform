@@ -1,4 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
@@ -628,15 +629,29 @@ describe("billing routes", () => {
         payramReplayGuard: noOpReplayGuard,
       });
 
+      // Wrap billingRoutes in an app that injects socket address from XFF,
+      // simulating real TCP connections from different clients.
+      const wrapperApp = new Hono();
+      wrapperApp.use("*", async (c, next) => {
+        const xff = c.req.header("x-forwarded-for");
+        const firstIp = xff?.split(",")[0]?.trim();
+        if (firstIp) {
+          // In test context c.env is undefined; assign it to simulate a real TCP socket.
+          (c as { env: unknown }).env = { incoming: { socket: { remoteAddress: firstIp } } };
+        }
+        await next();
+      });
+      wrapperApp.route("/", billingRoutes);
+
       // Fail from IP-A
-      await billingRoutes.request("/webhook", {
+      await wrapperApp.request("/webhook", {
         method: "POST",
         body: "raw-body",
         headers: { "stripe-signature": "t=123,v1=bad", "x-forwarded-for": "10.0.0.1" },
       });
 
       // IP-B should not be affected (gets 400 from sig failure, not 429 from penalty)
-      const res = await billingRoutes.request("/webhook", {
+      const res = await wrapperApp.request("/webhook", {
         method: "POST",
         body: "raw-body",
         headers: { "stripe-signature": "t=123,v1=bad", "x-forwarded-for": "10.0.0.2" },

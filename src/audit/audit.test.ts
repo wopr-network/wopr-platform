@@ -521,7 +521,7 @@ describe("auditLog middleware", () => {
     expect(entries[0].user_id).toBe("user-1");
     expect(entries[0].action).toBe("instance.create");
     expect(entries[0].resource_id).toBe("inst-1");
-    expect(entries[0].ip_address).toBe("10.0.0.1");
+    expect(entries[0].ip_address).toBeNull();
     expect(entries[0].user_agent).toBe("TestClient/1.0");
   });
 
@@ -569,7 +569,7 @@ describe("auditLog middleware", () => {
     expect(entries[0].auth_method).toBe("api_key");
   });
 
-  it("extracts first IP from x-forwarded-for with multiple IPs", async () => {
+  it("ignores x-forwarded-for header and uses trusted proxy resolution", async () => {
     const app = new Hono<AuditEnv>();
     app.use("*", async (c, next) => {
       c.set("user", { id: "user-1" });
@@ -586,7 +586,7 @@ describe("auditLog middleware", () => {
 
     const entries = await queryAuditLog(repo, {});
     expect(entries).toHaveLength(1);
-    expect(entries[0].ip_address).toBe("10.0.0.1");
+    expect(entries[0].ip_address).toBeNull();
   });
 
   it("handles missing headers gracefully", async () => {

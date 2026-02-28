@@ -35,13 +35,50 @@ function computeSignature(authToken: string, url: string, params: Record<string,
   return crypto.createHmac("sha1", authToken).update(data).digest("base64");
 }
 
-function buildTestApp(resolveTenant: (c: import("hono").Context) => GatewayTenant | null = () => TEST_TENANT) {
+function buildTestApp(
+  resolveTenant: (c: import("hono").Context) => GatewayTenant | null = () => TEST_TENANT,
+  sigPenaltyRepo = makeTestSigPenaltyRepo(),
+) {
   const app = new Hono();
   const webhookAuth = createTwilioWebhookAuth({
     twilioAuthToken: TEST_AUTH_TOKEN,
     webhookBaseUrl: TEST_WEBHOOK_BASE_URL,
     resolveTenantFromWebhook: resolveTenant,
-    sigPenaltyRepo: makeTestSigPenaltyRepo(),
+    sigPenaltyRepo,
+  });
+
+  app.post("/v1/phone/inbound/:tenantId", webhookAuth, (c) => {
+    return c.json({ ok: true, tenantId: c.get("gatewayTenant")?.id });
+  });
+
+  return app;
+}
+
+/**
+ * Build a test app that simulates real socket addresses by injecting
+ * `c.env.incoming.socket.remoteAddress` from the X-Forwarded-For header.
+ * This allows IP-isolation tests to work without a real TCP socket.
+ */
+function buildTestAppWithSocketInjection(
+  resolveTenant: (c: import("hono").Context) => GatewayTenant | null = () => TEST_TENANT,
+  sigPenaltyRepo = makeTestSigPenaltyRepo(),
+) {
+  const app = new Hono();
+  // Inject socket address from XFF so trusted-proxy-aware IP extraction works in tests
+  app.use("*", async (c, next) => {
+    const xff = c.req.header("x-forwarded-for");
+    const firstIp = xff?.split(",")[0]?.trim();
+    if (firstIp) {
+      // In test context c.env is undefined; assign it to simulate a real TCP socket.
+      (c as { env: unknown }).env = { incoming: { socket: { remoteAddress: firstIp } } };
+    }
+    await next();
+  });
+  const webhookAuth = createTwilioWebhookAuth({
+    twilioAuthToken: TEST_AUTH_TOKEN,
+    webhookBaseUrl: TEST_WEBHOOK_BASE_URL,
+    resolveTenantFromWebhook: resolveTenant,
+    sigPenaltyRepo,
   });
 
   app.post("/v1/phone/inbound/:tenantId", webhookAuth, (c) => {
@@ -155,7 +192,8 @@ describe("createTwilioWebhookAuth", () => {
   });
 
   it("does not penalize different IPs for each other's failures", async () => {
-    const app = buildTestApp();
+    const sharedRepo = makeTestSigPenaltyRepo();
+    const app = buildTestAppWithSocketInjection(() => TEST_TENANT, sharedRepo);
     // Send many failures from IP A
     for (let i = 0; i < 10; i++) {
       await app.request("/v1/phone/inbound/tenant-abc", {
