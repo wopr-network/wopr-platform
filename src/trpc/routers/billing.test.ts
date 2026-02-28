@@ -433,7 +433,7 @@ describe("billingRouter", () => {
       const caller = makeCaller(makeCtx("user-1", "tenant-1"));
       const result = await caller.memberUsage({});
       expect(result.tenant).toBe("tenant-1");
-      expect(result.members).toBeDefined();
+      expect(Array.isArray(result.members)).toBe(true);
     });
 
     it("uses ctx.tenantId when tenant omitted", async () => {
