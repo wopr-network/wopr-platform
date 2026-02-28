@@ -33,6 +33,7 @@ import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-brea
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
 import { DrizzleMarketplacePluginRepository } from "../marketplace/drizzle-marketplace-plugin-repository.js";
 import type { IMarketplacePluginRepository } from "../marketplace/marketplace-plugin-repository.js";
+import { DrizzleTenantAddonRepository } from "../monetization/addons/addon-repository.js";
 import type { IAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
 import { DrizzleAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
 import type { IAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -684,6 +685,12 @@ export function getAutoTopupEventLogRepo(): IAutoTopupEventLogRepository {
 export function getPhoneNumberRepo(): IPhoneNumberRepository {
   if (!_phoneNumberRepo) _phoneNumberRepo = new DrizzlePhoneNumberRepository(getDb());
   return _phoneNumberRepo;
+}
+
+let _tenantAddonRepo: DrizzleTenantAddonRepository | undefined;
+export function getTenantAddonRepo(): DrizzleTenantAddonRepository {
+  if (!_tenantAddonRepo) _tenantAddonRepo = new DrizzleTenantAddonRepository(getDb());
+  return _tenantAddonRepo;
 }
 
 export function getAffiliateRepo(): IAffiliateRepository {

@@ -465,17 +465,17 @@ describe("WOP-1092: setup-intent and crypto checkout rate limits", () => {
   it("includes setup-intent rule with max 5", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/billing/setup-intent");
     expect(rule).toBeDefined();
-    expect(rule!.method).toBe("POST");
-    expect(rule!.config.max).toBe(5);
-    expect(rule!.scope).toBe("api:billing-setup-intent");
+    expect(rule?.method).toBe("POST");
+    expect(rule?.config.max).toBe(5);
+    expect(rule?.scope).toBe("api:billing-setup-intent");
   });
 
   it("includes crypto checkout rule with max 10", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/billing/crypto/checkout");
     expect(rule).toBeDefined();
-    expect(rule!.method).toBe("POST");
-    expect(rule!.config.max).toBe(10);
-    expect(rule!.scope).toBe("api:billing-crypto-checkout");
+    expect(rule?.method).toBe("POST");
+    expect(rule?.config.max).toBe(10);
+    expect(rule?.scope).toBe("api:billing-crypto-checkout");
   });
 
   it("setup-intent returns 429 after 5 requests", async () => {

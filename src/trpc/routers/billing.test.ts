@@ -575,11 +575,11 @@ describe("billingRouter", () => {
       });
 
       expect(auditRepo.entries).toHaveLength(1);
-      const entry1 = auditRepo.entries[0]!;
-      expect(entry1.action).toBe("billing.auto_topup_update");
-      expect(entry1.resource_type).toBe("billing");
-      expect(entry1.user_id).toBe("user-audit-1");
-      const details1 = JSON.parse(entry1.details!);
+      const entry1 = auditRepo.entries[0];
+      expect(entry1?.action).toBe("billing.auto_topup_update");
+      expect(entry1?.resource_type).toBe("billing");
+      expect(entry1?.user_id).toBe("user-audit-1");
+      const details1 = JSON.parse(entry1?.details ?? "null");
       expect(details1.previous).toBeNull();
       expect(details1.new.usage_enabled).toBe(true);
 
@@ -589,8 +589,8 @@ describe("billingRouter", () => {
       });
 
       expect(auditRepo.entries).toHaveLength(2);
-      const entry2 = auditRepo.entries[1]!;
-      const details2 = JSON.parse(entry2.details!);
+      const entry2 = auditRepo.entries[1];
+      const details2 = JSON.parse(entry2?.details ?? "null");
       expect(details2.previous.usage_enabled).toBe(true);
       expect(details2.new.usage_enabled).toBe(false);
     });

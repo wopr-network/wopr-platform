@@ -46,6 +46,7 @@ export * from "./session-usage.js";
 export * from "./setup-sessions.js";
 export * from "./snapshots.js";
 export * from "./spending-limits.js";
+export * from "./tenant-addons.js";
 export * from "./tenant-api-keys.js";
 export * from "./tenant-capability-settings.js";
 export * from "./tenant-customers.js";
