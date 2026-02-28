@@ -4,6 +4,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
+import { DrizzleAffiliateFraudRepository } from "./affiliate-fraud-repository.js";
 import { processAffiliateCreditMatch } from "./credit-match.js";
 import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";
 
@@ -12,11 +13,13 @@ describe("processAffiliateCreditMatch", () => {
   let db: DrizzleDb;
   let ledger: CreditLedger;
   let affiliateRepo: DrizzleAffiliateRepository;
+  let fraudRepo: DrizzleAffiliateFraudRepository;
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
     ledger = new CreditLedger(db);
     affiliateRepo = new DrizzleAffiliateRepository(db);
+    fraudRepo = new DrizzleAffiliateFraudRepository(db);
   });
 
   afterEach(async () => {
@@ -110,5 +113,61 @@ describe("processAffiliateCreditMatch", () => {
       affiliateRepo,
     });
     expect(second).toBeNull();
+  });
+
+  it("suppresses payout when fraud detector returns blocked", async () => {
+    await affiliateRepo.recordReferral("referrer", "buyer", "abc123", {
+      signupIp: "1.2.3.4",
+      signupEmail: "alice+ref@gmail.com",
+    });
+    await ledger.credit("buyer", Credit.fromCents(2000), "purchase", "first buy", "session-1", "stripe");
+
+    const result = await processAffiliateCreditMatch({
+      tenantId: "buyer",
+      purchaseAmountCents: 2000,
+      ledger,
+      affiliateRepo,
+      fraudRepo,
+      referrerIp: "1.2.3.4",
+      referrerEmail: "alice@gmail.com",
+      referrerStripeCustomerId: null,
+      referredStripeCustomerId: null,
+    });
+
+    expect(result).toBeNull();
+    expect((await ledger.balance("referrer")).toCents()).toBe(0);
+
+    const events = await fraudRepo.listByReferrer("referrer");
+    expect(events).toHaveLength(1);
+    expect(events[0].verdict).toBe("blocked");
+    expect(events[0].phase).toBe("payout");
+  });
+
+  it("allows payout but logs fraud event when single signal detected", async () => {
+    await affiliateRepo.recordReferral("referrer", "buyer", "abc123", {
+      signupIp: "1.2.3.4",
+    });
+    await ledger.credit("buyer", Credit.fromCents(2000), "purchase", "first buy", "session-1", "stripe");
+
+    const result = await processAffiliateCreditMatch({
+      tenantId: "buyer",
+      purchaseAmountCents: 2000,
+      ledger,
+      affiliateRepo,
+      fraudRepo,
+      referrerIp: "1.2.3.4",
+      referrerEmail: null,
+      referrerStripeCustomerId: null,
+      referredStripeCustomerId: null,
+    });
+
+    // Flagged but NOT blocked — payout still goes through
+    expect(result).not.toBeNull();
+    expect(result?.matchAmountCents).toBe(2000);
+
+    // But a fraud event was logged
+    const events = await fraudRepo.listByReferrer("referrer");
+    expect(events).toHaveLength(1);
+    expect(events[0].verdict).toBe("flagged");
   });
 });
