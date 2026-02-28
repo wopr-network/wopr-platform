@@ -535,24 +535,26 @@ describe("trusted proxy validation (WOP-656)", () => {
 });
 
 describe("platformRateLimitRules — billing checkout path", () => {
+  let repo: IRateLimitRepository;
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
+  });
+
   it("checkout rule matches /api/billing/credits/checkout", async () => {
-    const { repo, pool } = await makeRateLimitRepo();
-    try {
-      const app = new Hono();
-      app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
-      // Dummy handler — we only care about rate-limit headers
-      app.post("/api/billing/credits/checkout", (c) => c.json({ ok: true }));
+    const app = new Hono();
+    app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
+    // Dummy handler — we only care about rate-limit headers
+    app.post("/api/billing/credits/checkout", (c) => c.json({ ok: true }));
 
-      // The BILLING_LIMIT is max: 10. Send 10 requests — all must pass.
-      for (let i = 0; i < 10; i++) {
-        const res = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
-        expect(res.status).toBe(200);
-      }
-
-      const blocked = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
-      expect(blocked.status).toBe(429);
-    } finally {
-      await pool.close();
+    // The BILLING_LIMIT is max: 10. Send 10 requests — all must pass.
+    for (let i = 0; i < 10; i++) {
+      const res = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
+      expect(res.status).toBe(200);
     }
+
+    const blocked = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
+    expect(blocked.status).toBe(429);
   });
 });
