@@ -825,13 +825,13 @@ export const billingRouter = router({
   /** Get per-member credit usage breakdown for an org. */
   memberUsage: protectedProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
       if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { creditLedger } = deps();
-      const members = creditLedger.memberUsage(tenant);
+      const members = await creditLedger.memberUsage(tenant);
       return { tenant, members };
     }),
 });
