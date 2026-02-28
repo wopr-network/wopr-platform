@@ -67,6 +67,16 @@ export interface IPromotionRepository {
   incrementUsage(id: string, creditsGranted: number): Promise<void>;
   /** Atomically increments usage only if the budget allows. Returns true if granted, false if budget exceeded. */
   incrementUsageIfBudgetAllows(id: string, creditsGranted: number, budgetCredits: number | null): Promise<boolean>;
+  /**
+   * Atomically increments usage only if both the budget and total-use-limit allow it.
+   * Returns true if granted, false if either limit is exceeded.
+   */
+  incrementUsageIfAllowed(
+    id: string,
+    creditsGranted: number,
+    budgetCredits: number | null,
+    totalUseLimit: number | null,
+  ): Promise<boolean>;
 }
 
 export class DrizzlePromotionRepository implements IPromotionRepository {
@@ -181,6 +191,32 @@ export class DrizzlePromotionRepository implements IPromotionRepository {
           budgetCredits === null
             ? sql`true`
             : sql`${promotions.totalCreditsGranted} + ${creditsGranted} <= ${budgetCredits}`,
+        ),
+      )
+      .returning({ id: promotions.id });
+    return rows.length > 0;
+  }
+
+  async incrementUsageIfAllowed(
+    id: string,
+    creditsGranted: number,
+    budgetCredits: number | null,
+    totalUseLimit: number | null,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(promotions)
+      .set({
+        totalUses: sql`${promotions.totalUses} + 1`,
+        totalCreditsGranted: sql`${promotions.totalCreditsGranted} + ${creditsGranted}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(promotions.id, id),
+          budgetCredits === null
+            ? sql`true`
+            : sql`${promotions.totalCreditsGranted} + ${creditsGranted} <= ${budgetCredits}`,
+          totalUseLimit === null ? sql`true` : sql`${promotions.totalUses} + 1 <= ${totalUseLimit}`,
         ),
       )
       .returning({ id: promotions.id });
