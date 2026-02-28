@@ -52,4 +52,27 @@ describe("HeartbeatProcessor", () => {
     expect(nodeRepo.updateHeartbeat).toHaveBeenCalledOnce();
     expect(nodeRepo.updateHeartbeat).toHaveBeenCalledWith("node-1", 0);
   });
+
+  it("uses authenticated nodeId, not msg.node_id (security: prevents node spoofing)", () => {
+    const nodeRepo = makeNodeRepo();
+    const processor = new HeartbeatProcessor(nodeRepo);
+
+    const msg: HeartbeatMessage = {
+      type: "heartbeat",
+      node_id: "spoofed-node", // attacker claims to be spoofed-node
+      uptime_s: 3600,
+      memory_total_mb: 8192,
+      memory_used_mb: 4096,
+      disk_total_gb: 100,
+      disk_used_gb: 50,
+      containers: [{ name: "tenant_abc", status: "running", memory_mb: 128, uptime_s: 60 }],
+    };
+
+    // Caller authenticated this connection as "real-node"
+    processor.process("real-node", msg);
+
+    // Must update "real-node" (authenticated), NOT "spoofed-node" (untrusted)
+    expect(nodeRepo.updateHeartbeat).toHaveBeenCalledOnce();
+    expect(nodeRepo.updateHeartbeat).toHaveBeenCalledWith("real-node", 128);
+  });
 });
