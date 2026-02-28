@@ -250,6 +250,41 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       break;
     }
 
+    case "payment_intent.succeeded": {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const tenant = pi.metadata?.wopr_tenant;
+
+      if (!tenant || !pi.amount || pi.amount <= 0) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      // Idempotent: skip if inline grant in chargeAutoTopup() already credited this PI.
+      if (await deps.creditLedger.hasReferenceId(pi.id)) {
+        result = { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+        break;
+      }
+
+      // Fallback grant — inline path failed or process crashed before granting.
+      const source = pi.metadata?.wopr_source ?? "auto_topup_webhook_fallback";
+      await deps.creditLedger.credit(
+        tenant,
+        Credit.fromCents(pi.amount),
+        "purchase",
+        `Auto-topup webhook fallback (${source})`,
+        pi.id,
+        "stripe",
+      );
+
+      result = {
+        handled: true,
+        event_type: event.type,
+        tenant,
+        creditedCents: pi.amount,
+      };
+      break;
+    }
+
     default:
       result = { handled: false, event_type: event.type };
       break;

@@ -9,6 +9,7 @@ import type Stripe from "stripe";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
+import { Credit } from "../credit.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
 import { noOpReplayGuard } from "../webhook-seen-repository.js";
@@ -331,7 +332,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const depsWithGuard: WebhookDeps = { ...deps, replayGuard };
       const event = {
         id: "evt_unknown_replay",
-        type: "payment_intent.succeeded",
+        type: "charge.refunded",
         data: { object: {} },
       } as Stripe.Event;
 
@@ -660,19 +661,6 @@ describe("handleWebhookEvent (credit model)", () => {
       });
     });
 
-    it("returns handled:false for payment_intent.succeeded", async () => {
-      const event = {
-        type: "payment_intent.succeeded",
-        data: { object: {} },
-      } as Stripe.Event;
-
-      const result = await handleWebhookEvent(deps, event);
-      expect(result).toEqual({
-        handled: false,
-        event_type: "payment_intent.succeeded",
-      });
-    });
-
     it("handles unknown event type gracefully", async () => {
       const event = {
         type: "wopr.custom.event",
@@ -684,6 +672,105 @@ describe("handleWebhookEvent (credit model)", () => {
         handled: false,
         event_type: "wopr.custom.event",
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // payment_intent.succeeded (auto-topup fallback, WOP-1097)
+  // ---------------------------------------------------------------------------
+
+  describe("payment_intent.succeeded (auto-topup fallback)", () => {
+    it("credits ledger when PI has wopr_tenant metadata and referenceId is new", async () => {
+      const event = {
+        id: "evt_pi_success_1",
+        type: "payment_intent.succeeded",
+        data: {
+          object: {
+            id: "pi_fallback_1",
+            amount: 500,
+            currency: "usd",
+            metadata: {
+              wopr_tenant: "t1",
+              wopr_source: "auto_topup_usage",
+            },
+          },
+        },
+      } as unknown as Stripe.Event;
+
+      const result = await handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.event_type).toBe("payment_intent.succeeded");
+      expect(result.tenant).toBe("t1");
+      expect(result.creditedCents).toBe(500);
+      expect((await creditLedger.balance("t1")).toCents()).toBe(500);
+    });
+
+    it("skips credit when referenceId already exists (inline grant ran first)", async () => {
+      // Simulate inline grant already happened
+      await creditLedger.credit("t1", Credit.fromCents(500), "purchase", "Auto-topup", "pi_already_granted", "stripe");
+
+      const event = {
+        id: "evt_pi_success_2",
+        type: "payment_intent.succeeded",
+        data: {
+          object: {
+            id: "pi_already_granted",
+            amount: 500,
+            currency: "usd",
+            metadata: {
+              wopr_tenant: "t1",
+              wopr_source: "auto_topup_usage",
+            },
+          },
+        },
+      } as unknown as Stripe.Event;
+
+      const result = await handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(0);
+      // Balance should still be 500, not 1000
+      expect((await creditLedger.balance("t1")).toCents()).toBe(500);
+    });
+
+    it("returns handled:false when wopr_tenant metadata is missing", async () => {
+      const event = {
+        id: "evt_pi_no_tenant",
+        type: "payment_intent.succeeded",
+        data: {
+          object: {
+            id: "pi_no_tenant",
+            amount: 500,
+            currency: "usd",
+            metadata: {},
+          },
+        },
+      } as unknown as Stripe.Event;
+
+      const result = await handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(false);
+      expect(result.event_type).toBe("payment_intent.succeeded");
+    });
+
+    it("returns handled:false when amount is zero", async () => {
+      const event = {
+        id: "evt_pi_zero",
+        type: "payment_intent.succeeded",
+        data: {
+          object: {
+            id: "pi_zero",
+            amount: 0,
+            currency: "usd",
+            metadata: { wopr_tenant: "t1", wopr_source: "auto_topup_usage" },
+          },
+        },
+      } as unknown as Stripe.Event;
+
+      const result = await handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(false);
     });
   });
 });
