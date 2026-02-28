@@ -32,6 +32,7 @@ import {
   getCommandBus,
   getConnectionRegistry,
   getCreditLedger,
+  getCreditTransactionRepo,
   getDaemonManager,
   getDb,
   getDividendRepo,
@@ -61,8 +62,6 @@ import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { Credit } from "./monetization/credit.js";
-import { CreditLedger } from "./monetization/credits/credit-ledger.js";
-import { DrizzleCreditTransactionRepository } from "./monetization/credits/credit-transaction-repository.js";
 import { runDividendCron } from "./monetization/credits/dividend-cron.js";
 import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cron.js";
 import { buildResourceTierCosts, runRuntimeDeductions } from "./monetization/credits/runtime-cron.js";
@@ -303,7 +302,7 @@ if (process.env.NODE_ENV !== "test") {
 
     const meter = new MeterEmitter(getDb());
     const budgetChecker = new BudgetChecker(getDb());
-    const creditLedger = new CreditLedger(getDb());
+    const creditLedger = getCreditLedger();
 
     // Build resolveServiceKey from FLEET_TOKEN_<TENANT>=<scope>:<token> env vars.
     // The same tokens that authenticate the fleet API also authenticate gateway calls.
@@ -757,7 +756,7 @@ if (process.env.NODE_ENV !== "test") {
   // Daily runtime deduction cron — charges tenants for active bots + resource tier surcharges.
   // Runs once every 24 h (offset by 1 min from midnight to avoid thundering herd).
   {
-    const cronLedger = new CreditLedger(getDb());
+    const cronLedger = getCreditLedger();
     const botInstanceRepo = getBotInstanceRepo();
     const getResourceTierCosts = buildResourceTierCosts(botInstanceRepo, async (tenantId) => {
       const bots = await botInstanceRepo.listByTenant(tenantId);
@@ -792,8 +791,8 @@ if (process.env.NODE_ENV !== "test") {
   // Runs once every 24h. Idempotent: skips if already ran for the target date.
   {
     const dividendMatchRate = Number.parseFloat(process.env.DIVIDEND_MATCH_RATE ?? "1.0");
-    const dividendTxRepo = new DrizzleCreditTransactionRepository(getDb());
-    const dividendLedger = new CreditLedger(getDb());
+    const dividendTxRepo = getCreditTransactionRepo();
+    const dividendLedger = getCreditLedger();
     const DAILY_MS = 24 * 60 * 60 * 1000;
     setInterval(() => {
       const yesterday = new Date();
