@@ -1,22 +1,27 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, bench, describe } from "vitest";
+import { afterAll, beforeAll, beforeEach, bench, describe } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger } from "./credit-ledger.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("CreditLedger throughput", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let ledger: CreditLedger;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     ledger = new CreditLedger(db);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   let creditIdx = 0;

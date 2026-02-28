@@ -20,18 +20,19 @@ async function insertTenantKey(
   );
 }
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("resolveApiKey", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let encryptionKey: Buffer;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

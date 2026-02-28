@@ -2,17 +2,18 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("snapshots schema (via Drizzle migration)", () => {
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
@@ -106,16 +107,6 @@ describe("snapshots schema (via Drizzle migration)", () => {
 });
 
 describe("bot_profiles schema (via Drizzle migration)", () => {
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
@@ -189,16 +180,6 @@ describe("bot_profiles schema (via Drizzle migration)", () => {
 });
 
 describe("credit_transactions schema (via Drizzle migration)", () => {
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
@@ -226,7 +207,6 @@ describe("credit_transactions schema (via Drizzle migration)", () => {
 
 describe("migration completeness", () => {
   it("all core tables exist after migration", async () => {
-    const { pool } = await createTestDb();
     const result = await pool.query<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
     );

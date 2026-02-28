@@ -26,20 +26,22 @@ function makePayload(overrides: Partial<PayRamWebhookPayload> = {}): PayRamWebho
   };
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("handlePayRamWebhook", () => {
   let chargeStore: PayRamChargeStore;
   let creditLedger: CreditLedger;
   let deps: PayRamWebhookDeps;
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -299,34 +301,23 @@ describe("handlePayRamWebhook", () => {
 // ---------------------------------------------------------------------------
 
 describe("DrizzleWebhookSeenRepository (payram replay guard)", () => {
-  let pool2: PGlite;
-  let db2: DrizzleDb;
-
-  beforeAll(async () => {
-    ({ db: db2, pool: pool2 } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool2.close();
-  });
-
   beforeEach(async () => {
-    await truncateAllTables(pool2);
+    await truncateAllTables(pool);
   });
 
   it("reports unseen keys as not duplicate", async () => {
-    const guard = new DrizzleWebhookSeenRepository(db2);
+    const guard = new DrizzleWebhookSeenRepository(db);
     expect(await guard.isDuplicate("ref-001:FILLED", "payram")).toBe(false);
   });
 
   it("reports seen keys as duplicate", async () => {
-    const guard = new DrizzleWebhookSeenRepository(db2);
+    const guard = new DrizzleWebhookSeenRepository(db);
     await guard.markSeen("ref-001:FILLED", "payram");
     expect(await guard.isDuplicate("ref-001:FILLED", "payram")).toBe(true);
   });
 
   it("purges expired entries via purgeExpired", async () => {
-    const guard = new DrizzleWebhookSeenRepository(db2);
+    const guard = new DrizzleWebhookSeenRepository(db);
     await guard.markSeen("ref-expire:FILLED", "payram");
     expect(await guard.isDuplicate("ref-expire:FILLED", "payram")).toBe(true);
     // Negative TTL pushes cutoff into the future — entry is expired

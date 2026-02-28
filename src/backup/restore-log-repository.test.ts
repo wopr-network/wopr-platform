@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleRestoreLogRepository } from "./restore-log-repository.js";
@@ -11,6 +11,10 @@ describe("DrizzleRestoreLogRepository", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
   });
 
   beforeEach(async () => {

@@ -11,18 +11,19 @@ import { createTestDb, truncateAllTables } from "../../test/db.js";
  * to keep tests fast and focused.
  */
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("RegistrationTokenStore integration with node registration", () => {
   let tokenStore: RegistrationTokenStore;
-  let db: DrizzleDb;
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

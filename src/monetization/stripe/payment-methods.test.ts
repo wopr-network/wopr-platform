@@ -22,18 +22,20 @@ function mockStripe(
   } as unknown as Stripe;
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("detachPaymentMethod", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let store: TenantCustomerStore;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -85,21 +87,11 @@ describe("detachPaymentMethod", () => {
 });
 
 describe("detachAllPaymentMethods", () => {
-  let pool2: PGlite;
-  let db2: DrizzleDb;
   let store: TenantCustomerStore;
 
-  beforeAll(async () => {
-    ({ db: db2, pool: pool2 } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool2.close();
-  });
-
   beforeEach(async () => {
-    await truncateAllTables(pool2);
-    store = new TenantCustomerStore(db2);
+    await truncateAllTables(pool);
+    store = new TenantCustomerStore(db);
   });
 
   it("returns 0 when tenant has no Stripe customer mapping", async () => {

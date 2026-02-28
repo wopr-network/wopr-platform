@@ -53,18 +53,19 @@ async function countRows(pool: PGlite, table: string, col: string, val: string):
   return Number(result.rows[0]?.c ?? 0);
 }
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("executeDeletion", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let deps: DeletionExecutorDeps;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
