@@ -10,6 +10,8 @@ export interface UsageTopupDeps {
   creditLedger: ICreditLedger;
   /** Injected charge function (allows mocking in tests). */
   chargeAutoTopup: (tenantId: string, amountCents: number, source: string) => Promise<AutoTopupChargeResult>;
+  /** Optional tenant status check. If provided and returns non-null, skip the charge. */
+  checkTenantStatus?: (tenantId: string) => Promise<{ error: string; message: string } | null>;
 }
 
 /**
@@ -22,6 +24,12 @@ export async function maybeTriggerUsageTopup(deps: UsageTopupDeps, tenantId: str
   // 1. Look up settings
   const settings = await deps.settingsRepo.getByTenant(tenantId);
   if (!settings || !settings.usageEnabled) return;
+
+  // 1b. Check tenant status (skip banned/suspended accounts)
+  if (deps.checkTenantStatus) {
+    const statusErr = await deps.checkTenantStatus(tenantId);
+    if (statusErr) return;
+  }
 
   // 2. Check in-flight guard (idempotency)
   if (settings.usageChargeInFlight) return;

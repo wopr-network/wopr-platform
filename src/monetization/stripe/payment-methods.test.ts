@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb } from "../../test/db.js";
-import { detachPaymentMethod } from "./payment-methods.js";
+import { detachAllPaymentMethods, detachPaymentMethod } from "./payment-methods.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 
 function mockStripe(
@@ -76,5 +76,79 @@ describe("detachPaymentMethod", () => {
     ).rejects.toThrow("Payment method does not belong to this tenant");
 
     expect(stripe.paymentMethods.detach).not.toHaveBeenCalled();
+  });
+});
+
+describe("detachAllPaymentMethods", () => {
+  let pool: PGlite;
+  let store: TenantCustomerStore;
+
+  beforeEach(async () => {
+    const { db, pool: p } = await createTestDb();
+    pool = p;
+    store = new TenantCustomerStore(db);
+  });
+
+  afterEach(async () => {
+    await pool.close();
+  });
+
+  it("returns 0 when tenant has no Stripe customer mapping", async () => {
+    const stripe = {
+      customers: { listPaymentMethods: vi.fn() },
+      paymentMethods: { detach: vi.fn() },
+    } as unknown as Stripe;
+
+    const result = await detachAllPaymentMethods(stripe, store, "t-unknown");
+    expect(result).toBe(0);
+    expect(stripe.customers.listPaymentMethods).not.toHaveBeenCalled();
+  });
+
+  it("detaches all payment methods on a single page", async () => {
+    await store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc" });
+
+    const listPaymentMethods = vi.fn().mockResolvedValue({
+      data: [{ id: "pm_1" }, { id: "pm_2" }],
+      has_more: false,
+    });
+    const detach = vi.fn().mockResolvedValue({});
+    const stripe = {
+      customers: { listPaymentMethods },
+      paymentMethods: { detach },
+    } as unknown as Stripe;
+
+    const result = await detachAllPaymentMethods(stripe, store, "t-1");
+    expect(result).toBe(2);
+    expect(detach).toHaveBeenCalledWith("pm_1");
+    expect(detach).toHaveBeenCalledWith("pm_2");
+    expect(listPaymentMethods).toHaveBeenCalledTimes(1);
+  });
+
+  it("paginates when has_more is true", async () => {
+    await store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc" });
+
+    const listPaymentMethods = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: [{ id: "pm_1" }, { id: "pm_2" }],
+        has_more: true,
+      })
+      .mockResolvedValueOnce({
+        data: [{ id: "pm_3" }],
+        has_more: false,
+      });
+    const detach = vi.fn().mockResolvedValue({});
+    const stripe = {
+      customers: { listPaymentMethods },
+      paymentMethods: { detach },
+    } as unknown as Stripe;
+
+    const result = await detachAllPaymentMethods(stripe, store, "t-1");
+    expect(result).toBe(3);
+    expect(listPaymentMethods).toHaveBeenCalledTimes(2);
+    expect(listPaymentMethods).toHaveBeenNthCalledWith(2, "cus_abc", { limit: 100, starting_after: "pm_2" });
+    expect(detach).toHaveBeenCalledWith("pm_1");
+    expect(detach).toHaveBeenCalledWith("pm_2");
+    expect(detach).toHaveBeenCalledWith("pm_3");
   });
 });

@@ -8,6 +8,20 @@
       "when": 1772235892631,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1772220006000,
+      "tag": "0052_affiliate_fraud_detection",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1772220007000,
+      "tag": "0053_affiliate_velocity_cap",
+      "breakpoints": true
     }
   ]
 }
