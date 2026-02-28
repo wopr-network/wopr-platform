@@ -51,6 +51,8 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
     listPaymentMethods: vi.fn().mockResolvedValue([]),
     detachPaymentMethod: vi.fn().mockResolvedValue(undefined),
     charge: vi.fn().mockResolvedValue({ success: true }),
+    getCustomerEmail: vi.fn().mockResolvedValue(""),
+    updateCustomerEmail: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -484,6 +486,58 @@ describe("billingRouter", () => {
       injectDeps();
       const caller = makeCaller(makeUnauthCtx());
       await expect(caller.memberUsage()).rejects.toThrow("Authentication required");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // billingInfo
+  // -------------------------------------------------------------------------
+
+  describe("billingInfo", () => {
+    it("returns email from processor.getCustomerEmail", async () => {
+      const mockProcessor = createMockProcessor({
+        getCustomerEmail: vi.fn().mockResolvedValue("billing@test.com"),
+        listPaymentMethods: vi.fn().mockResolvedValue([]),
+      });
+      injectDeps({ processor: mockProcessor });
+
+      const caller = makeCaller(makeCtx("user-1"));
+      const result = await caller.billingInfo();
+      expect(result.email).toBe("billing@test.com");
+      expect(mockProcessor.getCustomerEmail).toHaveBeenCalledWith("user-1");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // updateBillingEmail
+  // -------------------------------------------------------------------------
+
+  describe("updateBillingEmail", () => {
+    it("persists email via processor.updateCustomerEmail", async () => {
+      const mockProcessor = createMockProcessor({
+        updateCustomerEmail: vi.fn().mockResolvedValue(undefined),
+      });
+      const mockTenantStore = {
+        getByTenant: vi.fn().mockResolvedValue({ tenant: "user-1", processor_customer_id: "cus_abc" }),
+        getByProcessorCustomerId: vi.fn(),
+        upsert: vi.fn(),
+        setTier: vi.fn(),
+        setBillingHold: vi.fn(),
+        hasBillingHold: vi.fn(),
+        getInferenceMode: vi.fn(),
+        setInferenceMode: vi.fn(),
+        list: vi.fn(),
+        buildCustomerIdMap: vi.fn(),
+      };
+      injectDeps({
+        processor: mockProcessor,
+        tenantStore: mockTenantStore as unknown as BillingRouterDeps["tenantStore"],
+      });
+
+      const caller = makeCaller(makeCtx("user-1"));
+      const result = await caller.updateBillingEmail({ email: "new@test.com" });
+      expect(result.email).toBe("new@test.com");
+      expect(mockProcessor.updateCustomerEmail).toHaveBeenCalledWith("user-1", "new@test.com");
     });
   });
 

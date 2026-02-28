@@ -64,6 +64,8 @@ describe("IPaymentProcessor types", () => {
       listPaymentMethods: async () => [],
       detachPaymentMethod: async () => undefined,
       charge: async () => ({ success: true }),
+      getCustomerEmail: async () => "",
+      updateCustomerEmail: async () => undefined,
     };
     expectTypeOf(processor).toMatchTypeOf<IPaymentProcessor>();
   });
@@ -81,5 +83,10 @@ describe("IPaymentProcessor types", () => {
     expectTypeOf<ChargeOpts>().toHaveProperty("tenant");
     expectTypeOf<ChargeOpts>().toHaveProperty("amount");
     expectTypeOf<ChargeOpts>().toHaveProperty("source");
+  });
+
+  it("IPaymentProcessor has getCustomerEmail and updateCustomerEmail", () => {
+    expectTypeOf<IPaymentProcessor>().toHaveProperty("getCustomerEmail");
+    expectTypeOf<IPaymentProcessor>().toHaveProperty("updateCustomerEmail");
   });
 });

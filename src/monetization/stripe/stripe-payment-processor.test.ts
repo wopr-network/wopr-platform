@@ -20,6 +20,8 @@ function makeMockStripe() {
     },
     customers: {
       listPaymentMethods: vi.fn(),
+      retrieve: vi.fn(),
+      update: vi.fn(),
     },
     paymentMethods: {
       detach: vi.fn(),
@@ -329,6 +331,70 @@ describe("StripePaymentProcessor", () => {
 
       expect(result.success).toBe(true);
       expect(result.paymentReference).toBe("pi_123");
+    });
+  });
+
+  describe("getCustomerEmail", () => {
+    it("returns email from Stripe customer", async () => {
+      tenantStore.getByTenant.mockResolvedValue({
+        tenant: "t-1",
+        processor_customer_id: "cus_abc123",
+      });
+      (stripe.customers.retrieve as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "cus_abc123",
+        email: "billing@example.com",
+      });
+
+      const email = await processor.getCustomerEmail("t-1");
+      expect(email).toBe("billing@example.com");
+      expect(stripe.customers.retrieve).toHaveBeenCalledWith("cus_abc123");
+    });
+
+    it("returns empty string when tenant has no Stripe customer", async () => {
+      tenantStore.getByTenant.mockResolvedValue(null);
+
+      const email = await processor.getCustomerEmail("t-unknown");
+      expect(email).toBe("");
+    });
+
+    it("returns empty string when Stripe customer has no email", async () => {
+      tenantStore.getByTenant.mockResolvedValue({
+        tenant: "t-1",
+        processor_customer_id: "cus_abc123",
+      });
+      (stripe.customers.retrieve as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "cus_abc123",
+        email: null,
+      });
+
+      const email = await processor.getCustomerEmail("t-1");
+      expect(email).toBe("");
+    });
+  });
+
+  describe("updateCustomerEmail", () => {
+    it("updates email on Stripe customer", async () => {
+      tenantStore.getByTenant.mockResolvedValue({
+        tenant: "t-1",
+        processor_customer_id: "cus_abc123",
+      });
+      (stripe.customers.update as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: "cus_abc123",
+        email: "new@example.com",
+      });
+
+      await processor.updateCustomerEmail("t-1", "new@example.com");
+      expect(stripe.customers.update).toHaveBeenCalledWith("cus_abc123", {
+        email: "new@example.com",
+      });
+    });
+
+    it("throws when tenant has no Stripe customer", async () => {
+      tenantStore.getByTenant.mockResolvedValue(null);
+
+      await expect(processor.updateCustomerEmail("t-unknown", "a@b.com")).rejects.toThrow(
+        "No Stripe customer found for tenant: t-unknown",
+      );
     });
   });
 });
