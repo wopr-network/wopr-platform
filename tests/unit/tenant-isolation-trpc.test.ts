@@ -16,7 +16,8 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+
 import { createTestDb, truncateAllTables } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
 import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
@@ -25,6 +26,7 @@ import { CapabilitySettingsStore } from "../../src/security/tenant-keys/capabili
 import { TenantKeyStore } from "../../src/security/tenant-keys/schema.js";
 import { appRouter } from "../../src/trpc/index.js";
 import type { TRPCContext } from "../../src/trpc/init.js";
+import { setTrpcOrgMemberRepo } from "../../src/trpc/init.js";
 import { setBillingRouterDeps } from "../../src/trpc/routers/billing.js";
 import { setCapabilitiesRouterDeps } from "../../src/trpc/routers/capabilities.js";
 import { setSettingsRouterDeps } from "../../src/trpc/routers/settings.js";
@@ -46,6 +48,34 @@ function ctxForTenant(tenantId: string): TRPCContext {
     tenantId,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Wire org member repo (required by tenantProcedure / tRPC middleware)
+// ---------------------------------------------------------------------------
+
+beforeAll(() => {
+  setTrpcOrgMemberRepo({
+    findMember: async (_userId: string, orgId: string) => ({
+      id: "m1",
+      orgId,
+      userId: `user-${orgId}`,
+      role: "owner" as const,
+      joinedAt: Date.now(),
+    }),
+    listMembers: async () => [],
+    addMember: async () => {},
+    updateMemberRole: async () => {},
+    removeMember: async () => {},
+    countAdminsAndOwners: async () => 1,
+    listInvites: async () => [],
+    createInvite: async () => {},
+    findInviteById: async () => null,
+    findInviteByToken: async () => null,
+    deleteInvite: async () => {},
+    deleteAllMembers: async () => {},
+    deleteAllInvites: async () => {},
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Describe blocks
