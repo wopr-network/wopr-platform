@@ -788,7 +788,12 @@ let _orgService: OrgService | null = null;
 
 export function getOrgMemberRepo(): IOrgMemberRepository {
   if (!_orgMemberRepo) {
-    _orgMemberRepo = new DrizzleOrgMemberRepository(getDb());
+    const repo = new DrizzleOrgMemberRepository(getDb());
+    _orgMemberRepo = repo;
+    // Wire to tRPC init for tenant access validation (WOP-1129 IDOR prevention)
+    import("../trpc/init.js").then(({ setTrpcOrgMemberRepo }) => {
+      setTrpcOrgMemberRepo(repo);
+    });
   }
   return _orgMemberRepo;
 }
