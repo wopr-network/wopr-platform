@@ -55,7 +55,7 @@ export function sessionAuth(auth: Auth) {
       c.set("authMethod", "session");
       return next();
     } catch {
-      return c.json({ error: "Authentication failed" }, 401);
+      return c.json({ error: "Service unavailable" }, 503);
     }
   };
 }
@@ -87,7 +87,7 @@ export function dualAuth(auth: Auth, apiKeyRepo?: IApiKeyRepository) {
         return next();
       }
     } catch {
-      // Session check failed, fall through to bearer token
+      return c.json({ error: "Service unavailable" }, 503);
     }
 
     // 2. Fall back to bearer token (DB-backed lookup)
@@ -106,7 +106,7 @@ export function dualAuth(auth: Auth, apiKeyRepo?: IApiKeyRepository) {
               return next();
             }
           } catch {
-            return c.json({ error: "Authentication required" }, 401);
+            return c.json({ error: "Service unavailable" }, 503);
           }
         }
       }
