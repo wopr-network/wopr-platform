@@ -17,6 +17,7 @@ import type { AdminUserStore } from "../../admin/users/user-store.js";
 import type { INotificationQueueStore } from "../../email/notification-queue-store.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
+import type { IAffiliateFraudAdminRepository } from "../../monetization/affiliate/affiliate-admin-repository.js";
 import { Credit } from "../../monetization/credit.js";
 import type { IAutoTopupSettingsRepository } from "../../monetization/credits/auto-topup-settings-repository.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
@@ -60,6 +61,7 @@ export interface AdminRouterDeps {
   probePaymentHealth?: () => Promise<PaymentHealthStatus>;
   queryActiveBots?: () => number | Promise<number>;
   queryActiveTenantCount?: () => number | Promise<number>;
+  getAffiliateFraudAdminRepo?: () => IAffiliateFraudAdminRepository;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -1659,4 +1661,57 @@ export const adminRouter = router({
       },
     };
   }),
+
+  // ---------------------------------------------------------------------------
+  // Affiliate fraud admin procedures (WOP-1063)
+  // ---------------------------------------------------------------------------
+
+  affiliateSuppressions: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(200).default(50),
+        offset: z.number().int().min(0).default(0),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user.roles);
+      const repo = deps().getAffiliateFraudAdminRepo?.();
+      if (!repo)
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });
+      return repo.listSuppressions(input.limit, input.offset);
+    }),
+
+  affiliateVelocity: protectedProcedure
+    .input(
+      z.object({
+        capReferrals: z.number().int().positive().default(20),
+        capCredits: z.number().int().positive().default(20000),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user.roles);
+      const repo = deps().getAffiliateFraudAdminRepo?.();
+      if (!repo)
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });
+      return repo.listVelocityReferrers(input.capReferrals, input.capCredits);
+    }),
+
+  affiliateFingerprintClusters: protectedProcedure.query(async ({ ctx }) => {
+    requirePlatformAdmin(ctx.user.roles);
+    const repo = deps().getAffiliateFraudAdminRepo?.();
+    if (!repo) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });
+    return repo.listFingerprintClusters();
+  }),
+
+  affiliateBlockFingerprint: protectedProcedure
+    .input(z.object({ fingerprint: z.string().min(1).max(256) }))
+    .mutation(async ({ input, ctx }) => {
+      requirePlatformAdmin(ctx.user.roles);
+      const repo = deps().getAffiliateFraudAdminRepo?.();
+      if (!repo)
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });
+      const adminUserId = ctx.user?.id ?? "unknown";
+      await repo.blockFingerprint(input.fingerprint, adminUserId);
+      return { success: true };
+    }),
 });
