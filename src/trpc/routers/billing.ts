@@ -459,8 +459,8 @@ export const billingRouter = router({
       periodEnd: new Date().toISOString(),
       capabilities,
       totalCost,
-      includedCredit: balance.toCentsRounded(),
-      amountDue: Math.max(0, totalCost - balance.toCents()),
+      includedCredit: balance.toCentsFloor(),
+      amountDue: Math.max(0, totalCost - balance.toCentsFloor()),
     };
   }),
 
