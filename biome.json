@@ -154,7 +154,8 @@
         "src/auth/user-role-repository.ts",
         "src/auth/api-key-repository.ts",
         "src/setup/plugin-config-repository.ts",
-        "src/monetization/metering/reconciliation-repository.ts"
+        "src/monetization/metering/reconciliation-repository.ts",
+        "src/monetization/addons/addon-repository.ts"
       ],
       "linter": {
         "rules": {

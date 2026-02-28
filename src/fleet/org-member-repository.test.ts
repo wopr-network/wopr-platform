@@ -37,10 +37,10 @@ describe("DrizzleOrgMemberRepository", () => {
       await repo.addMember(member);
       const found = await repo.findMember("org-A", "user-1");
       expect(found).not.toBeNull();
-      expect(found!.id).toBe("m-1");
-      expect(found!.orgId).toBe("org-A");
-      expect(found!.userId).toBe("user-1");
-      expect(found!.role).toBe("member");
+      expect(found?.id).toBe("m-1");
+      expect(found?.orgId).toBe("org-A");
+      expect(found?.userId).toBe("user-1");
+      expect(found?.role).toBe("member");
     });
 
     it("returns null when member does not exist", async () => {
@@ -60,7 +60,7 @@ describe("DrizzleOrgMemberRepository", () => {
       // Add again with different role — should not throw, original preserved
       await repo.addMember({ ...member, id: "m-2", role: "admin" });
       const found = await repo.findMember("org-A", "user-1");
-      expect(found!.role).toBe("member"); // original preserved
+      expect(found?.role).toBe("member"); // original preserved
     });
   });
 
@@ -86,7 +86,7 @@ describe("DrizzleOrgMemberRepository", () => {
       await repo.addMember({ id: "m-1", orgId: "org-A", userId: "u-1", role: "member", joinedAt: Date.now() });
       await repo.updateMemberRole("org-A", "u-1", "admin");
       const found = await repo.findMember("org-A", "u-1");
-      expect(found!.role).toBe("admin");
+      expect(found?.role).toBe("admin");
     });
   });
 
@@ -153,8 +153,8 @@ describe("DrizzleOrgMemberRepository", () => {
       await repo.createInvite(invite);
       const found = await repo.findInviteById("inv-1");
       expect(found).not.toBeNull();
-      expect(found!.email).toBe("alice@example.com");
-      expect(found!.token).toBe("tok-abc");
+      expect(found?.email).toBe("alice@example.com");
+      expect(found?.token).toBe("tok-abc");
     });
 
     it("returns null for nonexistent invite", async () => {
@@ -176,7 +176,7 @@ describe("DrizzleOrgMemberRepository", () => {
       });
       const found = await repo.findInviteByToken("tok-xyz");
       expect(found).not.toBeNull();
-      expect(found!.id).toBe("inv-1");
+      expect(found?.id).toBe("inv-1");
     });
 
     it("returns null for nonexistent token", async () => {

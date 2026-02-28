@@ -78,9 +78,9 @@ describe("DrizzleBulkOperationsRepository", () => {
       expect(result).toHaveLength(2);
       const t1 = result.find((r) => r.tenantId === "tenant-1");
       expect(t1).toBeDefined();
-      expect(t1!.name).toBe("Alice");
-      expect(t1!.email).toBe("alice@test.com");
-      expect(t1!.status).toBe("active");
+      expect(t1?.name).toBe("Alice");
+      expect(t1?.email).toBe("alice@test.com");
+      expect(t1?.status).toBe("active");
     });
 
     it("returns empty array for empty input", async () => {
@@ -207,13 +207,13 @@ describe("DrizzleBulkOperationsRepository", () => {
       const result = await repo.getUndoableGrant("op-1");
 
       expect(result).not.toBeNull();
-      expect(result!.operationId).toBe("op-1");
-      expect(result!.tenantIds).toBe('["tenant-1","tenant-2"]');
-      expect(result!.amountCents).toBe(500);
-      expect(result!.adminUser).toBe("admin-1");
-      expect(result!.createdAt).toBe(grant.createdAt);
-      expect(result!.undoDeadline).toBe(grant.undoDeadline);
-      expect(result!.undone).toBe(false);
+      expect(result?.operationId).toBe("op-1");
+      expect(result?.tenantIds).toBe('["tenant-1","tenant-2"]');
+      expect(result?.amountCents).toBe(500);
+      expect(result?.adminUser).toBe("admin-1");
+      expect(result?.createdAt).toBe(grant.createdAt);
+      expect(result?.undoDeadline).toBe(grant.undoDeadline);
+      expect(result?.undone).toBe(false);
     });
 
     it("getUndoableGrant returns null for nonexistent ID", async () => {
@@ -226,7 +226,7 @@ describe("DrizzleBulkOperationsRepository", () => {
       await repo.markGrantUndone("op-1");
 
       const result = await repo.getUndoableGrant("op-1");
-      expect(result!.undone).toBe(true);
+      expect(result?.undone).toBe(true);
     });
   });
 });

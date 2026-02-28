@@ -40,6 +40,11 @@ export interface RuntimeCronConfig {
    * Sum of all active bots' storage tier costs. If not provided, no surcharge applied.
    */
   getStorageTierCosts?: (tenantId: string) => Credit | Promise<Credit>;
+  /**
+   * Optional: returns total daily addon cost for a tenant.
+   * Sum of all enabled infrastructure add-ons. If not provided, no addon charge.
+   */
+  getAddonCosts?: (tenantId: string) => Credit | Promise<Credit>;
 }
 
 export interface RuntimeCronResult {
@@ -194,6 +199,38 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
               }
               result.suspended.push(tenantId);
               if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+            }
+          }
+        }
+
+        // Debit infrastructure add-on costs (if any)
+        if (cfg.getAddonCosts) {
+          const addonCost = await cfg.getAddonCosts(tenantId);
+          if (!addonCost.isZero()) {
+            const currentBalance = await cfg.ledger.balance(tenantId);
+            if (!currentBalance.lessThan(addonCost)) {
+              await cfg.ledger.debit(
+                tenantId,
+                addonCost,
+                "addon",
+                "Daily infrastructure add-on charges",
+                `runtime-addon:${cfg.date}:${tenantId}`,
+              );
+            } else {
+              // Partial debit — take what's left, then suspend
+              if (currentBalance.greaterThan(Credit.ZERO)) {
+                await cfg.ledger.debit(
+                  tenantId,
+                  currentBalance,
+                  "addon",
+                  "Partial add-on charges (balance exhausted)",
+                  `runtime-addon:${cfg.date}:${tenantId}`,
+                );
+              }
+              if (!result.suspended.includes(tenantId)) {
+                result.suspended.push(tenantId);
+                if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+              }
             }
           }
         }

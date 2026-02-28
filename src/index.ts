@@ -54,12 +54,14 @@ import {
   getSetupService,
   getSetupSessionRepo,
   getSystemResourceMonitor,
+  getTenantAddonRepo,
   initFleet,
 } from "./fleet/services.js";
 import { DrizzleSpendingCapStore } from "./fleet/spending-cap-repository.js";
 import { mountGateway } from "./gateway/index.js";
 import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
+import { buildAddonCosts } from "./monetization/addons/addon-cron.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { Credit } from "./monetization/credit.js";
 import { runDividendCron } from "./monetization/credits/dividend-cron.js";
@@ -95,6 +97,7 @@ import { CapabilitySettingsStore } from "./security/tenant-keys/capability-setti
 import { TenantKeyStore } from "./security/tenant-keys/schema.js";
 import type { Provider } from "./security/types.js";
 import {
+  setAddonRouterDeps,
   setAdminRouterDeps,
   setBillingRouterDeps,
   setCapabilitiesRouterDeps,
@@ -700,6 +703,8 @@ if (process.env.NODE_ENV !== "test") {
       const { DrizzleAuditLogRepository } = await import("./audit/audit-log-repository.js");
       const billingAuditLogger = new AuditLogger(new DrizzleAuditLogRepository(getDb()));
 
+      setAddonRouterDeps({ addonRepo: getTenantAddonRepo() });
+
       setBillingRouterDeps({
         processor,
         tenantStore,
@@ -891,6 +896,7 @@ if (process.env.NODE_ENV !== "test") {
       const bots = await botInstanceRepo.listByTenant(tenantId);
       return bots.filter((b) => b.billingState === "active").map((b) => b.id);
     });
+    const getAddonCosts = buildAddonCosts(getTenantAddonRepo());
     const DAILY_MS = 24 * 60 * 60 * 1000;
     setInterval(() => {
       const today = new Date().toISOString().slice(0, 10);
@@ -902,6 +908,7 @@ if (process.env.NODE_ENV !== "test") {
           return bots.filter((b) => b.billingState === "active").length;
         },
         getResourceTierCosts,
+        getAddonCosts,
         onSuspend: (tenantId) => {
           logger.warn("Tenant suspended due to insufficient credits", { tenantId });
         },
