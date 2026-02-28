@@ -63,7 +63,11 @@ export class FleetManager {
     const id = params.id ?? randomUUID();
     const hasExplicitId = "id" in params && params.id !== undefined;
     const doCreate = async () => {
-      const profile: BotProfile = { id, ...params };
+      const profile: BotProfile = { ...params, id };
+
+      if (hasExplicitId && (await this.store.get(id))) {
+        throw new Error(`Bot with id ${id} already exists`);
+      }
 
       await this.store.save(profile);
 
@@ -262,11 +266,13 @@ export class FleetManager {
         await this.store.save(updated);
 
         try {
-          try {
-            await container.stop();
-          } catch (err) {
-            logger.warn(`Failed to stop container ${id} during update`, { botId: id, err });
-            throw err;
+          if (wasRunning) {
+            try {
+              await container.stop();
+            } catch (err) {
+              logger.warn(`Failed to stop container ${id} during update`, { botId: id, err });
+              throw err;
+            }
           }
           try {
             await container.remove();

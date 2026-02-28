@@ -478,20 +478,27 @@ describe("FleetManager", () => {
       expect(container.start).toHaveBeenCalledTimes(5);
     });
 
-    it("does not block operations on different bots", async () => {
+    it("does not block operations on different bots (proves concurrency)", async () => {
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
-      const order: string[] = [];
-      container.start.mockImplementation(async () => {
-        order.push("start");
-      });
+      let releaseStart!: () => void;
+      container.start.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseStart = resolve;
+          }),
+      );
+      const stopSpy = vi.fn();
       container.stop.mockImplementation(async () => {
-        order.push("stop");
+        stopSpy();
       });
 
-      await Promise.all([fleet.start("bot-a"), fleet.stop("bot-b")]);
-
-      expect(order).toHaveLength(2);
+      const startPromise = fleet.start("bot-a");
+      await Promise.resolve(); // allow start lock acquisition
+      await expect(fleet.stop("bot-b")).resolves.toBeUndefined();
+      expect(stopSpy).toHaveBeenCalledTimes(1);
+      releaseStart();
+      await startPromise;
     });
 
     it("releases lock even when operation throws", async () => {
@@ -501,13 +508,14 @@ describe("FleetManager", () => {
       await expect(fleet.start("bot-id")).rejects.toThrow(BotNotFoundError);
     });
 
-    it("serializes concurrent create calls with the same explicit ID", async () => {
-      const saveCallOrder: number[] = [];
-      let callIndex = 0;
+    it("serializes concurrent create calls with the same explicit ID (mutual exclusion)", async () => {
+      let inFlight = 0;
+      let maxInFlight = 0;
       (store.save as ReturnType<typeof vi.fn>).mockImplementation(async (_p: BotProfile) => {
-        const index = ++callIndex;
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
         await new Promise((r) => setTimeout(r, 10));
-        saveCallOrder.push(index);
+        inFlight--;
       });
 
       const promises = [
@@ -516,8 +524,8 @@ describe("FleetManager", () => {
       ];
 
       await Promise.allSettled(promises);
-      // Serialized: each save completes before the next begins
-      expect(saveCallOrder).toEqual([1, 2]);
+      // Mutual exclusion: at most 1 save in flight at any time
+      expect(maxInFlight).toBe(1);
     });
   });
 
