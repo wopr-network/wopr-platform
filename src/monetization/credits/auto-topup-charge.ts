@@ -100,8 +100,32 @@ export async function chargeAutoTopup(
   }
 
   // 5. Credit the ledger (idempotent via referenceId = PI ID)
-  if (!(await deps.creditLedger.hasReferenceId(paymentIntent.id))) {
-    await deps.creditLedger.credit(tenantId, amount, "purchase", `Auto-topup (${source})`, paymentIntent.id, "stripe");
+  try {
+    if (!(await deps.creditLedger.hasReferenceId(paymentIntent.id))) {
+      await deps.creditLedger.credit(
+        tenantId,
+        amount,
+        "purchase",
+        `Auto-topup (${source})`,
+        paymentIntent.id,
+        "stripe",
+      );
+    }
+  } catch (err) {
+    const message = `Stripe charge ${paymentIntent.id} succeeded but credit grant failed: ${err instanceof Error ? err.message : String(err)}`;
+    await deps.eventLogRepo
+      .writeEvent({
+        tenantId,
+        amountCents,
+        status: "failed",
+        failureReason: message,
+        paymentReference: paymentIntent.id,
+      })
+      .catch((logErr) => {
+        logger.error("Failed to write failure event after ledger error", { tenantId, piId: paymentIntent.id, logErr });
+      });
+    logger.error(message, { tenantId, piId: paymentIntent.id, source });
+    throw new Error(message);
   }
 
   // 6. Write success event

@@ -166,4 +166,31 @@ describe("chargeAutoTopup", () => {
   it("exports MAX_CONSECUTIVE_FAILURES as 3", () => {
     expect(MAX_CONSECUTIVE_FAILURES).toBe(3);
   });
+
+  it("propagates error with PaymentIntent ID when credit grant fails after Stripe charge", async () => {
+    const piId = "pi_ledger_fail_test";
+    const stripe = mockStripe({ paymentIntentId: piId });
+    const tenantStore = mockTenantStore();
+    const deps: AutoTopupChargeDeps = {
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      creditLedger: ledger,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
+    };
+
+    // Make credit() fail after Stripe succeeds
+    vi.spyOn(ledger, "credit").mockRejectedValueOnce(new Error("DB connection lost"));
+
+    // Error propagates and contains the PI ID for manual reconciliation
+    await expect(chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage")).rejects.toThrow(piId);
+
+    // Also verify the original error message is preserved
+    vi.spyOn(ledger, "credit").mockRejectedValueOnce(new Error("DB connection lost"));
+    await expect(chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage")).rejects.toThrow(
+      "DB connection lost",
+    );
+
+    // No credits were silently granted
+    expect((await ledger.balance("t1")).toCents()).toBe(0);
+  });
 });
