@@ -26,23 +26,21 @@ function makeInput(overrides: Partial<AuditEntryInput> = {}): AuditEntryInput {
   };
 }
 
-describe("AuditLogger", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
 
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
+describe("AuditLogger", () => {
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -83,22 +81,8 @@ describe("AuditLogger", () => {
 });
 
 describe("queryAuditLog", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -284,22 +268,8 @@ describe("queryAuditLog", () => {
 });
 
 describe("countAuditLog", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -367,21 +337,7 @@ describe("countAuditLog", () => {
 });
 
 describe("retention", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let repo: IAuditLogRepository;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -536,22 +492,8 @@ describe("extractResourceType", () => {
 });
 
 describe("auditLog middleware", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -685,22 +627,8 @@ describe("auditLog middleware", () => {
 });
 
 describe("audit API routes", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

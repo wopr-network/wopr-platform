@@ -251,6 +251,21 @@ setFleetDeps({
 });
 
 // ---------------------------------------------------------------------------
+// Shared PGlite instance (hoisted to file scope)
+// ---------------------------------------------------------------------------
+
+let _db: DrizzleDb;
+let _pool: PGlite;
+
+beforeAll(async () => {
+  ({ db: _db, pool: _pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await _pool.close();
+});
+
+// ---------------------------------------------------------------------------
 // Build the full app — same as the real app.ts mounting
 // ---------------------------------------------------------------------------
 
@@ -475,8 +490,6 @@ describe("E2E: Bot management flow", () => {
 describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
 
-  let db: DrizzleDb;
-  let pool: PGlite;
   let tenantStore: TenantCustomerStore;
   let creditLedger: CreditLedger;
 
@@ -500,23 +513,15 @@ describe("E2E: Billing flow (credit model)", () => {
     charge: vi.fn().mockResolvedValue({ success: true }),
   };
 
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     vi.clearAllMocks();
     createdBots.clear();
     botRunningState = new Map();
     botCounter = 0;
 
-    await truncateAllTables(pool);
-    tenantStore = new TenantCustomerStore(db);
-    creditLedger = new CreditLedger(db);
+    await truncateAllTables(_pool);
+    tenantStore = new TenantCustomerStore(_db);
+    creditLedger = new CreditLedger(_db);
 
     // Inject credit ledger for quota routes
     setLedger(creditLedger);
@@ -525,9 +530,9 @@ describe("E2E: Billing flow (credit model)", () => {
     setBillingDeps({
       processor: mockProcessor,
       creditLedger,
-      meterAggregator: new MeterAggregator(db),
-      sigPenaltyRepo: new DrizzleSigPenaltyRepository(db),
-      affiliateRepo: new DrizzleAffiliateRepository(db),
+      meterAggregator: new MeterAggregator(_db),
+      sigPenaltyRepo: new DrizzleSigPenaltyRepository(_db),
+      affiliateRepo: new DrizzleAffiliateRepository(_db),
     });
 
     setFleetDeps({

@@ -45,22 +45,23 @@ async function insertUser(
   await db.insert(adminUsers).values({ ...defaults, ...overrides });
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 // ---------------------------------------------------------------------------
 // Schema tests
 // ---------------------------------------------------------------------------
 
 describe("admin_users schema (via Drizzle migration)", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
@@ -141,19 +142,7 @@ describe("admin_users schema (via Drizzle migration)", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.list", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let store: AdminUserStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -340,19 +329,7 @@ describe("AdminUserStore.list", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.search", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let store: AdminUserStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -406,19 +383,7 @@ describe("AdminUserStore.search", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.getById", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let store: AdminUserStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -464,19 +429,6 @@ describe("AdminUserStore.getById", () => {
 // ---------------------------------------------------------------------------
 
 describe("admin users API routes", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });

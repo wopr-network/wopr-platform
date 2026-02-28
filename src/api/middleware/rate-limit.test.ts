@@ -20,11 +20,6 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function makeRateLimitRepo(): Promise<{ repo: IRateLimitRepository; db: DrizzleDb; pool: PGlite }> {
-  const { db, pool } = await createTestDb();
-  return { repo: new DrizzleRateLimitRepository(db), db, pool };
-}
-
 /** Build a Hono app with a single rate-limited GET /test route. */
 function buildApp(cfg: Omit<RateLimitConfig, "repo" | "scope">, repo: IRateLimitRepository) {
   const app = new Hono();
@@ -47,24 +42,26 @@ function postReq(path: string, ip = "127.0.0.1") {
 }
 
 // ---------------------------------------------------------------------------
+// Shared PGlite instance (one pool for the entire file)
+// ---------------------------------------------------------------------------
+
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
+// ---------------------------------------------------------------------------
 // rateLimit (single-route)
 // ---------------------------------------------------------------------------
 
 describe("rateLimit", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
-    db = r.db;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -186,19 +183,6 @@ describe("rateLimit", () => {
 
 describe("rateLimitByRoute", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
-    db = r.db;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -273,19 +257,6 @@ describe("rateLimitByRoute", () => {
 
 describe("platform rate limit rules", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
-    db = r.db;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -385,19 +356,6 @@ describe("platform rate limit rules", () => {
 
 describe("auth endpoint rate limits (WOP-839)", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
-    db = r.db;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -500,19 +458,6 @@ describe("auth endpoint rate limits (WOP-839)", () => {
 
 describe("trusted proxy validation (WOP-656)", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
-    db = r.db;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     vi.useFakeTimers();

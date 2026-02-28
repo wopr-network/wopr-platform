@@ -9,18 +9,20 @@ import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("CreditLedger core methods", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let ledger: CreditLedger;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -244,17 +246,7 @@ describe("CreditLedger core methods", () => {
 });
 
 describe("CreditLedger.debit with allowNegative", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let ledger: CreditLedger;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
