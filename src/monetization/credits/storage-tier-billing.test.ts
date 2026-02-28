@@ -39,17 +39,17 @@ describe("bot-billing storage tier", () => {
     await billing.setStorageTier("bot-1", "plus"); // 3 credits/day
     await billing.setStorageTier("bot-2", "max"); // 15 credits/day
     // bot-3 stays standard                        // 0 credits/day
-    expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(18);
+    expect((await billing.getStorageTierCostsForTenant("tenant-1")).toCents()).toBe(18);
   });
 
   it("getStorageTierCostsForTenant excludes suspended bots", async () => {
     await billing.registerBot("bot-1", "tenant-1", "Bot1");
     await billing.setStorageTier("bot-1", "pro"); // 8 credits/day
     await billing.suspendBot("bot-1");
-    expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+    expect((await billing.getStorageTierCostsForTenant("tenant-1")).toCents()).toBe(0);
   });
 
   it("getStorageTierCostsForTenant returns 0 for unknown tenant", async () => {
-    expect(await billing.getStorageTierCostsForTenant("nonexistent")).toBe(0);
+    expect((await billing.getStorageTierCostsForTenant("nonexistent")).toCents()).toBe(0);
   });
 });
