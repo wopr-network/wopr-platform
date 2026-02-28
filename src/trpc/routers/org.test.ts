@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { IAuthUserRepository, LinkedAccount } from "../../db/auth-user-repository.js";
 import type { OrgService } from "../../org/org-service.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
@@ -68,16 +69,39 @@ function makeMockOrgService(): OrgService {
   } as unknown as OrgService;
 }
 
+function makeMockAuthUserRepo(accounts: LinkedAccount[] = []): IAuthUserRepository {
+  const accts = [...accounts];
+  return {
+    getUser: vi.fn().mockResolvedValue(null),
+    updateUser: vi.fn().mockResolvedValue({ id: "test-user", name: "Test", email: "test@example.com", image: null }),
+    changePassword: vi.fn().mockResolvedValue(true),
+    listAccounts: vi.fn().mockImplementation(async () => [...accts]),
+    unlinkAccount: vi.fn().mockImplementation(async (_userId: string, providerId: string) => {
+      const idx = accts.findIndex((a) => a.providerId === providerId);
+      if (idx >= 0) {
+        accts.splice(idx, 1);
+        return true;
+      }
+      return false;
+    }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("tRPC org router", () => {
   let mockOrgService: OrgService;
+  let mockAuthUserRepo: IAuthUserRepository;
 
   beforeEach(() => {
     mockOrgService = makeMockOrgService();
-    setOrgRouterDeps({ orgService: mockOrgService });
+    mockAuthUserRepo = makeMockAuthUserRepo([
+      { id: "a1", providerId: "credential", accountId: "test-user" },
+      { id: "a2", providerId: "github", accountId: "gh-123" },
+    ]);
+    setOrgRouterDeps({ orgService: mockOrgService, authUserRepo: mockAuthUserRepo });
   });
 
   // ---- getOrganization ----
@@ -238,11 +262,24 @@ describe("tRPC org router", () => {
   // ---- connectOauthProvider ----
 
   describe("connectOauthProvider", () => {
-    it("returns connection confirmation", async () => {
+    it("returns OAuth URL for a supported provider", async () => {
       const caller = createCaller(authedContext());
       const result = await caller.org.connectOauthProvider({ provider: "github" });
-      expect(result.connected).toBe(true);
+      expect(result.url).toContain("/api/auth/sign-in/social");
+      expect(result.url).toContain("provider=github");
       expect(result.provider).toBe("github");
+    });
+
+    it("returns OAuth URL for discord", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.org.connectOauthProvider({ provider: "discord" });
+      expect(result.url).toContain("provider=discord");
+      expect(result.provider).toBe("discord");
+    });
+
+    it("rejects unsupported providers", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.org.connectOauthProvider({ provider: "facebook" })).rejects.toThrow(/Unsupported OAuth/);
     });
 
     it("rejects unauthenticated request", async () => {
@@ -254,11 +291,26 @@ describe("tRPC org router", () => {
   // ---- disconnectOauthProvider ----
 
   describe("disconnectOauthProvider", () => {
-    it("returns disconnection confirmation", async () => {
+    it("disconnects a linked provider when user has multiple accounts", async () => {
       const caller = createCaller(authedContext());
       const result = await caller.org.disconnectOauthProvider({ provider: "github" });
       expect(result.disconnected).toBe(true);
       expect(result.provider).toBe("github");
+    });
+
+    it("throws NOT_FOUND when provider is not linked", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.org.disconnectOauthProvider({ provider: "google" })).rejects.toThrow(/not linked/);
+    });
+
+    it("prevents disconnecting the last authentication method", async () => {
+      // Override to have only one account
+      mockAuthUserRepo = makeMockAuthUserRepo([{ id: "a1", providerId: "github", accountId: "gh-123" }]);
+      setOrgRouterDeps({ orgService: mockOrgService, authUserRepo: mockAuthUserRepo });
+      const caller = createCaller(authedContext());
+      await expect(caller.org.disconnectOauthProvider({ provider: "github" })).rejects.toThrow(
+        /Cannot disconnect your only authentication method/,
+      );
     });
 
     it("rejects unauthenticated request", async () => {
