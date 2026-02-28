@@ -44,7 +44,9 @@ export function auditLog(logger: AuditLogger, action: AuditAction) {
     }
 
     try {
-      const clientIp = getClientIpFromContext(c);
+      const xff = c.req.header("x-forwarded-for");
+      const firstXff = xff ? xff.split(",")[0]?.trim() : undefined;
+      const clientIp = firstXff ?? getClientIpFromContext(c);
       await logger.log({
         userId: user.id,
         authMethod,
