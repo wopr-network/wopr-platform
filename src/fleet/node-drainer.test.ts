@@ -67,13 +67,16 @@ function makeMigrationOrchestrator(overrides: Partial<MigrationOrchestrator> = {
 function makeNodeRepo(): INodeRepository {
   return {
     getById: vi.fn(),
+    getBySecret: vi.fn(),
     list: vi.fn(),
     register: vi.fn(),
+    registerSelfHosted: vi.fn(),
     transition: vi.fn().mockResolvedValue({ id: NODE_ID, status: "draining" }),
     updateHeartbeat: vi.fn(),
     addCapacity: vi.fn(),
     findBestTarget: vi.fn(),
     listTransitions: vi.fn(),
+    delete: vi.fn(),
   } as unknown as INodeRepository;
 }
 
@@ -85,6 +88,8 @@ function makeBotInstanceRepo(instances: (typeof defaultInstance1)[] = []): IBotI
     create: vi.fn(),
     reassign: vi.fn(),
     setBillingState: vi.fn(),
+    getResourceTier: vi.fn().mockResolvedValue(null),
+    setResourceTier: vi.fn().mockResolvedValue(undefined),
   } as unknown as IBotInstanceRepository;
 }
 
@@ -251,6 +256,7 @@ describe("NodeDrainer", () => {
       // First call must be the draining transition, then migration, then offline transition
       expect(callOrder[0]).toBe("transition");
       expect(callOrder[1]).toBe(`migrate-${BOT_1}`);
+      expect(callOrder[2]).toBe("transition");
     });
   });
 });
