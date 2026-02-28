@@ -502,10 +502,12 @@ describe("FleetManager", () => {
     });
 
     it("serializes concurrent create calls with the same explicit ID", async () => {
-      let _saveCount = 0;
+      const saveCallOrder: number[] = [];
+      let callIndex = 0;
       (store.save as ReturnType<typeof vi.fn>).mockImplementation(async (_p: BotProfile) => {
-        _saveCount++;
+        const index = ++callIndex;
         await new Promise((r) => setTimeout(r, 10));
+        saveCallOrder.push(index);
       });
 
       const promises = [
@@ -513,8 +515,9 @@ describe("FleetManager", () => {
         fleet.create({ ...PROFILE_PARAMS, id: "explicit-id" }),
       ];
 
-      const results = await Promise.allSettled(promises);
-      expect(results.some((r) => r.status === "fulfilled")).toBe(true);
+      await Promise.allSettled(promises);
+      // Serialized: each save completes before the next begins
+      expect(saveCallOrder).toEqual([1, 2]);
     });
   });
 

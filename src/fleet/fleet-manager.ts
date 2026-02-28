@@ -61,6 +61,7 @@ export class FleetManager {
     resourceLimits?: ContainerResourceLimits,
   ): Promise<BotProfile> {
     const id = params.id ?? randomUUID();
+    const hasExplicitId = "id" in params && params.id !== undefined;
     const doCreate = async () => {
       const profile: BotProfile = { id, ...params };
 
@@ -96,7 +97,7 @@ export class FleetManager {
       return profile;
     };
 
-    return this.withLock(id, doCreate);
+    return hasExplicitId ? this.withLock(id, doCreate) : doCreate();
   }
 
   /**
