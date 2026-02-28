@@ -23,6 +23,8 @@ export const LOW_BALANCE_THRESHOLD = Credit.fromCents(100);
 export interface RuntimeCronConfig {
   ledger: CreditLedger;
   getActiveBotCount: GetActiveBotCount;
+  /** The date being billed, as YYYY-MM-DD. Used for idempotency. */
+  date: string;
   onSuspend?: OnSuspend;
   /** Called when balance drops below LOW_BALANCE_THRESHOLD ($1.00). */
   onLowBalance?: (tenantId: string, balance: Credit) => void | Promise<void>;
@@ -44,6 +46,8 @@ export interface RuntimeCronResult {
   processed: number;
   suspended: string[];
   errors: string[];
+  /** Tenant IDs skipped because they were already billed for this date. */
+  skipped: string[];
 }
 
 /**
@@ -82,12 +86,19 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
     processed: 0,
     suspended: [],
     errors: [],
+    skipped: [],
   };
 
   const tenants = await cfg.ledger.tenantsWithBalance();
 
   for (const { tenantId, balance } of tenants) {
     try {
+      const runtimeRef = `runtime:${cfg.date}:${tenantId}`;
+      if (await cfg.ledger.hasReferenceId(runtimeRef)) {
+        result.skipped.push(tenantId);
+        continue;
+      }
+
       const botCount = await cfg.getActiveBotCount(tenantId);
       if (botCount <= 0) continue;
 
@@ -100,6 +111,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           totalCost,
           "bot_runtime",
           `Daily runtime: ${botCount} bot(s) x $${DAILY_BOT_COST.toDollars().toFixed(2)}`,
+          runtimeRef,
         );
 
         // Debit resource tier surcharges (if any)
@@ -108,13 +120,20 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           if (!tierCost.isZero()) {
             const balanceAfterRuntime = await cfg.ledger.balance(tenantId);
             if (!balanceAfterRuntime.lessThan(tierCost)) {
-              await cfg.ledger.debit(tenantId, tierCost, "resource_upgrade", "Daily resource tier surcharge");
+              await cfg.ledger.debit(
+                tenantId,
+                tierCost,
+                "resource_upgrade",
+                "Daily resource tier surcharge",
+                `runtime-tier:${cfg.date}:${tenantId}`,
+              );
             } else if (balanceAfterRuntime.greaterThan(Credit.ZERO)) {
               await cfg.ledger.debit(
                 tenantId,
                 balanceAfterRuntime,
                 "resource_upgrade",
                 "Partial resource tier surcharge (balance exhausted)",
+                `runtime-tier:${cfg.date}:${tenantId}`,
               );
             }
           }
@@ -143,7 +162,13 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           if (!storageCost.isZero()) {
             const currentBalance = await cfg.ledger.balance(tenantId);
             if (!currentBalance.lessThan(storageCost)) {
-              await cfg.ledger.debit(tenantId, storageCost, "storage_upgrade", "Daily storage tier surcharge");
+              await cfg.ledger.debit(
+                tenantId,
+                storageCost,
+                "storage_upgrade",
+                "Daily storage tier surcharge",
+                `runtime-storage:${cfg.date}:${tenantId}`,
+              );
             } else {
               // Partial debit — take what's left, then suspend
               if (currentBalance.greaterThan(Credit.ZERO)) {
@@ -152,6 +177,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
                   currentBalance,
                   "storage_upgrade",
                   "Partial storage tier surcharge (balance exhausted)",
+                  `runtime-storage:${cfg.date}:${tenantId}`,
                 );
               }
               result.suspended.push(tenantId);
@@ -167,6 +193,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
             balance,
             "bot_runtime",
             `Partial daily runtime (balance exhausted): ${botCount} bot(s)`,
+            runtimeRef,
           );
         }
 

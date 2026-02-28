@@ -7,6 +7,7 @@ import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 import { buildResourceTierCosts, DAILY_BOT_COST, runRuntimeDeductions } from "./runtime-cron.js";
 
 describe("runRuntimeDeductions", () => {
+  const TODAY = "2025-01-01";
   let pool: PGlite;
   let ledger: CreditLedger;
 
@@ -31,6 +32,7 @@ describe("runRuntimeDeductions", () => {
   it("returns empty result when no tenants have balance", async () => {
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 0,
     });
     expect(result.processed).toBe(0);
@@ -42,6 +44,7 @@ describe("runRuntimeDeductions", () => {
     await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "top-up");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 0,
     });
     expect(result.processed).toBe(0);
@@ -52,6 +55,7 @@ describe("runRuntimeDeductions", () => {
     await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "top-up");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 2,
     });
     expect(result.processed).toBe(1);
@@ -64,6 +68,7 @@ describe("runRuntimeDeductions", () => {
     const onSuspend = vi.fn();
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onSuspend,
     });
@@ -81,6 +86,7 @@ describe("runRuntimeDeductions", () => {
     const onSuspend = vi.fn();
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onSuspend,
     });
@@ -93,6 +99,7 @@ describe("runRuntimeDeductions", () => {
     await ledger.credit("tenant-1", Credit.fromCents(5), "purchase", "top-up");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
     });
     expect(result.suspended).toContain("tenant-1");
@@ -103,6 +110,7 @@ describe("runRuntimeDeductions", () => {
     await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "top-up");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => {
         throw new Error("db connection failed");
       },
@@ -118,6 +126,7 @@ describe("runRuntimeDeductions", () => {
     const onSuspend = vi.fn();
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onSuspend,
     });
@@ -133,6 +142,7 @@ describe("runRuntimeDeductions", () => {
     const onSuspend = vi.fn();
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onSuspend,
     });
@@ -149,6 +159,7 @@ describe("runRuntimeDeductions", () => {
     );
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
     });
     expect(result.suspended).toContain("tenant-1");
@@ -162,6 +173,7 @@ describe("runRuntimeDeductions", () => {
     const onSuspend = vi.fn();
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onSuspend,
     });
@@ -175,6 +187,7 @@ describe("runRuntimeDeductions", () => {
     const onLowBalance = vi.fn();
     await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onLowBalance,
     });
@@ -189,6 +202,7 @@ describe("runRuntimeDeductions", () => {
     const onLowBalance = vi.fn();
     await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onLowBalance,
     });
@@ -200,6 +214,7 @@ describe("runRuntimeDeductions", () => {
     const onCreditsExhausted = vi.fn();
     await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onCreditsExhausted,
     });
@@ -212,6 +227,7 @@ describe("runRuntimeDeductions", () => {
     const onCreditsExhausted = vi.fn();
     await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       onCreditsExhausted,
     });
@@ -223,6 +239,7 @@ describe("runRuntimeDeductions", () => {
     await ledger.credit("tenant-1", Credit.fromCents(30), "purchase", "top-up");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       getResourceTierCosts: async () => Credit.fromCents(50),
     });
@@ -235,6 +252,7 @@ describe("runRuntimeDeductions", () => {
     const onCreditsExhausted = vi.fn();
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       getResourceTierCosts: async () => Credit.fromCents(50),
       onCreditsExhausted,
@@ -260,11 +278,31 @@ describe("runRuntimeDeductions", () => {
 
     await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       getResourceTierCosts,
     });
 
     const expected = startBalance - 17 - proTierCost;
     expect((await ledger.balance("tenant-1")).toCents()).toBe(expected);
+  });
+
+  it("is idempotent — second run on same date does not double-deduct", async () => {
+    await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "top-up");
+    const cfg = {
+      ledger,
+      getActiveBotCount: async () => 1,
+      date: "2025-06-15",
+    };
+
+    const first = await runRuntimeDeductions(cfg);
+    expect(first.processed).toBe(1);
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(500 - 17);
+
+    const second = await runRuntimeDeductions(cfg);
+    expect(second.processed).toBe(0);
+    expect(second.skipped).toContain("tenant-1");
+    // Balance unchanged after second run
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(500 - 17);
   });
 });

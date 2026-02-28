@@ -760,8 +760,10 @@ if (process.env.NODE_ENV !== "test") {
     });
     const DAILY_MS = 24 * 60 * 60 * 1000;
     setInterval(() => {
+      const today = new Date().toISOString().slice(0, 10);
       void runRuntimeDeductions({
         ledger: cronLedger,
+        date: today,
         getActiveBotCount: async (tenantId) => {
           const bots = await botInstanceRepo.listByTenant(tenantId);
           return bots.filter((b) => b.billingState === "active").length;

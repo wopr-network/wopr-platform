@@ -6,6 +6,7 @@ import { CreditLedger } from "./credit-ledger.js";
 import { runRuntimeDeductions } from "./runtime-cron.js";
 
 describe("runtime cron with storage tiers", () => {
+  const TODAY = "2025-01-01";
   let pool: PGlite;
   let ledger: CreditLedger;
 
@@ -23,6 +24,7 @@ describe("runtime cron with storage tiers", () => {
     await ledger.credit("t1", Credit.fromCents(1000), "purchase");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       getStorageTierCosts: async () => Credit.fromCents(8),
     });
@@ -36,6 +38,7 @@ describe("runtime cron with storage tiers", () => {
     await ledger.credit("t1", Credit.fromCents(1000), "purchase");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       getStorageTierCosts: async () => Credit.ZERO,
     });
@@ -47,6 +50,7 @@ describe("runtime cron with storage tiers", () => {
     await ledger.credit("t1", Credit.fromCents(1000), "purchase");
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
     });
     expect(result.processed).toBe(1);
@@ -58,6 +62,7 @@ describe("runtime cron with storage tiers", () => {
     const suspended: string[] = [];
     const result = await runRuntimeDeductions({
       ledger,
+      date: TODAY,
       getActiveBotCount: async () => 1,
       getStorageTierCosts: async () => Credit.fromCents(8),
       onSuspend: (tenantId) => {
