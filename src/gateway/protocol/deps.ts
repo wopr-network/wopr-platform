@@ -8,7 +8,7 @@
 import type { IRateLimitRepository } from "../../api/rate-limit-repository.js";
 import type { BudgetChecker } from "../../monetization/budget/budget-checker.js";
 import type { Credit } from "../../monetization/credit.js";
-import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../../monetization/metering/emitter.js";
 import type { CapabilityRateLimitConfig } from "../capability-rate-limit.js";
 import type { CircuitBreakerConfig } from "../circuit-breaker.js";
@@ -19,7 +19,7 @@ import type { FetchFn, GatewayTenant, ProviderConfig } from "../types.js";
 export interface ProtocolDeps {
   meter: MeterEmitter;
   budgetChecker: BudgetChecker;
-  creditLedger?: CreditLedger;
+  creditLedger?: ICreditLedger;
   topUpUrl: string;
   graceBufferCents?: number;
   providers: ProviderConfig;

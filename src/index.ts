@@ -21,6 +21,7 @@ import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { runMigrations } from "./db/migrate.js";
 import * as schema from "./db/schema/index.js";
+import { NotificationService } from "./email/notification-service.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
   getAffiliateRepo,
@@ -31,6 +32,7 @@ import {
   getCommandBus,
   getConnectionRegistry,
   getCreditLedger,
+  getCreditTransactionRepo,
   getDaemonManager,
   getDb,
   getDividendRepo,
@@ -41,6 +43,7 @@ import {
   getNodeRegistrar,
   getNodeRepo,
   getNotificationPrefsStore,
+  getNotificationQueueStore,
   getOnboardingService,
   getOnboardingSessionRepo,
   getOrgMembershipRepo,
@@ -59,7 +62,8 @@ import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
 import { Credit } from "./monetization/credit.js";
-import { CreditLedger } from "./monetization/credits/credit-ledger.js";
+import { runDividendCron } from "./monetization/credits/dividend-cron.js";
+import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cron.js";
 import { buildResourceTierCosts, runRuntimeDeductions } from "./monetization/credits/runtime-cron.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
 import type { HeartbeatMessage } from "./node-agent/types.js";
@@ -304,7 +308,7 @@ if (process.env.NODE_ENV !== "test") {
 
     const meter = new MeterEmitter(getDb());
     const budgetChecker = new BudgetChecker(getDb());
-    const creditLedger = new CreditLedger(getDb());
+    const creditLedger = getCreditLedger();
 
     // Build resolveServiceKey from FLEET_TOKEN_<TENANT>=<scope>:<token> env vars.
     // The same tokens that authenticate the fleet API also authenticate gateway calls.
@@ -802,7 +806,7 @@ if (process.env.NODE_ENV !== "test") {
   // Daily runtime deduction cron — charges tenants for active bots + resource tier surcharges.
   // Runs once every 24 h (offset by 1 min from midnight to avoid thundering herd).
   {
-    const cronLedger = new CreditLedger(getDb());
+    const cronLedger = getCreditLedger();
     const botInstanceRepo = getBotInstanceRepo();
     const getResourceTierCosts = buildResourceTierCosts(botInstanceRepo, async (tenantId) => {
       const bots = await botInstanceRepo.listByTenant(tenantId);
@@ -831,6 +835,61 @@ if (process.env.NODE_ENV !== "test") {
         });
     }, DAILY_MS);
     logger.info("Daily runtime deduction cron scheduled (24h interval)");
+  }
+
+  // Daily community dividend distribution — pool = sum(purchases) × matchRate, split among active users.
+  // Runs once every 24h. Idempotent: skips if already ran for the target date.
+  {
+    const dividendMatchRate = Number.parseFloat(process.env.DIVIDEND_MATCH_RATE ?? "1.0");
+    const dividendTxRepo = getCreditTransactionRepo();
+    const dividendLedger = getCreditLedger();
+    const DAILY_MS = 24 * 60 * 60 * 1000;
+    setInterval(() => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const targetDate = yesterday.toISOString().slice(0, 10);
+      void runDividendCron({
+        creditTransactionRepo: dividendTxRepo,
+        ledger: dividendLedger,
+        matchRate: dividendMatchRate,
+        targetDate,
+      })
+        .then((result) => {
+          logger.info("Daily dividend distribution complete", result);
+        })
+        .catch((err) => {
+          logger.error("Daily dividend distribution failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }, DAILY_MS);
+    logger.info("Daily dividend distribution cron scheduled (24h interval)");
+  }
+
+  // Weekly community dividend digest emails — summarizes last 7 days of dividends for each tenant.
+  // Runs once every 7 days.
+  {
+    const appBaseUrl = process.env.PLATFORM_URL ?? "https://api.wopr.bot";
+    const notificationService = new NotificationService(getNotificationQueueStore(), appBaseUrl);
+    const WEEKLY_MS = 7 * 24 * 60 * 60 * 1000;
+    setInterval(() => {
+      const today = new Date().toISOString().slice(0, 10);
+      void runDividendDigestCron({
+        dividendRepo: getDividendRepo(),
+        notificationService,
+        appBaseUrl,
+        digestDate: today,
+      })
+        .then((result) => {
+          logger.info("Weekly dividend digest complete", result);
+        })
+        .catch((err) => {
+          logger.error("Weekly dividend digest failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }, WEEKLY_MS);
+    logger.info("Weekly dividend digest cron scheduled (7d interval)");
   }
 
   // Run better-auth migrations before accepting requests.

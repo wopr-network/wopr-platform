@@ -767,6 +767,67 @@ describe("tRPC appRouter", () => {
           expect(new Date(result.schedule_next_at).getTime()).toBeGreaterThan(Date.now());
         }
       });
+
+      it("persists scheduleIntervalHours and returns it on read-back", async () => {
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
+          "../monetization/credits/auto-topup-settings-repository.js"
+        );
+        const autoTopupSettingsStore = new Store(db);
+        const creditLedger = makeMockLedger();
+        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const meterAggregator = new MeterAggregator(db);
+        setBillingRouterDeps({
+          processor: createMockProcessor({
+            listPaymentMethods: async () => [{ id: "pm_1", label: "Visa ending 4242", isDefault: true }],
+          }),
+          tenantStore,
+          creditLedger,
+          meterAggregator,
+          priceMap: undefined,
+          autoTopupSettingsStore,
+          dividendRepo: {
+            getStats: async () => ({
+              pool: Credit.ZERO,
+              activeUsers: 0,
+              perUser: Credit.ZERO,
+              nextDistributionAt: new Date().toISOString(),
+              userEligible: false,
+              userLastPurchaseAt: null,
+              userWindowExpiresAt: null,
+            }),
+            getHistory: async () => [],
+            getLifetimeTotal: async () => Credit.ZERO,
+            getDigestTenantAggregates: async () => [],
+            getTenantEmail: async () => undefined,
+          },
+          spendingLimitsRepo: new DrizzleSpendingLimitsRepository(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+        });
+
+        const caller = createCaller(authedContext());
+
+        // Update with daily schedule
+        const updateResult = await caller.billing.updateAutoTopupSettings({
+          schedule_enabled: true,
+          schedule_interval: "daily",
+          schedule_amount_cents: 2000,
+        });
+        expect(updateResult.schedule_interval_hours).toBe(24);
+
+        // Read back
+        const readResult = await caller.billing.autoTopupSettings();
+        expect(readResult.schedule_interval_hours).toBe(24);
+
+        // Update to weekly
+        const weeklyResult = await caller.billing.updateAutoTopupSettings({
+          schedule_interval: "weekly",
+        });
+        expect(weeklyResult.schedule_interval_hours).toBe(168);
+
+        // Read back weekly
+        const readWeekly = await caller.billing.autoTopupSettings();
+        expect(readWeekly.schedule_interval_hours).toBe(168);
+      });
     });
   });
 

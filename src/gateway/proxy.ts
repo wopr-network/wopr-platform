@@ -18,7 +18,7 @@ import { withMargin } from "../monetization/adapters/types.js";
 import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
 import { Credit } from "../monetization/credit.js";
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { PHONE_NUMBER_MONTHLY_COST } from "../monetization/credits/phone-billing.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
@@ -63,7 +63,7 @@ const smsDeliveryStatusBodySchema = z.object({
 export interface ProxyDeps {
   meter: MeterEmitter;
   budgetChecker: BudgetChecker;
-  creditLedger?: CreditLedger;
+  creditLedger?: ICreditLedger;
   topUpUrl: string;
   graceBufferCents?: number;
   providers: ProviderConfig;

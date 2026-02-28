@@ -47,6 +47,8 @@ import type { IBotBilling } from "../monetization/credits/bot-billing.js";
 import { DrizzleBotBilling } from "../monetization/credits/bot-billing.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleCreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { ICreditTransactionRepository } from "../monetization/credits/credit-transaction-repository.js";
+import { DrizzleCreditTransactionRepository } from "../monetization/credits/credit-transaction-repository.js";
 import type { IDividendRepository } from "../monetization/credits/dividend-repository.js";
 import { DrizzleDividendRepository } from "../monetization/credits/dividend-repository.js";
 import type { IPhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
@@ -610,6 +612,7 @@ export function initFleet(): void {
 // ---------------------------------------------------------------------------
 
 let _creditLedger: ICreditLedger | null = null;
+let _creditTransactionRepo: ICreditTransactionRepository | null = null;
 let _botBilling: IBotBilling | null = null;
 let _meterEmitter: IMeterEmitter | null = null;
 let _meterAggregator: IMeterAggregator | null = null;
@@ -626,6 +629,11 @@ let _affiliateFraudRepo: IAffiliateFraudRepository | null = null;
 export function getCreditLedger(): ICreditLedger {
   if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
   return _creditLedger;
+}
+
+export function getCreditTransactionRepo(): ICreditTransactionRepository {
+  if (!_creditTransactionRepo) _creditTransactionRepo = new DrizzleCreditTransactionRepository(getDb());
+  return _creditTransactionRepo;
 }
 
 export function getBotBilling(): IBotBilling {

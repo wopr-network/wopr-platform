@@ -10,12 +10,12 @@ import type { Context } from "hono";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { Credit } from "../monetization/credit.js";
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { InsufficientBalanceError } from "../monetization/credits/credit-ledger.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 
 export interface CreditGateDeps {
-  creditLedger?: CreditLedger;
+  creditLedger?: ICreditLedger;
   topUpUrl: string;
   /** Maximum negative balance allowed before hard-stop, in cents. Default: 50 (-$0.50). */
   graceBufferCents?: number;
