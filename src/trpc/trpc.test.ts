@@ -26,6 +26,14 @@ function authedContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
   };
 }
 
+function adminAuthedContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
+  return {
+    user: { id: "test-user", roles: ["platform_admin"] },
+    tenantId: "test-tenant",
+    ...overrides,
+  };
+}
+
 function unauthContext(): TRPCContext {
   return { user: undefined, tenantId: undefined };
 }
@@ -194,14 +202,14 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsBalance returns 0 for new tenant", async () => {
-      const caller = createCaller(authedContext());
+      const caller = createCaller(adminAuthedContext());
       const result = await caller.admin.creditsBalance({ tenantId: "new-tenant" });
       expect(result.balance_cents).toBe(0);
       expect(result.tenant).toBe("new-tenant");
     });
 
     it("creditsGrant grants credits", async () => {
-      const caller = createCaller(authedContext());
+      const caller = createCaller(adminAuthedContext());
       await caller.admin.creditsGrant({ tenantId: "t1", amount_cents: 5000, reason: "Test grant" });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t1" });
@@ -209,7 +217,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsRefund refunds credits", async () => {
-      const caller = createCaller(authedContext());
+      const caller = createCaller(adminAuthedContext());
       await caller.admin.creditsGrant({ tenantId: "t2", amount_cents: 10000, reason: "Initial" });
       await caller.admin.creditsRefund({ tenantId: "t2", amount_cents: 3000, reason: "Refund" });
 
@@ -218,7 +226,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsCorrection applies correction", async () => {
-      const caller = createCaller(authedContext());
+      const caller = createCaller(adminAuthedContext());
       await caller.admin.creditsGrant({ tenantId: "t3", amount_cents: 5000, reason: "Initial" });
       await caller.admin.creditsCorrection({
         tenantId: "t3",
@@ -231,7 +239,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsTransactions returns history", async () => {
-      const caller = createCaller(authedContext());
+      const caller = createCaller(adminAuthedContext());
       await caller.admin.creditsGrant({ tenantId: "t4", amount_cents: 1000, reason: "First" });
       await caller.admin.creditsGrant({ tenantId: "t4", amount_cents: 2000, reason: "Second" });
 
@@ -247,7 +255,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("usersList returns empty list initially", async () => {
-      const caller = createCaller(authedContext());
+      const caller = createCaller(adminAuthedContext());
       const result = await caller.admin.usersList({});
       expect(result.users).toEqual([]);
     });
