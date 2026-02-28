@@ -22,6 +22,13 @@
       "when": 1772220007000,
       "tag": "0053_affiliate_velocity_cap",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1772220008000,
+      "tag": "0054_platform_api_keys_unique_hash",
+      "breakpoints": true
     }
   ]
 }
