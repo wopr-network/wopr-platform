@@ -24,7 +24,7 @@ export interface BackupRecoveryEvidence {
   totalContainers: number;
   containersWithRecentBackup: number;
   staleContainers: number;
-  lastVerificationReport: null;
+  lastVerificationReport: string | null;
 }
 
 export interface EncryptionEvidence {

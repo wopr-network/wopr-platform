@@ -13,6 +13,7 @@ import type { ITenantStatusRepository } from "../admin/tenant-status/tenant-stat
 import { TenantStatusStore } from "../admin/tenant-status/tenant-status-store.js";
 import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
+import { DrizzleAuditLogRepository } from "../audit/audit-log-repository.js";
 import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
 import { BackupStatusStore } from "../backup/backup-status-store.js";
 import { BackupVerifier } from "../backup/backup-verifier.js";
@@ -22,6 +23,7 @@ import { RestoreService } from "../backup/restore-service.js";
 import { SnapshotManager } from "../backup/snapshot-manager.js";
 import { DrizzleSnapshotRepository } from "../backup/snapshot-repository.js";
 import { SpacesClient } from "../backup/spaces-client.js";
+import { EvidenceCollector } from "../compliance/evidence-collector.js";
 import { logger } from "../config/logger.js";
 import { createDb, type DrizzleDb } from "../db/index.js";
 import type { INotificationPreferencesStore } from "../email/notification-preferences-store.js";
@@ -68,6 +70,7 @@ import { DrizzleOrgRepository } from "../org/drizzle-org-repository.js";
 import { OrgService } from "../org/org-service.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
+import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
@@ -933,10 +936,6 @@ export function getSetupSessionRepo(): ISetupSessionRepository {
 // ---------------------------------------------------------------------------
 // Compliance Evidence Collector (WOP-529)
 // ---------------------------------------------------------------------------
-
-import { DrizzleAuditLogRepository } from "../audit/audit-log-repository.js";
-import { EvidenceCollector } from "../compliance/evidence-collector.js";
-import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
 
 let _evidenceCollector: EvidenceCollector | null = null;
 

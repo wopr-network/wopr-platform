@@ -14,8 +14,18 @@ export function createAdminComplianceRoutes(collector: EvidenceCollector): Hono 
     const now = new Date();
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
 
-    const from = c.req.query("from") ?? ninetyDaysAgo.toISOString();
-    const to = c.req.query("to") ?? now.toISOString();
+    const fromParam = c.req.query("from");
+    const toParam = c.req.query("to");
+
+    if (fromParam !== undefined && Number.isNaN(new Date(fromParam).getTime())) {
+      return c.json({ error: "Invalid 'from' date" }, 400);
+    }
+    if (toParam !== undefined && Number.isNaN(new Date(toParam).getTime())) {
+      return c.json({ error: "Invalid 'to' date" }, 400);
+    }
+
+    const from = fromParam ?? ninetyDaysAgo.toISOString();
+    const to = toParam ?? now.toISOString();
 
     const report = await collector.collect({ from, to });
     return c.json(report);

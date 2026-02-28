@@ -8,6 +8,7 @@
 import { count, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { tenantSecuritySettings } from "../db/schema/security-settings.js";
+import { tenants } from "../db/schema/tenants.js";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -64,7 +65,7 @@ export class DrizzleTwoFactorRepository implements ITwoFactorRepository {
   }
 
   async countTotal(): Promise<number> {
-    const rows = await this.db.select({ count: count() }).from(tenantSecuritySettings);
+    const rows = await this.db.select({ count: count() }).from(tenants);
     return rows[0]?.count ?? 0;
   }
 }
