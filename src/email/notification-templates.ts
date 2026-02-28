@@ -624,8 +624,8 @@ export function renderNotificationTemplate(template: TemplateName, data: Record<
       };
     }
     case "spend-alert": {
-      const currentSpend = escapeHtml((data.currentSpendDollars as string) || "$0.00");
-      const alertAt = escapeHtml((data.alertAtDollars as string) || "$0.00");
+      const currentSpend = escapeHtml(String(data.currentSpendDollars ?? "$0.00"));
+      const alertAt = escapeHtml(String(data.alertAtDollars ?? "$0.00"));
       const creditsUrl = (data.creditsUrl as string) || "";
       const parts = [
         heading("Spending Alert: Threshold Reached"),
