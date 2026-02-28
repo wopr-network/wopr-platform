@@ -124,16 +124,18 @@ describe("DrizzleMeterAggregator edge cases", () => {
     const real = summaries.filter((s) => s.tenant !== "__sentinel__");
     expect(real).toHaveLength(2);
 
-    const tenantA = real.find((s) => s.tenant === "tenant-A")!;
-    const tenantB = real.find((s) => s.tenant === "tenant-B")!;
+    const tenantA = real.find((s) => s.tenant === "tenant-A");
+    expect(tenantA).toBeDefined();
+    const tenantB = real.find((s) => s.tenant === "tenant-B");
+    expect(tenantB).toBeDefined();
 
-    expect(tenantA.eventCount).toBe(2);
-    expect(tenantA.totalCost).toBe(4_000_000);
-    expect(tenantA.totalCharge).toBe(6_000_000);
+    expect(tenantA?.eventCount).toBe(2);
+    expect(tenantA?.totalCost).toBe(4_000_000);
+    expect(tenantA?.totalCharge).toBe(6_000_000);
 
-    expect(tenantB.eventCount).toBe(1);
-    expect(tenantB.totalCost).toBe(5_000_000);
-    expect(tenantB.totalCharge).toBe(6_000_000);
+    expect(tenantB?.eventCount).toBe(1);
+    expect(tenantB?.totalCost).toBe(5_000_000);
+    expect(tenantB?.totalCharge).toBe(6_000_000);
   });
 
   it("includes events at window start, excludes events at window end", async () => {
@@ -146,15 +148,15 @@ describe("DrizzleMeterAggregator edge cases", () => {
     const summaries = await db.select().from(usageSummaries);
     const real = summaries.filter((s) => s.tenant !== "__sentinel__");
 
-    const window0 = real.find((s) => s.windowStart === 0)!;
+    const window0 = real.find((s) => s.windowStart === 0);
     expect(window0).toBeDefined();
-    expect(window0.eventCount).toBe(2);
-    expect(window0.totalCost).toBe(3_000_000);
+    expect(window0?.eventCount).toBe(2);
+    expect(window0?.totalCost).toBe(3_000_000);
 
-    const window1 = real.find((s) => s.windowStart === 60_000)!;
+    const window1 = real.find((s) => s.windowStart === 60_000);
     expect(window1).toBeDefined();
-    expect(window1.eventCount).toBe(1);
-    expect(window1.totalCost).toBe(100_000_000);
+    expect(window1?.eventCount).toBe(1);
+    expect(window1?.totalCost).toBe(100_000_000);
 
     // window0: 1 tenant/capability/provider group = 1 row
     // window1: 1 tenant/capability/provider group = 1 row
