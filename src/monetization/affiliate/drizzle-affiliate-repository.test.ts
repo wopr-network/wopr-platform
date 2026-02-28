@@ -196,7 +196,7 @@ describe("DrizzleAffiliateRepository", () => {
       // Record 3 referrals with matches
       for (let i = 0; i < 3; i++) {
         await repo.recordReferral("referrer", `buyer-${i}`, "abc123");
-        await repo.recordMatch(`buyer-${i}`, 1000);
+        await repo.recordMatch(`buyer-${i}`, Credit.fromCents(1000));
       }
 
       // Record 1 suppressed referral
@@ -211,10 +211,10 @@ describe("DrizzleAffiliateRepository", () => {
       await repo.getOrCreateCode("referrer");
 
       await repo.recordReferral("referrer", "buyer-0", "abc123");
-      await repo.recordMatch("buyer-0", 5000);
+      await repo.recordMatch("buyer-0", Credit.fromCents(5000));
 
       await repo.recordReferral("referrer", "buyer-1", "abc123");
-      await repo.recordMatch("buyer-1", 3000);
+      await repo.recordMatch("buyer-1", Credit.fromCents(3000));
 
       const total = await repo.getPayoutTotal30d("referrer");
       expect(total).toBe(8000);

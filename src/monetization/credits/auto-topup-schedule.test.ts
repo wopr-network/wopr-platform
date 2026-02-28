@@ -126,7 +126,7 @@ describe("runScheduledTopups", () => {
     // Setup: one due tenant that is banned
     await settingsRepo.upsert("t-banned", {
       scheduleEnabled: true,
-      scheduleAmountCents: 1000,
+      scheduleAmount: Credit.fromCents(1000),
       scheduleIntervalHours: 24,
       scheduleNextAt: new Date(Date.now() - 60_000).toISOString(),
     });

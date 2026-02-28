@@ -195,7 +195,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       code: row.code,
       signedUpAt: row.signedUpAt,
       firstPurchaseAt: row.firstPurchaseAt,
-      matchAmountCents: row.matchAmountCents,
+      matchAmount: row.matchAmountCents != null ? Credit.fromCents(row.matchAmountCents) : null,
       matchedAt: row.matchedAt,
       payoutSuppressed: row.payoutSuppressed,
       suppressionReason: row.suppressionReason,

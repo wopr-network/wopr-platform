@@ -161,8 +161,8 @@ describe("maybeTriggerUsageTopup", () => {
     // Setup: settings exist and balance is below threshold
     await settingsRepo.upsert("t1", {
       usageEnabled: true,
-      usageThresholdCents: 1000,
-      usageTopupCents: 2000,
+      usageThreshold: Credit.fromCents(1000),
+      usageTopup: Credit.fromCents(2000),
     });
 
     const chargeAutoTopup = vi.fn();
