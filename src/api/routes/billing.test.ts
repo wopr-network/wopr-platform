@@ -1201,7 +1201,7 @@ describe("billing routes", () => {
       expect(body.link).toContain("?ref=");
       expect(body.referrals_total).toBe(0);
       expect(body.referrals_converted).toBe(0);
-      expect(body.credits_earned_cents).toBe(0);
+      expect(body.creditsEarned).toBe(0);
     });
 
     it("returns same code on subsequent calls", async () => {

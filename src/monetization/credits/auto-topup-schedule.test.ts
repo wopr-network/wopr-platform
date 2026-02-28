@@ -74,14 +74,14 @@ describe("runScheduledTopups", () => {
       scheduleNextAt: past,
     });
 
-    const before = (await settingsRepo.getByTenant("t1"))!.scheduleNextAt;
+    const before = (await settingsRepo.getByTenant("t1"))?.scheduleNextAt;
 
     const mockCharge = vi.fn().mockResolvedValue({ success: true, paymentReference: "pi_ok" });
     const deps: ScheduleTopupDeps = { settingsRepo, chargeAutoTopup: mockCharge };
 
     await runScheduledTopups(deps);
 
-    const after = (await settingsRepo.getByTenant("t1"))!.scheduleNextAt;
+    const after = (await settingsRepo.getByTenant("t1"))?.scheduleNextAt;
     expect(new Date(after!).getTime()).toBeGreaterThan(new Date(before!).getTime());
   });
 
@@ -94,14 +94,14 @@ describe("runScheduledTopups", () => {
       scheduleNextAt: past,
     });
 
-    const before = (await settingsRepo.getByTenant("t1"))!.scheduleNextAt;
+    const before = (await settingsRepo.getByTenant("t1"))?.scheduleNextAt;
 
     const mockCharge = vi.fn().mockRejectedValue(new Error("Stripe network error"));
     const deps: ScheduleTopupDeps = { settingsRepo, chargeAutoTopup: mockCharge };
 
     await runScheduledTopups(deps);
 
-    const after = (await settingsRepo.getByTenant("t1"))!.scheduleNextAt;
+    const after = (await settingsRepo.getByTenant("t1"))?.scheduleNextAt;
     expect(new Date(after!).getTime()).toBeGreaterThan(new Date(before!).getTime());
   });
 

@@ -254,7 +254,7 @@ describe("BotBilling", () => {
 
   describe("getStorageTierCostsForTenant", () => {
     it("returns 0 for a tenant with no active bots", async () => {
-      expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+      expect((await billing.getStorageTierCostsForTenant("tenant-1")).toCents()).toBe(0);
     });
 
     it("returns correct daily cost for known storage tiers", async () => {
@@ -263,7 +263,7 @@ describe("BotBilling", () => {
       await billing.registerBot("bot-2", "tenant-1", "bot-b");
       await billing.setStorageTier("bot-2", "plus");
 
-      expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(11);
+      expect((await billing.getStorageTierCostsForTenant("tenant-1")).toCents()).toBe(11);
     });
 
     it("returns 0 for unknown storage tier (fallback branch)", async () => {
@@ -271,8 +271,8 @@ describe("BotBilling", () => {
       // Bypass setStorageTier to insert an unrecognized tier value directly
       await pool.query(`UPDATE bot_instances SET storage_tier = 'unknown_tier' WHERE id = 'bot-1'`);
 
-      // STORAGE_TIERS['unknown_tier'] is undefined → ?? 0 fallback
-      expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+      // STORAGE_TIERS['unknown_tier'] is undefined → Credit.ZERO fallback
+      expect((await billing.getStorageTierCostsForTenant("tenant-1")).toCents()).toBe(0);
     });
 
     it("does not include suspended bots in storage tier cost", async () => {
@@ -280,7 +280,7 @@ describe("BotBilling", () => {
       await billing.setStorageTier("bot-1", "pro");
       await billing.suspendBot("bot-1");
 
-      expect(await billing.getStorageTierCostsForTenant("tenant-1")).toBe(0);
+      expect((await billing.getStorageTierCostsForTenant("tenant-1")).toCents()).toBe(0);
     });
   });
 
