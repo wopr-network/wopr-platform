@@ -25,7 +25,7 @@ export const STORAGE_TIERS = {
     dailyCost: Credit.fromCents(15),
     description: "100 GB — maximum storage capacity",
   },
-};
+} as const;
 
 export type StorageTierKey = keyof typeof STORAGE_TIERS;
 export const STORAGE_TIER_KEYS = Object.keys(STORAGE_TIERS) as StorageTierKey[];

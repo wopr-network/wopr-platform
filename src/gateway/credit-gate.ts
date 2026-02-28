@@ -65,8 +65,8 @@ export async function creditBalanceCheck(
       code: "credits_exhausted",
       needsCredits: true,
       topUpUrl: deps.topUpUrl,
-      currentBalance: balance.toRaw(),
-      required: estimatedCost.toRaw(),
+      currentBalance: balance.toCents(),
+      required: estimatedCost.toCents(),
     };
   }
 
@@ -78,8 +78,8 @@ export async function creditBalanceCheck(
       code: "insufficient_credits",
       needsCredits: true,
       topUpUrl: deps.topUpUrl,
-      currentBalance: balance.toRaw(),
-      required: estimatedCost.toRaw(),
+      currentBalance: balance.toCents(),
+      required: estimatedCost.toCents(),
     };
   }
 

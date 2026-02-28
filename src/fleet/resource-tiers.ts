@@ -34,7 +34,7 @@ export const RESOURCE_TIERS = {
     dailyCost: Credit.fromCents(50),
     description: "16 GB RAM, 8 vCPU — maximum performance",
   },
-};
+} as const;
 
 export type ResourceTierKey = keyof typeof RESOURCE_TIERS;
 export const RESOURCE_TIER_KEYS = Object.keys(RESOURCE_TIERS) as ResourceTierKey[];
