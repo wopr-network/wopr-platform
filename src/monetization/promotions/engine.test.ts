@@ -49,6 +49,7 @@ describe("PromotionEngine", () => {
       findByCouponCode: vi.fn().mockResolvedValue(null),
       incrementUsage: vi.fn().mockResolvedValue(undefined),
       incrementUsageIfBudgetAllows: vi.fn().mockResolvedValue(true),
+      incrementUsageIfAllowed: vi.fn().mockResolvedValue(true),
       create: vi.fn(),
       getById: vi.fn(),
       list: vi.fn(),
@@ -173,11 +174,11 @@ describe("PromotionEngine", () => {
     expect((grantedAmount as Credit).toCents()).toBe(1000);
   });
 
-  it("respects budget cap via atomic incrementUsageIfBudgetAllows", async () => {
+  it("respects budget cap via atomic incrementUsageIfAllowed", async () => {
     vi.mocked(promotionRepo.listActive).mockResolvedValue([
       makePromo({ budgetCredits: 500, totalCreditsGranted: 400, valueAmount: 200 }),
     ]);
-    vi.mocked(promotionRepo.incrementUsageIfBudgetAllows).mockResolvedValue(false);
+    vi.mocked(promotionRepo.incrementUsageIfAllowed).mockResolvedValue(false);
     // atomic check returns false — budget exceeded
     const results = await engine.evaluateAndGrant({
       tenantId: "tenant-1",
@@ -185,7 +186,7 @@ describe("PromotionEngine", () => {
       purchaseAmountCredits: Credit.fromCents(2500),
     });
     expect(results).toHaveLength(0);
-    expect(promotionRepo.incrementUsageIfBudgetAllows).toHaveBeenCalledWith("promo-1", 200, 500);
+    expect(promotionRepo.incrementUsageIfAllowed).toHaveBeenCalledWith("promo-1", 200, 500, null);
   });
 
   it("rejects coupon_redeem with minPurchaseCredits when no purchaseAmountCredits provided", async () => {
@@ -226,6 +227,8 @@ describe("PromotionEngine", () => {
 
   it("respects total use limit", async () => {
     vi.mocked(promotionRepo.listActive).mockResolvedValue([makePromo({ totalUseLimit: 10, totalUses: 10 })]);
+    vi.mocked(promotionRepo.incrementUsageIfAllowed).mockResolvedValue(false);
+    // atomic check returns false — total use limit reached
     const results = await engine.evaluateAndGrant({
       tenantId: "tenant-1",
       trigger: "purchase",
