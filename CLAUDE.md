@@ -35,7 +35,6 @@ src/
     schema/         # Table definitions (source of truth for migrations)
   fleet/            # Multi-bot fleet management
   gateway/          # Proxy layer between platform and customer instances
-  instance/         # Bot instance lifecycle (create, start, stop, delete)
   monetization/     # Credits, subscriptions, usage tracking
   network/          # Networking / connectivity to customer instances
   node-agent/       # Agent running on customer hardware

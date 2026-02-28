@@ -15,7 +15,6 @@ describe("platform scaffold", () => {
 
   it("directory structure modules are importable", async () => {
     // These are comment-only placeholders but should be valid TS modules
-    await expect(import("./instance/index.js")).resolves.toBeDefined();
     await expect(import("./observability/index.js")).resolves.toBeDefined();
     await expect(import("./monetization/index.js")).resolves.toBeDefined();
     await expect(import("./auth/index.js")).resolves.toBeDefined();
