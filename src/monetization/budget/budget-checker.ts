@@ -237,7 +237,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
    */
   private getMonthStart(now: number): number {
     const d = new Date(now);
-    return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0).getTime();
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).getTime();
   }
 
   /**
