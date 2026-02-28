@@ -2,11 +2,10 @@
  * Unit tests for DrizzleSpendingCapStore (WOP-1116).
  */
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { meterEvents, usageSummaries } from "../db/schema/meter-events.js";
 import { Credit } from "../monetization/credit.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { createTestDb, seedMeterEvent, seedUsageSummary, truncateAllTables } from "../test/db.js";
 import { DrizzleSpendingCapStore, getDayStart, getMonthStart } from "./spending-cap-repository.js";
 
 describe("getDayStart UTC", () => {
@@ -97,14 +96,8 @@ describe("DrizzleSpendingCapStore", () => {
   });
 
   beforeEach(async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-02-15T14:00:00Z"));
     await truncateAllTables(pool);
     store = new DrizzleSpendingCapStore(db);
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   describe("period rollover", () => {
@@ -113,26 +106,8 @@ describe("DrizzleSpendingCapStore", () => {
       const todayTs = new Date("2026-02-15T10:00:00Z").getTime();
       const chargeRaw = Credit.fromDollars(1.5).toRaw();
 
-      await db.insert(meterEvents).values([
-        {
-          id: "me-yesterday",
-          tenant: "t1",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: yesterdayTs,
-        },
-        {
-          id: "me-today",
-          tenant: "t1",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: todayTs,
-        },
-      ]);
+      await seedMeterEvent(db, { id: "me-yesterday", tenant: "t1", charge: chargeRaw, timestamp: yesterdayTs });
+      await seedMeterEvent(db, { id: "me-today", tenant: "t1", charge: chargeRaw, timestamp: todayTs });
 
       const now = new Date("2026-02-15T14:00:00Z").getTime();
       const result = await store.querySpend("t1", now);
@@ -149,15 +124,7 @@ describe("DrizzleSpendingCapStore", () => {
       const now = new Date("2026-02-15T14:00:00Z").getTime();
       const chargeRaw = Credit.fromDollars(2.0).toRaw();
 
-      await db.insert(meterEvents).values({
-        id: "me-1",
-        tenant: "t1",
-        cost: 0,
-        charge: chargeRaw,
-        capability: "llm",
-        provider: "openai",
-        timestamp: now - 3600_000, // 1 hour ago, same day
-      });
+      await seedMeterEvent(db, { id: "me-1", tenant: "t1", charge: chargeRaw, timestamp: now - 3600_000 });
 
       const result = await store.querySpend("t1", now);
       expect(result.dailySpend).toBeCloseTo(2.0, 6);
@@ -169,15 +136,10 @@ describe("DrizzleSpendingCapStore", () => {
       const chargeRaw = Credit.fromDollars(3.0).toRaw();
       const dayStart = new Date("2026-02-15T00:00:00Z").getTime();
 
-      await db.insert(usageSummaries).values({
+      await seedUsageSummary(db, {
         id: "us-1",
         tenant: "t1",
-        capability: "tts",
-        provider: "kokoro",
-        eventCount: 10,
-        totalCost: 0,
         totalCharge: chargeRaw,
-        totalDuration: 0,
         windowStart: dayStart,
         windowEnd: now,
       });
@@ -191,27 +153,19 @@ describe("DrizzleSpendingCapStore", () => {
       const now = new Date("2026-02-15T14:00:00Z").getTime();
       const dayStart = new Date("2026-02-15T00:00:00Z").getTime();
 
-      await db.insert(meterEvents).values({
+      await seedMeterEvent(db, {
         id: "me-combo",
         tenant: "t1",
-        cost: 0,
         charge: Credit.fromDollars(1.0).toRaw(),
-        capability: "llm",
-        provider: "openai",
         timestamp: now - 3600_000,
       });
-
-      await db.insert(usageSummaries).values({
+      await seedUsageSummary(db, {
         id: "us-combo",
         tenant: "t1",
-        capability: "tts",
-        provider: "kokoro",
-        eventCount: 5,
-        totalCost: 0,
         totalCharge: Credit.fromDollars(2.0).toRaw(),
-        totalDuration: 0,
         windowStart: dayStart,
         windowEnd: now,
+        eventCount: 5,
       });
 
       const result = await store.querySpend("t1", now);
@@ -225,32 +179,16 @@ describe("DrizzleSpendingCapStore", () => {
       const now = new Date("2026-02-15T14:00:00Z").getTime();
       const chargeRaw = Credit.fromDollars(5.0).toRaw();
 
-      await db.insert(meterEvents).values([
-        {
-          id: "me-a",
-          tenant: "tenant-a",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: now - 1000,
-        },
-        {
-          id: "me-b",
-          tenant: "tenant-b",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: now - 1000,
-        },
-      ]);
+      await seedMeterEvent(db, { id: "me-a", tenant: "tenant-a", charge: chargeRaw, timestamp: now - 1000 });
+      await seedMeterEvent(db, { id: "me-b", tenant: "tenant-b", charge: chargeRaw, timestamp: now - 1000 });
 
       const resultA = await store.querySpend("tenant-a", now);
       const resultB = await store.querySpend("tenant-b", now);
 
       expect(resultA.dailySpend).toBeCloseTo(5.0, 6);
+      expect(resultA.monthlySpend).toBeCloseTo(5.0, 6);
       expect(resultB.dailySpend).toBeCloseTo(5.0, 6);
+      expect(resultB.monthlySpend).toBeCloseTo(5.0, 6);
 
       // A third tenant with no data should return 0
       const resultC = await store.querySpend("tenant-c", now);
@@ -263,35 +201,24 @@ describe("DrizzleSpendingCapStore", () => {
     it("monthly accumulates across multiple days while daily resets", async () => {
       const chargeRaw = Credit.fromDollars(10.0).toRaw();
 
-      await db.insert(meterEvents).values([
-        {
-          id: "me-feb10",
-          tenant: "t1",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: new Date("2026-02-10T12:00:00Z").getTime(),
-        },
-        {
-          id: "me-feb12",
-          tenant: "t1",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: new Date("2026-02-12T12:00:00Z").getTime(),
-        },
-        {
-          id: "me-feb15",
-          tenant: "t1",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: new Date("2026-02-15T10:00:00Z").getTime(),
-        },
-      ]);
+      await seedMeterEvent(db, {
+        id: "me-feb10",
+        tenant: "t1",
+        charge: chargeRaw,
+        timestamp: new Date("2026-02-10T12:00:00Z").getTime(),
+      });
+      await seedMeterEvent(db, {
+        id: "me-feb12",
+        tenant: "t1",
+        charge: chargeRaw,
+        timestamp: new Date("2026-02-12T12:00:00Z").getTime(),
+      });
+      await seedMeterEvent(db, {
+        id: "me-feb15",
+        tenant: "t1",
+        charge: chargeRaw,
+        timestamp: new Date("2026-02-15T10:00:00Z").getTime(),
+      });
 
       const now = new Date("2026-02-15T14:00:00Z").getTime();
       const result = await store.querySpend("t1", now);
@@ -306,26 +233,18 @@ describe("DrizzleSpendingCapStore", () => {
       const chargeRaw = Credit.fromDollars(10.0).toRaw();
 
       // Jan 31 spend should NOT appear in Feb monthly
-      await db.insert(meterEvents).values([
-        {
-          id: "me-jan31",
-          tenant: "t1",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: new Date("2026-01-31T23:00:00Z").getTime(),
-        },
-        {
-          id: "me-feb01",
-          tenant: "t1",
-          cost: 0,
-          charge: chargeRaw,
-          capability: "llm",
-          provider: "openai",
-          timestamp: new Date("2026-02-01T01:00:00Z").getTime(),
-        },
-      ]);
+      await seedMeterEvent(db, {
+        id: "me-jan31",
+        tenant: "t1",
+        charge: chargeRaw,
+        timestamp: new Date("2026-01-31T23:00:00Z").getTime(),
+      });
+      await seedMeterEvent(db, {
+        id: "me-feb01",
+        tenant: "t1",
+        charge: chargeRaw,
+        timestamp: new Date("2026-02-01T01:00:00Z").getTime(),
+      });
 
       const now = new Date("2026-02-15T14:00:00Z").getTime();
       const result = await store.querySpend("t1", now);
