@@ -162,7 +162,11 @@
         "src/auth/api-key-repository.ts",
         "src/setup/plugin-config-repository.ts",
         "src/monetization/metering/reconciliation-repository.ts",
-        "src/monetization/addons/addon-repository.ts"
+        "src/monetization/addons/addon-repository.ts",
+        "src/monetization/promotions/promotion-repository.ts",
+        "src/monetization/promotions/coupon-repository.ts",
+        "src/monetization/promotions/redemption-repository.ts",
+        "src/monetization/adapters/rate-override-repository.ts"
       ],
       "linter": {
         "rules": {

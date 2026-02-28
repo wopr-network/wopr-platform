@@ -29,6 +29,13 @@
       "when": 1772220008000,
       "tag": "0054_platform_api_keys_unique_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1772220009000,
+      "tag": "0055_promotions_system",
+      "breakpoints": true
     }
   ]
 }
