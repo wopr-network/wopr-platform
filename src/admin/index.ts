@@ -30,7 +30,6 @@ export { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk/bulk-
 export type { IAdminNotesRepository } from "./notes/admin-notes-repository.js";
 export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
 export { AdminNotesStore } from "./notes/index.js";
-export { initAdminNotesSchema } from "./notes/schema.js";
 export type {
   IAdminNotificationQueueStore,
   NotificationEmailType,
@@ -47,11 +46,9 @@ export type {
   SellRateInput,
 } from "./rates/rate-store.js";
 export { RateStore } from "./rates/rate-store.js";
-export { initRateSchema } from "./rates/schema.js";
 export { requirePlatformAdmin, requireTenantAdmin } from "./roles/require-role.js";
 export type { Role, UserRoleRow } from "./roles/role-store.js";
 export { isValidRole, RoleStore } from "./roles/role-store.js";
-export { initRolesSchema } from "./roles/schema.js";
 export type { ITenantStatusRepository } from "./tenant-status/tenant-status-repository.js";
 export type { AdminUserFilters, AdminUserListResponse, AdminUserSummary } from "./users/user-store.js";
 export { AdminUserStore } from "./users/user-store.js";

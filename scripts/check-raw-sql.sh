@@ -46,10 +46,6 @@ TEMP_EXCLUDED_PATTERNS=(
   "src/api/routes/admin-backups\.ts"
   # WOP-904: monetization schemas
   "src/monetization/affiliate/schema\.ts"
-  "src/monetization/credits/schema\.ts"
-  "src/monetization/metering/schema\.ts"
-  "src/monetization/payram/schema\.ts"
-  "src/monetization/stripe/schema\.ts"
   # WOP-905: security
   "src/security/tenant-keys/key-resolution\.ts"
   "src/security/credential-vault/key-rotation\.ts"
@@ -70,13 +66,10 @@ TEMP_EXCLUDED_PATTERNS=(
   "src/admin/credits/adjustment-store\.ts"
   "src/admin/credits/schema\.ts"
   "src/admin/rates/rate-store\.ts"
-  "src/admin/rates/schema\.ts"
   "src/admin/roles/role-store\.ts"
-  "src/admin/roles/schema\.ts"
   "src/admin/users/schema\.ts"
   "src/admin/bulk/bulk-operations-store\.ts"
   "src/admin/bulk/schema\.ts"
-  "src/admin/notes/schema\.ts"
 )
 
 build_exclude_pattern() {
