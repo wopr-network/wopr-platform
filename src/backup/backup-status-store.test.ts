@@ -1,13 +1,25 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleBackupStatusRepository } from "./backup-status-repository.js";
 import { BackupStatusStore } from "./backup-status-store.js";
 
 describe("BackupStatusStore", () => {
   let store: BackupStatusStore;
+  let db: DrizzleDb;
+  let pool: PGlite;
+
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
 
   beforeEach(async () => {
-    const { db } = await createTestDb();
+    await truncateAllTables(pool);
     const repo = new DrizzleBackupStatusRepository(db);
     store = new BackupStatusStore(repo);
   });

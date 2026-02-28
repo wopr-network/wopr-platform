@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import type { EncryptedPayload } from "../types.js";
 import { TenantKeyStore } from "./schema.js";
 
@@ -12,15 +13,20 @@ const fakeEncrypted: EncryptedPayload = {
 
 describe("TenantKeyStore", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
   let store: TenantKeyStore;
 
-  beforeEach(async () => {
-    ({ db } = await createTestDb());
-    store = new TenantKeyStore(db);
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(() => {
-    // PGlite cleans up automatically; nothing to close
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new TenantKeyStore(db);
   });
 
   describe("upsert", () => {

@@ -1,7 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
 import { DrizzleFleetEventRepository } from "../fleet/drizzle-fleet-event-repository.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { AlertChecker, buildAlerts } from "./alerts.js";
 import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { createAdminHealthHandler } from "./health-dashboard.js";
@@ -9,21 +10,28 @@ import { MetricsCollector } from "./metrics.js";
 
 describe("admin health dashboard", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let metrics: MetricsCollector;
   let fleetRepo: DrizzleFleetEventRepository;
+
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
 
   beforeEach(async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    const { db, pool: p } = await createTestDb();
-    pool = p;
+    await truncateAllTables(pool);
     metrics = new MetricsCollector(new DrizzleMetricsRepository(db));
     fleetRepo = new DrizzleFleetEventRepository(db);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("returns JSON with gateway, fleet, billing, and alerts sections", async () => {

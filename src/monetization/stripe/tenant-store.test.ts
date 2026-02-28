@@ -1,20 +1,25 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 
 describe("TenantCustomerStore", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let store: TenantCustomerStore;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    store = new TenantCustomerStore(db);
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new TenantCustomerStore(db);
   });
 
   describe("upsert and getByTenant", () => {

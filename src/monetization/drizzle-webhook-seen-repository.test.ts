@@ -1,20 +1,25 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleWebhookSeenRepository } from "./drizzle-webhook-seen-repository.js";
 
 describe("DrizzleWebhookSeenRepository", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let repo: DrizzleWebhookSeenRepository;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    repo = new DrizzleWebhookSeenRepository(db);
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleWebhookSeenRepository(db);
   });
 
   it("returns false for unknown event", async () => {

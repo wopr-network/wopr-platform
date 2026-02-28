@@ -4,11 +4,11 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { Credit } from "../monetization/credit.js";
 import { CreditLedger } from "../monetization/credits/credit-ledger.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { type CreditGateDeps, creditBalanceCheck, debitCredits } from "./credit-gate.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 import type { GatewayTenant } from "./types.js";
@@ -41,12 +41,16 @@ describe("creditBalanceCheck grace buffer", () => {
   let db: DrizzleDb;
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("returns null when balance is above estimated cost (passes)", async () => {
@@ -128,12 +132,16 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
   let db: DrizzleDb;
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("debit with cost that would exceed balance succeeds (allowNegative=true)", async () => {

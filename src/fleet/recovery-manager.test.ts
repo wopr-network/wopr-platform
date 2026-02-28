@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents, recoveryItems } from "../db/schema/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import type { AdminNotifier } from "./admin-notifier.js";
 import type { NodeConnectionManager } from "./node-connection-manager.js";
 import { RecoveryManager } from "./recovery-manager.js";
@@ -56,8 +56,16 @@ describe("RecoveryManager", () => {
     let nodeConnections: NodeConnectionManager;
     let sendCommand: ReturnType<typeof vi.fn>;
 
-    beforeEach(async () => {
+    beforeAll(async () => {
       ({ db, pool } = await createTestDb());
+    });
+
+    afterAll(async () => {
+      await pool.close();
+    });
+
+    beforeEach(async () => {
+      await truncateAllTables(pool);
       notifier = createMockNotifier();
       sendCommand = vi.fn().mockResolvedValue({
         id: "cmd-1",
@@ -75,10 +83,6 @@ describe("RecoveryManager", () => {
           usedMb: 512,
         }),
       });
-    });
-
-    afterEach(async () => {
-      await pool.close();
     });
 
     it("reads image and env from bot_profiles instead of hardcoding", async () => {
@@ -177,15 +181,19 @@ describe("RecoveryManager.checkAndRetryWaiting", () => {
   let nodeConnections: NodeConnectionManager;
   let manager: RecoveryManager;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
     manager = new RecoveryManager(db, nodeConnections, notifier);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("retries waiting tenants when a recovery event has waiting items and retryCount < max", async () => {
@@ -405,15 +413,19 @@ describe("Acceptance criteria", () => {
   let nodeConnections: NodeConnectionManager;
   let manager: RecoveryManager;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
     manager = new RecoveryManager(db, nodeConnections, notifier);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("AC: node with waiting tenants -> new node joins -> waiting tenants auto-placed", async () => {

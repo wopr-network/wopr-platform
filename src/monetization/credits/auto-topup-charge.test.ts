@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
 import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
@@ -37,13 +37,17 @@ describe("chargeAutoTopup", () => {
   let db: DrizzleDb;
   let ledger: CreditLedger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
   });
 
   it("charges Stripe and credits ledger on success", async () => {

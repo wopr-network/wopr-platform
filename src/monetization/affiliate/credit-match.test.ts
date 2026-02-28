@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleAffiliateFraudRepository } from "./affiliate-fraud-repository.js";
@@ -15,15 +15,19 @@ describe("processAffiliateCreditMatch", () => {
   let affiliateRepo: DrizzleAffiliateRepository;
   let fraudRepo: DrizzleAffiliateFraudRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     ledger = new CreditLedger(db);
     affiliateRepo = new DrizzleAffiliateRepository(db);
     fraudRepo = new DrizzleAffiliateFraudRepository(db);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("does nothing when tenant has no referral", async () => {

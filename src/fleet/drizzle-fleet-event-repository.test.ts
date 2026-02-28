@@ -2,9 +2,9 @@
  * Unit tests for DrizzleFleetEventRepository (WOP-927).
  */
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleFleetEventRepository } from "./drizzle-fleet-event-repository.js";
 
 describe("DrizzleFleetEventRepository", () => {
@@ -12,13 +12,17 @@ describe("DrizzleFleetEventRepository", () => {
   let pool: PGlite;
   let repo: DrizzleFleetEventRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleFleetEventRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleFleetEventRepository(db);
   });
 
   it("isFleetStopFired returns false initially", async () => {

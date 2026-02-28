@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { type Context, Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleRateLimitRepository } from "../drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../rate-limit-repository.js";
 import {
@@ -53,16 +53,27 @@ function postReq(path: string, ip = "127.0.0.1") {
 describe("rateLimit", () => {
   let repo: IRateLimitRepository;
   let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(async () => {
-    vi.useFakeTimers();
+  beforeAll(async () => {
     const r = await makeRateLimitRepo();
     repo = r.repo;
     pool = r.pool;
+    db = r.db;
   });
-  afterEach(async () => {
-    vi.useRealTimers();
+
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("allows requests within the limit", async () => {
@@ -176,16 +187,27 @@ describe("rateLimit", () => {
 describe("rateLimitByRoute", () => {
   let repo: IRateLimitRepository;
   let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(async () => {
-    vi.useFakeTimers();
+  beforeAll(async () => {
     const r = await makeRateLimitRepo();
     repo = r.repo;
     pool = r.pool;
+    db = r.db;
   });
-  afterEach(async () => {
-    vi.useRealTimers();
+
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("applies rule-specific limits based on path prefix", async () => {
@@ -252,16 +274,27 @@ describe("rateLimitByRoute", () => {
 describe("platform rate limit rules", () => {
   let repo: IRateLimitRepository;
   let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(async () => {
-    vi.useFakeTimers();
+  beforeAll(async () => {
     const r = await makeRateLimitRepo();
     repo = r.repo;
     pool = r.pool;
+    db = r.db;
   });
-  afterEach(async () => {
-    vi.useRealTimers();
+
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function buildPlatformApp() {
@@ -353,16 +386,27 @@ describe("platform rate limit rules", () => {
 describe("auth endpoint rate limits (WOP-839)", () => {
   let repo: IRateLimitRepository;
   let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(async () => {
-    vi.useFakeTimers();
+  beforeAll(async () => {
     const r = await makeRateLimitRepo();
     repo = r.repo;
     pool = r.pool;
+    db = r.db;
   });
-  afterEach(async () => {
-    vi.useRealTimers();
+
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   function buildPlatformApp() {
@@ -457,16 +501,27 @@ describe("auth endpoint rate limits (WOP-839)", () => {
 describe("trusted proxy validation (WOP-656)", () => {
   let repo: IRateLimitRepository;
   let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(async () => {
-    vi.useFakeTimers();
+  beforeAll(async () => {
     const r = await makeRateLimitRepo();
     repo = r.repo;
     pool = r.pool;
+    db = r.db;
   });
-  afterEach(async () => {
-    vi.useRealTimers();
+
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("ignores X-Forwarded-For when TRUSTED_PROXY_IPS is not set", () => {

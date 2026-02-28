@@ -1,5 +1,6 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -9,7 +10,7 @@ import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -475,6 +476,7 @@ describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
 
   let db: DrizzleDb;
+  let pool: PGlite;
   let tenantStore: TenantCustomerStore;
   let creditLedger: CreditLedger;
 
@@ -498,15 +500,21 @@ describe("E2E: Billing flow (credit model)", () => {
     charge: vi.fn().mockResolvedValue({ success: true }),
   };
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     createdBots.clear();
     botRunningState = new Map();
     botCounter = 0;
 
-    // Set up in-memory DB with PGlite
-    const { db: testDb } = await createTestDb();
-    db = testDb;
+    await truncateAllTables(pool);
     tenantStore = new TenantCustomerStore(db);
     creditLedger = new CreditLedger(db);
 

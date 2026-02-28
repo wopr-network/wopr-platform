@@ -1,8 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
-import { createTestDb } from "../../test/db.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { generateInstanceKey } from "../encryption.js";
 import { DrizzleCredentialRepository } from "./credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
@@ -11,13 +12,12 @@ import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function setup() {
-  const { db, pool } = await createTestDb();
+function buildStore(db: DrizzleDb) {
   const encryptionKey = generateInstanceKey();
   const auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   const repo = new DrizzleCredentialRepository(db);
   const store = new CredentialVaultStore(repo, encryptionKey, auditLog);
-  return { pool, db, store, encryptionKey, auditLog };
+  return { store, encryptionKey, auditLog };
 }
 
 // ---------------------------------------------------------------------------
@@ -27,16 +27,22 @@ async function setup() {
 describe("CredentialVaultStore", () => {
   let store: CredentialVaultStore;
   let pool: PGlite;
+  let db: DrizzleDb;
 
-  beforeEach(async () => {
-    const s = await setup();
-    pool = s.pool;
-    store = s.store;
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
   });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ({ store } = buildStore(db));
+  });
+
+  afterEach(() => {});
 
   describe("create", () => {
     it("returns a UUID for the new credential", async () => {
@@ -423,9 +429,8 @@ describe("CredentialVaultStore", () => {
 
   describe("without audit log", () => {
     it("works without an audit log instance", async () => {
-      const { db: db2, pool: pool2 } = await createTestDb();
       const encryptionKey = generateInstanceKey();
-      const repo2 = new DrizzleCredentialRepository(db2);
+      const repo2 = new DrizzleCredentialRepository(db);
       const storeNoAudit = new CredentialVaultStore(repo2, encryptionKey);
 
       const id = await storeNoAudit.create({
@@ -438,7 +443,6 @@ describe("CredentialVaultStore", () => {
 
       expect(id).toBeTruthy();
       expect(await storeNoAudit.getById(id)).not.toBeNull();
-      await pool2.close();
     });
   });
 });
