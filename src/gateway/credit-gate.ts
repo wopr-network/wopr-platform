@@ -102,11 +102,9 @@ export async function debitCredits(
 ): Promise<void> {
   if (!deps.creditLedger) return;
 
-  const chargeUsd = withMargin(costUsd, margin);
-  const chargeCents = Math.ceil(chargeUsd * 100);
+  const chargeCredit = withMargin(Credit.fromDollars(costUsd), margin);
 
-  if (chargeCents <= 0) return;
-  const chargeCredit = Credit.fromCents(chargeCents);
+  if (chargeCredit.isZero() || chargeCredit.isNegative()) return;
 
   try {
     await deps.creditLedger.debit(
@@ -136,7 +134,7 @@ export async function debitCredits(
     if (error instanceof InsufficientBalanceError) {
       logger.warn("Credit debit failed after proxy (insufficient balance)", {
         tenantId,
-        chargeCents,
+        chargeRaw: chargeCredit.toRaw(),
         currentBalance: error.currentBalance,
         capability,
         provider,
@@ -145,7 +143,7 @@ export async function debitCredits(
     } else {
       logger.error("Credit debit failed after proxy", {
         tenantId,
-        chargeCents,
+        chargeRaw: chargeCredit.toRaw(),
         capability,
         provider,
         error,

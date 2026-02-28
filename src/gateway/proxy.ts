@@ -17,6 +17,7 @@ import type { TTSOutput } from "../monetization/adapters/types.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
+import { Credit } from "../monetization/credit.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import { PHONE_NUMBER_MONTHLY_COST } from "../monetization/credits/phone-billing.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
@@ -117,7 +118,7 @@ function emitMeterEvent(
   tenantId: string,
   capability: string,
   provider: string,
-  cost: number,
+  cost: Credit,
   margin?: number,
   opts?: {
     usage?: { units: number; unitType: string };
@@ -222,7 +223,7 @@ export function chatCompletions(deps: ProxyDeps) {
           tier: "branded",
           metadata: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, model: responseModel },
         });
-        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", provider);
+        debitCredits(deps, tenant.id, cost.toDollars(), deps.defaultMargin, "chat-completions", provider);
 
         return c.json(
           {
@@ -332,7 +333,7 @@ export function chatCompletions(deps: ProxyDeps) {
         } catch {
           // If parsing fails, proceed without usage data
         }
-        emitMeterEvent(deps, tenant.id, "chat-completions", "openrouter", cost, undefined, {
+        emitMeterEvent(deps, tenant.id, "chat-completions", "openrouter", Credit.fromDollars(cost), undefined, {
           usage,
           tier: "branded",
           metadata,
@@ -432,7 +433,7 @@ export function textCompletions(deps: ProxyDeps) {
         } catch {
           // If parsing fails, proceed without usage data
         }
-        emitMeterEvent(deps, tenant.id, "text-completions", "openrouter", cost, undefined, {
+        emitMeterEvent(deps, tenant.id, "text-completions", "openrouter", Credit.fromDollars(cost), undefined, {
           usage,
           tier: "branded",
           metadata,
@@ -520,7 +521,7 @@ export function embeddings(deps: ProxyDeps) {
         } catch {
           // If parsing fails, proceed without usage data
         }
-        emitMeterEvent(deps, tenant.id, "embeddings", "openrouter", cost, undefined, {
+        emitMeterEvent(deps, tenant.id, "embeddings", "openrouter", Credit.fromDollars(cost), undefined, {
           usage,
           tier: "branded",
           metadata,
@@ -617,7 +618,7 @@ export function audioTranscriptions(deps: ProxyDeps) {
       });
 
       if (res.ok) {
-        emitMeterEvent(deps, tenant.id, "transcription", "deepgram", cost, undefined, {
+        emitMeterEvent(deps, tenant.id, "transcription", "deepgram", Credit.fromDollars(cost), undefined, {
           usage: durationSeconds > 0 ? { units: durationSeconds / 60, unitType: "minutes" } : undefined,
           tier: "branded",
           metadata: durationSeconds > 0 ? { model, durationSeconds } : undefined,
@@ -705,7 +706,7 @@ export function audioSpeech(deps: ProxyDeps) {
           usage: { units: characterCount, unitType: "characters" },
           tier: "branded",
         });
-        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "tts", provider);
+        debitCredits(deps, tenant.id, cost.toDollars(), deps.defaultMargin, "tts", provider);
 
         const { audioUrl, format: audioFormat } = result.result;
         // audioUrl may be a data URL (data:<mime>;base64,<data>) or a remote URL.
@@ -799,7 +800,7 @@ export function audioSpeech(deps: ProxyDeps) {
         characters: characterCount,
         cost,
       });
-      emitMeterEvent(deps, tenant.id, "tts", "elevenlabs", cost, undefined, {
+      emitMeterEvent(deps, tenant.id, "tts", "elevenlabs", Credit.fromDollars(cost), undefined, {
         usage: { units: characterCount, unitType: "characters" },
         tier: "branded",
         metadata: { voice, model: body.model ?? "eleven_multilingual_v2" },
@@ -901,7 +902,7 @@ export function imageGenerations(deps: ProxyDeps) {
       const cost = predictTime * 0.0023; // SDXL wholesale rate
 
       logger.info("Gateway proxy: images/generations", { tenant: tenant.id, cost });
-      emitMeterEvent(deps, tenant.id, "image-generation", "replicate", cost, undefined, {
+      emitMeterEvent(deps, tenant.id, "image-generation", "replicate", Credit.fromDollars(cost), undefined, {
         usage: { units: body.n ?? 1, unitType: "images" },
         tier: "branded",
         metadata: { width, height, predictTimeSeconds: predictTime },
@@ -989,7 +990,7 @@ export function videoGenerations(deps: ProxyDeps) {
       const cost = predictTime * 0.005; // video gen wholesale rate
 
       logger.info("Gateway proxy: video/generations", { tenant: tenant.id, cost });
-      emitMeterEvent(deps, tenant.id, "video-generation", "replicate", cost, undefined, {
+      emitMeterEvent(deps, tenant.id, "video-generation", "replicate", Credit.fromDollars(cost), undefined, {
         usage: { units: body.duration ?? 4, unitType: "seconds" },
         tier: "branded",
         metadata: { predictTimeSeconds: predictTime },
@@ -1132,7 +1133,7 @@ export function phoneOutbound(deps: ProxyDeps) {
       // Without webhookBaseUrl (e.g., local dev), bill 1 minute as a conservative estimate.
       if (!webhookBase) {
         const cost = 0.013; // 1 minute at wholesale rate
-        emitMeterEvent(deps, tenant.id, "phone-outbound", "twilio", cost, deps.defaultMargin, {
+        emitMeterEvent(deps, tenant.id, "phone-outbound", "twilio", Credit.fromDollars(cost), deps.defaultMargin, {
           usage: { units: 1, unitType: "minutes" },
           tier: "branded",
         });
@@ -1197,7 +1198,7 @@ export function phoneInbound(deps: ProxyDeps) {
         status: body.status,
       });
 
-      emitMeterEvent(deps, tenant.id, "phone-inbound", providerName, cost, undefined, {
+      emitMeterEvent(deps, tenant.id, "phone-inbound", providerName, Credit.fromDollars(cost), undefined, {
         usage: { units: durationMinutes, unitType: "minutes" },
         tier: "branded",
       });
@@ -1281,7 +1282,7 @@ export function phoneOutboundStatus(deps: ProxyDeps) {
         status: body.CallStatus,
       });
 
-      emitMeterEvent(deps, tenant.id, "phone-outbound", providerName, cost, deps.defaultMargin, {
+      emitMeterEvent(deps, tenant.id, "phone-outbound", providerName, Credit.fromDollars(cost), deps.defaultMargin, {
         usage: { units: durationMinutes, unitType: "minutes" },
         tier: "branded",
       });
@@ -1427,7 +1428,7 @@ export function smsOutbound(deps: ProxyDeps) {
         cost,
       });
 
-      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin, {
+      emitMeterEvent(deps, tenant.id, capability, "twilio", Credit.fromDollars(cost), margin, {
         usage: { units: 1, unitType: "messages" },
         tier: "branded",
       });
@@ -1495,7 +1496,7 @@ export function smsInbound(deps: ProxyDeps) {
         sid: body.message_sid,
       });
 
-      emitMeterEvent(deps, tenant.id, capability, "twilio", cost, margin, {
+      emitMeterEvent(deps, tenant.id, capability, "twilio", Credit.fromDollars(cost), margin, {
         usage: { units: 1, unitType: "messages" },
         tier: "branded",
       });
@@ -1695,7 +1696,7 @@ export function phoneNumberProvision(deps: ProxyDeps) {
         tenant.id,
         "phone-number-provision",
         "twilio",
-        PHONE_NUMBER_MONTHLY_COST,
+        Credit.fromDollars(PHONE_NUMBER_MONTHLY_COST),
         PHONE_NUMBER_MARGIN,
         {
           usage: { units: 1, unitType: "numbers" },

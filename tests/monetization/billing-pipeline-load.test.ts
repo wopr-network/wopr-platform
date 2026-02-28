@@ -25,8 +25,8 @@ const PROVIDERS = ["openai", "deepgram", "elevenlabs", "openrouter"];
 function makeEvent(i: number): MeterEvent {
   return {
     tenant: `tenant-${i % TENANT_COUNT}`,
-    cost: 0.001 * ((i % 10) + 1),
-    charge: 0.002 * ((i % 10) + 1),
+    cost: Credit.fromDollars(0.001 * ((i % 10) + 1)),
+    charge: Credit.fromDollars(0.002 * ((i % 10) + 1)),
     capability: CAPABILITIES[i % CAPABILITIES.length],
     provider: PROVIDERS[i % PROVIDERS.length],
     timestamp: Date.now() - 120_000 + i,

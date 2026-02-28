@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import type { DeepgramAdapterConfig, FetchFn } from "./deepgram.js";
 import { createDeepgramAdapter } from "./deepgram.js";
 import { withMargin } from "./types.js";
@@ -65,7 +66,7 @@ describe("createDeepgramAdapter", () => {
 
       // 30.5 seconds = 30.5/60 minutes * $0.0043/min
       const expectedCost = (30.5 / 60) * 0.0043;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
       expect(result.result.durationSeconds).toBe(30.5);
     });
 
@@ -80,8 +81,8 @@ describe("createDeepgramAdapter", () => {
       const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.wav" });
 
       const expectedCost = (30.5 / 60) * 0.0043;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
-      expect(result.charge).toBeCloseTo(withMargin(expectedCost, 1.5), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(expectedCost), 1.5).toDollars(), 6);
     });
 
     it("uses default margin of 1.3", async () => {
@@ -95,7 +96,7 @@ describe("createDeepgramAdapter", () => {
       const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.wav" });
 
       const expectedCost = (30.5 / 60) * 0.0043;
-      expect(result.charge).toBeCloseTo(withMargin(expectedCost, 1.3), 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(expectedCost), 1.3).toDollars(), 6);
     });
 
     it("sends model as query parameter", async () => {
@@ -294,7 +295,7 @@ describe("createDeepgramAdapter", () => {
       const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.wav" });
 
       // 60 seconds = 1 minute * $0.01/min = $0.01
-      expect(result.cost).toBeCloseTo(0.01, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.01, 6);
     });
   });
 });

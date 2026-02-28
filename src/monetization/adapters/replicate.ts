@@ -9,6 +9,7 @@
  * "WOPR Hosted" and this adapter is the invisible layer.
  */
 
+import { Credit } from "../credit.js";
 import type {
   AdapterResult,
   ImageGenerationInput,
@@ -151,9 +152,9 @@ export function createReplicateAdapter(
     throw new Error(`Replicate prediction timed out after ${maxPollAttempts} poll attempts`);
   }
 
-  function extractCost(prediction: ReplicatePrediction, perSecondRate = costPerSecond): number {
+  function extractCost(prediction: ReplicatePrediction, perSecondRate = costPerSecond): Credit {
     const predictTime = prediction.metrics?.predict_time ?? 0;
-    return predictTime * perSecondRate;
+    return Credit.fromDollars(predictTime * perSecondRate);
   }
 
   return {
@@ -278,7 +279,7 @@ export function createReplicateAdapter(
         | undefined;
       const inputTokens = metrics?.input_token_count ?? 0;
       const outputTokens = metrics?.output_token_count ?? 0;
-      const cost = inputTokens * textInputTokenCost + outputTokens * textOutputTokenCost;
+      const cost = Credit.fromDollars(inputTokens * textInputTokenCost + outputTokens * textOutputTokenCost);
       const charge = withMargin(cost, marginMultiplier);
 
       return {

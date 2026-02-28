@@ -1,11 +1,13 @@
+import type { Credit } from "../credit.js";
+
 /** A single metering event emitted by the socket after observing an adapter call. */
 export interface MeterEvent {
   /** Tenant identifier (who). */
   tenant: string;
-  /** Upstream cost from the provider. */
-  cost: number;
-  /** What we charge the tenant (cost x multiplier). */
-  charge: number;
+  /** Upstream cost from the provider (as Credit value object). */
+  cost: Credit;
+  /** What we charge the tenant (cost x multiplier, as Credit value object). */
+  charge: Credit;
   /** Capability used (embeddings, voice, search, chat, etc.). */
   capability: string;
   /** Which adapter fulfilled the request (replicate, deepgram, elevenlabs, etc.). */

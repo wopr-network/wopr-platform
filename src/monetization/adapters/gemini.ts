@@ -8,6 +8,7 @@
  * (promptTokenCount + candidatesTokenCount) using configured per-model rates.
  */
 
+import { Credit } from "../credit.js";
 import type { AdapterResult, ProviderAdapter, TextGenerationInput, TextGenerationOutput } from "./types.js";
 import { withMargin } from "./types.js";
 
@@ -122,7 +123,9 @@ export function createGeminiAdapter(
       const outputTokens = data.usageMetadata?.candidatesTokenCount ?? 0;
 
       // Cost calculation from token counts and configured rates
-      const cost = (inputTokens / 1_000_000) * inputCostPer1M + (outputTokens / 1_000_000) * outputCostPer1M;
+      const cost = Credit.fromDollars(
+        (inputTokens / 1_000_000) * inputCostPer1M + (outputTokens / 1_000_000) * outputCostPer1M,
+      );
       const charge = withMargin(cost, marginMultiplier);
 
       return {

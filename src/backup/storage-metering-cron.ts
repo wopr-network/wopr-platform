@@ -1,4 +1,5 @@
 import { logger } from "../config/logger.js";
+import { Credit } from "../monetization/credit.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { SnapshotManager } from "./snapshot-manager.js";
 import { STORAGE_CHARGE_PER_GB_MONTH, STORAGE_COST_PER_GB_MONTH } from "./types.js";
@@ -49,14 +50,14 @@ export async function runStorageMeteringCron(cfg: StorageMeteringCronConfig): Pr
       const sizeGb = totalBytes / (1024 * 1024 * 1024);
       result.totalSizeGb += sizeGb;
 
-      const cost = sizeGb * STORAGE_COST_PER_GB_MONTH;
-      const charge = sizeGb * STORAGE_CHARGE_PER_GB_MONTH;
-      result.totalCharge += charge;
+      const costUsd = sizeGb * STORAGE_COST_PER_GB_MONTH;
+      const chargeUsd = sizeGb * STORAGE_CHARGE_PER_GB_MONTH;
+      result.totalCharge += chargeUsd;
 
       cfg.meterEmitter.emit({
         tenant,
-        cost,
-        charge,
+        cost: Credit.fromDollars(costUsd),
+        charge: Credit.fromDollars(chargeUsd),
         capability: "storage",
         provider: "do-spaces",
         timestamp: Date.now(),

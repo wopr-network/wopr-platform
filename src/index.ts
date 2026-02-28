@@ -58,6 +58,7 @@ import { mountGateway } from "./gateway/index.js";
 import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
+import { Credit } from "./monetization/credit.js";
 import { CreditLedger } from "./monetization/credits/credit-ledger.js";
 import { buildResourceTierCosts, runRuntimeDeductions } from "./monetization/credits/runtime-cron.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
@@ -358,8 +359,8 @@ if (process.env.NODE_ENV !== "test") {
         logger.warn("Circuit breaker tripped", { tenantId, instanceId, requestCount });
         meter.emit({
           tenant: tenantId,
-          cost: 0,
-          charge: 0,
+          cost: Credit.ZERO,
+          charge: Credit.ZERO,
           capability: "circuit-breaker-trip",
           provider: "gateway",
           timestamp: Date.now(),
@@ -393,7 +394,7 @@ if (process.env.NODE_ENV !== "test") {
             .from(schema.meterEvents)
             .where(gte(schema.meterEvents.timestamp, cutoff))
         )[0];
-        return Math.round((row?.total ?? 0) * 100);
+        return Math.round((row?.total ?? 0) / 10_000_000);
       },
     });
     adminHealth.use("*", scopedBearerAuthWithTenant(tokenMetadata, "admin"));

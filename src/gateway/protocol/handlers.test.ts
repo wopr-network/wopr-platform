@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BudgetCheckResult, SpendLimits } from "../../monetization/budget/budget-checker.js";
+import type { Credit } from "../../monetization/credit.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { GatewayTenant } from "../types.js";
 import { createAnthropicRoutes } from "./anthropic.js";
@@ -43,7 +44,7 @@ function createMockDeps(overrides?: Partial<ProtocolDeps>): ProtocolDeps & { met
     defaultMargin: 1.3,
     fetchFn: vi.fn(),
     resolveServiceKey: vi.fn((key: string) => (key === VALID_KEY ? TEST_TENANT : null)),
-    withMarginFn: vi.fn((cost: number, margin: number) => cost * margin),
+    withMarginFn: vi.fn((cost: Credit, margin: number) => cost.multiply(margin)),
     ...overrides,
   };
 }
@@ -241,7 +242,7 @@ describe("Anthropic protocol handler", () => {
 
       expect(deps.meterEvents).toHaveLength(1);
       expect(deps.meterEvents[0].tenant).toBe("tenant-001");
-      expect(deps.meterEvents[0].cost).toBe(0.005);
+      expect(deps.meterEvents[0].cost.toDollars()).toBe(0.005);
       expect(deps.meterEvents[0].capability).toBe("chat-completions");
     });
   });
@@ -510,7 +511,7 @@ describe("OpenAI protocol handler", () => {
 
       expect(deps.meterEvents).toHaveLength(1);
       expect(deps.meterEvents[0].tenant).toBe("tenant-001");
-      expect(deps.meterEvents[0].cost).toBe(0.003);
+      expect(deps.meterEvents[0].cost.toDollars()).toBe(0.003);
     });
 
     it("does not emit meter event on upstream error", async () => {
@@ -612,7 +613,7 @@ describe("OpenAI protocol handler", () => {
       });
 
       expect(deps.meterEvents).toHaveLength(1);
-      expect(deps.meterEvents[0].cost).toBe(0.002);
+      expect(deps.meterEvents[0].cost.toDollars()).toBe(0.002);
     });
   });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AdapterCapability, AdapterResult, ProviderAdapter, TTSOutput } from "../adapters/types.js";
+import { Credit } from "../credit.js";
 import type { ProviderRegistry } from "./provider-registry.js";
 import { ArbitrageRouter } from "./router.js";
 import type { ModelProviderEntry } from "./types.js";
@@ -59,7 +60,7 @@ function makeAdapter(
 
 const fakeTTSResult: AdapterResult<TTSOutput> = {
   result: { audioUrl: "https://example.com/audio.mp3", durationSeconds: 1.5, format: "mp3", characterCount: 100 },
-  cost: 0.015,
+  cost: Credit.fromDollars(0.015),
 };
 
 // ── Tests ──
@@ -230,7 +231,7 @@ describe("ArbitrageRouter", () => {
       const hosted = makeEntry({ adapter: "elevenlabs", tier: "hosted", providerCost: 0.12 });
       const registry = makeRegistry([hosted]);
 
-      const adapter = makeAdapter("elevenlabs", ["tts"], { ...fakeTTSResult, cost: 0.012 });
+      const adapter = makeAdapter("elevenlabs", ["tts"], { ...fakeTTSResult, cost: Credit.fromDollars(0.012) });
       const adapters = new Map([["elevenlabs", adapter]]);
 
       const marginRecords: Parameters<

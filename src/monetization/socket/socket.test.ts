@@ -11,6 +11,7 @@ import type {
   TTSOutput,
 } from "../adapters/types.js";
 import { BudgetChecker, type SpendLimits } from "../budget/budget-checker.js";
+import { Credit } from "../credit.js";
 import type { MeterEmitter } from "../metering/emitter.js";
 import type { MeterEvent } from "../metering/types.js";
 import { AdapterSocket, type SocketConfig } from "./socket.js";
@@ -43,7 +44,7 @@ function stubAdapter(overrides: Partial<ProviderAdapter> = {}): ProviderAdapter 
     async transcribe() {
       return {
         result: { text: "hello", detectedLanguage: "en", durationSeconds: 10 },
-        cost: 0.01,
+        cost: Credit.fromDollars(0.01),
       } satisfies AdapterResult<TranscriptionOutput>;
     },
     ...overrides,
@@ -124,7 +125,10 @@ describe("AdapterSocket", () => {
         stubAdapter({
           name: "b",
           async transcribe() {
-            return { result: { text: "from-b", detectedLanguage: "en", durationSeconds: 5 }, cost: 0.02 };
+            return {
+              result: { text: "from-b", detectedLanguage: "en", durationSeconds: 5 },
+              cost: Credit.fromDollars(0.02),
+            };
           },
         }),
       );
@@ -195,7 +199,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
-              cost: 0.015,
+              cost: Credit.fromDollars(0.015),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -210,7 +214,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
-              cost: 0.002,
+              cost: Credit.fromDollars(0.002),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -225,7 +229,7 @@ describe("AdapterSocket", () => {
 
       expect(result.audioUrl).toBe("self-hosted-audio");
       expect(meter.events[0].provider).toBe("chatterbox-tts");
-      expect(meter.events[0].cost).toBe(0.002);
+      expect(meter.events[0].cost.toDollars()).toBe(0.002);
     });
 
     it("prefers third-party adapter when pricingTier is premium", async () => {
@@ -241,7 +245,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
-              cost: 0.002,
+              cost: Credit.fromDollars(0.002),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -256,7 +260,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
-              cost: 0.015,
+              cost: Credit.fromDollars(0.015),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -271,7 +275,7 @@ describe("AdapterSocket", () => {
 
       expect(result.audioUrl).toBe("premium-audio");
       expect(meter.events[0].provider).toBe("elevenlabs");
-      expect(meter.events[0].cost).toBe(0.015);
+      expect(meter.events[0].cost.toDollars()).toBe(0.015);
     });
 
     it("falls back to any adapter when preferred tier unavailable", async () => {
@@ -287,7 +291,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
-              cost: 0.015,
+              cost: Credit.fromDollars(0.015),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -316,7 +320,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "first-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
-              cost: 0.01,
+              cost: Credit.fromDollars(0.01),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -329,7 +333,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "second-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
-              cost: 0.02,
+              cost: Credit.fromDollars(0.02),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -358,7 +362,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
-              cost: 0.002,
+              cost: Credit.fromDollars(0.002),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -372,7 +376,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
-              cost: 0.015,
+              cost: Credit.fromDollars(0.015),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -403,7 +407,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "self-hosted-audio", durationSeconds: 2, format: "wav", characterCount: 10 },
-              cost: 0.002,
+              cost: Credit.fromDollars(0.002),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -417,7 +421,7 @@ describe("AdapterSocket", () => {
           async synthesizeSpeech() {
             return {
               result: { audioUrl: "premium-audio", durationSeconds: 2, format: "mp3", characterCount: 10 },
-              cost: 0.015,
+              cost: Credit.fromDollars(0.015),
             } satisfies AdapterResult<TTSOutput>;
           },
         }),
@@ -441,9 +445,9 @@ describe("AdapterSocket", () => {
 
       expect(meter.events).toHaveLength(2);
       expect(meter.events[0].provider).toBe("chatterbox-tts");
-      expect(meter.events[0].cost).toBe(0.002);
+      expect(meter.events[0].cost.toDollars()).toBe(0.002);
       expect(meter.events[1].provider).toBe("elevenlabs");
-      expect(meter.events[1].cost).toBe(0.015);
+      expect(meter.events[1].cost.toDollars()).toBe(0.015);
     });
   });
 
@@ -466,7 +470,7 @@ describe("AdapterSocket", () => {
       expect(meter.events).toHaveLength(1);
       const event = meter.events[0];
       expect(event.tenant).toBe("t-1");
-      expect(event.cost).toBe(0.01);
+      expect(event.cost.toDollars()).toBe(0.01);
       expect(event.capability).toBe("transcription");
       expect(event.provider).toBe("test-provider");
       expect(event.timestamp).toBeGreaterThan(0);
@@ -478,31 +482,9 @@ describe("AdapterSocket", () => {
       socket.register(
         stubAdapter({
           async transcribe() {
-            return { result: { text: "hi", detectedLanguage: "en", durationSeconds: 1 }, cost: 0.1 };
-          },
-        }),
-      );
-
-      await socket.execute({
-        tenantId: "t-1",
-        capability: "transcription",
-        input: { audioUrl: "https://example.com/audio.mp3" },
-      });
-
-      // 0.1 * 1.5 = 0.15
-      expect(meter.events[0].charge).toBe(0.15);
-    });
-
-    it("uses adapter-supplied charge when present", async () => {
-      const meter = stubMeter();
-      const socket = createSocket(meter);
-      socket.register(
-        stubAdapter({
-          async transcribe() {
             return {
               result: { text: "hi", detectedLanguage: "en", durationSeconds: 1 },
-              cost: 0.1,
-              charge: 0.25,
+              cost: Credit.fromDollars(0.1),
             };
           },
         }),
@@ -514,7 +496,32 @@ describe("AdapterSocket", () => {
         input: { audioUrl: "https://example.com/audio.mp3" },
       });
 
-      expect(meter.events[0].charge).toBe(0.25);
+      // 0.1 * 1.5 = 0.15
+      expect(meter.events[0].charge.toDollars()).toBe(0.15);
+    });
+
+    it("uses adapter-supplied charge when present", async () => {
+      const meter = stubMeter();
+      const socket = createSocket(meter);
+      socket.register(
+        stubAdapter({
+          async transcribe() {
+            return {
+              result: { text: "hi", detectedLanguage: "en", durationSeconds: 1 },
+              cost: Credit.fromDollars(0.1),
+              charge: Credit.fromDollars(0.25),
+            };
+          },
+        }),
+      );
+
+      await socket.execute({
+        tenantId: "t-1",
+        capability: "transcription",
+        input: { audioUrl: "https://example.com/audio.mp3" },
+      });
+
+      expect(meter.events[0].charge.toDollars()).toBe(0.25);
     });
 
     it("respects per-request margin override", async () => {
@@ -523,7 +530,10 @@ describe("AdapterSocket", () => {
       socket.register(
         stubAdapter({
           async transcribe() {
-            return { result: { text: "hi", detectedLanguage: "en", durationSeconds: 1 }, cost: 0.1 };
+            return {
+              result: { text: "hi", detectedLanguage: "en", durationSeconds: 1 },
+              cost: Credit.fromDollars(0.1),
+            };
           },
         }),
       );
@@ -536,7 +546,7 @@ describe("AdapterSocket", () => {
       });
 
       // 0.1 * 2.0 = 0.2
-      expect(meter.events[0].charge).toBe(0.2);
+      expect(meter.events[0].charge.toDollars()).toBe(0.2);
     });
 
     it("includes sessionId when provided", async () => {
@@ -583,7 +593,7 @@ describe("AdapterSocket", () => {
         async synthesizeSpeech() {
           return {
             result: { audioUrl: "https://example.com/out.mp3", durationSeconds: 3, format: "mp3", characterCount: 11 },
-            cost: 0.005,
+            cost: Credit.fromDollars(0.005),
           };
         },
       });
@@ -613,7 +623,7 @@ describe("AdapterSocket", () => {
         async embed() {
           return {
             result: { embeddings: [[0.1, 0.2, 0.3]], model: "text-embedding-3-small", totalTokens: 4 },
-            cost: 0.0001,
+            cost: Credit.fromDollars(0.0001),
           };
         },
       });
@@ -665,7 +675,7 @@ describe("AdapterSocket", () => {
   // ---------------------------------------------------------------------------
 
   describe("execute -- BYOK bypass", () => {
-    it("emits cost: 0, charge: 0 when byok is true", async () => {
+    it("emits cost: Credit.ZERO, charge: Credit.ZERO when byok is true", async () => {
       const meter = stubMeter();
       const socket = createSocket(meter);
       socket.register(stubAdapter());
@@ -678,8 +688,8 @@ describe("AdapterSocket", () => {
       });
 
       expect(meter.events).toHaveLength(1);
-      expect(meter.events[0].cost).toBe(0);
-      expect(meter.events[0].charge).toBe(0);
+      expect(meter.events[0].cost.isZero()).toBe(true);
+      expect(meter.events[0].charge.isZero()).toBe(true);
     });
 
     it("still returns the adapter result when byok is true", async () => {
@@ -709,7 +719,7 @@ describe("AdapterSocket", () => {
         byok: false,
       });
 
-      expect(meter.events[0].cost).toBe(0.01);
+      expect(meter.events[0].cost.toDollars()).toBe(0.01);
     });
   });
 
@@ -759,8 +769,8 @@ describe("AdapterSocket", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "t-1",
-        cost: 0.3,
-        charge: 0.6,
+        cost: Credit.fromDollars(0.3).toRaw(),
+        charge: Credit.fromDollars(0.6).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -789,8 +799,8 @@ describe("AdapterSocket", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "t-monthly",
-        cost: 2.5,
-        charge: 5.0,
+        cost: Credit.fromDollars(2.5).toRaw(),
+        charge: Credit.fromDollars(5.0).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: twoHoursAgo,
@@ -818,8 +828,8 @@ describe("AdapterSocket", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "t-1",
-        cost: 3.0,
-        charge: 6.0,
+        cost: Credit.fromDollars(3.0).toRaw(),
+        charge: Credit.fromDollars(6.0).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -846,8 +856,8 @@ describe("AdapterSocket", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "t-1",
-        cost: 3.0,
-        charge: 6.0,
+        cost: Credit.fromDollars(3.0).toRaw(),
+        charge: Credit.fromDollars(6.0).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -889,8 +899,8 @@ describe("AdapterSocket", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "t-1",
-        cost: 0.3,
-        charge: 0.6,
+        cost: Credit.fromDollars(0.3).toRaw(),
+        charge: Credit.fromDollars(0.6).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,

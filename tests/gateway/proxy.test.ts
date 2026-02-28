@@ -381,7 +381,7 @@ describe("Gateway proxy endpoints", () => {
       expect(meterEvents[0].capability).toBe("transcription");
       expect(meterEvents[0].provider).toBe("deepgram");
       // 30 seconds = 0.5 minutes * 0.0043 = ~0.00215
-      expect(meterEvents[0].cost as number).toBeGreaterThan(0);
+      expect((meterEvents[0].cost as Credit).toDollars()).toBeGreaterThan(0);
     });
   });
 
@@ -531,7 +531,7 @@ describe("Gateway proxy endpoints", () => {
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("phone-inbound");
       // 5 minutes * $0.013/min = $0.065
-      expect(meterEvents[0].cost as number).toBeCloseTo(0.065, 3);
+      expect((meterEvents[0].cost as Credit).toDollars()).toBeCloseTo(0.065, 3);
     });
   });
 
@@ -563,7 +563,7 @@ describe("Gateway proxy endpoints", () => {
       expect(meterEvents[0].tenant).toBe("tenant-1");
       expect(meterEvents[0].capability).toBe("sms-outbound");
       expect(meterEvents[0].provider).toBe("twilio");
-      expect(meterEvents[0].cost as number).toBeCloseTo(0.0079, 4);
+      expect((meterEvents[0].cost as Credit).toDollars()).toBeCloseTo(0.0079, 4);
     });
 
     it("sends MMS when media_url is present and meters at MMS rate", async () => {
@@ -590,7 +590,7 @@ describe("Gateway proxy endpoints", () => {
 
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("mms-outbound");
-      expect(meterEvents[0].cost as number).toBeCloseTo(0.02, 4);
+      expect((meterEvents[0].cost as Credit).toDollars()).toBeCloseTo(0.02, 4);
     });
 
     it("rejects requests missing required fields", async () => {
@@ -666,7 +666,7 @@ describe("Gateway proxy endpoints", () => {
 
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("sms-inbound");
-      expect(meterEvents[0].cost as number).toBeCloseTo(0.0079, 4);
+      expect((meterEvents[0].cost as Credit).toDollars()).toBeCloseTo(0.0079, 4);
     });
 
     it("meters inbound MMS at higher rate", async () => {
@@ -685,7 +685,7 @@ describe("Gateway proxy endpoints", () => {
 
       expect(meterEvents.length).toBe(1);
       expect(meterEvents[0].capability).toBe("mms-inbound");
-      expect(meterEvents[0].cost as number).toBeCloseTo(0.02, 4);
+      expect((meterEvents[0].cost as Credit).toDollars()).toBeCloseTo(0.02, 4);
     });
   });
 

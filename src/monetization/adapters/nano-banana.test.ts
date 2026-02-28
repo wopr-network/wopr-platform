@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import type { FetchFn, NanoBananaAdapterConfig } from "./nano-banana.js";
 import { createNanoBananaAdapter } from "./nano-banana.js";
 import { withMargin } from "./types.js";
@@ -83,8 +84,8 @@ describe("createNanoBananaAdapter", () => {
       expect(result.result.model).toBe("nano-banana");
 
       // Cost: 1 image * $0.02 = $0.02
-      expect(result.cost).toBe(0.02);
-      expect(result.charge).toBeCloseTo(withMargin(0.02, 1.3), 6);
+      expect(result.cost.toDollars()).toBe(0.02);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.02), 1.3).toDollars(), 6);
     });
 
     it("calculates cost based on actual images delivered", async () => {
@@ -102,8 +103,8 @@ describe("createNanoBananaAdapter", () => {
 
       // Cost: 3 delivered images * $0.02 = $0.06
       expect(result.result.images).toHaveLength(3);
-      expect(result.cost).toBe(0.06);
-      expect(result.charge).toBeCloseTo(withMargin(0.06, 1.3), 6);
+      expect(result.cost.toDollars()).toBe(0.06);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.06), 1.3).toDollars(), 6);
     });
 
     it("sends candidateCount when count > 1", async () => {
@@ -146,8 +147,8 @@ describe("createNanoBananaAdapter", () => {
       const adapter = createNanoBananaAdapter(makeConfig({ marginMultiplier: 1.5 }), fetchFn);
       const result = await adapter.generateImage({ prompt: "test" });
 
-      expect(result.cost).toBe(0.02);
-      expect(result.charge).toBeCloseTo(withMargin(0.02, 1.5), 6);
+      expect(result.cost.toDollars()).toBe(0.02);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.02), 1.5).toDollars(), 6);
     });
 
     it("handles multiple images from multiple candidates", async () => {
@@ -290,8 +291,8 @@ describe("createNanoBananaAdapter", () => {
       const adapter = createNanoBananaAdapter({ apiKey: "key" }, fetchFn);
       const result = await adapter.generateImage({ prompt: "test" });
 
-      // Default cost: 1 * $0.02 = $0.02
-      expect(result.cost).toBe(0.02);
+      // Default cost: Credit.fromDollars(1) * $0.02 = $0.02
+      expect(result.cost.toDollars()).toBe(0.02);
     });
 
     it("uses default marginMultiplier when not configured", async () => {
@@ -301,7 +302,7 @@ describe("createNanoBananaAdapter", () => {
       const adapter = createNanoBananaAdapter({ apiKey: "key" }, fetchFn);
       const result = await adapter.generateImage({ prompt: "test" });
 
-      expect(result.charge).toBeCloseTo(withMargin(0.02, 1.3), 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.02), 1.3).toDollars(), 6);
     });
   });
 });

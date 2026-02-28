@@ -10,6 +10,7 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { meterEvents, usageSummaries } from "../db/schema/meter-events.js";
 import type { ISpendingCapStore, SpendingCapRecord } from "../gateway/spending-cap-store.js";
+import { Credit } from "../monetization/credit.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,7 +65,7 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
       );
     const dailySummaries = dailySummariesRows[0];
 
-    const dailySpend = (dailyEvents?.total ?? 0) + (dailySummaries?.total ?? 0);
+    const dailySpend = Credit.fromRaw(Number(dailyEvents?.total ?? 0) + Number(dailySummaries?.total ?? 0)).toDollars();
 
     // Monthly spend from meter_events
     const monthlyEventsRows = await this.db
@@ -90,7 +91,9 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
       );
     const monthlySummaries = monthlySummariesRows[0];
 
-    const monthlySpend = (monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0);
+    const monthlySpend = Credit.fromRaw(
+      Number(monthlyEvents?.total ?? 0) + Number(monthlySummaries?.total ?? 0),
+    ).toDollars();
 
     return { dailySpend, monthlySpend };
   }

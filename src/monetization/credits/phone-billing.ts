@@ -43,12 +43,12 @@ export async function runMonthlyPhoneBilling(
     }
 
     try {
-      const chargeUsd = withMargin(PHONE_NUMBER_MONTHLY_COST, PHONE_NUMBER_MARGIN);
-      const chargeCents = Math.ceil(chargeUsd * 100);
+      const costCredit = Credit.fromDollars(PHONE_NUMBER_MONTHLY_COST);
+      const chargeCredit = withMargin(costCredit, PHONE_NUMBER_MARGIN);
 
       await ledger.debit(
         number.tenantId,
-        Credit.fromCents(chargeCents),
+        chargeCredit,
         "addon",
         "Monthly phone number fee",
         `phone-billing:${number.sid}:${now.toISOString().slice(0, 7)}`,
@@ -57,8 +57,8 @@ export async function runMonthlyPhoneBilling(
 
       meter.emit({
         tenant: number.tenantId,
-        cost: PHONE_NUMBER_MONTHLY_COST,
-        charge: chargeUsd,
+        cost: costCredit,
+        charge: chargeCredit,
         capability: "phone-number-monthly",
         provider: "twilio",
         timestamp: now.getTime(),

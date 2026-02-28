@@ -6,14 +6,16 @@
  * metering, and billing — adapters never touch those concerns.
  */
 
+import type { Credit } from "../credit.js";
+
 /** The result every adapter returns: the provider's output + wholesale cost */
 export interface AdapterResult<T = unknown> {
   /** The provider's response payload */
   result: T;
-  /** Wholesale cost in USD (what we paid the provider) */
-  cost: number;
-  /** User-facing charge in USD (cost + margin). Present when the adapter computes margin. */
-  charge?: number;
+  /** Wholesale cost in Credits (what we paid the provider, converted from USD) */
+  cost: Credit;
+  /** User-facing charge in Credits (cost + margin). Present when the adapter computes margin. */
+  charge?: Credit;
 }
 
 /** A capability the adapter supports (extensible as we add more) */
@@ -165,10 +167,10 @@ export interface MeterEvent {
   adapter: string;
   /** Which capability was used */
   capability: AdapterCapability;
-  /** Wholesale cost in USD (what we paid) */
-  cost: number;
-  /** Charge to the user in USD (cost + margin) */
-  charge: number;
+  /** Wholesale cost in Credits (what we paid) */
+  cost: Credit;
+  /** Charge to the user in Credits (cost + margin) */
+  charge: Credit;
   /** ISO-8601 timestamp */
   timestamp: string;
   /** Opaque user/tenant identifier */
@@ -186,12 +188,12 @@ export interface MeterEvent {
  * - Pro tier: 10% markup
  * - Enterprise tier: 5-8% markup
  *
- * @param cost - Wholesale cost in USD
+ * @param cost - Wholesale cost as Credit
  * @param marginMultiplier - Can be:
  *                          - A multiplier >= 1.0 (e.g., 1.3 for 30% margin, 2.0 for 2x - default 1.3)
  *                          - A percentage 3-100 (e.g., 20 for 20% markup, 10 for 10% - WOP-357)
  */
-export function withMargin(cost: number, marginMultiplier: number = 1.3): number {
+export function withMargin(cost: Credit, marginMultiplier: number = 1.3): Credit {
   let multiplier = marginMultiplier;
 
   // If value is >= 3, treat as percentage (e.g., 20 for 20%, 10 for 10%)
@@ -200,5 +202,5 @@ export function withMargin(cost: number, marginMultiplier: number = 1.3): number
     multiplier = 1 + marginMultiplier / 100;
   }
 
-  return Math.round(cost * multiplier * 1_000_000) / 1_000_000; // 6 decimal precision
+  return cost.multiply(multiplier);
 }

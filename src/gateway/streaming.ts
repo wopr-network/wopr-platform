@@ -8,6 +8,7 @@
 
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
+import { Credit } from "../monetization/credit.js";
 import type { ProxyDeps } from "./proxy.js";
 import type { SellRateLookupFn } from "./rate-lookup.js";
 import { DEFAULT_TOKEN_RATES, resolveTokenRates } from "./rate-lookup.js";
@@ -108,10 +109,11 @@ export function proxySSEStream(
       // No additional async work needed — transform() already completed.
 
       // Stream ended — emit meter event with accumulated cost
-      const charge = withMargin(accumulatedCost, deps.defaultMargin);
+      const cost = Credit.fromDollars(accumulatedCost);
+      const charge = withMargin(cost, deps.defaultMargin);
       deps.meter.emit({
         tenant: tenant.id,
-        cost: accumulatedCost,
+        cost,
         charge,
         capability,
         provider,

@@ -169,8 +169,8 @@ describe("debitCredits", () => {
 
     await debitCredits(deps, TENANT.id, costUsd, margin, "test-capability", "test-provider");
 
-    // Expected: ceil(0.05 * 1.3 * 100) = ceil(6.5) = 7 cents
-    const expectedBalanceCents = 10000 - 7;
+    // Expected: 0.05 * 1.3 = 0.065 dollars = 6.5 cents charged
+    const expectedBalanceCents = 10000 - 6.5;
     expect((await ledger.balance(TENANT.id)).toCents()).toBe(expectedBalanceCents);
   });
 

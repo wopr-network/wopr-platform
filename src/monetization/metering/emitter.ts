@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
+import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
 import type { MeterEvent, MeterEventRow } from "./types.js";
 import { MeterWAL } from "./wal.js";
@@ -81,7 +82,22 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
     await this.replayWALAsync(walEvents);
   }
 
+  /**
+   * Reconstitute Credit fields on WAL events after JSON deserialization.
+   * Credit.toJSON() serializes to a raw number, so after JSON.parse the
+   * cost/charge fields are plain numbers — convert them back to Credit.
+   */
+  private reconstituteCreditFields(events: Array<MeterEvent & { id: string }>): Array<MeterEvent & { id: string }> {
+    return events.map((e) => ({
+      ...e,
+      cost: e.cost instanceof Credit ? e.cost : Credit.fromRaw(e.cost as unknown as number),
+      charge: e.charge instanceof Credit ? e.charge : Credit.fromRaw(e.charge as unknown as number),
+    }));
+  }
+
   private async replayWALAsync(walEvents: Array<MeterEvent & { id: string }>): Promise<void> {
+    // Reconstitute Credit objects from raw numbers after JSON deserialization.
+    walEvents = this.reconstituteCreditFields(walEvents);
     // Check which events are already in the database.
     const existingIds = new Set<string>();
     for (const e of walEvents) {
@@ -132,8 +148,8 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
           await tx.insert(meterEvents).values({
             id: e.id,
             tenant: e.tenant,
-            cost: e.cost,
-            charge: e.charge,
+            cost: e.cost.toRaw(),
+            charge: e.charge.toRaw(),
             capability: e.capability,
             provider: e.provider,
             timestamp: e.timestamp,

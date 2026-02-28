@@ -9,6 +9,7 @@
  * configured wholesale rate, with margin applied via withMargin().
  */
 
+import { Credit } from "../credit.js";
 import type { AdapterResult, ProviderAdapter, TTSInput, TTSOutput } from "./types.js";
 import { withMargin } from "./types.js";
 
@@ -100,7 +101,7 @@ export function createElevenLabsAdapter(
       const durationSeconds = characterCount / 15;
 
       // Cost is per-character
-      const cost = characterCount * costPerChar;
+      const cost = Credit.fromDollars(characterCount * costPerChar);
       const charge = withMargin(cost, marginMultiplier);
 
       return {

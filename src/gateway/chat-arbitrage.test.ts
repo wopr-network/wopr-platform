@@ -42,7 +42,7 @@ describe("chatCompletions arbitrage", () => {
           model: "openai/gpt-4o-mini",
           usage: { inputTokens: 10, outputTokens: 5 },
         },
-        cost: 0.0001,
+        cost: Credit.fromDollars(0.0001),
         provider: "openrouter",
       }),
     } as unknown as ArbitrageRouter;
@@ -146,7 +146,7 @@ describe("chatCompletions arbitrage", () => {
           model: "anthropic/claude-3.5-sonnet",
           usage: { inputTokens: 50, outputTokens: 25 },
         },
-        cost: 0.002,
+        cost: Credit.fromDollars(0.002),
         provider: "self-hosted-llm",
       }),
     } as unknown as ArbitrageRouter;

@@ -8,6 +8,7 @@ import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
 import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
+import { Credit } from "../../monetization/credit.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
@@ -184,8 +185,8 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
       if (!capEntry) continue;
       meterEmitter.emit({
         tenant: profile.tenantId,
-        cost: 0,
-        charge: 0,
+        cost: Credit.ZERO,
+        charge: Credit.ZERO,
         capability: "hosted-activation",
         provider: capEntry.vaultProvider,
         timestamp: Date.now(),
@@ -628,8 +629,8 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
       if (!capEntry) continue;
       meterEmitter.emit({
         tenant: profile.tenantId,
-        cost: 0,
-        charge: 0,
+        cost: Credit.ZERO,
+        charge: Credit.ZERO,
         capability: "hosted-activation",
         provider: capEntry.vaultProvider,
         timestamp: Date.now(),
