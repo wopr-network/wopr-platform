@@ -356,3 +356,236 @@ Configure an external uptime check on:
 
 Recommended services: Better Uptime, UptimeRobot, or Checkly (all have free tiers).
 Alert if either returns non-200 for more than 1 minute.
+
+---
+
+## Happy Path Manual Test — Sign Up, Pay, Bot Runs
+
+Run this after any significant billing, auth, or fleet change to confirm the full customer journey works end-to-end against a local dev stack.
+
+### Prerequisites
+
+- Docker + Docker Compose installed
+- Stripe CLI installed (`stripe version`)
+- `psql` available (for DB inspection)
+- `.env` populated with test-mode Stripe keys (run `pnpm setup` if needed)
+
+---
+
+### 0. Start the stack (fresh)
+
+```bash
+cd ~/wopr-platform
+
+# Wipe volume and start clean
+docker compose -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.dev.yml up -d
+
+# Wait for healthy
+sleep 10
+docker logs wopr-platform-platform-api-1 --tail 5
+# Expected last line: "wopr-platform listening on http://0.0.0.0:3100"
+```
+
+---
+
+### 1. Sign up
+
+```bash
+curl -sD /tmp/signup_hdrs.txt -X POST http://localhost:3100/api/auth/sign-up/email \
+  -H "Content-Type: application/json" \
+  -H "Origin: http://localhost:3000" \
+  -d '{"name":"Test User","email":"testuser@example.com","password":"Testpass1"}' | jq '.user.id, .user.email'
+```
+
+**Expected:** `"<user-id>"` and `"testuser@example.com"`
+
+---
+
+### 2. Capture session token
+
+```bash
+SESSION=$(grep -i "better-auth.session_token" /tmp/signup_hdrs.txt \
+  | sed 's/.*better-auth.session_token=\([^;]*\).*/\1/' \
+  | head -1)
+echo "SESSION: $SESSION"
+```
+
+**Expected:** A non-empty token string.
+
+> The session cookie is scoped to `.wopr.bot`, so browsers won't send it to `localhost`. Always pass it manually via `-H "Cookie: better-auth.session_token=$SESSION"` with `-H "Origin: http://localhost:3000"`.
+
+---
+
+### 3. Confirm session is valid
+
+```bash
+curl -s "http://localhost:3100/trpc/billing.creditsBalance?input=%7B%7D" \
+  -H "Origin: http://localhost:3000" \
+  -H "Cookie: better-auth.session_token=$SESSION" | jq .
+```
+
+**Expected:**
+
+```json
+{"result":{"data":{"tenant":"<id>","balance_cents":0,"daily_burn_cents":0,"runway_days":null}}}
+```
+
+If you get `Authentication required`, the session is invalid — repeat step 1.
+
+---
+
+### 4. Create a Stripe checkout session
+
+```bash
+PRICE_ID=$(grep "STRIPE_CREDITS_PRICE\|price_" ~/wopr-platform/.env | head -1 | cut -d= -f2 | tr -d '"')
+
+curl -s -X POST http://localhost:3100/trpc/billing.creditsCheckout \
+  -H "Content-Type: application/json" \
+  -H "Origin: http://localhost:3000" \
+  -H "Cookie: better-auth.session_token=$SESSION" \
+  -d "{\"priceId\":\"$PRICE_ID\",\"successUrl\":\"http://localhost:3000/dashboard\",\"cancelUrl\":\"http://localhost:3000/dashboard\"}" | jq '.result.data'
+```
+
+**Expected:**
+
+```json
+{"url": "https://checkout.stripe.com/c/pay/cs_test_...", "sessionId": "cs_test_..."}
+```
+
+---
+
+### 5. Simulate Stripe payment (webhook)
+
+**5a. Create a Stripe test customer:**
+
+```bash
+STRIPE_KEY=$(grep STRIPE_SECRET_KEY ~/wopr-platform/.env | cut -d= -f2)
+
+CUS=$(stripe customers create \
+  --api-key "$STRIPE_KEY" \
+  --email "testuser@example.com" \
+  --name "Test User" 2>&1 | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+echo "Customer: $CUS"
+```
+
+**5b. Get the tenant ID:**
+
+```bash
+TENANT=$(curl -s "http://localhost:3100/trpc/billing.creditsBalance?input=%7B%7D" \
+  -H "Origin: http://localhost:3000" \
+  -H "Cookie: better-auth.session_token=$SESSION" | jq -r '.result.data.tenant')
+echo "Tenant: $TENANT"
+```
+
+**5c. Start `stripe listen` and update webhook secret:**
+
+```bash
+# Start listener — note the "webhook signing secret" it prints, then Ctrl-C
+stripe listen --api-key "$STRIPE_KEY" --forward-to http://localhost:3100/api/billing/webhook
+# Copy: whsec_xxxx...
+```
+
+Update `STRIPE_WEBHOOK_SECRET=whsec_xxxx...` in `.env`, then restart:
+
+```bash
+docker compose -f docker-compose.dev.yml down && docker compose -f docker-compose.dev.yml up -d
+sleep 8
+```
+
+> The `stripe listen` signing secret differs from the dashboard webhook secret. You must use the listener's secret when forwarding locally.
+
+**5d. Fire the webhook:**
+
+```bash
+stripe listen --api-key "$STRIPE_KEY" \
+  --forward-to http://localhost:3100/api/billing/webhook \
+  --events checkout.session.completed &
+LISTEN_PID=$!
+sleep 4
+
+stripe trigger checkout.session.completed \
+  --api-key "$STRIPE_KEY" \
+  --add "checkout_session:client_reference_id=$TENANT" \
+  --add "checkout_session:metadata[wopr_tenant]=$TENANT" \
+  --add "checkout_session:customer=$CUS"
+
+sleep 5
+kill $LISTEN_PID 2>/dev/null
+```
+
+**Expected:**
+
+```
+--> checkout.session.completed [evt_xxx]
+<-- [200] POST http://localhost:3100/api/billing/webhook [evt_xxx]
+```
+
+---
+
+### 6. Confirm credits landed
+
+```bash
+curl -s "http://localhost:3100/trpc/billing.creditsBalance?input=%7B%7D" \
+  -H "Origin: http://localhost:3000" \
+  -H "Cookie: better-auth.session_token=$SESSION" | jq '.result.data.balance_cents'
+```
+
+**Expected:** A positive number (e.g., `3000` depending on the price tier).
+
+If balance still shows `0` after a successful webhook 200 response, verify the credit ledger wiring: check platform logs for errors in the `checkout.session.completed` handler.
+
+For direct DB verification:
+
+```bash
+# Connect to the Postgres database inside the container
+docker exec -it wopr-platform-platform-api-1 sh -c \
+  'npx drizzle-kit studio'
+# Or if psql is available:
+# docker exec -it <postgres-container> psql -U <user> -d <db> -c "SELECT * FROM credit_transactions ORDER BY created_at DESC LIMIT 5;"
+```
+
+> Note: The exact Postgres connection details depend on your `.env` configuration. Check `DATABASE_URL` or `POSTGRES_*` env vars.
+
+---
+
+### 7. Create a bot
+
+```bash
+curl -s -X POST http://localhost:3100/trpc/fleet.createInstance \
+  -H "Content-Type: application/json" \
+  -H "Origin: http://localhost:3000" \
+  -H "Cookie: better-auth.session_token=$SESSION" \
+  -d '{"name":"test-bot","image":"wopr-network/wopr:latest","description":"Happy path test bot"}' | jq '.result.data'
+```
+
+**Expected:** JSON with `id`, `name`, `status` (likely `"provisioning"` or `"created"`).
+
+> The `fleet.createInstance` tRPC procedure injects `tenantId` from the session — do not include it in the payload.
+
+---
+
+### 8. Confirm bot is running
+
+```bash
+BOT_ID="<id from step 7>"
+
+curl -s "http://localhost:3100/trpc/fleet.getInstance?input=%7B%22id%22%3A%22$BOT_ID%22%7D" \
+  -H "Origin: http://localhost:3000" \
+  -H "Cookie: better-auth.session_token=$SESSION" | jq '.result.data.status'
+```
+
+**Expected:** `"running"` (may take a few seconds after creation; poll if needed).
+
+---
+
+### Checklist
+
+- [ ] Stack starts clean from fresh volume
+- [ ] Sign-up returns user object
+- [ ] Session token captured, `creditsBalance` returns 0
+- [ ] `creditsCheckout` returns a Stripe URL
+- [ ] Webhook fires and returns 200
+- [ ] `creditsBalance` returns correct positive amount
+- [ ] Bot created successfully via `fleet.createInstance`
+- [ ] Bot status transitions to running
