@@ -1,3 +1,5 @@
+import { logger } from "../config/logger.js";
+
 /**
  * Credit value object with sub-cent precision.
  *
@@ -31,10 +33,26 @@ export class Credit {
     return new Credit(Math.round(cents * (Credit.SCALE / 100)));
   }
 
+  // Tiered balance thresholds (in raw units) for observability warnings.
+  private static readonly WARN_10K = 10_000 * Credit.SCALE; // $10,000
+  private static readonly WARN_100K = 100_000 * Credit.SCALE; // $100,000
+  private static readonly WARN_1M = 1_000_000 * Credit.SCALE; // $1,000,000
+
   /** Create from raw integer units. Throws TypeError if not integer. */
   static fromRaw(raw: number): Credit {
     if (!Number.isInteger(raw)) {
       throw new TypeError(`Credit.fromRaw requires an integer, got ${raw}`);
+    }
+    if (raw > Number.MAX_SAFE_INTEGER) {
+      throw new RangeError(`Credit.fromRaw value ${raw} exceeds MAX_SAFE_INTEGER — bigint migration required`);
+    }
+    const dollars = raw / Credit.SCALE;
+    if (raw >= Credit.WARN_1M) {
+      logger.warn("Credit balance WTF threshold reached — consider bigint migration", { dollars: dollars.toFixed(2) });
+    } else if (raw >= Credit.WARN_100K) {
+      logger.warn("Credit balance HIGH threshold reached — monitor for overflow", { dollars: dollars.toFixed(2) });
+    } else if (raw >= Credit.WARN_10K) {
+      logger.info("Credit balance large threshold reached", { dollars: dollars.toFixed(2) });
     }
     return new Credit(raw);
   }
