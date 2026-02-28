@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { tenantAddons } from "../../db/schema/tenant-addons.js";
 import type { AddonKey } from "./addon-catalog.js";
@@ -33,12 +33,7 @@ export class DrizzleTenantAddonRepository implements ITenantAddonRepository {
     if (!ADDON_KEYS.includes(addonKey)) {
       throw new Error(`Unknown addon key: ${addonKey}`);
     }
-    // raw SQL: Drizzle cannot express INSERT ON CONFLICT DO NOTHING for upsert
-    await this.db.execute(
-      sql`INSERT INTO tenant_addons (tenant_id, addon_key)
-          VALUES (${tenantId}, ${addonKey})
-          ON CONFLICT (tenant_id, addon_key) DO NOTHING`,
-    );
+    await this.db.insert(tenantAddons).values({ tenantId, addonKey }).onConflictDoNothing();
   }
 
   async disable(tenantId: string, addonKey: AddonKey): Promise<void> {

@@ -703,8 +703,6 @@ if (process.env.NODE_ENV !== "test") {
       const { DrizzleAuditLogRepository } = await import("./audit/audit-log-repository.js");
       const billingAuditLogger = new AuditLogger(new DrizzleAuditLogRepository(getDb()));
 
-      setAddonRouterDeps({ addonRepo: getTenantAddonRepo() });
-
       setBillingRouterDeps({
         processor,
         tenantStore,
@@ -826,6 +824,9 @@ if (process.env.NODE_ENV !== "test") {
     } else {
       logger.warn("STRIPE_SECRET_KEY not set — tRPC billing router not initialized");
     }
+
+    // Always initialize addon router deps regardless of Stripe availability.
+    setAddonRouterDeps({ addonRepo: getTenantAddonRepo() });
   }
 
   // Wire channel OAuth repository (used by /api/channel-oauth/* REST routes).

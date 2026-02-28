@@ -117,6 +117,39 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
       }
 
       const botCount = await cfg.getActiveBotCount(tenantId);
+
+      // Debit infrastructure add-on costs — always applies regardless of bot count.
+      if (cfg.getAddonCosts) {
+        const addonCost = await cfg.getAddonCosts(tenantId);
+        if (!addonCost.isZero()) {
+          const currentBalance = await cfg.ledger.balance(tenantId);
+          if (!currentBalance.lessThan(addonCost)) {
+            await cfg.ledger.debit(
+              tenantId,
+              addonCost,
+              "addon",
+              "Daily infrastructure add-on charges",
+              `runtime-addon:${cfg.date}:${tenantId}`,
+            );
+          } else {
+            // Partial debit — take what's left, then suspend
+            if (currentBalance.greaterThan(Credit.ZERO)) {
+              await cfg.ledger.debit(
+                tenantId,
+                currentBalance,
+                "addon",
+                "Partial add-on charges (balance exhausted)",
+                `runtime-addon:${cfg.date}:${tenantId}`,
+              );
+            }
+            if (!result.suspended.includes(tenantId)) {
+              result.suspended.push(tenantId);
+              if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+            }
+          }
+        }
+      }
+
       if (botCount <= 0) continue;
 
       const totalCost = DAILY_BOT_COST.multiply(botCount);
@@ -199,38 +232,6 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
               }
               result.suspended.push(tenantId);
               if (cfg.onSuspend) await cfg.onSuspend(tenantId);
-            }
-          }
-        }
-
-        // Debit infrastructure add-on costs (if any)
-        if (cfg.getAddonCosts) {
-          const addonCost = await cfg.getAddonCosts(tenantId);
-          if (!addonCost.isZero()) {
-            const currentBalance = await cfg.ledger.balance(tenantId);
-            if (!currentBalance.lessThan(addonCost)) {
-              await cfg.ledger.debit(
-                tenantId,
-                addonCost,
-                "addon",
-                "Daily infrastructure add-on charges",
-                `runtime-addon:${cfg.date}:${tenantId}`,
-              );
-            } else {
-              // Partial debit — take what's left, then suspend
-              if (currentBalance.greaterThan(Credit.ZERO)) {
-                await cfg.ledger.debit(
-                  tenantId,
-                  currentBalance,
-                  "addon",
-                  "Partial add-on charges (balance exhausted)",
-                  `runtime-addon:${cfg.date}:${tenantId}`,
-                );
-              }
-              if (!result.suspended.includes(tenantId)) {
-                result.suspended.push(tenantId);
-                if (cfg.onSuspend) await cfg.onSuspend(tenantId);
-              }
             }
           }
         }
