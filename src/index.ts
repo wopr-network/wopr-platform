@@ -963,14 +963,6 @@ if (process.env.NODE_ENV !== "test") {
     logger.info("Weekly dividend digest cron scheduled (7d interval)");
   }
 
-  // Run better-auth migrations before accepting requests.
-  // better-auth does not auto-migrate — runMigrations() must be called explicitly.
-  {
-    const { runAuthMigrations } = await import("./auth/better-auth.js");
-    await runAuthMigrations();
-    logger.info("better-auth migrations applied");
-  }
-
   // Wire onboarding deps and start WOPR daemon if enabled (WOP-1020)
   {
     const { loadOnboardingConfig } = await import("./onboarding/config.js");
