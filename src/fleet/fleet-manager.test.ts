@@ -509,23 +509,33 @@ describe("FleetManager", () => {
     });
 
     it("serializes concurrent create calls with the same explicit ID (mutual exclusion)", async () => {
-      let inFlight = 0;
-      let maxInFlight = 0;
-      (store.save as ReturnType<typeof vi.fn>).mockImplementation(async (_p: BotProfile) => {
-        inFlight++;
-        maxInFlight = Math.max(maxInFlight, inFlight);
+      // Add a delay to store.save so the race is observable: the mutex must ensure
+      // the first save completes before the second call checks for the existing profile.
+      // Without the mutex, both calls could pass the existence check simultaneously,
+      // causing a double-save or non-deterministic behaviour.
+      const saveOrder: string[] = [];
+      (store.save as ReturnType<typeof vi.fn>).mockImplementation(async (p: BotProfile) => {
+        saveOrder.push("start");
         await new Promise((r) => setTimeout(r, 10));
-        inFlight--;
+        // Simulate what a real store does: persist so subsequent get() can see it
+        (store.get as ReturnType<typeof vi.fn>).mockResolvedValue(p);
+        saveOrder.push("end");
       });
 
-      const promises = [
+      const results = await Promise.allSettled([
         fleet.create({ ...PROFILE_PARAMS, id: "explicit-id" }),
         fleet.create({ ...PROFILE_PARAMS, id: "explicit-id" }),
-      ];
+      ]);
 
-      await Promise.allSettled(promises);
-      // Mutual exclusion: at most 1 save in flight at any time
-      expect(maxInFlight).toBe(1);
+      // Exactly one succeeded and one rejected with "already exists"
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason.message).toMatch(/already exists/);
+
+      // Exactly one save reached store.save (the second was blocked by the existence check)
+      expect(saveOrder).toEqual(["start", "end"]);
     });
   });
 
