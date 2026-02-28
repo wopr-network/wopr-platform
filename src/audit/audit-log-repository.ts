@@ -1,5 +1,5 @@
 import type { SQL } from "drizzle-orm";
-import { and, count, desc, eq, gte, like, lt, lte } from "drizzle-orm";
+import { and, count, desc, eq, gte, like, lt, lte, max, min } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { auditLog } from "../db/schema/index.js";
 import type { AuditQueryFilters } from "./query.js";
@@ -17,6 +17,10 @@ export interface IAuditLogRepository {
   purgeOlderThan(cutoffTimestamp: number): Promise<number>;
   /** Delete entries for a specific user older than cutoff timestamp. Returns number deleted. */
   purgeOlderThanForUser(cutoffTimestamp: number, userId: string): Promise<number>;
+  /** Count entries grouped by action. */
+  countByAction(filters: { since?: number; until?: number }): Promise<Record<string, number>>;
+  /** Get the oldest and newest timestamps for entries matching filters. */
+  getTimeRange(filters: { since?: number; until?: number }): Promise<{ oldest: string | null; newest: string | null }>;
 }
 
 const MAX_LIMIT = 250;
@@ -128,5 +132,45 @@ export class DrizzleAuditLogRepository implements IAuditLogRepository {
       .where(and(eq(auditLog.userId, userId), lt(auditLog.timestamp, cutoffTimestamp)))
       .returning({ id: auditLog.id });
     return result.length;
+  }
+
+  async countByAction(filters: { since?: number; until?: number }): Promise<Record<string, number>> {
+    const conditions: SQL[] = [];
+    if (filters.since != null) conditions.push(gte(auditLog.timestamp, filters.since));
+    if (filters.until != null) conditions.push(lte(auditLog.timestamp, filters.until));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const rows = await this.db
+      .select({ action: auditLog.action, count: count() })
+      .from(auditLog)
+      .where(where)
+      .groupBy(auditLog.action);
+
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      result[row.action] = row.count;
+    }
+    return result;
+  }
+
+  async getTimeRange(filters: {
+    since?: number;
+    until?: number;
+  }): Promise<{ oldest: string | null; newest: string | null }> {
+    const conditions: SQL[] = [];
+    if (filters.since != null) conditions.push(gte(auditLog.timestamp, filters.since));
+    if (filters.until != null) conditions.push(lte(auditLog.timestamp, filters.until));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const rows = await this.db
+      .select({ oldest: min(auditLog.timestamp), newest: max(auditLog.timestamp) })
+      .from(auditLog)
+      .where(where);
+
+    const row = rows[0];
+    return {
+      oldest: row?.oldest != null ? new Date(row.oldest).toISOString() : null,
+      newest: row?.newest != null ? new Date(row.newest).toISOString() : null,
+    };
   }
 }

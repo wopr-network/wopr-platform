@@ -931,6 +931,28 @@ export function getSetupSessionRepo(): ISetupSessionRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Compliance Evidence Collector (WOP-529)
+// ---------------------------------------------------------------------------
+
+import { DrizzleAuditLogRepository } from "../audit/audit-log-repository.js";
+import { EvidenceCollector } from "../compliance/evidence-collector.js";
+import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
+
+let _evidenceCollector: EvidenceCollector | null = null;
+
+export function getEvidenceCollector(): EvidenceCollector {
+  if (!_evidenceCollector) {
+    _evidenceCollector = new EvidenceCollector({
+      auditRepo: new DrizzleAuditLogRepository(getDb()),
+      backupStore: getBackupStatusStore(),
+      adminAuditRepo: new DrizzleAdminAuditLogRepository(getDb()),
+      twoFactorRepo: new DrizzleTwoFactorRepository(getDb()),
+    });
+  }
+  return _evidenceCollector;
+}
+
+// ---------------------------------------------------------------------------
 // Setup Service (WOP-1037)
 // ---------------------------------------------------------------------------
 

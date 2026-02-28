@@ -134,6 +134,12 @@ function createMockAuditRepo(): IAuditLogRepository & { entries: AuditEntry[] } 
     async purgeOlderThanForUser() {
       return 0;
     },
+    async countByAction() {
+      return {};
+    },
+    async getTimeRange() {
+      return { oldest: null, newest: null };
+    },
   };
 }
 
@@ -611,6 +617,12 @@ describe("billingRouter", () => {
         },
         async purgeOlderThanForUser() {
           return 0;
+        },
+        async countByAction() {
+          return {};
+        },
+        async getTimeRange() {
+          return { oldest: null, newest: null };
         },
       };
       injectDeps({

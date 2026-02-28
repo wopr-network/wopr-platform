@@ -12,6 +12,8 @@ export interface IAdminAuditLogRepository {
   query(filters: AuditFilters): Promise<{ entries: AdminAuditLogRow[]; total: number }>;
   /** Query all entries matching filters (no pagination). For CSV export. */
   queryAll(filters: Omit<AuditFilters, "limit" | "offset">): Promise<AdminAuditLogRow[]>;
+  /** Count entries grouped by action. */
+  countByAction(filters: { from?: number; to?: number }): Promise<Record<string, number>>;
 }
 
 const MAX_LIMIT = 250;
@@ -110,5 +112,24 @@ export class DrizzleAdminAuditLogRepository implements IAdminAuditLogRepository 
     const rows = await this.db.select().from(adminAuditLog).where(where).orderBy(desc(adminAuditLog.createdAt));
 
     return rows.map(toRow);
+  }
+
+  async countByAction(filters: { from?: number; to?: number }): Promise<Record<string, number>> {
+    const conditions: SQL[] = [];
+    if (filters.from != null) conditions.push(gte(adminAuditLog.createdAt, filters.from));
+    if (filters.to != null) conditions.push(lte(adminAuditLog.createdAt, filters.to));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const rows = await this.db
+      .select({ action: adminAuditLog.action, count: count() })
+      .from(adminAuditLog)
+      .where(where)
+      .groupBy(adminAuditLog.action);
+
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      result[row.action] = row.count;
+    }
+    return result;
   }
 }

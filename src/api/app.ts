@@ -12,13 +12,20 @@ import {
   scopedBearerAuthWithTenant,
 } from "../auth/index.js";
 import { logger } from "../config/logger.js";
-import { getDb, getMarketplacePluginRepo, getOnboardingScriptRepo, getOrgRepo } from "../fleet/services.js";
+import {
+  getDb,
+  getEvidenceCollector,
+  getMarketplacePluginRepo,
+  getOnboardingScriptRepo,
+  getOrgRepo,
+} from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { activityRoutes } from "./routes/activity.js";
 import { adminBackupRoutes } from "./routes/admin-backups.js";
+import { createAdminComplianceRoutes } from "./routes/admin-compliance.js";
 import { adminCreditRoutes } from "./routes/admin-credits.js";
 import { adminGpuRoutes } from "./routes/admin-gpu.js";
 import { adminInferenceRoutes } from "./routes/admin-inference.js";
@@ -255,6 +262,14 @@ app.route("/api/instances/:id/friends", friendsRoutes);
 app.route("/api/audit", auditRoutes);
 app.route("/api/admin/audit", adminAuditRoutes);
 app.route("/api/admin/backups", adminBackupRoutes);
+// Admin compliance evidence route (WOP-529) — deferred init so DB is not opened at import time
+{
+  const _complianceAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
+  const _adminCompliance = new Hono();
+  _adminCompliance.use("*", _complianceAdminAuth);
+  _adminCompliance.route("/", createAdminComplianceRoutes(getEvidenceCollector()));
+  app.route("/api/admin/compliance", _adminCompliance);
+}
 app.route("/api/admin/credits", adminCreditRoutes);
 app.route("/api/admin/notes", adminNotesRoutes);
 app.route("/api/admin/rates", adminRateRoutes);
