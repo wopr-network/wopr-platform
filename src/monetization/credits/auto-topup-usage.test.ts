@@ -84,6 +84,31 @@ describe("maybeTriggerUsageTopup", () => {
     expect(mockCharge).not.toHaveBeenCalled();
   });
 
+  it("fires exactly one charge when two concurrent top-up triggers race", async () => {
+    // Setup: usage enabled, balance below threshold
+    await settingsRepo.upsert("t1", {
+      usageEnabled: true,
+      usageThreshold: Credit.fromCents(500),
+      usageTopup: Credit.fromCents(2000),
+    });
+    await ledger.credit("t1", Credit.fromCents(100), "purchase", "buy", "ref-1", "stripe");
+
+    const mockCharge = vi.fn().mockResolvedValue({ success: true, paymentReference: "pi_race" });
+    const deps: UsageTopupDeps = { settingsRepo, creditLedger: ledger, chargeAutoTopup: mockCharge };
+
+    // Fire two concurrent calls — both see balance < threshold,
+    // but only one wins the atomic tryAcquireUsageInFlight CAS
+    await Promise.all([maybeTriggerUsageTopup(deps, "t1"), maybeTriggerUsageTopup(deps, "t1")]);
+
+    // Exactly one charge — not zero, not two
+    expect(mockCharge).toHaveBeenCalledTimes(1);
+    expect(mockCharge).toHaveBeenCalledWith("t1", Credit.fromCents(2000), "auto_topup_usage");
+
+    // Flag should be cleared after the winner's finally block
+    const settings = await settingsRepo.getByTenant("t1");
+    expect(settings?.usageChargeInFlight).toBe(false);
+  });
+
   it("clears in-flight flag after successful charge (second call triggers new charge)", async () => {
     await settingsRepo.upsert("t1", {
       usageEnabled: true,
