@@ -98,7 +98,7 @@ describe("creditBalanceCheck", () => {
     };
 
     app.get("/check-insufficient", async (c) => {
-      const err = await creditBalanceCheck(c, deps, 500); // Need 500 cents
+      const err = await creditBalanceCheck(c, deps, Credit.fromCents(500)); // Need 500 cents
       if (err) {
         return c.json({ error: err }, 402);
       }
@@ -115,8 +115,8 @@ describe("creditBalanceCheck", () => {
         code: string;
         needsCredits: boolean;
         topUpUrl: string;
-        currentBalanceCents: number;
-        requiredCents: number;
+        currentBalance: number;
+        required: number;
       };
     };
 
@@ -125,8 +125,8 @@ describe("creditBalanceCheck", () => {
     expect(body.error.code).toBe("insufficient_credits");
     expect(body.error.needsCredits).toBe(true);
     expect(body.error.topUpUrl).toBe("/credits");
-    expect(body.error.currentBalanceCents).toBe(100);
-    expect(body.error.requiredCents).toBe(500);
+    expect(body.error.currentBalance).toBe(Credit.fromCents(100).toCents());
+    expect(body.error.required).toBe(Credit.fromCents(500).toCents());
   });
 
   it("allows sub-cent operations for zero-balance tenants", async () => {

@@ -17,6 +17,7 @@ import type { TTSOutput } from "../monetization/adapters/types.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
+import { Credit } from "../monetization/credit.js";
 import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import { PHONE_NUMBER_MONTHLY_COST } from "../monetization/credits/phone-billing.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
@@ -150,7 +151,7 @@ export function chatCompletions(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for chat completions
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -364,7 +365,7 @@ export function textCompletions(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for text completions
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -464,7 +465,7 @@ export function embeddings(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for embeddings
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -552,7 +553,7 @@ export function audioTranscriptions(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for STT
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -649,7 +650,7 @@ export function audioSpeech(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for TTS
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -833,7 +834,7 @@ export function imageGenerations(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for image generation
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -934,7 +935,7 @@ export function videoGenerations(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for image generation
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1020,7 +1021,7 @@ export function phoneOutbound(deps: ProxyDeps) {
     const budgetErr = await budgetCheck(c, deps);
     if (budgetErr) return budgetErr;
 
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1328,7 +1329,7 @@ export function smsOutbound(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for SMS/MMS
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }
@@ -1582,7 +1583,7 @@ export function phoneNumberProvision(deps: ProxyDeps) {
     if (budgetErr) return budgetErr;
 
     // Estimate minimum 1 cent for phone number provision
-    const creditErr = await creditBalanceCheck(c, deps);
+    const creditErr = await creditBalanceCheck(c, deps, Credit.fromCents(1));
     if (creditErr) {
       return c.json({ error: creditErr }, 402);
     }

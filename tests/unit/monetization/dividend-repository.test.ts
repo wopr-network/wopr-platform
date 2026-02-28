@@ -21,9 +21,9 @@ describe("DrizzleDividendRepository", () => {
   describe("getStats", () => {
     it("returns zeros when no purchases exist", async () => {
       const stats = await repo.getStats("t-1");
-      expect(Number(stats.poolCents)).toBe(0);
+      expect(stats.pool.isZero()).toBe(true);
       expect(Number(stats.activeUsers)).toBe(0);
-      expect(Number(stats.perUserCents)).toBe(0);
+      expect(stats.perUser.isZero()).toBe(true);
       expect(stats.userEligible).toBe(false);
       expect(stats.userLastPurchaseAt).toBeNull();
       expect(stats.userWindowExpiresAt).toBeNull();
@@ -43,7 +43,7 @@ describe("DrizzleDividendRepository", () => {
       );
 
       const stats = await repo.getStats("t-1");
-      expect(Number(stats.poolCents)).toBe(1000);
+      expect(stats.pool.toCents()).toBe(1000);
       expect(Number(stats.activeUsers)).toBe(1); // t-other purchased within 7 days
     });
 
@@ -80,7 +80,7 @@ describe("DrizzleDividendRepository", () => {
     it("handles division by zero when no active users", async () => {
       // No purchases at all — both pool and active users are 0
       const stats = await repo.getStats("t-1");
-      expect(Number(stats.perUserCents)).toBe(0);
+      expect(stats.perUser.isZero()).toBe(true);
     });
   });
 
@@ -126,9 +126,9 @@ describe("DrizzleDividendRepository", () => {
     });
   });
 
-  describe("getLifetimeTotalCents", () => {
+  describe("getLifetimeTotal", () => {
     it("returns 0 when no distributions exist", async () => {
-      expect(await repo.getLifetimeTotalCents("t-1")).toBe(0);
+      expect((await repo.getLifetimeTotal("t-1")).isZero()).toBe(true);
     });
 
     it("sums all distributions for the tenant", async () => {
@@ -146,7 +146,7 @@ describe("DrizzleDividendRepository", () => {
         ["d-3", "t-other", "2026-02-20", 99, 7000, 700],
       );
 
-      expect(await repo.getLifetimeTotalCents("t-1")).toBe(18);
+      expect((await repo.getLifetimeTotal("t-1")).toCents()).toBe(18);
     });
   });
 });
