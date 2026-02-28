@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents, recoveryItems } from "../db/schema/index.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
