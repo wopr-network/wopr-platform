@@ -267,7 +267,7 @@ app.route("/api/admin/backups", adminBackupRoutes);
   const _complianceAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
   const _adminCompliance = new Hono();
   _adminCompliance.use("*", _complianceAdminAuth);
-  _adminCompliance.route("/", createAdminComplianceRoutes(getEvidenceCollector()));
+  _adminCompliance.route("/", createAdminComplianceRoutes(getEvidenceCollector));
   app.route("/api/admin/compliance", _adminCompliance);
 }
 app.route("/api/admin/credits", adminCreditRoutes);

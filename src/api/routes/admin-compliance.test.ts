@@ -30,7 +30,10 @@ describe("GET /evidence", () => {
     };
 
     const app = new Hono();
-    app.route("/", createAdminComplianceRoutes(mockCollector as any));
+    app.route(
+      "/",
+      createAdminComplianceRoutes(() => mockCollector as any),
+    );
 
     const res = await app.request("/evidence");
     expect(res.status).toBe(200);

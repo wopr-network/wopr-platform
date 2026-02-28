@@ -7,7 +7,7 @@ import type { EvidenceCollector } from "../../compliance/evidence-collector.js";
  * GET /evidence?from=ISO&to=ISO — Generate SOC 2 evidence report for the given period.
  * Defaults to last 90 days if no params provided.
  */
-export function createAdminComplianceRoutes(collector: EvidenceCollector): Hono {
+export function createAdminComplianceRoutes(getCollector: () => EvidenceCollector): Hono {
   const routes = new Hono();
 
   routes.get("/evidence", async (c) => {
@@ -27,7 +27,7 @@ export function createAdminComplianceRoutes(collector: EvidenceCollector): Hono 
     const from = fromParam ?? ninetyDaysAgo.toISOString();
     const to = toParam ?? now.toISOString();
 
-    const report = await collector.collect({ from, to });
+    const report = await getCollector().collect({ from, to });
     return c.json(report);
   });
 
