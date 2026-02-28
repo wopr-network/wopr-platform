@@ -35,7 +35,7 @@ export class DrizzleApiKeyRepository implements IApiKeyRepository {
     try {
       roles = JSON.parse(row.roles) as string[];
     } catch {
-      roles = [];
+      return null;
     }
 
     return {

@@ -98,11 +98,15 @@ export function dualAuth(auth: Auth, apiKeyRepo?: IApiKeyRepository) {
         const token = trimmed.slice(7).trim();
         if (token) {
           const keyHash = createHash("sha256").update(token).digest("hex");
-          const apiUser = await apiKeyRepo.findByHash(keyHash);
-          if (apiUser) {
-            c.set("user", { ...apiUser, roles: [...apiUser.roles] });
-            c.set("authMethod", "api_key");
-            return next();
+          try {
+            const apiUser = await apiKeyRepo.findByHash(keyHash);
+            if (apiUser) {
+              c.set("user", { ...apiUser, roles: [...apiUser.roles] });
+              c.set("authMethod", "api_key");
+              return next();
+            }
+          } catch {
+            return c.json({ error: "Authentication required" }, 401);
           }
         }
       }
