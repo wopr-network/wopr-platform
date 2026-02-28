@@ -23,6 +23,8 @@ export const LOW_BALANCE_THRESHOLD = Credit.fromCents(100);
 export interface RuntimeCronConfig {
   ledger: ICreditLedger;
   getActiveBotCount: GetActiveBotCount;
+  /** The date being billed, as YYYY-MM-DD. Used for idempotency. */
+  date: string;
   onSuspend?: OnSuspend;
   /** Called when balance drops below LOW_BALANCE_THRESHOLD ($1.00). */
   onLowBalance?: (tenantId: string, balance: Credit) => void | Promise<void>;
@@ -44,6 +46,8 @@ export interface RuntimeCronResult {
   processed: number;
   suspended: string[];
   errors: string[];
+  /** Tenant IDs skipped because they were already billed for this date. */
+  skipped: string[];
 }
 
 /**
@@ -70,6 +74,18 @@ export function buildResourceTierCosts(
 }
 
 /**
+ * Returns true when `err` is a Postgres unique-constraint violation (SQLSTATE 23505).
+ * Used to detect a concurrent cron run that already inserted the same referenceId.
+ */
+function isUniqueConstraintViolation(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: string }).code;
+  if (code === "23505") return true;
+  const msg = err.message;
+  return msg.includes("UNIQUE") || msg.includes("duplicate key");
+}
+
+/**
  * Daily runtime deduction cron.
  *
  * For each tenant with a positive balance:
@@ -82,12 +98,19 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
     processed: 0,
     suspended: [],
     errors: [],
+    skipped: [],
   };
 
   const tenants = await cfg.ledger.tenantsWithBalance();
 
   for (const { tenantId, balance } of tenants) {
     try {
+      const runtimeRef = `runtime:${cfg.date}:${tenantId}`;
+      if (await cfg.ledger.hasReferenceId(runtimeRef)) {
+        result.skipped.push(tenantId);
+        continue;
+      }
+
       const botCount = await cfg.getActiveBotCount(tenantId);
       if (botCount <= 0) continue;
 
@@ -100,6 +123,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           totalCost,
           "bot_runtime",
           `Daily runtime: ${botCount} bot(s) x $${DAILY_BOT_COST.toDollars().toFixed(2)}`,
+          runtimeRef,
         );
 
         // Debit resource tier surcharges (if any)
@@ -108,13 +132,20 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           if (!tierCost.isZero()) {
             const balanceAfterRuntime = await cfg.ledger.balance(tenantId);
             if (!balanceAfterRuntime.lessThan(tierCost)) {
-              await cfg.ledger.debit(tenantId, tierCost, "resource_upgrade", "Daily resource tier surcharge");
+              await cfg.ledger.debit(
+                tenantId,
+                tierCost,
+                "resource_upgrade",
+                "Daily resource tier surcharge",
+                `runtime-tier:${cfg.date}:${tenantId}`,
+              );
             } else if (balanceAfterRuntime.greaterThan(Credit.ZERO)) {
               await cfg.ledger.debit(
                 tenantId,
                 balanceAfterRuntime,
                 "resource_upgrade",
                 "Partial resource tier surcharge (balance exhausted)",
+                `runtime-tier:${cfg.date}:${tenantId}`,
               );
             }
           }
@@ -143,7 +174,13 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           if (!storageCost.isZero()) {
             const currentBalance = await cfg.ledger.balance(tenantId);
             if (!currentBalance.lessThan(storageCost)) {
-              await cfg.ledger.debit(tenantId, storageCost, "storage_upgrade", "Daily storage tier surcharge");
+              await cfg.ledger.debit(
+                tenantId,
+                storageCost,
+                "storage_upgrade",
+                "Daily storage tier surcharge",
+                `runtime-storage:${cfg.date}:${tenantId}`,
+              );
             } else {
               // Partial debit — take what's left, then suspend
               if (currentBalance.greaterThan(Credit.ZERO)) {
@@ -152,6 +189,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
                   currentBalance,
                   "storage_upgrade",
                   "Partial storage tier surcharge (balance exhausted)",
+                  `runtime-storage:${cfg.date}:${tenantId}`,
                 );
               }
               result.suspended.push(tenantId);
@@ -167,6 +205,7 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
             balance,
             "bot_runtime",
             `Partial daily runtime (balance exhausted): ${botCount} bot(s)`,
+            runtimeRef,
           );
         }
 
@@ -188,6 +227,9 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           await cfg.onSuspend(tenantId);
         }
         result.processed++;
+      } else if (isUniqueConstraintViolation(err)) {
+        // Concurrent cron run already committed this referenceId — treat as already billed.
+        result.skipped.push(tenantId);
       } else {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error("Runtime deduction failed", { tenantId, error: msg });
