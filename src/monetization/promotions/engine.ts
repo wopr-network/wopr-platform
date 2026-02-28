@@ -62,8 +62,15 @@ export class PromotionEngine {
     const refId = `promo:${promo.id}:${ctx.tenantId}:${userCount + 1}`;
     if (await ledger.hasReferenceId(refId)) return null;
 
-    // Total use limit
-    if (promo.totalUseLimit !== null && promo.totalUses >= promo.totalUseLimit) return null;
+    // firstPurchaseOnly: skip if the tenant has made any prior purchase
+    if (promo.firstPurchaseOnly && ctx.trigger === "purchase") {
+      if (await redemptionRepo.hasPriorPurchase(ctx.tenantId)) return null;
+    }
+
+    // userSegment enforcement
+    if (promo.userSegment === "tenant_list") {
+      if (!promo.eligibleTenantIds || !promo.eligibleTenantIds.includes(ctx.tenantId)) return null;
+    }
 
     // Minimum purchase check — treat missing purchaseAmountCredits as zero
     if (promo.minPurchaseCredits !== null) {
@@ -96,6 +103,15 @@ export class PromotionEngine {
 
     if (grantAmount.isZero() || grantAmount.isNegative()) return null;
 
+    // Atomic budget + total-use-limit check + usage increment (must run BEFORE crediting)
+    const granted = await promotionRepo.incrementUsageIfAllowed(
+      promo.id,
+      grantAmount.toCents(),
+      promo.budgetCredits,
+      promo.totalUseLimit,
+    );
+    if (!granted) return null;
+
     // Grant credits
     const tx = await ledger.credit(ctx.tenantId, grantAmount, "promo", `Promotion: ${promo.name}`, refId);
 
@@ -108,14 +124,6 @@ export class PromotionEngine {
       creditTransactionId: tx.id,
       purchaseAmountCredits: ctx.purchaseAmountCredits?.toCents(),
     });
-
-    // Atomic budget check + usage increment
-    const granted = await promotionRepo.incrementUsageIfBudgetAllows(
-      promo.id,
-      grantAmount.toCents(),
-      promo.budgetCredits,
-    );
-    if (!granted) return null;
 
     // Mark unique coupon code as redeemed
     if (couponCodeId) {
