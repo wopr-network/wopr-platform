@@ -52,7 +52,7 @@ export class PromotionEngine {
   }
 
   async #tryGrant(promo: Promotion, ctx: PromotionContext): Promise<GrantResult | null> {
-    const { redemptionRepo, ledger, promotionRepo } = this.deps;
+    const { redemptionRepo, ledger, promotionRepo, couponRepo } = this.deps;
 
     // Per-user limit
     const userCount = await redemptionRepo.countByTenant(promo.id, ctx.tenantId);
@@ -65,9 +65,19 @@ export class PromotionEngine {
     // Total use limit
     if (promo.totalUseLimit !== null && promo.totalUses >= promo.totalUseLimit) return null;
 
-    // Minimum purchase check
-    if (promo.minPurchaseCredits !== null && ctx.purchaseAmountCredits !== undefined) {
-      if (ctx.purchaseAmountCredits.toCents() < promo.minPurchaseCredits) return null;
+    // Minimum purchase check — treat missing purchaseAmountCredits as zero
+    if (promo.minPurchaseCredits !== null) {
+      const purchaseCents = ctx.purchaseAmountCredits?.toCents() ?? 0;
+      if (purchaseCents < promo.minPurchaseCredits) return null;
+    }
+
+    // For unique batch codes, validate and mark the specific code
+    let couponCodeId: string | undefined;
+    if (promo.type === "coupon_unique" && ctx.couponCode) {
+      const couponCode = await couponRepo.findByCode(ctx.couponCode);
+      if (!couponCode || couponCode.redeemedAt !== null) return null;
+      if (couponCode.promotionId !== promo.id) return null;
+      couponCodeId = couponCode.id;
     }
 
     // Compute grant amount
@@ -86,11 +96,6 @@ export class PromotionEngine {
 
     if (grantAmount.isZero() || grantAmount.isNegative()) return null;
 
-    // Budget check
-    if (promo.budgetCredits !== null) {
-      if (promo.totalCreditsGranted + grantAmount.toCents() > promo.budgetCredits) return null;
-    }
-
     // Grant credits
     const tx = await ledger.credit(ctx.tenantId, grantAmount, "promo", `Promotion: ${promo.name}`, refId);
 
@@ -98,12 +103,24 @@ export class PromotionEngine {
     await redemptionRepo.create({
       promotionId: promo.id,
       tenantId: ctx.tenantId,
+      couponCodeId,
       creditsGranted: grantAmount.toCents(),
       creditTransactionId: tx.id,
       purchaseAmountCredits: ctx.purchaseAmountCredits?.toCents(),
     });
 
-    await promotionRepo.incrementUsage(promo.id, grantAmount.toCents());
+    // Atomic budget check + usage increment
+    const granted = await promotionRepo.incrementUsageIfBudgetAllows(
+      promo.id,
+      grantAmount.toCents(),
+      promo.budgetCredits,
+    );
+    if (!granted) return null;
+
+    // Mark unique coupon code as redeemed
+    if (couponCodeId) {
+      await couponRepo.redeem(couponCodeId, ctx.tenantId);
+    }
 
     return {
       promotionId: promo.id,

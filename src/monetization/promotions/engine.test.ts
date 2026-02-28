@@ -48,6 +48,7 @@ describe("PromotionEngine", () => {
       listActive: vi.fn().mockResolvedValue([makePromo()]),
       findByCouponCode: vi.fn().mockResolvedValue(null),
       incrementUsage: vi.fn().mockResolvedValue(undefined),
+      incrementUsageIfBudgetAllows: vi.fn().mockResolvedValue(true),
       create: vi.fn(),
       getById: vi.fn(),
       list: vi.fn(),
@@ -172,17 +173,55 @@ describe("PromotionEngine", () => {
     expect((grantedAmount as Credit).toCents()).toBe(1000);
   });
 
-  it("respects budget cap", async () => {
+  it("respects budget cap via atomic incrementUsageIfBudgetAllows", async () => {
     vi.mocked(promotionRepo.listActive).mockResolvedValue([
       makePromo({ budgetCredits: 500, totalCreditsGranted: 400, valueAmount: 200 }),
     ]);
-    // 400 already granted + 200 would = 600 > 500 budget
+    vi.mocked(promotionRepo.incrementUsageIfBudgetAllows).mockResolvedValue(false);
+    // atomic check returns false — budget exceeded
     const results = await engine.evaluateAndGrant({
       tenantId: "tenant-1",
       trigger: "purchase",
       purchaseAmountCredits: Credit.fromCents(2500),
     });
     expect(results).toHaveLength(0);
+    expect(promotionRepo.incrementUsageIfBudgetAllows).toHaveBeenCalledWith("promo-1", 200, 500);
+  });
+
+  it("rejects coupon_redeem with minPurchaseCredits when no purchaseAmountCredits provided", async () => {
+    vi.mocked(promotionRepo.findByCouponCode).mockResolvedValue(
+      makePromo({ type: "coupon_fixed", couponCode: "SAVE10", valueAmount: 500, minPurchaseCredits: 1000 }),
+    );
+    const results = await engine.evaluateAndGrant({
+      tenantId: "tenant-1",
+      trigger: "coupon_redeem",
+      couponCode: "SAVE10",
+      // no purchaseAmountCredits — treated as 0 which is < 1000
+    });
+    expect(results).toHaveLength(0);
+    expect(ledger.credit).not.toHaveBeenCalled();
+  });
+
+  it("rejects coupon_unique code that is already redeemed", async () => {
+    vi.mocked(promotionRepo.findByCouponCode).mockResolvedValue(
+      makePromo({ type: "coupon_unique", couponBatchId: "batch-1", valueAmount: 500 }),
+    );
+    vi.mocked(couponRepo.findByCode).mockResolvedValue({
+      id: "code-1",
+      promotionId: "promo-1",
+      code: "USED123",
+      assignedTenantId: null,
+      assignedEmail: null,
+      redeemedAt: new Date(),
+      redeemedByTenantId: "other-tenant",
+    });
+    const results = await engine.evaluateAndGrant({
+      tenantId: "tenant-1",
+      trigger: "coupon_redeem",
+      couponCode: "USED123",
+    });
+    expect(results).toHaveLength(0);
+    expect(ledger.credit).not.toHaveBeenCalled();
   });
 
   it("respects total use limit", async () => {

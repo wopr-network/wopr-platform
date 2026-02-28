@@ -176,7 +176,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
           await deps.promotionEngine.evaluateAndGrant({
             tenantId: tenant,
             trigger: "purchase",
-            purchaseAmountCredits: Credit.fromCents(session.amount_total ?? 0),
+            purchaseAmountCredits: Credit.fromCents(creditCents),
           });
         } catch (err) {
           logger.error("Promotion engine error in Stripe webhook — non-fatal", { err });

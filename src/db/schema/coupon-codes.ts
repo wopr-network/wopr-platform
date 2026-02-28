@@ -13,6 +13,7 @@ export const couponCodes = pgTable(
     assignedEmail: text("assigned_email"),
     redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
     redeemedByTenantId: text("redeemed_by_tenant_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("coupon_codes_promotion_idx").on(t.promotionId),

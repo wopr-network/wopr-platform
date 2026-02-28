@@ -108,4 +108,34 @@ describe("DrizzlePromotionRepository", () => {
       expect(updated?.status).toBe("active");
     });
   });
+
+  describe("incrementUsageIfBudgetAllows", () => {
+    it("returns true and increments when budget allows", async () => {
+      const promo = await repo.create({ ...basePromotion, budgetCredits: 1000 });
+      const granted = await repo.incrementUsageIfBudgetAllows(promo.id, 200, 1000);
+      expect(granted).toBe(true);
+      const updated = await repo.getById(promo.id);
+      expect(updated?.totalUses).toBe(1);
+      expect(updated?.totalCreditsGranted).toBe(200);
+    });
+
+    it("returns false and does not increment when budget would be exceeded", async () => {
+      const promo = await repo.create({ ...basePromotion, budgetCredits: 500 });
+      // Pre-increment to 400 using incrementUsage
+      await repo.incrementUsage(promo.id, 400);
+      // Trying to add 200 more would exceed budget of 500
+      const granted = await repo.incrementUsageIfBudgetAllows(promo.id, 200, 500);
+      expect(granted).toBe(false);
+      const updated = await repo.getById(promo.id);
+      expect(updated?.totalCreditsGranted).toBe(400); // unchanged
+    });
+
+    it("returns true and increments when budgetCredits is null (no budget limit)", async () => {
+      const promo = await repo.create({ ...basePromotion, budgetCredits: null });
+      const granted = await repo.incrementUsageIfBudgetAllows(promo.id, 999999, null);
+      expect(granted).toBe(true);
+      const updated = await repo.getById(promo.id);
+      expect(updated?.totalCreditsGranted).toBe(999999);
+    });
+  });
 });

@@ -65,6 +65,8 @@ export interface IPromotionRepository {
   updateStatus(id: string, status: PromotionStatus): Promise<void>;
   update(id: string, patch: Partial<CreatePromotionInput>): Promise<void>;
   incrementUsage(id: string, creditsGranted: number): Promise<void>;
+  /** Atomically increments usage only if the budget allows. Returns true if granted, false if budget exceeded. */
+  incrementUsageIfBudgetAllows(id: string, creditsGranted: number, budgetCredits: number | null): Promise<boolean>;
 }
 
 export class DrizzlePromotionRepository implements IPromotionRepository {
@@ -159,6 +161,30 @@ export class DrizzlePromotionRepository implements IPromotionRepository {
         updatedAt: new Date(),
       })
       .where(eq(promotions.id, id));
+  }
+
+  async incrementUsageIfBudgetAllows(
+    id: string,
+    creditsGranted: number,
+    budgetCredits: number | null,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(promotions)
+      .set({
+        totalUses: sql`${promotions.totalUses} + 1`,
+        totalCreditsGranted: sql`${promotions.totalCreditsGranted} + ${creditsGranted}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(promotions.id, id),
+          budgetCredits === null
+            ? sql`true`
+            : sql`${promotions.totalCreditsGranted} + ${creditsGranted} <= ${budgetCredits}`,
+        ),
+      )
+      .returning({ id: promotions.id });
+    return rows.length > 0;
   }
 
   #map(row: typeof promotions.$inferSelect): Promotion {

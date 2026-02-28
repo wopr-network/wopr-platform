@@ -902,7 +902,7 @@ export const billingRouter = router({
         results = await promotionEngine.evaluateAndGrant({
           tenantId,
           trigger: "coupon_redeem",
-          couponCode: input.code,
+          couponCode: input.code.toUpperCase().trim(),
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Invalid or expired coupon code";
