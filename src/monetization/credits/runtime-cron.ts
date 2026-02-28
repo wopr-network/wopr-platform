@@ -74,6 +74,18 @@ export function buildResourceTierCosts(
 }
 
 /**
+ * Returns true when `err` is a Postgres unique-constraint violation (SQLSTATE 23505).
+ * Used to detect a concurrent cron run that already inserted the same referenceId.
+ */
+function isUniqueConstraintViolation(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: string }).code;
+  if (code === "23505") return true;
+  const msg = err.message;
+  return msg.includes("UNIQUE") || msg.includes("duplicate key");
+}
+
+/**
  * Daily runtime deduction cron.
  *
  * For each tenant with a positive balance:
@@ -215,6 +227,9 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           await cfg.onSuspend(tenantId);
         }
         result.processed++;
+      } else if (isUniqueConstraintViolation(err)) {
+        // Concurrent cron run already committed this referenceId — treat as already billed.
+        result.skipped.push(tenantId);
       } else {
         const msg = err instanceof Error ? err.message : String(err);
         logger.error("Runtime deduction failed", { tenantId, error: msg });

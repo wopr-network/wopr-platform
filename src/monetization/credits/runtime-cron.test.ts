@@ -287,6 +287,20 @@ describe("runRuntimeDeductions", () => {
     expect((await ledger.balance("tenant-1")).toCents()).toBe(expected);
   });
 
+  it("treats unique constraint violation from concurrent debit as already-billed (skip, not error)", async () => {
+    await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "top-up");
+    const uniqueErr = Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" });
+    vi.spyOn(ledger, "debit").mockRejectedValueOnce(uniqueErr);
+    const result = await runRuntimeDeductions({
+      ledger,
+      date: TODAY,
+      getActiveBotCount: async () => 1,
+    });
+    expect(result.skipped).toContain("tenant-1");
+    expect(result.errors).toHaveLength(0);
+    vi.restoreAllMocks();
+  });
+
   it("is idempotent — second run on same date does not double-deduct", async () => {
     await ledger.credit("tenant-1", Credit.fromCents(500), "purchase", "top-up");
     const cfg = {
