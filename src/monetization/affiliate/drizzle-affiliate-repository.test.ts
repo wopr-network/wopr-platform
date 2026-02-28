@@ -182,6 +182,55 @@ describe("DrizzleAffiliateRepository", () => {
     });
   });
 
+  describe("velocity cap queries", () => {
+    it("getPayoutCount30d returns 0 when no payouts", async () => {
+      const count = await repo.getPayoutCount30d("referrer");
+      expect(count).toBe(0);
+    });
+
+    it("getPayoutCount30d counts only non-suppressed payouts in last 30 days", async () => {
+      // Create referrer code
+      await repo.getOrCreateCode("referrer");
+
+      // Record 3 referrals with matches
+      for (let i = 0; i < 3; i++) {
+        await repo.recordReferral("referrer", `buyer-${i}`, "abc123");
+        await repo.recordMatch(`buyer-${i}`, 1000);
+      }
+
+      // Record 1 suppressed referral
+      await repo.recordReferral("referrer", "buyer-suppressed", "abc123");
+      await repo.recordSuppression("buyer-suppressed", "velocity_cap_referrals");
+
+      const count = await repo.getPayoutCount30d("referrer");
+      expect(count).toBe(3); // excludes suppressed
+    });
+
+    it("getPayoutTotal30d sums only non-suppressed payouts in last 30 days", async () => {
+      await repo.getOrCreateCode("referrer");
+
+      await repo.recordReferral("referrer", "buyer-0", "abc123");
+      await repo.recordMatch("buyer-0", 5000);
+
+      await repo.recordReferral("referrer", "buyer-1", "abc123");
+      await repo.recordMatch("buyer-1", 3000);
+
+      const total = await repo.getPayoutTotal30d("referrer");
+      expect(total).toBe(8000);
+    });
+
+    it("recordSuppression marks referral as suppressed with reason", async () => {
+      await repo.getOrCreateCode("referrer");
+      await repo.recordReferral("referrer", "buyer", "abc123");
+
+      await repo.recordSuppression("buyer", "velocity_cap_credits");
+
+      const ref = await repo.getReferralByReferred("buyer");
+      expect(ref?.payoutSuppressed).toBe(true);
+      expect(ref?.suppressionReason).toBe("velocity_cap_credits");
+    });
+  });
+
   describe("getOrCreateCode — catch block paths", () => {
     afterEach(() => {
       vi.restoreAllMocks();

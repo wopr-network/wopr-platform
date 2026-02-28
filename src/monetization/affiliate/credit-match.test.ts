@@ -143,6 +143,79 @@ describe("processAffiliateCreditMatch", () => {
     expect(events[0].phase).toBe("payout");
   });
 
+  describe("velocity caps", () => {
+    it("suppresses payout when referrer hits referral count cap", async () => {
+      // Set up 20 existing matched referrals for the referrer
+      for (let i = 0; i < 20; i++) {
+        await affiliateRepo.recordReferral("referrer", `old-buyer-${i}`, "abc123");
+        await affiliateRepo.recordMatch(`old-buyer-${i}`, 500);
+      }
+
+      // New referral
+      await affiliateRepo.recordReferral("referrer", "buyer", "abc123");
+      await ledger.credit("buyer", Credit.fromCents(1000), "purchase", "first buy", "session-1", "stripe");
+
+      const result = await processAffiliateCreditMatch({
+        tenantId: "buyer",
+        purchaseAmountCents: 1000,
+        ledger,
+        affiliateRepo,
+        maxReferrals30d: 20,
+      });
+
+      expect(result).toBeNull();
+      // Referrer should NOT have been credited
+      expect((await ledger.balance("referrer")).toCents()).toBe(0);
+      // Referral should be marked as suppressed
+      const ref = await affiliateRepo.getReferralByReferred("buyer");
+      expect(ref?.payoutSuppressed).toBe(true);
+      expect(ref?.suppressionReason).toBe("velocity_cap_referrals");
+    });
+
+    it("suppresses payout when referrer hits credit total cap", async () => {
+      // Set up referrals totaling 20000 cents ($200)
+      for (let i = 0; i < 4; i++) {
+        await affiliateRepo.recordReferral("referrer", `old-buyer-${i}`, "abc123");
+        await affiliateRepo.recordMatch(`old-buyer-${i}`, 5000);
+      }
+
+      // New referral
+      await affiliateRepo.recordReferral("referrer", "buyer", "abc123");
+      await ledger.credit("buyer", Credit.fromCents(1000), "purchase", "first buy", "session-1", "stripe");
+
+      const result = await processAffiliateCreditMatch({
+        tenantId: "buyer",
+        purchaseAmountCents: 1000,
+        ledger,
+        affiliateRepo,
+        maxMatchCredits30d: 20000,
+      });
+
+      expect(result).toBeNull();
+      expect((await ledger.balance("referrer")).toCents()).toBe(0);
+      const ref = await affiliateRepo.getReferralByReferred("buyer");
+      expect(ref?.payoutSuppressed).toBe(true);
+      expect(ref?.suppressionReason).toBe("velocity_cap_credits");
+    });
+
+    it("allows payout when under both caps", async () => {
+      await affiliateRepo.recordReferral("referrer", "buyer", "abc123");
+      await ledger.credit("buyer", Credit.fromCents(2000), "purchase", "first buy", "session-1", "stripe");
+
+      const result = await processAffiliateCreditMatch({
+        tenantId: "buyer",
+        purchaseAmountCents: 2000,
+        ledger,
+        affiliateRepo,
+        maxReferrals30d: 20,
+        maxMatchCredits30d: 20000,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.matchAmountCents).toBe(2000);
+    });
+  });
+
   it("allows payout but logs fraud event when single signal detected", async () => {
     await affiliateRepo.recordReferral("referrer", "buyer", "abc123", {
       signupIp: "1.2.3.4",
