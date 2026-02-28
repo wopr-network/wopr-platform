@@ -89,4 +89,66 @@ describe("DrizzleSpendingLimitsRepository", () => {
     expect(result.global.hardCap).toBeNull();
     expect(result.perCapability).toEqual({});
   });
+
+  it("limits are tenant-isolated — one tenant's limits do not affect another", async () => {
+    await repo.upsert("tenant-a", {
+      global: { alertAt: 10, hardCap: 50 },
+      perCapability: { tts: { alertAt: 5, hardCap: 20 } },
+    });
+    await repo.upsert("tenant-b", {
+      global: { alertAt: 100, hardCap: 500 },
+      perCapability: { "image-gen": { alertAt: 30, hardCap: 100 } },
+    });
+
+    const a = await repo.get("tenant-a");
+    const b = await repo.get("tenant-b");
+
+    // Tenant A has its own limits
+    expect(a.global.alertAt).toBeCloseTo(10);
+    expect(a.global.hardCap).toBeCloseTo(50);
+    expect(a.perCapability).toEqual({ tts: { alertAt: 5, hardCap: 20 } });
+
+    // Tenant B has its own limits, unaffected by A
+    expect(b.global.alertAt).toBeCloseTo(100);
+    expect(b.global.hardCap).toBeCloseTo(500);
+    expect(b.perCapability).toEqual({ "image-gen": { alertAt: 30, hardCap: 100 } });
+
+    // Updating tenant A does not affect tenant B
+    await repo.upsert("tenant-a", {
+      global: { alertAt: 999, hardCap: 999 },
+      perCapability: {},
+    });
+    const bAfter = await repo.get("tenant-b");
+    expect(bAfter.global.alertAt).toBeCloseTo(100);
+    expect(bAfter.global.hardCap).toBeCloseTo(500);
+    expect(bAfter.perCapability).toEqual({ "image-gen": { alertAt: 30, hardCap: 100 } });
+  });
+
+  it("stored limits enable enforcement — hardCap comparison identifies over-limit tenants", async () => {
+    await repo.upsert("tenant-enforced", {
+      global: { alertAt: 80, hardCap: 100 },
+      perCapability: { tts: { alertAt: 40, hardCap: 50 } },
+    });
+
+    const limits = await repo.get("tenant-enforced");
+
+    // Simulate enforcement: current spend vs stored limits
+    const currentGlobalSpend = 120;
+    const currentTtsSpend = 45;
+
+    // Global hard cap exceeded
+    expect(currentGlobalSpend).toBeGreaterThan(limits.global.hardCap!);
+
+    // Global alert threshold exceeded
+    expect(currentGlobalSpend).toBeGreaterThan(limits.global.alertAt!);
+
+    // Per-capability: TTS alert exceeded but hard cap not exceeded
+    expect(currentTtsSpend).toBeGreaterThan(limits.perCapability.tts.alertAt!);
+    expect(currentTtsSpend).toBeLessThan(limits.perCapability.tts.hardCap!);
+
+    // Tenant with no limits — enforcement should be permissive (nulls)
+    const noLimits = await repo.get("tenant-no-limits");
+    expect(noLimits.global.hardCap).toBeNull();
+    expect(noLimits.global.alertAt).toBeNull();
+  });
 });
