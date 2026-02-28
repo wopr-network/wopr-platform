@@ -28,7 +28,7 @@ async function seedTenant(pool: PGlite, tenantId: string): Promise<void> {
     INSERT INTO notification_preferences (tenant_id)
     VALUES ('${tenantId}');
     INSERT INTO email_notifications (id, tenant_id, email_type, sent_date)
-    VALUES ('en-${tenantId}', '${tenantId}', 'low-balance', '2024-01-01');
+    VALUES ('en-${tenantId}', '${tenantId}', 'low-balance', '${new Date().toISOString().slice(0, 10)}');
     INSERT INTO audit_log (id, timestamp, user_id, auth_method, action, resource_type)
     VALUES ('al-${tenantId}', 1700000000, '${tenantId}', 'password', 'login', 'user');
     INSERT INTO admin_audit_log (id, admin_user, action, category, target_tenant, target_user)

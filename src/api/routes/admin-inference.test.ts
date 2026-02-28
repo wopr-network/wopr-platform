@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import { createAdminInferenceRoutes } from "./admin-inference.js";
 
+/** Generate a YYYY-MM-DD string for N days ago. */
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 function mockRepo(overrides: Partial<ISessionUsageRepository> = {}): ISessionUsageRepository {
   return {
     insert: vi.fn(),
@@ -34,8 +41,8 @@ describe("createAdminInferenceRoutes", () => {
   it("GET / aggregates totals from daily cost data", async () => {
     const repo = mockRepo({
       aggregateByDay: vi.fn().mockResolvedValue([
-        { day: "2026-02-25", totalCostUsd: 0.05, sessionCount: 10 },
-        { day: "2026-02-24", totalCostUsd: 0.03, sessionCount: 5 },
+        { day: daysAgo(1), totalCostUsd: 0.05, sessionCount: 10 },
+        { day: daysAgo(2), totalCostUsd: 0.03, sessionCount: 5 },
       ]),
     });
     const routes = createAdminInferenceRoutes(() => repo);
@@ -51,7 +58,7 @@ describe("createAdminInferenceRoutes", () => {
 
   it("GET /daily returns daily cost array", async () => {
     const repo = mockRepo({
-      aggregateByDay: vi.fn().mockResolvedValue([{ day: "2026-02-25", totalCostUsd: 0.02, sessionCount: 3 }]),
+      aggregateByDay: vi.fn().mockResolvedValue([{ day: daysAgo(1), totalCostUsd: 0.02, sessionCount: 3 }]),
     });
     const routes = createAdminInferenceRoutes(() => repo);
     const req = new Request("http://localhost/daily");

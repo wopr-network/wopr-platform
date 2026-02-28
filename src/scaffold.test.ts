@@ -5,7 +5,7 @@ import { config } from "./config/index.js";
 describe("platform scaffold", () => {
   it("config loads with defaults", () => {
     expect(config.port).toBe(3100);
-    expect(config.logLevel).toBeDefined();
+    expect(["error", "warn", "info", "debug"]).toContain(config.logLevel);
   });
 
   it("hono app responds to health check", async () => {
