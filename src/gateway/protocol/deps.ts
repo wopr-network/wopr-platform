@@ -39,4 +39,8 @@ export interface ProtocolDeps {
   rateLimitRepo?: IRateLimitRepository;
   /** Repository for circuit breaker state. Required when circuit breaker is active. */
   circuitBreakerRepo?: ICircuitBreakerRepository;
+  /** Called after every successful credit debit (fire-and-forget auto-topup trigger). */
+  onDebitComplete?: (tenantId: string) => void;
+  /** Called when a debit causes balance to cross the zero threshold. */
+  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
 }

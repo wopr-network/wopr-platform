@@ -248,6 +248,12 @@ if (process.env.NODE_ENV !== "test") {
   // Mount /v1/* gateway routes. Must be done before serve() so routes are
   // registered. Provider API keys are optional — omitting one disables that
   // capability silently (gateway returns 503 for unconfigured providers).
+
+  // Late-bound callback for usage-based auto top-up (WOP-1084).
+  // Declared here (before gateway block) and assigned below in the Stripe block
+  // after chargeAutoTopup deps are available.
+  let usageTopupCallback: ((tenantId: string) => void) | undefined;
+
   {
     // All tables live in platform.db (drizzle-kit migrations target).
     // BILLING_DB_PATH was a legacy holdover — use getDb() throughout.
@@ -373,6 +379,14 @@ if (process.env.NODE_ENV !== "test") {
           provider: "gateway",
           timestamp: Date.now(),
         });
+      },
+      // Fire-and-forget usage-based auto top-up after every debit (WOP-1084).
+      // Callback is assigned below once Stripe deps are available.
+      onDebitComplete: (tenantId) => {
+        if (usageTopupCallback) usageTopupCallback(tenantId);
+      },
+      onBalanceExhausted: (tenantId) => {
+        logger.warn("Tenant balance exhausted", { tenantId });
       },
     });
 
@@ -679,6 +693,38 @@ if (process.env.NODE_ENV !== "test") {
             });
         }, HOUR_MS);
         logger.info("Hourly scheduled auto-topup cron started");
+      }
+
+      // Wire usage-based auto top-up into gateway debit pipeline (WOP-1084).
+      // Assigns usageTopupCallback so the gateway's onDebitComplete fires after every debit.
+      {
+        const { maybeTriggerUsageTopup } = await import("./monetization/credits/auto-topup-usage.js");
+        const { chargeAutoTopup } = await import("./monetization/credits/auto-topup-charge.js");
+        const { getTenantStatusRepo, getAutoTopupEventLogRepo } = await import("./fleet/services.js");
+        const { checkTenantStatus } = await import("./admin/tenant-status/tenant-status-middleware.js");
+
+        const usageTopupDeps: import("./monetization/credits/auto-topup-usage.js").UsageTopupDeps = {
+          settingsRepo: autoTopupSettingsStore,
+          creditLedger: getCreditLedger(),
+          chargeAutoTopup: (tenantId, amount, source) =>
+            chargeAutoTopup(
+              { stripe, tenantStore, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
+              tenantId,
+              amount,
+              source,
+            ),
+          checkTenantStatus: (tenantId) => checkTenantStatus(getTenantStatusRepo(), tenantId),
+        };
+
+        usageTopupCallback = (tenantId) => {
+          maybeTriggerUsageTopup(usageTopupDeps, tenantId).catch((err) =>
+            logger.error("Usage auto-topup failed", {
+              tenantId,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        };
+        logger.info("Usage-based auto top-up wired into gateway (WOP-1084)");
       }
 
       // Wire REST billing routes (Stripe webhooks, checkout, portal).
