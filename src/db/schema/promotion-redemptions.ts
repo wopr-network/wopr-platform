@@ -1,4 +1,5 @@
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { couponCodes } from "./coupon-codes.js";
 import { promotions } from "./promotions.js";
 
 export const promotionRedemptions = pgTable(
@@ -9,7 +10,7 @@ export const promotionRedemptions = pgTable(
       .notNull()
       .references(() => promotions.id),
     tenantId: text("tenant_id").notNull(),
-    couponCodeId: uuid("coupon_code_id"),
+    couponCodeId: uuid("coupon_code_id").references(() => couponCodes.id),
     creditsGranted: integer("credits_granted").notNull(),
     creditTransactionId: text("credit_transaction_id").notNull(),
     purchaseAmountCredits: integer("purchase_amount_credits"),

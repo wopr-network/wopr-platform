@@ -54,13 +54,13 @@ export class PromotionEngine {
   async #tryGrant(promo: Promotion, ctx: PromotionContext): Promise<GrantResult | null> {
     const { redemptionRepo, ledger, promotionRepo } = this.deps;
 
-    // Idempotency
-    const refId = `promo:${promo.id}:${ctx.tenantId}`;
-    if (await ledger.hasReferenceId(refId)) return null;
-
     // Per-user limit
     const userCount = await redemptionRepo.countByTenant(promo.id, ctx.tenantId);
     if (userCount >= promo.perUserLimit) return null;
+
+    // Idempotency — include redemption sequence so users allowed multiple uses can redeem each once
+    const refId = `promo:${promo.id}:${ctx.tenantId}:${userCount + 1}`;
+    if (await ledger.hasReferenceId(refId)) return null;
 
     // Total use limit
     if (promo.totalUseLimit !== null && promo.totalUses >= promo.totalUseLimit) return null;

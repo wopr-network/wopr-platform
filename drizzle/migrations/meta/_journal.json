@@ -36,6 +36,13 @@
       "when": 1772220009000,
       "tag": "0055_promotions_system",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1772220010000,
+      "tag": "0056_promotions_fk_and_unique",
+      "breakpoints": true
     }
   ]
 }

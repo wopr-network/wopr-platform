@@ -110,7 +110,7 @@ describe("PromotionEngine", () => {
       expect.any(Object), // Credit instance
       "promo",
       expect.any(String),
-      "promo:promo-1:tenant-1",
+      "promo:promo-1:tenant-1:1",
     );
   });
 

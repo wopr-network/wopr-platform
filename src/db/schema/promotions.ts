@@ -46,7 +46,7 @@ export const promotions = pgTable(
     budgetCredits: integer("budget_credits"),
     totalUses: integer("total_uses").notNull().default(0),
     totalCreditsGranted: integer("total_credits_granted").notNull().default(0),
-    couponCode: text("coupon_code"),
+    couponCode: text("coupon_code").unique(),
     couponBatchId: uuid("coupon_batch_id"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
