@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger } from "./credit-ledger.js";
 import { DrizzleCreditTransactionRepository } from "./credit-transaction-repository.js";
@@ -40,14 +40,18 @@ describe("runDividendCron", () => {
   let ledger: CreditLedger;
   let creditTransactionRepo: DrizzleCreditTransactionRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
-    creditTransactionRepo = new DrizzleCreditTransactionRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
+    creditTransactionRepo = new DrizzleCreditTransactionRepository(db);
   });
 
   function makeConfig(overrides?: Partial<DividendCronConfig>): DividendCronConfig {

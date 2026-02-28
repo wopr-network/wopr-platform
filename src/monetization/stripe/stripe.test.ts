@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb as createPgTestDb } from "../../test/db.js";
+import { createTestDb as createPgTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { createCreditCheckoutSession } from "./checkout.js";
 import { loadStripeConfig } from "./client.js";
@@ -46,15 +46,19 @@ describe("TenantCustomerStore", () => {
 
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createPgTestDb();
     pool = testDb.pool;
     db = testDb.db;
-    store = new TenantCustomerStore(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new TenantCustomerStore(db);
   });
 
   it("upsert creates a new mapping", async () => {
@@ -125,15 +129,21 @@ describe("createCreditCheckoutSession", () => {
   let tenantStore: TenantCustomerStore;
 
   let pool2: PGlite;
+  let db2: DrizzleDb;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createPgTestDb();
     pool2 = testDb.pool;
-    tenantStore = new TenantCustomerStore(testDb.db);
+    db2 = testDb.db;
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool2.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool2);
+    tenantStore = new TenantCustomerStore(db2);
   });
 
   function createMockStripe(sessionsCreate: ReturnType<typeof vi.fn>) {
@@ -252,16 +262,22 @@ describe("credit price points", () => {
 describe("createPortalSession", () => {
   let tenantStore: TenantCustomerStore;
 
-  let pool2: PGlite;
+  let pool3: PGlite;
+  let db3: DrizzleDb;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createPgTestDb();
-    pool2 = testDb.pool;
-    tenantStore = new TenantCustomerStore(testDb.db);
+    pool3 = testDb.pool;
+    db3 = testDb.db;
   });
 
-  afterEach(async () => {
-    await pool2.close();
+  afterAll(async () => {
+    await pool3.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool3);
+    tenantStore = new TenantCustomerStore(db3);
   });
 
   function createMockStripe(portalCreate: ReturnType<typeof vi.fn>) {
@@ -325,16 +341,22 @@ describe("handleWebhookEvent (credit model)", () => {
   let creditLedger: CreditLedger;
 
   let pool4: PGlite;
+  let db4: DrizzleDb;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     const testDb = await createPgTestDb();
     pool4 = testDb.pool;
-    tenantStore = new TenantCustomerStore(testDb.db);
-    creditLedger = new CreditLedger(testDb.db);
+    db4 = testDb.db;
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool4.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool4);
+    tenantStore = new TenantCustomerStore(db4);
+    creditLedger = new CreditLedger(db4);
   });
 
   it("handles checkout.session.completed - credits the ledger", async () => {

@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload, Provider } from "../types.js";
 import { buildPooledKeysMap, resolveApiKey } from "./key-resolution.js";
@@ -20,18 +20,23 @@ async function insertTenantKey(
   );
 }
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("resolveApiKey", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let encryptionKey: Buffer;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     encryptionKey = generateInstanceKey();
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("returns tenant BYOK key when one is stored", async () => {

@@ -8,7 +8,7 @@
 
 import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import type { BudgetChecker, SpendLimits } from "../monetization/budget/budget-checker.js";
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { CapabilityRateLimitConfig } from "./capability-rate-limit.js";
 import type { CircuitBreakerConfig } from "./circuit-breaker.js";
@@ -99,7 +99,7 @@ export interface GatewayConfig {
   /** BudgetChecker instance for pre-call budget validation */
   budgetChecker: BudgetChecker;
   /** CreditLedger instance for deducting credits after proxy calls (optional — if absent, credit deduction is skipped) */
-  creditLedger?: CreditLedger;
+  creditLedger?: ICreditLedger;
   /** URL to direct users to when they need to add credits (default: "/dashboard/credits") */
   topUpUrl?: string;
   /** Maximum negative credit balance (in cents) before hard-stop. Default: 50 (-$0.50). */
@@ -138,6 +138,10 @@ export interface GatewayConfig {
   onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
   /** Optional MetricsCollector for observability (WOP-825) */
   metrics?: import("../observability/metrics.js").MetricsCollector;
+  /** Called after every successful credit debit (fire-and-forget auto-topup trigger). */
+  onDebitComplete?: (tenantId: string) => void;
+  /** Called when a debit causes balance to cross the zero threshold. */
+  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
   /** Repository for tracking per-IP webhook signature failure penalties. Required when Twilio webhook routes are enabled. */
   sigPenaltyRepo?: import("../api/sig-penalty-repository.js").ISigPenaltyRepository;
   /** Repository for per-capability and per-route rate limit counters. Required when rate limiting is active. */
@@ -146,6 +150,8 @@ export interface GatewayConfig {
   circuitBreakerRepo?: ICircuitBreakerRepository;
   /** Repository for tracking provisioned phone numbers (WOP-964) */
   phoneRepo?: import("../monetization/credits/drizzle-phone-number-repository.js").IPhoneNumberRepository;
+  /** Spending limits repository for hydrating hardCap from DB. */
+  spendingLimitsRepo?: import("../monetization/drizzle-spending-limits-repository.js").ISpendingLimitsRepository;
 }
 
 /** Standard gateway error response. */

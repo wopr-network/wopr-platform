@@ -21,22 +21,24 @@ function appWithUser(user: AuthUser | null) {
   return app;
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("requirePlatformAdmin middleware", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let store: RoleStore;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-    store = new RoleStore(db);
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    store = new RoleStore(db);
   });
 
   it("allows platform admins", async () => {
@@ -70,21 +72,11 @@ describe("requirePlatformAdmin middleware", () => {
 });
 
 describe("requireTenantAdmin middleware", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let store: RoleStore;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-    store = new RoleStore(db);
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    store = new RoleStore(db);
   });
 
   it("allows platform admins for any tenant", async () => {
@@ -137,21 +129,11 @@ describe("requireTenantAdmin middleware", () => {
 });
 
 describe("admin roles API routes", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let store: RoleStore;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-    store = new RoleStore(db);
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    store = new RoleStore(db);
   });
 
   function buildApp(userId: string) {

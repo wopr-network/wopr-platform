@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq, sql } from "drizzle-orm";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
@@ -48,6 +48,7 @@ function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
 }
 
 // -- Schema -----------------------------------------------------------------
+// These tests create their own pools inline since they verify fresh schema state
 
 describe("Drizzle schema", () => {
   it("creates meter_events table", async () => {
@@ -86,6 +87,7 @@ describe("Drizzle schema", () => {
 });
 
 // -- Emitter ----------------------------------------------------------------
+// MeterEmitter tests close the pool mid-test intentionally — keep per-test isolation
 
 describe("MeterEmitter", () => {
   let db: DrizzleDb;
@@ -255,22 +257,28 @@ describe("MeterEmitter", () => {
 });
 
 // -- Concurrent sessions (STT + LLM + TTS) ---------------------------------
+// Shares ONE pool across all tests via truncateAllTables
 
 describe("MeterEmitter - concurrent multi-provider sessions", () => {
   let db: DrizzleDb;
   let pool: PGlite;
   let emitter: MeterEmitter;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
+    await truncateAllTables(pool);
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
   });
 
   afterEach(async () => {
     await emitter.close();
-    await pool.close();
   });
 
   it("groups multiple providers under one sessionId", async () => {
@@ -309,6 +317,7 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
 });
 
 // -- Aggregator -------------------------------------------------------------
+// Shares ONE pool across all tests via truncateAllTables
 
 describe("MeterAggregator", () => {
   let db: DrizzleDb;
@@ -318,10 +327,16 @@ describe("MeterAggregator", () => {
 
   const WINDOW = 60_000; // 1 minute
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
+    await truncateAllTables(pool);
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
@@ -329,7 +344,6 @@ describe("MeterAggregator", () => {
   afterEach(async () => {
     aggregator.stop();
     await emitter.close();
-    await pool.close();
   });
 
   it("aggregates events from completed windows", async () => {
@@ -521,10 +535,16 @@ describe("MeterAggregator - edge cases", () => {
 
   const WINDOW = 60_000;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
+    await truncateAllTables(pool);
     emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
@@ -532,7 +552,6 @@ describe("MeterAggregator - edge cases", () => {
   afterEach(async () => {
     aggregator.stop();
     await emitter.close();
-    await pool.close();
   });
 
   it("inserts sentinel for empty windows between events", async () => {
@@ -730,6 +749,7 @@ describe("MeterAggregator - edge cases", () => {
 });
 
 // -- Aggregation accuracy verification --------------------------------------
+// Shares ONE pool across all tests via truncateAllTables
 
 describe("MeterAggregator - billing accuracy", () => {
   let db: DrizzleDb;
@@ -737,18 +757,26 @@ describe("MeterAggregator - billing accuracy", () => {
   let emitter: MeterEmitter;
   let aggregator: MeterAggregator;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
+  });
+
   afterEach(async () => {
     aggregator?.stop();
     await emitter?.close();
-    await pool?.close();
   });
 
   it("aggregated totals exactly match sum of individual events", async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
-    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
@@ -801,11 +829,6 @@ describe("MeterAggregator - billing accuracy", () => {
   });
 
   it("per-capability breakdown sums match tenant total", async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
-    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
     const WINDOW = 60_000;
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
@@ -854,6 +877,7 @@ describe("MeterAggregator - billing accuracy", () => {
 });
 
 // -- Emitter edge cases -----------------------------------------------------
+// MeterEmitter edge cases close/reopen pool — keep per-test isolation
 
 describe("MeterEmitter - edge cases", () => {
   let db: DrizzleDb;
@@ -939,7 +963,6 @@ describe("MeterEmitter - edge cases", () => {
 
 describe("append-only guarantee", () => {
   it("meter_events table has no UPDATE or DELETE operations in emitter", async () => {
-    // This is a design contract test. The emitter only INSERTs.
     const { db, pool } = await createTestDb();
     const emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
 
@@ -963,6 +986,7 @@ describe("append-only guarantee", () => {
 });
 
 // -- Fail-closed policy with WAL and DLQ -----------------------------------
+// These tests intentionally close the pool — keep per-test isolation
 
 describe("MeterEmitter - fail-closed policy", () => {
   let db: DrizzleDb;

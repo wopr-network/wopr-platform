@@ -18,7 +18,7 @@ import { withMargin } from "../monetization/adapters/types.js";
 import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
 import { Credit } from "../monetization/credit.js";
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { PHONE_NUMBER_MONTHLY_COST } from "../monetization/credits/phone-billing.js";
 import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
@@ -63,7 +63,7 @@ const smsDeliveryStatusBodySchema = z.object({
 export interface ProxyDeps {
   meter: MeterEmitter;
   budgetChecker: BudgetChecker;
-  creditLedger?: CreditLedger;
+  creditLedger?: ICreditLedger;
   topUpUrl: string;
   graceBufferCents?: number;
   providers: ProviderConfig;
@@ -75,6 +75,10 @@ export interface ProxyDeps {
   /** Base URL for Twilio webhook callbacks (e.g., https://api.wopr.network/v1). Used to construct StatusCallback and TwiML URLs. */
   webhookBaseUrl?: string;
   phoneRepo?: import("../monetization/credits/drizzle-phone-number-repository.js").IPhoneNumberRepository;
+  /** Called after every successful credit debit (fire-and-forget auto-topup trigger). */
+  onDebitComplete?: (tenantId: string) => void;
+  /** Called when a debit causes balance to cross the zero threshold. */
+  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -92,6 +96,8 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     metrics: config.metrics,
     webhookBaseUrl: config.webhookBaseUrl,
     phoneRepo: config.phoneRepo,
+    onDebitComplete: config.onDebitComplete,
+    onBalanceExhausted: config.onBalanceExhausted,
   };
 }
 

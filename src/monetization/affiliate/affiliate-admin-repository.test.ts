@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateReferrals } from "../../db/schema/affiliate.js";
 import { affiliateFraudEvents } from "../../db/schema/affiliate-fraud.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleAffiliateFraudAdminRepository } from "./affiliate-admin-repository.js";
 
 describe("DrizzleAffiliateFraudAdminRepository", () => {
@@ -11,13 +11,17 @@ describe("DrizzleAffiliateFraudAdminRepository", () => {
   let db: DrizzleDb;
   let repo: DrizzleAffiliateFraudAdminRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleAffiliateFraudAdminRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAffiliateFraudAdminRepository(db);
   });
 
   describe("listSuppressions", () => {

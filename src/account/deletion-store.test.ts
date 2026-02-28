@@ -5,23 +5,24 @@ import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore, DELETION_GRACE_DAYS } from "./deletion-store.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("AccountDeletionStore", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let store: AccountDeletionStore;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-    const repo = new DrizzleDeletionRepository(db);
-    store = new AccountDeletionStore(repo);
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    const repo = new DrizzleDeletionRepository(db);
+    store = new AccountDeletionStore(repo);
   });
 
   describe("create()", () => {

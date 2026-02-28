@@ -18,18 +18,20 @@ async function insertNode(db: DrizzleDb, overrides: Partial<typeof nodes.$inferI
   });
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("DrizzleNodeRepository — transition()", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let repo: DrizzleNodeRepository;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -143,17 +145,7 @@ describe("DrizzleNodeRepository — transition()", () => {
 });
 
 describe("DrizzleNodeRepository — register()", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let repo: DrizzleNodeRepository;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -242,17 +234,7 @@ describe("DrizzleNodeRepository — register()", () => {
 });
 
 describe("DrizzleNodeRepository — other methods", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let repo: DrizzleNodeRepository;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

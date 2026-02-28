@@ -1,35 +1,42 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
 import { DrizzleFleetEventRepository } from "../fleet/drizzle-fleet-event-repository.js";
 import type { IFleetEventRepository } from "../fleet/fleet-event-repository.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { AlertChecker, buildAlerts } from "./alerts.js";
 import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { MetricsCollector } from "./metrics.js";
 
-async function makeMetricsAndFleet() {
-  const { db, pool } = await createTestDb();
-  const metrics = new MetricsCollector(new DrizzleMetricsRepository(db));
-  const fleetRepo: IFleetEventRepository = new DrizzleFleetEventRepository(db);
-  return { metrics, fleetRepo, pool };
-}
+// TOP OF FILE - shared across buildAlerts describe
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
 
 describe("buildAlerts", () => {
-  let pool: PGlite;
+  let metrics: MetricsCollector;
+  let fleetRepo: IFleetEventRepository;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
+    await truncateAllTables(pool);
+    metrics = new MetricsCollector(new DrizzleMetricsRepository(db));
+    fleetRepo = new DrizzleFleetEventRepository(db);
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     vi.useRealTimers();
-    await pool?.close();
   });
 
   it("returns 3 alert definitions", async () => {
-    const { metrics, fleetRepo, pool: p } = await makeMetricsAndFleet();
-    pool = p;
     const alerts = buildAlerts(metrics, fleetRepo);
     expect(alerts).toHaveLength(3);
     expect(alerts.map((a) => a.name)).toEqual([
@@ -40,8 +47,6 @@ describe("buildAlerts", () => {
   });
 
   it("gateway-error-rate fires when error rate exceeds 5%", async () => {
-    const { metrics, fleetRepo, pool: p } = await makeMetricsAndFleet();
-    pool = p;
     for (let i = 0; i < 100; i++) metrics.recordGatewayRequest("chat-completions");
     for (let i = 0; i < 6; i++) metrics.recordGatewayError("chat-completions");
 
@@ -55,8 +60,6 @@ describe("buildAlerts", () => {
   });
 
   it("gateway-error-rate does not fire when error rate is below 5%", async () => {
-    const { metrics, fleetRepo, pool: p } = await makeMetricsAndFleet();
-    pool = p;
     for (let i = 0; i < 100; i++) metrics.recordGatewayRequest("chat-completions");
     for (let i = 0; i < 3; i++) metrics.recordGatewayError("chat-completions");
 
@@ -67,8 +70,6 @@ describe("buildAlerts", () => {
   });
 
   it("gateway-error-rate does not fire when there are zero requests", async () => {
-    const { metrics, fleetRepo, pool: p } = await makeMetricsAndFleet();
-    pool = p;
     const alerts = buildAlerts(metrics, fleetRepo);
     // biome-ignore lint/style/noNonNullAssertion: alert name is known to exist
     const result = await alerts.find((a) => a.name === "gateway-error-rate")!.check();
@@ -76,8 +77,6 @@ describe("buildAlerts", () => {
   });
 
   it("credit-deduction-spike fires when failures exceed 10 in 5min", async () => {
-    const { metrics, fleetRepo, pool: p } = await makeMetricsAndFleet();
-    pool = p;
     for (let i = 0; i < 11; i++) metrics.recordCreditDeductionFailure();
 
     const alerts = buildAlerts(metrics, fleetRepo);
@@ -88,8 +87,6 @@ describe("buildAlerts", () => {
   });
 
   it("credit-deduction-spike does not fire under threshold", async () => {
-    const { metrics, fleetRepo, pool: p } = await makeMetricsAndFleet();
-    pool = p;
     for (let i = 0; i < 5; i++) metrics.recordCreditDeductionFailure();
 
     const alerts = buildAlerts(metrics, fleetRepo);
@@ -99,8 +96,6 @@ describe("buildAlerts", () => {
   });
 
   it("fleet-unexpected-stop does not fire initially", async () => {
-    const { metrics, fleetRepo, pool: p } = await makeMetricsAndFleet();
-    pool = p;
     const alerts = buildAlerts(metrics, fleetRepo);
     // biome-ignore lint/style/noNonNullAssertion: alert name is known to exist
     const result = await alerts.find((a) => a.name === "fleet-unexpected-stop")!.check();
@@ -154,16 +149,18 @@ describe("AlertChecker", () => {
   });
 
   it("getStatus does not mutate firedState (calling it does not consume fleet-stop)", async () => {
-    const { metrics, fleetRepo, pool } = await makeMetricsAndFleet();
-    const alerts = buildAlerts(metrics, fleetRepo);
-    const checker = new AlertChecker(alerts, { fleetEventRepo: fleetRepo });
+    const { db: innerDb, pool: innerPool } = await createTestDb();
+    const innerMetrics = new MetricsCollector(new DrizzleMetricsRepository(innerDb));
+    const innerFleetRepo: IFleetEventRepository = new DrizzleFleetEventRepository(innerDb);
+    const alerts = buildAlerts(innerMetrics, innerFleetRepo);
+    const checker = new AlertChecker(alerts, { fleetEventRepo: innerFleetRepo });
 
-    await fleetRepo.fireFleetStop();
+    await innerFleetRepo.fireFleetStop();
     await checker.checkAll();
     const statusAfterCheck = checker.getStatus();
     const fleetAlert = statusAfterCheck.find((a: { name: string }) => a.name === "fleet-unexpected-stop");
     expect(fleetAlert).toBeDefined();
-    await pool.close();
+    await innerPool.close();
   });
 
   it("deduplicates: does not re-fire an already-firing alert", async () => {

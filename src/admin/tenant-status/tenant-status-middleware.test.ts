@@ -6,21 +6,21 @@ import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { checkTenantStatus, createTenantStatusGate } from "./tenant-status-middleware.js";
 import { TenantStatusStore } from "./tenant-status-store.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  const t = await createTestDb();
+  db = t.db;
+  pool = t.pool;
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("createTenantStatusGate", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
   let store: TenantStatusStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -86,20 +86,7 @@ describe("createTenantStatusGate", () => {
 });
 
 describe("checkTenantStatus", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
   let store: TenantStatusStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

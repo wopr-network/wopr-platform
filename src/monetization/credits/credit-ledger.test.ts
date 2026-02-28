@@ -3,24 +3,30 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("CreditLedger core methods", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let ledger: CreditLedger;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     ledger = new CreditLedger(db);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   // --- credit() ---
@@ -223,10 +229,10 @@ describe("CreditLedger core methods", () => {
       expect(tenantIds).toEqual(["t1", "t4"]);
 
       const t1 = result.find((r) => r.tenantId === "t1");
-      expect(t1!.balance.toCents()).toBe(100);
+      expect(t1?.balance.toCents()).toBe(100);
 
       const t4 = result.find((r) => r.tenantId === "t4");
-      expect(t4!.balance.toCents()).toBe(200);
+      expect(t4?.balance.toCents()).toBe(200);
     });
 
     it("excludes tenants with exactly zero balance", async () => {
@@ -240,17 +246,11 @@ describe("CreditLedger core methods", () => {
 });
 
 describe("CreditLedger.debit with allowNegative", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let ledger: CreditLedger;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     ledger = new CreditLedger(db);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("debit with allowNegative=false (default) throws InsufficientBalanceError when balance insufficient", async () => {

@@ -27,6 +27,7 @@ export {
   mapSpendingCapError,
 } from "./error-mapping.js";
 export { gatewayHealthHandler } from "./health.js";
+export { type HydrateSpendingCapsConfig, hydrateSpendingCaps } from "./hydrate-spending-caps.js";
 export { modelsHandler } from "./models.js";
 export {
   anthropicToOpenAI,

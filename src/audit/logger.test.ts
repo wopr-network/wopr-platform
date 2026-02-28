@@ -1,15 +1,25 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { queryAuditLog } from "./query.js";
 
 describe("AuditLogger", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
+
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
 
   beforeEach(async () => {
-    ({ db } = await createTestDb());
+    await truncateAllTables(pool);
   });
 
   it("creates an entry with all fields", async () => {

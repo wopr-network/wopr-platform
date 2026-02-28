@@ -8,20 +8,19 @@ import { encrypt, generateInstanceKey } from "../encryption.js";
 import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 import { auditCredentialEncryption } from "./migration-check.js";
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("auditCredentialEncryption", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
@@ -102,19 +101,7 @@ describe("auditCredentialEncryption", () => {
 });
 
 describe("migratePlaintextCredentials", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let vaultKey: Buffer;
-
-  beforeAll(async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

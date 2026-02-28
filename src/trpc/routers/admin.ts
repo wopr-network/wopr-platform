@@ -27,7 +27,7 @@ import type { MeterAggregator } from "../../monetization/metering/aggregator.js"
 import type { AlertChecker } from "../../observability/alerts.js";
 import type { MetricsCollector } from "../../observability/metrics.js";
 import type { SystemResourceMonitor, SystemResourceSnapshot } from "../../observability/system-resources.js";
-import { protectedProcedure, router } from "../init.js";
+import { adminProcedure, router } from "../init.js";
 import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
 
 // ---------------------------------------------------------------------------
@@ -112,12 +112,6 @@ const VALID_CSV_SECTIONS = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-function requirePlatformAdmin(roles: string[]): void {
-  if (!roles.includes("platform_admin")) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Platform admin role required" });
-  }
-}
-
 function resolveRange(input: { from?: number; to?: number }): { from: number; to: number } {
   const to = input.to ?? Date.now();
   const from = input.from ?? to - 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -130,7 +124,7 @@ function resolveRange(input: { from?: number; to?: number }): { from: number; to
 
 export const adminRouter = router({
   /** Query admin audit log entries. */
-  auditLog: protectedProcedure
+  auditLog: adminProcedure
     .input(
       z.object({
         admin: z.string().optional(),
@@ -149,7 +143,7 @@ export const adminRouter = router({
     }),
 
   /** Export admin audit log as CSV. */
-  auditLogExport: protectedProcedure
+  auditLogExport: adminProcedure
     .input(
       z.object({
         admin: z.string().optional(),
@@ -166,14 +160,14 @@ export const adminRouter = router({
     }),
 
   /** Get credits balance for a tenant. */
-  creditsBalance: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
+  creditsBalance: adminProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getCreditLedger } = deps();
     const balance = await getCreditLedger().balance(input.tenantId);
     return { tenant: input.tenantId, balance_cents: balance.toCents() };
   }),
 
   /** Grant credits to a tenant. */
-  creditsGrant: protectedProcedure
+  creditsGrant: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -214,7 +208,7 @@ export const adminRouter = router({
     }),
 
   /** Refund credits from a tenant. */
-  creditsRefund: protectedProcedure
+  creditsRefund: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -261,7 +255,7 @@ export const adminRouter = router({
     }),
 
   /** Apply a credit correction. */
-  creditsCorrection: protectedProcedure
+  creditsCorrection: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -304,7 +298,7 @@ export const adminRouter = router({
     }),
 
   /** List credit transactions for a tenant. */
-  creditsTransactions: protectedProcedure
+  creditsTransactions: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -323,7 +317,7 @@ export const adminRouter = router({
     }),
 
   /** List users with filters. */
-  usersList: protectedProcedure
+  usersList: adminProcedure
     .input(
       z.object({
         search: z.string().optional(),
@@ -343,7 +337,7 @@ export const adminRouter = router({
     }),
 
   /** Get a specific user by ID. */
-  usersGet: protectedProcedure.input(z.object({ userId: z.string().min(1) })).query(async ({ input }) => {
+  usersGet: adminProcedure.input(z.object({ userId: z.string().min(1) })).query(async ({ input }) => {
     const { getUserStore } = deps();
     const user = await getUserStore().getById(input.userId);
     if (!user) {
@@ -357,15 +351,14 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get tenant account status. */
-  tenantStatus: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  tenantStatus: adminProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getTenantStatusStore } = deps();
     const row = await getTenantStatusStore().get(input.tenantId);
     return row ?? { tenantId: input.tenantId, status: "active" };
   }),
 
   /** Suspend a tenant account. Requires platform_admin role. */
-  suspendTenant: protectedProcedure
+  suspendTenant: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -374,7 +367,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog, getBotBilling } = deps();
       const store = getTenantStatusStore();
       const adminUserId = ctx.user?.id ?? "unknown";
@@ -426,7 +418,7 @@ export const adminRouter = router({
     }),
 
   /** Reactivate a suspended tenant account. Requires platform_admin role. */
-  reactivateTenant: protectedProcedure
+  reactivateTenant: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -434,7 +426,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog } = deps();
       const store = getTenantStatusStore();
       const adminUserId = ctx.user?.id ?? "unknown";
@@ -476,7 +467,7 @@ export const adminRouter = router({
     }),
 
   /** Ban a tenant account permanently. Requires platform_admin role and typed confirmation. */
-  banTenant: protectedProcedure
+  banTenant: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -487,7 +478,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getTenantStatusStore, getAuditLog, getCreditLedger, getBotBilling } = deps();
       const store = getTenantStatusStore();
       const adminUserId = ctx.user?.id ?? "unknown";
@@ -580,7 +570,7 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** List sell rates with optional filters. */
-  ratesListSell: protectedProcedure
+  ratesListSell: adminProcedure
     .input(
       z.object({
         capability: z.string().optional(),
@@ -589,8 +579,7 @@ export const adminRouter = router({
         offset: z.number().int().min(0).optional(),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getRateStore } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -599,7 +588,7 @@ export const adminRouter = router({
     }),
 
   /** Create a sell rate. */
-  ratesCreateSell: protectedProcedure
+  ratesCreateSell: adminProcedure
     .input(
       z.object({
         capability: z.string().min(1),
@@ -612,7 +601,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -641,7 +629,7 @@ export const adminRouter = router({
     }),
 
   /** Update a sell rate. */
-  ratesUpdateSell: protectedProcedure
+  ratesUpdateSell: adminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -655,7 +643,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -685,8 +672,7 @@ export const adminRouter = router({
     }),
 
   /** Delete a sell rate. */
-  ratesDeleteSell: protectedProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  ratesDeleteSell: adminProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
     const { getRateStore, getAuditLog } = deps();
     if (!getRateStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -718,7 +704,7 @@ export const adminRouter = router({
   }),
 
   /** List provider costs with optional filters. */
-  ratesListProvider: protectedProcedure
+  ratesListProvider: adminProcedure
     .input(
       z.object({
         capability: z.string().optional(),
@@ -728,8 +714,7 @@ export const adminRouter = router({
         offset: z.number().int().min(0).optional(),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getRateStore } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -738,7 +723,7 @@ export const adminRouter = router({
     }),
 
   /** Create a provider cost. */
-  ratesCreateProvider: protectedProcedure
+  ratesCreateProvider: adminProcedure
     .input(
       z.object({
         capability: z.string().min(1),
@@ -752,7 +737,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -781,7 +765,7 @@ export const adminRouter = router({
     }),
 
   /** Update a provider cost. */
-  ratesUpdateProvider: protectedProcedure
+  ratesUpdateProvider: adminProcedure
     .input(
       z.object({
         id: z.string().min(1),
@@ -796,7 +780,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getRateStore, getAuditLog } = deps();
       if (!getRateStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -826,8 +809,7 @@ export const adminRouter = router({
     }),
 
   /** Delete a provider cost. */
-  ratesDeleteProvider: protectedProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  ratesDeleteProvider: adminProcedure.input(z.object({ id: z.string().min(1) })).mutation(({ input, ctx }) => {
     const { getRateStore, getAuditLog } = deps();
     if (!getRateStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -859,8 +841,7 @@ export const adminRouter = router({
   }),
 
   /** Get margin report. */
-  ratesMargins: protectedProcedure.input(z.object({ capability: z.string().optional() })).query(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  ratesMargins: adminProcedure.input(z.object({ capability: z.string().optional() })).query(({ input }) => {
     const { getRateStore } = deps();
     if (!getRateStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Rate store not initialized" });
@@ -873,8 +854,7 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Revenue overview cards: credits sold, consumed, provider cost, margin. */
-  analyticsRevenue: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  analyticsRevenue: adminProcedure.input(dateRangeSchema.partial()).query(({ input }) => {
     const { getAnalyticsStore } = deps();
     if (!getAnalyticsStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -883,8 +863,7 @@ export const adminRouter = router({
   }),
 
   /** Credit float: total unspent credits across all tenants. */
-  analyticsFloat: protectedProcedure.query(({ ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  analyticsFloat: adminProcedure.query((_) => {
     const { getAnalyticsStore } = deps();
     if (!getAnalyticsStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -893,8 +872,7 @@ export const adminRouter = router({
   }),
 
   /** Revenue breakdown by category and capability. */
-  analyticsRevenueBreakdown: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  analyticsRevenueBreakdown: adminProcedure.input(dateRangeSchema.partial()).query(({ input }) => {
     const { getAnalyticsStore } = deps();
     if (!getAnalyticsStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -903,8 +881,7 @@ export const adminRouter = router({
   }),
 
   /** Margin by capability: revenue, cost, margin for each capability. */
-  analyticsMarginByCapability: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  analyticsMarginByCapability: adminProcedure.input(dateRangeSchema.partial()).query(({ input }) => {
     const { getAnalyticsStore } = deps();
     if (!getAnalyticsStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -913,8 +890,7 @@ export const adminRouter = router({
   }),
 
   /** Provider spend breakdown. */
-  analyticsProviderSpend: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  analyticsProviderSpend: adminProcedure.input(dateRangeSchema.partial()).query(({ input }) => {
     const { getAnalyticsStore } = deps();
     if (!getAnalyticsStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -923,8 +899,7 @@ export const adminRouter = router({
   }),
 
   /** Tenant health summary. */
-  analyticsTenantHealth: protectedProcedure.query(({ ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  analyticsTenantHealth: adminProcedure.query((_) => {
     const { getAnalyticsStore } = deps();
     if (!getAnalyticsStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -933,8 +908,7 @@ export const adminRouter = router({
   }),
 
   /** Auto-topup metrics: event counts, revenue, failure rate. */
-  analyticsAutoTopup: protectedProcedure.input(dateRangeSchema.partial()).query(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  analyticsAutoTopup: adminProcedure.input(dateRangeSchema.partial()).query(({ input }) => {
     const { getAnalyticsStore } = deps();
     if (!getAnalyticsStore) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -943,7 +917,7 @@ export const adminRouter = router({
   }),
 
   /** Time series data for charts. */
-  analyticsTimeSeries: protectedProcedure
+  analyticsTimeSeries: adminProcedure
     .input(
       z.object({
         from: z.number().int().positive().optional(),
@@ -951,8 +925,7 @@ export const adminRouter = router({
         bucketMs: z.number().int().positive().optional(),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getAnalyticsStore } = deps();
       if (!getAnalyticsStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -963,7 +936,7 @@ export const adminRouter = router({
     }),
 
   /** Export analytics data as CSV. */
-  analyticsExport: protectedProcedure
+  analyticsExport: adminProcedure
     .input(
       z.object({
         from: z.number().int().positive().optional(),
@@ -971,8 +944,7 @@ export const adminRouter = router({
         section: z.enum(VALID_CSV_SECTIONS),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getAnalyticsStore } = deps();
       if (!getAnalyticsStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Analytics not initialized" });
@@ -985,8 +957,7 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get full tenant detail (god view). Aggregates user info, credits, status, usage. */
-  tenantDetail: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  tenantDetail: adminProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getUserStore, getCreditLedger, getTenantStatusStore, getMeterAggregator } = deps();
 
     const user = getUserStore().getById(input.tenantId);
@@ -1011,8 +982,7 @@ export const adminRouter = router({
   }),
 
   /** List bot instances for a tenant. */
-  tenantAgents: protectedProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  tenantAgents: adminProcedure.input(z.object({ tenantId: tenantIdSchema })).query(({ input }) => {
     const { getBotBilling } = deps();
     if (!getBotBilling) {
       return { agents: [] };
@@ -1025,7 +995,7 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** List notes for a tenant. */
-  notesList: protectedProcedure
+  notesList: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -1033,8 +1003,7 @@ export const adminRouter = router({
         offset: z.number().int().min(0).optional(),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getNotesStore } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
@@ -1043,7 +1012,7 @@ export const adminRouter = router({
     }),
 
   /** Create a note on a tenant. */
-  notesCreate: protectedProcedure
+  notesCreate: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -1052,7 +1021,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotesStore, getAuditLog } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
@@ -1074,7 +1042,7 @@ export const adminRouter = router({
     }),
 
   /** Update a note. */
-  notesUpdate: protectedProcedure
+  notesUpdate: adminProcedure
     .input(
       z.object({
         noteId: z.string().min(1),
@@ -1084,7 +1052,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotesStore, getAuditLog } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
@@ -1119,10 +1086,9 @@ export const adminRouter = router({
     }),
 
   /** Delete a note. */
-  notesDelete: protectedProcedure
+  notesDelete: adminProcedure
     .input(z.object({ noteId: z.string().min(1), tenantId: tenantIdSchema }))
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotesStore, getAuditLog } = deps();
       if (!getNotesStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Notes store not initialized" });
@@ -1156,7 +1122,7 @@ export const adminRouter = router({
     }),
 
   /** Change a user's role. */
-  tenantChangeRole: protectedProcedure
+  tenantChangeRole: adminProcedure
     .input(
       z.object({
         userId: z.string().min(1),
@@ -1165,7 +1131,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getRoleStore, getAuditLog } = deps();
       if (!getRoleStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Role store not initialized" });
@@ -1186,15 +1151,14 @@ export const adminRouter = router({
     }),
 
   /** Get usage breakdown by capability for a tenant (for chart). */
-  tenantUsageByCapability: protectedProcedure
+  tenantUsageByCapability: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
         days: z.number().int().positive().max(90).optional().default(30),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getMeterAggregator } = deps();
       if (!getMeterAggregator) {
         return { usage: [] };
@@ -1205,7 +1169,7 @@ export const adminRouter = router({
     }),
 
   /** Export credit transactions as CSV. */
-  creditsTransactionsExport: protectedProcedure
+  creditsTransactionsExport: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -1214,8 +1178,7 @@ export const adminRouter = router({
         to: z.number().int().optional(),
       }),
     )
-    .query(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(async ({ input }) => {
       const { getCreditLedger } = deps();
       const { tenantId, ...filters } = input;
       const entries = await getCreditLedger().history(tenantId, { ...filters, limit: 10000 });
@@ -1242,7 +1205,7 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get all tenant IDs matching current filters (for "select all matching"). */
-  bulkSelectAll: protectedProcedure
+  bulkSelectAll: adminProcedure
     .input(
       z.object({
         search: z.string().optional(),
@@ -1252,25 +1215,23 @@ export const adminRouter = router({
         lowBalance: z.boolean().optional(),
       }),
     )
-    .query(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(async ({ input }) => {
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
       return { tenantIds: await getBulkStore().listMatchingTenantIds(input) };
     }),
 
   /** Dry-run: preview which tenants would be affected. */
-  bulkDryRun: protectedProcedure
+  bulkDryRun: adminProcedure
     .input(z.object({ tenantIds: z.array(tenantIdSchema).min(1).max(500) }))
-    .query(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(async ({ input }) => {
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
       return { tenants: await getBulkStore().dryRun(input.tenantIds) };
     }),
 
   /** Mass grant credits. */
-  bulkGrant: protectedProcedure
+  bulkGrant: adminProcedure
     .input(
       z.object({
         tenantIds: z.array(tenantIdSchema).min(1).max(500),
@@ -1280,22 +1241,20 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
       return getBulkStore().bulkGrant(input, ctx.user?.id ?? "unknown");
     }),
 
   /** Undo a mass grant within 5 minutes. */
-  bulkGrantUndo: protectedProcedure.input(z.object({ operationId: z.string().uuid() })).mutation(({ input, ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  bulkGrantUndo: adminProcedure.input(z.object({ operationId: z.string().uuid() })).mutation(({ input, ctx }) => {
     const { getBulkStore } = deps();
     if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
     return getBulkStore().undoGrant(input.operationId, ctx.user?.id ?? "unknown");
   }),
 
   /** Mass suspend tenants. */
-  bulkSuspend: protectedProcedure
+  bulkSuspend: adminProcedure
     .input(
       z.object({
         tenantIds: z.array(tenantIdSchema).min(1).max(500),
@@ -1304,24 +1263,22 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
       return getBulkStore().bulkSuspend(input, ctx.user?.id ?? "unknown");
     }),
 
   /** Mass reactivate tenants. */
-  bulkReactivate: protectedProcedure
+  bulkReactivate: adminProcedure
     .input(z.object({ tenantIds: z.array(tenantIdSchema).min(1).max(500) }))
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
       return getBulkStore().bulkReactivate(input, ctx.user?.id ?? "unknown");
     }),
 
   /** Mass export to CSV. */
-  bulkExport: protectedProcedure
+  bulkExport: adminProcedure
     .input(
       z.object({
         tenantIds: z.array(tenantIdSchema).min(1).max(500),
@@ -1341,7 +1298,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getBulkStore } = deps();
       if (!getBulkStore) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Bulk store not initialized" });
       return getBulkStore().bulkExport(input, ctx.user?.id ?? "unknown");
@@ -1350,19 +1306,16 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** List available snapshots for a tenant. */
-  restoreListSnapshots: protectedProcedure
-    .input(z.object({ tenantId: tenantIdSchema }))
-    .query(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
-      const { getRestoreService } = deps();
-      if (!getRestoreService) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore service not initialized" });
-      }
-      return { snapshots: await getRestoreService().listSnapshots(input.tenantId) };
-    }),
+  restoreListSnapshots: adminProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
+    const { getRestoreService } = deps();
+    if (!getRestoreService) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore service not initialized" });
+    }
+    return { snapshots: await getRestoreService().listSnapshots(input.tenantId) };
+  }),
 
   /** Trigger a restore from a snapshot. Destructive — requires confirmation. */
-  restoreFromSnapshot: protectedProcedure
+  restoreFromSnapshot: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -1379,7 +1332,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getRestoreService, getAuditLog } = deps();
       if (!getRestoreService) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore service not initialized" });
@@ -1432,15 +1384,14 @@ export const adminRouter = router({
     }),
 
   /** List restore history for a tenant. */
-  restoreHistory: protectedProcedure
+  restoreHistory: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
         limit: z.number().int().positive().max(250).optional(),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getRestoreLogStore } = deps();
       if (!getRestoreLogStore) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Restore log store not initialized" });
@@ -1453,7 +1404,7 @@ export const adminRouter = router({
   // -------------------------------------------------------------------------
 
   /** Send a specific notification template to a tenant (admin override). */
-  notificationSend: protectedProcedure
+  notificationSend: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -1462,7 +1413,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotificationQueueStore, getAuditLog } = deps();
       const queueStore = getNotificationQueueStore?.();
       if (!queueStore) {
@@ -1483,7 +1433,7 @@ export const adminRouter = router({
     }),
 
   /** Send a custom email to a tenant. */
-  notificationSendCustom: protectedProcedure
+  notificationSendCustom: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -1493,7 +1443,6 @@ export const adminRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
       const { getNotificationService, getAuditLog } = deps();
       const service = getNotificationService?.();
       if (!service) {
@@ -1514,7 +1463,7 @@ export const adminRouter = router({
     }),
 
   /** List notifications sent to a tenant (admin view). */
-  notificationLog: protectedProcedure
+  notificationLog: adminProcedure
     .input(
       z.object({
         tenantId: tenantIdSchema,
@@ -1523,8 +1472,7 @@ export const adminRouter = router({
         offset: z.number().int().min(0).optional(),
       }),
     )
-    .query(({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user?.roles ?? []);
+    .query(({ input }) => {
       const { getNotificationQueueStore } = deps();
       const queueStore = getNotificationQueueStore?.();
       if (!queueStore) {
@@ -1539,8 +1487,7 @@ export const adminRouter = router({
   inference: inferenceAdminRouter,
 
   /** Billing health dashboard — aggregates all observability signals. */
-  billingHealth: protectedProcedure.query(async ({ ctx }) => {
-    requirePlatformAdmin(ctx.user?.roles ?? []);
+  billingHealth: adminProcedure.query(async (_) => {
     const d = deps();
     const timestamp = Date.now();
 
@@ -1666,47 +1613,43 @@ export const adminRouter = router({
   // Affiliate fraud admin procedures (WOP-1063)
   // ---------------------------------------------------------------------------
 
-  affiliateSuppressions: protectedProcedure
+  affiliateSuppressions: adminProcedure
     .input(
       z.object({
         limit: z.number().int().positive().max(200).default(50),
         offset: z.number().int().min(0).default(0),
       }),
     )
-    .query(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user.roles);
+    .query(async ({ input }) => {
       const repo = deps().getAffiliateFraudAdminRepo?.();
       if (!repo)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });
       return repo.listSuppressions(input.limit, input.offset);
     }),
 
-  affiliateVelocity: protectedProcedure
+  affiliateVelocity: adminProcedure
     .input(
       z.object({
         capReferrals: z.number().int().positive().default(20),
         capCredits: z.number().int().positive().default(20000),
       }),
     )
-    .query(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user.roles);
+    .query(async ({ input }) => {
       const repo = deps().getAffiliateFraudAdminRepo?.();
       if (!repo)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });
       return repo.listVelocityReferrers(input.capReferrals, input.capCredits);
     }),
 
-  affiliateFingerprintClusters: protectedProcedure.query(async ({ ctx }) => {
-    requirePlatformAdmin(ctx.user.roles);
+  affiliateFingerprintClusters: adminProcedure.query(async (_) => {
     const repo = deps().getAffiliateFraudAdminRepo?.();
     if (!repo) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });
     return repo.listFingerprintClusters();
   }),
 
-  affiliateBlockFingerprint: protectedProcedure
+  affiliateBlockFingerprint: adminProcedure
     .input(z.object({ fingerprint: z.string().min(1).max(256) }))
     .mutation(async ({ input, ctx }) => {
-      requirePlatformAdmin(ctx.user.roles);
       const repo = deps().getAffiliateFraudAdminRepo?.();
       if (!repo)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Affiliate admin repo not initialized" });

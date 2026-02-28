@@ -45,13 +45,28 @@ async function insertUser(
   await db.insert(adminUsers).values({ ...defaults, ...overrides });
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 // ---------------------------------------------------------------------------
 // Schema tests
 // ---------------------------------------------------------------------------
 
 describe("admin_users schema (via Drizzle migration)", () => {
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+  });
+
   it("creates admin_users table and enforces status CHECK constraint", async () => {
-    const { db, pool } = await createTestDb();
     await expect(
       db.insert(adminUsers).values({
         id: "u1",
@@ -64,11 +79,9 @@ describe("admin_users schema (via Drizzle migration)", () => {
         createdAt: Date.now(),
       }),
     ).rejects.toThrow();
-    await pool.close();
   });
 
   it("enforces role CHECK constraint", async () => {
-    const { db, pool } = await createTestDb();
     await expect(
       db.insert(adminUsers).values({
         id: "u1",
@@ -81,20 +94,16 @@ describe("admin_users schema (via Drizzle migration)", () => {
         createdAt: Date.now(),
       }),
     ).rejects.toThrow();
-    await pool.close();
   });
 
   it("enforces PRIMARY KEY uniqueness", async () => {
-    const { db, pool } = await createTestDb();
     await db.insert(adminUsers).values({ id: "dup", email: "a@b.com", tenantId: "t1", createdAt: Date.now() });
     await expect(
       db.insert(adminUsers).values({ id: "dup", email: "b@b.com", tenantId: "t2", createdAt: Date.now() }),
     ).rejects.toThrow();
-    await pool.close();
   });
 
   it("allows NULL for name and last_seen", async () => {
-    const { db, pool } = await createTestDb();
     await db.insert(adminUsers).values({
       id: "u-null",
       email: "a@b.com",
@@ -108,11 +117,9 @@ describe("admin_users schema (via Drizzle migration)", () => {
       .where(((t) => require("drizzle-orm").eq(t.id, "u-null"))(adminUsers));
     expect(rows[0].name).toBeNull();
     expect(rows[0].lastSeen).toBeNull();
-    await pool.close();
   });
 
   it("provides correct defaults", async () => {
-    const { db, pool } = await createTestDb();
     await db.insert(adminUsers).values({ id: "u-defaults", email: "a@b.com", tenantId: "t1", createdAt: Date.now() });
     const rows = await db
       .select({
@@ -127,7 +134,6 @@ describe("admin_users schema (via Drizzle migration)", () => {
     expect(rows[0].role).toBe("user");
     expect(rows[0].creditBalanceCents).toBe(0);
     expect(rows[0].agentCount).toBe(0);
-    await pool.close();
   });
 });
 
@@ -136,19 +142,7 @@ describe("admin_users schema (via Drizzle migration)", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.list", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let store: AdminUserStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -335,19 +329,7 @@ describe("AdminUserStore.list", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.search", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let store: AdminUserStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -401,19 +383,7 @@ describe("AdminUserStore.search", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUserStore.getById", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let store: AdminUserStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -459,19 +429,6 @@ describe("AdminUserStore.getById", () => {
 // ---------------------------------------------------------------------------
 
 describe("admin users API routes", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });

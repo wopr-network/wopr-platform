@@ -5,11 +5,11 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { CapabilitySettingsStore } from "../../security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
 import { setCapabilitiesRouterDeps } from "./capabilities.js";
@@ -23,14 +23,24 @@ function ctxForTenant(tenantId: string): TRPCContext {
 
 const TENANT = "tenant-test-915";
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("capabilities.listCapabilitySettings", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let capStore: CapabilitySettingsStore;
   let keyStore: TenantKeyStore;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     capStore = new CapabilitySettingsStore(db);
     keyStore = new TenantKeyStore(db);
 
@@ -46,10 +56,6 @@ describe("capabilities.listCapabilitySettings", () => {
       platformSecret: "test-platform-secret-32bytes!!ok",
       validateProviderKey: async () => ({ valid: true }),
     });
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("returns all 4 capabilities defaulting to hosted when no settings stored", async () => {
@@ -123,13 +129,11 @@ describe("capabilities.listCapabilitySettings", () => {
 });
 
 describe("capabilities.updateCapabilitySettings", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let capStore: CapabilitySettingsStore;
   let keyStore: TenantKeyStore;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     capStore = new CapabilitySettingsStore(db);
     keyStore = new TenantKeyStore(db);
 
@@ -145,10 +149,6 @@ describe("capabilities.updateCapabilitySettings", () => {
       platformSecret: "test-platform-secret-32bytes!!ok",
       validateProviderKey: async () => ({ valid: true }),
     });
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("updates mode to byok for text-gen", async () => {

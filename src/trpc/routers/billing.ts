@@ -27,6 +27,16 @@ import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram
 import { protectedProcedure, publicProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
+// Schedule interval → hours mapping
+// ---------------------------------------------------------------------------
+
+const SCHEDULE_INTERVAL_HOURS: Record<"daily" | "weekly" | "monthly", number> = {
+  daily: 24,
+  weekly: 168,
+  monthly: 720,
+};
+
+// ---------------------------------------------------------------------------
 // Zod schemas
 // ---------------------------------------------------------------------------
 
@@ -642,6 +652,7 @@ export const billingRouter = router({
       schedule_enabled: settings?.scheduleEnabled ?? false,
       schedule_amount_cents: settings?.scheduleAmount?.toCents() ?? null,
       schedule_next_at: settings?.scheduleNextAt ?? null,
+      schedule_interval_hours: settings?.scheduleIntervalHours ?? 168,
       payment_method_last4: paymentMethodLast4,
     };
   }),
@@ -711,6 +722,7 @@ export const billingRouter = router({
         usageTopup: input.usage_topup_cents != null ? Credit.fromCents(input.usage_topup_cents) : undefined,
         scheduleEnabled: input.schedule_enabled,
         scheduleAmount: input.schedule_amount_cents != null ? Credit.fromCents(input.schedule_amount_cents) : undefined,
+        scheduleIntervalHours: input.schedule_interval ? SCHEDULE_INTERVAL_HOURS[input.schedule_interval] : undefined,
         scheduleNextAt: scheduleNextAt,
       });
 
@@ -722,6 +734,7 @@ export const billingRouter = router({
         schedule_enabled: updated?.scheduleEnabled ?? false,
         schedule_amount_cents: updated?.scheduleAmount?.toCents() ?? null,
         schedule_next_at: updated?.scheduleNextAt ?? null,
+        schedule_interval_hours: updated?.scheduleIntervalHours ?? 168,
         payment_method_last4: null,
       };
     }),
@@ -825,13 +838,13 @@ export const billingRouter = router({
   /** Get per-member credit usage breakdown for an org. */
   memberUsage: protectedProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
-    .query(({ input, ctx }) => {
+    .query(async ({ input, ctx }) => {
       const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
       if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { creditLedger } = deps();
-      const members = creditLedger.memberUsage(tenant);
+      const members = await creditLedger.memberUsage(tenant);
       return { tenant, members };
     }),
 });

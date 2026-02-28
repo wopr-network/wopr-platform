@@ -1,5 +1,6 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -9,7 +10,7 @@ import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -250,6 +251,21 @@ setFleetDeps({
 });
 
 // ---------------------------------------------------------------------------
+// Shared PGlite instance (hoisted to file scope)
+// ---------------------------------------------------------------------------
+
+let _db: DrizzleDb;
+let _pool: PGlite;
+
+beforeAll(async () => {
+  ({ db: _db, pool: _pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await _pool.close();
+});
+
+// ---------------------------------------------------------------------------
 // Build the full app — same as the real app.ts mounting
 // ---------------------------------------------------------------------------
 
@@ -474,7 +490,6 @@ describe("E2E: Bot management flow", () => {
 describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
 
-  let db: DrizzleDb;
   let tenantStore: TenantCustomerStore;
   let creditLedger: CreditLedger;
 
@@ -504,11 +519,9 @@ describe("E2E: Billing flow (credit model)", () => {
     botRunningState = new Map();
     botCounter = 0;
 
-    // Set up in-memory DB with PGlite
-    const { db: testDb } = await createTestDb();
-    db = testDb;
-    tenantStore = new TenantCustomerStore(db);
-    creditLedger = new CreditLedger(db);
+    await truncateAllTables(_pool);
+    tenantStore = new TenantCustomerStore(_db);
+    creditLedger = new CreditLedger(_db);
 
     // Inject credit ledger for quota routes
     setLedger(creditLedger);
@@ -517,9 +530,9 @@ describe("E2E: Billing flow (credit model)", () => {
     setBillingDeps({
       processor: mockProcessor,
       creditLedger,
-      meterAggregator: new MeterAggregator(db),
-      sigPenaltyRepo: new DrizzleSigPenaltyRepository(db),
-      affiliateRepo: new DrizzleAffiliateRepository(db),
+      meterAggregator: new MeterAggregator(_db),
+      sigPenaltyRepo: new DrizzleSigPenaltyRepository(_db),
+      affiliateRepo: new DrizzleAffiliateRepository(_db),
     });
 
     setFleetDeps({

@@ -1,21 +1,30 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { runDeletionCron } from "./deletion-cron.js";
 import type { DeletionExecutorDeps } from "./deletion-executor.js";
 import { DrizzleDeletionExecutorRepository } from "./deletion-executor-repository.js";
 import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore } from "./deletion-store.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("runDeletionCron", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let store: AccountDeletionStore;
   let executorDeps: DeletionExecutorDeps;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     const deletionRepo = new DrizzleDeletionRepository(db);
     store = new AccountDeletionStore(deletionRepo);
     const execRepo = new DrizzleDeletionExecutorRepository(db);

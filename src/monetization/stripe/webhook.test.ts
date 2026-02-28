@@ -16,8 +16,10 @@ import { TenantCustomerStore } from "./tenant-store.js";
 import type { WebhookDeps } from "./webhook.js";
 import { handleWebhookEvent } from "./webhook.js";
 
-async function makeReplayGuard() {
-  const { db } = await createTestDb();
+let db: import("../../db/index.js").DrizzleDb;
+let pool: PGlite;
+
+function makeReplayGuard() {
   return new DrizzleWebhookSeenRepository(db);
 }
 
@@ -25,8 +27,6 @@ describe("handleWebhookEvent (credit model)", () => {
   let tenantStore: TenantCustomerStore;
   let creditLedger: CreditLedger;
   let deps: WebhookDeps;
-  let pool: PGlite;
-  let db: import("../../db/index.js").DrizzleDb;
 
   beforeAll(async () => {
     const testDb = await createTestDb();
@@ -403,7 +403,6 @@ describe("handleWebhookEvent (credit model)", () => {
     }
 
     beforeEach(async () => {
-      const { db } = await createTestDb();
       affiliateRepo = new DrizzleAffiliateRepository(db);
       depsWithAffiliate = { ...deps, affiliateRepo };
     });

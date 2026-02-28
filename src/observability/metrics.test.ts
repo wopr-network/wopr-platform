@@ -1,24 +1,32 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../test/db.js";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { MetricsCollector } from "./metrics.js";
 
 describe("MetricsCollector", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let m: MetricsCollector;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
+    await truncateAllTables(pool);
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    const { db, pool: p } = await createTestDb();
-    pool = p;
     m = new MetricsCollector(new DrizzleMetricsRepository(db));
   });
 
   afterEach(async () => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("records gateway requests per capability", async () => {

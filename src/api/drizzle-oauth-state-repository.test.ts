@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleOAuthStateRepository } from "./drizzle-oauth-state-repository.js";
 
 describe("DrizzleOAuthStateRepository", () => {
@@ -9,13 +9,17 @@ describe("DrizzleOAuthStateRepository", () => {
   let pool: PGlite;
   let repo: DrizzleOAuthStateRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleOAuthStateRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleOAuthStateRepository(db);
   });
 
   it("creates and consumes a pending state", async () => {

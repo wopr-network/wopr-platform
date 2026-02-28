@@ -1,14 +1,24 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleSessionUsageRepository, type ISessionUsageRepository } from "./session-usage-repository.js";
 
 describe("DrizzleSessionUsageRepository", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
   let repo: ISessionUsageRepository;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
-    ({ db } = await createTestDb());
+    await truncateAllTables(pool);
     repo = new DrizzleSessionUsageRepository(db);
   });
 
