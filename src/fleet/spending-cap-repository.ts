@@ -17,16 +17,16 @@ import { Credit } from "../monetization/credit.js";
 // ---------------------------------------------------------------------------
 
 /** Get the start of the current UTC day in milliseconds. */
-function getDayStart(now: number): number {
+export function getDayStart(now: number): number {
   const d = new Date(now);
   d.setUTCHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-/** Get the start of the current calendar month in milliseconds (local time, matching BudgetChecker). */
-function getMonthStart(now: number): number {
+/** Get the start of the current calendar month in milliseconds (UTC). */
+export function getMonthStart(now: number): number {
   const d = new Date(now);
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0).getTime();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).getTime();
 }
 
 // ---------------------------------------------------------------------------
