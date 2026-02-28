@@ -2,22 +2,27 @@
  * Unit tests for PayRamChargeStore (WOP-407).
  */
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { PayRamChargeStore } from "./charge-store.js";
 
 describe("PayRamChargeStore", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let store: PayRamChargeStore;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    store = new PayRamChargeStore(db);
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new PayRamChargeStore(db);
   });
 
   it("create() stores a charge", async () => {

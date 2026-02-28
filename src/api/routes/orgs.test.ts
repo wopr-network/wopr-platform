@@ -1,13 +1,25 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RoleStore } from "../../admin/roles/role-store.js";
 import type { AuthEnv } from "../../auth/index.js";
+import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleOrgRepository } from "../../org/drizzle-org-repository.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { createOrgRoutes } from "./orgs.js";
 
-async function setup() {
-  const { db, pool } = await createTestDb();
+let sharedDb: DrizzleDb;
+let sharedPool: PGlite;
+
+beforeAll(async () => {
+  ({ db: sharedDb, pool: sharedPool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await sharedPool.close();
+});
+
+function buildApp(db: DrizzleDb): { app: Hono<AuthEnv>; roleStore: RoleStore } {
   const orgRepo = new DrizzleOrgRepository(db);
   const roleStore = new RoleStore(db);
   const routes = createOrgRoutes({ orgRepo, roleStore });
@@ -22,23 +34,16 @@ async function setup() {
   });
   app.route("/api/orgs", routes);
 
-  return { app, db, orgRepo, roleStore, close: () => pool.close() };
+  return { app, roleStore };
 }
 
 describe("POST /api/orgs", () => {
   let app: Hono<AuthEnv>;
-  let close: () => void;
   let roleStore: RoleStore;
 
   beforeEach(async () => {
-    const t = await setup();
-    app = t.app;
-    close = t.close;
-    roleStore = t.roleStore;
-  });
-
-  afterEach(() => {
-    close();
+    await truncateAllTables(sharedPool);
+    ({ app, roleStore } = buildApp(sharedDb));
   });
 
   it("creates an org and assigns tenant_admin role", async () => {
@@ -94,16 +99,10 @@ describe("POST /api/orgs", () => {
 
 describe("GET /api/orgs", () => {
   let app: Hono<AuthEnv>;
-  let close: () => void;
 
   beforeEach(async () => {
-    const t = await setup();
-    app = t.app;
-    close = t.close;
-  });
-
-  afterEach(() => {
-    close();
+    await truncateAllTables(sharedPool);
+    ({ app } = buildApp(sharedDb));
   });
 
   it("returns orgs the user owns", async () => {
@@ -135,9 +134,8 @@ describe("GET /api/orgs", () => {
 
 describe("unauthenticated access", () => {
   it("returns 401 when no user is set", async () => {
-    const { db, pool } = await createTestDb();
-    const orgRepo = new DrizzleOrgRepository(db);
-    const roleStore = new RoleStore(db);
+    const orgRepo = new DrizzleOrgRepository(sharedDb);
+    const roleStore = new RoleStore(sharedDb);
     const routes = createOrgRoutes({ orgRepo, roleStore });
 
     const app = new Hono();
@@ -150,6 +148,5 @@ describe("unauthenticated access", () => {
       body: JSON.stringify({ name: "Org" }),
     });
     expect(res.status).toBe(401);
-    pool.close();
   });
 });

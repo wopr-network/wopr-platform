@@ -6,18 +6,14 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
 import { PayRamChargeStore } from "./charge-store.js";
 import type { PayRamWebhookDeps, PayRamWebhookPayload } from "./index.js";
 import { handlePayRamWebhook } from "./webhook.js";
-
-async function makeReplayGuard() {
-  const { db } = await createTestDb();
-  return new DrizzleWebhookSeenRepository(db);
-}
 
 function makePayload(overrides: Partial<PayRamWebhookPayload> = {}): PayRamWebhookPayload {
   return {
@@ -35,20 +31,24 @@ describe("handlePayRamWebhook", () => {
   let creditLedger: CreditLedger;
   let deps: PayRamWebhookDeps;
   let pool: PGlite;
+  let db: DrizzleDb;
+
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
 
   beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
+    await truncateAllTables(pool);
     chargeStore = new PayRamChargeStore(db);
     creditLedger = new CreditLedger(db);
     deps = { chargeStore, creditLedger };
 
     // Create a default test charge
     await chargeStore.create("ref-test-001", "tenant-a", 2500);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   // ---------------------------------------------------------------------------
@@ -223,7 +223,7 @@ describe("handlePayRamWebhook", () => {
 
   describe("replay guard", () => {
     it("blocks duplicate reference_id + status combos", async () => {
-      const replayGuard = await makeReplayGuard();
+      const replayGuard = new DrizzleWebhookSeenRepository(db);
       const depsWithGuard: PayRamWebhookDeps = { ...deps, replayGuard };
 
       const first = await handlePayRamWebhook(depsWithGuard, makePayload({ status: "FILLED" }));
@@ -241,7 +241,7 @@ describe("handlePayRamWebhook", () => {
     });
 
     it("same reference_id with different status is not blocked by replay guard", async () => {
-      const replayGuard = await makeReplayGuard();
+      const replayGuard = new DrizzleWebhookSeenRepository(db);
       const depsWithGuard: PayRamWebhookDeps = { ...deps, replayGuard };
 
       await handlePayRamWebhook(depsWithGuard, makePayload({ status: "VERIFYING" }));
@@ -299,19 +299,34 @@ describe("handlePayRamWebhook", () => {
 // ---------------------------------------------------------------------------
 
 describe("DrizzleWebhookSeenRepository (payram replay guard)", () => {
+  let pool2: PGlite;
+  let db2: DrizzleDb;
+
+  beforeAll(async () => {
+    ({ db: db2, pool: pool2 } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool2.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool2);
+  });
+
   it("reports unseen keys as not duplicate", async () => {
-    const guard = await makeReplayGuard();
+    const guard = new DrizzleWebhookSeenRepository(db2);
     expect(await guard.isDuplicate("ref-001:FILLED", "payram")).toBe(false);
   });
 
   it("reports seen keys as duplicate", async () => {
-    const guard = await makeReplayGuard();
+    const guard = new DrizzleWebhookSeenRepository(db2);
     await guard.markSeen("ref-001:FILLED", "payram");
     expect(await guard.isDuplicate("ref-001:FILLED", "payram")).toBe(true);
   });
 
   it("purges expired entries via purgeExpired", async () => {
-    const guard = await makeReplayGuard();
+    const guard = new DrizzleWebhookSeenRepository(db2);
     await guard.markSeen("ref-expire:FILLED", "payram");
     expect(await guard.isDuplicate("ref-expire:FILLED", "payram")).toBe(true);
     // Negative TTL pushes cutoff into the future — entry is expired

@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleAuditLogRepository, type IAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { queryAuditLog } from "./query.js";
@@ -8,12 +9,21 @@ import { getRetentionDays, purgeExpiredEntries, purgeExpiredEntriesForUser } fro
 
 describe("audit retention", () => {
   let db: DrizzleDb;
+  let pool: PGlite;
   let repo: IAuditLogRepository;
   let logger: AuditLogger;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
     vi.useFakeTimers();
-    ({ db } = await createTestDb());
+    await truncateAllTables(pool);
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
   });
