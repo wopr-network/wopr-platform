@@ -438,7 +438,7 @@ If you get `Authentication required`, the session is invalid — repeat step 1.
 ### 4. Create a Stripe checkout session
 
 ```bash
-PRICE_ID=$(grep "STRIPE_CREDITS_PRICE\|price_" ~/wopr-platform/.env | head -1 | cut -d= -f2 | tr -d '"')
+PRICE_ID=$(grep "^STRIPE_CREDITS_PRICE" ~/wopr-platform/.env | head -1 | cut -d= -f2 | tr -d '"')
 
 curl -s -X POST http://localhost:3100/trpc/billing.creditsCheckout \
   -H "Content-Type: application/json" \
@@ -539,10 +539,7 @@ For direct DB verification:
 
 ```bash
 # Connect to the Postgres database inside the container
-docker exec -it wopr-platform-platform-api-1 sh -c \
-  'npx drizzle-kit studio'
-# Or if psql is available:
-# docker exec -it <postgres-container> psql -U <user> -d <db> -c "SELECT * FROM credit_transactions ORDER BY created_at DESC LIMIT 5;"
+docker exec -it <postgres-container> psql -U <user> -d <db> -c "SELECT * FROM credit_transactions ORDER BY created_at DESC LIMIT 5;"
 ```
 
 > Note: The exact Postgres connection details depend on your `.env` configuration. Check `DATABASE_URL` or `POSTGRES_*` env vars.
