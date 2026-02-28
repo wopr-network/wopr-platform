@@ -223,10 +223,10 @@ describe("CreditLedger core methods", () => {
       expect(tenantIds).toEqual(["t1", "t4"]);
 
       const t1 = result.find((r) => r.tenantId === "t1");
-      expect(t1!.balance.toCents()).toBe(100);
+      expect(t1?.balance.toCents()).toBe(100);
 
       const t4 = result.find((r) => r.tenantId === "t4");
-      expect(t4!.balance.toCents()).toBe(200);
+      expect(t4?.balance.toCents()).toBe(200);
     });
 
     it("excludes tenants with exactly zero balance", async () => {
