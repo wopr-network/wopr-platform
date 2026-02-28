@@ -9,13 +9,13 @@ export interface NewUserBonusParams {
   ledger: ICreditLedger;
   affiliateRepo: IAffiliateRepository;
   referredTenantId: string;
-  purchaseAmountCents: number;
+  purchaseAmount: Credit;
   bonusRate?: number;
 }
 
 export interface NewUserBonusResult {
   granted: boolean;
-  bonusCents: number;
+  bonus: Credit;
 }
 
 /**
@@ -25,9 +25,9 @@ export interface NewUserBonusResult {
  * No-op if tenant is not referred, already received bonus, or bonus rounds to 0.
  */
 export async function grantNewUserBonus(params: NewUserBonusParams): Promise<NewUserBonusResult> {
-  const { ledger, affiliateRepo, referredTenantId, purchaseAmountCents } = params;
+  const { ledger, affiliateRepo, referredTenantId, purchaseAmount } = params;
   const rate = params.bonusRate ?? DEFAULT_BONUS_RATE;
-  const SKIP: NewUserBonusResult = { granted: false, bonusCents: 0 };
+  const SKIP: NewUserBonusResult = { granted: false, bonus: Credit.ZERO };
 
   // 1. Look up referral — skip if not referred
   const referral = await affiliateRepo.getReferral(referredTenantId);
@@ -47,8 +47,8 @@ export async function grantNewUserBonus(params: NewUserBonusParams): Promise<New
   }
 
   // 4. Compute bonus
-  const bonusCents = Math.floor(purchaseAmountCents * rate);
-  if (bonusCents <= 0) {
+  const bonus = purchaseAmount.multiply(rate);
+  if (bonus.isZero() || bonus.isNegative()) {
     return SKIP;
   }
 
@@ -58,11 +58,11 @@ export async function grantNewUserBonus(params: NewUserBonusParams): Promise<New
   // 6. Credit the bonus
   await ledger.credit(
     referredTenantId,
-    Credit.fromCents(bonusCents),
+    bonus,
     "affiliate_bonus",
     `New user first-purchase bonus (${Math.round(rate * 100)}%)`,
     refId,
   );
 
-  return { granted: true, bonusCents };
+  return { granted: true, bonus };
 }

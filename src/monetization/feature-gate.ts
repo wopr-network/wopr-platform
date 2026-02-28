@@ -1,6 +1,7 @@
 import type { Context, Next } from "hono";
 import { Credit } from "./credit.js";
 import type { CreditLedger } from "./credits/credit-ledger.js";
+import { DAILY_BOT_COST } from "./credits/runtime-cron.js";
 
 /**
  * Callback to resolve the user's current credit balance.
@@ -36,7 +37,7 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
    * Optionally requires a minimum balance (in cents).
    * On success, sets `c.set('balance', balanceCents)` for downstream handlers.
    */
-  const requireBalance = (minBalanceCents = 0) => {
+  const requireBalance = (minBalance: Credit = Credit.ZERO) => {
     return async (c: Context, next: Next) => {
       const user = c.get(userKey) as Record<string, unknown> | undefined;
       if (!user) {
@@ -48,24 +49,21 @@ export function createFeatureGate(cfg: FeatureGateConfig) {
         return c.json({ error: "Authentication required" }, 401);
       }
 
-      const balanceCents = await cfg.getUserBalance(tenantId);
+      const balance = await cfg.getUserBalance(tenantId);
 
-      if (
-        balanceCents.lessThan(Credit.fromCents(minBalanceCents)) ||
-        balanceCents.equals(Credit.fromCents(minBalanceCents))
-      ) {
+      if (balance.lessThanOrEqual(minBalance)) {
         return c.json(
           {
             error: "Insufficient credit balance",
-            currentBalanceCents: Math.round(balanceCents.toCents()),
-            requiredBalanceCents: minBalanceCents,
+            currentBalance: Math.round(balance.toCents()),
+            requiredBalance: Math.round(minBalance.toCents()),
             purchaseUrl: "/settings/billing",
           },
           402,
         );
       }
 
-      c.set("balance", balanceCents);
+      c.set("balance", balance);
       return next();
     };
   };
@@ -117,7 +115,7 @@ export interface CreditGateConfig {
  * ```
  */
 export function createCreditGate(cfg: CreditGateConfig) {
-  const requireCredits = (minCents = 17) => {
+  const requireCredits = (min: Credit = DAILY_BOT_COST) => {
     return async (c: Context, next: Next) => {
       const tenantId = await cfg.resolveTenantId(c);
       if (!tenantId) {
@@ -126,12 +124,12 @@ export function createCreditGate(cfg: CreditGateConfig) {
 
       const balance = await cfg.ledger.balance(tenantId);
 
-      if (balance.lessThan(Credit.fromCents(minCents))) {
+      if (balance.lessThan(min)) {
         return c.json(
           {
             error: "insufficient_credits",
             balance,
-            required: minCents,
+            required: min.toRaw(),
             buyUrl: "/dashboard/credits",
           },
           402,

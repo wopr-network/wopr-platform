@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";
 
 describe("DrizzleAffiliateRepository", () => {
@@ -90,7 +91,7 @@ describe("DrizzleAffiliateRepository", () => {
       const stats = await repo.getStats("tenant-1");
       expect(stats.referrals_total).toBe(0);
       expect(stats.referrals_converted).toBe(0);
-      expect(stats.credits_earned_cents).toBe(0);
+      expect(stats.creditsEarned.toCents()).toBe(0);
       expect(stats.code).toMatch(/^[a-z0-9]{6}$/);
       expect(stats.link).toContain("?ref=");
     });
@@ -100,12 +101,12 @@ describe("DrizzleAffiliateRepository", () => {
       await repo.recordReferral("tenant-1", "ref-a", code.code);
       await repo.recordReferral("tenant-1", "ref-b", code.code);
       await repo.markFirstPurchase("ref-a");
-      await repo.recordMatch("ref-a", 2000);
+      await repo.recordMatch("ref-a", Credit.fromCents(2000));
 
       const stats = await repo.getStats("tenant-1");
       expect(stats.referrals_total).toBe(2);
       expect(stats.referrals_converted).toBe(1);
-      expect(stats.credits_earned_cents).toBe(2000);
+      expect(stats.creditsEarned.toCents()).toBe(2000);
     });
   });
 
@@ -135,19 +136,19 @@ describe("DrizzleAffiliateRepository", () => {
   describe("recordMatch", () => {
     it("sets matchAmountCents and matchedAt", async () => {
       await repo.recordReferral("referrer-1", "referred-1", "abc123");
-      await repo.recordMatch("referred-1", 1500);
+      await repo.recordMatch("referred-1", Credit.fromCents(1500));
       const list = await repo.listReferrals("referrer-1");
-      expect(list[0].matchAmountCents).toBe(1500);
+      expect(list[0].matchAmount?.toCents()).toBe(1500);
       expect(list[0].matchedAt).toBeTruthy();
     });
 
     it("is idempotent — second call with matchedAt set does not overwrite", async () => {
       await repo.recordReferral("referrer-1", "referred-1", "abc123");
-      await repo.recordMatch("referred-1", 1500);
-      await repo.recordMatch("referred-1", 9999);
+      await repo.recordMatch("referred-1", Credit.fromCents(1500));
+      await repo.recordMatch("referred-1", Credit.fromCents(9999));
       const list = await repo.listReferrals("referrer-1");
       // First call wins; isNull(matchedAt) guard blocks the second update
-      expect(list[0].matchAmountCents).toBe(1500);
+      expect(list[0].matchAmount?.toCents()).toBe(1500);
     });
   });
 
@@ -177,7 +178,7 @@ describe("DrizzleAffiliateRepository", () => {
       expect(ref?.referredTenantId).toBe("referred-1");
       expect(ref?.code).toBe("abc123");
       expect(ref?.firstPurchaseAt).toBeNull();
-      expect(ref?.matchAmountCents).toBeNull();
+      expect(ref?.matchAmount).toBeNull();
       expect(ref?.matchedAt).toBeNull();
     });
   });
@@ -195,7 +196,7 @@ describe("DrizzleAffiliateRepository", () => {
       // Record 3 referrals with matches
       for (let i = 0; i < 3; i++) {
         await repo.recordReferral("referrer", `buyer-${i}`, "abc123");
-        await repo.recordMatch(`buyer-${i}`, 1000);
+        await repo.recordMatch(`buyer-${i}`, Credit.fromCents(1000));
       }
 
       // Record 1 suppressed referral
@@ -210,10 +211,10 @@ describe("DrizzleAffiliateRepository", () => {
       await repo.getOrCreateCode("referrer");
 
       await repo.recordReferral("referrer", "buyer-0", "abc123");
-      await repo.recordMatch("buyer-0", 5000);
+      await repo.recordMatch("buyer-0", Credit.fromCents(5000));
 
       await repo.recordReferral("referrer", "buyer-1", "abc123");
-      await repo.recordMatch("buyer-1", 3000);
+      await repo.recordMatch("buyer-1", Credit.fromCents(3000));
 
       const total = await repo.getPayoutTotal30d("referrer");
       expect(total).toBe(8000);

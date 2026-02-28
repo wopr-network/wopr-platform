@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Credit } from "../monetization/credit.js";
 import { DEFAULT_STORAGE_TIER, STORAGE_TIER_KEYS, STORAGE_TIERS } from "./storage-tiers.js";
 
 describe("storage-tiers", () => {
@@ -12,7 +13,7 @@ describe("storage-tiers", () => {
   });
 
   it("standard tier has zero daily cost", () => {
-    expect(STORAGE_TIERS.standard.dailyCostCents).toBe(0);
+    expect(STORAGE_TIERS.standard.dailyCost.equals(Credit.ZERO)).toBe(true);
   });
 
   it("standard tier has 5GB limit", () => {
@@ -20,7 +21,7 @@ describe("storage-tiers", () => {
   });
 
   it("tiers are ordered by ascending cost", () => {
-    const costs = STORAGE_TIER_KEYS.map((k) => STORAGE_TIERS[k].dailyCostCents);
+    const costs = STORAGE_TIER_KEYS.map((k) => STORAGE_TIERS[k].dailyCost.toCents());
     for (let i = 1; i < costs.length; i++) {
       expect(costs[i]).toBeGreaterThan(costs[i - 1]);
     }
@@ -35,6 +36,6 @@ describe("storage-tiers", () => {
 
   it("max tier has 100GB limit at 15 credits/day", () => {
     expect(STORAGE_TIERS.max.storageLimitGb).toBe(100);
-    expect(STORAGE_TIERS.max.dailyCostCents).toBe(15);
+    expect(STORAGE_TIERS.max.dailyCost.toCents()).toBe(15);
   });
 });

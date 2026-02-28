@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { Credit } from "./credit.js";
 import type { CreditLedger } from "./credits/credit-ledger.js";
+import { DAILY_BOT_COST } from "./credits/runtime-cron.js";
 import { createCreditGate, createFeatureGate, type GetUserBalance } from "./feature-gate.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper type for flexible Hono vars
@@ -11,7 +12,7 @@ type AnyEnv = { Variables: Record<string, any> };
 // Test helpers
 // ---------------------------------------------------------------------------
 
-function createApp(getUserBalance: GetUserBalance, minBalance?: number) {
+function createApp(getUserBalance: GetUserBalance, minBalance?: Credit) {
   const { requireBalance } = createFeatureGate({ getUserBalance });
   const app = new Hono<AnyEnv>();
 
@@ -71,19 +72,19 @@ describe("requireBalance middleware", () => {
   });
 
   it("enforces minimum balance when specified", async () => {
-    const app = createApp(() => Credit.fromCents(50), 100);
+    const app = createApp(() => Credit.fromCents(50), Credit.fromCents(100));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
 
     expect(res.status).toBe(402);
     const body = await res.json();
-    expect(body.currentBalanceCents).toBe(50);
-    expect(body.requiredBalanceCents).toBe(100);
+    expect(body.currentBalance).toBe(50);
+    expect(body.requiredBalance).toBe(100);
   });
 
   it("allows request when balance exceeds minimum", async () => {
-    const app = createApp(() => Credit.fromCents(200), 100);
+    const app = createApp(() => Credit.fromCents(200), Credit.fromCents(100));
     const res = await app.request("/protected", {
       headers: { "x-user-id": "tenant-1" },
     });
@@ -152,7 +153,7 @@ describe("requireBalance middleware", () => {
 // requireCredits middleware (WOP-380)
 // ---------------------------------------------------------------------------
 
-function createCreditApp(balanceCents: number, minCents?: number) {
+function createCreditApp(balanceCents: number, min?: Credit) {
   const mockLedger = { balance: vi.fn().mockResolvedValue(Credit.fromCents(balanceCents)) } as unknown as CreditLedger;
   const { requireCredits } = createCreditGate({
     ledger: mockLedger,
@@ -160,7 +161,7 @@ function createCreditApp(balanceCents: number, minCents?: number) {
   });
 
   const app = new Hono<AnyEnv>();
-  app.post("/action", requireCredits(minCents), (c) => {
+  app.post("/action", requireCredits(min), (c) => {
     const creditBalance = c.get("creditBalance");
     return c.json({ ok: true, creditBalance });
   });
@@ -193,7 +194,7 @@ describe("requireCredits middleware (WOP-380)", () => {
     const body = await res.json();
     expect(body.error).toBe("insufficient_credits");
     expect(body.balance).toBe(Credit.fromCents(16).toJSON());
-    expect(body.required).toBe(17);
+    expect(body.required).toBe(DAILY_BOT_COST.toRaw());
     expect(body.buyUrl).toBe("/dashboard/credits");
   });
 
@@ -210,8 +211,8 @@ describe("requireCredits middleware (WOP-380)", () => {
     expect(body.balance).toBe(Credit.fromCents(0).toJSON());
   });
 
-  it("respects custom minCents parameter", async () => {
-    const app = createCreditApp(50, 100);
+  it("respects custom min parameter", async () => {
+    const app = createCreditApp(50, Credit.fromCents(100));
     const res = await app.request("/action", {
       method: "POST",
       headers: { "x-tenant-id": "tenant-1" },
@@ -219,11 +220,11 @@ describe("requireCredits middleware (WOP-380)", () => {
 
     expect(res.status).toBe(402);
     const body = await res.json();
-    expect(body.required).toBe(100);
+    expect(body.required).toBe(Credit.fromCents(100).toRaw());
   });
 
-  it("allows request when balance exceeds custom minCents", async () => {
-    const app = createCreditApp(200, 100);
+  it("allows request when balance exceeds custom min", async () => {
+    const app = createCreditApp(200, Credit.fromCents(100));
     const res = await app.request("/action", {
       method: "POST",
       headers: { "x-tenant-id": "tenant-1" },

@@ -224,7 +224,7 @@ describe("runRuntimeDeductions", () => {
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
-      getResourceTierCosts: async () => 50,
+      getResourceTierCosts: async () => Credit.fromCents(50),
     });
     expect(result.processed).toBe(1);
     expect((await ledger.balance("tenant-1")).toCents()).toBe(0);
@@ -236,7 +236,7 @@ describe("runRuntimeDeductions", () => {
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
-      getResourceTierCosts: async () => 50,
+      getResourceTierCosts: async () => Credit.fromCents(50),
       onCreditsExhausted,
     });
     expect(result.processed).toBe(1);
@@ -245,7 +245,7 @@ describe("runRuntimeDeductions", () => {
   });
 
   it("buildResourceTierCosts: deducts pro tier surcharge via getResourceTierCosts", async () => {
-    const proTierCost = RESOURCE_TIERS.pro.dailyCostCents;
+    const proTierCost = RESOURCE_TIERS.pro.dailyCost.toCents();
     const startBalance = 17 + proTierCost + 10;
     await ledger.credit("tenant-1", Credit.fromCents(startBalance), "purchase", "top-up");
 

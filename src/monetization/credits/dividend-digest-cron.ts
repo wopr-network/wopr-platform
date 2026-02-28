@@ -1,5 +1,6 @@
 import { logger } from "../../config/logger.js";
 import type { NotificationService } from "../../email/notification-service.js";
+import { Credit } from "../credit.js";
 import type { IDividendRepository } from "./dividend-repository.js";
 
 export interface DividendDigestConfig {
@@ -7,7 +8,7 @@ export interface DividendDigestConfig {
   notificationService: NotificationService;
   appBaseUrl: string;
   digestDate: string;
-  minTotalCents?: number;
+  minTotal?: Credit;
 }
 
 export interface DividendDigestResult {
@@ -53,7 +54,7 @@ function centsToDollars(cents: number): string {
 
 export async function runDividendDigestCron(cfg: DividendDigestConfig): Promise<DividendDigestResult> {
   const result: DividendDigestResult = { qualified: 0, enqueued: 0, skipped: 0, errors: [] };
-  const minCents = cfg.minTotalCents ?? 1;
+  const minTotal = cfg.minTotal ?? Credit.fromCents(1);
 
   // Window: [digestDate - 7 days, digestDate)
   const windowStart = subtractDays(cfg.digestDate, 7);
@@ -63,7 +64,7 @@ export async function runDividendDigestCron(cfg: DividendDigestConfig): Promise<
 
   for (const agg of tenantAggregates) {
     // Check threshold
-    if (agg.totalCents < minCents) {
+    if (agg.total.lessThan(minTotal)) {
       result.skipped++;
       continue;
     }
@@ -80,7 +81,7 @@ export async function runDividendDigestCron(cfg: DividendDigestConfig): Promise<
     result.qualified++;
 
     // Compute lifetime total
-    const lifetimeCents = await cfg.dividendRepo.getLifetimeTotalCents(agg.tenantId);
+    const lifetimeTotal = await cfg.dividendRepo.getLifetimeTotal(agg.tenantId);
 
     // Next dividend date = tomorrow (dividends run nightly)
     const nextDividendDate = formatDateFull(addDays(cfg.digestDate, 1));
@@ -89,11 +90,11 @@ export async function runDividendDigestCron(cfg: DividendDigestConfig): Promise<
       cfg.notificationService.notifyDividendWeeklyDigest(
         agg.tenantId,
         email,
-        centsToDollars(agg.totalCents),
-        agg.totalCents,
-        centsToDollars(lifetimeCents),
+        centsToDollars(agg.total.toCents()),
+        agg.total.toCents(),
+        centsToDollars(lifetimeTotal.toCents()),
         agg.distributionCount,
-        agg.avgPoolCents,
+        agg.avgPool.toCents(),
         agg.avgActiveUsers,
         nextDividendDate,
         formatDate(windowStart),

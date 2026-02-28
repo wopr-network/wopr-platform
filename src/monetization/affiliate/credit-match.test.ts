@@ -31,7 +31,7 @@ describe("processAffiliateCreditMatch", () => {
 
     const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 1000,
+      purchaseAmount: Credit.fromCents(1000),
       ledger,
       affiliateRepo,
     });
@@ -47,7 +47,7 @@ describe("processAffiliateCreditMatch", () => {
 
     const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 1000,
+      purchaseAmount: Credit.fromCents(1000),
       ledger,
       affiliateRepo,
     });
@@ -61,19 +61,19 @@ describe("processAffiliateCreditMatch", () => {
 
     const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 2000,
+      purchaseAmount: Credit.fromCents(2000),
       ledger,
       affiliateRepo,
       matchRate: 1.0,
     });
 
     expect(result).not.toBeNull();
-    expect(result?.matchAmountCents).toBe(2000);
+    expect(result?.matchAmount.toCents()).toBe(2000);
     expect(result?.referrerTenantId).toBe("referrer");
     expect((await ledger.balance("referrer")).toCents()).toBe(2000);
 
     const ref = await affiliateRepo.getReferralByReferred("buyer");
-    expect(ref?.matchAmountCents).toBe(2000);
+    expect(ref?.matchAmount?.toCents()).toBe(2000);
     expect(ref?.matchedAt).not.toBeNull();
     expect(ref?.firstPurchaseAt).not.toBeNull();
   });
@@ -84,13 +84,13 @@ describe("processAffiliateCreditMatch", () => {
 
     const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 2000,
+      purchaseAmount: Credit.fromCents(2000),
       ledger,
       affiliateRepo,
       matchRate: 0.5,
     });
 
-    expect(result?.matchAmountCents).toBe(1000);
+    expect(result?.matchAmount.toCents()).toBe(1000);
     expect((await ledger.balance("referrer")).toCents()).toBe(1000);
   });
 
@@ -100,7 +100,7 @@ describe("processAffiliateCreditMatch", () => {
 
     const first = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 1000,
+      purchaseAmount: Credit.fromCents(1000),
       ledger,
       affiliateRepo,
     });
@@ -108,7 +108,7 @@ describe("processAffiliateCreditMatch", () => {
 
     const second = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 1000,
+      purchaseAmount: Credit.fromCents(1000),
       ledger,
       affiliateRepo,
     });
@@ -124,7 +124,7 @@ describe("processAffiliateCreditMatch", () => {
 
     const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 2000,
+      purchaseAmount: Credit.fromCents(2000),
       ledger,
       affiliateRepo,
       fraudRepo,
@@ -148,7 +148,7 @@ describe("processAffiliateCreditMatch", () => {
       // Set up 20 existing matched referrals for the referrer
       for (let i = 0; i < 20; i++) {
         await affiliateRepo.recordReferral("referrer", `old-buyer-${i}`, "abc123");
-        await affiliateRepo.recordMatch(`old-buyer-${i}`, 500);
+        await affiliateRepo.recordMatch(`old-buyer-${i}`, Credit.fromCents(500));
       }
 
       // New referral
@@ -157,7 +157,7 @@ describe("processAffiliateCreditMatch", () => {
 
       const result = await processAffiliateCreditMatch({
         tenantId: "buyer",
-        purchaseAmountCents: 1000,
+        purchaseAmount: Credit.fromCents(1000),
         ledger,
         affiliateRepo,
         maxReferrals30d: 20,
@@ -176,7 +176,7 @@ describe("processAffiliateCreditMatch", () => {
       // Set up referrals totaling 20000 cents ($200)
       for (let i = 0; i < 4; i++) {
         await affiliateRepo.recordReferral("referrer", `old-buyer-${i}`, "abc123");
-        await affiliateRepo.recordMatch(`old-buyer-${i}`, 5000);
+        await affiliateRepo.recordMatch(`old-buyer-${i}`, Credit.fromCents(5000));
       }
 
       // New referral
@@ -185,7 +185,7 @@ describe("processAffiliateCreditMatch", () => {
 
       const result = await processAffiliateCreditMatch({
         tenantId: "buyer",
-        purchaseAmountCents: 1000,
+        purchaseAmount: Credit.fromCents(1000),
         ledger,
         affiliateRepo,
         maxMatchCredits30d: 20000,
@@ -204,7 +204,7 @@ describe("processAffiliateCreditMatch", () => {
 
       const result = await processAffiliateCreditMatch({
         tenantId: "buyer",
-        purchaseAmountCents: 2000,
+        purchaseAmount: Credit.fromCents(2000),
         ledger,
         affiliateRepo,
         maxReferrals30d: 20,
@@ -212,7 +212,7 @@ describe("processAffiliateCreditMatch", () => {
       });
 
       expect(result).not.toBeNull();
-      expect(result?.matchAmountCents).toBe(2000);
+      expect(result?.matchAmount.toCents()).toBe(2000);
     });
   });
 
@@ -224,7 +224,7 @@ describe("processAffiliateCreditMatch", () => {
 
     const result = await processAffiliateCreditMatch({
       tenantId: "buyer",
-      purchaseAmountCents: 2000,
+      purchaseAmount: Credit.fromCents(2000),
       ledger,
       affiliateRepo,
       fraudRepo,
@@ -236,7 +236,7 @@ describe("processAffiliateCreditMatch", () => {
 
     // Flagged but NOT blocked — payout still goes through
     expect(result).not.toBeNull();
-    expect(result?.matchAmountCents).toBe(2000);
+    expect(result?.matchAmount.toCents()).toBe(2000);
 
     // But a fraud event was logged
     const events = await fraudRepo.listByReferrer("referrer");

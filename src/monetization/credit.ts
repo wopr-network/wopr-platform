@@ -122,6 +122,16 @@ export class Credit {
     return this.raw === other.raw;
   }
 
+  /** True if this credit is greater than or equal to other. */
+  greaterThanOrEqual(other: Credit): boolean {
+    return this.raw >= other.raw;
+  }
+
+  /** True if this credit is less than or equal to other. */
+  lessThanOrEqual(other: Credit): boolean {
+    return this.raw <= other.raw;
+  }
+
   toString(): string {
     return `Credit(raw=${this.raw})`;
   }

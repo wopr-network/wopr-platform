@@ -244,7 +244,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       // Referral record should be updated
       const ref = await affiliateRepo.getReferralByReferred("tenant-123");
-      expect(ref?.matchAmountCents).toBe(2000);
+      expect(ref?.matchAmount?.toCents()).toBe(2000);
       expect(ref?.matchedAt).not.toBeNull();
     });
   });
@@ -418,7 +418,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       expect(result.handled).toBe(true);
       expect(result.creditedCents).toBe(5000);
-      expect(result.affiliateBonusCents).toBe(1000); // 20% of 5000
+      expect(result.affiliateBonus?.toCents()).toBe(1000); // 20% of 5000
 
       // Total balance = purchase + bonus
       expect((await creditLedger.balance("tenant-123")).toCents()).toBe(6000);
@@ -428,7 +428,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const event = createCheckoutEvent({ amount_total: 5000 });
       const result = await handleWebhookEvent(depsWithAffiliate, event);
 
-      expect(result.affiliateBonusCents).toBeUndefined();
+      expect(result.affiliateBonus?.toCents()).toBeUndefined();
       expect((await creditLedger.balance("tenant-123")).toCents()).toBe(5000);
     });
 
@@ -443,7 +443,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const event2 = createCheckoutEvent({ id: "cs_second", amount_total: 3000 });
       const result2 = await handleWebhookEvent(depsWithAffiliate, event2);
 
-      expect(result2.affiliateBonusCents).toBeUndefined();
+      expect(result2.affiliateBonus?.toCents()).toBeUndefined();
       // Balance = 5000 (first purchase) + 1000 (bonus) + 3000 (second purchase) = 9000
       expect((await creditLedger.balance("tenant-123")).toCents()).toBe(9000);
     });
@@ -452,7 +452,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const event = createCheckoutEvent({ id: "cs_no_affiliate", amount_total: 2500 });
       const result = await handleWebhookEvent(deps, event);
 
-      expect(result.affiliateBonusCents).toBeUndefined();
+      expect(result.affiliateBonus?.toCents()).toBeUndefined();
       expect(result.creditedCents).toBe(2500);
     });
   });

@@ -181,7 +181,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
       throw new Error("autoTopupEventLog is required for charge()");
     }
 
-    const amountCents = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
+    const amount = opts.amount instanceof Credit ? opts.amount : Credit.fromCents(Number(opts.amount));
 
     const result = await chargeAutoTopup(
       {
@@ -191,7 +191,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
         eventLogRepo: this.autoTopupEventLog,
       },
       opts.tenant,
-      amountCents,
+      amount,
       opts.source,
     );
 

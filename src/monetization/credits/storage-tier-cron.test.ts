@@ -24,7 +24,7 @@ describe("runtime cron with storage tiers", () => {
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
-      getStorageTierCosts: async () => 8,
+      getStorageTierCosts: async () => Credit.fromCents(8),
     });
     expect(result.processed).toBe(1);
     const balance = await ledger.balance("t1");
@@ -37,7 +37,7 @@ describe("runtime cron with storage tiers", () => {
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
-      getStorageTierCosts: async () => 0,
+      getStorageTierCosts: async () => Credit.ZERO,
     });
     expect(result.processed).toBe(1);
     expect((await ledger.balance("t1")).toCents()).toBe(983); // 1000 - 17
@@ -59,7 +59,7 @@ describe("runtime cron with storage tiers", () => {
     const result = await runRuntimeDeductions({
       ledger,
       getActiveBotCount: async () => 1,
-      getStorageTierCosts: async () => 8,
+      getStorageTierCosts: async () => Credit.fromCents(8),
       onSuspend: (tenantId) => {
         suspended.push(tenantId);
       },
