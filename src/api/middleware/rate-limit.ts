@@ -227,6 +227,18 @@ const WEBHOOK_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 30 };
 /** Billing checkout/portal: 10 req/min */
 const BILLING_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 10 };
 
+/** Setup-intent creation: 5 req/min (WOP-1092) */
+const SETUP_INTENT_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = {
+  max: 5,
+  message: "Too many setup intent requests",
+};
+
+/** Crypto checkout creation: 10 req/min (WOP-1092) */
+const CRYPTO_CHECKOUT_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = {
+  max: 10,
+  message: "Too many crypto checkout requests",
+};
+
 /** Secrets validation: 5 req/min */
 const SECRETS_VALIDATION_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = { max: 5 };
 
@@ -290,6 +302,22 @@ export const platformRateLimitRules: RateLimitRule[] = [
 
   // Webhook: 30 req/min (WOP-477)
   { method: "POST", pathPrefix: "/api/billing/webhook", config: WEBHOOK_LIMIT, scope: "api:billing-webhook" },
+
+  // Setup-intent: 5 req/min (WOP-1092)
+  {
+    method: "POST",
+    pathPrefix: "/api/billing/setup-intent",
+    config: SETUP_INTENT_LIMIT,
+    scope: "api:billing-setup-intent",
+  },
+
+  // Crypto checkout: 10 req/min (WOP-1092)
+  {
+    method: "POST",
+    pathPrefix: "/api/billing/crypto/checkout",
+    config: CRYPTO_CHECKOUT_LIMIT,
+    scope: "api:billing-crypto-checkout",
+  },
 
   // Billing checkout & portal
   { method: "POST", pathPrefix: "/api/billing/credits/checkout", config: BILLING_LIMIT, scope: "api:billing-checkout" },

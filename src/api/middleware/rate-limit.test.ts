@@ -453,6 +453,68 @@ describe("auth endpoint rate limits (WOP-839)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// WOP-1092: setup-intent and crypto checkout rate limits
+// ---------------------------------------------------------------------------
+
+describe("WOP-1092: setup-intent and crypto checkout rate limits", () => {
+  it("includes setup-intent rule with max 5", () => {
+    const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/billing/setup-intent");
+    expect(rule).toBeDefined();
+    expect(rule!.method).toBe("POST");
+    expect(rule!.config.max).toBe(5);
+    expect(rule!.scope).toBe("api:billing-setup-intent");
+  });
+
+  it("includes crypto checkout rule with max 10", () => {
+    const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/billing/crypto/checkout");
+    expect(rule).toBeDefined();
+    expect(rule!.method).toBe("POST");
+    expect(rule!.config.max).toBe(10);
+    expect(rule!.scope).toBe("api:billing-crypto-checkout");
+  });
+
+  it("setup-intent returns 429 after 5 requests", async () => {
+    const { repo, pool } = await makeRateLimitRepo();
+    try {
+      const app = new Hono();
+      app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
+      app.post("/api/billing/setup-intent", (c) => c.json({ ok: true }));
+
+      for (let i = 0; i < 5; i++) {
+        const res = await app.request(postReq("/api/billing/setup-intent"));
+        expect(res.status).toBe(200);
+      }
+      const res = await app.request(postReq("/api/billing/setup-intent"));
+      expect(res.status).toBe(429);
+      const body = await res.json();
+      expect(body.error).toBe("Too many setup intent requests");
+    } finally {
+      await pool.close();
+    }
+  });
+
+  it("crypto checkout returns 429 after 10 requests", async () => {
+    const { repo, pool } = await makeRateLimitRepo();
+    try {
+      const app = new Hono();
+      app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
+      app.post("/api/billing/crypto/checkout", (c) => c.json({ ok: true }));
+
+      for (let i = 0; i < 10; i++) {
+        const res = await app.request(postReq("/api/billing/crypto/checkout"));
+        expect(res.status).toBe(200);
+      }
+      const res = await app.request(postReq("/api/billing/crypto/checkout"));
+      expect(res.status).toBe(429);
+      const body = await res.json();
+      expect(body.error).toBe("Too many crypto checkout requests");
+    } finally {
+      await pool.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Trusted proxy validation (WOP-656)
 // ---------------------------------------------------------------------------
 
