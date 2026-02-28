@@ -460,6 +460,85 @@ describe("FleetManager", () => {
     });
   });
 
+  describe("per-bot mutex", () => {
+    it("serializes 5 concurrent startBot calls into exactly 1 start per call", async () => {
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      let startCount = 0;
+      container.start.mockImplementation(async () => {
+        startCount++;
+        const current = startCount;
+        await new Promise((r) => setTimeout(r, 10));
+        expect(startCount).toBe(current);
+      });
+
+      const promises = Array.from({ length: 5 }, () => fleet.start("bot-id"));
+      await Promise.all(promises);
+
+      expect(container.start).toHaveBeenCalledTimes(5);
+    });
+
+    it("does not block operations on different bots (proves concurrency)", async () => {
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      let releaseStart!: () => void;
+      container.start.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseStart = resolve;
+          }),
+      );
+      const stopSpy = vi.fn();
+      container.stop.mockImplementation(async () => {
+        stopSpy();
+      });
+
+      const startPromise = fleet.start("bot-a");
+      await Promise.resolve(); // allow start lock acquisition
+      await expect(fleet.stop("bot-b")).resolves.toBeUndefined();
+      expect(stopSpy).toHaveBeenCalledTimes(1);
+      releaseStart();
+      await startPromise;
+    });
+
+    it("releases lock even when operation throws", async () => {
+      docker.listContainers.mockResolvedValue([]);
+
+      await expect(fleet.start("bot-id")).rejects.toThrow(BotNotFoundError);
+      await expect(fleet.start("bot-id")).rejects.toThrow(BotNotFoundError);
+    });
+
+    it("serializes concurrent create calls with the same explicit ID (mutual exclusion)", async () => {
+      // Add a delay to store.save so the race is observable: the mutex must ensure
+      // the first save completes before the second call checks for the existing profile.
+      // Without the mutex, both calls could pass the existence check simultaneously,
+      // causing a double-save or non-deterministic behaviour.
+      const saveOrder: string[] = [];
+      (store.save as ReturnType<typeof vi.fn>).mockImplementation(async (p: BotProfile) => {
+        saveOrder.push("start");
+        await new Promise((r) => setTimeout(r, 10));
+        // Simulate what a real store does: persist so subsequent get() can see it
+        (store.get as ReturnType<typeof vi.fn>).mockResolvedValue(p);
+        saveOrder.push("end");
+      });
+
+      const results = await Promise.allSettled([
+        fleet.create({ ...PROFILE_PARAMS, id: "explicit-id" }),
+        fleet.create({ ...PROFILE_PARAMS, id: "explicit-id" }),
+      ]);
+
+      // Exactly one succeeded and one rejected with "already exists"
+      const fulfilled = results.filter((r) => r.status === "fulfilled");
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason.message).toMatch(/already exists/);
+
+      // Exactly one save reached store.save (the second was blocked by the existence check)
+      expect(saveOrder).toEqual(["start", "end"]);
+    });
+  });
+
   describe("getVolumeUsage", () => {
     it("returns disk usage from running container", async () => {
       const dfOutput =
