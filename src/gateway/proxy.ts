@@ -75,6 +75,10 @@ export interface ProxyDeps {
   /** Base URL for Twilio webhook callbacks (e.g., https://api.wopr.network/v1). Used to construct StatusCallback and TwiML URLs. */
   webhookBaseUrl?: string;
   phoneRepo?: import("../monetization/credits/drizzle-phone-number-repository.js").IPhoneNumberRepository;
+  /** Called after every successful credit debit (fire-and-forget auto-topup trigger). */
+  onDebitComplete?: (tenantId: string) => void;
+  /** Called when a debit causes balance to cross the zero threshold. */
+  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -92,6 +96,8 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     metrics: config.metrics,
     webhookBaseUrl: config.webhookBaseUrl,
     phoneRepo: config.phoneRepo,
+    onDebitComplete: config.onDebitComplete,
+    onBalanceExhausted: config.onBalanceExhausted,
   };
 }
 
