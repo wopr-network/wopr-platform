@@ -56,6 +56,8 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
     listPaymentMethods: vi.fn().mockResolvedValue([]),
     detachPaymentMethod: vi.fn().mockResolvedValue(undefined),
     charge: vi.fn().mockResolvedValue({ success: true }),
+    getCustomerEmail: vi.fn().mockResolvedValue(""),
+    updateCustomerEmail: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

@@ -551,7 +551,7 @@ export const billingRouter = router({
       }));
 
       return {
-        email: "", // TODO: add getCustomerEmail to IPaymentProcessor (WOP-follow-up)
+        email: await processor.getCustomerEmail(tenant),
         paymentMethods,
         invoices: [] as Array<{
           id: string;
@@ -575,15 +575,14 @@ export const billingRouter = router({
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
-      const { tenantStore } = deps();
+      const { tenantStore, processor } = deps();
       const mapping = await tenantStore.getByTenant(tenant);
 
       if (!mapping) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No billing account found" });
       }
 
-      // TODO: add updateCustomerEmail to IPaymentProcessor (WOP-follow-up)
-      // For now return input email — the field is not persisted yet via IPaymentProcessor.
+      await processor.updateCustomerEmail(tenant, input.email);
       return { email: input.email };
     }),
 

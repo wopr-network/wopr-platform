@@ -73,6 +73,8 @@ function createMockProcessor(
     detachPaymentMethod: (overrides.detachPaymentMethod ??
       vi.fn().mockResolvedValue(undefined)) as IPaymentProcessor["detachPaymentMethod"],
     charge: (overrides.charge ?? vi.fn().mockResolvedValue({ success: true })) as IPaymentProcessor["charge"],
+    getCustomerEmail: vi.fn().mockResolvedValue("") as IPaymentProcessor["getCustomerEmail"],
+    updateCustomerEmail: vi.fn().mockResolvedValue(undefined) as IPaymentProcessor["updateCustomerEmail"],
   };
 }
 

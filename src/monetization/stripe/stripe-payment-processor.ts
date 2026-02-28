@@ -176,6 +176,28 @@ export class StripePaymentProcessor implements IPaymentProcessor {
     await this.stripe.paymentMethods.detach(paymentMethodId);
   }
 
+  async getCustomerEmail(tenantId: string): Promise<string> {
+    const mapping = await this.tenantStore.getByTenant(tenantId);
+    if (!mapping) {
+      return "";
+    }
+
+    const customer = await this.stripe.customers.retrieve(mapping.processor_customer_id);
+    if (customer.deleted) {
+      return "";
+    }
+    return customer.email ?? "";
+  }
+
+  async updateCustomerEmail(tenantId: string, email: string): Promise<void> {
+    const mapping = await this.tenantStore.getByTenant(tenantId);
+    if (!mapping) {
+      throw new Error(`No Stripe customer found for tenant: ${tenantId}`);
+    }
+
+    await this.stripe.customers.update(mapping.processor_customer_id, { email });
+  }
+
   async charge(opts: ChargeOpts): Promise<ChargeResult> {
     if (!this.autoTopupEventLog) {
       throw new Error("autoTopupEventLog is required for charge()");

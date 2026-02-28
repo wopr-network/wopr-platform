@@ -512,6 +512,8 @@ describe("E2E: Billing flow (credit model)", () => {
     listPaymentMethods: vi.fn().mockResolvedValue([]),
     detachPaymentMethod: vi.fn().mockResolvedValue(undefined),
     charge: vi.fn().mockResolvedValue({ success: true }),
+    getCustomerEmail: vi.fn().mockResolvedValue(""),
+    updateCustomerEmail: vi.fn().mockResolvedValue(undefined),
   };
 
   beforeEach(async () => {
