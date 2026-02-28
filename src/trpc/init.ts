@@ -43,6 +43,23 @@ const isAuthed = t.middleware(({ ctx, next }) => {
 export const protectedProcedure = t.procedure.use(isAuthed);
 
 /**
+ * Middleware that enforces the platform_admin role.
+ * Must be chained after isAuthed so ctx.user is guaranteed non-optional.
+ */
+const isAdmin = t.middleware(({ ctx, next }) => {
+  if (!ctx.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Authentication required" });
+  }
+  if (!ctx.user.roles.includes("platform_admin")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Platform admin role required" });
+  }
+  return next({ ctx: { user: ctx.user, tenantId: ctx.tenantId } });
+});
+
+/** Procedure that requires authentication + platform_admin role. */
+export const adminProcedure = t.procedure.use(isAuthed).use(isAdmin);
+
+/**
  * Combined middleware that enforces authentication + tenant context.
  * Narrows both `user` (non-optional) and `tenantId` (non-optional string).
  */
