@@ -58,6 +58,7 @@ describe("integration: billing crypto routes", () => {
       creditLedger: new CreditLedger(db),
       meterAggregator: new MeterAggregator(db),
       affiliateRepo: new DrizzleAffiliateRepository(db),
+      replayGuard: noOpReplayGuard,
       payramReplayGuard: noOpReplayGuard,
       sigPenaltyRepo: {
         get: () => null,
@@ -131,6 +132,7 @@ describe("integration: billing crypto routes", () => {
         meterAggregator: new MeterAggregator(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeStore: new DrizzlePayRamChargeStore(db),
+        replayGuard: noOpReplayGuard,
         payramReplayGuard: noOpReplayGuard,
         sigPenaltyRepo: {
           get: () => null,
