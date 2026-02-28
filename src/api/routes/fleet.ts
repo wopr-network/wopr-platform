@@ -206,7 +206,7 @@ fleetRoutes.post(
         return c.json(
           {
             error: "insufficient_credits",
-            balance: Math.round(balance.toCents()),
+            balance: balance.toCentsRounded(),
             required: 17,
             buyUrl: "/dashboard/credits",
           },

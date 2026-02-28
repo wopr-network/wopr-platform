@@ -381,7 +381,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
         // (already integer cents), so sub-cent precision is irrelevant here.
         // DB column is integer cents; Credit.SCALE overflow (~$9M) is not a concern
         // for individual affiliate match amounts.
-        matchAmountCents: Math.round(amount.toCents()),
+        matchAmountCents: amount.toCentsRounded(),
         matchedAt: sql`now()`,
       })
       .where(and(eq(affiliateReferrals.referredTenantId, referredTenantId), isNull(affiliateReferrals.matchedAt)));

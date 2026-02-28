@@ -511,7 +511,7 @@ export const adminRouter = router({
       const balance = await getCreditLedger().balance(input.tenantId);
       if (balance.greaterThan(Credit.ZERO)) {
         await getCreditLedger().debit(input.tenantId, balance, "refund", `Auto-refund on account ban: ${input.reason}`);
-        refundedCents = Math.round(balance.toCents());
+        refundedCents = balance.toCentsRounded();
       }
 
       // Disable auto-topup (both usage and schedule)

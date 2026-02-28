@@ -88,12 +88,12 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
       updateSet.usageEnabled = values.usageEnabled;
     }
     if (settings.usageThreshold !== undefined) {
-      const cents = Math.round(settings.usageThreshold.toCents());
+      const cents = settings.usageThreshold.toCentsRounded();
       values.usageThresholdCents = cents;
       updateSet.usageThresholdCents = cents;
     }
     if (settings.usageTopup !== undefined) {
-      const cents = Math.round(settings.usageTopup.toCents());
+      const cents = settings.usageTopup.toCentsRounded();
       values.usageTopupCents = cents;
       updateSet.usageTopupCents = cents;
     }
@@ -102,7 +102,7 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
       updateSet.scheduleEnabled = values.scheduleEnabled;
     }
     if (settings.scheduleAmount !== undefined) {
-      const cents = Math.round(settings.scheduleAmount.toCents());
+      const cents = settings.scheduleAmount.toCentsRounded();
       values.scheduleAmountCents = cents;
       updateSet.scheduleAmountCents = cents;
     }
