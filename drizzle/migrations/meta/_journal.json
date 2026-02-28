@@ -43,6 +43,13 @@
       "when": 1772220010000,
       "tag": "0056_promotions_fk_and_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1772220011000,
+      "tag": "0057_tenant_addons",
+      "breakpoints": true
     }
   ]
 }
