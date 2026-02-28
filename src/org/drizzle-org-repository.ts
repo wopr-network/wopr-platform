@@ -27,6 +27,7 @@ export interface IOrgRepository {
   listOrgsByOwner(ownerId: string): Promise<Tenant[]>;
   updateOrg(orgId: string, data: { name?: string; slug?: string }): Promise<Tenant>;
   updateOwner(orgId: string, newOwnerId: string): Promise<void>;
+  deleteOrg(orgId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,5 +130,9 @@ export class DrizzleOrgRepository implements IOrgRepository {
 
   async updateOwner(orgId: string, newOwnerId: string): Promise<void> {
     await this.db.update(tenants).set({ ownerId: newOwnerId }).where(eq(tenants.id, orgId));
+  }
+
+  async deleteOrg(orgId: string): Promise<void> {
+    await this.db.delete(tenants).where(eq(tenants.id, orgId));
   }
 }

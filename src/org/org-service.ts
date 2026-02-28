@@ -87,10 +87,9 @@ export class OrgService {
     if (org.ownerId !== actorUserId) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Only the owner can delete the organization" });
     }
-    // cascade handled by DB FK; just delete the tenant
-    // NOTE: The existing IOrgRepository has no delete method yet.
-    // This is a no-op until extended — throw NOT_IMPLEMENTED for now.
-    throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: "Org deletion requires IOrgRepository.deleteOrg" });
+    await this.memberRepo.deleteAllInvites(orgId);
+    await this.memberRepo.deleteAllMembers(orgId);
+    await this.orgRepo.deleteOrg(orgId);
   }
 
   async inviteMember(

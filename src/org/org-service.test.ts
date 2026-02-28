@@ -241,11 +241,10 @@ describe("OrgService", () => {
   });
 
   describe("deleteOrg", () => {
-    it("throws FORBIDDEN when non-owner tries to delete", async () => {
+    it("deletes org when called by owner", async () => {
       const { orgRepo, memberRepo } = await setup(db);
       const svc = new OrgService(orgRepo, memberRepo);
       const owner = "owner-d1";
-      const other = "other-d1";
       const org = await orgRepo.createOrg(owner, "Del Org", "del-org");
       await memberRepo.addMember({
         id: "md1",
@@ -254,8 +253,69 @@ describe("OrgService", () => {
         role: "owner",
         joinedAt: Date.now(),
       });
+
+      await svc.deleteOrg(org.id, owner);
+
+      // Org should be gone
+      const found = await orgRepo.getById(org.id);
+      expect(found).toBeNull();
+      // Members should be gone
+      const members = await memberRepo.listMembers(org.id);
+      expect(members).toHaveLength(0);
+    });
+
+    it("deletes org with members and invites", async () => {
+      const { orgRepo, memberRepo } = await setup(db);
+      const svc = new OrgService(orgRepo, memberRepo);
+      const owner = "owner-d3";
+      const member = "member-d3";
+      const org = await orgRepo.createOrg(owner, "Del Org 3", "del-org-3");
       await memberRepo.addMember({
-        id: "md2",
+        id: "md4",
+        orgId: org.id,
+        userId: owner,
+        role: "owner",
+        joinedAt: Date.now(),
+      });
+      await memberRepo.addMember({
+        id: "md5",
+        orgId: org.id,
+        userId: member,
+        role: "member",
+        joinedAt: Date.now(),
+      });
+      await memberRepo.createInvite({
+        id: "inv-d3",
+        orgId: org.id,
+        email: "invited@example.com",
+        role: "member",
+        invitedBy: owner,
+        token: "tok-d3",
+        expiresAt: Date.now() + 86400000,
+        createdAt: Date.now(),
+      });
+
+      await svc.deleteOrg(org.id, owner);
+
+      expect(await orgRepo.getById(org.id)).toBeNull();
+      expect(await memberRepo.listMembers(org.id)).toHaveLength(0);
+    });
+
+    it("throws FORBIDDEN when non-owner tries to delete", async () => {
+      const { orgRepo, memberRepo } = await setup(db);
+      const svc = new OrgService(orgRepo, memberRepo);
+      const owner = "owner-d1b";
+      const other = "other-d1b";
+      const org = await orgRepo.createOrg(owner, "Del Org B", "del-org-b");
+      await memberRepo.addMember({
+        id: "md1b",
+        orgId: org.id,
+        userId: owner,
+        role: "owner",
+        joinedAt: Date.now(),
+      });
+      await memberRepo.addMember({
+        id: "md2b",
         orgId: org.id,
         userId: other,
         role: "admin",
@@ -265,20 +325,8 @@ describe("OrgService", () => {
       await expect(svc.deleteOrg(org.id, other)).rejects.toThrow();
     });
 
-    it("throws METHOD_NOT_SUPPORTED for owner (delete not implemented)", async () => {
-      const { orgRepo, memberRepo } = await setup(db);
-      const svc = new OrgService(orgRepo, memberRepo);
-      const owner = "owner-d2";
-      const org = await orgRepo.createOrg(owner, "Del Org 2", "del-org-2");
-      await memberRepo.addMember({
-        id: "md3",
-        orgId: org.id,
-        userId: owner,
-        role: "owner",
-        joinedAt: Date.now(),
-      });
-
-      await expect(svc.deleteOrg(org.id, owner)).rejects.toThrow();
+    it("throws NOT_FOUND for nonexistent org", async () => {
+      await expect(service.deleteOrg("nonexistent", userId)).rejects.toThrow();
     });
   });
 
