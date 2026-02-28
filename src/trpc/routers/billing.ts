@@ -717,7 +717,7 @@ export const billingRouter = router({
       const updated = await autoTopupSettingsStore.getByTenant(tenant);
       return {
         usage_enabled: updated?.usageEnabled ?? false,
-        usage_threshold_cents: updated?.usageThreshold.toCents() ?? 500,
+        usage_threshold_cents: updated?.usageThreshold?.toCents() ?? 500,
         usage_topup_cents: updated?.usageTopup.toCents() ?? 2000,
         schedule_enabled: updated?.scheduleEnabled ?? false,
         schedule_amount_cents: updated?.scheduleAmount?.toCents() ?? null,

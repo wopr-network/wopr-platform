@@ -128,8 +128,8 @@ export function createCreditGate(cfg: CreditGateConfig) {
         return c.json(
           {
             error: "insufficient_credits",
-            balance,
-            required: min.toRaw(),
+            balance: Math.round(balance.toCents()),
+            required: Math.round(min.toCents()),
             buyUrl: "/dashboard/credits",
           },
           402,

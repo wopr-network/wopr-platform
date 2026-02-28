@@ -102,7 +102,7 @@ export interface GatewayConfig {
   creditLedger?: CreditLedger;
   /** URL to direct users to when they need to add credits (default: "/dashboard/credits") */
   topUpUrl?: string;
-  /** Maximum negative credit balance (in cents) before hard-stop. Default: 50 (-$0.50). */
+  /** Maximum negative credit balance before hard-stop. Default: Credit.fromCents(50) (-$0.50). */
   graceBuffer?: import("../monetization/credit.js").Credit;
   /** Upstream provider credentials */
   providers: ProviderConfig;
