@@ -795,7 +795,7 @@ export function getOrgMemberRepo(): IOrgMemberRepository {
 
 export function getOrgService(): OrgService {
   if (!_orgService) {
-    _orgService = new OrgService(getOrgRepo(), getOrgMemberRepo(), getBotInstanceRepo(), getVpsRepo());
+    _orgService = new OrgService(getOrgRepo(), getOrgMemberRepo(), getDb());
   }
   return _orgService;
 }
