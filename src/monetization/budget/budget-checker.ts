@@ -191,7 +191,9 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
         )
     )[0];
 
-    const hourlySpend = Credit.fromRaw((hourlyEvents?.total ?? 0) + (hourlySummaries?.total ?? 0)).toDollars();
+    const hourlySpend = Credit.fromRaw(
+      Number(hourlyEvents?.total ?? 0) + Number(hourlySummaries?.total ?? 0),
+    ).toDollars();
 
     // Query monthly spend
     const monthlyEvents = (
@@ -218,7 +220,9 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
         )
     )[0];
 
-    const monthlySpend = Credit.fromRaw((monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0)).toDollars();
+    const monthlySpend = Credit.fromRaw(
+      Number(monthlyEvents?.total ?? 0) + Number(monthlySummaries?.total ?? 0),
+    ).toDollars();
 
     return {
       hourlySpend,

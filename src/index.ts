@@ -394,7 +394,7 @@ if (process.env.NODE_ENV !== "test") {
             .from(schema.meterEvents)
             .where(gte(schema.meterEvents.timestamp, cutoff))
         )[0];
-        return Math.round((row?.total ?? 0) * 100);
+        return Math.round((row?.total ?? 0) / 10_000_000);
       },
     });
     adminHealth.use("*", scopedBearerAuthWithTenant(tokenMetadata, "admin"));

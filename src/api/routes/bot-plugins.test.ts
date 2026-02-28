@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Credit } from "../../monetization/credit.js";
 
 // Set env var BEFORE importing bot-plugin routes so bearer auth uses this token
 const TEST_TOKEN = "test-plugin-token";
@@ -467,8 +468,8 @@ describe("bot-plugin routes", () => {
           tenant: "user-123",
           capability: "hosted-activation",
           provider: "elevenlabs",
-          cost: 0,
-          charge: 0,
+          cost: Credit.ZERO,
+          charge: Credit.ZERO,
         }),
       );
     });

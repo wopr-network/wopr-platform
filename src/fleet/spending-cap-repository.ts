@@ -65,7 +65,7 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
       );
     const dailySummaries = dailySummariesRows[0];
 
-    const dailySpend = Credit.fromRaw((dailyEvents?.total ?? 0) + (dailySummaries?.total ?? 0)).toDollars();
+    const dailySpend = Credit.fromRaw(Number(dailyEvents?.total ?? 0) + Number(dailySummaries?.total ?? 0)).toDollars();
 
     // Monthly spend from meter_events
     const monthlyEventsRows = await this.db
@@ -91,7 +91,9 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
       );
     const monthlySummaries = monthlySummariesRows[0];
 
-    const monthlySpend = Credit.fromRaw((monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0)).toDollars();
+    const monthlySpend = Credit.fromRaw(
+      Number(monthlyEvents?.total ?? 0) + Number(monthlySummaries?.total ?? 0),
+    ).toDollars();
 
     return { dailySpend, monthlySpend };
   }
