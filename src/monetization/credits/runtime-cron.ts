@@ -2,7 +2,7 @@ import { logger } from "../../config/logger.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { RESOURCE_TIERS } from "../../fleet/resource-tiers.js";
 import { Credit } from "../credit.js";
-import type { CreditLedger } from "./credit-ledger.js";
+import type { ICreditLedger } from "./credit-ledger.js";
 import { InsufficientBalanceError } from "./credit-ledger.js";
 
 /**
@@ -21,7 +21,7 @@ export type GetActiveBotCount = (tenantId: string) => number | Promise<number>;
 export const LOW_BALANCE_THRESHOLD = Credit.fromCents(100);
 
 export interface RuntimeCronConfig {
-  ledger: CreditLedger;
+  ledger: ICreditLedger;
   getActiveBotCount: GetActiveBotCount;
   /** The date being billed, as YYYY-MM-DD. Used for idempotency. */
   date: string;
