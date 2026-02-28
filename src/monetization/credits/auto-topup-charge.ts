@@ -35,7 +35,7 @@ export async function chargeAutoTopup(
   amount: Credit,
   source: string,
 ): Promise<AutoTopupChargeResult> {
-  const amountCents = amount.toCentsRounded();
+  const amountCents = amount.toCentsFloor();
 
   // 1. Look up Stripe customer
   const mapping = await deps.tenantStore.getByTenant(tenantId);

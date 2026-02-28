@@ -63,7 +63,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
 
     if (!priceId) {
       // Fall back to looking up by amount when no explicit priceId provided.
-      const amountCents = opts.amount instanceof Credit ? opts.amount.toCents() : Number(opts.amount);
+      const amountCents = opts.amount instanceof Credit ? opts.amount.toCentsFloor() : Number(opts.amount);
 
       for (const [id, point] of this.priceMap.entries()) {
         if (point.creditCents === amountCents || point.amountCents === amountCents) {
