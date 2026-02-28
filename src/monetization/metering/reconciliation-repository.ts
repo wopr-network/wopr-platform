@@ -24,6 +24,7 @@ export class DrizzleUsageSummaryRepository implements IUsageSummaryRepository {
     const rows = await this.db
       .select({
         tenant: usageSummaries.tenant,
+        // raw SQL: Drizzle cannot express COALESCE with SUM aggregation
         totalCharge: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
       })
       .from(usageSummaries)
@@ -63,12 +64,14 @@ export class DrizzleAdapterUsageRepository implements IAdapterUsageRepository {
         tenantId: creditTransactions.tenantId,
         // amount_credits stores negative values for debits; ABS gives the raw positive debit amount.
         // Use the raw column name in sql to bypass the custom creditColumn type serializer.
+        // raw SQL: Drizzle cannot express ABS with COALESCE and SUM
         totalDebitRaw: sql<number>`COALESCE(SUM(ABS(amount_credits)), 0)`,
       })
       .from(creditTransactions)
       .where(
         and(
           eq(creditTransactions.type, "adapter_usage"),
+          // raw SQL: Drizzle cannot express timestamptz cast for text column date comparison
           sql`${creditTransactions.createdAt}::timestamptz >= ${startIso}::timestamptz`,
           sql`${creditTransactions.createdAt}::timestamptz < ${endIso}::timestamptz`,
         ),
