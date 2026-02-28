@@ -377,6 +377,10 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
     await this.db
       .update(affiliateReferrals)
       .set({
+        // Intentional: affiliate match amounts derive from Stripe purchase amounts
+        // (already integer cents), so sub-cent precision is irrelevant here.
+        // DB column is integer cents; Credit.SCALE overflow (~$9M) is not a concern
+        // for individual affiliate match amounts.
         matchAmountCents: Math.round(amount.toCents()),
         matchedAt: sql`now()`,
       })
