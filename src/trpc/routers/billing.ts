@@ -7,6 +7,7 @@
 import { TRPCError } from "@trpc/server";
 import type { Payram } from "payram";
 import { z } from "zod";
+import type { AuditLogger } from "../../audit/logger.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import { Credit } from "../../monetization/credit.js";
 import {
@@ -156,6 +157,7 @@ export interface BillingRouterDeps {
   affiliateRepo: IAffiliateRepository;
   payramClient?: Payram;
   payramChargeStore?: PayRamChargeStore;
+  auditLogger?: AuditLogger;
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -690,7 +692,7 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId ?? ctx.user.id;
-      const { autoTopupSettingsStore, processor } = deps();
+      const { autoTopupSettingsStore, processor, auditLogger } = deps();
 
       // If enabling either mode, verify payment method exists
       const enablingUsage = input.usage_enabled === true;
@@ -705,6 +707,9 @@ export const billingRouter = router({
           });
         }
       }
+
+      // Fetch previous settings for audit trail
+      const previous = await autoTopupSettingsStore.getByTenant(tenant);
 
       // Compute schedule_next_at if schedule is being enabled/changed
       let scheduleNextAt: string | null | undefined;
@@ -727,6 +732,39 @@ export const billingRouter = router({
       });
 
       const updated = await autoTopupSettingsStore.getByTenant(tenant);
+
+      // Emit audit log (fire-and-forget, never breaks the response)
+      if (auditLogger) {
+        try {
+          const snapshotSettings = (s: typeof previous) =>
+            s
+              ? {
+                  usage_enabled: s.usageEnabled,
+                  usage_threshold_cents: s.usageThreshold.toCents(),
+                  usage_topup_cents: s.usageTopup.toCents(),
+                  schedule_enabled: s.scheduleEnabled,
+                  schedule_amount_cents: s.scheduleAmount.toCents(),
+                  schedule_interval_hours: s.scheduleIntervalHours,
+                  schedule_next_at: s.scheduleNextAt,
+                }
+              : null;
+
+          await auditLogger.log({
+            userId: ctx.user.id,
+            authMethod: "session",
+            action: "billing.auto_topup_update",
+            resourceType: "billing",
+            resourceId: tenant,
+            details: {
+              previous: snapshotSettings(previous),
+              new: snapshotSettings(updated),
+            },
+          });
+        } catch {
+          // Audit logging must never break billing operations
+        }
+      }
+
       return {
         usage_enabled: updated?.usageEnabled ?? false,
         usage_threshold_cents: updated?.usageThreshold.toCents() ?? 500,

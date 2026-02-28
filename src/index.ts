@@ -691,6 +691,10 @@ if (process.env.NODE_ENV !== "test") {
         }
       }
 
+      const { AuditLogger } = await import("./audit/logger.js");
+      const { DrizzleAuditLogRepository } = await import("./audit/audit-log-repository.js");
+      const billingAuditLogger = new AuditLogger(new DrizzleAuditLogRepository(getDb()));
+
       setBillingRouterDeps({
         processor,
         tenantStore,
@@ -703,6 +707,7 @@ if (process.env.NODE_ENV !== "test") {
         affiliateRepo: getAffiliateRepo(),
         payramClient,
         payramChargeStore,
+        auditLogger: billingAuditLogger,
       });
       logger.info("tRPC billing router initialized");
 
