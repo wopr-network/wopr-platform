@@ -72,6 +72,23 @@ export class Credit {
     return this.raw / (Credit.SCALE / 100);
   }
 
+  /**
+   * Convert to cents, rounded to nearest integer (Math.round).
+   * Use for display values and API responses where exact cent is needed.
+   */
+  toCentsRounded(): number {
+    return Math.round(this.raw / (Credit.SCALE / 100));
+  }
+
+  /**
+   * Convert to cents, floored to integer (Math.floor).
+   * Use when sending amounts to Stripe/Payram — floor avoids charging
+   * more than the displayed amount.
+   */
+  toCentsFloor(): number {
+    return Math.floor(this.raw / (Credit.SCALE / 100));
+  }
+
   /** Display as dollar amount with two decimal places. */
   toDisplayString(): string {
     return `$${this.toDollars().toFixed(2)}`;

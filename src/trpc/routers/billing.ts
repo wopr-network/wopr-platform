@@ -191,7 +191,7 @@ export const billingRouter = router({
       const daily_burn_cents = Math.round(totalCharge / 7);
       const runway_days = daily_burn_cents > 0 ? Math.floor(balance.toCents() / daily_burn_cents) : null;
 
-      return { tenant, balance_cents: Math.round(balance.toCents()), daily_burn_cents, runway_days };
+      return { tenant, balance_cents: balance.toCentsRounded(), daily_burn_cents, runway_days };
     }),
 
   /** Get credit transaction history for a tenant. Tenant defaults to ctx.tenantId when omitted. */
@@ -457,7 +457,7 @@ export const billingRouter = router({
       periodEnd: new Date().toISOString(),
       capabilities,
       totalCost,
-      includedCredit: Math.round(balance.toCents()),
+      includedCredit: balance.toCentsRounded(),
       amountDue: Math.max(0, totalCost - balance.toCents()),
     };
   }),

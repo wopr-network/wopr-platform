@@ -64,7 +64,7 @@ export class OnDemandSnapshotService {
     // 1. Check credit balance (must have at least 1 cent)
     const balance = await this.ledger.balance(params.tenant);
     if (balance.isNegative() || balance.isZero()) {
-      throw new InsufficientCreditsError(Math.round(balance.toCents()));
+      throw new InsufficientCreditsError(balance.toCentsRounded());
     }
 
     // 2. Check quota

@@ -67,7 +67,7 @@ export async function creditBalanceCheck(
       code: "credits_exhausted",
       needsCredits: true,
       topUpUrl: deps.topUpUrl,
-      currentBalanceCents: Math.round(balance.toCents()),
+      currentBalanceCents: balance.toCentsRounded(),
       requiredCents: required,
     };
   }
@@ -124,7 +124,7 @@ export async function debitCredits(
       const newBalance = await deps.creditLedger.balance(tenantId);
       const balanceBefore = newBalance.add(chargeCredit);
       if (balanceBefore.greaterThan(Credit.ZERO) && (newBalance.isNegative() || newBalance.isZero())) {
-        deps.onBalanceExhausted(tenantId, Math.round(newBalance.toCents()));
+        deps.onBalanceExhausted(tenantId, newBalance.toCentsRounded());
       }
     }
 
