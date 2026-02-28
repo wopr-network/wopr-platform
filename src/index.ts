@@ -46,6 +46,7 @@ import {
   getNotificationQueueStore,
   getOnboardingService,
   getOnboardingSessionRepo,
+  getOrgMemberRepo,
   getOrgMembershipRepo,
   getOrgService,
   getPool,
@@ -108,6 +109,7 @@ import {
   setOrgRouterDeps,
   setProfileRouterDeps,
   setSettingsRouterDeps,
+  setTrpcOrgMemberRepo,
 } from "./trpc/index.js";
 
 /**
@@ -837,6 +839,10 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire OrphanCleaner into NodeConnectionManager for stale container cleanup on node reboot
   initFleet();
+
+  // Wire org member repo into tRPC init synchronously before accepting requests (WOP-1129 IDOR prevention).
+  // Must be called here, not lazily, to guarantee the IDOR check always runs.
+  setTrpcOrgMemberRepo(getOrgMemberRepo());
 
   // Wire fleet tRPC router deps (storage tier procedures + bot billing)
   {

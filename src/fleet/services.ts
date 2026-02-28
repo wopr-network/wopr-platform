@@ -788,7 +788,8 @@ let _orgService: OrgService | null = null;
 
 export function getOrgMemberRepo(): IOrgMemberRepository {
   if (!_orgMemberRepo) {
-    _orgMemberRepo = new DrizzleOrgMemberRepository(getDb());
+    const repo = new DrizzleOrgMemberRepository(getDb());
+    _orgMemberRepo = repo;
   }
   return _orgMemberRepo;
 }

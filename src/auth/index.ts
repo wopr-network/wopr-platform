@@ -7,6 +7,7 @@
  */
 
 import type { Context, Next } from "hono";
+import type { IOrgMemberRepository } from "../fleet/org-member-repository.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -446,4 +447,27 @@ export function validateTenantOwnership<T>(
   }
 
   return undefined;
+}
+
+/**
+ * Validate that a user has access to the requested tenant.
+ *
+ * - If requestedTenantId is falsy or matches userId, access is allowed (personal tenant).
+ * - Otherwise, checks org membership via IOrgMemberRepository.
+ *
+ * @returns true if the user has access, false otherwise.
+ */
+export async function validateTenantAccess(
+  userId: string,
+  requestedTenantId: string | undefined,
+  orgMemberRepo: IOrgMemberRepository,
+): Promise<boolean> {
+  // No tenant requested or personal tenant — always allowed
+  if (!requestedTenantId || requestedTenantId === userId) {
+    return true;
+  }
+
+  // Check org membership
+  const member = await orgMemberRepo.findMember(requestedTenantId, userId);
+  return member !== null;
 }

@@ -12,6 +12,7 @@ import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
+import { setTrpcOrgMemberRepo } from "../trpc/init.js";
 import { setTwoFactorRouterDeps } from "../trpc/routers/two-factor.js";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,27 @@ describe("twoFactor tRPC router", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    setTrpcOrgMemberRepo({
+      findMember: async (_userId: string, orgId: string) => ({
+        id: "m1",
+        orgId,
+        userId: `user-${orgId}`,
+        role: "owner" as const,
+        joinedAt: Date.now(),
+      }),
+      listMembers: async () => [],
+      addMember: async () => {},
+      updateMemberRole: async () => {},
+      removeMember: async () => {},
+      countAdminsAndOwners: async () => 1,
+      listInvites: async () => [],
+      createInvite: async () => {},
+      findInviteById: async () => null,
+      findInviteByToken: async () => null,
+      deleteInvite: async () => {},
+      deleteAllMembers: async () => {},
+      deleteAllInvites: async () => {},
+    });
   });
 
   afterAll(async () => {

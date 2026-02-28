@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { ITenantModelSelectionRepository } from "../../db/tenant-model-selection-repository.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
+import { setTrpcOrgMemberRepo } from "../init.js";
 import { setModelSelectionRouterDeps } from "./model-selection.js";
 
 function tenantContext(overrides: Partial<TRPCContext> = {}): TRPCContext {
@@ -33,6 +34,30 @@ function makeInMemoryRepo(): ITenantModelSelectionRepository {
 }
 
 describe("tRPC model selection router", () => {
+  beforeAll(() => {
+    setTrpcOrgMemberRepo({
+      findMember: async () => ({
+        id: "m1",
+        orgId: "test-tenant",
+        userId: "test-user",
+        role: "owner" as const,
+        joinedAt: Date.now(),
+      }),
+      listMembers: async () => [],
+      addMember: async () => {},
+      updateMemberRole: async () => {},
+      removeMember: async () => {},
+      countAdminsAndOwners: async () => 1,
+      listInvites: async () => [],
+      createInvite: async () => {},
+      findInviteById: async () => null,
+      findInviteByToken: async () => null,
+      deleteInvite: async () => {},
+      deleteAllMembers: async () => {},
+      deleteAllInvites: async () => {},
+    });
+  });
+
   beforeEach(() => {
     const repo = makeInMemoryRepo();
     setModelSelectionRouterDeps({ getRepository: () => repo });

@@ -79,6 +79,7 @@ export type AppRouter = typeof appRouter;
 
 // Re-export context type for adapter usage
 export type { TRPCContext } from "./init.js";
+export { setTrpcOrgMemberRepo } from "./init.js";
 export { setAccountRouterDeps } from "./routers/account.js";
 export { setAddonRouterDeps } from "./routers/addons.js";
 export { setAdminRouterDeps } from "./routers/admin.js";

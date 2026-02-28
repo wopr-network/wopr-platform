@@ -132,7 +132,7 @@ app.use(
     origin: (process.env.UI_ORIGIN || "http://localhost:3001").split(",").map((s) => s.trim()),
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "x-tenant-id"],
   }),
 );
 app.use("/*", secureHeaders());
@@ -365,9 +365,10 @@ async function createTRPCContext(req: Request): Promise<TRPCContext> {
         const roles: string[] = [];
         if (sessionUser.role) roles.push(sessionUser.role);
         user = { id: sessionUser.id, roles };
-        // For session-cookie users, userId === tenantId (single-user tenant model).
-        // This allows tenantProcedure to work without a bearer token.
-        tenantId = sessionUser.id;
+        // Read x-tenant-id header for org tenant switching.
+        // Default to user's personal tenant if missing or empty.
+        const requestedTenantId = req.headers.get("x-tenant-id") || sessionUser.id;
+        tenantId = requestedTenantId;
       }
     } catch {
       // Session resolution failed — user stays undefined

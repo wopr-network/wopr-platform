@@ -7,6 +7,8 @@
 
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { AuthUser } from "../auth/index.js";
+import { validateTenantAccess } from "../auth/index.js";
+import type { IOrgMemberRepository } from "../fleet/org-member-repository.js";
 
 // ---------------------------------------------------------------------------
 // Context
@@ -24,6 +26,17 @@ export interface TRPCContext {
 // ---------------------------------------------------------------------------
 
 const t = initTRPC.context<TRPCContext>().create();
+
+// ---------------------------------------------------------------------------
+// Org member repo injection (for tenant access validation)
+// ---------------------------------------------------------------------------
+
+let _orgMemberRepo: IOrgMemberRepository | null = null;
+
+/** Wire the org member repository for tRPC tenant validation. Called from services.ts on startup. */
+export function setTrpcOrgMemberRepo(repo: IOrgMemberRepository): void {
+  _orgMemberRepo = repo;
+}
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
@@ -62,14 +75,30 @@ export const adminProcedure = t.procedure.use(isAuthed).use(isAdmin);
 /**
  * Combined middleware that enforces authentication + tenant context.
  * Narrows both `user` (non-optional) and `tenantId` (non-optional string).
+ * Also validates that session-cookie users have access to the claimed tenant (IDOR prevention).
  */
-const isAuthedWithTenant = t.middleware(({ ctx, next }) => {
+const isAuthedWithTenant = t.middleware(async ({ ctx, next }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Authentication required" });
   }
   if (!ctx.tenantId) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Tenant context required" });
   }
+
+  // Validate tenant access for session-cookie users (bearer token users have server-assigned tenantId).
+  if (!ctx.user.id.startsWith("token:")) {
+    if (!_orgMemberRepo) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Server misconfiguration: org member repository not wired",
+      });
+    }
+    const allowed = await validateTenantAccess(ctx.user.id, ctx.tenantId, _orgMemberRepo);
+    if (!allowed) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this tenant" });
+    }
+  }
+
   return next({ ctx: { user: ctx.user, tenantId: ctx.tenantId } });
 });
 
