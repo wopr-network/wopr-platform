@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text } from "drizzle-orm/pg-core";
 
 /**
  * Affiliate codes — one per tenant, generated lazily on first request.
@@ -26,6 +26,8 @@ export const affiliateReferrals = pgTable(
     firstPurchaseAt: text("first_purchase_at"),
     matchAmountCents: integer("match_amount_cents"),
     matchedAt: text("matched_at"),
+    payoutSuppressed: boolean("payout_suppressed").notNull().default(false),
+    suppressionReason: text("suppression_reason"),
     signupIp: text("signup_ip"),
     signupEmail: text("signup_email"),
   },

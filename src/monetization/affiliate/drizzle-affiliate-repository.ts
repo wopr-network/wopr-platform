@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, count, eq, isNotNull, isNull, sql, sum } from "drizzle-orm";
+import { and, count, eq, gte, isNotNull, isNull, sql, sum } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateCodes, affiliateReferrals } from "../../db/schema/affiliate.js";
 
@@ -22,6 +22,8 @@ export interface AffiliateReferral {
   firstPurchaseAt: string | null;
   matchAmountCents: number | null;
   matchedAt: string | null;
+  payoutSuppressed: boolean;
+  suppressionReason: string | null;
   signupIp: string | null;
   signupEmail: string | null;
 }
@@ -72,6 +74,15 @@ export interface IAffiliateRepository {
 
   /** Look up a referral by the referred tenant. Returns null if not referred. */
   getReferralByReferred(referredTenantId: string): Promise<AffiliateReferral | null>;
+
+  /** Count non-suppressed payouts for a referrer in the last 30 days. */
+  getPayoutCount30d(referrerTenantId: string): Promise<number>;
+
+  /** Sum non-suppressed payout amounts (cents) for a referrer in the last 30 days. */
+  getPayoutTotal30d(referrerTenantId: string): Promise<number>;
+
+  /** Record a suppressed payout on a referral (no credits granted). */
+  recordSuppression(referredTenantId: string, reason: string): Promise<void>;
 }
 
 /** Generate a random 6-char lowercase alphanumeric code. */
@@ -185,6 +196,8 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       firstPurchaseAt: row.firstPurchaseAt,
       matchAmountCents: row.matchAmountCents,
       matchedAt: row.matchedAt,
+      payoutSuppressed: row.payoutSuppressed,
+      suppressionReason: row.suppressionReason,
       signupIp: row.signupIp ?? null,
       signupEmail: row.signupEmail ?? null,
     }));
@@ -221,6 +234,8 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       firstPurchaseAt: row.firstPurchaseAt,
       matchAmountCents: row.matchAmountCents,
       matchedAt: row.matchedAt,
+      payoutSuppressed: row.payoutSuppressed,
+      suppressionReason: row.suppressionReason,
       signupIp: row.signupIp ?? null,
       signupEmail: row.signupEmail ?? null,
     };
@@ -273,6 +288,8 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       firstPurchaseAt: row.firstPurchaseAt,
       matchAmountCents: row.matchAmountCents,
       matchedAt: row.matchedAt,
+      payoutSuppressed: row.payoutSuppressed,
+      suppressionReason: row.suppressionReason,
       signupIp: row.signupIp ?? null,
       signupEmail: row.signupEmail ?? null,
     }));
@@ -302,9 +319,58 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       firstPurchaseAt: row.firstPurchaseAt,
       matchAmountCents: row.matchAmountCents,
       matchedAt: row.matchedAt,
+      payoutSuppressed: row.payoutSuppressed,
+      suppressionReason: row.suppressionReason,
       signupIp: row.signupIp ?? null,
       signupEmail: row.signupEmail ?? null,
     };
+  }
+
+  async getPayoutCount30d(referrerTenantId: string): Promise<number> {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const row = (
+      await this.db
+        .select({ total: count() })
+        .from(affiliateReferrals)
+        .where(
+          and(
+            eq(affiliateReferrals.referrerTenantId, referrerTenantId),
+            isNotNull(affiliateReferrals.matchedAt),
+            gte(affiliateReferrals.matchedAt, thirtyDaysAgo),
+            eq(affiliateReferrals.payoutSuppressed, false),
+          ),
+        )
+    )[0];
+    return row?.total ?? 0;
+  }
+
+  async getPayoutTotal30d(referrerTenantId: string): Promise<number> {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const row = (
+      await this.db
+        .select({ total: sum(affiliateReferrals.matchAmountCents) })
+        .from(affiliateReferrals)
+        .where(
+          and(
+            eq(affiliateReferrals.referrerTenantId, referrerTenantId),
+            isNotNull(affiliateReferrals.matchedAt),
+            gte(affiliateReferrals.matchedAt, thirtyDaysAgo),
+            eq(affiliateReferrals.payoutSuppressed, false),
+          ),
+        )
+    )[0];
+    return Number(row?.total ?? 0);
+  }
+
+  async recordSuppression(referredTenantId: string, reason: string): Promise<void> {
+    await this.db
+      .update(affiliateReferrals)
+      .set({
+        payoutSuppressed: true,
+        suppressionReason: reason,
+        matchedAt: sql`now()`,
+      })
+      .where(eq(affiliateReferrals.referredTenantId, referredTenantId));
   }
 
   async recordMatch(referredTenantId: string, amountCents: number): Promise<void> {
