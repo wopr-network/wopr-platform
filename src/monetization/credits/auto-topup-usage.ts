@@ -31,15 +31,13 @@ export async function maybeTriggerUsageTopup(deps: UsageTopupDeps, tenantId: str
     if (statusErr) return;
   }
 
-  // 2. Check in-flight guard (idempotency)
-  if (settings.usageChargeInFlight) return;
-
-  // 3. Check balance vs threshold
+  // 2. Check balance vs threshold
   const balance = await deps.creditLedger.balance(tenantId);
   if (!balance.lessThan(settings.usageThreshold)) return;
 
-  // 4. Set in-flight flag
-  await deps.settingsRepo.setUsageChargeInFlight(tenantId, true);
+  // 3. Atomic in-flight guard — compare-and-swap prevents duplicate charges
+  const acquired = await deps.settingsRepo.tryAcquireUsageInFlight(tenantId);
+  if (!acquired) return;
 
   try {
     // 5. Execute charge
