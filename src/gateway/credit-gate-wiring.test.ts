@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { Credit } from "../monetization/credit.js";
+import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { type CreditGateDeps, debitCredits } from "./credit-gate.js";
 
 describe("onDebitComplete wiring", () => {
@@ -8,7 +9,7 @@ describe("onDebitComplete wiring", () => {
     const balance = vi.fn().mockResolvedValue(Credit.fromCents(500));
     const debit = vi.fn().mockResolvedValue(undefined);
     const deps: CreditGateDeps = {
-      creditLedger: { balance, debit } as any,
+      creditLedger: { balance, debit } as unknown as ICreditLedger,
       topUpUrl: "/billing",
       onDebitComplete,
     };
@@ -24,7 +25,7 @@ describe("onDebitComplete wiring", () => {
     const { InsufficientBalanceError } = await import("../monetization/credits/credit-ledger.js");
     const debit = vi.fn().mockRejectedValue(new InsufficientBalanceError(Credit.fromCents(0), Credit.fromCents(100)));
     const deps: CreditGateDeps = {
-      creditLedger: { debit } as any,
+      creditLedger: { debit } as unknown as ICreditLedger,
       topUpUrl: "/billing",
       onDebitComplete,
     };

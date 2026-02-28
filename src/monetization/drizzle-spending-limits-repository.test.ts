@@ -137,14 +137,14 @@ describe("DrizzleSpendingLimitsRepository", () => {
     const currentTtsSpend = 45;
 
     // Global hard cap exceeded
-    expect(currentGlobalSpend).toBeGreaterThan(limits.global.hardCap!);
+    expect(currentGlobalSpend).toBeGreaterThan(limits.global.hardCap ?? 0);
 
     // Global alert threshold exceeded
-    expect(currentGlobalSpend).toBeGreaterThan(limits.global.alertAt!);
+    expect(currentGlobalSpend).toBeGreaterThan(limits.global.alertAt ?? 0);
 
     // Per-capability: TTS alert exceeded but hard cap not exceeded
-    expect(currentTtsSpend).toBeGreaterThan(limits.perCapability.tts.alertAt!);
-    expect(currentTtsSpend).toBeLessThan(limits.perCapability.tts.hardCap!);
+    expect(currentTtsSpend).toBeGreaterThan(limits.perCapability.tts?.alertAt ?? 0);
+    expect(currentTtsSpend).toBeLessThan(limits.perCapability.tts?.hardCap ?? Number.POSITIVE_INFINITY);
 
     // Tenant with no limits — enforcement should be permissive (nulls)
     const noLimits = await repo.get("tenant-no-limits");
