@@ -216,14 +216,21 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
                 "Daily infrastructure add-on charges",
                 `runtime-addon:${cfg.date}:${tenantId}`,
               );
-            } else if (currentBalance.greaterThan(Credit.ZERO)) {
-              await cfg.ledger.debit(
-                tenantId,
-                currentBalance,
-                "addon",
-                "Partial add-on charges (balance exhausted)",
-                `runtime-addon:${cfg.date}:${tenantId}`,
-              );
+            } else {
+              // Partial debit — take what's left, then suspend
+              if (currentBalance.greaterThan(Credit.ZERO)) {
+                await cfg.ledger.debit(
+                  tenantId,
+                  currentBalance,
+                  "addon",
+                  "Partial add-on charges (balance exhausted)",
+                  `runtime-addon:${cfg.date}:${tenantId}`,
+                );
+              }
+              if (!result.suspended.includes(tenantId)) {
+                result.suspended.push(tenantId);
+                if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+              }
             }
           }
         }

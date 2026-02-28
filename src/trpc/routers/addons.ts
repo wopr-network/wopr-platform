@@ -45,7 +45,7 @@ export const addonRouter = router({
 
   /** Enable an add-on. */
   enable: protectedProcedure
-    .input(z.object({ key: z.enum(ADDON_KEYS as unknown as [string, ...string[]]) }))
+    .input(z.object({ key: z.enum([...ADDON_KEYS] as [AddonKey, ...AddonKey[]]) }))
     .mutation(async ({ input, ctx }) => {
       const tenantId = ctx.tenantId ?? ctx.user.id;
       const { addonRepo } = getDeps();
@@ -55,7 +55,7 @@ export const addonRouter = router({
 
   /** Disable an add-on. */
   disable: protectedProcedure
-    .input(z.object({ key: z.enum(ADDON_KEYS as unknown as [string, ...string[]]) }))
+    .input(z.object({ key: z.enum([...ADDON_KEYS] as [AddonKey, ...AddonKey[]]) }))
     .mutation(async ({ input, ctx }) => {
       const tenantId = ctx.tenantId ?? ctx.user.id;
       const { addonRepo } = getDeps();

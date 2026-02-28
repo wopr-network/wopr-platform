@@ -7,7 +7,7 @@ import { ADDON_KEYS } from "./addon-catalog.js";
 export interface TenantAddon {
   tenantId: string;
   addonKey: AddonKey;
-  enabledAt: string;
+  enabledAt: Date;
 }
 
 export interface ITenantAddonRepository {
