@@ -157,6 +157,8 @@ describe("tRPC appRouter", () => {
       findInviteById: async () => null,
       findInviteByToken: async () => null,
       deleteInvite: async () => {},
+      deleteAllMembers: async () => {},
+      deleteAllInvites: async () => {},
     });
   });
 

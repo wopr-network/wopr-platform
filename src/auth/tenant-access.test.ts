@@ -15,6 +15,8 @@ function mockOrgMemberRepo(overrides: Partial<IOrgMemberRepository> = {}): IOrgM
     findInviteById: vi.fn().mockResolvedValue(null),
     findInviteByToken: vi.fn().mockResolvedValue(null),
     deleteInvite: vi.fn().mockResolvedValue(undefined),
+    deleteAllMembers: vi.fn().mockResolvedValue(undefined),
+    deleteAllInvites: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

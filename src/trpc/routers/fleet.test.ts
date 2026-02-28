@@ -5,7 +5,7 @@
  * the router directly via appRouter.createCaller(ctx).
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
@@ -15,6 +15,7 @@ import type { BotInstance } from "../../fleet/repository-types.js";
 import { Credit } from "../../monetization/credit.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
+import { setTrpcOrgMemberRepo } from "../init.js";
 import { setFleetRouterDeps } from "./fleet.js";
 
 // ---------------------------------------------------------------------------
@@ -132,6 +133,30 @@ const mockBotInstanceRepo: IBotInstanceRepository = {
   updateBillingState: vi.fn(),
   delete: vi.fn(),
 } as unknown as IBotInstanceRepository;
+
+beforeAll(() => {
+  setTrpcOrgMemberRepo({
+    findMember: async () => ({
+      id: "m1",
+      orgId: "test-tenant",
+      userId: "test-user",
+      role: "owner" as const,
+      joinedAt: Date.now(),
+    }),
+    listMembers: async () => [],
+    addMember: async () => {},
+    updateMemberRole: async () => {},
+    removeMember: async () => {},
+    countAdminsAndOwners: async () => 1,
+    listInvites: async () => [],
+    createInvite: async () => {},
+    findInviteById: async () => null,
+    findInviteByToken: async () => null,
+    deleteInvite: async () => {},
+    deleteAllMembers: async () => {},
+    deleteAllInvites: async () => {},
+  });
+});
 
 beforeEach(() => {
   fleetMock = createFleetMock();

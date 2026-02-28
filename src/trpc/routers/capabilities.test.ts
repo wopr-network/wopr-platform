@@ -12,6 +12,7 @@ import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
+import { setTrpcOrgMemberRepo } from "../init.js";
 import { setCapabilitiesRouterDeps } from "./capabilities.js";
 
 function ctxForTenant(tenantId: string): TRPCContext {
@@ -29,6 +30,27 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  setTrpcOrgMemberRepo({
+    findMember: async (_userId: string, orgId: string) => ({
+      id: "m1",
+      orgId,
+      userId: `user-${orgId}`,
+      role: "owner" as const,
+      joinedAt: Date.now(),
+    }),
+    listMembers: async () => [],
+    addMember: async () => {},
+    updateMemberRole: async () => {},
+    removeMember: async () => {},
+    countAdminsAndOwners: async () => 1,
+    listInvites: async () => [],
+    createInvite: async () => {},
+    findInviteById: async () => null,
+    findInviteByToken: async () => null,
+    deleteInvite: async () => {},
+    deleteAllMembers: async () => {},
+    deleteAllInvites: async () => {},
+  });
 });
 
 afterAll(async () => {
