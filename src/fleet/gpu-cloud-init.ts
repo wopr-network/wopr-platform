@@ -102,6 +102,12 @@ runcmd:
     PLATFORM_URL=${baseUrl}
     GPU_NODE_SECRET=${secret}
     ENVFILE
+  - |
+    # Authenticate with registries before pulling (WOP-1186)
+    if [ -n "\${REGISTRY_PASSWORD}" ] && [ -n "\${REGISTRY_USERNAME}" ]; then
+      echo "\${REGISTRY_PASSWORD}" | docker login ghcr.io -u "\${REGISTRY_USERNAME}" --password-stdin
+      echo "\${REGISTRY_PASSWORD}" | docker login -u "\${REGISTRY_USERNAME}" --password-stdin
+    fi
   - cd /opt/wopr-gpu && docker compose -f docker-compose.gpu.yml up -d
   - ${pingCmd("starting_services")}
   - ${pingCmd("done")}

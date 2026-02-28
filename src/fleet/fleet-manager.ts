@@ -24,7 +24,9 @@ export class FleetManager {
   private async withLock<T>(botId: string, fn: () => Promise<T>): Promise<T> {
     const prev = this.locks.get(botId) ?? Promise.resolve();
     let resolve!: () => void;
-    const next = new Promise<void>((r) => (resolve = r));
+    const next = new Promise<void>((r) => {
+      resolve = r;
+    });
     this.locks.set(botId, next);
     try {
       await prev;
