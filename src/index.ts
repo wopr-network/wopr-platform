@@ -385,8 +385,32 @@ if (process.env.NODE_ENV !== "test") {
       onDebitComplete: (tenantId) => {
         if (usageTopupCallback) usageTopupCallback(tenantId);
       },
-      onBalanceExhausted: (tenantId) => {
-        logger.warn("Tenant balance exhausted", { tenantId });
+      onBalanceExhausted: (tenantId, newBalanceCents) => {
+        logger.warn("Credit balance exhausted via gateway", { tenantId, newBalanceCents });
+
+        // Fire-and-forget: look up email and enqueue notification
+        (async () => {
+          try {
+            // raw SQL: better-auth manages the "user" table outside Drizzle
+            const { rows } = await getPool().query<{ email: string }>(
+              `SELECT email FROM "user" WHERE id = $1 LIMIT 1`,
+              [tenantId],
+            );
+            const email = rows[0]?.email;
+            if (!email) return;
+
+            const notificationService = new NotificationService(
+              getNotificationQueueStore(),
+              process.env.APP_BASE_URL ?? "https://app.wopr.bot",
+            );
+            notificationService.notifyCreditsDepeleted(tenantId, email);
+          } catch (err) {
+            logger.error("Failed to send balance exhausted notification", {
+              tenantId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
       },
     });
 

@@ -136,6 +136,8 @@ export interface GatewayConfig {
   spendingCapStore?: import("./spending-cap-store.js").ISpendingCapStore;
   /** Callback when circuit breaker trips (for notifications/logging). */
   onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
+  /** Called when a debit causes balance to cross the zero threshold. */
+  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
   /** Optional MetricsCollector for observability (WOP-825) */
   metrics?: import("../observability/metrics.js").MetricsCollector;
   /** Called after every successful credit debit (fire-and-forget auto-topup trigger). */
