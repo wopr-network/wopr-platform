@@ -16,7 +16,13 @@ import {
   lowBalanceTemplate,
 } from "./templates.js";
 
-export type BillingEmailType = "credit-purchase" | "low-balance" | "bot-suspended" | "bot-destruction" | "data-deleted";
+export type BillingEmailType =
+  | "credit-purchase"
+  | "low-balance"
+  | "bot-suspended"
+  | "bot-destruction"
+  | "data-deleted"
+  | "spend-alert";
 
 export interface BillingEmailServiceConfig {
   billingEmailRepo: IBillingEmailRepository;

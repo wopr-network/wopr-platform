@@ -85,6 +85,20 @@ export class NotificationService {
     });
   }
 
+  notifySpendThresholdAlert(
+    tenantId: string,
+    email: string,
+    currentSpendDollars: string,
+    alertAtDollars: string,
+  ): void {
+    this.queue.enqueue(tenantId, "spend-alert", {
+      email,
+      currentSpendDollars,
+      alertAtDollars,
+      creditsUrl: this.creditsUrl(),
+    });
+  }
+
   notifyCreditPurchaseReceipt(tenantId: string, email: string, amountDollars: string, newBalanceDollars: string): void {
     this.queue.enqueue(tenantId, "credit-purchase-receipt", {
       email,

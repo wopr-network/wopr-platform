@@ -43,4 +43,6 @@ export interface ProtocolDeps {
   onDebitComplete?: (tenantId: string) => void;
   /** Called when a debit causes balance to cross the zero threshold. */
   onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
+  /** Called after every successful credit debit to check spend alert thresholds. */
+  onSpendAlertCrossed?: (tenantId: string) => void;
 }

@@ -412,6 +412,47 @@ if (process.env.NODE_ENV !== "test") {
           }
         })();
       },
+      onSpendAlertCrossed: (tenantId) => {
+        // Fire-and-forget: check if monthly spend has crossed alertAt threshold
+        (async () => {
+          try {
+            const { checkSpendAlert } = await import("./gateway/spend-alert.js");
+            const { DrizzleSpendingLimitsRepository } = await import(
+              "./monetization/drizzle-spending-limits-repository.js"
+            );
+            const { DrizzleSpendingCapStore } = await import("./fleet/spending-cap-repository.js");
+            const { DrizzleBillingEmailRepository } = await import("./email/drizzle-billing-email-repository.js");
+
+            const notificationService = new NotificationService(
+              getNotificationQueueStore(),
+              process.env.APP_BASE_URL ?? "https://app.wopr.bot",
+            );
+
+            await checkSpendAlert(
+              {
+                spendingLimitsRepo: new DrizzleSpendingLimitsRepository(getDb()),
+                spendingCapStore: new DrizzleSpendingCapStore(getDb()),
+                billingEmailRepo: new DrizzleBillingEmailRepository(getDb()),
+                notificationService,
+                resolveEmail: async (tid) => {
+                  // raw SQL: better-auth manages the "user" table outside Drizzle
+                  const { rows } = await getPool().query<{ email: string }>(
+                    `SELECT email FROM "user" WHERE id = $1 LIMIT 1`,
+                    [tid],
+                  );
+                  return rows[0]?.email ?? null;
+                },
+              },
+              tenantId,
+            );
+          } catch (err) {
+            logger.error("Spend alert check failed", {
+              tenantId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
+      },
     });
 
     logger.info("Gateway mounted at /v1");

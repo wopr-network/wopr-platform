@@ -23,6 +23,8 @@ export interface CreditGateDeps {
   onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
   /** Called after every successful debit (fire-and-forget auto-topup trigger). */
   onDebitComplete?: (tenantId: string) => void;
+  /** Called after every successful debit to check spend alert thresholds. */
+  onSpendAlertCrossed?: (tenantId: string) => void;
   metrics?: import("../observability/metrics.js").MetricsCollector;
 }
 
@@ -129,6 +131,11 @@ export async function debitCredits(
     // Fire-and-forget: check if usage-based auto-topup should trigger
     if (deps.onDebitComplete) {
       deps.onDebitComplete(tenantId);
+    }
+
+    // Fire-and-forget: check if spend has crossed alertAt threshold
+    if (deps.onSpendAlertCrossed) {
+      deps.onSpendAlertCrossed(tenantId);
     }
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {

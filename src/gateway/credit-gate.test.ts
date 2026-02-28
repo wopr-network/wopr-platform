@@ -203,6 +203,22 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
     expect(onBalanceExhausted).toHaveBeenCalledWith("t1", -2);
   });
 
+  it("calls onSpendAlertCrossed after successful debit", async () => {
+    const ledger = new CreditLedger(db);
+    await ledger.credit("t1", Credit.fromCents(500), "purchase", "setup");
+
+    const onSpendAlertCrossed = vi.fn();
+    await debitCredits(
+      { creditLedger: ledger, topUpUrl: "/billing", onSpendAlertCrossed },
+      "t1",
+      0.05,
+      1.0,
+      "chat-completions",
+      "openrouter",
+    );
+    expect(onSpendAlertCrossed).toHaveBeenCalledWith("t1");
+  });
+
   it("does NOT fire onBalanceExhausted when balance was already negative before debit", async () => {
     const ledger = new CreditLedger(db);
     // Start with negative balance: credit 5, debit 10 → balance = -5
