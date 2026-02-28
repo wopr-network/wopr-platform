@@ -625,6 +625,9 @@ if (process.env.NODE_ENV !== "test") {
         const { DrizzleAdminAuditLogRepository } = await import("./admin/admin-audit-log-repository.js");
         const { AdminUserStore } = await import("./admin/users/user-store.js");
         const { BotBilling } = await import("./monetization/credits/bot-billing.js");
+        const { DrizzleAffiliateFraudAdminRepository } = await import(
+          "./monetization/affiliate/affiliate-admin-repository.js"
+        );
         setAdminRouterDeps({
           getAuditLog: () => new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
           getCreditLedger: () => getCreditLedger(),
@@ -633,6 +636,7 @@ if (process.env.NODE_ENV !== "test") {
           getBotBilling: () => new BotBilling(getDb()),
           getAutoTopupSettingsRepo: () => getAutoTopupSettingsRepo(),
           detachAllPaymentMethods: (tenantId: string) => detachAllPaymentMethods(stripe, tenantStore, tenantId),
+          getAffiliateFraudAdminRepo: () => new DrizzleAffiliateFraudAdminRepository(getDb()),
         });
         logger.info("tRPC admin router initialized");
       }
