@@ -292,7 +292,7 @@ export const platformRateLimitRules: RateLimitRule[] = [
   { method: "POST", pathPrefix: "/api/billing/webhook", config: WEBHOOK_LIMIT, scope: "api:billing-webhook" },
 
   // Billing checkout & portal
-  { method: "POST", pathPrefix: "/api/billing/checkout", config: BILLING_LIMIT, scope: "api:billing-checkout" },
+  { method: "POST", pathPrefix: "/api/billing/credits/checkout", config: BILLING_LIMIT, scope: "api:billing-checkout" },
   { method: "POST", pathPrefix: "/api/billing/portal", config: BILLING_LIMIT, scope: "api:billing-portal" },
 
   // Fleet create
