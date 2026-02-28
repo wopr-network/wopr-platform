@@ -460,7 +460,7 @@ export const billingRouter = router({
       capabilities,
       totalCost,
       includedCredit: balance.toCentsRounded(),
-      amountDue: Math.max(0, totalCost - balance.toCents()),
+      amountDue: Math.max(0, totalCost - balance.toCentsFloor()),
     };
   }),
 
