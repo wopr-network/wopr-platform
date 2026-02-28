@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { BudgetChecker, type SpendLimits } from "./budget-checker.js";
 
 const FREE_LIMITS: SpendLimits = {
@@ -52,8 +53,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 0.3,
-        charge: 0.6,
+        cost: Credit.fromDollars(0.3).toRaw(),
+        charge: Credit.fromDollars(0.6).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -71,8 +72,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 2.5,
-        charge: 5.0,
+        cost: Credit.fromDollars(2.5).toRaw(),
+        charge: Credit.fromDollars(5.0).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -112,8 +113,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 0.3,
-        charge: 0.6,
+        cost: Credit.fromDollars(0.3).toRaw(),
+        charge: Credit.fromDollars(0.6).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -136,8 +137,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 0.1,
-        charge: 0.2,
+        cost: Credit.fromDollars(0.1).toRaw(),
+        charge: Credit.fromDollars(0.2).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -149,8 +150,8 @@ describe("BudgetChecker", () => {
         capability: "chat",
         provider: "replicate",
         eventCount: 1,
-        totalCost: 0.15,
-        totalCharge: 0.3,
+        totalCost: Credit.fromDollars(0.15).toRaw(),
+        totalCharge: Credit.fromDollars(0.3).toRaw(),
         totalDuration: 0,
         windowStart: oneHourAgo,
         windowEnd: now,
@@ -166,8 +167,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 0.25,
-        charge: 0.5,
+        cost: Credit.fromDollars(0.25).toRaw(),
+        charge: Credit.fromDollars(0.5).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -183,8 +184,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 0.24,
-        charge: 0.49,
+        cost: Credit.fromDollars(0.24).toRaw(),
+        charge: Credit.fromDollars(0.49).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -202,8 +203,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-old",
         tenant: "tenant-1",
-        cost: 10,
-        charge: 20,
+        cost: Credit.fromDollars(10).toRaw(),
+        charge: Credit.fromDollars(20).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: twoHoursAgo,
@@ -229,8 +230,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 0.3,
-        charge: 0.6,
+        cost: Credit.fromDollars(0.3).toRaw(),
+        charge: Credit.fromDollars(0.6).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
@@ -252,8 +253,8 @@ describe("BudgetChecker", () => {
       await db.insert(meterEvents).values({
         id: "evt-1",
         tenant: "tenant-1",
-        cost: 0.3,
-        charge: 0.6,
+        cost: Credit.fromDollars(0.3).toRaw(),
+        charge: Credit.fromDollars(0.6).toRaw(),
         capability: "chat",
         provider: "replicate",
         timestamp: now,
