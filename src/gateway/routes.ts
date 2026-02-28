@@ -13,6 +13,7 @@ import { withMargin } from "../monetization/adapters/types.js";
 import { audioBodyLimit, llmBodyLimit, mediaBodyLimit, webhookBodyLimit } from "./body-limit.js";
 import { capabilityRateLimit } from "./capability-rate-limit.js";
 import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "./circuit-breaker.js";
+import { hydrateSpendingCaps } from "./hydrate-spending-caps.js";
 import { modelsHandler } from "./models.js";
 import { createAnthropicRoutes } from "./protocol/anthropic.js";
 import type { ProtocolDeps } from "./protocol/deps.js";
@@ -122,6 +123,11 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
 
   // All remaining gateway routes require service key authentication via Bearer
   gateway.use("/*", serviceKeyAuth(config.resolveServiceKey));
+
+  // 0. Hydrate spending caps from DB (must run before spendingCapCheck)
+  if (config.spendingLimitsRepo) {
+    gateway.use("/*", hydrateSpendingCaps(config.spendingLimitsRepo));
+  }
 
   // 1. Spending cap enforcement — reject if over daily/monthly cap before consuming rate limit tokens
   if (config.spendingCapStore) {
