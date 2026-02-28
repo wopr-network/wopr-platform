@@ -1,4 +1,4 @@
-import { bigint, index, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const platformApiKeys = pgTable(
   "platform_api_keys",
@@ -19,7 +19,7 @@ export const platformApiKeys = pgTable(
     createdAt: bigint("created_at", { mode: "number" }).notNull(),
   },
   (table) => [
-    index("idx_platform_api_keys_hash").on(table.keyHash),
+    uniqueIndex("idx_platform_api_keys_hash").on(table.keyHash),
     index("idx_platform_api_keys_user").on(table.userId),
   ],
 );
