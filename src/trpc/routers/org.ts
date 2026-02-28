@@ -6,6 +6,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { IAuthUserRepository } from "../../db/auth-user-repository.js";
 import type { OrgService } from "../../org/org-service.js";
 import { protectedProcedure, router } from "../init.js";
 
@@ -15,6 +16,7 @@ import { protectedProcedure, router } from "../init.js";
 
 export type OrgRouterDeps = {
   orgService: OrgService;
+  authUserRepo: IAuthUserRepository;
 };
 
 let _deps: OrgRouterDeps | null = null;
@@ -31,6 +33,14 @@ export function setOrgRouterDeps(deps: OrgRouterDeps): void {
 function deps(): OrgRouterDeps {
   if (!_deps) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Org router not initialized" });
   return _deps;
+}
+
+const SUPPORTED_OAUTH_PROVIDERS = new Set(["github", "discord", "google"]);
+
+function getOauthConnectUrl(provider: string): string {
+  const baseUrl = process.env.BETTER_AUTH_URL || "http://localhost:3100";
+  const callbackUrl = process.env.UI_ORIGIN || "http://localhost:3001";
+  return `${baseUrl}/api/auth/sign-in/social?provider=${encodeURIComponent(provider)}&callbackURL=${encodeURIComponent(callbackUrl)}/settings`;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,21 +151,44 @@ export const orgRouter = router({
       return { transferred: true };
     }),
 
-  /** Connect an OAuth provider to the organization/user. */
+  /** Connect an OAuth provider — returns the Better Auth OAuth URL for the UI to redirect to. */
   connectOauthProvider: protectedProcedure
     .input(z.object({ provider: z.string().min(1).max(64) }))
     .mutation(({ input }) => {
       deps();
-      // WOP-815: wire to better-auth OAuth linking
-      return { connected: true, provider: input.provider };
+      if (!SUPPORTED_OAUTH_PROVIDERS.has(input.provider)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Unsupported OAuth provider: ${input.provider}. Supported: ${[...SUPPORTED_OAUTH_PROVIDERS].join(", ")}`,
+        });
+      }
+      return { url: getOauthConnectUrl(input.provider), provider: input.provider };
     }),
 
-  /** Disconnect an OAuth provider from the organization/user. */
+  /** Disconnect an OAuth provider from the authenticated user. */
   disconnectOauthProvider: protectedProcedure
     .input(z.object({ provider: z.string().min(1).max(64) }))
-    .mutation(({ input }) => {
-      deps();
-      // WOP-815: wire to better-auth OAuth unlinking
+    .mutation(async ({ input, ctx }) => {
+      const { authUserRepo } = deps();
+      const accounts = await authUserRepo.listAccounts(ctx.user.id);
+      const hasProvider = accounts.some((a) => a.providerId === input.provider);
+      if (!hasProvider) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: `OAuth provider "${input.provider}" is not linked to your account`,
+        });
+      }
+      // Prevent lockout: must have at least one other account after unlinking
+      if (accounts.length <= 1) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot disconnect your only authentication method. Add another login method first.",
+        });
+      }
+      const removed = await authUserRepo.unlinkAccount(ctx.user.id, input.provider);
+      if (!removed) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to disconnect provider" });
+      }
       return { disconnected: true, provider: input.provider };
     }),
 });

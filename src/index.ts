@@ -510,7 +510,10 @@ if (process.env.NODE_ENV !== "test") {
   });
 
   // Wire org tRPC router deps
-  setOrgRouterDeps({ orgService: getOrgService() });
+  {
+    const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
+    setOrgRouterDeps({ orgService: getOrgService(), authUserRepo: new BetterAuthUserRepository(getPool()) });
+  }
 
   // Wire capabilities tRPC router deps (WOP-915: +listCapabilitySettings, +updateCapabilitySettings)
   {

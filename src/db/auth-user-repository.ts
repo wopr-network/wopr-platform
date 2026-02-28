@@ -15,10 +15,18 @@ export interface AuthUser {
   image: string | null;
 }
 
+export interface LinkedAccount {
+  id: string;
+  providerId: string;
+  accountId: string;
+}
+
 export interface IAuthUserRepository {
   getUser(userId: string): Promise<AuthUser | null>;
   updateUser(userId: string, data: { name?: string; image?: string | null }): Promise<AuthUser>;
   changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean>;
+  listAccounts(userId: string): Promise<LinkedAccount[]>;
+  unlinkAccount(userId: string, providerId: string): Promise<boolean>;
 }
 
 export class BetterAuthUserRepository implements IAuthUserRepository {
@@ -71,5 +79,26 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
       userId,
     ]);
     return true;
+  }
+
+  async listAccounts(userId: string): Promise<LinkedAccount[]> {
+    // raw SQL: better-auth manages its own schema outside Drizzle
+    const { rows } = await this.pool.query(`SELECT id, provider_id, account_id FROM account WHERE user_id = $1`, [
+      userId,
+    ]);
+    return rows.map((r: { id: string; provider_id: string; account_id: string }) => ({
+      id: r.id,
+      providerId: r.provider_id,
+      accountId: r.account_id,
+    }));
+  }
+
+  async unlinkAccount(userId: string, providerId: string): Promise<boolean> {
+    // raw SQL: better-auth manages its own schema outside Drizzle
+    const { rowCount } = await this.pool.query(`DELETE FROM account WHERE user_id = $1 AND provider_id = $2`, [
+      userId,
+      providerId,
+    ]);
+    return (rowCount ?? 0) > 0;
   }
 }
