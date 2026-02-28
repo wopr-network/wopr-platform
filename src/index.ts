@@ -1008,7 +1008,6 @@ if (process.env.NODE_ENV !== "test") {
     logger.info("Daily metering/ledger reconciliation cron scheduled (24h interval)");
   }
 
-
   // Wire onboarding deps and start WOPR daemon if enabled (WOP-1020)
   {
     const { loadOnboardingConfig } = await import("./onboarding/config.js");

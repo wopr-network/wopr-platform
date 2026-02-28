@@ -62,10 +62,6 @@ export async function runReconciliation(cfg: ReconciliationConfig): Promise<Reco
   //    Filter out __sentinel__ rows.
   const meteredRows = await cfg.usageSummaryRepo.getAggregatedChargesByWindow(dayStart, dayEnd);
 
-  if (meteredRows.length === 0) {
-    return result;
-  }
-
   // 2. Sum ledger adapter_usage debits per tenant for the same day.
   //    credit_transactions.created_at is a text column storing Postgres now() values
   //    (e.g. "2026-02-28 17:00:00+00"). Cast to timestamptz for reliable range comparison.
@@ -74,31 +70,43 @@ export async function runReconciliation(cfg: ReconciliationConfig): Promise<Reco
 
   const ledgerRows = await cfg.adapterUsageRepo.getAggregatedAdapterUsageDebits(dayStartIso, dayEndIso);
 
-  // Build a map of tenantId -> total debit raw
+  // 3. Build union of tenant IDs from both sources so ledger-only tenants
+  //    (e.g. debits with no metering summary — negative drift / over-billed) are also checked.
+  const meteredMap = new Map<string, number>();
+  for (const row of meteredRows) {
+    meteredMap.set(row.tenant, row.totalChargeRaw);
+  }
+
   const ledgerMap = new Map<string, number>();
   for (const row of ledgerRows) {
     ledgerMap.set(row.tenantId, row.totalDebitRaw);
   }
 
-  // 3. Compare per-tenant
-  result.tenantsChecked = meteredRows.length;
+  const allTenants = new Set([...meteredMap.keys(), ...ledgerMap.keys()]);
 
-  for (const row of meteredRows) {
-    const meteredChargeRaw = row.totalChargeRaw;
-    const ledgerDebitRaw = ledgerMap.get(row.tenant) ?? 0;
+  if (allTenants.size === 0) {
+    return result;
+  }
+
+  // 4. Compare per-tenant across the union
+  result.tenantsChecked = allTenants.size;
+
+  for (const tenantId of allTenants) {
+    const meteredChargeRaw = meteredMap.get(tenantId) ?? 0;
+    const ledgerDebitRaw = ledgerMap.get(tenantId) ?? 0;
     const driftRaw = meteredChargeRaw - ledgerDebitRaw;
     const absDrift = Math.abs(driftRaw);
 
     if (absDrift > driftThresholdRaw) {
       result.discrepancies.push({
-        tenantId: row.tenant,
+        tenantId,
         meteredChargeRaw,
         ledgerDebitRaw,
         driftRaw,
       });
 
       logger.warn("Metering/ledger drift detected", {
-        tenantId: row.tenant,
+        tenantId,
         meteredCharge: Credit.fromRaw(meteredChargeRaw).toDisplayString(),
         ledgerDebit: Credit.fromRaw(ledgerDebitRaw).toDisplayString(),
         drift: Credit.fromRaw(absDrift).toDisplayString(),
@@ -107,9 +115,16 @@ export async function runReconciliation(cfg: ReconciliationConfig): Promise<Reco
       });
 
       if (absDrift > flagThresholdRaw) {
-        result.flagged.push(row.tenant);
+        result.flagged.push(tenantId);
         if (cfg.onFlagForReview) {
-          await cfg.onFlagForReview(row.tenant, driftRaw);
+          try {
+            await cfg.onFlagForReview(tenantId, driftRaw);
+          } catch (err) {
+            logger.error("onFlagForReview callback failed for tenant", {
+              tenantId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       }
     }
