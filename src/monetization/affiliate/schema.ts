@@ -19,7 +19,9 @@ export function initAffiliateSchema(db: Database.Database): void {
       signed_up_at TEXT NOT NULL DEFAULT (datetime('now')),
       first_purchase_at TEXT,
       match_amount_cents INTEGER,
-      matched_at TEXT
+      matched_at TEXT,
+      payout_suppressed BOOLEAN NOT NULL DEFAULT FALSE,
+      suppression_reason TEXT
     )
   `);
 
