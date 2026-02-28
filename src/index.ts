@@ -67,6 +67,11 @@ import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cr
 import { buildResourceTierCosts, runRuntimeDeductions } from "./monetization/credits/runtime-cron.js";
 import { DrizzleWebhookSeenRepository } from "./monetization/drizzle-webhook-seen-repository.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
+import { runReconciliation } from "./monetization/metering/reconciliation-cron.js";
+import {
+  DrizzleAdapterUsageRepository,
+  DrizzleUsageSummaryRepository,
+} from "./monetization/metering/reconciliation-repository.js";
 import type { HeartbeatMessage } from "./node-agent/types.js";
 import { DrizzleMetricsRepository } from "./observability/drizzle-metrics-repository.js";
 import {
@@ -966,6 +971,46 @@ if (process.env.NODE_ENV !== "test") {
         });
     }, WEEKLY_MS);
     logger.info("Weekly dividend digest cron scheduled (7d interval)");
+  }
+
+  // Daily metering/ledger drift reconciliation — detects discrepancies between metered usage and ledger debits.
+  // Runs once every 24h, reconciling the previous day's data.
+  {
+    const reconciliationDb = getDb();
+    const usageSummaryRepo = new DrizzleUsageSummaryRepository(reconciliationDb);
+    const adapterUsageRepo = new DrizzleAdapterUsageRepository(reconciliationDb);
+    const DAILY_MS = 24 * 60 * 60 * 1000;
+    setInterval(() => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const targetDate = yesterday.toISOString().slice(0, 10);
+      void runReconciliation({
+        usageSummaryRepo,
+        adapterUsageRepo,
+        targetDate,
+        onFlagForReview: (tenantId, driftRaw) => {
+          logger.error("Tenant flagged for billing review — drift exceeds threshold", {
+            tenantId,
+            driftRaw,
+            driftDisplay: Credit.fromRaw(Math.abs(driftRaw)).toDisplayString(),
+          });
+        },
+      })
+        .then((result) => {
+          logger.info("Daily metering/ledger reconciliation complete", {
+            date: result.date,
+            tenantsChecked: result.tenantsChecked,
+            discrepancies: result.discrepancies.length,
+            flagged: result.flagged.length,
+          });
+        })
+        .catch((err) => {
+          logger.error("Daily metering/ledger reconciliation failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }, DAILY_MS);
+    logger.info("Daily metering/ledger reconciliation cron scheduled (24h interval)");
   }
 
   // Wire onboarding deps and start WOPR daemon if enabled (WOP-1020)

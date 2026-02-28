@@ -107,6 +107,7 @@
         "src/monetization/budget/budget-checker.ts",
         "src/monetization/metering/aggregator.ts",
         "src/monetization/metering/emitter.ts",
+        "src/monetization/metering/reconciliation-repository.ts",
         "src/monetization/affiliate/drizzle-affiliate-repository.ts",
         "src/monetization/affiliate/affiliate-fraud-repository.ts",
         "src/monetization/affiliate/affiliate-admin-repository.ts",
@@ -152,7 +153,8 @@
         "src/setup/setup-session-repository.ts",
         "src/auth/user-role-repository.ts",
         "src/auth/api-key-repository.ts",
-        "src/setup/plugin-config-repository.ts"
+        "src/setup/plugin-config-repository.ts",
+        "src/monetization/metering/reconciliation-repository.ts"
       ],
       "linter": {
         "rules": {
