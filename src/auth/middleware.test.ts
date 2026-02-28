@@ -94,7 +94,7 @@ describe("sessionAuth middleware", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 401 when getSession throws", async () => {
+  it("returns 503 when getSession throws a DB error", async () => {
     const auth = {
       api: {
         getSession: vi.fn().mockRejectedValue(new Error("DB error")),
@@ -106,9 +106,9 @@ describe("sessionAuth middleware", () => {
     app.get("/test", (c) => c.json({ ok: true }));
 
     const res = await app.request("/test");
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.error).toBe("Authentication failed");
+    expect(body.error).toBe("Service unavailable");
   });
 });
 
@@ -208,7 +208,7 @@ describe("dualAuth middleware", () => {
     expect(res.status).toBe(401);
   });
 
-  it("falls back to bearer when session throws", async () => {
+  it("returns 503 when session DB lookup throws", async () => {
     const auth = {
       api: {
         getSession: vi.fn().mockRejectedValue(new Error("Session DB error")),
@@ -217,17 +217,32 @@ describe("dualAuth middleware", () => {
 
     const app = new Hono<SessionAuthEnv>();
     app.use("/*", dualAuth(auth, apiKeyRepo));
-    app.get("/test", (c) => {
-      const user = c.get("user");
-      return c.json({ userId: user.id });
-    });
+    app.get("/test", (c) => c.json({ ok: true }));
 
     const res = await app.request("/test", {
       headers: { Authorization: "Bearer api-key-admin" },
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     const body = await res.json();
-    expect(body.userId).toBe("admin-1");
+    expect(body.error).toBe("Service unavailable");
+  });
+
+  it("returns 503 when API key DB lookup throws", async () => {
+    const auth = mockAuth(null);
+    const failingRepo: IApiKeyRepository = {
+      findByHash: vi.fn().mockRejectedValue(new Error("DB connection lost")),
+    };
+
+    const app = new Hono<SessionAuthEnv>();
+    app.use("/*", dualAuth(auth, failingRepo));
+    app.get("/test", (c) => c.json({ ok: true }));
+
+    const res = await app.request("/test", {
+      headers: { Authorization: "Bearer some-token" },
+    });
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toBe("Service unavailable");
   });
 
   it("copies API user roles to prevent mutation", async () => {
