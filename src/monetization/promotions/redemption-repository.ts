@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, gt, isNotNull } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { promotionRedemptions } from "../../db/schema/promotion-redemptions.js";
 
@@ -24,6 +24,8 @@ export interface IRedemptionRepository {
   }): Promise<Redemption>;
   listByPromotion(promotionId: string, limit?: number, cursor?: string): Promise<Redemption[]>;
   countByTenant(promotionId: string, tenantId: string): Promise<number>;
+  /** Returns true if the tenant has made at least one prior purchase (has any purchase-triggered redemption). */
+  hasPriorPurchase(tenantId: string): Promise<boolean>;
 }
 
 export class DrizzleRedemptionRepository implements IRedemptionRepository {
@@ -72,6 +74,23 @@ export class DrizzleRedemptionRepository implements IRedemptionRepository {
         .where(and(eq(promotionRedemptions.promotionId, promotionId), eq(promotionRedemptions.tenantId, tenantId)))
     )[0];
     return row?.total ?? 0;
+  }
+
+  async hasPriorPurchase(tenantId: string): Promise<boolean> {
+    const row = (
+      await this.db
+        .select({ total: count() })
+        .from(promotionRedemptions)
+        .where(
+          and(
+            eq(promotionRedemptions.tenantId, tenantId),
+            isNotNull(promotionRedemptions.purchaseAmountCredits),
+            gt(promotionRedemptions.purchaseAmountCredits, 0),
+          ),
+        )
+        .limit(1)
+    )[0];
+    return (row?.total ?? 0) > 0;
   }
 
   #map(row: typeof promotionRedemptions.$inferSelect): Redemption {
