@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { config } from "../../config/index.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { Credit } from "../credit.js";
@@ -8,7 +9,7 @@ import { MeterWAL } from "./wal.js";
 
 const DEFAULT_WAL_PATH = process.env.METER_WAL_PATH ?? "./data/meter-wal.jsonl";
 const DEFAULT_DLQ_PATH = process.env.METER_DLQ_PATH ?? "./data/meter-dlq.jsonl";
-const DEFAULT_MAX_RETRIES = Number.parseInt(process.env.METER_MAX_RETRIES ?? "3", 10);
+const DEFAULT_MAX_RETRIES = config.billing.meterMaxRetries;
 
 export interface IMeterEmitter {
   emit(event: MeterEvent): void;
