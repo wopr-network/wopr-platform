@@ -9,6 +9,7 @@
  * variable. See .env.example for the expected shape.
  */
 
+import { getRateOverrideCache } from "../../fleet/services.js";
 import type { Credit } from "../credit.js";
 import { withMargin } from "./types.js";
 
@@ -73,6 +74,17 @@ export function getMargin(config: MarginConfig, provider: string, model: string)
 export function withMarginConfig(cost: Credit, config: MarginConfig, provider: string, model: string): Credit {
   const margin = getMargin(config, provider, model);
   return withMargin(cost, margin);
+}
+
+/**
+ * Get the effective discount percent for a given adapter from the rate override cache.
+ * Returns 0 if no active override exists.
+ *
+ * Callers can use this to reduce margin for promoted adapters.
+ */
+export async function getEffectiveDiscountForAdapter(adapterId: string): Promise<number> {
+  const cache = getRateOverrideCache();
+  return cache.getDiscountPercent(adapterId);
 }
 
 /**

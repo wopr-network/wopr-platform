@@ -1,4 +1,5 @@
 import type Stripe from "stripe";
+import { logger } from "../../config/logger.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { IVpsRepository } from "../../fleet/vps-repository.js";
 import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
@@ -7,6 +8,7 @@ import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
 import { Credit } from "../credit.js";
 import type { BotBilling } from "../credits/bot-billing.js";
 import type { CreditLedger } from "../credits/credit-ledger.js";
+import type { PromotionEngine } from "../promotions/engine.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
 import type { CreditPriceMap } from "./credit-prices.js";
 import type { TenantCustomerStore } from "./tenant-store.js";
@@ -48,6 +50,8 @@ export interface WebhookDeps {
   getEmailForTenant?: (tenantId: string) => string | null;
   /** VPS repository for subscription lifecycle (WOP-741). */
   vpsRepo?: IVpsRepository;
+  /** Promotion engine for bonus_on_purchase grants. */
+  promotionEngine?: PromotionEngine;
 }
 
 /**
@@ -163,6 +167,19 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
               amountDollars,
             );
           }
+        }
+      }
+
+      // Fire bonus_on_purchase promotions (non-fatal).
+      if (deps.promotionEngine) {
+        try {
+          await deps.promotionEngine.evaluateAndGrant({
+            tenantId: tenant,
+            trigger: "purchase",
+            purchaseAmountCredits: Credit.fromCents(creditCents),
+          });
+        } catch (err) {
+          logger.error("Promotion engine error in Stripe webhook — non-fatal", { err });
         }
       }
 

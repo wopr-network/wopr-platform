@@ -25,6 +25,7 @@ import type { MeterAggregator } from "../../monetization/metering/aggregator.js"
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import type { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
+import type { PromotionEngine } from "../../monetization/promotions/engine.js";
 import { protectedProcedure, publicProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
@@ -158,6 +159,7 @@ export interface BillingRouterDeps {
   payramClient?: Payram;
   payramChargeStore?: PayRamChargeStore;
   auditLogger?: AuditLogger;
+  promotionEngine?: PromotionEngine;
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -883,5 +885,35 @@ export const billingRouter = router({
       const { creditLedger } = deps();
       const members = await creditLedger.memberUsage(tenant);
       return { tenant, members };
+    }),
+
+  /** Apply a coupon code to grant promotion credits. */
+  applyCoupon: protectedProcedure
+    .input(z.object({ code: z.string().min(1).max(50) }))
+    .mutation(async ({ input, ctx }) => {
+      const { promotionEngine } = deps();
+      if (!promotionEngine) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Promotion engine not initialized" });
+      }
+      const tenantId = ctx.tenantId ?? ctx.user.id;
+      let results: Awaited<ReturnType<typeof promotionEngine.evaluateAndGrant>>;
+      try {
+        results = await promotionEngine.evaluateAndGrant({
+          tenantId,
+          trigger: "coupon_redeem",
+          couponCode: input.code.toUpperCase().trim(),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Invalid or expired coupon code";
+        throw new TRPCError({ code: "BAD_REQUEST", message });
+      }
+      if (results.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid, expired, or already-used coupon code" });
+      }
+      const totalCredits = results.reduce((sum, r) => sum + r.creditsGranted.toCents(), 0);
+      return {
+        creditsGranted: totalCredits,
+        message: `${totalCredits} credits granted`,
+      };
     }),
 });

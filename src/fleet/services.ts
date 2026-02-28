@@ -974,6 +974,23 @@ export function getSetupService(): SetupService {
 import type { IPluginConfigRepository } from "../setup/plugin-config-repository.js";
 import { DrizzlePluginConfigRepository } from "../setup/plugin-config-repository.js";
 
+// ---------------------------------------------------------------------------
+// Promotions singletons
+// ---------------------------------------------------------------------------
+
+import type { IAdapterRateOverrideRepository } from "../monetization/adapters/rate-override-repository.js";
+import {
+  AdapterRateOverrideCache,
+  DrizzleAdapterRateOverrideRepository,
+} from "../monetization/adapters/rate-override-repository.js";
+import type { ICouponRepository } from "../monetization/promotions/coupon-repository.js";
+import { DrizzleCouponRepository } from "../monetization/promotions/coupon-repository.js";
+import { PromotionEngine } from "../monetization/promotions/engine.js";
+import type { IPromotionRepository } from "../monetization/promotions/promotion-repository.js";
+import { DrizzlePromotionRepository } from "../monetization/promotions/promotion-repository.js";
+import type { IRedemptionRepository } from "../monetization/promotions/redemption-repository.js";
+import { DrizzleRedemptionRepository } from "../monetization/promotions/redemption-repository.js";
+
 let _pluginConfigRepo: IPluginConfigRepository | null = null;
 
 export function getPluginConfigRepo(): IPluginConfigRepository {
@@ -981,4 +998,52 @@ export function getPluginConfigRepo(): IPluginConfigRepository {
     _pluginConfigRepo = new DrizzlePluginConfigRepository(getDb());
   }
   return _pluginConfigRepo;
+}
+
+// ---------------------------------------------------------------------------
+// Promotions singletons
+// ---------------------------------------------------------------------------
+
+let _promotionRepo: IPromotionRepository | null = null;
+let _couponRepo: ICouponRepository | null = null;
+let _redemptionRepo: IRedemptionRepository | null = null;
+let _rateOverrideRepo: IAdapterRateOverrideRepository | null = null;
+let _rateOverrideCache: AdapterRateOverrideCache | null = null;
+let _promotionEngine: PromotionEngine | null = null;
+
+export function getPromotionRepository(): IPromotionRepository {
+  if (!_promotionRepo) _promotionRepo = new DrizzlePromotionRepository(getDb());
+  return _promotionRepo;
+}
+
+export function getCouponRepository(): ICouponRepository {
+  if (!_couponRepo) _couponRepo = new DrizzleCouponRepository(getDb());
+  return _couponRepo;
+}
+
+export function getRedemptionRepository(): IRedemptionRepository {
+  if (!_redemptionRepo) _redemptionRepo = new DrizzleRedemptionRepository(getDb());
+  return _redemptionRepo;
+}
+
+export function getRateOverrideRepository(): IAdapterRateOverrideRepository {
+  if (!_rateOverrideRepo) _rateOverrideRepo = new DrizzleAdapterRateOverrideRepository(getDb());
+  return _rateOverrideRepo;
+}
+
+export function getRateOverrideCache(): AdapterRateOverrideCache {
+  if (!_rateOverrideCache) _rateOverrideCache = new AdapterRateOverrideCache(getRateOverrideRepository());
+  return _rateOverrideCache;
+}
+
+export function getPromotionEngine(): PromotionEngine {
+  if (!_promotionEngine) {
+    _promotionEngine = new PromotionEngine({
+      promotionRepo: getPromotionRepository(),
+      couponRepo: getCouponRepository(),
+      redemptionRepo: getRedemptionRepository(),
+      ledger: getCreditLedger(),
+    });
+  }
+  return _promotionEngine;
 }
