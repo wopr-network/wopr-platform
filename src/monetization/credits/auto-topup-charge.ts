@@ -1,4 +1,4 @@
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { logger } from "../../config/logger.js";
 import type { Credit } from "../credit.js";
 import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
@@ -58,7 +58,22 @@ export async function chargeAutoTopup(
     }
     paymentMethodId = methods.data[0].id;
   } catch (err) {
-    const error = `Failed to list payment methods: ${err instanceof Error ? err.message : String(err)}`;
+    let error: string;
+    if (err instanceof Stripe.errors.StripeCardError) {
+      error = `Card declined listing payment methods: ${err.code ?? "unknown"} (decline_code=${err.decline_code ?? "none"})`;
+      logger.warn("Card error listing payment methods", { tenantId, code: err.code, declineCode: err.decline_code });
+    } else if (err instanceof Stripe.errors.StripeError) {
+      error = `Stripe error listing payment methods: ${err.type} (code=${err.code ?? "none"}, status=${err.statusCode})`;
+      logger.error("Stripe error listing payment methods", {
+        tenantId,
+        type: err.type,
+        code: err.code,
+        statusCode: err.statusCode,
+      });
+    } else {
+      error = `Failed to list payment methods: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error("Unexpected error listing payment methods", { tenantId, error });
+    }
     await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
     return { success: false, error };
   }
@@ -79,10 +94,30 @@ export async function chargeAutoTopup(
       },
     });
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
-    logger.warn("Auto-topup Stripe charge failed", { tenantId, amount: amount.toString(), source, error });
-    return { success: false, error };
+    if (err instanceof Stripe.errors.StripeCardError) {
+      const error = `Card declined during auto top-up: ${err.code ?? "unknown"} (decline_code=${err.decline_code ?? "none"})`;
+      await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
+      logger.warn("Card declined during auto top-up", {
+        tenantId,
+        code: err.code,
+        declineCode: err.decline_code,
+        source,
+      });
+      return { success: false, error };
+    } else if (err instanceof Stripe.errors.StripeError) {
+      const error = `Stripe error during auto top-up: ${err.type} (code=${err.code ?? "none"}, status=${err.statusCode})`;
+      await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });
+      logger.error("Stripe error during auto top-up", {
+        tenantId,
+        type: err.type,
+        code: err.code,
+        statusCode: err.statusCode,
+        source,
+      });
+      return { success: false, error };
+    } else {
+      throw err;
+    }
   }
 
   // 4. Verify payment succeeded (could be requires_action for 3DS)

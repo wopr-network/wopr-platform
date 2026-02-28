@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
@@ -11,12 +11,26 @@ import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } f
 import { DrizzleAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import { CreditLedger } from "./credit-ledger.js";
 
-function mockStripe(overrides?: { paymentIntentId?: string; shouldFail?: boolean; failMessage?: string }) {
+function mockStripe(overrides?: {
+  paymentIntentId?: string;
+  shouldFail?: boolean;
+  failMessage?: string;
+  failWithStripeError?: boolean;
+}) {
   const piId = overrides?.paymentIntentId ?? `pi_${crypto.randomUUID()}`;
   return {
     paymentIntents: {
       create: vi.fn().mockImplementation(async () => {
-        if (overrides?.shouldFail) throw new Error(overrides.failMessage ?? "card_declined");
+        if (overrides?.shouldFail) {
+          if (overrides.failWithStripeError !== false) {
+            throw new Stripe.errors.StripeCardError({
+              message: overrides.failMessage ?? "card_declined",
+              type: "card_error",
+              code: overrides.failMessage ?? "card_declined",
+            });
+          }
+          throw new Error(overrides.failMessage ?? "card_declined");
+        }
         return { id: piId, status: "succeeded" };
       }),
     },
@@ -104,6 +118,7 @@ describe("chargeAutoTopup", () => {
     const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
 
     expect(result.success).toBe(false);
+    expect(result.error).toContain("Card declined");
     expect(result.error).toContain("card_declined");
     expect((await ledger.balance("t1")).toCents()).toBe(0);
     const events = await db
@@ -165,6 +180,87 @@ describe("chargeAutoTopup", () => {
 
   it("exports MAX_CONSECUTIVE_FAILURES as 3", () => {
     expect(MAX_CONSECUTIVE_FAILURES).toBe(3);
+  });
+
+  it("logs structured card-decline info when Stripe throws StripeCardError on payment", async () => {
+    const cardError = new Stripe.errors.StripeCardError({
+      message: "Your card was declined.",
+      type: "card_error",
+      code: "card_declined",
+      decline_code: "insufficient_funds",
+    });
+    const stripe = mockStripe();
+    stripe.paymentIntents.create = vi.fn().mockRejectedValue(cardError);
+    const tenantStore = mockTenantStore();
+    const deps: AutoTopupChargeDeps = {
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      creditLedger: ledger,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
+    };
+
+    const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Card declined");
+    expect(result.error).toContain("card_declined");
+  });
+
+  it("logs structured Stripe error info when Stripe throws StripeAPIError on payment", async () => {
+    const apiError = new Stripe.errors.StripeAPIError({
+      message: "Internal Stripe error",
+      type: "api_error",
+    });
+    const stripe = mockStripe();
+    stripe.paymentIntents.create = vi.fn().mockRejectedValue(apiError);
+    const tenantStore = mockTenantStore();
+    const deps: AutoTopupChargeDeps = {
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      creditLedger: ledger,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
+    };
+
+    const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Stripe error");
+  });
+
+  it("re-throws non-Stripe errors from paymentIntents.create", async () => {
+    const stripe = mockStripe();
+    stripe.paymentIntents.create = vi.fn().mockRejectedValue(new TypeError("Cannot read properties of undefined"));
+    const tenantStore = mockTenantStore();
+    const deps: AutoTopupChargeDeps = {
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      creditLedger: ledger,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
+    };
+
+    await expect(chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage")).rejects.toThrow(TypeError);
+  });
+
+  it("returns structured error when StripeCardError thrown by listPaymentMethods", async () => {
+    const cardError = new Stripe.errors.StripeCardError({
+      message: "Card error on list",
+      type: "card_error",
+      code: "card_declined",
+    });
+    const stripe = mockStripe();
+    stripe.customers.listPaymentMethods = vi.fn().mockRejectedValue(cardError);
+    const tenantStore = mockTenantStore();
+    const deps: AutoTopupChargeDeps = {
+      stripe: stripe as unknown as Stripe,
+      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      creditLedger: ledger,
+      eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
+    };
+
+    const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Card declined");
   });
 
   it("propagates error with PaymentIntent ID when credit grant fails after Stripe charge", async () => {
