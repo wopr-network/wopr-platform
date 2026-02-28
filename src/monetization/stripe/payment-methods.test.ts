@@ -1,7 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { detachAllPaymentMethods, detachPaymentMethod } from "./payment-methods.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 
@@ -23,16 +24,20 @@ function mockStripe(
 
 describe("detachPaymentMethod", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let store: TenantCustomerStore;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    store = new TenantCustomerStore(db);
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    store = new TenantCustomerStore(db);
   });
 
   it("calls stripe.paymentMethods.detach with the correct ID", async () => {
@@ -80,17 +85,21 @@ describe("detachPaymentMethod", () => {
 });
 
 describe("detachAllPaymentMethods", () => {
-  let pool: PGlite;
+  let pool2: PGlite;
+  let db2: DrizzleDb;
   let store: TenantCustomerStore;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    store = new TenantCustomerStore(db);
+  beforeAll(async () => {
+    ({ db: db2, pool: pool2 } = await createTestDb());
   });
 
-  afterEach(async () => {
-    await pool.close();
+  afterAll(async () => {
+    await pool2.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool2);
+    store = new TenantCustomerStore(db2);
   });
 
   it("returns 0 when tenant has no Stripe customer mapping", async () => {

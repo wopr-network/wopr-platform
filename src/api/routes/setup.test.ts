@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PluginManifest } from "./marketplace-registry.js";
 import { createSetupRoutes, type SetupRouteDeps } from "./setup.js";
 
 const TEST_BOT_ID = "a1b2c3d4-e5f6-4789-8abc-def012345678";
@@ -13,7 +14,7 @@ const TEST_PLUGIN = {
     { key: "apiKey", label: "API Key", type: "string", secret: true, env: "TEST_API_KEY" },
     { key: "region", label: "Region", type: "string", env: "TEST_REGION" },
   ],
-} as any;
+} as PluginManifest;
 
 function makeSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -39,7 +40,7 @@ function makeDeps(overrides: Partial<SetupRouteDeps> = {}): SetupRouteDeps {
       update: vi.fn().mockResolvedValue(makeSession()),
       markRolledBack: vi.fn().mockResolvedValue(undefined),
       markComplete: vi.fn().mockResolvedValue(undefined),
-    } as any,
+    } as never,
     onboardingService: {
       inject: vi.fn().mockResolvedValue("ok"),
     },
@@ -49,16 +50,16 @@ function makeDeps(overrides: Partial<SetupRouteDeps> = {}): SetupRouteDeps {
       recordSuccess: vi.fn().mockResolvedValue(undefined),
       cleanupStaleSessions: vi.fn().mockResolvedValue([]),
       checkForResumable: vi.fn().mockResolvedValue({ hasStaleSession: false }),
-    } as any,
+    } as never,
     checkProvider: vi.fn().mockResolvedValue({ configured: false }),
     pluginConfigRepo: {
       upsert: vi.fn().mockResolvedValue(undefined),
       findByBotAndPlugin: vi.fn().mockResolvedValue(null),
-    } as any,
+    } as never,
     profileStore: {
       get: vi.fn().mockResolvedValue({ id: TEST_BOT_ID, tenantId: "t1", env: {} }),
       save: vi.fn().mockResolvedValue(undefined),
-    } as any,
+    } as never,
     dispatchEnvUpdate: vi.fn().mockResolvedValue({ dispatched: true }),
     platformEncryptionSecret: "test-secret-32-bytes-long-padding!",
     ...overrides,
@@ -146,7 +147,7 @@ describe("POST /api/chat/setup", () => {
         findBySessionId: vi.fn().mockResolvedValue(makeSession()),
         insert: vi.fn(),
         markRolledBack: vi.fn(),
-      } as any,
+      } as never,
     });
     const app = createSetupRoutes(deps);
 
@@ -182,11 +183,11 @@ describe("POST /save", () => {
     const recordSuccessMock = vi.fn().mockResolvedValue(undefined);
 
     const deps = makeDeps({
-      pluginConfigRepo: { upsert: upsertMock } as any,
+      pluginConfigRepo: { upsert: upsertMock } as never,
       profileStore: {
         get: vi.fn().mockResolvedValue({ id: TEST_BOT_ID, tenantId: "t1", env: { EXISTING: "val" } }),
         save: saveMock,
-      } as any,
+      } as never,
       dispatchEnvUpdate: dispatchMock,
       setupSessionRepo: {
         findBySessionId: vi.fn().mockResolvedValue(null),
@@ -194,10 +195,10 @@ describe("POST /save", () => {
         update: updateMock,
         markRolledBack: vi.fn(),
         markComplete: vi.fn(),
-      } as any,
+      } as never,
       setupService: {
         recordSuccess: recordSuccessMock,
-      } as any,
+      } as never,
     });
     const app = createSetupRoutes(deps);
 
@@ -233,7 +234,7 @@ describe("POST /save", () => {
         findById: vi.fn().mockResolvedValue(undefined),
         findBySessionId: vi.fn(),
         markRolledBack: vi.fn(),
-      } as any,
+      } as never,
     });
     const app = createSetupRoutes(deps);
 
@@ -252,7 +253,7 @@ describe("POST /save", () => {
         findById: vi.fn().mockResolvedValue(makeSession({ status: "completed" })),
         findBySessionId: vi.fn(),
         markRolledBack: vi.fn(),
-      } as any,
+      } as never,
     });
     const app = createSetupRoutes(deps);
 
@@ -270,7 +271,7 @@ describe("POST /save", () => {
       profileStore: {
         get: vi.fn().mockResolvedValue(null),
         save: vi.fn(),
-      } as any,
+      } as never,
     });
     const app = createSetupRoutes(deps);
 
@@ -303,14 +304,14 @@ describe("POST /save", () => {
       pluginRegistry: [
         {
           ...TEST_PLUGIN,
-          configSchema: [{ key: "noEnvField", label: "No Env", type: "string" }],
+          configSchema: [{ key: "noEnvField", label: "No Env", type: "string", required: false }],
         },
       ],
       dispatchEnvUpdate: dispatchMock,
       profileStore: {
         get: vi.fn().mockResolvedValue({ id: TEST_BOT_ID, tenantId: "t1", env: {} }),
         save: saveMock,
-      } as any,
+      } as never,
     });
     const app = createSetupRoutes(deps);
 

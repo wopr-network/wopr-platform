@@ -2,9 +2,9 @@
  * Unit tests for DrizzleCircuitBreakerRepository (WOP-927).
  */
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleCircuitBreakerRepository } from "./drizzle-circuit-breaker-repository.js";
 
 describe("DrizzleCircuitBreakerRepository", () => {
@@ -12,16 +12,23 @@ describe("DrizzleCircuitBreakerRepository", () => {
   let db: DrizzleDb;
   let pool: PGlite;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     repo = new DrizzleCircuitBreakerRepository(db);
   });
 
   afterEach(async () => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("get returns null for unknown instance", async () => {

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleOrgMembershipRepository } from "../../fleet/org-membership-repository.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload, Provider } from "../types.js";
 import { resolveApiKey } from "./key-resolution.js";
@@ -38,15 +38,19 @@ describe("resolveApiKeyWithOrgFallback", () => {
   let orgEncryptionKey: Buffer;
   const pooled = new Map<Provider, string>();
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     membershipRepo = new DrizzleOrgMembershipRepository(db);
     encryptionKey = generateInstanceKey();
     orgEncryptionKey = generateInstanceKey();
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("returns personal key when member has one (no org fallback)", async () => {

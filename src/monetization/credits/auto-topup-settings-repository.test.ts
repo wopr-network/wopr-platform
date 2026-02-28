@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 
@@ -10,13 +10,17 @@ describe("DrizzleAutoTopupSettingsRepository", () => {
   let db: DrizzleDb;
   let repo: DrizzleAutoTopupSettingsRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    repo = new DrizzleAutoTopupSettingsRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleAutoTopupSettingsRepository(db);
   });
 
   it("returns null for unknown tenant", async () => {

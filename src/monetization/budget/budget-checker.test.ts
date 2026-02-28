@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { BudgetChecker, type SpendLimits } from "./budget-checker.js";
 
@@ -29,13 +29,17 @@ describe("BudgetChecker", () => {
   let pool: PGlite;
   let checker: BudgetChecker;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    checker = new BudgetChecker(db, { cacheTtlMs: 1000 });
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    checker = new BudgetChecker(db, { cacheTtlMs: 1000 });
   });
 
   describe("check()", () => {

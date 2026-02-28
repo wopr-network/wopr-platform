@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 import { maybeTriggerUsageTopup, type UsageTopupDeps } from "./auto-topup-usage.js";
@@ -13,14 +13,18 @@ describe("maybeTriggerUsageTopup", () => {
   let ledger: CreditLedger;
   let settingsRepo: DrizzleAutoTopupSettingsRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
-    settingsRepo = new DrizzleAutoTopupSettingsRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
+    settingsRepo = new DrizzleAutoTopupSettingsRepository(db);
   });
 
   it("does nothing when tenant has no auto-topup settings", async () => {

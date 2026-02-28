@@ -2,22 +2,27 @@
  * Unit tests for DrizzleProviderHealthRepository (WOP-927).
  */
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleProviderHealthRepository } from "./drizzle-provider-health-repository.js";
 
 describe("DrizzleProviderHealthRepository", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let repo: DrizzleProviderHealthRepository;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    repo = new DrizzleProviderHealthRepository(db);
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleProviderHealthRepository(db);
   });
 
   it("returns null for unknown adapter", async () => {

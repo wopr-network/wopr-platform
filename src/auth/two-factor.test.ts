@@ -5,9 +5,11 @@
  * including admin guard enforcement.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
 import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
 import { setTwoFactorRouterDeps } from "../trpc/routers/two-factor.js";
@@ -33,8 +35,19 @@ function userCtx(tenantId = "t1"): TRPCContext {
 // ---------------------------------------------------------------------------
 
 describe("twoFactor tRPC router", () => {
+  let db: DrizzleDb;
+  let pool: PGlite;
+
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
-    const { db } = await createTestDb();
+    await truncateAllTables(pool);
     setTwoFactorRouterDeps({ twoFactorRepo: new DrizzleTwoFactorRepository(db) });
   });
 
@@ -47,7 +60,6 @@ describe("twoFactor tRPC router", () => {
     });
 
     it("returns the stored mandate status", async () => {
-      const { db } = await createTestDb();
       setTwoFactorRouterDeps({ twoFactorRepo: new DrizzleTwoFactorRepository(db) });
 
       // Set mandate via admin first
@@ -83,8 +95,6 @@ describe("twoFactor tRPC router", () => {
     });
 
     it("upserts on conflict — second call overwrites first", async () => {
-      const { db } = await createTestDb();
-      setTwoFactorRouterDeps({ twoFactorRepo: new DrizzleTwoFactorRepository(db) });
       const caller = createCaller(adminCtx("tenant-d"));
       await caller.twoFactor.setMandateStatus({ tenantId: "tenant-d", requireTwoFactor: true });
       await caller.twoFactor.setMandateStatus({ tenantId: "tenant-d", requireTwoFactor: false });

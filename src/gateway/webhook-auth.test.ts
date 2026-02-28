@@ -5,10 +5,10 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleSigPenaltyRepository } from "../api/drizzle-sig-penalty-repository.js";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import type { GatewayTenant } from "./types.js";
 import { createTwilioWebhookAuth } from "./webhook-auth.js";
 
@@ -52,12 +52,16 @@ function buildTestApp(resolveTenant: (c: import("hono").Context) => GatewayTenan
 }
 
 describe("createTwilioWebhookAuth", () => {
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
   });
 
   it("returns 400 when X-Twilio-Signature header is missing", async () => {

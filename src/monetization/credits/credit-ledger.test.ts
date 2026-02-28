@@ -3,9 +3,9 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 
@@ -14,13 +14,17 @@ describe("CreditLedger core methods", () => {
   let db: DrizzleDb;
   let ledger: CreditLedger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
   });
 
   // --- credit() ---
@@ -223,10 +227,10 @@ describe("CreditLedger core methods", () => {
       expect(tenantIds).toEqual(["t1", "t4"]);
 
       const t1 = result.find((r) => r.tenantId === "t1");
-      expect(t1!.balance.toCents()).toBe(100);
+      expect(t1?.balance.toCents()).toBe(100);
 
       const t4 = result.find((r) => r.tenantId === "t4");
-      expect(t4!.balance.toCents()).toBe(200);
+      expect(t4?.balance.toCents()).toBe(200);
     });
 
     it("excludes tenants with exactly zero balance", async () => {
@@ -244,13 +248,17 @@ describe("CreditLedger.debit with allowNegative", () => {
   let db: DrizzleDb;
   let ledger: CreditLedger;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
   });
 
   it("debit with allowNegative=false (default) throws InsufficientBalanceError when balance insufficient", async () => {

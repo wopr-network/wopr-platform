@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { runScheduledTopups, type ScheduleTopupDeps } from "./auto-topup-schedule.js";
 import { DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
@@ -11,13 +11,17 @@ describe("runScheduledTopups", () => {
   let db: DrizzleDb;
   let settingsRepo: DrizzleAutoTopupSettingsRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    settingsRepo = new DrizzleAutoTopupSettingsRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    settingsRepo = new DrizzleAutoTopupSettingsRepository(db);
   });
 
   it("processes no tenants when none are due", async () => {
@@ -82,7 +86,7 @@ describe("runScheduledTopups", () => {
     await runScheduledTopups(deps);
 
     const after = (await settingsRepo.getByTenant("t1"))?.scheduleNextAt;
-    expect(new Date(after!).getTime()).toBeGreaterThan(new Date(before!).getTime());
+    expect(new Date(after ?? "").getTime()).toBeGreaterThan(new Date(before ?? "").getTime());
   });
 
   it("advances scheduleNextAt after charge throws an error", async () => {
@@ -102,7 +106,7 @@ describe("runScheduledTopups", () => {
     await runScheduledTopups(deps);
 
     const after = (await settingsRepo.getByTenant("t1"))?.scheduleNextAt;
-    expect(new Date(after!).getTime()).toBeGreaterThan(new Date(before!).getTime());
+    expect(new Date(after ?? "").getTime()).toBeGreaterThan(new Date(before ?? "").getTime());
   });
 
   it("disables schedule after 3 consecutive failures", async () => {

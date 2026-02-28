@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { type DeletionExecutorDeps, executeDeletion } from "./deletion-executor.js";
 import { DrizzleDeletionExecutorRepository } from "./deletion-executor-repository.js";
 
@@ -58,8 +58,16 @@ describe("executeDeletion", () => {
   let pool: PGlite;
   let deps: DeletionExecutorDeps;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     const repo = new DrizzleDeletionExecutorRepository(db);
     deps = { repo };
   });

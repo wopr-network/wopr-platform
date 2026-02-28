@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";
@@ -13,14 +13,18 @@ describe("grantNewUserBonus", () => {
   let ledger: CreditLedger;
   let affiliateRepo: DrizzleAffiliateRepository;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
-    affiliateRepo = new DrizzleAffiliateRepository(db);
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
+    affiliateRepo = new DrizzleAffiliateRepository(db);
   });
 
   it("DEFAULT_BONUS_RATE equals 0.20", () => {
