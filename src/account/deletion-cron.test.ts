@@ -8,19 +8,20 @@ import { DrizzleDeletionExecutorRepository } from "./deletion-executor-repositor
 import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore } from "./deletion-store.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("runDeletionCron", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let store: AccountDeletionStore;
   let executorDeps: DeletionExecutorDeps;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

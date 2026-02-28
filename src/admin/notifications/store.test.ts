@@ -4,22 +4,20 @@ import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { NotificationQueueStore } from "./store.js";
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("NotificationQueueStore.enqueue", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let store: NotificationQueueStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -62,21 +60,7 @@ describe("NotificationQueueStore.enqueue", () => {
 });
 
 describe("NotificationQueueStore.getPending", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let store: NotificationQueueStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -104,21 +88,7 @@ describe("NotificationQueueStore.getPending", () => {
 });
 
 describe("NotificationQueueStore.markSent", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let store: NotificationQueueStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -135,21 +105,7 @@ describe("NotificationQueueStore.markSent", () => {
 });
 
 describe("NotificationQueueStore.markFailed", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let store: NotificationQueueStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -192,21 +148,7 @@ describe("NotificationQueueStore.markFailed", () => {
 });
 
 describe("NotificationQueueStore.countByStatus", () => {
-  let db: DrizzleDb;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pool: PGlite;
-
   let store: NotificationQueueStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

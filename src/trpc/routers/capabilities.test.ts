@@ -23,19 +23,21 @@ function ctxForTenant(tenantId: string): TRPCContext {
 
 const TENANT = "tenant-test-915";
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("capabilities.listCapabilitySettings", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let capStore: CapabilitySettingsStore;
   let keyStore: TenantKeyStore;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
@@ -127,18 +129,8 @@ describe("capabilities.listCapabilitySettings", () => {
 });
 
 describe("capabilities.updateCapabilitySettings", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let capStore: CapabilitySettingsStore;
   let keyStore: TenantKeyStore;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

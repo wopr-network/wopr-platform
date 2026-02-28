@@ -33,22 +33,23 @@ async function buildHonoContext(tenantId: string): Promise<import("hono").Contex
   return capturedCtx;
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 // ---------------------------------------------------------------------------
 // creditBalanceCheck — grace buffer tests
 // ---------------------------------------------------------------------------
 
 describe("creditBalanceCheck grace buffer", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
@@ -129,17 +130,6 @@ describe("creditBalanceCheck grace buffer", () => {
 // ---------------------------------------------------------------------------
 
 describe("debitCredits with allowNegative and onBalanceExhausted", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });

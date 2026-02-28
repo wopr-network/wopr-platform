@@ -11,23 +11,24 @@ import { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
 import { DrizzleBulkOperationsRepository } from "./bulk-operations-repository.js";
 import { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk-operations-store.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  const t = await createTestDb();
+  db = t.db;
+  pool = t.pool;
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("BulkOperationsStore", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let creditStore: ICreditLedger;
   let tenantStatusStore: TenantStatusStore;
   let auditLog: AdminAuditLog;
   let store: BulkOperationsStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

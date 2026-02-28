@@ -8,19 +8,21 @@ import { AlertChecker, buildAlerts } from "./alerts.js";
 import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { MetricsCollector } from "./metrics.js";
 
+// TOP OF FILE - shared across buildAlerts describe
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("buildAlerts", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
   let metrics: MetricsCollector;
   let fleetRepo: IFleetEventRepository;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     vi.useFakeTimers();

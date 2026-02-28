@@ -36,18 +36,23 @@ async function insertNode(
   });
 }
 
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("NodeConnectionManager.registerNode", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let ncm: NodeConnectionManager;
 
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
+  beforeAll(() => {
     ncm = new NodeConnectionManager(db);
-  });
-
-  afterAll(async () => {
-    await pool.close();
   });
 
   beforeEach(async () => {
@@ -171,17 +176,10 @@ describe("NodeConnectionManager.registerNode", () => {
 });
 
 describe("NodeConnectionManager.processHeartbeat — returning status preservation", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let ncm: NodeConnectionManager;
 
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
+  beforeAll(() => {
     ncm = new NodeConnectionManager(db);
-  });
-
-  afterAll(async () => {
-    await pool.close();
   });
 
   beforeEach(async () => {
@@ -206,20 +204,13 @@ describe("NodeConnectionManager.processHeartbeat — returning status preservati
 });
 
 describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning nodes", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let ncm: NodeConnectionManager;
   let orphanCleaner: OrphanCleaner;
 
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
+  beforeAll(() => {
     orphanCleaner = makeOrphanCleaner();
     ncm = new NodeConnectionManager(db);
     ncm.setOrphanCleaner(orphanCleaner);
-  });
-
-  afterAll(async () => {
-    await pool.close();
   });
 
   beforeEach(async () => {
@@ -303,8 +294,8 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
       return { nodeId: "node-1", stopped: [], kept: [], errors: [] };
     });
     orphanCleaner = makeOrphanCleaner({ clean: cleanMock });
-    ncm = new NodeConnectionManager(db);
-    ncm.setOrphanCleaner(orphanCleaner);
+    const ncm2 = new NodeConnectionManager(db);
+    ncm2.setOrphanCleaner(orphanCleaner);
 
     const mockWs = {
       readyState: 1,
@@ -313,7 +304,7 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
       close: vi.fn(),
     };
 
-    ncm.handleWebSocket("node-1", mockWs as never);
+    ncm2.handleWebSocket("node-1", mockWs as never);
 
     const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
       (call) => call[0] === "message",
@@ -332,17 +323,10 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
 });
 
 describe("re-registration + placement integration", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let ncm: NodeConnectionManager;
 
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
+  beforeAll(() => {
     ncm = new NodeConnectionManager(db);
-  });
-
-  afterAll(async () => {
-    await pool.close();
   });
 
   beforeEach(async () => {
@@ -387,17 +371,7 @@ describe("re-registration + placement integration", () => {
 });
 
 describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let ncm: NodeConnectionManager;
-
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

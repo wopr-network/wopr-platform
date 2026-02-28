@@ -6,6 +6,17 @@ import { userRoles } from "../../db/schema/user-roles.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { isValidRole, RoleStore } from "./role-store.js";
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("isValidRole", () => {
   it("accepts valid roles", () => {
     expect(isValidRole("platform_admin")).toBe(true);
@@ -21,19 +32,7 @@ describe("isValidRole", () => {
 });
 
 describe("RoleStore", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let store: RoleStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
