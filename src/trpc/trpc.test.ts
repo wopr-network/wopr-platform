@@ -15,6 +15,7 @@ import type { IPaymentProcessor } from "../monetization/payment-processor.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import { appRouter } from "./index.js";
 import type { TRPCContext } from "./init.js";
+import { setTrpcOrgMemberRepo } from "./init.js";
 import { setAdminRouterDeps } from "./routers/admin.js";
 import { setBillingRouterDeps } from "./routers/billing.js";
 
@@ -135,6 +136,28 @@ describe("tRPC appRouter", () => {
     const testDb = await createTestDb();
     pool = testDb.pool;
     db = testDb.db;
+
+    // Wire a stub org member repo so tenant access checks always pass in tests.
+    // Tests that verify IDOR rejection should use a separate repo stub that returns null.
+    setTrpcOrgMemberRepo({
+      findMember: async () => ({
+        id: "m1",
+        orgId: "test-tenant",
+        userId: "test-user",
+        role: "owner",
+        joinedAt: Date.now(),
+      }),
+      listMembers: async () => [],
+      addMember: async () => {},
+      updateMemberRole: async () => {},
+      removeMember: async () => {},
+      countAdminsAndOwners: async () => 1,
+      listInvites: async () => [],
+      createInvite: async () => {},
+      findInviteById: async () => null,
+      findInviteByToken: async () => null,
+      deleteInvite: async () => {},
+    });
   });
 
   afterAll(async () => {

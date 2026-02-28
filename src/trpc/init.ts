@@ -86,8 +86,13 @@ const isAuthedWithTenant = t.middleware(async ({ ctx, next }) => {
   }
 
   // Validate tenant access for session-cookie users (bearer token users have server-assigned tenantId).
-  // Skip if the org member repo is not yet wired (e.g., test environment without DI).
-  if (!ctx.user.id.startsWith("token:") && _orgMemberRepo) {
+  if (!ctx.user.id.startsWith("token:")) {
+    if (!_orgMemberRepo) {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Server misconfiguration: org member repository not wired",
+      });
+    }
     const allowed = await validateTenantAccess(ctx.user.id, ctx.tenantId, _orgMemberRepo);
     if (!allowed) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Not authorized for this tenant" });
