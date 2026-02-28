@@ -324,11 +324,15 @@ if (process.env.NODE_ENV !== "test") {
     const credentialVault = new CredentialVaultStore(credentialRepo, vaultKey);
     setBotPluginDeps({ credentialVault, meterEmitter: meter, botInstanceRepo: getBotInstanceRepo() });
 
+    const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
+    const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
+
     mountGateway(app, {
       meter,
       budgetChecker,
       creditLedger,
       spendingCapStore: new DrizzleSpendingCapStore(getDb()),
+      spendingLimitsRepo,
       metrics,
       providers: {
         openrouter: process.env.OPENROUTER_API_KEY ? { apiKey: process.env.OPENROUTER_API_KEY } : undefined,
