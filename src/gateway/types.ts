@@ -142,8 +142,6 @@ export interface GatewayConfig {
   metrics?: import("../observability/metrics.js").MetricsCollector;
   /** Called after every successful credit debit (fire-and-forget auto-topup trigger). */
   onDebitComplete?: (tenantId: string) => void;
-  /** Called when a debit causes balance to cross the zero threshold. */
-  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
   /** Repository for tracking per-IP webhook signature failure penalties. Required when Twilio webhook routes are enabled. */
   sigPenaltyRepo?: import("../api/sig-penalty-repository.js").ISigPenaltyRepository;
   /** Repository for per-capability and per-route rate limit counters. Required when rate limiting is active. */
