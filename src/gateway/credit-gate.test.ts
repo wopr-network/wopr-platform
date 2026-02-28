@@ -183,4 +183,43 @@ describe("debitCredits with allowNegative and onBalanceExhausted", () => {
     expect(onBalanceExhausted).not.toHaveBeenCalled();
     expect((await ledger.balance("t1")).greaterThan(Credit.ZERO)).toBe(true);
   });
+
+  it("onBalanceExhausted callback receives correct tenantId and negative balance", async () => {
+    const ledger = new CreditLedger(db);
+    await ledger.credit("t1", Credit.fromCents(3), "purchase", "setup"); // balance = 3 cents
+
+    const onBalanceExhausted = vi.fn();
+    // costUsd = $0.05 = 5 cents with margin 1.0 → pushes balance to -2
+    await debitCredits(
+      { creditLedger: ledger, topUpUrl: "/billing", onBalanceExhausted },
+      "t1",
+      0.05,
+      1.0,
+      "chat-completions",
+      "openrouter",
+    );
+
+    expect(onBalanceExhausted).toHaveBeenCalledOnce();
+    expect(onBalanceExhausted).toHaveBeenCalledWith("t1", -2);
+  });
+
+  it("does NOT fire onBalanceExhausted when balance was already negative before debit", async () => {
+    const ledger = new CreditLedger(db);
+    // Start with negative balance: credit 5, debit 10 → balance = -5
+    await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup");
+    await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "drain", undefined, true);
+
+    const onBalanceExhausted = vi.fn();
+    // Another debit of 1 cent — balance goes from -5 to -6, but was already negative
+    await debitCredits(
+      { creditLedger: ledger, topUpUrl: "/billing", onBalanceExhausted },
+      "t1",
+      0.01,
+      1.0,
+      "chat-completions",
+      "openrouter",
+    );
+
+    expect(onBalanceExhausted).not.toHaveBeenCalled();
+  });
 });

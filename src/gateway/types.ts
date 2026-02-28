@@ -136,12 +136,12 @@ export interface GatewayConfig {
   spendingCapStore?: import("./spending-cap-store.js").ISpendingCapStore;
   /** Callback when circuit breaker trips (for notifications/logging). */
   onCircuitBreakerTrip?: (tenantId: string, instanceId: string, requestCount: number) => void;
+  /** Called when a debit causes balance to cross the zero threshold. */
+  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
   /** Optional MetricsCollector for observability (WOP-825) */
   metrics?: import("../observability/metrics.js").MetricsCollector;
   /** Called after every successful credit debit (fire-and-forget auto-topup trigger). */
   onDebitComplete?: (tenantId: string) => void;
-  /** Called when a debit causes balance to cross the zero threshold. */
-  onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
   /** Repository for tracking per-IP webhook signature failure penalties. Required when Twilio webhook routes are enabled. */
   sigPenaltyRepo?: import("../api/sig-penalty-repository.js").ISigPenaltyRepository;
   /** Repository for per-capability and per-route rate limit counters. Required when rate limiting is active. */
