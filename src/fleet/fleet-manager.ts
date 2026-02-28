@@ -19,6 +19,21 @@ export class FleetManager {
   private readonly platformDiscovery: PlatformDiscoveryConfig | undefined;
   private readonly networkPolicy: NetworkPolicy | undefined;
   private readonly proxyManager: ProxyManagerInterface | undefined;
+  private locks = new Map<string, Promise<void>>();
+
+  private async withLock<T>(botId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(botId) ?? Promise.resolve();
+    let resolve!: () => void;
+    const next = new Promise<void>((r) => (resolve = r));
+    this.locks.set(botId, next);
+    try {
+      await prev;
+      return await fn();
+    } finally {
+      resolve();
+      if (this.locks.get(botId) === next) this.locks.delete(botId);
+    }
+  }
 
   constructor(
     docker: Docker,
@@ -45,108 +60,121 @@ export class FleetManager {
     params: Omit<BotProfile, "id"> & { id?: string },
     resourceLimits?: ContainerResourceLimits,
   ): Promise<BotProfile> {
-    const profile: BotProfile = { id: params.id ?? randomUUID(), ...params };
+    const id = params.id ?? randomUUID();
+    const doCreate = async () => {
+      const profile: BotProfile = { id, ...params };
 
-    await this.store.save(profile);
+      await this.store.save(profile);
 
-    try {
-      await this.pullImage(profile.image);
-      await this.createContainer(profile, resourceLimits);
-    } catch (err) {
-      logger.error(`Failed to create container for bot ${profile.id}, rolling back profile`, {
-        err,
-      });
-      await this.store.delete(profile.id);
-      throw err;
-    }
-
-    // Register proxy route for tenant subdomain routing (non-fatal)
-    if (this.proxyManager) {
       try {
-        const subdomain = profile.name.toLowerCase().replace(/_/g, "-");
-        await this.proxyManager.addRoute({
-          instanceId: profile.id,
-          subdomain,
-          upstreamHost: `wopr-${subdomain}`,
-          upstreamPort: 7437,
-          healthy: true,
-        });
+        await this.pullImage(profile.image);
+        await this.createContainer(profile, resourceLimits);
       } catch (err) {
-        logger.warn("Proxy route registration failed (non-fatal)", { botId: profile.id, err });
+        logger.error(`Failed to create container for bot ${profile.id}, rolling back profile`, {
+          err,
+        });
+        await this.store.delete(profile.id);
+        throw err;
       }
-    }
 
-    return profile;
+      // Register proxy route for tenant subdomain routing (non-fatal)
+      if (this.proxyManager) {
+        try {
+          const subdomain = profile.name.toLowerCase().replace(/_/g, "-");
+          await this.proxyManager.addRoute({
+            instanceId: profile.id,
+            subdomain,
+            upstreamHost: `wopr-${subdomain}`,
+            upstreamPort: 7437,
+            healthy: true,
+          });
+        } catch (err) {
+          logger.warn("Proxy route registration failed (non-fatal)", { botId: profile.id, err });
+        }
+      }
+
+      return profile;
+    };
+
+    return this.withLock(id, doCreate);
   }
 
   /**
    * Start a stopped bot container.
    */
   async start(id: string): Promise<void> {
-    const container = await this.findContainer(id);
-    if (!container) throw new BotNotFoundError(id);
-    await container.start();
-    if (this.proxyManager) {
-      this.proxyManager.updateHealth(id, true);
-    }
-    logger.info(`Started bot ${id}`);
+    return this.withLock(id, async () => {
+      const container = await this.findContainer(id);
+      if (!container) throw new BotNotFoundError(id);
+      await container.start();
+      if (this.proxyManager) {
+        this.proxyManager.updateHealth(id, true);
+      }
+      logger.info(`Started bot ${id}`);
+    });
   }
 
   /**
    * Stop a running bot container.
    */
   async stop(id: string): Promise<void> {
-    const container = await this.findContainer(id);
-    if (!container) throw new BotNotFoundError(id);
-    await container.stop();
-    if (this.proxyManager) {
-      this.proxyManager.updateHealth(id, false);
-    }
-    logger.info(`Stopped bot ${id}`);
+    return this.withLock(id, async () => {
+      const container = await this.findContainer(id);
+      if (!container) throw new BotNotFoundError(id);
+      await container.stop();
+      if (this.proxyManager) {
+        this.proxyManager.updateHealth(id, false);
+      }
+      logger.info(`Stopped bot ${id}`);
+    });
   }
 
   /**
    * Restart: pull new image BEFORE stopping old container to avoid downtime on pull failure.
    */
   async restart(id: string): Promise<void> {
-    const profile = await this.store.get(id);
-    if (!profile) throw new BotNotFoundError(id);
+    return this.withLock(id, async () => {
+      const profile = await this.store.get(id);
+      if (!profile) throw new BotNotFoundError(id);
 
-    // Pull new image first — if this fails, old container keeps running
-    await this.pullImage(profile.image);
+      // Pull new image first — if this fails, old container keeps running
+      await this.pullImage(profile.image);
 
-    const container = await this.findContainer(id);
-    if (!container) throw new BotNotFoundError(id);
-    await container.restart();
-    logger.info(`Restarted bot ${id}`);
+      const container = await this.findContainer(id);
+      if (!container) throw new BotNotFoundError(id);
+      await container.restart();
+      logger.info(`Restarted bot ${id}`);
+    });
   }
 
   /**
    * Remove a bot: stop container, remove it, optionally remove volumes, delete profile.
    */
   async remove(id: string, removeVolumes = false): Promise<void> {
-    const profile = await this.store.get(id);
-    if (!profile) throw new BotNotFoundError(id);
+    return this.withLock(id, async () => {
+      const profile = await this.store.get(id);
+      if (!profile) throw new BotNotFoundError(id);
 
-    const container = await this.findContainer(id);
-    if (container) {
-      const info = await container.inspect();
-      if (info.State.Running) {
-        await container.stop();
+      const container = await this.findContainer(id);
+      if (container) {
+        const info = await container.inspect();
+        if (info.State.Running) {
+          await container.stop();
+        }
+        await container.remove({ v: removeVolumes });
       }
-      await container.remove({ v: removeVolumes });
-    }
 
-    // Clean up tenant network if no more containers remain
-    if (this.networkPolicy) {
-      await this.networkPolicy.cleanupAfterRemoval(profile.tenantId);
-    }
+      // Clean up tenant network if no more containers remain
+      if (this.networkPolicy) {
+        await this.networkPolicy.cleanupAfterRemoval(profile.tenantId);
+      }
 
-    await this.store.delete(id);
-    if (this.proxyManager) {
-      this.proxyManager.removeRoute(id);
-    }
-    logger.info(`Removed bot ${id}`);
+      await this.store.delete(id);
+      if (this.proxyManager) {
+        this.proxyManager.removeRoute(id);
+      }
+      logger.info(`Removed bot ${id}`);
+    });
   }
 
   /**
@@ -212,56 +240,58 @@ export class FleetManager {
    * fields changed. Rolls back the profile if container recreation fails.
    */
   async update(id: string, updates: Partial<Omit<BotProfile, "id">>): Promise<BotProfile> {
-    const existing = await this.store.get(id);
-    if (!existing) throw new BotNotFoundError(id);
+    return this.withLock(id, async () => {
+      const existing = await this.store.get(id);
+      if (!existing) throw new BotNotFoundError(id);
 
-    const updated: BotProfile = { ...existing, ...updates };
+      const updated: BotProfile = { ...existing, ...updates };
 
-    const needsRecreate = Object.keys(updates).some((k) => FleetManager.CONTAINER_FIELDS.has(k));
+      const needsRecreate = Object.keys(updates).some((k) => FleetManager.CONTAINER_FIELDS.has(k));
 
-    const container = await this.findContainer(id);
-    if (container && needsRecreate) {
-      const info = await container.inspect();
-      const wasRunning = info.State.Running;
+      const container = await this.findContainer(id);
+      if (container && needsRecreate) {
+        const info = await container.inspect();
+        const wasRunning = info.State.Running;
 
-      // Save the updated profile only after pre-checks succeed
-      if (updates.image) {
-        await this.pullImage(updated.image);
-      }
+        // Save the updated profile only after pre-checks succeed
+        if (updates.image) {
+          await this.pullImage(updated.image);
+        }
 
-      await this.store.save(updated);
+        await this.store.save(updated);
 
-      try {
         try {
-          await container.stop();
+          try {
+            await container.stop();
+          } catch (err) {
+            logger.warn(`Failed to stop container ${id} during update`, { botId: id, err });
+            throw err;
+          }
+          try {
+            await container.remove();
+          } catch (err) {
+            logger.warn(`Failed to remove container ${id} during update`, { botId: id, err });
+            throw err;
+          }
+          await this.createContainer(updated);
+
+          if (wasRunning) {
+            const newContainer = await this.findContainer(id);
+            if (newContainer) await newContainer.start();
+          }
         } catch (err) {
-          logger.warn(`Failed to stop container ${id} during update`, { botId: id, err });
+          // Rollback profile to the previous state
+          logger.error(`Failed to recreate container for bot ${id}, rolling back profile`, { err });
+          await this.store.save(existing);
           throw err;
         }
-        try {
-          await container.remove();
-        } catch (err) {
-          logger.warn(`Failed to remove container ${id} during update`, { botId: id, err });
-          throw err;
-        }
-        await this.createContainer(updated);
-
-        if (wasRunning) {
-          const newContainer = await this.findContainer(id);
-          if (newContainer) await newContainer.start();
-        }
-      } catch (err) {
-        // Rollback profile to the previous state
-        logger.error(`Failed to recreate container for bot ${id}, rolling back profile`, { err });
-        await this.store.save(existing);
-        throw err;
+      } else {
+        // Metadata-only change or no container — just save the profile
+        await this.store.save(updated);
       }
-    } else {
-      // Metadata-only change or no container — just save the profile
-      await this.store.save(updated);
-    }
 
-    return updated;
+      return updated;
+    });
   }
 
   /**

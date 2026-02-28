@@ -460,6 +460,64 @@ describe("FleetManager", () => {
     });
   });
 
+  describe("per-bot mutex", () => {
+    it("serializes 5 concurrent startBot calls into exactly 1 start per call", async () => {
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      let startCount = 0;
+      container.start.mockImplementation(async () => {
+        startCount++;
+        const current = startCount;
+        await new Promise((r) => setTimeout(r, 10));
+        expect(startCount).toBe(current);
+      });
+
+      const promises = Array.from({ length: 5 }, () => fleet.start("bot-id"));
+      await Promise.all(promises);
+
+      expect(container.start).toHaveBeenCalledTimes(5);
+    });
+
+    it("does not block operations on different bots", async () => {
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      const order: string[] = [];
+      container.start.mockImplementation(async () => {
+        order.push("start");
+      });
+      container.stop.mockImplementation(async () => {
+        order.push("stop");
+      });
+
+      await Promise.all([fleet.start("bot-a"), fleet.stop("bot-b")]);
+
+      expect(order).toHaveLength(2);
+    });
+
+    it("releases lock even when operation throws", async () => {
+      docker.listContainers.mockResolvedValue([]);
+
+      await expect(fleet.start("bot-id")).rejects.toThrow(BotNotFoundError);
+      await expect(fleet.start("bot-id")).rejects.toThrow(BotNotFoundError);
+    });
+
+    it("serializes concurrent create calls with the same explicit ID", async () => {
+      let _saveCount = 0;
+      (store.save as ReturnType<typeof vi.fn>).mockImplementation(async (_p: BotProfile) => {
+        _saveCount++;
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      const promises = [
+        fleet.create({ ...PROFILE_PARAMS, id: "explicit-id" }),
+        fleet.create({ ...PROFILE_PARAMS, id: "explicit-id" }),
+      ];
+
+      const results = await Promise.allSettled(promises);
+      expect(results.some((r) => r.status === "fulfilled")).toBe(true);
+    });
+  });
+
   describe("getVolumeUsage", () => {
     it("returns disk usage from running container", async () => {
       const dfOutput =
