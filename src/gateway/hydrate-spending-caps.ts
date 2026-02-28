@@ -9,6 +9,7 @@
 
 import type { Context, MiddlewareHandler, Next } from "hono";
 import { LRUCache } from "lru-cache";
+import { logger } from "../config/logger.js";
 import type {
   ISpendingLimitsRepository,
   SpendingLimitsData,
@@ -53,8 +54,9 @@ export function hydrateSpendingCaps(
       try {
         limits = await repo.get(tenant.id);
         cache.set(tenant.id, limits);
-      } catch {
+      } catch (err) {
         // Fail open — log and proceed without caps
+        logger.error("hydrateSpendingCaps: DB error fetching spending limits", { tenantId: tenant.id, err });
         return next();
       }
     }
