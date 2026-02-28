@@ -1,10 +1,12 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { generateInstanceKey } from "../encryption.js";
+import { encrypt, generateInstanceKey } from "../encryption.js";
 import { DrizzleCredentialRepository } from "./credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
 
@@ -71,6 +73,32 @@ describe("CredentialVaultStore", () => {
       // Verify by decrypting - if the stored value were plaintext, decrypt would fail
       const decrypted = await store.decrypt(id);
       expect(decrypted?.plaintextKey).toBe("sk-ant-test-key-123");
+    });
+
+    it("stores ciphertext that differs from plaintext in the DB", async () => {
+      const plaintext = "sk-ant-test-key-123";
+      const id = await store.create({
+        provider: "anthropic",
+        keyName: "Production",
+        plaintextKey: plaintext,
+        authType: "header",
+        authHeader: "x-api-key",
+        createdBy: "admin-1",
+      });
+
+      const rows = await db
+        .select({ encryptedValue: providerCredentials.encryptedValue })
+        .from(providerCredentials)
+        .where(eq(providerCredentials.id, id));
+
+      expect(rows).toHaveLength(1);
+      // Raw DB value must NOT contain the plaintext
+      expect(rows[0].encryptedValue).not.toContain(plaintext);
+      // Must be valid encrypted JSON payload
+      const parsed = JSON.parse(rows[0].encryptedValue);
+      expect(parsed).toHaveProperty("iv");
+      expect(parsed).toHaveProperty("authTag");
+      expect(parsed).toHaveProperty("ciphertext");
     });
 
     it("logs an audit entry", async () => {
@@ -444,6 +472,71 @@ describe("CredentialVaultStore", () => {
       expect(id).toBeTruthy();
       expect(await storeNoAudit.getById(id)).not.toBeNull();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tenant isolation (tenant_api_keys)
+// ---------------------------------------------------------------------------
+
+describe("Tenant isolation (tenant_api_keys)", () => {
+  let tenantPool: PGlite;
+  let tenantDb: DrizzleDb;
+
+  beforeAll(async () => {
+    ({ db: tenantDb, pool: tenantPool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await tenantPool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(tenantPool);
+  });
+
+  it("tenant A credential is not retrievable when querying tenant B", async () => {
+    const key = generateInstanceKey();
+
+    // Store a credential for tenant-a
+    const encryptedA = JSON.stringify(encrypt("sk-secret-for-tenant-a", key));
+    await tenantDb.insert(tenantApiKeys).values({
+      id: "tk-a",
+      tenantId: "tenant-a",
+      provider: "anthropic",
+      label: "A key",
+      encryptedKey: encryptedA,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // Store a credential for tenant-b
+    const encryptedB = JSON.stringify(encrypt("sk-secret-for-tenant-b", key));
+    await tenantDb.insert(tenantApiKeys).values({
+      id: "tk-b",
+      tenantId: "tenant-b",
+      provider: "anthropic",
+      label: "B key",
+      encryptedKey: encryptedB,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // Query for tenant-a only
+    const rowsA = await tenantDb.select().from(tenantApiKeys).where(eq(tenantApiKeys.tenantId, "tenant-a"));
+
+    expect(rowsA).toHaveLength(1);
+    expect(rowsA[0].id).toBe("tk-a");
+
+    // Verify tenant-b's key is NOT in tenant-a's results
+    const tenantAIds = rowsA.map((r) => r.id);
+    expect(tenantAIds).not.toContain("tk-b");
+
+    // Query for tenant-b only
+    const rowsB = await tenantDb.select().from(tenantApiKeys).where(eq(tenantApiKeys.tenantId, "tenant-b"));
+
+    expect(rowsB).toHaveLength(1);
+    expect(rowsB[0].id).toBe("tk-b");
   });
 });
 
