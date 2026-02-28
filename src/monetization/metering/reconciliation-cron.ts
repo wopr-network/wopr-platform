@@ -1,12 +1,10 @@
-import { and, eq, gte, lt, ne, sql } from "drizzle-orm";
 import { logger } from "../../config/logger.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { creditTransactions } from "../../db/schema/credits.js";
-import { usageSummaries } from "../../db/schema/meter-events.js";
 import { Credit } from "../credit.js";
+import type { IAdapterUsageRepository, IUsageSummaryRepository } from "./reconciliation-repository.js";
 
 export interface ReconciliationConfig {
-  db: DrizzleDb;
+  usageSummaryRepo: IUsageSummaryRepository;
+  adapterUsageRepo: IAdapterUsageRepository;
   /** The date to reconcile, as YYYY-MM-DD. Defaults to yesterday. */
   targetDate?: string;
   /** Raw nano-dollar threshold below which drift is ignored. Default: 1 cent in raw units. */
@@ -62,20 +60,7 @@ export async function runReconciliation(cfg: ReconciliationConfig): Promise<Reco
 
   // 1. Sum metered charges per tenant from usage_summaries for the day window.
   //    Filter out __sentinel__ rows.
-  const meteredRows = await cfg.db
-    .select({
-      tenant: usageSummaries.tenant,
-      totalCharge: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
-    })
-    .from(usageSummaries)
-    .where(
-      and(
-        gte(usageSummaries.windowStart, dayStart),
-        lt(usageSummaries.windowEnd, dayEnd),
-        ne(usageSummaries.tenant, "__sentinel__"),
-      ),
-    )
-    .groupBy(usageSummaries.tenant);
+  const meteredRows = await cfg.usageSummaryRepo.getAggregatedChargesByWindow(dayStart, dayEnd);
 
   if (meteredRows.length === 0) {
     return result;
@@ -87,34 +72,19 @@ export async function runReconciliation(cfg: ReconciliationConfig): Promise<Reco
   const dayStartIso = new Date(dayStart).toISOString();
   const dayEndIso = new Date(dayEnd).toISOString();
 
-  const ledgerRows = await cfg.db
-    .select({
-      tenantId: creditTransactions.tenantId,
-      // amount_credits stores negative values for debits; ABS gives the raw positive debit amount.
-      // Use the raw column name in sql to bypass the custom creditColumn type serializer.
-      totalDebitRaw: sql<number>`COALESCE(SUM(ABS(amount_credits)), 0)`,
-    })
-    .from(creditTransactions)
-    .where(
-      and(
-        eq(creditTransactions.type, "adapter_usage"),
-        sql`${creditTransactions.createdAt}::timestamptz >= ${dayStartIso}::timestamptz`,
-        sql`${creditTransactions.createdAt}::timestamptz < ${dayEndIso}::timestamptz`,
-      ),
-    )
-    .groupBy(creditTransactions.tenantId);
+  const ledgerRows = await cfg.adapterUsageRepo.getAggregatedAdapterUsageDebits(dayStartIso, dayEndIso);
 
   // Build a map of tenantId -> total debit raw
   const ledgerMap = new Map<string, number>();
   for (const row of ledgerRows) {
-    ledgerMap.set(row.tenantId, Number(row.totalDebitRaw));
+    ledgerMap.set(row.tenantId, row.totalDebitRaw);
   }
 
   // 3. Compare per-tenant
   result.tenantsChecked = meteredRows.length;
 
   for (const row of meteredRows) {
-    const meteredChargeRaw = Number(row.totalCharge);
+    const meteredChargeRaw = row.totalChargeRaw;
     const ledgerDebitRaw = ledgerMap.get(row.tenant) ?? 0;
     const driftRaw = meteredChargeRaw - ledgerDebitRaw;
     const absDrift = Math.abs(driftRaw);
