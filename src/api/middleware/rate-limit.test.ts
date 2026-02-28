@@ -268,7 +268,7 @@ describe("platform rate limit rules", () => {
     const app = new Hono();
     app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
     app.post("/api/validate-key", (c) => c.json({ ok: true }));
-    app.post("/api/billing/checkout", (c) => c.json({ ok: true }));
+    app.post("/api/billing/credits/checkout", (c) => c.json({ ok: true }));
     app.post("/api/billing/portal", (c) => c.json({ ok: true }));
     app.post("/fleet/bots", (c) => c.json({ ok: true }));
     app.get("/fleet/bots", (c) => c.json({ ok: true }));
@@ -288,9 +288,9 @@ describe("platform rate limit rules", () => {
   it("billing checkout is limited to 10 req/min", async () => {
     const app = buildPlatformApp();
     for (let i = 0; i < 10; i++) {
-      expect((await app.request(postReq("/api/billing/checkout"))).status).toBe(200);
+      expect((await app.request(postReq("/api/billing/credits/checkout"))).status).toBe(200);
     }
-    expect((await app.request(postReq("/api/billing/checkout"))).status).toBe(429);
+    expect((await app.request(postReq("/api/billing/credits/checkout"))).status).toBe(429);
   });
 
   it("billing portal is limited to 10 req/min", async () => {
@@ -531,5 +531,28 @@ describe("trusted proxy validation (WOP-656)", () => {
 
     const res2 = await app.request(r2);
     expect(res2.status).toBe(429);
+  });
+});
+
+describe("platformRateLimitRules — billing checkout path", () => {
+  it("checkout rule matches /api/billing/credits/checkout", async () => {
+    const { repo, pool } = await makeRateLimitRepo();
+    try {
+      const app = new Hono();
+      app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
+      // Dummy handler — we only care about rate-limit headers
+      app.post("/api/billing/credits/checkout", (c) => c.json({ ok: true }));
+
+      // The BILLING_LIMIT is max: 10. Send 10 requests — all must pass.
+      for (let i = 0; i < 10; i++) {
+        const res = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
+        expect(res.status).toBe(200);
+      }
+
+      const blocked = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
+      expect(blocked.status).toBe(429);
+    } finally {
+      await pool.close();
+    }
   });
 });
