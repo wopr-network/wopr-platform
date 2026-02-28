@@ -38,6 +38,7 @@ export type NotificationTemplateName =
   | "account-deletion-completed"
   | "dividend-weekly-digest"
   | "affiliate-credit-match"
+  | "spend-alert"
   // Passthrough to existing templates
   | "low-balance"
   | "credit-purchase-receipt"
@@ -620,6 +621,30 @@ export function renderNotificationTemplate(template: TemplateName, data: Record<
         subject: `You earned ${data.amountDollars as string} in affiliate credits!`,
         html: wrapHtml("Affiliate Credits Earned", parts.join("\n")),
         text: `You Earned Affiliate Credits!\n\nA user you referred just made their first purchase, and you've been credited ${data.amountDollars as string}.\n${creditsUrl ? `\nView your balance: ${creditsUrl}\n` : ""}${copyright()}`,
+      };
+    }
+    case "spend-alert": {
+      const currentSpend = escapeHtml(String(data.currentSpendDollars ?? "$0.00"));
+      const alertAt = escapeHtml(String(data.alertAtDollars ?? "$0.00"));
+      const creditsUrl = (data.creditsUrl as string) || "";
+      const parts = [
+        heading("Spending Alert: Threshold Reached"),
+        paragraph(
+          `<p>Your monthly spend has reached <strong>${currentSpend}</strong>, ` +
+            `crossing your alert threshold of <strong>${alertAt}</strong>.</p>` +
+            `<p>Review your spending to stay within your budget.</p>`,
+        ),
+      ];
+      if (creditsUrl) parts.push(button(creditsUrl, "Review Spending"));
+      parts.push(footer("This alert fires once per day when your spend exceeds your configured threshold."));
+      return {
+        subject: `Spending alert: you've reached your ${data.alertAtDollars as string} threshold`,
+        html: wrapHtml("Spending Alert", parts.join("\n")),
+        text:
+          `Spending Alert: Threshold Reached\n\nYour monthly spend has reached ${data.currentSpendDollars as string}, ` +
+          `crossing your alert threshold of ${data.alertAtDollars as string}.\n` +
+          (creditsUrl ? `\nReview spending: ${creditsUrl}\n` : "") +
+          copyright(),
       };
     }
     case "custom":

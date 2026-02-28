@@ -79,6 +79,8 @@ export interface ProxyDeps {
   onDebitComplete?: (tenantId: string) => void;
   /** Called when a debit causes balance to cross the zero threshold. */
   onBalanceExhausted?: (tenantId: string, newBalanceCents: number) => void;
+  /** Called after every successful credit debit to check spend alert thresholds. */
+  onSpendAlertCrossed?: (tenantId: string) => void;
 }
 
 export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
@@ -98,6 +100,7 @@ export function buildProxyDeps(config: GatewayConfig): ProxyDeps {
     phoneRepo: config.phoneRepo,
     onDebitComplete: config.onDebitComplete,
     onBalanceExhausted: config.onBalanceExhausted,
+    onSpendAlertCrossed: config.onSpendAlertCrossed,
   };
 }
 
