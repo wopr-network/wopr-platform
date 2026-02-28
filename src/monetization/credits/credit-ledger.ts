@@ -130,6 +130,32 @@ export class DrizzleCreditLedger implements ICreditLedger {
   constructor(private readonly db: DrizzleDb) {}
 
   /**
+   * Read balance with FOR UPDATE row lock. Ensures the row exists first
+   * (upsert with ON CONFLICT DO NOTHING), then locks it for the duration
+   * of the enclosing transaction.
+   */
+  private async lockedBalance(
+    tx: Parameters<Parameters<DrizzleDb["transaction"]>[0]>[0],
+    tenantId: string,
+  ): Promise<Credit> {
+    // Ensure row exists (no-op if already present)
+    await tx.execute(
+      sql`INSERT INTO credit_balances (tenant_id, balance_credits, last_updated)
+          VALUES (${tenantId}, 0, now())
+          ON CONFLICT (tenant_id) DO NOTHING`,
+    );
+
+    // Lock and read
+    const rows = (await tx.execute(
+      sql`SELECT balance_credits FROM credit_balances
+          WHERE tenant_id = ${tenantId} FOR UPDATE`,
+    )) as unknown as { rows: Array<{ balance_credits: string | null }> };
+
+    const raw = rows.rows[0]?.balance_credits;
+    return raw != null ? Credit.fromRaw(Number(raw)) : Credit.ZERO;
+  }
+
+  /**
    * Add credits to a tenant's balance.
    * @returns The created transaction record.
    */
@@ -147,30 +173,17 @@ export class DrizzleCreditLedger implements ICreditLedger {
     }
 
     return this.db.transaction(async (tx) => {
-      // Upsert balance row
-      const existing = await tx
-        .select({ balance: creditBalances.balance })
-        .from(creditBalances)
-        .where(eq(creditBalances.tenantId, tenantId));
-
-      const currentBalance = existing[0]?.balance ?? Credit.ZERO;
+      const currentBalance = await this.lockedBalance(tx, tenantId);
       const newBalance = currentBalance.add(amount);
 
-      if (existing[0]) {
-        await tx
-          .update(creditBalances)
-          .set({
-            balance: newBalance,
-            lastUpdated: sql`(now())`,
-          })
-          .where(eq(creditBalances.tenantId, tenantId));
-      } else {
-        await tx.insert(creditBalances).values({
-          tenantId,
+      // Row guaranteed to exist after lockedBalance()
+      await tx
+        .update(creditBalances)
+        .set({
           balance: newBalance,
           lastUpdated: sql`(now())`,
-        });
-      }
+        })
+        .where(eq(creditBalances.tenantId, tenantId));
 
       // Insert transaction record
       const id = crypto.randomUUID();
@@ -223,12 +236,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
     }
 
     return this.db.transaction(async (tx) => {
-      const existing = await tx
-        .select({ balance: creditBalances.balance })
-        .from(creditBalances)
-        .where(eq(creditBalances.tenantId, tenantId));
-
-      const currentBalance = existing[0]?.balance ?? Credit.ZERO;
+      const currentBalance = await this.lockedBalance(tx, tenantId);
 
       if (!allowNegative && currentBalance.lessThan(amount)) {
         throw new InsufficientBalanceError(currentBalance, amount);
@@ -236,22 +244,14 @@ export class DrizzleCreditLedger implements ICreditLedger {
 
       const newBalance = currentBalance.subtract(amount);
 
-      if (existing[0]) {
-        await tx
-          .update(creditBalances)
-          .set({
-            balance: newBalance,
-            lastUpdated: sql`(now())`,
-          })
-          .where(eq(creditBalances.tenantId, tenantId));
-      } else {
-        // allowNegative=true with no existing row — insert negative balance row
-        await tx.insert(creditBalances).values({
-          tenantId,
+      // Row guaranteed to exist after lockedBalance()
+      await tx
+        .update(creditBalances)
+        .set({
           balance: newBalance,
           lastUpdated: sql`(now())`,
-        });
-      }
+        })
+        .where(eq(creditBalances.tenantId, tenantId));
 
       const id = crypto.randomUUID();
       const negativeAmount = Credit.fromRaw(-amount.toRaw()); // negative for debits
