@@ -11,7 +11,6 @@ export {
 export type { DetachPaymentMethodOpts } from "./payment-methods.js";
 export { detachPaymentMethod } from "./payment-methods.js";
 export { createPortalSession } from "./portal.js";
-export { initStripeSchema } from "./schema.js";
 export type { SetupIntentOpts } from "./setup-intent.js";
 export { createSetupIntent } from "./setup-intent.js";
 export type { StripePaymentProcessorDeps } from "./stripe-payment-processor.js";
