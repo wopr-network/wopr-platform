@@ -20,6 +20,11 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+async function makeRateLimitRepo(): Promise<{ repo: IRateLimitRepository; db: DrizzleDb; pool: PGlite }> {
+  const { db, pool } = await createTestDb();
+  return { repo: new DrizzleRateLimitRepository(db), db, pool };
+}
+
 /** Build a Hono app with a single rate-limited GET /test route. */
 function buildApp(cfg: Omit<RateLimitConfig, "repo" | "scope">, repo: IRateLimitRepository) {
   const app = new Hono();
