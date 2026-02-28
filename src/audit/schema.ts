@@ -2,7 +2,7 @@
 export type AuthMethod = "session" | "api_key";
 
 /** Valid resource types for audit entries. */
-export type ResourceType = "instance" | "plugin" | "api_key" | "user" | "config" | "tier" | "email";
+export type ResourceType = "instance" | "plugin" | "api_key" | "user" | "config" | "tier" | "email" | "billing";
 
 /** Valid audit actions. */
 export type AuditAction =
@@ -21,7 +21,8 @@ export type AuditAction =
   | "email.sent"
   | "tier.upgrade"
   | "tier.downgrade"
-  | "config.update";
+  | "config.update"
+  | "billing.auto_topup_update";
 
 /** A single audit log entry as stored in the database. */
 export interface AuditEntry {

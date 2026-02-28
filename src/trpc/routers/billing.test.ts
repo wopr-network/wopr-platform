@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { IAuditLogRepository } from "../../audit/audit-log-repository.js";
+import { AuditLogger } from "../../audit/logger.js";
+import type { AuditEntry } from "../../audit/schema.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import { Credit } from "../../monetization/credit.js";
@@ -108,6 +111,28 @@ function makeMockLedger(): ICreditLedger {
     },
     async memberUsage(_tenantId: string) {
       return [];
+    },
+  };
+}
+
+function createMockAuditRepo(): IAuditLogRepository & { entries: AuditEntry[] } {
+  const entries: AuditEntry[] = [];
+  return {
+    entries,
+    async insert(entry: AuditEntry) {
+      entries.push(entry);
+    },
+    async query() {
+      return [];
+    },
+    async count() {
+      return 0;
+    },
+    async purgeOlderThan() {
+      return 0;
+    },
+    async purgeOlderThanForUser() {
+      return 0;
     },
   };
 }
@@ -522,5 +547,87 @@ describe("billingRouter", () => {
         );
       });
     }
+  });
+
+  // -------------------------------------------------------------------------
+  // updateAutoTopupSettings audit log
+  // -------------------------------------------------------------------------
+
+  describe("updateAutoTopupSettings audit log", () => {
+    let auditRepo: ReturnType<typeof createMockAuditRepo>;
+
+    beforeEach(() => {
+      auditRepo = createMockAuditRepo();
+      injectDeps({
+        processor: createMockProcessor({ listPaymentMethods: vi.fn().mockResolvedValue([{ id: "pm_1" }]) }),
+        auditLogger: new AuditLogger(auditRepo),
+      });
+    });
+
+    it("emits audit entry with previous and new settings", async () => {
+      const caller = makeCaller(makeCtx("user-audit-1"));
+
+      // First call — creates settings (previous is null)
+      await caller.updateAutoTopupSettings({
+        usage_enabled: true,
+        usage_threshold_cents: 500,
+        usage_topup_cents: 2000,
+      });
+
+      expect(auditRepo.entries).toHaveLength(1);
+      const entry1 = auditRepo.entries[0]!;
+      expect(entry1.action).toBe("billing.auto_topup_update");
+      expect(entry1.resource_type).toBe("billing");
+      expect(entry1.user_id).toBe("user-audit-1");
+      const details1 = JSON.parse(entry1.details!);
+      expect(details1.previous).toBeNull();
+      expect(details1.new.usage_enabled).toBe(true);
+
+      // Second call — updates settings (previous is non-null)
+      await caller.updateAutoTopupSettings({
+        usage_enabled: false,
+      });
+
+      expect(auditRepo.entries).toHaveLength(2);
+      const entry2 = auditRepo.entries[1]!;
+      const details2 = JSON.parse(entry2.details!);
+      expect(details2.previous.usage_enabled).toBe(true);
+      expect(details2.new.usage_enabled).toBe(false);
+    });
+
+    it("does not break settings update if audit logging fails", async () => {
+      const failingRepo: IAuditLogRepository = {
+        async insert() {
+          throw new Error("audit DB down");
+        },
+        async query() {
+          return [];
+        },
+        async count() {
+          return 0;
+        },
+        async purgeOlderThan() {
+          return 0;
+        },
+        async purgeOlderThanForUser() {
+          return 0;
+        },
+      };
+      injectDeps({
+        processor: createMockProcessor({ listPaymentMethods: vi.fn().mockResolvedValue([{ id: "pm_1" }]) }),
+        auditLogger: new AuditLogger(failingRepo),
+      });
+
+      const caller = makeCaller(makeCtx("user-audit-2"));
+
+      // Should NOT throw even though audit fails
+      const result = await caller.updateAutoTopupSettings({
+        usage_enabled: true,
+        usage_threshold_cents: 500,
+        usage_topup_cents: 2000,
+      });
+
+      expect(result.usage_enabled).toBe(true);
+    });
   });
 });
