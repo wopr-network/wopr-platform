@@ -109,6 +109,7 @@
         "src/monetization/metering/emitter.ts",
         "src/monetization/affiliate/drizzle-affiliate-repository.ts",
         "src/monetization/affiliate/affiliate-fraud-repository.ts",
+        "src/monetization/affiliate/affiliate-admin-repository.ts",
         "src/monetization/affiliate/schema.ts",
         "src/monetization/payram/charge-store.ts",
         "src/monetization/drizzle-spending-limits-repository.ts",
