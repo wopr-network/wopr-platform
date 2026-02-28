@@ -74,8 +74,8 @@ describe("runStorageMeteringCron", () => {
     await runStorageMeteringCron({ manager, meterEmitter });
 
     const emitCall = (meterEmitter.emit as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(emitCall.cost).toBeCloseTo(STORAGE_COST_PER_GB_MONTH, 5);
-    expect(emitCall.charge).toBeCloseTo(STORAGE_CHARGE_PER_GB_MONTH, 5);
+    expect(emitCall.cost.toDollars()).toBeCloseTo(STORAGE_COST_PER_GB_MONTH, 5);
+    expect(emitCall.charge.toDollars()).toBeCloseTo(STORAGE_CHARGE_PER_GB_MONTH, 5);
     expect(emitCall.capability).toBe("storage");
     expect(emitCall.provider).toBe("do-spaces");
   });

@@ -3,6 +3,7 @@ import { LRUCache } from "lru-cache";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
+import { Credit } from "../credit.js";
 
 /**
  * Spend limits passed by callers (replaces dead TierStore/SpendOverrideStore).
@@ -190,7 +191,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
         )
     )[0];
 
-    const hourlySpend = (hourlyEvents?.total ?? 0) + (hourlySummaries?.total ?? 0);
+    const hourlySpend = Credit.fromRaw((hourlyEvents?.total ?? 0) + (hourlySummaries?.total ?? 0)).toDollars();
 
     // Query monthly spend
     const monthlyEvents = (
@@ -217,7 +218,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
         )
     )[0];
 
-    const monthlySpend = (monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0);
+    const monthlySpend = Credit.fromRaw((monthlyEvents?.total ?? 0) + (monthlySummaries?.total ?? 0)).toDollars();
 
     return {
       hourlySpend,

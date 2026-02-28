@@ -13,6 +13,7 @@
  *   Charge = amortized_cost * margin (e.g., 1.2 = 20% margin vs 50% for third-party)
  */
 
+import { Credit } from "../credit.js";
 import type { FetchFn, SelfHostedAdapterConfig } from "./self-hosted-base.js";
 import type { AdapterResult, ProviderAdapter, TTSInput, TTSOutput } from "./types.js";
 import { withMargin } from "./types.js";
@@ -92,7 +93,7 @@ export function createChatterboxTTSAdapter(
       const characterCount = Array.from(input.text).length;
 
       // Cost is amortized GPU time per character
-      const cost = characterCount * costPerChar;
+      const cost = Credit.fromDollars(characterCount * costPerChar);
       const charge = withMargin(cost, marginMultiplier);
 
       return {

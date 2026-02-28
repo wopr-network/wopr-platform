@@ -7,6 +7,7 @@
 
 import type { IRateLimitRepository } from "../../api/rate-limit-repository.js";
 import type { BudgetChecker } from "../../monetization/budget/budget-checker.js";
+import type { Credit } from "../../monetization/credit.js";
 import type { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { MeterEmitter } from "../../monetization/metering/emitter.js";
 import type { CapabilityRateLimitConfig } from "../capability-rate-limit.js";
@@ -26,7 +27,7 @@ export interface ProtocolDeps {
   fetchFn: FetchFn;
   resolveServiceKey: (key: string) => GatewayTenant | null;
   /** Apply margin to a cost. Defaults to withMargin from adapters/types. */
-  withMarginFn: (cost: number, margin: number) => number;
+  withMarginFn: (cost: Credit, margin: number) => Credit;
   rateLookupFn?: SellRateLookupFn;
   /** Per-capability rate limit config (req/min). */
   capabilityRateLimitConfig?: Partial<CapabilityRateLimitConfig>;

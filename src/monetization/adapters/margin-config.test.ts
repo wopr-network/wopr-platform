@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import { getMargin, loadMarginConfig, type MarginConfig, withMarginConfig } from "./margin-config.js";
 
 describe("getMargin", () => {
@@ -73,27 +74,34 @@ describe("withMarginConfig", () => {
 
   it("applies correct margin for matching rule", () => {
     // cost 1.0 * margin 1.15 = 1.15
-    expect(withMarginConfig(1.0, config, "openrouter", "anthropic/claude-opus-4")).toBe(1.15);
+    expect(
+      withMarginConfig(Credit.fromDollars(1.0), config, "openrouter", "anthropic/claude-opus-4").toDollars(),
+    ).toBeCloseTo(1.15, 6);
   });
 
   it("applies correct margin for a different matching rule", () => {
     // cost 1.0 * margin 1.5 = 1.5
-    expect(withMarginConfig(1.0, config, "openrouter", "anthropic/claude-haiku-3.5")).toBe(1.5);
+    expect(
+      withMarginConfig(Credit.fromDollars(1.0), config, "openrouter", "anthropic/claude-haiku-3.5").toDollars(),
+    ).toBeCloseTo(1.5, 6);
   });
 
   it("falls back to default margin when no rule matches", () => {
     // cost 1.0 * default 1.3 = 1.3
-    expect(withMarginConfig(1.0, config, "openrouter", "meta/llama-3-70b")).toBe(1.3);
+    expect(withMarginConfig(Credit.fromDollars(1.0), config, "openrouter", "meta/llama-3-70b").toDollars()).toBeCloseTo(
+      1.3,
+      6,
+    );
   });
 
   it("handles fractional costs with 6 decimal precision", () => {
     // cost 0.000123 * margin 1.15 = 0.00014145
-    const result = withMarginConfig(0.000123, config, "openrouter", "anthropic/claude-opus-4");
-    expect(result).toBeCloseTo(0.00014145, 6);
+    const result = withMarginConfig(Credit.fromDollars(0.000123), config, "openrouter", "anthropic/claude-opus-4");
+    expect(result.toDollars()).toBeCloseTo(0.00014145, 6);
   });
 
   it("handles zero cost", () => {
-    expect(withMarginConfig(0, config, "openrouter", "anthropic/claude-opus-4")).toBe(0);
+    expect(withMarginConfig(Credit.ZERO, config, "openrouter", "anthropic/claude-opus-4").isZero()).toBe(true);
   });
 });
 

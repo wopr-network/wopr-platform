@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { meterEvents } from "../db/schema/meter-events.js";
 import { DrizzleSpendingCapStore } from "../fleet/spending-cap-repository.js";
+import { Credit } from "../monetization/credit.js";
 import { createTestDb } from "../test/db.js";
 import { type SpendingCaps, spendingCapCheck } from "./spending-cap.js";
 import type { GatewayTenant } from "./types.js";
@@ -36,13 +37,14 @@ function makeApp(db: DrizzleDb, tenantId: string, caps?: SpendingCaps, config?: 
   return app;
 }
 
-/** Insert a meter event with the given charge amount at the given timestamp. */
-async function insertMeterEvent(db: DrizzleDb, tenant: string, charge: number, timestamp: number) {
+/** Insert a meter event with the given charge amount (in USD) at the given timestamp. */
+async function insertMeterEvent(db: DrizzleDb, tenant: string, chargeUsd: number, timestamp: number) {
+  const raw = Credit.fromDollars(chargeUsd).toRaw();
   await db.insert(meterEvents).values({
     id: `evt-${Math.random().toString(36).slice(2)}`,
     tenant,
-    cost: charge,
-    charge,
+    cost: raw,
+    charge: raw,
     capability: "chat-completions",
     provider: "openrouter",
     timestamp,

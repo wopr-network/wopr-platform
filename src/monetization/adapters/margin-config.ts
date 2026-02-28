@@ -9,6 +9,7 @@
  * variable. See .env.example for the expected shape.
  */
 
+import type { Credit } from "../credit.js";
 import { withMargin } from "./types.js";
 
 /** A single margin rule: provider + model pattern -> margin multiplier */
@@ -69,7 +70,7 @@ export function getMargin(config: MarginConfig, provider: string, model: string)
  * Looks up the correct margin for the given provider+model, then delegates
  * to the existing `withMargin()` function for the actual calculation.
  */
-export function withMarginConfig(cost: number, config: MarginConfig, provider: string, model: string): number {
+export function withMarginConfig(cost: Credit, config: MarginConfig, provider: string, model: string): Credit {
   const margin = getMargin(config, provider, model);
   return withMargin(cost, margin);
 }

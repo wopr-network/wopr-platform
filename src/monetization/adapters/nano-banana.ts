@@ -10,6 +10,7 @@
  * inline in the response candidates.
  */
 
+import { Credit } from "../credit.js";
 import type { AdapterResult, ImageGenerationInput, ImageGenerationOutput, ProviderAdapter } from "./types.js";
 import { withMargin } from "./types.js";
 
@@ -116,7 +117,7 @@ export function createNanoBananaAdapter(
         throw new Error("Nano Banana returned no images — possible safety filter or empty response");
       }
 
-      const cost = costPerImage * images.length;
+      const cost = Credit.fromDollars(costPerImage * images.length);
       const charge = withMargin(cost, marginMultiplier);
 
       return {

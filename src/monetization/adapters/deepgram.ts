@@ -8,6 +8,7 @@
  * Wholesale rate for Nova-2 is ~$0.0043/min.
  */
 
+import { Credit } from "../credit.js";
 import type { AdapterResult, ProviderAdapter, TranscriptionInput, TranscriptionOutput } from "./types.js";
 import { withMargin } from "./types.js";
 
@@ -112,7 +113,7 @@ export function createDeepgramAdapter(
       const durationSeconds = data.metadata.duration;
 
       // Cost = (duration in seconds / 60) * cost per minute
-      const cost = (durationSeconds / 60) * costPerMinute;
+      const cost = Credit.fromDollars((durationSeconds / 60) * costPerMinute);
       const charge = withMargin(cost, marginMultiplier);
 
       return {

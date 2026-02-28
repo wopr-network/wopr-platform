@@ -84,15 +84,16 @@ export class ArbitrageRouter {
 
         // Track margin if sell price is known
         if (request.sellPrice !== undefined && this.onMarginRecord) {
+          const costUsd = result.cost.toDollars();
           this.onMarginRecord({
             tenantId: request.tenantId,
             capability: request.capability,
             adapter: entry.adapter,
             tier: entry.tier,
-            providerCost: result.cost,
+            providerCost: costUsd,
             sellPrice: request.sellPrice,
-            margin: request.sellPrice - result.cost,
-            marginPct: request.sellPrice > 0 ? ((request.sellPrice - result.cost) / request.sellPrice) * 100 : 0,
+            margin: request.sellPrice - costUsd,
+            marginPct: request.sellPrice > 0 ? ((request.sellPrice - costUsd) / request.sellPrice) * 100 : 0,
             timestamp: Date.now(),
           });
         }

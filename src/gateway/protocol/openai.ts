@@ -12,6 +12,7 @@
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
+import { Credit } from "../../monetization/credit.js";
 import { llmBodyLimit } from "../body-limit.js";
 import { capabilityRateLimit } from "../capability-rate-limit.js";
 import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "../circuit-breaker.js";
@@ -222,15 +223,16 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
       // Cost estimation requires a JSON body, so skip it for streams.
       if (isStreaming && res.ok) {
         const costHeader = res.headers.get("x-openrouter-cost");
-        const cost = costHeader ? parseFloat(costHeader) : 0;
+        const costUsd = costHeader ? parseFloat(costHeader) : 0;
 
         logger.info("OpenAI handler: chat/completions (streaming)", {
           tenant: tenant.id,
           status: res.status,
-          cost,
+          cost: costUsd,
         });
 
-        if (cost > 0) {
+        if (costUsd > 0) {
+          const cost = Credit.fromDollars(costUsd);
           deps.meter.emit({
             tenant: tenant.id,
             cost,
@@ -239,7 +241,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
             provider: "openrouter",
             timestamp: Date.now(),
           });
-          debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
+          debitCredits(deps, tenant.id, costUsd, deps.defaultMargin, "chat-completions", "openrouter");
         }
 
         return new Response(res.body, {
@@ -255,17 +257,18 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");
-      const cost = costHeader
+      const costUsd = costHeader
         ? parseFloat(costHeader)
         : await estimateTokenCostFromBody(responseBody, requestModel, deps);
 
       logger.info("OpenAI handler: chat/completions", {
         tenant: tenant.id,
         status: res.status,
-        cost,
+        cost: costUsd,
       });
 
       if (res.ok) {
+        const cost = Credit.fromDollars(costUsd);
         deps.meter.emit({
           tenant: tenant.id,
           cost,
@@ -274,7 +277,7 @@ function chatCompletionsHandler(deps: ProtocolDeps) {
           provider: "openrouter",
           timestamp: Date.now(),
         });
-        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
+        debitCredits(deps, tenant.id, costUsd, deps.defaultMargin, "chat-completions", "openrouter");
       }
 
       return new Response(responseBody, {
@@ -370,15 +373,16 @@ function embeddingsHandler(deps: ProtocolDeps) {
 
       const responseBody = await res.text();
       const costHeader = res.headers.get("x-openrouter-cost");
-      const cost = costHeader ? parseFloat(costHeader) : 0.0001;
+      const costUsd = costHeader ? parseFloat(costHeader) : 0.0001;
 
       logger.info("OpenAI handler: embeddings", {
         tenant: tenant.id,
         status: res.status,
-        cost,
+        cost: costUsd,
       });
 
       if (res.ok) {
+        const cost = Credit.fromDollars(costUsd);
         deps.meter.emit({
           tenant: tenant.id,
           cost,
@@ -387,7 +391,7 @@ function embeddingsHandler(deps: ProtocolDeps) {
           provider: "openrouter",
           timestamp: Date.now(),
         });
-        debitCredits(deps, tenant.id, cost, deps.defaultMargin, "embeddings", "openrouter");
+        debitCredits(deps, tenant.id, costUsd, deps.defaultMargin, "embeddings", "openrouter");
       }
 
       return new Response(responseBody, {

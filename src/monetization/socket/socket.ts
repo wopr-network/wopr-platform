@@ -9,6 +9,7 @@
 import type { AdapterCapability, AdapterResult, ProviderAdapter } from "../adapters/types.js";
 import { withMargin } from "../adapters/types.js";
 import type { BudgetChecker, SpendLimits } from "../budget/budget-checker.js";
+import { Credit } from "../credit.js";
 import type { MeterEmitter } from "../metering/emitter.js";
 
 export interface SocketConfig {
@@ -105,8 +106,8 @@ export class AdapterSocket {
     const isByok = request.byok === true;
     this.meter.emit({
       tenant: request.tenantId,
-      cost: isByok ? 0 : adapterResult.cost,
-      charge: isByok ? 0 : charge,
+      cost: isByok ? Credit.ZERO : adapterResult.cost,
+      charge: isByok ? Credit.ZERO : charge,
       capability: request.capability,
       provider: adapter.name,
       timestamp: Date.now(),

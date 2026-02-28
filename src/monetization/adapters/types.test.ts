@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Credit } from "../credit.js";
 import type {
   AdapterCapability,
   AdapterResult,
@@ -92,7 +93,7 @@ describe("ProviderAdapter with new capabilities", () => {
       async generateImage(_input: ImageGenerationInput) {
         return {
           result: { images: ["data:image/png;base64,..."], model: "test-model" },
-          cost: 0.02,
+          cost: Credit.fromDollars(0.02),
         };
       },
     };
@@ -113,7 +114,7 @@ describe("ProviderAdapter with new capabilities", () => {
             model: "test-model",
             usage: { inputTokens: 5, outputTokens: 20 },
           },
-          cost: 0.001,
+          cost: Credit.fromDollars(0.001),
         };
       },
     };
@@ -130,16 +131,16 @@ describe("ProviderAdapter with new capabilities", () => {
       async transcribe() {
         return {
           result: { text: "", detectedLanguage: "en", durationSeconds: 0 },
-          cost: 0,
+          cost: Credit.ZERO,
         };
       },
       async generateImage() {
-        return { result: { images: [], model: "m" }, cost: 0 };
+        return { result: { images: [], model: "m" }, cost: Credit.ZERO };
       },
       async generateText() {
         return {
           result: { text: "", model: "m", usage: { inputTokens: 0, outputTokens: 0 } },
-          cost: 0,
+          cost: Credit.ZERO,
         };
       },
     };
@@ -155,7 +156,7 @@ describe("ProviderAdapter with new capabilities", () => {
       name: "cost-test",
       capabilities: ["image-generation"],
       async generateImage() {
-        const cost = 0.05;
+        const cost = Credit.fromDollars(0.05);
         return {
           result: { images: ["img1.png"], model: "sdxl" },
           cost,
@@ -167,8 +168,8 @@ describe("ProviderAdapter with new capabilities", () => {
     const result = (await adapter.generateImage?.({
       prompt: "test",
     })) as AdapterResult<ImageGenerationOutput>;
-    expect(result.cost).toBe(0.05);
-    expect(result.charge).toBeCloseTo(0.065, 6);
+    expect(result.cost.toDollars()).toBeCloseTo(0.05, 6);
+    expect(result.charge?.toDollars()).toBeCloseTo(0.065, 6);
   });
 
   it("generateText returns AdapterResult with cost and optional charge", async () => {
@@ -176,7 +177,7 @@ describe("ProviderAdapter with new capabilities", () => {
       name: "cost-test",
       capabilities: ["text-generation"],
       async generateText() {
-        const cost = 0.003;
+        const cost = Credit.fromDollars(0.003);
         return {
           result: {
             text: "hello",
@@ -192,8 +193,8 @@ describe("ProviderAdapter with new capabilities", () => {
     const result = (await adapter.generateText?.({
       prompt: "test",
     })) as AdapterResult<TextGenerationOutput>;
-    expect(result.cost).toBe(0.003);
-    expect(result.charge).toBeCloseTo(0.0039, 6);
+    expect(result.cost.toDollars()).toBeCloseTo(0.003, 6);
+    expect(result.charge?.toDollars()).toBeCloseTo(0.0039, 6);
   });
 });
 
@@ -281,7 +282,7 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
       async synthesizeSpeech(_input: TTSInput) {
         return {
           result: { audioUrl: "https://example.com/audio.mp3", durationSeconds: 3, format: "mp3", characterCount: 11 },
-          cost: 0.005,
+          cost: Credit.fromDollars(0.005),
         };
       },
     };
@@ -298,7 +299,7 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
       async embed(_input: EmbeddingsInput) {
         return {
           result: { embeddings: [[0.1, 0.2]], model: "test-model", totalTokens: 4 },
-          cost: 0.0001,
+          cost: Credit.fromDollars(0.0001),
         };
       },
     };
@@ -313,7 +314,7 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
       name: "cost-test",
       capabilities: ["tts"],
       async synthesizeSpeech() {
-        const cost = 0.01;
+        const cost = Credit.fromDollars(0.01);
         return {
           result: { audioUrl: "https://example.com/audio.mp3", durationSeconds: 5, format: "mp3", characterCount: 50 },
           cost,
@@ -325,8 +326,8 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
     const result = (await adapter.synthesizeSpeech?.({
       text: "test",
     })) as AdapterResult<TTSOutput>;
-    expect(result.cost).toBe(0.01);
-    expect(result.charge).toBeCloseTo(0.013, 6);
+    expect(result.cost.toDollars()).toBeCloseTo(0.01, 6);
+    expect(result.charge?.toDollars()).toBeCloseTo(0.013, 6);
   });
 
   it("embed returns AdapterResult with cost and optional charge", async () => {
@@ -334,7 +335,7 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
       name: "cost-test",
       capabilities: ["embeddings"],
       async embed() {
-        const cost = 0.0002;
+        const cost = Credit.fromDollars(0.0002);
         return {
           result: { embeddings: [[0.1, 0.2, 0.3]], model: "test-model", totalTokens: 10 },
           cost,
@@ -346,8 +347,8 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
     const result = (await adapter.embed?.({
       input: "test",
     })) as AdapterResult<EmbeddingsOutput>;
-    expect(result.cost).toBe(0.0002);
-    expect(result.charge).toBeCloseTo(0.00026, 6);
+    expect(result.cost.toDollars()).toBeCloseTo(0.0002, 6);
+    expect(result.charge?.toDollars()).toBeCloseTo(0.00026, 6);
   });
 });
 

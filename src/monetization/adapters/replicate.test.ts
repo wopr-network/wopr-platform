@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import type { FetchFn, ReplicateAdapterConfig } from "./replicate.js";
 import { createReplicateAdapter } from "./replicate.js";
 import { withMargin } from "./types.js";
@@ -79,10 +80,10 @@ describe("createReplicateAdapter", () => {
       // No segments with end times in default prediction, so durationSeconds = 0
       expect(result.result.durationSeconds).toBe(0);
 
-      // Verify cost: 4.2 seconds * $0.000225/sec = $0.000945
-      expect(result.cost).toBeCloseTo(0.000945, 6);
+      // Verify cost: Credit.fromDollars(4.2) seconds * $0.000225/sec = $0.000945
+      expect(result.cost.toDollars()).toBeCloseTo(0.000945, 6);
       // Verify charge is returned (cost * 1.3 margin)
-      expect(result.charge).toBeCloseTo(0.001229, 4);
+      expect(result.charge?.toDollars()).toBeCloseTo(0.001229, 4);
     });
 
     it("polls when prediction is not immediately complete", async () => {
@@ -103,7 +104,7 @@ describe("createReplicateAdapter", () => {
 
       expect(fetchFn).toHaveBeenCalledTimes(3);
       expect(result.result.text).toBe("Hello world, this is a test transcription.");
-      expect(result.cost).toBeCloseTo(0.000945, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.000945, 6);
     });
 
     it("passes language hint to Replicate input", async () => {
@@ -195,7 +196,7 @@ describe("createReplicateAdapter", () => {
       const adapter = createReplicateAdapter(makeConfig(), fetchFn);
       const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
 
-      expect(result.cost).toBe(0);
+      expect(result.cost.isZero()).toBe(true);
     });
 
     it("returns zero cost when metrics are missing entirely", async () => {
@@ -205,7 +206,7 @@ describe("createReplicateAdapter", () => {
       const adapter = createReplicateAdapter(makeConfig(), fetchFn);
       const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
 
-      expect(result.cost).toBe(0);
+      expect(result.cost.isZero()).toBe(true);
     });
 
     it("throws on unexpected output format", async () => {
@@ -227,9 +228,9 @@ describe("createReplicateAdapter", () => {
       const adapter = createReplicateAdapter(makeConfig(), fetchFn);
       const result = await adapter.transcribe({ audioUrl: "https://example.com/audio.mp3" });
 
-      expect(result.cost).toBeCloseTo(0.000945, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.000945, 6);
       // charge = cost * 1.3 margin
-      expect(result.charge).toBeCloseTo(0.001229, 4);
+      expect(result.charge?.toDollars()).toBeCloseTo(0.001229, 4);
     });
   });
 
@@ -316,8 +317,8 @@ describe("createReplicateAdapter", () => {
       expect(result.result.model).toBe("sdxl");
 
       // Cost: 8.5s * $0.0023/s = $0.01955
-      expect(result.cost).toBeCloseTo(0.01955, 5);
-      expect(result.charge).toBeCloseTo(withMargin(0.01955, 1.3), 5);
+      expect(result.cost.toDollars()).toBeCloseTo(0.01955, 5);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.01955), 1.3).toDollars(), 5);
     });
 
     it("passes optional image parameters", async () => {
@@ -448,8 +449,8 @@ describe("createReplicateAdapter", () => {
       expect(result.result.usage.outputTokens).toBe(50);
 
       // Cost: 10 * $0.00000065 + 50 * $0.00000275 = $0.0000065 + $0.0001375 = $0.000144
-      expect(result.cost).toBeCloseTo(0.000144, 6);
-      expect(result.charge).toBeCloseTo(withMargin(0.000144, 1.3), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.000144, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.000144), 1.3).toDollars(), 6);
     });
 
     it("passes optional text parameters", async () => {
@@ -507,7 +508,7 @@ describe("createReplicateAdapter", () => {
       const adapter = createReplicateAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({ prompt: "test" });
 
-      expect(result.cost).toBe(0);
+      expect(result.cost.isZero()).toBe(true);
       expect(result.result.usage.inputTokens).toBe(0);
       expect(result.result.usage.outputTokens).toBe(0);
     });
@@ -519,7 +520,7 @@ describe("createReplicateAdapter", () => {
       const adapter = createReplicateAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({ prompt: "test" });
 
-      expect(result.cost).toBe(0);
+      expect(result.cost.isZero()).toBe(true);
     });
 
     it("throws on unexpected output format", async () => {
@@ -557,59 +558,59 @@ describe("createReplicateAdapter", () => {
 
 describe("withMargin", () => {
   it("applies default 30% margin", () => {
-    expect(withMargin(1.0)).toBeCloseTo(1.3, 6);
+    expect(withMargin(Credit.fromDollars(1.0)).toDollars()).toBeCloseTo(1.3, 6);
   });
 
   it("applies custom margin multiplier", () => {
-    expect(withMargin(1.0, 1.5)).toBeCloseTo(1.5, 6);
+    expect(withMargin(Credit.fromDollars(1.0), 1.5).toDollars()).toBeCloseTo(1.5, 6);
   });
 
   it("handles zero cost", () => {
-    expect(withMargin(0)).toBe(0);
+    expect(withMargin(Credit.ZERO).isZero()).toBe(true);
   });
 
   it("handles small costs with precision", () => {
     // 0.000945 * 1.3 = 0.0012285
-    const result = withMargin(0.000945, 1.3);
-    expect(result).toBeCloseTo(0.001229, 6);
+    const result = withMargin(Credit.fromDollars(0.000945), 1.3);
+    expect(result.toDollars()).toBeCloseTo(0.0012285, 6);
   });
 
   it("rounds to 6 decimal places", () => {
-    // 0.1234567 * 1.3 = 0.16049371 → should round to 0.160494
-    const result = withMargin(0.1234567, 1.3);
-    expect(result).toBe(0.160494);
+    // 0.1234567 * 1.3 = 0.16049371 → stored in nano-dollars, toDollars rounds
+    const result = withMargin(Credit.fromDollars(0.1234567), 1.3);
+    expect(result.toDollars()).toBeCloseTo(0.160494, 6);
   });
 
   describe("tier-specific markup (WOP-357)", () => {
     it("applies 20% markup for free tier", () => {
       // 1.0 * 1.20 = 1.20
-      expect(withMargin(1.0, 20)).toBeCloseTo(1.2, 6);
+      expect(withMargin(Credit.fromDollars(1.0), 20).toDollars()).toBeCloseTo(1.2, 6);
     });
 
     it("applies 10% markup for pro tier", () => {
       // 1.0 * 1.10 = 1.10
-      expect(withMargin(1.0, 10)).toBeCloseTo(1.1, 6);
+      expect(withMargin(Credit.fromDollars(1.0), 10).toDollars()).toBeCloseTo(1.1, 6);
     });
 
     it("applies 8% markup for team tier", () => {
       // 1.0 * 1.08 = 1.08
-      expect(withMargin(1.0, 8)).toBeCloseTo(1.08, 6);
+      expect(withMargin(Credit.fromDollars(1.0), 8).toDollars()).toBeCloseTo(1.08, 6);
     });
 
     it("applies 5% markup for enterprise tier", () => {
       // 1.0 * 1.05 = 1.05
-      expect(withMargin(1.0, 5)).toBeCloseTo(1.05, 6);
+      expect(withMargin(Credit.fromDollars(1.0), 5).toDollars()).toBeCloseTo(1.05, 6);
     });
 
     it("handles percentage markup with real costs", () => {
       // $0.05 cost with 10% markup = $0.055
-      expect(withMargin(0.05, 10)).toBeCloseTo(0.055, 6);
+      expect(withMargin(Credit.fromDollars(0.05), 10).toDollars()).toBeCloseTo(0.055, 6);
     });
 
     it("handles percentage markup with precision", () => {
       // 0.000945 * 1.20 = 0.001134
-      const result = withMargin(0.000945, 20);
-      expect(result).toBeCloseTo(0.001134, 6);
+      const result = withMargin(Credit.fromDollars(0.000945), 20);
+      expect(result.toDollars()).toBeCloseTo(0.001134, 6);
     });
   });
 });

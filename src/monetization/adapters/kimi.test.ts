@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import type { FetchFn, KimiAdapterConfig } from "./kimi.js";
 import { createKimiAdapter } from "./kimi.js";
 import { withMargin } from "./types.js";
@@ -68,7 +69,7 @@ describe("createKimiAdapter", () => {
       const result = await adapter.generateText({ prompt: "Hello" });
 
       // (1000 / 1M) * $0.35 + (500 / 1M) * $1.40 = $0.00035 + $0.0007 = $0.00105
-      expect(result.cost).toBeCloseTo(0.00105, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.00105, 6);
     });
 
     it("applies margin correctly", async () => {
@@ -84,8 +85,8 @@ describe("createKimiAdapter", () => {
       const result = await adapter.generateText({ prompt: "test" });
 
       const expectedCost = 0.00105;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
-      expect(result.charge).toBeCloseTo(withMargin(expectedCost, 1.5), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(expectedCost), 1.5).toDollars(), 6);
     });
 
     it("supports model override via input", async () => {
@@ -188,7 +189,7 @@ describe("createKimiAdapter", () => {
 
       expect(result.result.usage.inputTokens).toBe(0);
       expect(result.result.usage.outputTokens).toBe(0);
-      expect(result.cost).toBe(0);
+      expect(result.cost.isZero()).toBe(true);
     });
 
     it("throws on API error with message", async () => {

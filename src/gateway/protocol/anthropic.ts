@@ -12,6 +12,7 @@
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
+import { Credit } from "../../monetization/credit.js";
 import { llmBodyLimit } from "../body-limit.js";
 import { capabilityRateLimit } from "../capability-rate-limit.js";
 import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "../circuit-breaker.js";
@@ -204,16 +205,17 @@ function messagesHandler(deps: ProtocolDeps) {
       if (anthropicReq.stream) {
         // Estimate cost for streaming (cannot parse usage from SSE)
         const costHeader = res.headers.get("x-openrouter-cost");
-        const cost = costHeader ? parseFloat(costHeader) : 0;
+        const costUsd = costHeader ? parseFloat(costHeader) : 0;
 
         logger.info("Anthropic handler: streaming messages", {
           tenant: tenant.id,
           model: anthropicReq.model,
-          cost,
+          cost: costUsd,
         });
 
         // Meter and debit credits for streaming
-        if (cost > 0) {
+        if (costUsd > 0) {
+          const cost = Credit.fromDollars(costUsd);
           deps.meter.emit({
             tenant: tenant.id,
             cost,
@@ -222,7 +224,7 @@ function messagesHandler(deps: ProtocolDeps) {
             provider: "openrouter",
             timestamp: Date.now(),
           });
-          debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
+          debitCredits(deps, tenant.id, costUsd, deps.defaultMargin, "chat-completions", "openrouter");
         }
 
         return new Response(res.body, {
@@ -243,16 +245,17 @@ function messagesHandler(deps: ProtocolDeps) {
 
       // Meter usage
       const costHeader = res.headers.get("x-openrouter-cost");
-      const cost = costHeader ? parseFloat(costHeader) : estimateAnthropicCost(anthropicRes.usage);
+      const costUsd = costHeader ? parseFloat(costHeader) : estimateAnthropicCost(anthropicRes.usage);
 
       logger.info("Anthropic handler: messages", {
         tenant: tenant.id,
         model: anthropicReq.model,
         inputTokens: anthropicRes.usage.input_tokens,
         outputTokens: anthropicRes.usage.output_tokens,
-        cost,
+        cost: costUsd,
       });
 
+      const cost = Credit.fromDollars(costUsd);
       deps.meter.emit({
         tenant: tenant.id,
         cost,
@@ -261,7 +264,7 @@ function messagesHandler(deps: ProtocolDeps) {
         provider: "openrouter",
         timestamp: Date.now(),
       });
-      debitCredits(deps, tenant.id, cost, deps.defaultMargin, "chat-completions", "openrouter");
+      debitCredits(deps, tenant.id, costUsd, deps.defaultMargin, "chat-completions", "openrouter");
 
       return c.json(anthropicRes);
     } catch (error) {

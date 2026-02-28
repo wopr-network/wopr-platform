@@ -3,6 +3,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, bench, describe } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
 import type { MeterEvent } from "./types.js";
@@ -10,8 +11,8 @@ import type { MeterEvent } from "./types.js";
 function makeEvent(i: number): MeterEvent {
   return {
     tenant: `tenant-${i % 100}`,
-    cost: 0.001 * (i % 10),
-    charge: 0.002 * (i % 10),
+    cost: Credit.fromDollars(0.001 * (i % 10)),
+    charge: Credit.fromDollars(0.002 * (i % 10)),
     capability: ["chat", "voice", "embeddings", "tts", "stt"][i % 5],
     provider: ["openai", "deepgram", "elevenlabs", "openrouter"][i % 4],
     timestamp: Date.now() - 120_000 + i,

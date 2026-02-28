@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import type { ElevenLabsAdapterConfig, FetchFn } from "./elevenlabs.js";
 import { createElevenLabsAdapter } from "./elevenlabs.js";
 import { withMargin } from "./types.js";
@@ -83,7 +84,7 @@ describe("createElevenLabsAdapter", () => {
       const result = await adapter.synthesizeSpeech({ text: "Hello world" }); // 11 chars
 
       const expectedCost = 11 * 0.000015;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
       expect(result.result.characterCount).toBe(11);
     });
 
@@ -94,8 +95,8 @@ describe("createElevenLabsAdapter", () => {
       const result = await adapter.synthesizeSpeech({ text: "Hello world" }); // 11 chars
 
       const expectedCost = 11 * 0.000015;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
-      expect(result.charge).toBeCloseTo(withMargin(expectedCost, 1.5), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(expectedCost), 1.5).toDollars(), 6);
     });
 
     it("uses voice override from input", async () => {
@@ -194,7 +195,7 @@ describe("createElevenLabsAdapter", () => {
       const adapter = createElevenLabsAdapter(makeConfig(), fetchFn);
       const result = await adapter.synthesizeSpeech({ text: "" });
 
-      expect(result.cost).toBe(0);
+      expect(result.cost.isZero()).toBe(true);
       expect(result.result.characterCount).toBe(0);
     });
 
@@ -206,8 +207,8 @@ describe("createElevenLabsAdapter", () => {
       const result = await adapter.synthesizeSpeech({ text: longText });
 
       const expectedCost = 1000 * 0.000015;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
-      expect(result.charge).toBeCloseTo(withMargin(expectedCost, 1.3), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(expectedCost), 1.3).toDollars(), 6);
       expect(result.result.characterCount).toBe(1000);
     });
   });

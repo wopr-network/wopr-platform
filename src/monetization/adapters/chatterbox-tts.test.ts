@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import type { ChatterboxTTSAdapterConfig, FetchFn } from "./chatterbox-tts.js";
 import { createChatterboxTTSAdapter } from "./chatterbox-tts.js";
 import { withMargin } from "./types.js";
@@ -67,7 +68,7 @@ describe("createChatterboxTTSAdapter", () => {
       const result = await adapter.synthesizeSpeech({ text: "Hello world" }); // 11 chars
 
       const expectedCost = 11 * 0.000002;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
       expect(result.result.characterCount).toBe(11);
     });
 
@@ -78,8 +79,8 @@ describe("createChatterboxTTSAdapter", () => {
       const result = await adapter.synthesizeSpeech({ text: "Hello world" }); // 11 chars
 
       const expectedCost = 11 * 0.000002;
-      expect(result.cost).toBeCloseTo(expectedCost, 6);
-      expect(result.charge).toBeCloseTo(withMargin(expectedCost, 1.2), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(expectedCost, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(expectedCost), 1.2).toDollars(), 6);
     });
 
     it("uses voice override from input", async () => {
@@ -166,7 +167,7 @@ describe("createChatterboxTTSAdapter", () => {
       // Chatterbox cost: $2.00 per 1M chars = $0.000002 per char
       // ElevenLabs cost: $15 per 1M chars = $0.000015 per char
       // Chatterbox should be ~7x cheaper
-      expect(result.cost).toBeCloseTo(0.002, 6); // 1000 * 0.000002
+      expect(result.cost.toDollars()).toBeCloseTo(0.002, 6); // 1000 * 0.000002
     });
   });
 });

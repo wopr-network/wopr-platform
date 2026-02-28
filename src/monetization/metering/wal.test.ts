@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
 import type { MeterEvent } from "./types.js";
 import { MeterWAL } from "./wal.js";
@@ -11,8 +12,8 @@ const TEST_DLQ_PATH = `${TEST_DIR}/test-dlq.jsonl`;
 function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
   return {
     tenant: "tenant-1",
-    cost: 0.001,
-    charge: 0.002,
+    cost: Credit.fromDollars(0.001),
+    charge: Credit.fromDollars(0.002),
     capability: "embeddings",
     provider: "openai",
     timestamp: Date.now(),

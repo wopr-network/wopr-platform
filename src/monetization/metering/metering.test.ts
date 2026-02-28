@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { createTestDb } from "../../test/db.js";
+import { Credit } from "../credit.js";
 import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
 import type { MeterEvent } from "./types.js";
@@ -37,8 +38,8 @@ beforeAll(() => {
 function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
   return {
     tenant: "tenant-1",
-    cost: 0.001,
-    charge: 0.002,
+    cost: Credit.fromDollars(0.001),
+    charge: Credit.fromDollars(0.002),
     capability: "embeddings",
     provider: "openai",
     timestamp: Date.now(),
@@ -146,8 +147,8 @@ describe("MeterEmitter", () => {
   it("persists all MeterEvent fields", async () => {
     const event = makeEvent({
       tenant: "t-abc",
-      cost: 0.05,
-      charge: 0.1,
+      cost: Credit.fromDollars(0.05),
+      charge: Credit.fromDollars(0.1),
       capability: "voice",
       provider: "deepgram",
       timestamp: 1700000000000,
@@ -161,8 +162,8 @@ describe("MeterEmitter", () => {
     const rows = await emitter.queryEvents("t-abc");
     expect(rows).toHaveLength(1);
     expect(rows[0].tenant).toBe("t-abc");
-    expect(rows[0].cost).toBe(0.05);
-    expect(rows[0].charge).toBe(0.1);
+    expect(rows[0].cost).toBe(Credit.fromDollars(0.05).toRaw());
+    expect(rows[0].charge).toBe(Credit.fromDollars(0.1).toRaw());
     expect(rows[0].capability).toBe("voice");
     expect(rows[0].provider).toBe("deepgram");
     expect(rows[0].timestamp).toBe(1700000000000);
@@ -335,8 +336,22 @@ describe("MeterAggregator", () => {
     // Insert events in a past window.
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow + 100 }));
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.03, charge: 0.06, timestamp: pastWindow + 200 }));
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.01),
+        charge: Credit.fromDollars(0.02),
+        timestamp: pastWindow + 100,
+      }),
+    );
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.03),
+        charge: Credit.fromDollars(0.06),
+        timestamp: pastWindow + 200,
+      }),
+    );
     await emitter.flush();
 
     const count = await aggregator.aggregate();
@@ -345,8 +360,8 @@ describe("MeterAggregator", () => {
     const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(2);
-    expect(summaries[0].total_cost).toBeCloseTo(0.04, 10);
-    expect(summaries[0].total_charge).toBeCloseTo(0.08, 10);
+    expect(summaries[0].total_cost).toBe(Credit.fromDollars(0.04).toRaw());
+    expect(summaries[0].total_charge).toBe(Credit.fromDollars(0.08).toRaw());
   });
 
   it("groups by tenant, capability, and provider", async () => {
@@ -387,7 +402,14 @@ describe("MeterAggregator", () => {
   it("is idempotent - does not double-aggregate", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow + 10 }));
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.01),
+        charge: Credit.fromDollars(0.02),
+        timestamp: pastWindow + 10,
+      }),
+    );
     await emitter.flush();
 
     await aggregator.aggregate();
@@ -430,12 +452,19 @@ describe("MeterAggregator", () => {
   it("getTenantTotal returns aggregate totals", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow + 10 }));
     emitter.emit(
       makeEvent({
         tenant: "t-1",
-        cost: 0.05,
-        charge: 0.1,
+        cost: Credit.fromDollars(0.01),
+        charge: Credit.fromDollars(0.02),
+        timestamp: pastWindow + 10,
+      }),
+    );
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.05),
+        charge: Credit.fromDollars(0.1),
         capability: "voice",
         timestamp: pastWindow + 20,
       }),
@@ -445,8 +474,8 @@ describe("MeterAggregator", () => {
     await aggregator.aggregate();
 
     const total = await aggregator.getTenantTotal("t-1", 0);
-    expect(total.totalCost).toBeCloseTo(0.06, 5);
-    expect(total.totalCharge).toBeCloseTo(0.12, 5);
+    expect(total.totalCost).toBe(Credit.fromDollars(0.06).toRaw());
+    expect(total.totalCharge).toBe(Credit.fromDollars(0.12).toRaw());
     expect(total.eventCount).toBe(2);
   });
 
@@ -538,7 +567,14 @@ describe("MeterAggregator - edge cases", () => {
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.123, charge: 0.456, timestamp: pastWindow + 500 }));
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.123),
+        charge: Credit.fromDollars(0.456),
+        timestamp: pastWindow + 500,
+      }),
+    );
     await emitter.flush();
 
     const count = await aggregator.aggregate(now);
@@ -547,8 +583,8 @@ describe("MeterAggregator - edge cases", () => {
     const summaries = await aggregator.querySummaries("t-1");
     expect(summaries).toHaveLength(1);
     expect(summaries[0].event_count).toBe(1);
-    expect(summaries[0].total_cost).toBeCloseTo(0.123, 10);
-    expect(summaries[0].total_charge).toBeCloseTo(0.456, 10);
+    expect(summaries[0].total_cost).toBe(Credit.fromDollars(0.123).toRaw());
+    expect(summaries[0].total_charge).toBe(Credit.fromDollars(0.456).toRaw());
   });
 
   it("places event at exact window start into that window", async () => {
@@ -556,7 +592,14 @@ describe("MeterAggregator - edge cases", () => {
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
     // Event at the exact start of the window (timestamp === windowStart).
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: pastWindow }));
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.01),
+        charge: Credit.fromDollars(0.02),
+        timestamp: pastWindow,
+      }),
+    );
     await emitter.flush();
 
     await aggregator.aggregate(now);
@@ -574,7 +617,14 @@ describe("MeterAggregator - edge cases", () => {
     const oneWindowAgo = twoWindowsAgo + WINDOW;
 
     // Event at the exact boundary (end of window 2-ago = start of window 1-ago).
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: oneWindowAgo }));
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.01),
+        charge: Credit.fromDollars(0.02),
+        timestamp: oneWindowAgo,
+      }),
+    );
     await emitter.flush();
 
     await aggregator.aggregate(now);
@@ -591,9 +641,23 @@ describe("MeterAggregator - edge cases", () => {
 
     const tenants = ["alpha", "beta", "gamma"];
     for (const t of tenants) {
-      emitter.emit(makeEvent({ tenant: t, cost: 0.01, charge: 0.02, capability: "chat", timestamp: pastWindow + 10 }));
       emitter.emit(
-        makeEvent({ tenant: t, cost: 0.03, charge: 0.06, capability: "embeddings", timestamp: pastWindow + 20 }),
+        makeEvent({
+          tenant: t,
+          cost: Credit.fromDollars(0.01),
+          charge: Credit.fromDollars(0.02),
+          capability: "chat",
+          timestamp: pastWindow + 10,
+        }),
+      );
+      emitter.emit(
+        makeEvent({
+          tenant: t,
+          cost: Credit.fromDollars(0.03),
+          charge: Credit.fromDollars(0.06),
+          capability: "embeddings",
+          timestamp: pastWindow + 20,
+        }),
       );
     }
     await emitter.flush();
@@ -605,8 +669,8 @@ describe("MeterAggregator - edge cases", () => {
       expect(summaries).toHaveLength(2); // chat + embeddings
       const total = await aggregator.getTenantTotal(t, 0);
       expect(total.eventCount).toBe(2);
-      expect(total.totalCost).toBeCloseTo(0.04, 10);
-      expect(total.totalCharge).toBeCloseTo(0.08, 10);
+      expect(total.totalCost).toBe(Credit.fromDollars(0.04).toRaw());
+      expect(total.totalCharge).toBe(Credit.fromDollars(0.08).toRaw());
     }
   });
 
@@ -616,9 +680,30 @@ describe("MeterAggregator - edge cases", () => {
     const twoWindowsAgo = threeWindowsAgo + WINDOW;
     const oneWindowAgo = twoWindowsAgo + WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.01, charge: 0.02, timestamp: threeWindowsAgo + 100 }));
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.03, charge: 0.06, timestamp: twoWindowsAgo + 100 }));
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.05, charge: 0.1, timestamp: oneWindowAgo + 100 }));
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.01),
+        charge: Credit.fromDollars(0.02),
+        timestamp: threeWindowsAgo + 100,
+      }),
+    );
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.03),
+        charge: Credit.fromDollars(0.06),
+        timestamp: twoWindowsAgo + 100,
+      }),
+    );
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.05),
+        charge: Credit.fromDollars(0.1),
+        timestamp: oneWindowAgo + 100,
+      }),
+    );
     await emitter.flush();
 
     await aggregator.aggregate(now);
@@ -629,11 +714,11 @@ describe("MeterAggregator - edge cases", () => {
     // Verify each window has exactly one event with the correct cost.
     const sorted = [...summaries].sort((a, b) => a.window_start - b.window_start);
     expect(sorted[0].window_start).toBe(threeWindowsAgo);
-    expect(sorted[0].total_cost).toBeCloseTo(0.01, 10);
+    expect(sorted[0].total_cost).toBe(Credit.fromDollars(0.01).toRaw());
     expect(sorted[1].window_start).toBe(twoWindowsAgo);
-    expect(sorted[1].total_cost).toBeCloseTo(0.03, 10);
+    expect(sorted[1].total_cost).toBe(Credit.fromDollars(0.03).toRaw());
     expect(sorted[2].window_start).toBe(oneWindowAgo);
-    expect(sorted[2].total_cost).toBeCloseTo(0.05, 10);
+    expect(sorted[2].total_cost).toBe(Credit.fromDollars(0.05).toRaw());
   });
 
   it("start/stop lifecycle does not leak timers", async () => {
@@ -670,15 +755,40 @@ describe("MeterAggregator - billing accuracy", () => {
 
     // Generate events with known, precise costs.
     const events: MeterEvent[] = [
-      makeEvent({ tenant: "billing-test", cost: 0.001, charge: 0.002, timestamp: pastWindow + 10 }),
-      makeEvent({ tenant: "billing-test", cost: 0.002, charge: 0.004, timestamp: pastWindow + 20 }),
-      makeEvent({ tenant: "billing-test", cost: 0.003, charge: 0.006, timestamp: pastWindow + 30 }),
-      makeEvent({ tenant: "billing-test", cost: 0.004, charge: 0.008, timestamp: pastWindow + 40 }),
-      makeEvent({ tenant: "billing-test", cost: 0.005, charge: 0.01, timestamp: pastWindow + 50 }),
+      makeEvent({
+        tenant: "billing-test",
+        cost: Credit.fromDollars(0.001),
+        charge: Credit.fromDollars(0.002),
+        timestamp: pastWindow + 10,
+      }),
+      makeEvent({
+        tenant: "billing-test",
+        cost: Credit.fromDollars(0.002),
+        charge: Credit.fromDollars(0.004),
+        timestamp: pastWindow + 20,
+      }),
+      makeEvent({
+        tenant: "billing-test",
+        cost: Credit.fromDollars(0.003),
+        charge: Credit.fromDollars(0.006),
+        timestamp: pastWindow + 30,
+      }),
+      makeEvent({
+        tenant: "billing-test",
+        cost: Credit.fromDollars(0.004),
+        charge: Credit.fromDollars(0.008),
+        timestamp: pastWindow + 40,
+      }),
+      makeEvent({
+        tenant: "billing-test",
+        cost: Credit.fromDollars(0.005),
+        charge: Credit.fromDollars(0.01),
+        timestamp: pastWindow + 50,
+      }),
     ];
 
-    const expectedCost = events.reduce((s, e) => s + e.cost, 0);
-    const expectedCharge = events.reduce((s, e) => s + e.charge, 0);
+    const expectedCostRaw = events.reduce((s, e) => s + e.cost.toRaw(), 0);
+    const expectedChargeRaw = events.reduce((s, e) => s + e.charge.toRaw(), 0);
 
     for (const e of events) emitter.emit(e);
     await emitter.flush();
@@ -686,8 +796,8 @@ describe("MeterAggregator - billing accuracy", () => {
 
     const total = await aggregator.getTenantTotal("billing-test", 0);
     expect(total.eventCount).toBe(5);
-    expect(total.totalCost).toBeCloseTo(expectedCost, 10);
-    expect(total.totalCharge).toBeCloseTo(expectedCharge, 10);
+    expect(total.totalCost).toBeCloseTo(expectedCostRaw, 0);
+    expect(total.totalCharge).toBeCloseTo(expectedChargeRaw, 0);
   });
 
   it("per-capability breakdown sums match tenant total", async () => {
@@ -700,12 +810,32 @@ describe("MeterAggregator - billing accuracy", () => {
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", cost: 0.1, charge: 0.2, capability: "chat", timestamp: pastWindow + 10 }));
     emitter.emit(
-      makeEvent({ tenant: "t-1", cost: 0.05, charge: 0.1, capability: "embeddings", timestamp: pastWindow + 20 }),
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.1),
+        charge: Credit.fromDollars(0.2),
+        capability: "chat",
+        timestamp: pastWindow + 10,
+      }),
     );
     emitter.emit(
-      makeEvent({ tenant: "t-1", cost: 0.15, charge: 0.3, capability: "voice", timestamp: pastWindow + 30 }),
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.05),
+        charge: Credit.fromDollars(0.1),
+        capability: "embeddings",
+        timestamp: pastWindow + 20,
+      }),
+    );
+    emitter.emit(
+      makeEvent({
+        tenant: "t-1",
+        cost: Credit.fromDollars(0.15),
+        charge: Credit.fromDollars(0.3),
+        capability: "voice",
+        timestamp: pastWindow + 30,
+      }),
     );
     await emitter.flush();
     await aggregator.aggregate(now);
@@ -717,8 +847,8 @@ describe("MeterAggregator - billing accuracy", () => {
 
     expect(sumCost).toBeCloseTo(total.totalCost, 10);
     expect(sumCharge).toBeCloseTo(total.totalCharge, 10);
-    expect(total.totalCost).toBeCloseTo(0.3, 10);
-    expect(total.totalCharge).toBeCloseTo(0.6, 10);
+    expect(total.totalCost).toBe(Credit.fromDollars(0.3).toRaw());
+    expect(total.totalCharge).toBe(Credit.fromDollars(0.6).toRaw());
     expect(total.eventCount).toBe(3);
   });
 });
@@ -748,7 +878,14 @@ describe("MeterEmitter - edge cases", () => {
 
   it("handles large batch of events", async () => {
     for (let i = 0; i < 200; i++) {
-      emitter.emit(makeEvent({ tenant: "bulk-tenant", cost: 0.001, charge: 0.002, timestamp: Date.now() + i }));
+      emitter.emit(
+        makeEvent({
+          tenant: "bulk-tenant",
+          cost: Credit.fromDollars(0.001),
+          charge: Credit.fromDollars(0.002),
+          timestamp: Date.now() + i,
+        }),
+      );
     }
     await emitter.flush();
 
@@ -759,7 +896,7 @@ describe("MeterEmitter - edge cases", () => {
   });
 
   it("handles zero-cost events", async () => {
-    emitter.emit(makeEvent({ tenant: "free-tier", cost: 0, charge: 0 }));
+    emitter.emit(makeEvent({ tenant: "free-tier", cost: Credit.ZERO, charge: Credit.ZERO }));
     await emitter.flush();
 
     const rows = await emitter.queryEvents("free-tier");
@@ -961,8 +1098,8 @@ describe("MeterEmitter - fail-closed policy", () => {
     await db.insert(meterEvents).values({
       id: existingEvent.id,
       tenant: existingEvent.tenant,
-      cost: existingEvent.cost,
-      charge: existingEvent.charge,
+      cost: existingEvent.cost.toRaw(),
+      charge: existingEvent.charge.toRaw(),
       capability: existingEvent.capability,
       provider: existingEvent.provider,
       timestamp: existingEvent.timestamp,
@@ -1062,8 +1199,8 @@ describe("MeterEmitter - fail-closed policy", () => {
     it("BYOK tier records zero cost/charge with tier='byok'", async () => {
       emitter.emit(
         makeEvent({
-          cost: 0,
-          charge: 0,
+          cost: Credit.ZERO,
+          charge: Credit.ZERO,
           capability: "chat-completions",
           provider: "openrouter",
           usage: { units: 1000, unitType: "tokens" },
@@ -1085,8 +1222,8 @@ describe("MeterEmitter - fail-closed policy", () => {
       emitter.emit(
         makeEvent({
           tenant: "t-1",
-          cost: 0.01,
-          charge: 0.02,
+          cost: Credit.fromDollars(0.01),
+          charge: Credit.fromDollars(0.02),
           timestamp: pastWindow + 10,
           usage: { units: 100, unitType: "tokens" },
           tier: "branded",
@@ -1095,8 +1232,8 @@ describe("MeterEmitter - fail-closed policy", () => {
       emitter.emit(
         makeEvent({
           tenant: "t-1",
-          cost: 0.03,
-          charge: 0.06,
+          cost: Credit.fromDollars(0.03),
+          charge: Credit.fromDollars(0.06),
           timestamp: pastWindow + 20,
           usage: { units: 200, unitType: "tokens" },
           tier: "branded",
@@ -1107,7 +1244,7 @@ describe("MeterEmitter - fail-closed policy", () => {
       expect(count).toBe(1);
       const summaries = await aggregator.querySummaries("t-1");
       expect(summaries[0].event_count).toBe(2);
-      expect(summaries[0].total_cost).toBeCloseTo(0.04, 10);
+      expect(summaries[0].total_cost).toBe(Credit.fromDollars(0.04).toRaw());
     });
 
     it("WAL/DLQ handles events with new fields", async () => {

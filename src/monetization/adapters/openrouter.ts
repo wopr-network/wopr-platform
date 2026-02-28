@@ -9,6 +9,7 @@
  * falling back to token-based calculation when the header is absent.
  */
 
+import { Credit } from "../credit.js";
 import type {
   AdapterResult,
   EmbeddingsInput,
@@ -156,14 +157,15 @@ export function createOpenRouterAdapter(
 
       // Prefer cost from x-openrouter-cost header (exact provider cost in USD)
       const costHeader = res.headers.get("x-openrouter-cost");
-      let cost: number;
+      let costUsd: number;
       if (costHeader !== null) {
-        cost = parseFloat(costHeader);
+        costUsd = parseFloat(costHeader);
       } else {
         // Fall back to token-based calculation
-        cost = inputTokens * fallbackInputTokenCost + outputTokens * fallbackOutputTokenCost;
+        costUsd = inputTokens * fallbackInputTokenCost + outputTokens * fallbackOutputTokenCost;
       }
 
+      const cost = Credit.fromDollars(costUsd);
       const charge = withMargin(cost, marginMultiplier);
 
       return {
@@ -213,14 +215,15 @@ export function createOpenRouterAdapter(
 
       // Prefer cost from x-openrouter-cost header (exact provider cost in USD)
       const costHeader = res.headers.get("x-openrouter-cost");
-      let cost: number;
+      let costUsd: number;
       if (costHeader !== null) {
-        cost = parseFloat(costHeader);
+        costUsd = parseFloat(costHeader);
       } else {
         // Fall back to token-based calculation
-        cost = data.usage.total_tokens * fallbackInputTokenCost;
+        costUsd = data.usage.total_tokens * fallbackInputTokenCost;
       }
 
+      const cost = Credit.fromDollars(costUsd);
       const charge = withMargin(cost, marginMultiplier);
 
       return {

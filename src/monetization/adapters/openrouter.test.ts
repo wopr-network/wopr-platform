@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Credit } from "../credit.js";
 import type { FetchFn, OpenRouterAdapterConfig } from "./openrouter.js";
 import { createOpenRouterAdapter } from "./openrouter.js";
 import { withMargin } from "./types.js";
@@ -63,8 +64,8 @@ describe("createOpenRouterAdapter", () => {
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       const result = await adapter.generateText({ prompt: "Hello" });
 
-      expect(result.cost).toBeCloseTo(0.000042, 6);
-      expect(result.charge).toBeCloseTo(withMargin(0.000042, 1.3), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.000042, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.000042), 1.3).toDollars(), 6);
     });
 
     it("applies margin to header cost", async () => {
@@ -76,8 +77,8 @@ describe("createOpenRouterAdapter", () => {
       const adapter = createOpenRouterAdapter(makeConfig({ marginMultiplier: 1.5 }), fetchFn);
       const result = await adapter.generateText({ prompt: "test" });
 
-      expect(result.cost).toBeCloseTo(0.01, 6);
-      expect(result.charge).toBeCloseTo(withMargin(0.01, 1.5), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.01, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.01), 1.5).toDollars(), 6);
     });
 
     it("passes requested model through to response", async () => {
@@ -137,8 +138,8 @@ describe("createOpenRouterAdapter", () => {
       const result = await adapter.generateText({ prompt: "test" });
 
       // 100 * $0.000001 + 50 * $0.000002 = $0.0001 + $0.0001 = $0.0002
-      expect(result.cost).toBeCloseTo(0.0002, 6);
-      expect(result.charge).toBeCloseTo(withMargin(0.0002, 1.3), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.0002, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.0002), 1.3).toDollars(), 6);
     });
 
     it("propagates 429 rate limit error with retry-after", async () => {
@@ -365,7 +366,7 @@ describe("createOpenRouterAdapter", () => {
       const adapter = createOpenRouterAdapter(makeConfig(), fetchFn);
       const result = await adapter.embed({ input: "test" });
 
-      expect(result.cost).toBeCloseTo(0.000015, 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.000015, 6);
     });
 
     it("applies margin correctly", async () => {
@@ -375,8 +376,8 @@ describe("createOpenRouterAdapter", () => {
       const adapter = createOpenRouterAdapter(makeConfig({ marginMultiplier: 1.5 }), fetchFn);
       const result = await adapter.embed({ input: "test" });
 
-      expect(result.cost).toBeCloseTo(0.01, 6);
-      expect(result.charge).toBeCloseTo(withMargin(0.01, 1.5), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.01, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.01), 1.5).toDollars(), 6);
     });
 
     it("passes model and dimensions through to request", async () => {
@@ -456,8 +457,8 @@ describe("createOpenRouterAdapter", () => {
       const result = await adapter.embed({ input: "test" });
 
       // 100 tokens * $0.000001 = $0.0001
-      expect(result.cost).toBeCloseTo(0.0001, 6);
-      expect(result.charge).toBeCloseTo(withMargin(0.0001, 1.3), 6);
+      expect(result.cost.toDollars()).toBeCloseTo(0.0001, 6);
+      expect(result.charge?.toDollars()).toBeCloseTo(withMargin(Credit.fromDollars(0.0001), 1.3).toDollars(), 6);
     });
 
     it("does not send dimensions when not specified", async () => {

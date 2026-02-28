@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
 
 describe("MeterDLQ", () => {
@@ -59,8 +60,8 @@ describe("MeterDLQ", () => {
       tenant: "tenant-1",
       capability: "tts",
       provider: "elevenlabs",
-      cost: 0.01,
-      charge: 0.02,
+      cost: Credit.fromDollars(0.01),
+      charge: Credit.fromDollars(0.02),
       timestamp: Date.now(),
     };
 
@@ -85,8 +86,8 @@ describe("MeterDLQ", () => {
       tenant: "t1",
       capability: "tts",
       provider: "elevenlabs",
-      cost: 0.01,
-      charge: 0.02,
+      cost: Credit.fromDollars(0.01),
+      charge: Credit.fromDollars(0.02),
       timestamp: Date.now(),
     };
     dlq.append(event, "err", 1);
