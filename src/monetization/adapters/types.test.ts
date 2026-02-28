@@ -100,7 +100,7 @@ describe("ProviderAdapter with new capabilities", () => {
 
     expect(adapter.name).toBe("test-image-adapter");
     expect(adapter.capabilities).toContain("image-generation");
-    expect(adapter.generateImage).toBeDefined();
+    expect(typeof adapter.generateImage).toBe("function");
   });
 
   it("supports text-generation capability", () => {
@@ -121,7 +121,7 @@ describe("ProviderAdapter with new capabilities", () => {
 
     expect(adapter.name).toBe("test-text-adapter");
     expect(adapter.capabilities).toContain("text-generation");
-    expect(adapter.generateText).toBeDefined();
+    expect(typeof adapter.generateText).toBe("function");
   });
 
   it("supports multiple capabilities on one adapter", () => {
@@ -146,9 +146,9 @@ describe("ProviderAdapter with new capabilities", () => {
     };
 
     expect(adapter.capabilities).toHaveLength(3);
-    expect(adapter.transcribe).toBeDefined();
-    expect(adapter.generateImage).toBeDefined();
-    expect(adapter.generateText).toBeDefined();
+    expect(typeof adapter.transcribe).toBe("function");
+    expect(typeof adapter.generateImage).toBe("function");
+    expect(typeof adapter.generateText).toBe("function");
   });
 
   it("generateImage returns AdapterResult with cost and optional charge", async () => {
@@ -289,7 +289,7 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
 
     expect(adapter.name).toBe("test-tts-adapter");
     expect(adapter.capabilities).toContain("tts");
-    expect(adapter.synthesizeSpeech).toBeDefined();
+    expect(typeof adapter.synthesizeSpeech).toBe("function");
   });
 
   it("supports embeddings capability", () => {
@@ -306,7 +306,7 @@ describe("ProviderAdapter with TTS and embeddings capabilities", () => {
 
     expect(adapter.name).toBe("test-embed-adapter");
     expect(adapter.capabilities).toContain("embeddings");
-    expect(adapter.embed).toBeDefined();
+    expect(typeof adapter.embed).toBe("function");
   });
 
   it("synthesizeSpeech returns AdapterResult with cost and optional charge", async () => {

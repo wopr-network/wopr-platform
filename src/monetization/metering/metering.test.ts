@@ -459,8 +459,13 @@ describe("MeterAggregator", () => {
 
     const summaries = await aggregator.querySummaries("t-1");
     const voiceSummary = summaries.find((s) => s.capability === "voice");
-    expect(voiceSummary).toBeDefined();
-    expect(voiceSummary?.total_duration).toBe(8000);
+    expect(voiceSummary).toEqual(
+      expect.objectContaining({
+        capability: "voice",
+        tenant: "t-1",
+        total_duration: 8000,
+      }),
+    );
   });
 
   it("getTenantTotal returns aggregate totals", async () => {
@@ -1048,7 +1053,7 @@ describe("MeterEmitter - fail-closed policy", () => {
 
     const event = JSON.parse(lines[0]);
     expect(event.tenant).toBe("t-1");
-    expect(event.id).toBeDefined();
+    expect(event.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   });
 
   it("clears WAL after successful flush", async () => {
@@ -1082,7 +1087,8 @@ describe("MeterEmitter - fail-closed policy", () => {
     const dlqEntry = JSON.parse(dlqLines[0]);
     expect(dlqEntry.tenant).toBe("t-1");
     expect(dlqEntry.dlq_retries).toBe(3);
-    expect(dlqEntry.dlq_error).toBeDefined();
+    expect(typeof dlqEntry.dlq_error).toBe("string");
+    expect(dlqEntry.dlq_error.length).toBeGreaterThan(0);
 
     // Re-open for cleanup.
     const testDb = await createTestDb();
