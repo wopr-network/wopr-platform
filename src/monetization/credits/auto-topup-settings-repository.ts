@@ -50,6 +50,8 @@ export interface IAutoTopupSettingsRepository {
     settings: Partial<Omit<AutoTopupSettings, "tenantId" | "createdAt" | "updatedAt">>,
   ): Promise<void>;
   setUsageChargeInFlight(tenantId: string, inFlight: boolean): Promise<void>;
+  /** Atomically set usage_charge_in_flight = true IFF it is currently false. Returns true if acquired. */
+  tryAcquireUsageInFlight(tenantId: string): Promise<boolean>;
   incrementUsageFailures(tenantId: string): Promise<number>;
   resetUsageFailures(tenantId: string): Promise<void>;
   disableUsage(tenantId: string): Promise<void>;
@@ -124,6 +126,17 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
       .update(creditAutoTopupSettings)
       .set({ usageChargeInFlight: inFlight, updatedAt: sql`now()` })
       .where(eq(creditAutoTopupSettings.tenantId, tenantId));
+  }
+
+  async tryAcquireUsageInFlight(tenantId: string): Promise<boolean> {
+    const rows = await this.db
+      .update(creditAutoTopupSettings)
+      .set({ usageChargeInFlight: true, updatedAt: sql`now()` })
+      .where(
+        and(eq(creditAutoTopupSettings.tenantId, tenantId), eq(creditAutoTopupSettings.usageChargeInFlight, false)),
+      )
+      .returning({ tenantId: creditAutoTopupSettings.tenantId });
+    return rows.length > 0;
   }
 
   async incrementUsageFailures(tenantId: string): Promise<number> {
