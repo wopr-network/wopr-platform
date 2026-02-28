@@ -4,11 +4,11 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { capabilityRateLimit, resolveCapabilityCategory } from "./capability-rate-limit.js";
 import type { GatewayTenant } from "./types.js";
 
@@ -107,15 +107,22 @@ describe("capabilityRateLimit", () => {
   let pool: PGlite;
   let db: DrizzleDb;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
     vi.useFakeTimers();
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
   afterEach(async () => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("allows requests under the llm limit", async () => {

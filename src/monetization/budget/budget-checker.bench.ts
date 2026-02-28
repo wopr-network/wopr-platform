@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, bench, describe } from "vitest";
+import { afterAll, beforeAll, bench, describe } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleBudgetChecker, type SpendLimits } from "./budget-checker.js";
 
 const limits: SpendLimits = {
@@ -10,18 +10,23 @@ const limits: SpendLimits = {
   label: "bench",
 };
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("BudgetChecker throughput", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let checker: DrizzleBudgetChecker;
 
-  beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+  beforeAll(async () => {
+    await truncateAllTables(pool);
     checker = new DrizzleBudgetChecker(db, { cacheTtlMs: 30_000, cacheMaxSize: 1000 });
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   let tenantIdx = 0;

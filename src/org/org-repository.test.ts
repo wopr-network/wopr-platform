@@ -1,28 +1,26 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleOrgRepository, type IOrgRepository } from "./drizzle-org-repository.js";
 
-async function setup() {
-  const { db, pool } = await createTestDb();
-  const repo = new DrizzleOrgRepository(db);
-  return { repo, pool };
-}
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
 
 describe("DrizzleOrgRepository", () => {
   let repo: IOrgRepository;
-  let pool: PGlite;
-
-  beforeAll(async () => {
-    ({ repo, pool } = await setup());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    repo = new DrizzleOrgRepository(db);
   });
 
   describe("createOrg", () => {

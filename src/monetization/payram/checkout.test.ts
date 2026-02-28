@@ -3,8 +3,9 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import type { Payram } from "payram";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { PayRamChargeStore } from "./charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "./checkout.js";
 
@@ -23,18 +24,22 @@ function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn
 
 describe("createPayRamCheckout", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let chargeStore: PayRamChargeStore;
   let payram: Payram;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    chargeStore = new PayRamChargeStore(db);
-    payram = createMockPayram();
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    chargeStore = new PayRamChargeStore(db);
+    payram = createMockPayram();
   });
 
   it("rejects amounts below $10 minimum", async () => {

@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents, recoveryItems } from "../db/schema/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import type { AdminNotifier } from "./admin-notifier.js";
 import type { NodeConnectionManager } from "./node-connection-manager.js";
 import { RecoveryManager } from "./recovery-manager.js";
@@ -48,144 +48,142 @@ async function insertNode(
   });
 }
 
-describe("RecoveryManager", () => {
-  describe("recoverTenant uses bot profile for image/env", () => {
-    let db: DrizzleDb;
-    let pool: PGlite;
-    let notifier: AdminNotifier;
-    let nodeConnections: NodeConnectionManager;
-    let sendCommand: ReturnType<typeof vi.fn>;
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+let db: DrizzleDb;
 
-    beforeEach(async () => {
-      ({ db, pool } = await createTestDb());
-      notifier = createMockNotifier();
-      sendCommand = vi.fn().mockResolvedValue({
-        id: "cmd-1",
-        type: "command_result",
-        command: "test",
-        success: true,
-      });
-      nodeConnections = createMockNodeConnections({
-        sendCommand,
-        findBestTarget: vi.fn().mockResolvedValue({
-          id: "target-node-1",
-          host: "10.0.0.2",
-          status: "active",
-          capacityMb: 4096,
-          usedMb: 512,
-        }),
-      });
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
+describe("RecoveryManager - recoverTenant uses bot profile for image/env", () => {
+  let notifier: AdminNotifier;
+  let nodeConnections: NodeConnectionManager;
+  let sendCommand: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    notifier = createMockNotifier();
+    sendCommand = vi.fn().mockResolvedValue({
+      id: "cmd-1",
+      type: "command_result",
+      command: "test",
+      success: true,
+    });
+    nodeConnections = createMockNodeConnections({
+      sendCommand,
+      findBestTarget: vi.fn().mockResolvedValue({
+        id: "target-node-1",
+        host: "10.0.0.2",
+        status: "active",
+        capacityMb: 4096,
+        usedMb: 512,
+      }),
+    });
+  });
+
+  it("reads image and env from bot_profiles instead of hardcoding", async () => {
+    const manager = new RecoveryManager(db, nodeConnections, notifier);
+
+    await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
+    await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
+
+    await db.insert(botInstances).values({
+      id: "bot-1",
+      tenantId: "tenant-1",
+      name: "my-bot",
+      nodeId: "dead-node",
     });
 
-    afterEach(async () => {
-      await pool.close();
+    // Insert bot profile with pinned image and custom env (using raw SQL compatible with Drizzle)
+    await db.execute(
+      `INSERT INTO bot_profiles (id, tenant_id, name, image, env, restart_policy, update_policy, release_channel, description)
+       VALUES ('bot-1', 'tenant-1', 'my-bot', 'ghcr.io/wopr-network/wopr:v2.0.0', '{"TOKEN":"secret-abc","LOG_LEVEL":"debug"}', 'unless-stopped', 'on-push', 'stable', '')`,
+    );
+
+    await manager.triggerRecovery("dead-node", "heartbeat_timeout");
+
+    const importCall = sendCommand.mock.calls.find(
+      (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
+    );
+    expect(importCall).toBeDefined();
+
+    const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
+    expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v2.0.0");
+    expect(importCmd.payload.env).toEqual({ TOKEN: "secret-abc", LOG_LEVEL: "debug" });
+    expect(importCmd.payload.image).not.toBe("ghcr.io/wopr-network/wopr:latest");
+  });
+
+  it("falls back to defaults with logger.warn when no profile exists", async () => {
+    const manager = new RecoveryManager(db, nodeConnections, notifier);
+
+    await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
+    await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
+
+    await db.insert(botInstances).values({
+      id: "bot-1",
+      tenantId: "tenant-1",
+      name: "my-bot",
+      nodeId: "dead-node",
     });
 
-    it("reads image and env from bot_profiles instead of hardcoding", async () => {
-      const manager = new RecoveryManager(db, nodeConnections, notifier);
+    await manager.triggerRecovery("dead-node", "manual");
 
-      await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
-      await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
+    const importCall = sendCommand.mock.calls.find(
+      (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
+    );
+    expect(importCall).toBeDefined();
 
-      await db.insert(botInstances).values({
-        id: "bot-1",
-        tenantId: "tenant-1",
-        name: "my-bot",
-        nodeId: "dead-node",
-      });
+    const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
+    expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:latest");
+    expect(importCmd.payload.env).toEqual({});
+  });
 
-      // Insert bot profile with pinned image and custom env (using raw SQL compatible with Drizzle)
-      await db.execute(
-        `INSERT INTO bot_profiles (id, tenant_id, name, image, env, restart_policy, update_policy, release_channel, description)
-         VALUES ('bot-1', 'tenant-1', 'my-bot', 'ghcr.io/wopr-network/wopr:v2.0.0', '{"TOKEN":"secret-abc","LOG_LEVEL":"debug"}', 'unless-stopped', 'on-push', 'stable', '')`,
-      );
+  it("falls back to empty env when profile env JSON is corrupt", async () => {
+    const manager = new RecoveryManager(db, nodeConnections, notifier);
 
-      await manager.triggerRecovery("dead-node", "heartbeat_timeout");
+    await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
+    await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
 
-      const importCall = sendCommand.mock.calls.find(
-        (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
-      );
-      expect(importCall).toBeDefined();
-
-      const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
-      expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v2.0.0");
-      expect(importCmd.payload.env).toEqual({ TOKEN: "secret-abc", LOG_LEVEL: "debug" });
-      expect(importCmd.payload.image).not.toBe("ghcr.io/wopr-network/wopr:latest");
+    await db.insert(botInstances).values({
+      id: "bot-1",
+      tenantId: "tenant-1",
+      name: "my-bot",
+      nodeId: "dead-node",
     });
 
-    it("falls back to defaults with logger.warn when no profile exists", async () => {
-      const manager = new RecoveryManager(db, nodeConnections, notifier);
+    await db.execute(
+      `INSERT INTO bot_profiles (id, tenant_id, name, image, env, restart_policy, update_policy, release_channel, description)
+       VALUES ('bot-1', 'tenant-1', 'my-bot', 'ghcr.io/wopr-network/wopr:v3.0.0', 'not-valid-json{{{', 'unless-stopped', 'on-push', 'stable', '')`,
+    );
 
-      await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
-      await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
+    await manager.triggerRecovery("dead-node", "manual");
 
-      await db.insert(botInstances).values({
-        id: "bot-1",
-        tenantId: "tenant-1",
-        name: "my-bot",
-        nodeId: "dead-node",
-      });
+    const importCall = sendCommand.mock.calls.find(
+      (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
+    );
+    expect(importCall).toBeDefined();
 
-      await manager.triggerRecovery("dead-node", "manual");
-
-      const importCall = sendCommand.mock.calls.find(
-        (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
-      );
-      expect(importCall).toBeDefined();
-
-      const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
-      expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:latest");
-      expect(importCmd.payload.env).toEqual({});
-    });
-
-    it("falls back to empty env when profile env JSON is corrupt", async () => {
-      const manager = new RecoveryManager(db, nodeConnections, notifier);
-
-      await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
-      await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
-
-      await db.insert(botInstances).values({
-        id: "bot-1",
-        tenantId: "tenant-1",
-        name: "my-bot",
-        nodeId: "dead-node",
-      });
-
-      await db.execute(
-        `INSERT INTO bot_profiles (id, tenant_id, name, image, env, restart_policy, update_policy, release_channel, description)
-         VALUES ('bot-1', 'tenant-1', 'my-bot', 'ghcr.io/wopr-network/wopr:v3.0.0', 'not-valid-json{{{', 'unless-stopped', 'on-push', 'stable', '')`,
-      );
-
-      await manager.triggerRecovery("dead-node", "manual");
-
-      const importCall = sendCommand.mock.calls.find(
-        (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
-      );
-      expect(importCall).toBeDefined();
-
-      const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
-      expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v3.0.0");
-      expect(importCmd.payload.env).toEqual({});
-    });
+    const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
+    expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v3.0.0");
+    expect(importCmd.payload.env).toEqual({});
   });
 });
 
 describe("RecoveryManager.checkAndRetryWaiting", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let notifier: AdminNotifier;
   let nodeConnections: NodeConnectionManager;
   let manager: RecoveryManager;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
     manager = new RecoveryManager(db, nodeConnections, notifier);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("retries waiting tenants when a recovery event has waiting items and retryCount < max", async () => {
@@ -385,35 +383,25 @@ describe("RecoveryManager.checkAndRetryWaiting", () => {
 
 describe("Trigger 1: Node registration fires checkAndRetryWaiting", () => {
   it("calls checkAndRetryWaiting after registerNode via onNodeRegistered callback", async () => {
-    const { db, pool } = await createTestDb();
-    try {
-      const mockNotifier = createMockNotifier();
-      const mockNodeConns = createMockNodeConnections();
-      const mgr = new RecoveryManager(db, mockNodeConns, mockNotifier);
+    await truncateAllTables(pool);
+    const mockNotifier = createMockNotifier();
+    const mockNodeConns = createMockNodeConnections();
+    const mgr = new RecoveryManager(db, mockNodeConns, mockNotifier);
 
-      await expect(mgr.checkAndRetryWaiting()).resolves.toBeUndefined();
-    } finally {
-      await pool.close();
-    }
+    await expect(mgr.checkAndRetryWaiting()).resolves.toBeUndefined();
   });
 });
 
 describe("Acceptance criteria", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   let notifier: AdminNotifier;
   let nodeConnections: NodeConnectionManager;
   let manager: RecoveryManager;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
     manager = new RecoveryManager(db, nodeConnections, notifier);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("AC: node with waiting tenants -> new node joins -> waiting tenants auto-placed", async () => {

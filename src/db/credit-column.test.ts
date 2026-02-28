@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Credit } from "../monetization/credit.js";
 import { createTestDb } from "../test/db.js";
 import { creditColumn } from "./credit-column.js";
@@ -16,7 +16,7 @@ describe("creditColumn", () => {
   let db: DrizzleDb;
   let pool: PGlite;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     await pool.query(`
       CREATE TABLE IF NOT EXISTS test_credits (
@@ -24,6 +24,14 @@ describe("creditColumn", () => {
         amount BIGINT NOT NULL
       )
     `);
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await pool.query(`TRUNCATE test_credits`);
   });
 
   it("stores Credit as integer and reads back as Credit", async () => {

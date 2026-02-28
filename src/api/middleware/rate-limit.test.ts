@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { type Context, Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleRateLimitRepository } from "../drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../rate-limit-repository.js";
 import {
@@ -19,11 +19,6 @@ import {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function makeRateLimitRepo(): Promise<{ repo: IRateLimitRepository; db: DrizzleDb; pool: PGlite }> {
-  const { db, pool } = await createTestDb();
-  return { repo: new DrizzleRateLimitRepository(db), db, pool };
-}
 
 /** Build a Hono app with a single rate-limited GET /test route. */
 function buildApp(cfg: Omit<RateLimitConfig, "repo" | "scope">, repo: IRateLimitRepository) {
@@ -47,22 +42,35 @@ function postReq(path: string, ip = "127.0.0.1") {
 }
 
 // ---------------------------------------------------------------------------
+// Shared PGlite instance (one pool for the entire file)
+// ---------------------------------------------------------------------------
+
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
+// ---------------------------------------------------------------------------
 // rateLimit (single-route)
 // ---------------------------------------------------------------------------
 
 describe("rateLimit", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
   });
-  afterEach(async () => {
+
+  afterEach(() => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("allows requests within the limit", async () => {
@@ -175,17 +183,15 @@ describe("rateLimit", () => {
 
 describe("rateLimitByRoute", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
   });
-  afterEach(async () => {
+
+  afterEach(() => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("applies rule-specific limits based on path prefix", async () => {
@@ -251,17 +257,15 @@ describe("rateLimitByRoute", () => {
 
 describe("platform rate limit rules", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
   });
-  afterEach(async () => {
+
+  afterEach(() => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   function buildPlatformApp() {
@@ -352,17 +356,15 @@ describe("platform rate limit rules", () => {
 
 describe("auth endpoint rate limits (WOP-839)", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
   });
-  afterEach(async () => {
+
+  afterEach(() => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   function buildPlatformApp() {
@@ -456,17 +458,15 @@ describe("auth endpoint rate limits (WOP-839)", () => {
 
 describe("trusted proxy validation (WOP-656)", () => {
   let repo: IRateLimitRepository;
-  let pool: PGlite;
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    const r = await makeRateLimitRepo();
-    repo = r.repo;
-    pool = r.pool;
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
   });
-  afterEach(async () => {
+
+  afterEach(() => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("ignores X-Forwarded-For when TRUSTED_PROXY_IPS is not set", () => {
@@ -535,24 +535,26 @@ describe("trusted proxy validation (WOP-656)", () => {
 });
 
 describe("platformRateLimitRules — billing checkout path", () => {
+  let repo: IRateLimitRepository;
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    repo = new DrizzleRateLimitRepository(db);
+  });
+
   it("checkout rule matches /api/billing/credits/checkout", async () => {
-    const { repo, pool } = await makeRateLimitRepo();
-    try {
-      const app = new Hono();
-      app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
-      // Dummy handler — we only care about rate-limit headers
-      app.post("/api/billing/credits/checkout", (c) => c.json({ ok: true }));
+    const app = new Hono();
+    app.use("*", rateLimitByRoute(platformRateLimitRules, platformDefaultLimit, repo));
+    // Dummy handler — we only care about rate-limit headers
+    app.post("/api/billing/credits/checkout", (c) => c.json({ ok: true }));
 
-      // The BILLING_LIMIT is max: 10. Send 10 requests — all must pass.
-      for (let i = 0; i < 10; i++) {
-        const res = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
-        expect(res.status).toBe(200);
-      }
-
-      const blocked = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
-      expect(blocked.status).toBe(429);
-    } finally {
-      await pool.close();
+    // The BILLING_LIMIT is max: 10. Send 10 requests — all must pass.
+    for (let i = 0; i < 10; i++) {
+      const res = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
+      expect(res.status).toBe(200);
     }
+
+    const blocked = await app.request(postReq("/api/billing/credits/checkout", "10.0.0.99"));
+    expect(blocked.status).toBe(429);
   });
 });

@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
 import type { NotificationService } from "../../email/notification-service.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { type DividendDigestConfig, runDividendDigestCron } from "./dividend-digest-cron.js";
 import { DrizzleDividendRepository } from "./dividend-repository.js";
@@ -36,18 +36,22 @@ describe("runDividendDigestCron", () => {
   let mockNotificationService: NotificationService;
   let enqueuedCalls: Array<{ tenantId: string; email: string; weeklyTotalDollars: string }>;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
     enqueuedCalls = [];
     mockNotificationService = {
       notifyDividendWeeklyDigest: vi.fn((tenantId: string, email: string, weeklyTotalDollars: string) => {
         enqueuedCalls.push({ tenantId, email, weeklyTotalDollars });
       }),
     } as unknown as NotificationService;
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   function makeConfig(overrides?: Partial<DividendDigestConfig>): DividendDigestConfig {

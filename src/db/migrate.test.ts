@@ -1,9 +1,20 @@
-import { describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb } from "../test/db.js";
+
+// TOP OF FILE - shared across ALL describes
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
 
 describe("runMigrations", () => {
   it("applies all migrations to a fresh database", async () => {
-    const { pool } = await createTestDb();
     const result = await pool.query<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
     );
@@ -13,7 +24,8 @@ describe("runMigrations", () => {
   });
 
   it("is idempotent — createTestDb can be called twice without error", async () => {
-    await createTestDb();
-    await createTestDb();
+    // Calling createTestDb a second time to verify idempotency
+    const { pool: pool2 } = await createTestDb();
+    await pool2.close();
   });
 });

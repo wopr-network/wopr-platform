@@ -1,3 +1,4 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
@@ -55,6 +56,21 @@ function createSocket(meter: MeterEmitter, defaultMargin?: number): AdapterSocke
   const config: SocketConfig = { meter, defaultMargin };
   return new AdapterSocket(config);
 }
+
+// ---------------------------------------------------------------------------
+// Shared DB for describes that need it
+// ---------------------------------------------------------------------------
+
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
 
 // ---------------------------------------------------------------------------
 // Registration & capability routing
@@ -728,22 +744,10 @@ describe("AdapterSocket", () => {
   // ---------------------------------------------------------------------------
 
   describe("execute -- budget check", () => {
-    let db: DrizzleDb;
     let budgetChecker: BudgetChecker;
-    let budgetPool: import("@electric-sql/pglite").PGlite;
-
-    beforeAll(async () => {
-      const testDb = await createTestDb();
-      db = testDb.db;
-      budgetPool = testDb.pool;
-    });
-
-    afterAll(async () => {
-      await budgetPool?.close();
-    });
 
     beforeEach(async () => {
-      await truncateAllTables(budgetPool);
+      await truncateAllTables(pool);
       budgetChecker = new BudgetChecker(db, { cacheTtlMs: 1000 });
     });
 

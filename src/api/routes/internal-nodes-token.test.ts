@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
-import { createTestDb } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 
 /**
  * Tests for token-based registration in internal-nodes route.
@@ -11,18 +11,23 @@ import { createTestDb } from "../../test/db.js";
  * to keep tests fast and focused.
  */
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+  ({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("RegistrationTokenStore integration with node registration", () => {
   let tokenStore: RegistrationTokenStore;
-  let db: DrizzleDb;
-  let pool: PGlite;
 
   beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     tokenStore = new RegistrationTokenStore(db);
-  });
-
-  afterEach(async () => {
-    await pool.close();
   });
 
   it("creates a valid token that can be consumed once", async () => {

@@ -1,22 +1,27 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../../test/db.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../../db/index.js";
+import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { CreditLedger } from "./credit-ledger.js";
 import { runRuntimeDeductions } from "./runtime-cron.js";
 
 describe("runtime cron with storage tiers", () => {
   let pool: PGlite;
+  let db: DrizzleDb;
   let ledger: CreditLedger;
 
-  beforeEach(async () => {
-    const { db, pool: p } = await createTestDb();
-    pool = p;
-    ledger = new CreditLedger(db);
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
   });
 
-  afterEach(async () => {
+  afterAll(async () => {
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+    ledger = new CreditLedger(db);
   });
 
   it("debits base cost plus storage surcharge for pro tier", async () => {

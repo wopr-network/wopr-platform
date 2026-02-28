@@ -4,9 +4,9 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { circuitBreaker, getCircuitStates } from "./circuit-breaker.js";
 import type { ICircuitBreakerRepository } from "./circuit-breaker-repository.js";
 import { DrizzleCircuitBreakerRepository } from "./drizzle-circuit-breaker-repository.js";
@@ -61,16 +61,23 @@ describe("circuitBreaker", () => {
   let pool: PGlite;
   let db: DrizzleDb;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    ({ db, pool } = await createTestDb());
+    await truncateAllTables(pool);
     repo = new DrizzleCircuitBreakerRepository(db);
   });
 
   afterEach(async () => {
     vi.useRealTimers();
-    await pool.close();
   });
 
   it("stays closed (allows requests) under threshold", async () => {

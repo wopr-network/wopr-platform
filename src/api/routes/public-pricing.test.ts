@@ -12,21 +12,22 @@ import { createTestDb, truncateAllTables } from "../../test/db.js";
  * We test the grouping logic by exercising RateStore directly, which gives us
  * the branch coverage we need in rate-store.ts while keeping tests fast.
  */
+
+let pool: PGlite;
+let db: DrizzleDb;
+
+beforeAll(async () => {
+  const t = await createTestDb();
+  db = t.db;
+  pool = t.pool;
+});
+
+afterAll(async () => {
+  await pool.close();
+});
+
 describe("RateStore.listPublicRates (used by public pricing route)", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
-
   let store: RateStore;
-
-  beforeAll(async () => {
-    const t = await createTestDb();
-    db = t.db;
-    pool = t.pool;
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
 
   beforeEach(async () => {
     await truncateAllTables(pool);

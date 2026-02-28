@@ -1,7 +1,9 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
+import type { PGlite } from "@electric-sql/pglite";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { DrizzleDb } from "../db/index.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
 import { SnapshotManager, SnapshotNotFoundError } from "./snapshot-manager.js";
 import { DrizzleSnapshotRepository } from "./snapshot-repository.js";
 
@@ -12,12 +14,22 @@ const INSTANCES_DIR = join(TEST_DIR, "instances");
 describe("SnapshotManager", () => {
   let manager: SnapshotManager;
   let woprHomePath: string;
+  let db: DrizzleDb;
+  let pool: PGlite;
+
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
 
   beforeEach(async () => {
     await rm(TEST_DIR, { recursive: true, force: true });
     await mkdir(TEST_DIR, { recursive: true });
+    await truncateAllTables(pool);
 
-    const { db } = await createTestDb();
     const repo = new DrizzleSnapshotRepository(db);
     manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, repo });
 
