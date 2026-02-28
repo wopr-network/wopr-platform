@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IPaymentProcessor } from "../payment-processor.js";
+import { noOpReplayGuard } from "../webhook-seen-repository.js";
 import { StripePaymentProcessor } from "./stripe-payment-processor.js";
 
 function makeMockStripe() {
@@ -65,6 +66,7 @@ describe("StripePaymentProcessor", () => {
         history: vi.fn(),
         tenantsWithBalance: vi.fn(),
       } as unknown as import("../credits/credit-ledger.js").ICreditLedger,
+      replayGuard: noOpReplayGuard,
     });
   });
 
@@ -109,6 +111,7 @@ describe("StripePaymentProcessor", () => {
           history: vi.fn(),
           tenantsWithBalance: vi.fn(),
         } as unknown as import("../credits/credit-ledger.js").ICreditLedger,
+        replayGuard: noOpReplayGuard,
       });
 
       const result = await proc.createCheckoutSession({
@@ -136,6 +139,7 @@ describe("StripePaymentProcessor", () => {
           history: vi.fn(),
           tenantsWithBalance: vi.fn(),
         } as unknown as import("../credits/credit-ledger.js").ICreditLedger,
+        replayGuard: noOpReplayGuard,
       });
 
       await expect(
@@ -182,6 +186,7 @@ describe("StripePaymentProcessor", () => {
         tenantStore,
         webhookSecret: "whsec_test",
         creditLedger: mockLedger as unknown as import("../credits/credit-ledger.js").ICreditLedger,
+        replayGuard: noOpReplayGuard,
       });
 
       const result = await proc.handleWebhook(Buffer.from("raw-body"), "sig_header");
@@ -313,6 +318,7 @@ describe("StripePaymentProcessor", () => {
         creditLedger: mockLedger as unknown as import("../credits/credit-ledger.js").ICreditLedger,
         autoTopupEventLog:
           mockEventLog as unknown as import("../credits/auto-topup-event-log-repository.js").IAutoTopupEventLogRepository,
+        replayGuard: noOpReplayGuard,
       });
 
       const result = await proc.charge({

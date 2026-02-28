@@ -9,6 +9,7 @@ import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
 import { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
+import { noOpReplayGuard } from "../../monetization/webhook-seen-repository.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
@@ -102,6 +103,8 @@ describe("billing routes", () => {
       meterAggregator: new MeterAggregator(db),
       sigPenaltyRepo,
       affiliateRepo: new DrizzleAffiliateRepository(db),
+      replayGuard: noOpReplayGuard,
+      payramReplayGuard: noOpReplayGuard,
     });
   });
 
@@ -264,6 +267,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/credits/checkout", {
@@ -296,6 +301,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/portal", {
@@ -343,6 +350,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
       const res = await billingRoutes.request("/portal", {
         method: "POST",
@@ -368,6 +377,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/portal", {
@@ -407,6 +418,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -433,6 +446,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -456,6 +471,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -493,6 +510,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       // First request — should process normally
@@ -527,6 +546,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       await billingRoutes.request("/webhook", {
@@ -547,6 +568,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/webhook", {
@@ -570,6 +593,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       // First failure: 400 (not yet blocked)
@@ -599,6 +624,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       // Fail from IP-A
@@ -949,6 +976,8 @@ describe("billing routes", () => {
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeStore: new DrizzlePayRamChargeStore(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/crypto/checkout", {
@@ -964,6 +993,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       expect(res.status).toBe(400);
@@ -1013,6 +1044,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       // tenant is resolved from auth context (tokenTenantId), not from request body
@@ -1069,6 +1102,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/setup-intent", {
@@ -1089,6 +1124,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       // tenant is resolved from auth context (tokenTenantId)
@@ -1114,6 +1151,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
@@ -1153,6 +1192,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {
@@ -1173,6 +1214,8 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
       });
 
       const res = await billingRoutes.request("/payment-methods/pm_test_123?tenant=t-1", {

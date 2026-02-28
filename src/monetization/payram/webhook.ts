@@ -9,7 +9,7 @@ export interface PayRamWebhookDeps {
   chargeStore: PayRamChargeStore;
   creditLedger: ICreditLedger;
   botBilling?: BotBilling;
-  replayGuard?: IWebhookSeenRepository;
+  replayGuard: IWebhookSeenRepository;
 }
 
 /**
@@ -27,7 +27,7 @@ export async function handlePayRamWebhook(
 
   // Replay guard: deduplicate by reference_id + status combination.
   const dedupeKey = `${payload.reference_id}:${payload.status}`;
-  if (await deps.replayGuard?.isDuplicate(dedupeKey, "payram")) {
+  if (await deps.replayGuard.isDuplicate(dedupeKey, "payram")) {
     return { handled: true, status: payload.status, duplicate: true };
   }
 
@@ -92,6 +92,6 @@ export async function handlePayRamWebhook(
     };
   }
 
-  await deps.replayGuard?.markSeen(dedupeKey, "payram");
+  await deps.replayGuard.markSeen(dedupeKey, "payram");
   return result;
 }

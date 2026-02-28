@@ -17,6 +17,7 @@ const { CreditLedger } = await import("../../src/monetization/credits/credit-led
 const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
 const { DrizzlePayRamChargeStore } = await import("../../src/monetization/payram/charge-store.js");
+const { noOpReplayGuard } = await import("../../src/monetization/webhook-seen-repository.js");
 
 function createMockProcessor(): import("../../src/monetization/payment-processor.js").IPaymentProcessor {
   return {
@@ -57,6 +58,8 @@ describe("integration: billing crypto routes", () => {
       creditLedger: new CreditLedger(db),
       meterAggregator: new MeterAggregator(db),
       affiliateRepo: new DrizzleAffiliateRepository(db),
+      replayGuard: noOpReplayGuard,
+      payramReplayGuard: noOpReplayGuard,
       sigPenaltyRepo: {
         get: () => null,
         recordFailure: (ip: string) => ({ ip, source: "stripe", failures: 1, blockedUntil: 0, updatedAt: 0 }),
@@ -129,6 +132,8 @@ describe("integration: billing crypto routes", () => {
         meterAggregator: new MeterAggregator(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeStore: new DrizzlePayRamChargeStore(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
         sigPenaltyRepo: {
           get: () => null,
           recordFailure: (ip: string, source: string) => ({ ip, source, failures: 1, blockedUntil: 0, updatedAt: 0 }),

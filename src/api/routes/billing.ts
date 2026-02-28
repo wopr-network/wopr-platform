@@ -22,9 +22,9 @@ export interface BillingRouteDeps {
   meterAggregator: IMeterAggregator;
   sigPenaltyRepo: ISigPenaltyRepository;
   /** Replay guard for Stripe webhook deduplication. */
-  replayGuard?: IWebhookSeenRepository;
+  replayGuard: IWebhookSeenRepository;
   /** Replay guard for PayRam webhook deduplication. */
-  payramReplayGuard?: IWebhookSeenRepository;
+  payramReplayGuard: IWebhookSeenRepository;
   affiliateRepo: IAffiliateRepository;
   payramChargeStore?: DrizzlePayRamChargeStore;
 }

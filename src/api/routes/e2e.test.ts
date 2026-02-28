@@ -10,6 +10,7 @@ import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
+import { noOpReplayGuard } from "../../monetization/webhook-seen-repository.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 
@@ -533,6 +534,8 @@ describe("E2E: Billing flow (credit model)", () => {
       meterAggregator: new MeterAggregator(_db),
       sigPenaltyRepo: new DrizzleSigPenaltyRepository(_db),
       affiliateRepo: new DrizzleAffiliateRepository(_db),
+      replayGuard: noOpReplayGuard,
+      payramReplayGuard: noOpReplayGuard,
     });
 
     setFleetDeps({
@@ -619,7 +622,10 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
-    const webhookResult = await handleWebhookEvent({ tenantStore, creditLedger }, checkoutEvent);
+    const webhookResult = await handleWebhookEvent(
+      { tenantStore, creditLedger, replayGuard: noOpReplayGuard },
+      checkoutEvent,
+    );
     expect(webhookResult.handled).toBe(true);
     expect(webhookResult.tenant).toBe(tenantId);
     expect(webhookResult.creditedCents).toBe(2500);
@@ -672,7 +678,10 @@ describe("E2E: Billing flow (credit model)", () => {
       },
     } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
-    const secondResult = await handleWebhookEvent({ tenantStore, creditLedger }, secondCheckoutEvent);
+    const secondResult = await handleWebhookEvent(
+      { tenantStore, creditLedger, replayGuard: noOpReplayGuard },
+      secondCheckoutEvent,
+    );
     expect(secondResult.handled).toBe(true);
     expect(secondResult.creditedCents).toBe(5000); // 1:1 without priceMap
 

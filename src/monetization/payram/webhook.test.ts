@@ -11,6 +11,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
+import { noOpReplayGuard } from "../webhook-seen-repository.js";
 import { PayRamChargeStore } from "./charge-store.js";
 import type { PayRamWebhookDeps, PayRamWebhookPayload } from "./index.js";
 import { handlePayRamWebhook } from "./webhook.js";
@@ -47,7 +48,7 @@ describe("handlePayRamWebhook", () => {
     await truncateAllTables(pool);
     chargeStore = new PayRamChargeStore(db);
     creditLedger = new CreditLedger(db);
-    deps = { chargeStore, creditLedger };
+    deps = { chargeStore, creditLedger, replayGuard: noOpReplayGuard };
 
     // Create a default test charge
     await chargeStore.create("ref-test-001", "tenant-a", 2500);
@@ -250,12 +251,6 @@ describe("handlePayRamWebhook", () => {
       const result = await handlePayRamWebhook(depsWithGuard, makePayload({ status: "FILLED" }));
 
       expect(result.duplicate).toBeUndefined();
-      expect(result.creditedCents).toBe(2500);
-    });
-
-    it("works without replay guard (backwards compatible)", async () => {
-      const result = await handlePayRamWebhook(deps, makePayload({ status: "FILLED" }));
-      expect(result.handled).toBe(true);
       expect(result.creditedCents).toBe(2500);
     });
   });

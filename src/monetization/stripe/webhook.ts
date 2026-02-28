@@ -39,7 +39,7 @@ export interface WebhookDeps {
   /** Bot billing manager for reactivation after credit purchase (WOP-447). */
   botBilling?: BotBilling;
   /** Replay attack guard — rejects duplicate event IDs within TTL window. */
-  replayGuard?: IWebhookSeenRepository;
+  replayGuard: IWebhookSeenRepository;
   /** Affiliate repository for credit match (WOP-949) and new-user bonus (WOP-950). */
   affiliateRepo?: IAffiliateRepository;
   /** Notification service for sending affiliate credit match emails (WOP-949). */
@@ -63,7 +63,7 @@ export interface WebhookDeps {
  */
 export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event): Promise<WebhookResult> {
   // Replay guard: reject duplicate event IDs within the TTL window.
-  if (await deps.replayGuard?.isDuplicate(event.id, "stripe")) {
+  if (await deps.replayGuard.isDuplicate(event.id, "stripe")) {
     return { handled: true, event_type: event.type, duplicate: true };
   }
 
@@ -258,7 +258,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
   // Mark event as seen AFTER processing (success or failure) to prevent infinite retries.
   // This ensures that if processing throws an exception, the event can be retried,
   // but if processing completes (even with handled:false), duplicates are blocked.
-  await deps.replayGuard?.markSeen(event.id, "stripe");
+  await deps.replayGuard.markSeen(event.id, "stripe");
 
   return result;
 }

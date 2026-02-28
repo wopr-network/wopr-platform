@@ -65,6 +65,7 @@ import { Credit } from "./monetization/credit.js";
 import { runDividendCron } from "./monetization/credits/dividend-cron.js";
 import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cron.js";
 import { buildResourceTierCosts, runRuntimeDeductions } from "./monetization/credits/runtime-cron.js";
+import { DrizzleWebhookSeenRepository } from "./monetization/drizzle-webhook-seen-repository.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
 import type { HeartbeatMessage } from "./node-agent/types.js";
 import { DrizzleMetricsRepository } from "./observability/drizzle-metrics-repository.js";
@@ -635,6 +636,7 @@ if (process.env.NODE_ENV !== "test") {
         webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
         priceMap,
         creditLedger: getCreditLedger(),
+        replayGuard: new DrizzleWebhookSeenRepository(getDb()),
       });
 
       // Create PayRam deps before tRPC router so both REST and tRPC can share them.
@@ -759,6 +761,8 @@ if (process.env.NODE_ENV !== "test") {
         creditLedger: getCreditLedger(),
         meterAggregator,
         sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
+        replayGuard: new DrizzleWebhookSeenRepository(getDb()),
+        payramReplayGuard: new DrizzleWebhookSeenRepository(getDb()),
         affiliateRepo: getAffiliateRepo(),
         payramChargeStore,
       });

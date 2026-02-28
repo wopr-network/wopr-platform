@@ -11,6 +11,7 @@ import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
+import { noOpReplayGuard } from "../webhook-seen-repository.js";
 import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 import type { WebhookDeps } from "./webhook.js";
@@ -42,7 +43,7 @@ describe("handleWebhookEvent (credit model)", () => {
     await truncateAllTables(pool);
     tenantStore = new TenantCustomerStore(db);
     creditLedger = new CreditLedger(db);
-    deps = { tenantStore, creditLedger };
+    deps = { tenantStore, creditLedger, replayGuard: noOpReplayGuard };
   });
 
   // ---------------------------------------------------------------------------
@@ -341,14 +342,6 @@ describe("handleWebhookEvent (credit model)", () => {
       const second = await handleWebhookEvent(depsWithGuard, event);
       expect(second.handled).toBe(true);
       expect(second.duplicate).toBe(true);
-    });
-
-    it("works without replay guard (backwards compatible)", async () => {
-      // No replayGuard in deps — should work exactly as before
-      const event = createCheckoutEventWithId("evt_no_guard");
-      const result = await handleWebhookEvent(deps, event);
-      expect(result.handled).toBe(true);
-      expect(result.creditedCents).toBe(1000);
     });
   });
 
