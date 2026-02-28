@@ -40,7 +40,7 @@ export async function maybeTriggerUsageTopup(deps: UsageTopupDeps, tenantId: str
   if (!acquired) return;
 
   try {
-    // 5. Execute charge
+    // 4. Execute charge
     const result = await deps.chargeAutoTopup(tenantId, settings.usageTopup, "auto_topup_usage");
 
     if (result.success) {
