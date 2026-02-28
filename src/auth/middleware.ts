@@ -12,7 +12,9 @@
  * If neither is present, the request is rejected with 401.
  */
 
+import { createHash } from "node:crypto";
 import type { Context, Next } from "hono";
+import type { IApiKeyRepository } from "./api-key-repository.js";
 import type { Auth } from "./better-auth.js";
 import type { AuthUser } from "./index.js";
 
@@ -61,15 +63,15 @@ export function sessionAuth(auth: Auth) {
 /**
  * Create dual-auth middleware that accepts EITHER a better-auth session cookie
  * OR a bearer token. Session cookies are checked first; if absent, falls back
- * to bearer token validation.
+ * to bearer token validation via DB-backed API key lookup.
  *
- * This allows both browser clients (cookies) and machine clients (bearer tokens)
- * to access the same routes.
+ * Bearer tokens are hashed with SHA-256 before lookup — raw tokens are never
+ * stored or compared in plaintext.
  *
  * @param auth - The better-auth instance
- * @param apiTokens - Optional map of static API tokens to users
+ * @param apiKeyRepo - Optional repository for DB-backed API key lookup
  */
-export function dualAuth(auth: Auth, apiTokens?: Map<string, AuthUser>) {
+export function dualAuth(auth: Auth, apiKeyRepo?: IApiKeyRepository) {
   return async (c: Context<SessionAuthEnv>, next: Next) => {
     // 1. Try session cookie first
     try {
@@ -88,14 +90,15 @@ export function dualAuth(auth: Auth, apiTokens?: Map<string, AuthUser>) {
       // Session check failed, fall through to bearer token
     }
 
-    // 2. Fall back to bearer token
+    // 2. Fall back to bearer token (DB-backed lookup)
     const authHeader = c.req.header("Authorization");
-    if (authHeader) {
+    if (authHeader && apiKeyRepo) {
       const trimmed = authHeader.trim();
       if (trimmed.toLowerCase().startsWith("bearer ")) {
         const token = trimmed.slice(7).trim();
-        if (token && apiTokens) {
-          const apiUser = apiTokens.get(token);
+        if (token) {
+          const keyHash = createHash("sha256").update(token).digest("hex");
+          const apiUser = await apiKeyRepo.findByHash(keyHash);
           if (apiUser) {
             c.set("user", { ...apiUser, roles: [...apiUser.roles] });
             c.set("authMethod", "api_key");

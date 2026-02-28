@@ -151,6 +151,7 @@
         "src/marketplace/drizzle-marketplace-plugin-repository.ts",
         "src/setup/setup-session-repository.ts",
         "src/auth/user-role-repository.ts",
+        "src/auth/api-key-repository.ts",
         "src/setup/plugin-config-repository.ts"
       ],
       "linter": {
