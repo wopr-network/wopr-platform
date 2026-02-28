@@ -368,7 +368,6 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
       .set({
         payoutSuppressed: true,
         suppressionReason: reason,
-        matchedAt: sql`now()`,
       })
       .where(eq(affiliateReferrals.referredTenantId, referredTenantId));
   }
