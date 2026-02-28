@@ -9,6 +9,7 @@
  */
 
 import type { Context, Next } from "hono";
+import { getClientIpFromContext } from "../api/middleware/get-client-ip.js";
 import type { ISigPenaltyRepository } from "../api/sig-penalty-repository.js";
 import { logger } from "../config/logger.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
@@ -26,16 +27,6 @@ export interface TwilioWebhookAuthConfig {
   sigPenaltyRepo: ISigPenaltyRepository;
 }
 
-function getClientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const incoming = (c.env as Record<string, unknown>)?.incoming as { socket?: { remoteAddress?: string } } | undefined;
-  return incoming?.socket?.remoteAddress ?? "unknown";
-}
-
 /**
  * Create Twilio webhook authentication middleware.
  *
@@ -45,7 +36,7 @@ function getClientIp(c: Context): string {
  */
 export function createTwilioWebhookAuth(config: TwilioWebhookAuthConfig) {
   return async (c: Context<GatewayAuthEnv>, next: Next) => {
-    const ip = getClientIp(c);
+    const ip = getClientIpFromContext(c);
     const now = Date.now();
 
     // Check if this IP is currently in penalty backoff

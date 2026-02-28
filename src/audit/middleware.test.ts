@@ -68,7 +68,7 @@ describe("auditLog middleware", () => {
       action: "instance.create",
       resourceType: "instance",
       resourceId: "bot-1",
-      ipAddress: "192.168.1.1",
+      ipAddress: null,
       userAgent: "TestBrowser/1.0",
     });
   });

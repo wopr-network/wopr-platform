@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
@@ -14,6 +13,7 @@ import { createPayRamClient, loadPayRamConfig } from "../../monetization/payram/
 import type { PayRamWebhookPayload } from "../../monetization/payram/types.js";
 import { handlePayRamWebhook } from "../../monetization/payram/webhook.js";
 import type { IWebhookSeenRepository } from "../../monetization/webhook-seen-repository.js";
+import { getClientIpFromContext } from "../middleware/get-client-ip.js";
 import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
 export interface BillingRouteDeps {
@@ -31,21 +31,6 @@ export interface BillingRouteDeps {
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
-
-// -- Signature failure penalty tracking (WOP-477, WOP-927) -------------------
-
-/**
- * Extract IP from request (same logic as rate-limit.ts defaultKeyGenerator).
- */
-function getClientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const incoming = (c.env as Record<string, unknown>)?.incoming as { socket?: { remoteAddress?: string } } | undefined;
-  return incoming?.socket?.remoteAddress ?? "unknown";
-}
 
 // -- Zod schemas for input validation ----------------------------------------
 
@@ -311,7 +296,7 @@ billingRoutes.delete("/payment-methods/:id", adminAuth, async (c) => {
  */
 billingRoutes.post("/webhook", async (c) => {
   const { processor, sigPenaltyRepo } = getDeps();
-  const ip = getClientIp(c);
+  const ip = getClientIpFromContext(c);
   const now = Date.now();
 
   // Check if this IP is currently in penalty backoff
@@ -337,7 +322,7 @@ billingRoutes.post("/webhook", async (c) => {
     if (result.duplicate) {
       logger.warn("Webhook replay attempt detected", {
         eventType: result.eventType,
-        ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? "unknown",
+        ip,
       });
     }
 
@@ -614,7 +599,7 @@ billingRoutes.post("/affiliate/record-referral", adminAuth, async (c) => {
   }
 
   const { code, referredTenantId } = parsed.data;
-  const clientIp = getClientIp(c);
+  const clientIp = getClientIpFromContext(c);
 
   try {
     const repo = getDeps().affiliateRepo;
