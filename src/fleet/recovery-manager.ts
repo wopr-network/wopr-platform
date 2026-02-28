@@ -2,16 +2,11 @@ import { randomUUID } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "../config/logger.js";
 import type { DrizzleDb } from "../db/index.js";
-import {
-  botInstances,
-  botProfiles,
-  nodes,
-  recoveryEvents,
-  recoveryItems,
-  tenantCustomers,
-} from "../db/schema/index.js";
+import { botInstances, botProfiles, recoveryEvents, recoveryItems, tenantCustomers } from "../db/schema/index.js";
 import type { AdminNotifier, RecoveryReport } from "./admin-notifier.js";
 import type { NodeConnectionManager, TenantAssignment } from "./node-connection-manager.js";
+import type { INodeRepository } from "./node-repository.js";
+import { InvalidTransitionError } from "./node-state-machine.js";
 
 /** Max retry attempts per recovery item before marking as failed. */
 const MAX_RETRY_ATTEMPTS = 5;
@@ -71,11 +66,18 @@ export interface RecoveryItem {
  */
 export class RecoveryManager {
   private readonly db: DrizzleDb;
+  private readonly nodeRepo: INodeRepository;
   private readonly nodeConnections: NodeConnectionManager;
   private readonly notifier: AdminNotifier;
 
-  constructor(db: DrizzleDb, nodeConnections: NodeConnectionManager, notifier: AdminNotifier) {
+  constructor(
+    db: DrizzleDb,
+    nodeRepo: INodeRepository,
+    nodeConnections: NodeConnectionManager,
+    notifier: AdminNotifier,
+  ) {
     this.db = db;
+    this.nodeRepo = nodeRepo;
     this.nodeConnections = nodeConnections;
     this.notifier = notifier;
   }
@@ -123,8 +125,20 @@ export class RecoveryManager {
 
     logger.info(`Starting recovery for node ${deadNodeId}`, { eventId, trigger });
 
-    // 1. Mark node as "recovering"
-    await this.db.update(nodes).set({ status: "recovering" }).where(eq(nodes.id, deadNodeId));
+    // 1. Transition node to "recovering" via state machine (two hops: unhealthy→offline→recovering)
+    const transitionReason = trigger === "heartbeat_timeout" ? "heartbeat_timeout" : "manual_recovery";
+    try {
+      await this.nodeRepo.transition(deadNodeId, "offline", transitionReason, "recovery_manager");
+      await this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_manager");
+    } catch (err) {
+      if (err instanceof InvalidTransitionError) {
+        logger.error(`Cannot start recovery for node ${deadNodeId}: illegal state transition`, {
+          eventId,
+          err: err.message,
+        });
+      }
+      throw err;
+    }
 
     // 2. Get all tenants assigned to this node with tier priority
     const tenants = await this.getTenantsWithTierPriority(deadNodeId);
@@ -156,8 +170,8 @@ export class RecoveryManager {
       await this.recoverTenant(eventId, deadNodeId, tenant, report);
     }
 
-    // 5. Mark dead node as offline
-    await this.db.update(nodes).set({ status: "offline" }).where(eq(nodes.id, deadNodeId));
+    // 5. Transition node from "recovering" to "offline" via state machine
+    await this.nodeRepo.transition(deadNodeId, "offline", "recovery_complete", "recovery_manager");
 
     // 6. Finalize recovery event
     const finalStatus = report.waiting.length > 0 ? "partial" : "completed";
