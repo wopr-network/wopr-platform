@@ -5,9 +5,10 @@
  * The tRPC router depends only on ITwoFactorRepository.
  */
 
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { tenantSecuritySettings } from "../db/schema/security-settings.js";
+import { tenants } from "../db/schema/tenants.js";
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -25,6 +26,8 @@ export interface TenantMandateStatus {
 export interface ITwoFactorRepository {
   getMandateStatus(tenantId: string): Promise<TenantMandateStatus>;
   setMandateStatus(tenantId: string, requireTwoFactor: boolean): Promise<TenantMandateStatus>;
+  countMandated(): Promise<number>;
+  countTotal(): Promise<number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -51,5 +54,18 @@ export class DrizzleTwoFactorRepository implements ITwoFactorRepository {
         set: { requireTwoFactor, updatedAt: now },
       });
     return { tenantId, requireTwoFactor };
+  }
+
+  async countMandated(): Promise<number> {
+    const rows = await this.db
+      .select({ count: count() })
+      .from(tenantSecuritySettings)
+      .where(eq(tenantSecuritySettings.requireTwoFactor, true));
+    return rows[0]?.count ?? 0;
+  }
+
+  async countTotal(): Promise<number> {
+    const rows = await this.db.select({ count: count() }).from(tenants);
+    return rows[0]?.count ?? 0;
   }
 }
