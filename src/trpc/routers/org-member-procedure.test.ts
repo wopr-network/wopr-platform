@@ -65,6 +65,13 @@ describe("orgMemberProcedure", () => {
     });
   });
 
+  it("rejects empty orgId with BAD_REQUEST", async () => {
+    const caller = testRouter.createCaller({ user: { id: "user-1", roles: [] }, tenantId: undefined });
+    await expect(caller.doSomething({ orgId: "", value: "test" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
+
   it("throws INTERNAL_SERVER_ERROR when repo not wired", async () => {
     setTrpcOrgMemberRepo(null as unknown as IOrgMemberRepository);
     const caller = testRouter.createCaller({ user: { id: "user-1", roles: [] }, tenantId: undefined });

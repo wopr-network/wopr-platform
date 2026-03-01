@@ -122,7 +122,7 @@ const isOrgMember = t.middleware(async ({ ctx, next, getRawInput }) => {
     });
   }
   const rawInput = await getRawInput();
-  const parsed = z.object({ orgId: z.string() }).safeParse(rawInput);
+  const parsed = z.object({ orgId: z.string().min(1) }).safeParse(rawInput);
   if (!parsed.success) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "orgId is required" });
   }
