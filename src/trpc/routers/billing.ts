@@ -552,16 +552,18 @@ export const billingRouter = router({
         isDefault: pm.isDefault,
       }));
 
+      const invoiceList = await processor.listInvoices(tenant);
+
       return {
         email: await processor.getCustomerEmail(tenant),
         paymentMethods,
-        invoices: [] as Array<{
-          id: string;
-          date: string;
-          amount: number;
-          status: string;
-          downloadUrl: string;
-        }>,
+        invoices: invoiceList.map((inv) => ({
+          id: inv.id,
+          date: inv.date,
+          amount: inv.amountCents,
+          status: inv.status,
+          downloadUrl: inv.downloadUrl,
+        })),
       };
     } catch {
       return {

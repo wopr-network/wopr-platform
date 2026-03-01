@@ -30,6 +30,9 @@ function makeMockStripe() {
     paymentIntents: {
       create: vi.fn(),
     },
+    invoices: {
+      list: vi.fn(),
+    },
   } as unknown as Stripe;
 }
 
@@ -395,6 +398,72 @@ describe("StripePaymentProcessor", () => {
       await expect(processor.updateCustomerEmail("t-unknown", "a@b.com")).rejects.toThrow(
         "No Stripe customer found for tenant: t-unknown",
       );
+    });
+  });
+
+  describe("listInvoices", () => {
+    it("returns empty array when tenant has no Stripe customer", async () => {
+      tenantStore.getByTenant.mockResolvedValue(null);
+
+      const invoices = await processor.listInvoices("t-unknown");
+      expect(invoices).toEqual([]);
+    });
+
+    it("returns mapped Invoice array from Stripe", async () => {
+      tenantStore.getByTenant.mockResolvedValue({
+        tenant: "t-1",
+        processor_customer_id: "cus_abc123",
+      });
+      (stripe.invoices.list as ReturnType<typeof vi.fn>).mockResolvedValue({
+        data: [
+          {
+            id: "in_001",
+            created: 1700000000,
+            amount_due: 1000,
+            status: "paid",
+            invoice_pdf: "https://stripe.com/inv/001.pdf",
+          },
+          {
+            id: "in_002",
+            created: 1710000000,
+            amount_due: 2500,
+            status: "open",
+            invoice_pdf: null,
+          },
+        ],
+      });
+
+      const invoices = await processor.listInvoices("t-1");
+
+      expect(invoices).toHaveLength(2);
+      expect(invoices[0]).toMatchObject({
+        id: "in_001",
+        amountCents: 1000,
+        status: "paid",
+        downloadUrl: "https://stripe.com/inv/001.pdf",
+      });
+      expect(invoices[0].date).toBe(new Date(1700000000 * 1000).toISOString());
+      expect(invoices[1]).toMatchObject({
+        id: "in_002",
+        amountCents: 2500,
+        status: "open",
+        downloadUrl: "",
+      });
+    });
+
+    it("queries Stripe with the correct customer id and limit", async () => {
+      tenantStore.getByTenant.mockResolvedValue({
+        tenant: "t-1",
+        processor_customer_id: "cus_abc123",
+      });
+      (stripe.invoices.list as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [] });
+
+      await processor.listInvoices("t-1");
+
+      expect(stripe.invoices.list).toHaveBeenCalledWith({
+        customer: "cus_abc123",
+        limit: 24,
+      });
     });
   });
 });

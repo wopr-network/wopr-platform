@@ -130,4 +130,21 @@ export interface IPaymentProcessor {
 
   /** Update the billing email for a tenant's customer account. */
   updateCustomerEmail(tenantId: string, email: string): Promise<void>;
+
+  /** List invoices for a tenant. Returns an empty array if no customer exists. */
+  listInvoices(tenantId: string): Promise<Invoice[]>;
+}
+
+/** A past invoice for a tenant (processor-agnostic). */
+export interface Invoice {
+  /** Processor-specific invoice ID (e.g. Stripe in_xxx). */
+  id: string;
+  /** ISO 8601 date string for when the invoice was created. */
+  date: string;
+  /** Invoice total in cents. */
+  amountCents: number;
+  /** Invoice status (e.g. "paid", "open", "void", "uncollectible"). */
+  status: string;
+  /** URL to download the invoice PDF. Empty string if unavailable. */
+  downloadUrl: string;
 }

@@ -75,6 +75,7 @@ function createMockProcessor(
     charge: (overrides.charge ?? vi.fn().mockResolvedValue({ success: true })) as IPaymentProcessor["charge"],
     getCustomerEmail: vi.fn().mockResolvedValue("") as IPaymentProcessor["getCustomerEmail"],
     updateCustomerEmail: vi.fn().mockResolvedValue(undefined) as IPaymentProcessor["updateCustomerEmail"],
+    listInvoices: vi.fn().mockResolvedValue([]) as IPaymentProcessor["listInvoices"],
   };
 }
 
