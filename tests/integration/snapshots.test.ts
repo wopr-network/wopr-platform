@@ -80,24 +80,23 @@ describe("integration: snapshot routes", () => {
       expect(res.status).toBe(201);
     });
 
-    it("rejects scheduled trigger on free tier", async () => {
+    it("rejects scheduled trigger on free tier (tier from DB, not header)", async () => {
       const res = await app.request("/api/instances/inst-1/snapshots", {
         method: "POST",
-        headers: { ...JSON_HEADERS, "X-Tier": "free" },
+        headers: JSON_HEADERS,
         body: JSON.stringify({ trigger: "scheduled" }),
       });
       expect(res.status).toBe(403);
     });
 
-    it("allows scheduled trigger on pro tier", async () => {
-      snapshotManagerMock.create.mockResolvedValue(mockSnapshot);
-
+    it("X-Tier: pro header does not grant pro tier — DB tier (free) is used", async () => {
       const res = await app.request("/api/instances/inst-1/snapshots", {
         method: "POST",
         headers: { ...JSON_HEADERS, "X-Tier": "pro" },
         body: JSON.stringify({ trigger: "scheduled" }),
       });
-      expect(res.status).toBe(201);
+      // Must still be 403 — DB says "free", header is ignored
+      expect(res.status).toBe(403);
     });
 
     it("returns 400 for invalid JSON", async () => {

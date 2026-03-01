@@ -34,6 +34,19 @@ const managerMock = {
   getOldest: vi.fn(),
 };
 
+const tenantStoreMock = {
+  getByTenant: vi.fn().mockResolvedValue({ tier: "free" }),
+  getByProcessorCustomerId: vi.fn(),
+  upsert: vi.fn(),
+  setTier: vi.fn(),
+  setBillingHold: vi.fn(),
+  hasBillingHold: vi.fn(),
+  getInferenceMode: vi.fn(),
+  setInferenceMode: vi.fn(),
+  list: vi.fn(),
+  buildCustomerIdMap: vi.fn(),
+};
+
 class MockSnapshotNotFoundError extends Error {
   constructor(id: string) {
     super(`Snapshot not found: ${id}`);
@@ -64,6 +77,16 @@ vi.mock("../../backup/snapshot-manager.js", () => {
   };
 });
 
+vi.mock("../../fleet/profile-store.js", () => {
+  return {
+    ProfileStore: class {
+      get(_id: string) {
+        return Promise.resolve({ tenantId: "tenant-test" });
+      }
+    },
+  };
+});
+
 vi.mock("../../backup/schema.js", () => {
   return { initSnapshotSchema: vi.fn() };
 });
@@ -73,7 +96,7 @@ vi.mock("../../backup/retention.js", () => {
 });
 
 // Import AFTER mocks
-const { snapshotRoutes, setSnapshotManagerForTest } = await import("./snapshots.js");
+const { snapshotRoutes, setSnapshotManagerForTest, setTenantStoreForTest } = await import("./snapshots.js");
 const { SnapshotManager } = await import("../../backup/snapshot-manager.js");
 
 // Mount under the same path pattern as app.ts
@@ -83,10 +106,12 @@ app.route("/api/instances/:id/snapshots", snapshotRoutes);
 // Inject mock manager so routes don't call getPool() (which requires DATABASE_URL)
 const mockManagerInstance = new SnapshotManager({} as never);
 setSnapshotManagerForTest(mockManagerInstance);
+setTenantStoreForTest(tenantStoreMock as never);
 
 describe("snapshot routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    tenantStoreMock.getByTenant.mockResolvedValue({ tier: "free" });
   });
 
   describe("authentication", () => {
@@ -158,9 +183,10 @@ describe("snapshot routes", () => {
     });
 
     it("rejects scheduled trigger on free tier", async () => {
+      // tier is "free" from the mock tenant store (default)
       const res = await app.request("/api/instances/inst-1/snapshots", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Tier": "free", ...authHeader },
+        headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ trigger: "scheduled" }),
       });
 
@@ -168,15 +194,43 @@ describe("snapshot routes", () => {
     });
 
     it("allows scheduled trigger on pro tier", async () => {
+      tenantStoreMock.getByTenant.mockResolvedValue({ tier: "pro" });
       managerMock.create.mockResolvedValue(mockSnapshot);
 
       const res = await app.request("/api/instances/inst-1/snapshots", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Tier": "pro", ...authHeader },
+        headers: { "Content-Type": "application/json", ...authHeader },
         body: JSON.stringify({ trigger: "scheduled" }),
       });
 
       expect(res.status).toBe(201);
+    });
+
+    it("ignores X-Tier: enterprise header — tier is read from DB, not the request", async () => {
+      // tenant is "free" in the DB; sending enterprise in the header must not upgrade it
+      managerMock.create.mockResolvedValue(mockSnapshot);
+
+      const res = await app.request("/api/instances/inst-1/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader, "X-Tier": "enterprise" },
+        body: JSON.stringify({ trigger: "scheduled" }),
+      });
+
+      // Scheduled trigger on free tier must be rejected regardless of header
+      expect(res.status).toBe(403);
+    });
+
+    it("defaults to free tier when tenant has no DB record", async () => {
+      tenantStoreMock.getByTenant.mockResolvedValue(null);
+
+      const res = await app.request("/api/instances/inst-1/snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ trigger: "scheduled" }),
+      });
+
+      // free tier rejects scheduled triggers
+      expect(res.status).toBe(403);
     });
 
     it("returns 400 on invalid JSON", async () => {
