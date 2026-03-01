@@ -13,6 +13,7 @@ import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
 import { setChatDeps } from "./api/routes/chat.js";
 import { setFleetDeps } from "./api/routes/fleet.js";
 import { validateNodeAuth } from "./api/routes/internal-nodes.js";
+import { setMarketplaceDeps } from "./api/routes/marketplace.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
@@ -340,6 +341,7 @@ if (process.env.NODE_ENV !== "test") {
     const credentialRepo = new DrizzleCredentialRepository(getDb());
     const credentialVault = new CredentialVaultStore(credentialRepo, vaultKey);
     setBotPluginDeps({ credentialVault, meterEmitter: meter, botInstanceRepo: getBotInstanceRepo() });
+    setMarketplaceDeps({ credentialVault, meterEmitter: meter });
 
     const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
