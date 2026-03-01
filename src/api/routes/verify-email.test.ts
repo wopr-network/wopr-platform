@@ -130,9 +130,7 @@ describe("verify-email route", () => {
   it("credit grant failure does not block verification", async () => {
     mockedVerifyToken.mockResolvedValue({ userId: "user-1", email: "test@example.com" });
     const { app, creditLedger } = makeApp();
-    creditLedger.credit.mockImplementation(() => {
-      throw new Error("DB down");
-    });
+    creditLedger.credit.mockRejectedValue(new Error("DB down"));
 
     const res = await app.request(`/verify?token=${"e".repeat(64)}`);
 
