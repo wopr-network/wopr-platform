@@ -26,4 +26,9 @@ describe(".env.example completeness", () => {
     const content = readFileSync(path.resolve(__dirname, "../.env.example"), "utf-8");
     expect(content).toContain("PLATFORM_SECRET=");
   });
+
+  it("should contain BETTER_AUTH_SECRET", () => {
+    const content = readFileSync(path.resolve(__dirname, "../.env.example"), "utf-8");
+    expect(content).toContain("BETTER_AUTH_SECRET=");
+  });
 });

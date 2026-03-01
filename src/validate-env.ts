@@ -23,8 +23,11 @@ export function validateRequiredEnvVars(): void {
     errors.push("DATABASE_URL is required but not set");
   }
 
-  if (!process.env.BETTER_AUTH_SECRET) {
+  const betterAuthSecret = process.env.BETTER_AUTH_SECRET;
+  if (!betterAuthSecret) {
     errors.push("BETTER_AUTH_SECRET is required but not set");
+  } else if (betterAuthSecret.length < 32) {
+    errors.push("BETTER_AUTH_SECRET must be at least 32 characters");
   }
 
   if (!process.env.BETTER_AUTH_URL) {
