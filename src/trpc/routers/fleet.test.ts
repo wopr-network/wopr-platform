@@ -125,13 +125,13 @@ function createFleetMock() {
 let fleetMock: ReturnType<typeof createFleetMock>;
 
 const mockRoleStore: RoleStore = {
-  getRole: vi.fn().mockReturnValue("tenant_admin"),
+  getRole: vi.fn().mockResolvedValue("tenant_admin"),
 } as unknown as RoleStore;
 
 const mockBotInstanceRepo: IBotInstanceRepository = {
-  getById: vi.fn().mockReturnValue(mockBotInstance),
-  listByNode: vi.fn().mockReturnValue([]),
-  listByTenant: vi.fn().mockReturnValue([]),
+  getById: vi.fn().mockResolvedValue(mockBotInstance),
+  listByNode: vi.fn().mockResolvedValue([]),
+  listByTenant: vi.fn().mockResolvedValue([]),
   upsert: vi.fn(),
   updateBillingState: vi.fn(),
   delete: vi.fn(),
@@ -571,7 +571,7 @@ describe("fleet.getStorageTier", () => {
   });
 
   it("returns tier from billing when available", async () => {
-    const mockBilling = { getStorageTier: vi.fn().mockReturnValue("pro") };
+    const mockBilling = { getStorageTier: vi.fn().mockResolvedValue("pro") };
     setFleetRouterDeps({
       getFleetManager: () => fleetMock as unknown as FleetManager,
       getTemplates: () => mockTemplates,
@@ -610,7 +610,8 @@ describe("fleet.setStorageTier", () => {
       getFleetManager: () => fleetMock as unknown as FleetManager,
       getTemplates: () => mockTemplates,
       getCreditLedger: () => mockLedger as never,
-      getBotBilling: () => ({ getStorageTier: vi.fn().mockReturnValue("standard"), setStorageTier: vi.fn() }) as never,
+      getBotBilling: () =>
+        ({ getStorageTier: vi.fn().mockResolvedValue("standard"), setStorageTier: vi.fn() }) as never,
     });
     const caller = createCaller(authedContext());
     await expect(caller.fleet.setStorageTier({ id: TEST_BOT_ID, tier: "plus" })).rejects.toMatchObject({
@@ -621,7 +622,7 @@ describe("fleet.setStorageTier", () => {
   it("rejects downgrade when usage exceeds new tier limit", async () => {
     // Currently on max (100GB), trying to downgrade to standard (5GB), but 25GB used
     const mockBilling = {
-      getStorageTier: vi.fn().mockReturnValue("max"),
+      getStorageTier: vi.fn().mockResolvedValue("max"),
       setStorageTier: vi.fn(),
     };
     fleetMock.getVolumeUsage.mockResolvedValue({
@@ -643,7 +644,7 @@ describe("fleet.setStorageTier", () => {
 
   it("updates storage tier successfully", async () => {
     const mockBilling = {
-      getStorageTier: vi.fn().mockReturnValue("standard"),
+      getStorageTier: vi.fn().mockResolvedValue("standard"),
       setStorageTier: vi.fn(),
     };
     const mockLedger = { balance: vi.fn().mockResolvedValue(Credit.fromCents(1000)) };
@@ -680,7 +681,7 @@ describe("fleet.getStorageUsage", () => {
   });
 
   it("returns live disk usage for running bot", async () => {
-    const mockBilling = { getStorageTier: vi.fn().mockReturnValue("pro") };
+    const mockBilling = { getStorageTier: vi.fn().mockResolvedValue("pro") };
     fleetMock.getVolumeUsage.mockResolvedValue({
       usedBytes: 10 * 1024 ** 3, // 10GB
       totalBytes: 50 * 1024 ** 3,
@@ -708,21 +709,21 @@ describe("fleet.getStorageUsage", () => {
 describe("org-scoped bot ownership (WOP-1002)", () => {
   function createBotInstanceRepoMock(overrides: Partial<BotInstance> = {}): IBotInstanceRepository {
     return {
-      getById: vi.fn().mockReturnValue({ ...mockBotInstance, ...overrides }),
-      listByTenant: vi.fn().mockReturnValue([{ ...mockBotInstance, ...overrides }]),
-      listByNode: vi.fn().mockReturnValue([]),
-      create: vi.fn().mockReturnValue({ ...mockBotInstance, ...overrides }),
+      getById: vi.fn().mockResolvedValue({ ...mockBotInstance, ...overrides }),
+      listByTenant: vi.fn().mockResolvedValue([{ ...mockBotInstance, ...overrides }]),
+      listByNode: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({ ...mockBotInstance, ...overrides }),
       reassign: vi.fn(),
       setBillingState: vi.fn(),
-      getResourceTier: vi.fn().mockReturnValue("standard"),
+      getResourceTier: vi.fn().mockResolvedValue("standard"),
       setResourceTier: vi.fn(),
-      getStorageTier: vi.fn().mockReturnValue("standard"),
+      getStorageTier: vi.fn().mockResolvedValue("standard"),
       setStorageTier: vi.fn(),
     } as unknown as IBotInstanceRepository;
   }
 
   function createRoleStoreMock(role: string | null): RoleStore {
-    return { getRole: vi.fn().mockReturnValue(role) } as unknown as RoleStore;
+    return { getRole: vi.fn().mockResolvedValue(role) } as unknown as RoleStore;
   }
 
   it("user role member cannot control another user's bot", async () => {

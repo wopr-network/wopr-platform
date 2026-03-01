@@ -573,7 +573,7 @@ export const fleetRouter = router({
       throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
     }
     const billing = getBotBilling?.() ?? null;
-    const tierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
+    const tierKey = ((await billing?.getStorageTier(input.id)) ?? "standard") as StorageTierKey;
     const tierConfig = STORAGE_TIERS[tierKey] ?? STORAGE_TIERS.standard;
     return {
       tier: tierKey,
@@ -600,7 +600,7 @@ export const fleetRouter = router({
 
       const newTierConfig = STORAGE_TIERS[input.tier];
       const billing = getBotBilling?.() ?? null;
-      const currentTierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
+      const currentTierKey = ((await billing?.getStorageTier(input.id)) ?? "standard") as StorageTierKey;
       const currentTierConfig = STORAGE_TIERS[currentTierKey] ?? STORAGE_TIERS.standard;
 
       // Downgrade check: is current usage > new tier limit?
@@ -638,7 +638,7 @@ export const fleetRouter = router({
       }
 
       if (billing) {
-        billing.setStorageTier(input.id, input.tier);
+        await billing.setStorageTier(input.id, input.tier);
       }
 
       return {
@@ -658,7 +658,7 @@ export const fleetRouter = router({
     }
 
     const billing = getBotBilling?.() ?? null;
-    const tierKey = (billing?.getStorageTier(input.id) ?? "standard") as StorageTierKey;
+    const tierKey = ((await billing?.getStorageTier(input.id)) ?? "standard") as StorageTierKey;
     const tierConfig = STORAGE_TIERS[tierKey] ?? STORAGE_TIERS.standard;
 
     const usage = await fleet.getVolumeUsage(input.id);
