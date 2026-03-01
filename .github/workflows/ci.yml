@@ -227,17 +227,16 @@ jobs:
           cache-to: type=local,dest=/tmp/buildx-cache,mode=max
 
       - name: Export image for scanning
-        run: docker save wopr-platform:scan -o /tmp/wopr-platform-scan.tar
+        run: docker save wopr-platform:scan -o "${{ github.workspace }}/wopr-platform-scan.tar"
 
       - name: Run Trivy vulnerability scanner
         run: |
           docker run --rm \
             -w /workspace \
-            -v /tmp/wopr-platform-scan.tar:/image.tar:ro \
             -v "${{ github.workspace }}:/workspace:ro" \
             aquasec/trivy:latest image \
             --exit-code 1 --severity CRITICAL --ignore-unfixed \
-            --input /image.tar
+            --input /workspace/wopr-platform-scan.tar
 
   # SOC 2 C3: Dependency vulnerability scanning
   dependency-scan:
