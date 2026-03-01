@@ -90,6 +90,23 @@ describe("DrizzleAutoTopupSettingsRepository", () => {
     expect((await repo.getByTenant("t1"))?.scheduleEnabled).toBe(false);
   });
 
+  it("getMaxConsecutiveFailures returns max across usage and schedule", async () => {
+    await repo.upsert("tenant-a", { usageEnabled: true });
+    await repo.upsert("tenant-b", { usageEnabled: true });
+    await repo.incrementUsageFailures("tenant-a"); // 1
+    await repo.incrementUsageFailures("tenant-a"); // 2
+    await repo.incrementScheduleFailures("tenant-b"); // 1
+    await repo.incrementScheduleFailures("tenant-b"); // 2
+    await repo.incrementScheduleFailures("tenant-b"); // 3
+    const max = await repo.getMaxConsecutiveFailures();
+    expect(max).toBe(3);
+  });
+
+  it("getMaxConsecutiveFailures returns 0 when no settings exist", async () => {
+    const max = await repo.getMaxConsecutiveFailures();
+    expect(max).toBe(0);
+  });
+
   it("listDueScheduled returns tenants with schedule_next_at <= now", async () => {
     const past = "2026-02-20T00:00:00.000Z";
     const future = "2026-12-31T00:00:00.000Z";
