@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AuditEnv } from "../../audit/types.js";
 import { logger } from "../../config/logger.js";
-import { getMarketplacePluginRepo } from "../../fleet/services.js";
+import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "../../fleet/services.js";
 import { type PluginCategory, type PluginManifest, pluginRegistry } from "./marketplace-registry.js";
 
 // BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
@@ -135,20 +135,54 @@ marketplaceRoutes.get("/plugins/:id", async (c) => {
  *
  * Get the SUPERPOWER.md content (or fallback description) for a plugin.
  */
-marketplaceRoutes.get("/plugins/:id/content", (c) => {
+marketplaceRoutes.get("/plugins/:id/content", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const id = c.req.param("id");
-  const plugin = pluginRegistry.find((p) => p.id === id);
+
+  let plugin = pluginRegistry.find((p) => p.id === id);
+  if (!plugin) {
+    try {
+      const repo = getMarketplacePluginRepo();
+      const dbPlugin = await repo.findById(id);
+      if (dbPlugin) {
+        plugin = {
+          id: dbPlugin.pluginId,
+          name: dbPlugin.npmPackage.replace(/^@wopr-network\/wopr-plugin-/, ""),
+          description: dbPlugin.notes ?? "",
+          version: dbPlugin.version,
+          author: "Community",
+          icon: "Package",
+          color: "#6B7280",
+          category: (dbPlugin.category ?? "integration") as PluginCategory,
+          tags: dbPlugin.category ? [dbPlugin.category] : [],
+          capabilities: [],
+          requires: [],
+          install: [],
+          configSchema: [],
+          setup: [],
+          installCount: 0,
+          changelog: [],
+        } satisfies PluginManifest;
+      }
+    } catch (err) {
+      logger.warn("marketplace plugin repo fallback failed", { err });
+    }
+  }
+
   if (!plugin) return c.json({ error: "Plugin not found" }, 404);
 
-  // TODO(WOP-1029): Once marketplace-content-repository is wired into services.ts,
-  // look up cached content first:
-  //   const cached = contentRepo.getByPluginId(id);
-  //   if (cached) return c.json({ markdown: cached.markdown, source: cached.source, version: cached.version });
+  try {
+    const contentRepo = getMarketplaceContentRepo();
+    const cached = await contentRepo.getByPluginId(id);
+    if (cached) {
+      return c.json({ markdown: cached.markdown, source: cached.source, version: cached.version });
+    }
+  } catch (err) {
+    logger.warn("marketplace content repo fallback failed", { err });
+  }
 
-  // Fallback: return manifest description
   return c.json({
     markdown: plugin.description,
     source: "manifest_description" as const,
