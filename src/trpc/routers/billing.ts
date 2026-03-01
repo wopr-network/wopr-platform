@@ -560,7 +560,7 @@ export const billingRouter = router({
         invoices: invoiceList.map((inv) => ({
           id: inv.id,
           date: inv.date,
-          amount: inv.amountCents,
+          amountCents: inv.amountCents,
           status: inv.status,
           downloadUrl: inv.downloadUrl,
         })),
