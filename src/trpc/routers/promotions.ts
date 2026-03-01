@@ -246,7 +246,5 @@ const rateOverridesSubRouter = router({
 // Composed router
 // ---------------------------------------------------------------------------
 
-export const promotionsRouter = router({
-  promotions: promotionsSubRouter,
-  rateOverrides: rateOverridesSubRouter,
-});
+export const promotionsRouter = promotionsSubRouter;
+export const rateOverridesRouter = rateOverridesSubRouter;

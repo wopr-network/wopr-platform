@@ -51,7 +51,7 @@ import { orgRouter } from "./routers/org.js";
 import { orgKeysRouter } from "./routers/org-keys.js";
 import { pageContextRouter } from "./routers/page-context.js";
 import { profileRouter } from "./routers/profile.js";
-import { promotionsRouter } from "./routers/promotions.js";
+import { promotionsRouter, rateOverridesRouter } from "./routers/promotions.js";
 import { settingsRouter } from "./routers/settings.js";
 import { twoFactorRouter } from "./routers/two-factor.js";
 import { usageRouter } from "./routers/usage.js";
@@ -61,6 +61,7 @@ export const appRouter = router({
   addons: addonRouter,
   billing: billingRouter,
   promotions: promotionsRouter,
+  rateOverrides: rateOverridesRouter,
   capabilities: capabilitiesRouter,
   credentials: credentialsRouter,
   fleet: fleetRouter,
