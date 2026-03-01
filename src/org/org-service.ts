@@ -79,6 +79,9 @@ export class OrgService {
    * Returns the created org's id, name, and slug.
    */
   async createOrg(userId: string, name: string, slug?: string): Promise<{ id: string; name: string; slug: string }> {
+    if (!name.trim()) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Org name cannot be blank or whitespace only" });
+    }
     if (slug !== undefined) {
       this.validateSlug(slug);
       const existing = await this.orgRepo.getBySlug(slug);
@@ -86,16 +89,19 @@ export class OrgService {
         throw new TRPCError({ code: "CONFLICT", message: "Slug already taken" });
       }
     }
-    const tenant = await this.orgRepo.createOrg(userId, name, slug);
-    // Create owner membership row (ON CONFLICT DO NOTHING handles races)
-    await this.memberRepo.addMember({
-      id: crypto.randomUUID(),
-      orgId: tenant.id,
-      userId,
-      role: "owner",
-      joinedAt: Date.now(),
+    // Wrap tenant creation + owner membership in a transaction to prevent orphan rows
+    const result = await this.db.transaction(async (_tx) => {
+      const tenant = await this.orgRepo.createOrg(userId, name, slug);
+      await this.memberRepo.addMember({
+        id: crypto.randomUUID(),
+        orgId: tenant.id,
+        userId,
+        role: "owner",
+        joinedAt: Date.now(),
+      });
+      return tenant;
     });
-    return { id: tenant.id, name: tenant.name, slug: tenant.slug ?? "" };
+    return { id: result.id, name: result.name, slug: result.slug ?? "" };
   }
 
   /** Get an org's details, including member/invite lists. */

@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { Hono } from "hono";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { AuthEnv } from "../../auth/index.js";
@@ -37,7 +38,11 @@ export function createOrgRoutes(deps: OrgRouteDeps | (() => OrgRouteDeps)): Hono
       if (err instanceof Error && (err as { status?: number }).status === 400) {
         return c.json({ error: err.message }, 400);
       }
-      // PostgreSQL or SQLite UNIQUE constraint violation
+      // Repository throws TRPCError CONFLICT for duplicate slug
+      if (err instanceof TRPCError && err.code === "CONFLICT") {
+        return c.json({ error: "An org with this slug already exists" }, 409);
+      }
+      // PostgreSQL or SQLite UNIQUE constraint violation (fallback)
       const cause = err instanceof Error ? (err.cause as Error | undefined) : undefined;
       const causeMsg = cause?.message ?? "";
       const causeCode = (cause as { code?: string } | undefined)?.code;
