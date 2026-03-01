@@ -82,13 +82,13 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
       recoveryEventId: data.recoveryEventId,
       tenant: data.tenant,
       sourceNode: data.sourceNode,
-      targetNode: null,
+      targetNode: data.targetNode ?? null,
       backupKey: data.backupKey,
-      status: "waiting" as const,
-      reason: null,
-      retryCount: 0,
-      startedAt: now,
-      completedAt: null,
+      status: (data.status ?? "waiting") as string,
+      reason: data.reason ?? null,
+      retryCount: data.retryCount ?? 0,
+      startedAt: data.startedAt ?? now,
+      completedAt: data.completedAt ?? null,
     };
     await this.db.insert(recoveryItems).values(row);
     return toItem(row as typeof recoveryItems.$inferSelect);
@@ -137,5 +137,21 @@ export class DrizzleRecoveryRepository implements IRecoveryRepository {
       .update(recoveryItems)
       .set({ retryCount: sql`${recoveryItems.retryCount} + 1` })
       .where(eq(recoveryItems.id, itemId));
+  }
+
+  async listItemsByEvent(eventId: string): Promise<RecoveryItem[]> {
+    const rows = await this.db.select().from(recoveryItems).where(eq(recoveryItems.recoveryEventId, eventId));
+    return rows.map(toItem);
+  }
+
+  async completeInProgressEvents(nodeId: string): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+    await this.db
+      .update(recoveryEvents)
+      .set({
+        status: "completed",
+        completedAt: now,
+      })
+      .where(and(eq(recoveryEvents.nodeId, nodeId), eq(recoveryEvents.status, "in_progress")));
   }
 }
