@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditEnv } from "../../audit/types.js";
+import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "../../fleet/services.js";
 import { marketplaceRoutes, setMarketplaceDeps } from "./marketplace.js";
 import type { PluginManifest } from "./marketplace-registry.js";
 
@@ -11,6 +12,16 @@ const OWNER_ID = "test-user";
 let mockEnv: Record<string, string> = {};
 let mockTenantId = OWNER_ID;
 
+vi.mock("../../fleet/services.js", () => ({
+  getMarketplacePluginRepo: vi.fn(() => ({
+    findEnabled: vi.fn(async () => []),
+    findById: vi.fn(async () => undefined),
+  })),
+  getMarketplaceContentRepo: vi.fn(() => ({
+    getByPluginId: vi.fn(async () => null),
+  })),
+}));
+
 vi.mock("./fleet.js", () => ({
   fleet: {
     update: vi.fn(async (_botId: string, patch: { env?: Record<string, string> }) => {
@@ -20,6 +31,7 @@ vi.mock("./fleet.js", () => ({
 }));
 
 vi.mock("../../fleet/profile-store.js", () => ({
+  // biome-ignore lint/complexity/useArrowFunction: constructor mock requires function keyword
   ProfileStore: vi.fn().mockImplementation(function () {
     return {
       get: vi.fn(async (id: string) => {
@@ -103,6 +115,16 @@ describe("GET /api/marketplace/plugins", () => {
     const body = (await res.json()) as PluginManifest[];
     expect(body.length).toBeGreaterThan(0);
   });
+
+  it("returns 503 when marketplace plugin repo throws", async () => {
+    vi.mocked(getMarketplacePluginRepo).mockImplementationOnce(() => {
+      throw new Error("DB connection failed");
+    });
+
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins");
+    expect(res.status).toBe(503);
+  });
 });
 
 describe("GET /api/marketplace/plugins/:id", () => {
@@ -128,6 +150,22 @@ describe("GET /api/marketplace/plugins/:id", () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Plugin not found");
   });
+
+  it("returns 503 when DB lookup throws for non-static plugin", async () => {
+    vi.mocked(getMarketplacePluginRepo).mockImplementationOnce(
+      () =>
+        ({
+          findEnabled: vi.fn(),
+          findById: vi.fn(async () => {
+            throw new Error("DB error");
+          }),
+        }) as unknown as ReturnType<typeof getMarketplacePluginRepo>,
+    );
+
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/some-dynamic-plugin");
+    expect(res.status).toBe(503);
+  });
 });
 
 describe("GET /api/marketplace/plugins/:id/content", () => {
@@ -150,6 +188,37 @@ describe("GET /api/marketplace/plugins/:id/content", () => {
     const body = (await res.json()) as { markdown: string; source: string };
     expect(body.source).toBe("manifest_description");
     expect(body.markdown).toBeTruthy();
+  });
+
+  it("returns 503 when plugin repo throws for non-static plugin in content endpoint", async () => {
+    vi.mocked(getMarketplacePluginRepo).mockImplementationOnce(
+      () =>
+        ({
+          findEnabled: vi.fn(),
+          findById: vi.fn(async () => {
+            throw new Error("DB error");
+          }),
+        }) as unknown as ReturnType<typeof getMarketplacePluginRepo>,
+    );
+
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/some-dynamic-plugin/content");
+    expect(res.status).toBe(503);
+  });
+
+  it("returns 503 when content repo throws", async () => {
+    vi.mocked(getMarketplaceContentRepo).mockImplementationOnce(
+      () =>
+        ({
+          getByPluginId: vi.fn(async () => {
+            throw new Error("Content DB error");
+          }),
+        }) as unknown as ReturnType<typeof getMarketplaceContentRepo>,
+    );
+
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/discord-channel/content");
+    expect(res.status).toBe(503);
   });
 });
 
@@ -261,5 +330,25 @@ describe("POST /api/marketplace/plugins/:id/install", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Plugin not found");
+  });
+
+  it("returns 503 when DB lookup throws during plugin existence check on install", async () => {
+    vi.mocked(getMarketplacePluginRepo).mockImplementationOnce(
+      () =>
+        ({
+          findEnabled: vi.fn(),
+          findById: vi.fn(async () => {
+            throw new Error("DB error");
+          }),
+        }) as unknown as ReturnType<typeof getMarketplacePluginRepo>,
+    );
+
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/some-dynamic-plugin/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId: BOT_ID }),
+    });
+    expect(res.status).toBe(503);
   });
 });
