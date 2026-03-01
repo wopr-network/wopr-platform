@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { enforceRetention } from "../../backup/retention.js";
 import { type SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
@@ -25,7 +26,7 @@ function getManager(): SnapshotManager {
   return getSnapshotManager();
 }
 
-export const snapshotRoutes = new Hono<{ Bindings: Record<string, never> }>();
+export const snapshotRoutes = new Hono<AuthEnv>();
 
 if (tokenMetadataMap.size === 0) {
   logger.warn("No API tokens configured -- snapshot routes will reject all requests");
@@ -65,7 +66,13 @@ snapshotRoutes.post("/", writeAuth, async (c) => {
     return ownershipError;
   }
 
-  const userId = c.req.header("X-User-Id") || "system";
+  let userId = "system";
+  try {
+    const user = c.get("user");
+    if (user?.id) userId = user.id;
+  } catch {
+    // Defensive fallback — should never happen on authenticated routes
+  }
   const tierHeader = c.req.header("X-Tier") || "free";
 
   const tier = tierSchema.safeParse(tierHeader);
