@@ -64,7 +64,7 @@ function buildRoutes(poolFactory: () => Pool, creditLedgerFactory: () => ICredit
     try {
       const ledger = creditLedgerFactory();
       await ledger.credit(result.userId, SIGNUP_GRANT, "signup_grant", "Signup verification credit");
-      logger.info("Signup credit granted", { userId: result.userId, amount_credits: SIGNUP_GRANT.toCents() });
+      logger.info("Signup credit granted", { userId: result.userId, amount_cents: SIGNUP_GRANT.toCents() });
     } catch (err) {
       logger.error("Failed to grant signup credit", {
         userId: result.userId,
