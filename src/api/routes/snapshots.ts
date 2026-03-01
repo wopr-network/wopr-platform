@@ -5,7 +5,8 @@ import { enforceRetention } from "../../backup/retention.js";
 import { type SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
-import { getSnapshotManager } from "../../fleet/services.js";
+import { getSnapshotManager, getTenantCustomerStore } from "../../fleet/services.js";
+import type { ITenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
 const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
@@ -24,6 +25,22 @@ export function setSnapshotManagerForTest(manager: SnapshotManager | undefined):
 function getManager(): SnapshotManager {
   if (_testSnapshotManager) return _testSnapshotManager;
   return getSnapshotManager();
+}
+
+let _tenantStore: ITenantCustomerStore | null = null;
+
+/** Initialize the tenant store for tier lookups. */
+export function setTenantStoreForTest(store: ITenantCustomerStore | undefined): void {
+  _tenantStore = store ?? null;
+}
+
+function getTenantStore(): ITenantCustomerStore | null {
+  if (_tenantStore) return _tenantStore;
+  try {
+    return getTenantCustomerStore();
+  } catch {
+    return null;
+  }
 }
 
 export const snapshotRoutes = new Hono<AuthEnv>();
@@ -73,9 +90,19 @@ snapshotRoutes.post("/", writeAuth, async (c) => {
   } catch {
     // Defensive fallback — should never happen on authenticated routes
   }
-  const tierHeader = c.req.header("X-Tier") || "free";
 
-  const tier = tierSchema.safeParse(tierHeader);
+  // Read tier from authenticated tenant record in DB — never trust client-supplied headers.
+  // Prefer the auth token's tenant ID; fall back to the instance profile's tenant ID.
+  let lookupTenantId: string | undefined = tenantId;
+  try {
+    lookupTenantId = c.get("tokenTenantId") ?? tenantId;
+  } catch {
+    // tokenTenantId not set on context (legacy/admin token)
+  }
+  const store = getTenantStore();
+  const tenantRecord = lookupTenantId && store ? await store.getByTenant(lookupTenantId) : null;
+  const rawTier = tenantRecord?.tier ?? "free";
+  const tier = tierSchema.safeParse(rawTier);
   if (!tier.success) {
     return c.json({ error: "Invalid tier" }, 400);
   }
