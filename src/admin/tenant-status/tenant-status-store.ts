@@ -105,7 +105,7 @@ export class TenantStatusStore implements ITenantStatusRepository {
         statusChangedAt: now,
         statusChangedBy: adminUserId,
         graceDeadline: null,
-        dataDeleteAfter: sql`(now() + interval '${sql.raw(String(BAN_DELETE_DAYS))} days')::text`,
+        dataDeleteAfter: sql`(now() + make_interval(days => ${BAN_DELETE_DAYS}))::text`,
         updatedAt: now,
       })
       .where(eq(tenantStatus.tenantId, tenantId));
@@ -125,7 +125,7 @@ export class TenantStatusStore implements ITenantStatusRepository {
       .set({
         status: "grace_period",
         statusChangedAt: now,
-        graceDeadline: sql`(now() + interval '${sql.raw(String(GRACE_PERIOD_DAYS))} days')::text`,
+        graceDeadline: sql`(now() + make_interval(days => ${GRACE_PERIOD_DAYS}))::text`,
         updatedAt: now,
       })
       .where(eq(tenantStatus.tenantId, tenantId));
