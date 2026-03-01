@@ -824,6 +824,22 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Marketplace Content Repository (WOP-1174)
+// ---------------------------------------------------------------------------
+
+import type { IMarketplaceContentRepository } from "../api/marketplace-content-repository.js";
+import { DrizzleMarketplaceContentRepository } from "../api/marketplace-content-repository.js";
+
+let _marketplaceContentRepo: IMarketplaceContentRepository | null = null;
+
+export function getMarketplaceContentRepo(): IMarketplaceContentRepository {
+  if (!_marketplaceContentRepo) {
+    _marketplaceContentRepo = new DrizzleMarketplaceContentRepository(getDb());
+  }
+  return _marketplaceContentRepo;
+}
+
+// ---------------------------------------------------------------------------
 // Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
 
