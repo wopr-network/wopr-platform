@@ -1,3 +1,4 @@
+import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthEnv, AuthUser } from "../../auth/index.js";
@@ -5,12 +6,16 @@ import { createTestDb } from "../../test/db.js";
 import { DrizzleOAuthStateRepository } from "../drizzle-oauth-state-repository.js";
 import { createChannelOAuthRoutes } from "./channel-oauth.js";
 
+// Track all PGlite pools created during tests so we can close them
+const activePools: PGlite[] = [];
+
 // ---------------------------------------------------------------------------
 // Test app — wraps createChannelOAuthRoutes with controllable session injection
 // ---------------------------------------------------------------------------
 
 async function createTestApp(user?: AuthUser) {
-  const { db } = await createTestDb();
+  const { db, pool } = await createTestDb();
+  activePools.push(pool);
   const repo = new DrizzleOAuthStateRepository(db);
   const routes = createChannelOAuthRoutes(repo);
   const app = new Hono<AuthEnv>();
@@ -33,7 +38,8 @@ async function createTestApp(user?: AuthUser) {
 // ---------------------------------------------------------------------------
 
 async function createSharedApp(user?: AuthUser) {
-  const { db } = await createTestDb();
+  const { db, pool } = await createTestDb();
+  activePools.push(pool);
   const repo = new DrizzleOAuthStateRepository(db);
   const routes = createChannelOAuthRoutes(repo);
 
@@ -56,8 +62,10 @@ const unauthedApp = () => createTestApp();
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
-afterEach(() => {
+afterEach(async () => {
   vi.clearAllMocks();
+  await Promise.all(activePools.map((p) => p.close()));
+  activePools.length = 0;
 });
 
 // ---------------------------------------------------------------------------
