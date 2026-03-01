@@ -10,6 +10,12 @@ export interface ProxyResult {
   error?: string;
 }
 
+/** Allowed path prefix — all proxy targets must live under /p2p/. */
+const ALLOWED_PATH_RE = /^\/p2p\/[a-zA-Z0-9/_-]*$/;
+
+/** Allowed HTTP methods for proxying. */
+const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);
+
 /**
  * Proxy a request to a bot instance's internal friend management API.
  *
@@ -27,6 +33,24 @@ export async function proxyToInstance(
   path: string,
   body?: unknown,
 ): Promise<ProxyResult> {
+  // --- SSRF defense (WOP-1288) ---
+  if (!ALLOWED_METHODS.has(method)) {
+    throw new Error(`proxyToInstance: disallowed method ${method}`);
+  }
+
+  // Decode percent-encoded characters before checking, to prevent %2e%2e bypass
+  const decodedPath = decodeURIComponent(path);
+  if (
+    !ALLOWED_PATH_RE.test(decodedPath) ||
+    decodedPath.includes("..") ||
+    decodedPath.includes("?") ||
+    decodedPath.includes("#") ||
+    decodedPath.includes("://") ||
+    /[\r\n]/.test(path)
+  ) {
+    throw new Error(`proxyToInstance: disallowed path ${path}`);
+  }
+
   const instanceUrl = `http://wopr-${instanceId}:3000${path}`;
 
   try {
