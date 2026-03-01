@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { proxyToInstance } from "./friends-proxy.js";
 
@@ -6,38 +5,18 @@ import { proxyToInstance } from "./friends-proxy.js";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-describe("proxyToInstance path validation", () => {
+describe("proxyToInstance", () => {
   beforeEach(() => {
     mockFetch.mockClear();
   });
-  it("accepts valid /p2p/ prefixed paths", async () => {
-    mockFetch.mockResolvedValue(
-      new Response(JSON.stringify({ ok: true }), {
-=======
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { proxyToInstance } from "./friends-proxy.js";
-
-describe("proxyToInstance", () => {
-  const originalFetch = globalThis.fetch;
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
 
   it("returns JSON data on successful JSON response", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
+    mockFetch.mockResolvedValue(
       new Response(JSON.stringify({ friends: [] }), {
->>>>>>> 58070ff (test: add tests for API auth routes and tenant-proxy (WOP-1291))
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     );
-<<<<<<< HEAD
-    const result = await proxyToInstance("bot-1", "GET", "/p2p/friends");
-    expect(result.ok).toBe(true);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://wopr-bot-1:3000/p2p/friends",
-=======
 
     const result = await proxyToInstance("bot-1", "GET", "/p2p/friends");
     expect(result.ok).toBe(true);
@@ -46,7 +25,7 @@ describe("proxyToInstance", () => {
   });
 
   it("returns text data on non-JSON response", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(
+    mockFetch.mockResolvedValue(
       new Response("plain text", {
         status: 200,
         headers: { "content-type": "text/plain" },
@@ -59,7 +38,7 @@ describe("proxyToInstance", () => {
   });
 
   it("returns 503 for ECONNREFUSED", async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    mockFetch.mockRejectedValue(new Error("ECONNREFUSED"));
 
     const result = await proxyToInstance("bot-1", "GET", "/p2p/friends");
     expect(result.ok).toBe(false);
@@ -68,7 +47,7 @@ describe("proxyToInstance", () => {
   });
 
   it("returns 502 for other errors", async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error("Unexpected"));
+    mockFetch.mockRejectedValue(new Error("Unexpected"));
 
     const result = await proxyToInstance("bot-1", "POST", "/p2p/friends", { peerId: "abc" });
     expect(result.ok).toBe(false);
@@ -76,19 +55,52 @@ describe("proxyToInstance", () => {
   });
 
   it("constructs correct URL from instanceId and path", async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+    mockFetch.mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
 
     await proxyToInstance("my-bot", "GET", "/p2p/friends");
-    expect(globalThis.fetch).toHaveBeenCalledWith(
+    expect(mockFetch).toHaveBeenCalledWith(
       "http://wopr-my-bot:3000/p2p/friends",
->>>>>>> 58070ff (test: add tests for API auth routes and tenant-proxy (WOP-1291))
       expect.objectContaining({ method: "GET" }),
     );
   });
 
-<<<<<<< HEAD
+  it("does not send body for GET requests", async () => {
+    mockFetch.mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+
+    await proxyToInstance("bot-1", "GET", "/p2p/friends", { ignored: true });
+    const fetchInit = mockFetch.mock.calls[0][1]!;
+    expect(fetchInit.body).toBeUndefined();
+  });
+
+  it("sends JSON body for POST requests", async () => {
+    mockFetch.mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+
+    await proxyToInstance("bot-1", "POST", "/p2p/friends", { peerId: "abc" });
+    const fetchInit = mockFetch.mock.calls[0][1]!;
+    expect(fetchInit.body).toBe(JSON.stringify({ peerId: "abc" }));
+  });
+});
+
+describe("proxyToInstance path validation", () => {
+  beforeEach(() => {
+    mockFetch.mockClear();
+  });
+
+  it("accepts valid /p2p/ prefixed paths", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await proxyToInstance("bot-1", "GET", "/p2p/friends");
+    expect(result.ok).toBe(true);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://wopr-bot-1:3000/p2p/friends",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("accepts /p2p/ paths with sub-segments", async () => {
     mockFetch.mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -151,25 +163,5 @@ describe("proxyToInstance method validation", () => {
 
   it("rejects lowercase method", async () => {
     await expect(proxyToInstance("bot-1", "get", "/p2p/friends")).rejects.toThrow("proxyToInstance: disallowed method");
-=======
-  it("does not send body for GET requests", async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
-
-    await proxyToInstance("bot-1", "GET", "/p2p/friends", { ignored: true });
-    const fetchInit = vi.mocked(globalThis.fetch).mock.calls[0][1]!;
-    expect(fetchInit.body).toBeUndefined();
-  });
-
-  it("sends JSON body for POST requests", async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
-
-    await proxyToInstance("bot-1", "POST", "/p2p/friends", { peerId: "abc" });
-    const fetchInit = vi.mocked(globalThis.fetch).mock.calls[0][1]!;
-    expect(fetchInit.body).toBe(JSON.stringify({ peerId: "abc" }));
->>>>>>> 58070ff (test: add tests for API auth routes and tenant-proxy (WOP-1291))
   });
 });

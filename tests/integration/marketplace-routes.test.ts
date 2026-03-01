@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 await import("./setup.js");
 
 const { app } = await import("../../src/api/app.js");
-import { AUTH_HEADER } from "./setup.js";
+import { AUTH_HEADER, TENANT_A_TOKEN } from "./setup.js";
 
 describe("integration: marketplace registry routes", () => {
   it("GET /api/marketplace/plugins returns 401 without auth", async () => {
@@ -63,7 +63,15 @@ describe("integration: admin marketplace routes", () => {
     const res = await app.request("/api/admin/marketplace/plugins", {
       headers: AUTH_HEADER,
     });
-    // Must NOT be 401 — auth passed
-    expect(res.status).not.toBe(401);
+    // Auth passed — must be 200 (success) or 500 (DB unavailable), never 401 or 404.
+    expect([200, 500]).toContain(res.status);
+  });
+
+  it("GET /api/admin/marketplace/plugins with non-admin token returns 403", async () => {
+    // Tenant write-scoped token does not satisfy the admin scope requirement.
+    const res = await app.request("/api/admin/marketplace/plugins", {
+      headers: { Authorization: `Bearer ${TENANT_A_TOKEN}` },
+    });
+    expect(res.status).toBe(403);
   });
 });

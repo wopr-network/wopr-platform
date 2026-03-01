@@ -38,7 +38,7 @@ describe("integration: audit routes", () => {
     const res = await app.request("/api/admin/audit", {
       headers: AUTH_HEADER,
     });
-    // Must NOT be 401 (auth passed) — could be 403, 500, or 200
-    expect(res.status).not.toBe(401);
+    // Auth passed — must be 200 (success) or 500 (DB unavailable), never 401 or 404.
+    expect([200, 500]).toContain(res.status);
   });
 });
