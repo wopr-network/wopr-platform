@@ -132,8 +132,24 @@ describe("tRPC org router", () => {
       expect(mockOrgService.updateOrg).toHaveBeenCalledWith("org-1", "test-user", {
         name: "New Org Name",
         slug: undefined,
+        billingEmail: undefined,
       });
       expect(result).toBeDefined();
+    });
+
+    it("passes billingEmail to orgService.updateOrg", async () => {
+      const caller = createCaller(authedContext());
+      await caller.org.updateOrganization({ orgId: "org-1", billingEmail: "billing@test.com" });
+      expect(mockOrgService.updateOrg).toHaveBeenCalledWith("org-1", "test-user", {
+        name: undefined,
+        slug: undefined,
+        billingEmail: "billing@test.com",
+      });
+    });
+
+    it("rejects invalid billingEmail format", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.org.updateOrganization({ orgId: "org-1", billingEmail: "not-an-email" })).rejects.toThrow();
     });
 
     it("rejects unauthenticated request", async () => {

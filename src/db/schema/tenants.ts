@@ -9,6 +9,7 @@ export const tenants = pgTable(
     slug: text("slug").unique(),
     type: text("type").notNull(), // "personal" | "org"
     ownerId: text("owner_id").notNull(), // user who created it
+    billingEmail: text("billing_email"),
     createdAt: bigint("created_at", { mode: "number" })
       .notNull()
       .default(sql`(extract(epoch from now()) * 1000)::bigint`),

@@ -71,11 +71,16 @@ export const orgRouter = router({
         orgId: z.string().min(1),
         name: z.string().min(1).max(128).optional(),
         slug: z.string().min(3).max(48).optional(),
+        billingEmail: z.string().email().max(255).optional().nullable(),
       }),
     )
     .mutation(({ input, ctx }) => {
       const { orgService } = deps();
-      return orgService.updateOrg(input.orgId, ctx.user.id, { name: input.name, slug: input.slug });
+      return orgService.updateOrg(input.orgId, ctx.user.id, {
+        name: input.name,
+        slug: input.slug,
+        billingEmail: input.billingEmail,
+      });
     }),
 
   /** Delete an organization. Owner only. */
