@@ -20,12 +20,14 @@ vi.mock("./fleet.js", () => ({
 }));
 
 vi.mock("../../fleet/profile-store.js", () => ({
-  ProfileStore: vi.fn().mockImplementation(() => ({
-    get: vi.fn(async (id: string) => {
-      if (id === BOT_ID) return { tenantId: mockTenantId, env: { ...mockEnv } };
-      return null;
-    }),
-  })),
+  ProfileStore: vi.fn().mockImplementation(function () {
+    return {
+      get: vi.fn(async (id: string) => {
+        if (id === BOT_ID) return { tenantId: mockTenantId, env: { ...mockEnv } };
+        return null;
+      }),
+    };
+  }),
 }));
 
 // Build a test app with session user already injected
