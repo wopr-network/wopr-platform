@@ -285,10 +285,12 @@ export function scopedBearerAuthWithTenant(metadataMap: Map<string, TokenMetadat
     c.set("user", { id: `token:${metadata.scope}`, roles: [metadata.scope] } satisfies AuthUser);
     c.set("authMethod", "api_key" as const);
 
-    // Store tenant ID if associated with this token
-    if (metadata.tenantId) {
-      c.set("tokenTenantId", metadata.tenantId);
+    // Reject tokens without tenant scope — legacy unscoped tokens cannot
+    // access tenant-scoped resources (WOP-1264)
+    if (!metadata.tenantId) {
+      return c.json({ error: "Token lacks tenant scope — re-authenticate with a tenant-scoped token" }, 403);
     }
+    c.set("tokenTenantId", metadata.tenantId);
 
     return next();
   };
@@ -397,9 +399,10 @@ export function requireTenantOwnership<T>(_getResourceTenantId: (resource: T) =>
   return async (c: Context<AuthEnv>, next: Next) => {
     const tokenTenantId = c.get("tokenTenantId");
 
-    // If token has no tenant constraint (legacy/admin token), allow access
+    // If token has no tenant constraint, reject — legacy tokens must not
+    // bypass tenant ownership (WOP-1264)
     if (!tokenTenantId) {
-      return next();
+      return c.json({ error: "Token lacks tenant scope" }, 403);
     }
 
     // Resource tenantId will be validated by route handler
@@ -436,9 +439,9 @@ export function validateTenantOwnership<T>(
     tokenTenantId = undefined;
   }
 
-  // No tenant constraint (legacy/admin token) — allow access
+  // No tenant constraint = legacy unscoped token — reject (WOP-1264)
   if (!tokenTenantId) {
-    return undefined;
+    return c.json({ error: "Token lacks tenant scope" }, 403);
   }
 
   // Validate tenant match

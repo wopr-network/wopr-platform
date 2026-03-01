@@ -8,7 +8,14 @@ import BetterSqlite3, { type Database as BetterSqlite3Db } from "better-sqlite3"
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getAuth, resetAuth, setAuth } from "./better-auth.js";
-import { type AuthEnv, requireSessionOrToken, resolveSessionUser } from "./index.js";
+import {
+  type AuthEnv,
+  requireSessionOrToken,
+  resolveSessionUser,
+  scopedBearerAuthWithTenant,
+  type TokenMetadata,
+  validateTenantOwnership,
+} from "./index.js";
 
 describe("getAuth singleton", () => {
   afterEach(() => {
@@ -329,5 +336,94 @@ describe("better-auth integration", () => {
       expect(body.userId).toBe("token:write");
       expect(body.method).toBe("api_key");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scopedBearerAuthWithTenant — legacy token rejection (WOP-1264)
+// ---------------------------------------------------------------------------
+
+describe("scopedBearerAuthWithTenant — legacy token rejection", () => {
+  it("rejects tokens without tenant scope with 403", async () => {
+    const metadataMap = new Map<string, TokenMetadata>([
+      ["legacy-admin-token", { scope: "admin" }], // no tenantId
+    ]);
+
+    const app = new Hono<AuthEnv>();
+    app.use("/*", scopedBearerAuthWithTenant(metadataMap, "read"));
+    app.get("/test", (c) => c.json({ ok: true }));
+
+    const res = await app.request("/test", {
+      headers: { Authorization: "Bearer legacy-admin-token" },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("tenant");
+  });
+
+  it("allows tokens with tenant scope", async () => {
+    const metadataMap = new Map<string, TokenMetadata>([["scoped-token", { scope: "admin", tenantId: "tenant-123" }]]);
+
+    const app = new Hono<AuthEnv>();
+    app.use("/*", scopedBearerAuthWithTenant(metadataMap, "read"));
+    app.get("/test", (c) => c.json({ ok: true }));
+
+    const res = await app.request("/test", {
+      headers: { Authorization: "Bearer scoped-token" },
+    });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateTenantOwnership — defense-in-depth (WOP-1264)
+// ---------------------------------------------------------------------------
+
+describe("validateTenantOwnership — defense-in-depth", () => {
+  it("returns 403 when tokenTenantId is not set (legacy token)", async () => {
+    const app = new Hono<AuthEnv>();
+    app.get("/test", (c) => {
+      // Do NOT set tokenTenantId — simulates legacy token
+      const result = validateTenantOwnership(c, { id: "resource-1" }, "tenant-abc");
+      if (result) return result;
+      return c.json({ ok: true });
+    });
+
+    const res = await app.request("/test");
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain("tenant");
+  });
+
+  it("still returns 404 for tenant mismatch", async () => {
+    const app = new Hono<AuthEnv>();
+    app.use("/*", async (c, next) => {
+      c.set("tokenTenantId", "tenant-xyz");
+      return next();
+    });
+    app.get("/test", (c) => {
+      const result = validateTenantOwnership(c, { id: "resource-1" }, "tenant-abc");
+      if (result) return result;
+      return c.json({ ok: true });
+    });
+
+    const res = await app.request("/test");
+    expect(res.status).toBe(404);
+  });
+
+  it("passes when tokenTenantId matches resource tenant", async () => {
+    const app = new Hono<AuthEnv>();
+    app.use("/*", async (c, next) => {
+      c.set("tokenTenantId", "tenant-abc");
+      return next();
+    });
+    app.get("/test", (c) => {
+      const result = validateTenantOwnership(c, { id: "resource-1" }, "tenant-abc");
+      if (result) return result;
+      return c.json({ ok: true });
+    });
+
+    const res = await app.request("/test");
+    expect(res.status).toBe(200);
   });
 });
