@@ -23,6 +23,13 @@ function unauthCtx() {
   return { user: undefined as undefined, tenantId: undefined as string | undefined };
 }
 
+function memberCtx(userId = "user-1") {
+  return {
+    user: { id: userId, roles: ["member"] },
+    tenantId: "t-member",
+  };
+}
+
 function createMockRepo(overrides: Partial<ISessionUsageRepository> = {}): ISessionUsageRepository {
   return {
     insert: vi.fn(),
@@ -120,6 +127,38 @@ describe("inference-admin router", () => {
       await expect(caller.dailyCost({ since: 0 })).rejects.toThrow(TRPCError);
       await expect(caller.dailyCost({ since: 0 })).rejects.toMatchObject({
         code: "UNAUTHORIZED",
+      });
+    });
+
+    it("rejects non-admin users on dailyCost with FORBIDDEN", async () => {
+      const caller = inferenceAdminRouter.createCaller(memberCtx() as any);
+      await expect(caller.dailyCost({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.dailyCost({ since: 0 })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("rejects non-admin users on pageCost with FORBIDDEN", async () => {
+      const caller = inferenceAdminRouter.createCaller(memberCtx() as any);
+      await expect(caller.pageCost({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.pageCost({ since: 0 })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("rejects non-admin users on cacheHitRate with FORBIDDEN", async () => {
+      const caller = inferenceAdminRouter.createCaller(memberCtx() as any);
+      await expect(caller.cacheHitRate({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.cacheHitRate({ since: 0 })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("rejects non-admin users on sessionCost with FORBIDDEN", async () => {
+      const caller = inferenceAdminRouter.createCaller(memberCtx() as any);
+      await expect(caller.sessionCost({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.sessionCost({ since: 0 })).rejects.toMatchObject({
+        code: "FORBIDDEN",
       });
     });
   });

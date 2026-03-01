@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
-import { protectedProcedure, router } from "../init.js";
+import { adminProcedure, router } from "../init.js";
 
 export interface InferenceAdminDeps {
   getSessionUsageRepo: () => ISessionUsageRepository;
@@ -27,23 +27,23 @@ const sinceSchema = z.object({
 });
 
 export const inferenceAdminRouter = router({
-  dailyCost: protectedProcedure.input(sinceSchema).query(async ({ input }) => {
+  dailyCost: adminProcedure.input(sinceSchema).query(async ({ input }) => {
     const repo = getDeps().getSessionUsageRepo();
     return repo.aggregateByDay(input.since);
   }),
 
-  pageCost: protectedProcedure.input(sinceSchema).query(async ({ input }) => {
+  pageCost: adminProcedure.input(sinceSchema).query(async ({ input }) => {
     const repo = getDeps().getSessionUsageRepo();
     return repo.aggregateByPage(input.since);
   }),
 
-  cacheHitRate: protectedProcedure.input(sinceSchema).query(async ({ input }) => {
+  cacheHitRate: adminProcedure.input(sinceSchema).query(async ({ input }) => {
     const repo = getDeps().getSessionUsageRepo();
     const rate = await repo.cacheHitRate(input.since);
     return { rate };
   }),
 
-  sessionCost: protectedProcedure.input(sinceSchema).query(async ({ input }) => {
+  sessionCost: adminProcedure.input(sinceSchema).query(async ({ input }) => {
     const repo = getDeps().getSessionUsageRepo();
     return repo.aggregateSessionCost(input.since);
   }),
