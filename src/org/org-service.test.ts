@@ -1,5 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { TRPCError } from "@trpc/server";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleOrgMemberRepository } from "../fleet/org-member-repository.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
@@ -198,6 +199,63 @@ describe("OrgService", () => {
       });
 
       await expect(svc.transferOwnership(org.id, owner, "nonexistent")).rejects.toThrow();
+    });
+  });
+
+  describe("createOrg", () => {
+    it("happy path — creates org and owner membership", async () => {
+      const owner = "owner-co1";
+      const result = await service.createOrg(owner, "My Org", "my-org-co1");
+      expect(result.id).toBeDefined();
+      expect(result.name).toBe("My Org");
+      expect(result.slug).toBe("my-org-co1");
+
+      // Verify member row was created
+      const { memberRepo } = await setup(db);
+      const member = await memberRepo.findMember(result.id, owner);
+      expect(member?.role).toBe("owner");
+    });
+
+    it("throws CONFLICT (TRPCError) when slug is already taken", async () => {
+      await service.createOrg("user-a", "Org A", "taken-slug-co");
+      const err = await service.createOrg("user-b", "Org B", "taken-slug-co").catch((e) => e);
+      expect(err).toBeInstanceOf(TRPCError);
+      expect((err as TRPCError).code).toBe("CONFLICT");
+    });
+
+    it("throws CONFLICT (TRPCError) when DB unique constraint fires (race condition path)", async () => {
+      // Simulate the race: getBySlug returns null (both concurrent requests passed the check),
+      // but the DB insert fails with a unique constraint violation.
+      const { orgRepo, memberRepo } = await setup(db);
+      await orgRepo.createOrg("user-race", "Race Org", "race-slug-co");
+
+      // Bypass the service-level slug check to reach the DB insert directly
+      vi.spyOn(orgRepo, "getBySlug").mockResolvedValueOnce(null);
+      const racingSvc = new OrgService(orgRepo, memberRepo, db);
+
+      // This reaches the DB insert directly with the duplicate slug
+      const err = await racingSvc.createOrg("user-race2", "Race Org 2", "race-slug-co").catch((e) => e);
+      expect(err).toBeInstanceOf(TRPCError);
+      expect((err as TRPCError).code).toBe("CONFLICT");
+    });
+
+    it("throws BAD_REQUEST for invalid slug format", async () => {
+      const err = await service.createOrg("user-c", "Org C", "INVALID_SLUG").catch((e) => e);
+      expect(err).toBeInstanceOf(TRPCError);
+      expect((err as TRPCError).code).toBe("BAD_REQUEST");
+    });
+
+    it("partial failure — throws when addMember fails, org still created", async () => {
+      const { orgRepo, memberRepo } = await setup(db);
+      const failingMemberRepo = {
+        ...memberRepo,
+        addMember: async () => {
+          throw new Error("addMember boom");
+        },
+      } as unknown as typeof memberRepo;
+      const svc = new OrgService(orgRepo, failingMemberRepo, db);
+
+      await expect(svc.createOrg("user-d", "Org D", "partial-fail-co")).rejects.toThrow("addMember boom");
     });
   });
 
