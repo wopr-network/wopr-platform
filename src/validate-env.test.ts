@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "./config/logger.js";
 import { validateRequiredEnvVars } from "./validate-env.js";
 
 describe("validateRequiredEnvVars", () => {
@@ -46,7 +47,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("DATABASE_URL", "postgresql://x");
     vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     expect(() => validateRequiredEnvVars()).not.toThrow();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("STRIPE_CREDIT_PRICE_"));
     warnSpy.mockRestore();
@@ -65,7 +66,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("PLATFORM_UI_URL", "https://app.example.com");
     vi.stubEnv("PLATFORM_URL", "https://api.example.com");
     vi.stubEnv("PLATFORM_DOMAIN", "example.com");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     expect(() => validateRequiredEnvVars()).not.toThrow();
     expect(warnSpy).not.toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -87,7 +88,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     validateRequiredEnvVars();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("PLATFORM_UI_URL"));
     warnSpy.mockRestore();
@@ -103,7 +104,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     validateRequiredEnvVars();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("PLATFORM_URL"));
     warnSpy.mockRestore();
@@ -119,7 +120,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     validateRequiredEnvVars();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("PLATFORM_DOMAIN"));
     warnSpy.mockRestore();

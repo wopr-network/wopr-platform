@@ -1,3 +1,5 @@
+import { logger } from "./config/logger.js";
+
 /**
  * Startup environment variable validation.
  *
@@ -71,7 +73,7 @@ export function validateRequiredEnvVars(): void {
 
   if (warnings.length > 0) {
     for (const w of warnings) {
-      console.warn(`[env] WARNING: ${w}`);
+      logger.warn(`[env] ${w}`);
     }
   }
 
