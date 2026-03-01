@@ -42,6 +42,13 @@ export interface SessionCostSummary {
   avgCostPerSession: number;
 }
 
+export interface CacheStats {
+  hitRate: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  uncachedTokens: number;
+}
+
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
@@ -53,7 +60,7 @@ export interface ISessionUsageRepository {
   sumCostBySession(sessionId: string): Promise<number>;
   aggregateByDay(since: number): Promise<DailyCostAggregate[]>;
   aggregateByPage(since: number): Promise<PageCostAggregate[]>;
-  cacheHitRate(since: number): Promise<number>;
+  cacheHitRate(since: number): Promise<CacheStats>;
   aggregateSessionCost(since: number): Promise<SessionCostSummary>;
 }
 
@@ -163,17 +170,31 @@ export class DrizzleSessionUsageRepository implements ISessionUsageRepository {
     }));
   }
 
-  async cacheHitRate(since: number): Promise<number> {
+  async cacheHitRate(since: number): Promise<CacheStats> {
     const result = (await this.db.execute(sql`
       SELECT
-        SUM(cached_tokens) as total_cached,
-        SUM(input_tokens) as total_input
+        COALESCE(SUM(cached_tokens), 0) as total_cached,
+        COALESCE(SUM(cache_write_tokens), 0) as total_cache_write,
+        COALESCE(SUM(input_tokens), 0) as total_input
       FROM session_usage
       WHERE created_at > ${since}
-    `)) as unknown as { rows: Array<{ total_cached: string | null; total_input: string | null }> };
+    `)) as unknown as {
+      rows: Array<{
+        total_cached: string | null;
+        total_cache_write: string | null;
+        total_input: string | null;
+      }>;
+    };
     const cached = Number(result.rows[0]?.total_cached ?? 0);
+    const cacheWrite = Number(result.rows[0]?.total_cache_write ?? 0);
     const input = Number(result.rows[0]?.total_input ?? 0);
-    return input > 0 ? cached / input : 0;
+    const uncached = Math.max(0, input - cached - cacheWrite);
+    return {
+      hitRate: input > 0 ? cached / input : 0,
+      cachedTokens: cached,
+      cacheWriteTokens: cacheWrite,
+      uncachedTokens: uncached,
+    };
   }
 
   async aggregateSessionCost(since: number): Promise<SessionCostSummary> {

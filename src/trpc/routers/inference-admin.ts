@@ -39,8 +39,7 @@ export const inferenceAdminRouter = router({
 
   cacheHitRate: protectedProcedure.input(sinceSchema).query(async ({ input }) => {
     const repo = getDeps().getSessionUsageRepo();
-    const rate = await repo.cacheHitRate(input.since);
-    return { rate };
+    return repo.cacheHitRate(input.since);
   }),
 
   sessionCost: protectedProcedure.input(sinceSchema).query(async ({ input }) => {

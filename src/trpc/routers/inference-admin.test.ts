@@ -5,6 +5,7 @@
 import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  CacheStats,
   DailyCostAggregate,
   ISessionUsageRepository,
   PageCostAggregate,
@@ -31,7 +32,7 @@ function createMockRepo(overrides: Partial<ISessionUsageRepository> = {}): ISess
     sumCostBySession: vi.fn().mockResolvedValue(0),
     aggregateByDay: vi.fn().mockResolvedValue([]),
     aggregateByPage: vi.fn().mockResolvedValue([]),
-    cacheHitRate: vi.fn().mockResolvedValue(0),
+    cacheHitRate: vi.fn().mockResolvedValue({ hitRate: 0, cachedTokens: 0, cacheWriteTokens: 0, uncachedTokens: 0 }),
     aggregateSessionCost: vi.fn().mockResolvedValue({ totalCostUsd: 0, totalSessions: 0, avgCostPerSession: 0 }),
     ...overrides,
   } as ISessionUsageRepository;
@@ -82,14 +83,15 @@ describe("inference-admin router", () => {
   });
 
   describe("cacheHitRate", () => {
-    it("returns cache hit rate wrapped in an object", async () => {
-      mockRepo = createMockRepo({ cacheHitRate: vi.fn().mockResolvedValue(0.75) });
+    it("returns full CacheStats object", async () => {
+      const stats: CacheStats = { hitRate: 0.75, cachedTokens: 750, cacheWriteTokens: 50, uncachedTokens: 200 };
+      mockRepo = createMockRepo({ cacheHitRate: vi.fn().mockResolvedValue(stats) });
       setInferenceAdminDeps({ getSessionUsageRepo: () => mockRepo });
 
       const caller = inferenceAdminRouter.createCaller(authedCtx());
       const result = await caller.cacheHitRate({ since: 0 });
 
-      expect(result).toEqual({ rate: 0.75 });
+      expect(result).toEqual(stats);
     });
   });
 
