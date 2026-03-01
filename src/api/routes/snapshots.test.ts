@@ -54,14 +54,6 @@ class MockSnapshotNotFoundError extends Error {
   }
 }
 
-vi.mock("better-sqlite3", () => {
-  return {
-    default: class MockDatabase {
-      pragma() {}
-    },
-  };
-});
-
 vi.mock("../../backup/snapshot-manager.js", () => {
   return {
     SnapshotManager: class {

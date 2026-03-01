@@ -88,7 +88,7 @@ describe("Billing pipeline load tests", () => {
     // Baseline assertions — these define the performance floor
     expect(result.errorRate).toBe(0);
     expect(result.eventsPerSec).toBeGreaterThan(1_000); // Must sustain at least 1K/s
-    expect(result.p99LatencyUs).toBeLessThan(10_000_000); // p99 < 10s (generous for SQLite WAL writes)
+    expect(result.p99LatencyUs).toBeLessThan(10_000_000); // p99 < 10s (generous for DB writes under load)
   });
 
   it("Scenario 2: Burst emit — rapid emit then single flush", async () => {
