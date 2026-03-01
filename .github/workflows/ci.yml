@@ -232,11 +232,11 @@ jobs:
       - name: Run Trivy vulnerability scanner
         run: |
           docker run --rm \
+            -w /workspace \
             -v /tmp/wopr-platform-scan.tar:/image.tar:ro \
             -v "${{ github.workspace }}:/workspace:ro" \
             aquasec/trivy:latest image \
             --exit-code 1 --severity CRITICAL --ignore-unfixed \
-            --ignorefile /workspace/.trivyignore \
             --input /image.tar
 
   # SOC 2 C3: Dependency vulnerability scanning
@@ -251,6 +251,7 @@ jobs:
       - name: Run Trivy vulnerability scanner (filesystem)
         run: |
           docker run --rm \
+            -w /workspace \
             -v "${{ github.workspace }}:/workspace" \
             aquasec/trivy:latest fs \
             --format sarif --output /workspace/trivy-fs-results.sarif \
