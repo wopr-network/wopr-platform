@@ -50,6 +50,7 @@ function makeMockOrgService(): OrgService {
     getOrCreatePersonalOrg: vi.fn().mockReturnValue(MOCK_ORG),
     updateOrg: vi.fn().mockReturnValue(MOCK_ORG),
     deleteOrg: vi.fn(),
+    createOrg: vi.fn().mockResolvedValue({ id: "org-new", name: "New Org", slug: "new-org" }),
     inviteMember: vi.fn().mockResolvedValue({
       id: "inv-1",
       orgId: "org-1",
@@ -301,6 +302,34 @@ describe("tRPC org router", () => {
     it("rejects unauthenticated request", async () => {
       const caller = createCaller(unauthContext());
       await expect(caller.org.connectOauthProvider({ provider: "github" })).rejects.toThrow("Authentication required");
+    });
+  });
+
+  // ---- createOrganization ----
+
+  describe("createOrganization", () => {
+    it("creates an organization with name and slug", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.org.createOrganization({ name: "New Org", slug: "new-org" });
+      expect(result).toEqual({ id: "org-new", name: "New Org", slug: "new-org" });
+      expect(mockOrgService.createOrg).toHaveBeenCalledWith("test-user", "New Org", "new-org");
+    });
+
+    it("creates an organization with name only (slug auto-generated)", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.org.createOrganization({ name: "My Team" });
+      expect(result).toEqual({ id: "org-new", name: "New Org", slug: "new-org" });
+      expect(mockOrgService.createOrg).toHaveBeenCalledWith("test-user", "My Team", undefined);
+    });
+
+    it("rejects empty name", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.org.createOrganization({ name: "" })).rejects.toThrow();
+    });
+
+    it("rejects unauthenticated request", async () => {
+      const caller = createCaller(unauthContext());
+      await expect(caller.org.createOrganization({ name: "X" })).rejects.toThrow("Authentication required");
     });
   });
 

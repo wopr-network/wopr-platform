@@ -62,6 +62,7 @@ describe("adminRecoveryRoutes", () => {
       ];
       vi.mocked(getRecoveryRepo).mockReturnValue({
         listEvents: vi.fn().mockResolvedValue(mockEvents),
+<<<<<<< HEAD
       } as unknown as IRecoveryRepository);
 
       const res = await adminRecoveryRoutes.request("/");
@@ -75,6 +76,7 @@ describe("adminRecoveryRoutes", () => {
     it("accepts limit query param", async () => {
       vi.mocked(getRecoveryRepo).mockReturnValue({
         listEvents: vi.fn().mockResolvedValue([]),
+<<<<<<< HEAD
       } as unknown as IRecoveryRepository);
 
       const res = await adminRecoveryRoutes.request("/?limit=10");
@@ -84,6 +86,7 @@ describe("adminRecoveryRoutes", () => {
     it("accepts status filter query param", async () => {
       vi.mocked(getRecoveryRepo).mockReturnValue({
         listEvents: vi.fn().mockResolvedValue([]),
+<<<<<<< HEAD
       } as unknown as IRecoveryRepository);
 
       const res = await adminRecoveryRoutes.request("/?status=completed");
@@ -93,6 +96,7 @@ describe("adminRecoveryRoutes", () => {
     it("ignores invalid status filter", async () => {
       vi.mocked(getRecoveryRepo).mockReturnValue({
         listEvents: vi.fn().mockResolvedValue([]),
+<<<<<<< HEAD
       } as unknown as IRecoveryRepository);
 
       const res = await adminRecoveryRoutes.request("/?status=invalid");
@@ -115,6 +119,7 @@ describe("adminRecoveryRoutes", () => {
           event: mockEvent,
           items: [],
         }),
+<<<<<<< HEAD
       } as unknown as RecoveryOrchestrator);
 
       const res = await adminRecoveryRoutes.request("/evt-1");
@@ -127,6 +132,7 @@ describe("adminRecoveryRoutes", () => {
     it("returns 404 for unknown event", async () => {
       vi.mocked(getRecoveryOrchestrator).mockReturnValue({
         getEventDetails: vi.fn().mockResolvedValue({ event: null, items: [] }),
+<<<<<<< HEAD
       } as unknown as RecoveryOrchestrator);
 
       const res = await adminRecoveryRoutes.request("/nonexistent");
@@ -142,6 +148,7 @@ describe("adminRecoveryRoutes", () => {
     it("retries waiting tenants and returns report", async () => {
       vi.mocked(getRecoveryOrchestrator).mockReturnValue({
         retryWaiting: vi.fn().mockResolvedValue({ retried: 2, failed: 0 }),
+<<<<<<< HEAD
       } as unknown as RecoveryOrchestrator);
 
       const res = await adminRecoveryRoutes.request("/evt-1/retry", {
@@ -156,6 +163,7 @@ describe("adminRecoveryRoutes", () => {
     it("returns 500 on error", async () => {
       vi.mocked(getRecoveryOrchestrator).mockReturnValue({
         retryWaiting: vi.fn().mockRejectedValue(new Error("orchestrator failed")),
+<<<<<<< HEAD
       } as unknown as RecoveryOrchestrator);
 
       const res = await adminRecoveryRoutes.request("/evt-1/retry", {
@@ -192,6 +200,7 @@ describe("adminNodeRoutes", () => {
       ];
       vi.mocked(getNodeRepo).mockReturnValue({
         list: vi.fn().mockResolvedValue(mockNodes),
+<<<<<<< HEAD
       } as unknown as INodeRepository);
 
       const res = await adminNodeRoutes.request("/");
@@ -222,6 +231,7 @@ describe("adminNodeRoutes", () => {
       };
       vi.mocked(getNodeRepo).mockReturnValue({
         getById: vi.fn().mockResolvedValue(mockNode),
+<<<<<<< HEAD
       } as unknown as INodeRepository);
       vi.mocked(getBotInstanceRepo).mockReturnValue({
         listByNode: vi.fn().mockResolvedValue([]),
@@ -237,6 +247,7 @@ describe("adminNodeRoutes", () => {
     it("returns 404 for unknown node", async () => {
       vi.mocked(getNodeRepo).mockReturnValue({
         getById: vi.fn().mockResolvedValue(null),
+<<<<<<< HEAD
       } as unknown as INodeRepository);
 
       const res = await adminNodeRoutes.request("/nonexistent");
@@ -268,6 +279,7 @@ describe("adminNodeRoutes", () => {
     it("drains a node and returns result", async () => {
       vi.mocked(getNodeDrainer).mockReturnValue({
         drain: vi.fn().mockResolvedValue({ migrated: ["bot-1"], failed: [] }),
+<<<<<<< HEAD
       } as unknown as NodeDrainer);
 
       const res = await adminNodeRoutes.request("/node-1/drain", {
@@ -281,6 +293,7 @@ describe("adminNodeRoutes", () => {
     it("returns failure info when some bots fail to migrate", async () => {
       vi.mocked(getNodeDrainer).mockReturnValue({
         drain: vi.fn().mockResolvedValue({ migrated: [], failed: ["bot-1"] }),
+<<<<<<< HEAD
       } as unknown as NodeDrainer);
 
       const res = await adminNodeRoutes.request("/node-1/drain", {
@@ -301,6 +314,7 @@ describe("adminNodeRoutes", () => {
         triggerRecovery: vi.fn().mockResolvedValue({ recovered: 2, failed: 0 }),
         getEventDetails: vi.fn(),
         retryWaiting: vi.fn(),
+<<<<<<< HEAD
       } as unknown as RecoveryOrchestrator);
 
       const res = await adminNodeRoutes.request("/node-1/recover", {
@@ -316,6 +330,7 @@ describe("adminNodeRoutes", () => {
         triggerRecovery: vi.fn().mockRejectedValue(new Error("recovery failed")),
         getEventDetails: vi.fn(),
         retryWaiting: vi.fn(),
+<<<<<<< HEAD
       } as unknown as RecoveryOrchestrator);
 
       const res = await adminNodeRoutes.request("/node-1/recover", {
