@@ -420,12 +420,22 @@ describe("promotions.pause", () => {
   });
 
   it("pauses a promotion", async () => {
+    deps.promotionRepo.getById.mockResolvedValue(fakePromotion({ status: "active" }));
     deps.promotionRepo.updateStatus.mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller(adminCtx());
     await caller.promotions.pause({ id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" });
 
     expect(deps.promotionRepo.updateStatus).toHaveBeenCalledWith("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", "paused");
+  });
+
+  it("throws NOT_FOUND for non-existent promotion", async () => {
+    deps.promotionRepo.getById.mockResolvedValue(null);
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(caller.promotions.pause({ id: "00000000-0000-0000-0000-000000000000" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
   });
 });
 
@@ -442,12 +452,22 @@ describe("promotions.cancel", () => {
   });
 
   it("cancels a promotion", async () => {
+    deps.promotionRepo.getById.mockResolvedValue(fakePromotion({ status: "active" }));
     deps.promotionRepo.updateStatus.mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller(adminCtx());
     await caller.promotions.cancel({ id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" });
 
     expect(deps.promotionRepo.updateStatus).toHaveBeenCalledWith("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", "cancelled");
+  });
+
+  it("throws NOT_FOUND for non-existent promotion", async () => {
+    deps.promotionRepo.getById.mockResolvedValue(null);
+
+    const caller = appRouter.createCaller(adminCtx());
+    await expect(caller.promotions.cancel({ id: "00000000-0000-0000-0000-000000000000" })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
   });
 });
 

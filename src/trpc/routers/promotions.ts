@@ -147,12 +147,16 @@ const promotionsSubRouter = router({
   /** Pause an active promotion. */
   pause: adminProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
     const { promotionRepo } = getDeps();
+    const existing = await promotionRepo.getById(input.id);
+    if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Promotion not found" });
     await promotionRepo.updateStatus(input.id, "paused");
   }),
 
   /** Cancel a promotion. */
   cancel: adminProcedure.input(z.object({ id: z.string().uuid() })).mutation(async ({ input }) => {
     const { promotionRepo } = getDeps();
+    const existing = await promotionRepo.getById(input.id);
+    if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Promotion not found" });
     await promotionRepo.updateStatus(input.id, "cancelled");
   }),
 
