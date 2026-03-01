@@ -247,6 +247,7 @@ describe("adminNodeRoutes", () => {
     it("returns tenants for a node", async () => {
       vi.mocked(getBotInstanceRepo).mockReturnValue({
         listByNode: vi.fn().mockResolvedValue([{ id: "bot-1", tenantId: "tenant-a", nodeId: "node-1" }]),
+        // biome-ignore lint/suspicious/noExplicitAny: vi.fn() mock context
       } as any);
 
       const res = await adminNodeRoutes.request("/node-1/tenants");
