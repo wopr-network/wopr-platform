@@ -80,7 +80,11 @@ export class OrgService {
     return this.buildOrgWithMembers(tenant);
   }
 
-  async updateOrg(orgId: string, actorUserId: string, data: { name?: string; slug?: string }): Promise<Tenant> {
+  async updateOrg(
+    orgId: string,
+    actorUserId: string,
+    data: { name?: string; slug?: string; billingEmail?: string | null },
+  ): Promise<Tenant> {
     await this.requireAdminOrOwner(orgId, actorUserId);
     if (data.slug !== undefined) {
       this.validateSlug(data.slug);

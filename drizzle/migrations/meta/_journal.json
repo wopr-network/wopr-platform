@@ -50,6 +50,13 @@
       "when": 1772220011000,
       "tag": "0057_tenant_addons",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1772220012000,
+      "tag": "0058_billing_email",
+      "breakpoints": true
     }
   ]
 }

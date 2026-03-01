@@ -12,6 +12,7 @@ export interface Tenant {
   slug: string | null;
   type: "personal" | "org";
   ownerId: string;
+  billingEmail: string | null;
   createdAt: number;
 }
 
@@ -25,7 +26,7 @@ export interface IOrgRepository {
   getById(id: string): Promise<Tenant | null>;
   getBySlug(slug: string): Promise<Tenant | null>;
   listOrgsByOwner(ownerId: string): Promise<Tenant[]>;
-  updateOrg(orgId: string, data: { name?: string; slug?: string }): Promise<Tenant>;
+  updateOrg(orgId: string, data: { name?: string; slug?: string; billingEmail?: string | null }): Promise<Tenant>;
   updateOwner(orgId: string, newOwnerId: string): Promise<void>;
   deleteOrg(orgId: string): Promise<void>;
 }
@@ -52,6 +53,7 @@ function toTenant(row: typeof tenants.$inferSelect): Tenant {
     slug: row.slug,
     type: row.type as "personal" | "org",
     ownerId: row.ownerId,
+    billingEmail: row.billingEmail,
     createdAt: row.createdAt,
   };
 }
@@ -119,10 +121,14 @@ export class DrizzleOrgRepository implements IOrgRepository {
     return rows.filter((r) => r.type === "org").map(toTenant);
   }
 
-  async updateOrg(orgId: string, data: { name?: string; slug?: string }): Promise<Tenant> {
+  async updateOrg(
+    orgId: string,
+    data: { name?: string; slug?: string; billingEmail?: string | null },
+  ): Promise<Tenant> {
     const updates: Partial<typeof tenants.$inferInsert> = {};
     if (data.name !== undefined) updates.name = data.name;
     if (data.slug !== undefined) updates.slug = data.slug;
+    if (data.billingEmail !== undefined) updates.billingEmail = data.billingEmail;
     const row = (await this.db.update(tenants).set(updates).where(eq(tenants.id, orgId)).returning())[0];
     if (!row) throw new Error(`Org not found: ${orgId}`);
     return toTenant(row);

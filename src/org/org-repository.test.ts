@@ -131,6 +131,19 @@ describe("DrizzleOrgRepository", () => {
     it("throws when org not found", async () => {
       await expect(repo.updateOrg("nonexistent-id", { name: "X" })).rejects.toThrow(/not found/);
     });
+
+    it("updates billingEmail and returns updated tenant", async () => {
+      const org = await repo.createOrg("user-1", "Org", "billing-test");
+      const updated = await repo.updateOrg(org.id, { billingEmail: "billing@example.com" });
+      expect(updated.billingEmail).toBe("billing@example.com");
+    });
+
+    it("clears billingEmail when set to null", async () => {
+      const org = await repo.createOrg("user-1", "Org", "billing-clear");
+      await repo.updateOrg(org.id, { billingEmail: "billing@example.com" });
+      const updated = await repo.updateOrg(org.id, { billingEmail: null });
+      expect(updated.billingEmail).toBeNull();
+    });
   });
 
   describe("updateOwner", () => {
