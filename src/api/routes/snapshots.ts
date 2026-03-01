@@ -5,7 +5,7 @@ import { enforceRetention } from "../../backup/retention.js";
 import { type SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
-import { getSnapshotManager } from "../../fleet/services.js";
+import { getSnapshotManager, getTenantCustomerStore } from "../../fleet/services.js";
 import type { ITenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
@@ -37,8 +37,6 @@ export function setTenantStoreForTest(store: ITenantCustomerStore | undefined): 
 function getTenantStore(): ITenantCustomerStore | null {
   if (_tenantStore) return _tenantStore;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getTenantCustomerStore } = require("../../fleet/services.js");
     return getTenantCustomerStore();
   } catch {
     return null;
