@@ -37,7 +37,7 @@ export class DrizzleDeletionRepository implements IDeletionRepository {
       tenantId: data.tenantId,
       requestedBy: data.requestedBy,
       status: "pending",
-      deleteAfter: sql`(now() + interval '${sql.raw(String(data.graceDays))} days')::text`,
+      deleteAfter: sql`(now() + make_interval(days => ${data.graceDays}))::text`,
     });
   }
 

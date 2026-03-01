@@ -58,7 +58,7 @@ export class DrizzleBotBilling implements IBotBilling {
       .set({
         billingState: "suspended",
         suspendedAt: sql`now()`,
-        destroyAfter: sql`now() + interval '${sql.raw(String(SUSPENSION_GRACE_DAYS))} days'`,
+        destroyAfter: sql`now() + make_interval(days => ${SUSPENSION_GRACE_DAYS})`,
         updatedAt: sql`now()`,
       })
       .where(eq(botInstances.id, botId));
