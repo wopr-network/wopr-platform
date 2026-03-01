@@ -4,7 +4,7 @@
  * Uses the caller pattern — no HTTP transport, no database.
  * Deps are injected via setCredentialsRouterDeps / setTrpcOrgMemberRepo.
  *
- * Note: credentials procedures use protectedProcedure + manual assertAdmin check.
+ * Note: credentials procedures use adminProcedure (platform_admin only).
  * The vault mock returns async values; the router calls are not always awaited
  * but tRPC wraps the resolver return value in a promise automatically.
  */
@@ -25,7 +25,7 @@ const TEST_USER_ID = "user-admin";
 const TEST_TENANT_ID = "tenant-1";
 
 // ---------------------------------------------------------------------------
-// Stub org member repo (unused by protectedProcedure but wired for consistency)
+// Stub org member repo (unused by adminProcedure but wired for consistency)
 // ---------------------------------------------------------------------------
 
 const stubOrgMemberRepo: IOrgMemberRepository = {
@@ -93,11 +93,16 @@ describe("credentialsRouter", () => {
   let mockVault: ReturnType<typeof makeMockVault>;
 
   const adminCtx: Partial<TRPCContext> = {
-    user: { id: TEST_USER_ID, roles: ["admin"] },
+    user: { id: TEST_USER_ID, roles: ["platform_admin"] },
     tenantId: TEST_TENANT_ID,
   };
   const nonAdminCtx: Partial<TRPCContext> = {
     user: { id: "user-regular", roles: [] },
+    tenantId: TEST_TENANT_ID,
+  };
+  // Context with generic "admin" role — should NOT have access after fix
+  const tenantAdminCtx: Partial<TRPCContext> = {
+    user: { id: "user-tenant-admin", roles: ["admin"] },
     tenantId: TEST_TENANT_ID,
   };
 
@@ -105,6 +110,34 @@ describe("credentialsRouter", () => {
     setTrpcOrgMemberRepo(stubOrgMemberRepo);
     mockVault = makeMockVault();
     setCredentialsRouterDeps({ getVault: () => mockVault });
+  });
+
+  // -------------------------------------------------------------------------
+  // access control
+  // -------------------------------------------------------------------------
+
+  describe("access control", () => {
+    it("rejects user with generic admin role (not platform_admin)", async () => {
+      const caller = createCaller(tenantAdminCtx);
+      await expect(caller.credentials.list()).rejects.toThrow(/Platform admin role required/);
+    });
+
+    it("rejects user with admin role from create", async () => {
+      const caller = createCaller(tenantAdminCtx);
+      await expect(
+        caller.credentials.create({
+          provider: "openai",
+          keyName: "k",
+          plaintextKey: "sk-test",
+          authType: "bearer",
+        }),
+      ).rejects.toThrow(/Platform admin role required/);
+    });
+
+    it("rejects user with admin role from delete", async () => {
+      const caller = createCaller(tenantAdminCtx);
+      await expect(caller.credentials.delete({ id: CRED_ID })).rejects.toThrow(/Platform admin role required/);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -123,7 +156,7 @@ describe("credentialsRouter", () => {
 
     it("rejects non-admin user", async () => {
       const caller = createCaller(nonAdminCtx);
-      await expect(caller.credentials.list()).rejects.toThrow(/Admin access required/);
+      await expect(caller.credentials.list()).rejects.toThrow(/Platform admin role required/);
     });
 
     it("rejects unauthenticated call", async () => {
@@ -153,7 +186,7 @@ describe("credentialsRouter", () => {
 
     it("rejects non-admin user", async () => {
       const caller = createCaller(nonAdminCtx);
-      await expect(caller.credentials.get({ id: CRED_ID })).rejects.toThrow(/Admin access required/);
+      await expect(caller.credentials.get({ id: CRED_ID })).rejects.toThrow(/Platform admin role required/);
     });
   });
 
@@ -196,7 +229,7 @@ describe("credentialsRouter", () => {
           plaintextKey: "secret",
           authType: "bearer",
         }),
-      ).rejects.toThrow(/Admin access required/);
+      ).rejects.toThrow(/Platform admin role required/);
     });
   });
 
@@ -229,7 +262,7 @@ describe("credentialsRouter", () => {
     it("rejects non-admin user", async () => {
       const caller = createCaller(nonAdminCtx);
       await expect(caller.credentials.rotate({ id: CRED_ID, plaintextKey: "secret" })).rejects.toThrow(
-        /Admin access required/,
+        /Platform admin role required/,
       );
     });
   });
@@ -255,7 +288,7 @@ describe("credentialsRouter", () => {
     it("rejects non-admin user", async () => {
       const caller = createCaller(nonAdminCtx);
       await expect(caller.credentials.setActive({ id: CRED_ID, isActive: false })).rejects.toThrow(
-        /Admin access required/,
+        /Platform admin role required/,
       );
     });
   });
@@ -283,7 +316,7 @@ describe("credentialsRouter", () => {
 
     it("rejects non-admin user", async () => {
       const caller = createCaller(nonAdminCtx);
-      await expect(caller.credentials.delete({ id: CRED_ID })).rejects.toThrow(/Admin access required/);
+      await expect(caller.credentials.delete({ id: CRED_ID })).rejects.toThrow(/Platform admin role required/);
     });
   });
 });

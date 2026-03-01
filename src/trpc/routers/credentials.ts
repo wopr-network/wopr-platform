@@ -1,14 +1,14 @@
 /**
  * tRPC credentials router — admin-only CRUD for platform provider API keys.
  *
- * All procedures require authentication and admin role.
+ * All procedures require platform_admin role (enforced by adminProcedure middleware).
  * Keys are encrypted at rest; plaintext is never returned in list/get operations.
  */
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { CredentialVaultStore } from "../../security/credential-vault/index.js";
-import { protectedProcedure, router } from "../init.js";
+import { adminProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -37,23 +37,12 @@ const providerSchema = z.string().min(1).max(64);
 const authTypeSchema = z.enum(["header", "bearer", "basic"]);
 
 // ---------------------------------------------------------------------------
-// Admin guard
-// ---------------------------------------------------------------------------
-
-function assertAdmin(user: { id: string; roles?: string[] }): void {
-  const roles = user.roles ?? [];
-  if (!roles.includes("admin") && !roles.includes("platform_admin")) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 export const credentialsRouter = router({
   /** List all credentials, optionally filtered by provider. Never returns encrypted values. */
-  list: protectedProcedure
+  list: adminProcedure
     .input(
       z
         .object({
@@ -61,15 +50,13 @@ export const credentialsRouter = router({
         })
         .optional(),
     )
-    .query(({ input, ctx }) => {
-      assertAdmin(ctx.user);
+    .query(({ input }) => {
       const { getVault } = deps();
       return getVault().list(input?.provider);
     }),
 
   /** Get a single credential by ID. */
-  get: protectedProcedure.input(z.object({ id: z.string().uuid() })).query(({ input, ctx }) => {
-    assertAdmin(ctx.user);
+  get: adminProcedure.input(z.object({ id: z.string().uuid() })).query(({ input }) => {
     const { getVault } = deps();
     const cred = getVault().getById(input.id);
     if (!cred) {
@@ -79,7 +66,7 @@ export const credentialsRouter = router({
   }),
 
   /** Create a new provider credential. The key is encrypted before storage. */
-  create: protectedProcedure
+  create: adminProcedure
     .input(
       z.object({
         provider: providerSchema,
@@ -90,7 +77,6 @@ export const credentialsRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      assertAdmin(ctx.user);
       const { getVault } = deps();
       const id = getVault().create({
         provider: input.provider,
@@ -104,7 +90,7 @@ export const credentialsRouter = router({
     }),
 
   /** Rotate an existing credential's key. */
-  rotate: protectedProcedure
+  rotate: adminProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -112,7 +98,6 @@ export const credentialsRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      assertAdmin(ctx.user);
       const { getVault } = deps();
       const ok = getVault().rotate({
         id: input.id,
@@ -126,7 +111,7 @@ export const credentialsRouter = router({
     }),
 
   /** Activate or deactivate a credential. */
-  setActive: protectedProcedure
+  setActive: adminProcedure
     .input(
       z.object({
         id: z.string().uuid(),
@@ -134,7 +119,6 @@ export const credentialsRouter = router({
       }),
     )
     .mutation(({ input, ctx }) => {
-      assertAdmin(ctx.user);
       const { getVault } = deps();
       const ok = getVault().setActive(input.id, input.isActive, ctx.user.id);
       if (!ok) {
@@ -144,8 +128,7 @@ export const credentialsRouter = router({
     }),
 
   /** Delete a credential permanently. */
-  delete: protectedProcedure.input(z.object({ id: z.string().uuid() })).mutation(({ input, ctx }) => {
-    assertAdmin(ctx.user);
+  delete: adminProcedure.input(z.object({ id: z.string().uuid() })).mutation(({ input, ctx }) => {
     const { getVault } = deps();
     const ok = getVault().delete(input.id, ctx.user.id);
     if (!ok) {
