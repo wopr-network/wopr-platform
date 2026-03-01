@@ -28,6 +28,8 @@ export interface HealthProbeDeps {
   queryNegativeBalanceTenants?: () => number;
   /** Query age of most recent webhook event in ms. */
   queryLastWebhookAgeMs?: () => number | null;
+  /** Query max consecutive auto-topup failures across all tenants. */
+  queryAutoTopupFailures?: () => Promise<number>;
 }
 
 const WEBHOOK_FRESHNESS_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
@@ -101,10 +103,7 @@ export async function probePaymentHealth(deps: HealthProbeDeps): Promise<Payment
     creditDeductionFailures: creditFailures,
     dlqDepth,
     tenantsWithNegativeBalance: negativeBalanceTenants,
-    // TODO(WOP-528): autoTopupFailures is not yet tracked by MetricsCollector.
-    // MetricsCollector.getWindow() has no autoTopup counter. A dedicated event log
-    // query or counter must be added to deps before this signal can fire.
-    autoTopupFailures: 0,
+    autoTopupFailures: deps.queryAutoTopupFailures ? await deps.queryAutoTopupFailures() : 0,
     firingAlertCount: firingCount,
   });
 

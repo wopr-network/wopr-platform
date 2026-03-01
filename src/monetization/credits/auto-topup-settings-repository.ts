@@ -60,6 +60,7 @@ export interface IAutoTopupSettingsRepository {
   disableSchedule(tenantId: string): Promise<void>;
   advanceScheduleNextAt(tenantId: string): Promise<void>;
   listDueScheduled(now: string): Promise<AutoTopupSettings[]>;
+  getMaxConsecutiveFailures(): Promise<number>;
 }
 
 export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRepository {
@@ -202,6 +203,18 @@ export class DrizzleAutoTopupSettingsRepository implements IAutoTopupSettingsRep
       .update(creditAutoTopupSettings)
       .set({ scheduleNextAt: newNext.toISOString(), updatedAt: sql`now()` })
       .where(eq(creditAutoTopupSettings.tenantId, tenantId));
+  }
+
+  async getMaxConsecutiveFailures(): Promise<number> {
+    const result = await this.db
+      .select({
+        maxFailures: sql<number>`GREATEST(
+          COALESCE(MAX(${creditAutoTopupSettings.usageConsecutiveFailures}), 0),
+          COALESCE(MAX(${creditAutoTopupSettings.scheduleConsecutiveFailures}), 0)
+        )`,
+      })
+      .from(creditAutoTopupSettings);
+    return result[0]?.maxFailures ?? 0;
   }
 
   async listDueScheduled(now: string): Promise<AutoTopupSettings[]> {

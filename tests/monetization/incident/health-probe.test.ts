@@ -105,6 +105,29 @@ describe("probePaymentHealth", () => {
     expect(result.checks.stripeApi.error).toContain("Unauthorized");
   });
 
+  it("reads autoTopupFailures from queryAutoTopupFailures dep", async () => {
+    const result = await probePaymentHealth(
+      makeDeps({ queryAutoTopupFailures: async () => 2 }),
+    );
+    expect(result.overall).toBe("healthy");
+  });
+
+  it("escalates to SEV2 when autoTopupFailures >= 3", async () => {
+    const result = await probePaymentHealth(
+      makeDeps({ queryAutoTopupFailures: async () => 3 }),
+    );
+    expect(result.overall).toBe("degraded");
+    expect(result.severity).toBe("SEV2");
+    expect(result.reasons).toContain(
+      "Auto-topup consecutive failures (3) reached threshold of 3",
+    );
+  });
+
+  it("defaults autoTopupFailures to 0 when dep not provided", async () => {
+    const result = await probePaymentHealth(makeDeps({ queryAutoTopupFailures: undefined }));
+    expect(result.overall).toBe("healthy");
+  });
+
   it("has a timestamp", async () => {
     const before = Date.now();
     const result = await probePaymentHealth(makeDeps());
