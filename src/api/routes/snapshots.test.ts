@@ -200,6 +200,35 @@ describe("snapshot routes", () => {
 
       expect(res.status).toBe(500);
     });
+
+    it("uses authenticated user ID, not X-User-Id header", async () => {
+      managerMock.create.mockResolvedValue(mockSnapshot);
+
+      const res = await app.request("/api/instances/inst-1/snapshots", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": "attacker-injected-id",
+          ...authHeader,
+        },
+        body: JSON.stringify({ trigger: "manual" }),
+      });
+
+      expect(res.status).toBe(201);
+      // The userId passed to manager.create must come from auth context,
+      // NOT from the X-User-Id header
+      expect(managerMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: expect.not.stringContaining("attacker"),
+        }),
+      );
+      // Bearer token auth sets user.id to "token:<scope>"
+      expect(managerMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: expect.stringMatching(/^token:/),
+        }),
+      );
+    });
   });
 
   describe("GET /api/instances/:id/snapshots", () => {

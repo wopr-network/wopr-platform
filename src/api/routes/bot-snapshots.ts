@@ -93,7 +93,13 @@ botSnapshotRoutes.post("/", writeAuth, async (c) => {
     return c.json({ error: "Invalid tier" }, 400);
   }
 
-  const userId = c.req.header("X-User-Id") || "system";
+  let userId = "system";
+  try {
+    const user = c.get("user");
+    if (user?.id) userId = user.id;
+  } catch {
+    // Defensive fallback — should never happen on authenticated routes
+  }
   const woprHomePath = `${process.env.WOPR_HOME_BASE || "/data/instances"}/${botId}`;
 
   const service = getService();
