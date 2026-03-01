@@ -3,8 +3,33 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AuditEnv } from "../../audit/types.js";
 import { logger } from "../../config/logger.js";
+import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
+import { BotNotFoundError } from "../../fleet/fleet-manager.js";
+import { ProfileStore } from "../../fleet/profile-store.js";
 import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "../../fleet/services.js";
+import { Credit } from "../../monetization/credit.js";
+import type { MeterEvent } from "../../monetization/metering/types.js";
+import type { DecryptedCredential } from "../../security/credential-vault/store.js";
+import { fleet } from "./fleet.js";
 import { type PluginCategory, type PluginManifest, pluginRegistry } from "./marketplace-registry.js";
+
+const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
+const store = new ProfileStore(DATA_DIR);
+
+// Dependencies injected for hosted credential resolution.
+// In production these are set by the app bootstrap; tests mock them.
+let credentialVault: {
+  getActiveForProvider(provider: string): Promise<Array<Pick<DecryptedCredential, "plaintextKey">>>;
+} | null = null;
+let meterEmitter: { emit(event: MeterEvent): void } | null = null;
+
+export function setMarketplaceDeps(deps: {
+  credentialVault: typeof credentialVault;
+  meterEmitter: typeof meterEmitter;
+}): void {
+  credentialVault = deps.credentialVault;
+  meterEmitter = deps.meterEmitter;
+}
 
 // BOUNDARY(WOP-805): This REST route is a tRPC migration candidate.
 // The UI calls GET /api/marketplace/plugins via session cookie. Should become
@@ -199,17 +224,27 @@ const installSchema = z.object({
 /**
  * POST /api/marketplace/plugins/:id/install
  *
- * Validate a plugin install intent. Requires a botId in the request body.
- * Full server-side install orchestration is handled by WOP-682.
- * The UI calls POST /fleet/bots/:botId/plugins/:pluginId to complete the install.
+ * Install a plugin on a bot. Requires a botId in the request body.
+ * Validates session ownership, then delegates to the same install logic as bot-plugins.ts.
  */
 marketplaceRoutes.post("/plugins/:id/install", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
 
   const id = c.req.param("id");
-  const plugin = pluginRegistry.find((p) => p.id === id);
-  if (!plugin) return c.json({ error: "Plugin not found" }, 404);
+
+  // Check static registry first, then DB for dynamic plugins
+  let pluginFound = pluginRegistry.some((p) => p.id === id);
+  if (!pluginFound) {
+    try {
+      const repo = getMarketplacePluginRepo();
+      const dbPlugin = await repo.findById(id);
+      if (dbPlugin) pluginFound = true;
+    } catch {
+      // DB unavailable — only static lookup available
+    }
+  }
+  if (!pluginFound) return c.json({ error: "Plugin not found" }, 404);
 
   let body: unknown;
   try {
@@ -223,20 +258,123 @@ marketplaceRoutes.post("/plugins/:id/install", async (c) => {
     return c.json({ error: "Validation failed: botId must be a valid UUID", details: parsed.error.flatten() }, 400);
   }
 
-  logger.info("Plugin install requested", {
+  const { botId } = parsed.data;
+
+  // Get bot profile and validate session ownership
+  const profile = await store.get(botId);
+  if (!profile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  // Session auth: user.id IS the tenant ID — compare directly
+  if (profile.tenantId !== user.id) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  // Re-fetch profile immediately before write to avoid clobbering concurrent installs
+  const freshProfile = await store.get(botId);
+  if (!freshProfile) {
+    return c.json({ error: `Bot not found: ${botId}` }, 404);
+  }
+
+  if (freshProfile.tenantId !== user.id) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  // Read existing WOPR_PLUGINS env var (comma-separated plugin IDs)
+  const existingPlugins = (freshProfile.env.WOPR_PLUGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (existingPlugins.includes(id)) {
+    return c.json({ error: "Plugin already installed", pluginId: id }, 409);
+  }
+
+  const updatedPlugins = [...existingPlugins, id].join(",");
+
+  // Resolve hosted provider choices BEFORE writing to profile
+  const hostedEnvVars: Record<string, string> = {};
+  const hostedKeyNames: string[] = [];
+
+  for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+    if (choice !== "hosted") continue;
+
+    const capEntry = lookupCapabilityEnv(capability);
+    if (!capEntry) {
+      return c.json({ error: `Unknown capability: ${capability}` }, 400);
+    }
+
+    if (!credentialVault) {
+      return c.json({ error: "Credential vault not configured" }, 503);
+    }
+
+    const creds = await credentialVault.getActiveForProvider(capEntry.vaultProvider);
+    if (creds.length === 0) {
+      return c.json({ error: `No platform credential available for hosted capability: ${capability}` }, 503);
+    }
+
+    hostedEnvVars[capEntry.envKey] = creds[0].plaintextKey;
+    hostedKeyNames.push(capEntry.envKey);
+  }
+
+  const existingHostedKeys = (freshProfile.env.WOPR_HOSTED_KEYS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allHostedKeys = [...new Set([...existingHostedKeys, ...hostedKeyNames])];
+
+  const configEnvKey = `WOPR_PLUGIN_${id.toUpperCase().replace(/-/g, "_")}_CONFIG`;
+  const updatedEnv: Record<string, string> = {
+    ...freshProfile.env,
+    WOPR_PLUGINS: updatedPlugins,
+    [configEnvKey]: JSON.stringify({ config: parsed.data.config, providerChoices: parsed.data.providerChoices }),
+    ...hostedEnvVars,
+  };
+
+  if (allHostedKeys.length > 0) {
+    updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
+  }
+
+  try {
+    await fleet.update(botId, { env: updatedEnv });
+  } catch (err) {
+    if (err instanceof BotNotFoundError) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    logger.error(`Failed to apply plugin install to container for bot ${botId}`, { err });
+    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  }
+
+  // Emit activation meter events for billing audit trail
+  if (meterEmitter && hostedKeyNames.length > 0) {
+    for (const [capability, choice] of Object.entries(parsed.data.providerChoices)) {
+      if (choice !== "hosted") continue;
+      const capEntry = lookupCapabilityEnv(capability);
+      if (!capEntry) continue;
+      meterEmitter.emit({
+        tenant: freshProfile.tenantId,
+        cost: Credit.ZERO,
+        charge: Credit.ZERO,
+        capability: "hosted-activation",
+        provider: capEntry.vaultProvider,
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  logger.info(`Installed plugin ${id} on bot ${botId} via marketplace`, {
+    botId,
     pluginId: id,
-    userId: user.id,
-    botId: parsed.data.botId,
-    config: Object.keys(parsed.data.config),
+    tenantId: freshProfile.tenantId,
   });
 
-  // BOUNDARY(WOP-682): Full server-side install orchestration pending.
-  // The marketplace install validates the request and confirms the plugin exists.
-  // The UI calls POST /fleet/bots/:botId/plugins/:pluginId to complete the install.
+  const staticPlugin = pluginRegistry.find((p) => p.id === id);
   return c.json({
     success: true,
+    botId,
     pluginId: id,
-    botId: parsed.data.botId,
-    message: "Install validated. Call POST /fleet/bots/:botId/plugins/:pluginId to complete.",
+    installedPlugins: [...existingPlugins, id],
+    installedVersion: staticPlugin?.version ?? "unknown",
   });
 });

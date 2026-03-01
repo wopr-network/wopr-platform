@@ -1,11 +1,37 @@
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditEnv } from "../../audit/types.js";
-import { marketplaceRoutes } from "./marketplace.js";
+import { marketplaceRoutes, setMarketplaceDeps } from "./marketplace.js";
 import type { PluginManifest } from "./marketplace-registry.js";
 
+const BOT_ID = "00000000-0000-4000-8000-000000000001";
+const OWNER_ID = "test-user";
+
+// Shared mock fleet state
+let mockEnv: Record<string, string> = {};
+let mockTenantId = OWNER_ID;
+
+vi.mock("./fleet.js", () => ({
+  fleet: {
+    update: vi.fn(async (_botId: string, patch: { env?: Record<string, string> }) => {
+      if (patch.env) mockEnv = patch.env;
+    }),
+  },
+}));
+
+vi.mock("../../fleet/profile-store.js", () => ({
+  ProfileStore: vi.fn().mockImplementation(function () {
+    return {
+      get: vi.fn(async (id: string) => {
+        if (id === BOT_ID) return { tenantId: mockTenantId, env: { ...mockEnv } };
+        return null;
+      }),
+    };
+  }),
+}));
+
 // Build a test app with session user already injected
-function makeApp(user: { id: string; roles: string[] } | null = { id: "test-user", roles: ["user"] }) {
+function makeApp(user: { id: string; roles: string[] } | null = { id: OWNER_ID, roles: ["user"] }) {
   const app = new Hono<AuditEnv>();
   app.use("/*", async (c, next) => {
     if (user) {
@@ -16,6 +42,12 @@ function makeApp(user: { id: string; roles: string[] } | null = { id: "test-user
   app.route("/api/marketplace", marketplaceRoutes);
   return app;
 }
+
+beforeEach(() => {
+  mockEnv = {};
+  mockTenantId = OWNER_ID;
+  setMarketplaceDeps({ credentialVault: null, meterEmitter: null });
+});
 
 describe("GET /api/marketplace/plugins", () => {
   it("returns 401 when no user session", async () => {
@@ -137,13 +169,54 @@ describe("POST /api/marketplace/plugins/:id/install", () => {
     const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ botId: "00000000-0000-4000-8000-000000000001" }),
+      body: JSON.stringify({ botId: BOT_ID }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { success: boolean; pluginId: string; botId: string };
+    const body = (await res.json()) as {
+      success: boolean;
+      pluginId: string;
+      botId: string;
+      installedPlugins: string[];
+      installedVersion: string;
+    };
     expect(body.success).toBe(true);
     expect(body.pluginId).toBe("discord-channel");
-    expect(body.botId).toBe("00000000-0000-4000-8000-000000000001");
+    expect(body.botId).toBe(BOT_ID);
+    expect(body.installedPlugins).toContain("discord-channel");
+    expect(typeof body.installedVersion).toBe("string");
+  });
+
+  it("returns 403 when user does not own the bot", async () => {
+    const app = makeApp({ id: "different-user", roles: ["user"] });
+    const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId: BOT_ID }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when bot does not exist", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId: "00000000-0000-4000-8000-000000000099" }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 when plugin is already installed", async () => {
+    mockEnv = { WOPR_PLUGINS: "discord-channel" };
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins/discord-channel/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId: BOT_ID }),
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/already installed/);
   });
 
   it("returns 400 with empty body (botId required)", async () => {
