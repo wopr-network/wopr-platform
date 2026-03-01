@@ -233,10 +233,10 @@ jobs:
         run: |
           docker run --rm \
             -v /tmp/wopr-platform-scan.tar:/image.tar:ro \
-            -v "${{ github.workspace }}/.trivyignore:/root/.trivyignore:ro" \
+            -v "${{ github.workspace }}:/workspace:ro" \
             aquasec/trivy:latest image \
             --exit-code 1 --severity CRITICAL --ignore-unfixed \
-            --ignorefile /root/.trivyignore \
+            --ignorefile /workspace/.trivyignore \
             --input /image.tar
 
   # SOC 2 C3: Dependency vulnerability scanning
