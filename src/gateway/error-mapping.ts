@@ -69,7 +69,7 @@ export function mapBudgetError(reason: string): { status: number; body: GatewayE
       status: 402,
       body: {
         error: {
-          message: `${reason}. Add credits at https://wopr.bot/billing to continue.`,
+          message: `${reason}. Add credits at ${process.env.PLATFORM_UI_URL ?? "https://app.wopr.bot"}/billing to continue.`,
           type: "billing_error",
           code: "insufficient_credits",
         },

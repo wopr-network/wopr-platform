@@ -57,7 +57,8 @@ export function checkCertExpiry(hostname: string, port: number, timeoutMs = 5000
 }
 
 /** Default domains to monitor — all external-facing endpoints. */
-const DEFAULT_DOMAINS = ["wopr.bot", "app.wopr.bot", "api.wopr.bot"];
+const baseDomain = process.env.PLATFORM_DOMAIN ?? "wopr.bot";
+const DEFAULT_DOMAINS = [baseDomain, `app.${baseDomain}`, `api.${baseDomain}`];
 const ALERT_THRESHOLD_DAYS = 30;
 
 /**

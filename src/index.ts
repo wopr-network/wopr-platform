@@ -393,7 +393,7 @@ if (process.env.NODE_ENV !== "test") {
 
             const notificationService = new NotificationService(
               getNotificationQueueStore(),
-              process.env.APP_BASE_URL ?? "https://app.wopr.bot",
+              process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot",
             );
             notificationService.notifyCreditsDepeleted(tenantId, email);
           } catch (err) {
@@ -417,7 +417,7 @@ if (process.env.NODE_ENV !== "test") {
 
             const notificationService = new NotificationService(
               getNotificationQueueStore(),
-              process.env.APP_BASE_URL ?? "https://app.wopr.bot",
+              process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot",
             );
 
             await checkSpendAlert(
@@ -947,7 +947,7 @@ if (process.env.NODE_ENV !== "test") {
   // Weekly community dividend digest emails — summarizes last 7 days of dividends for each tenant.
   // Runs once every 7 days.
   {
-    const appBaseUrl = process.env.PLATFORM_URL ?? "https://api.wopr.bot";
+    const appBaseUrl = process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot";
     const notificationService = new NotificationService(getNotificationQueueStore(), appBaseUrl);
     const WEEKLY_MS = 7 * 24 * 60 * 60 * 1000;
     setInterval(() => {

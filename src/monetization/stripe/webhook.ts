@@ -226,7 +226,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
             tenantId: tenant,
             stripeSubscriptionId: subscription.id,
             stripeCustomerId: customerId,
-            hostname: `${tenant}.bot.wopr.bot`,
+            hostname: `${tenant}.bot.${process.env.PLATFORM_DOMAIN ?? "wopr.bot"}`,
           });
         } else {
           await deps.vpsRepo.updateStatus(botId, "active");

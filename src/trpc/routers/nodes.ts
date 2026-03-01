@@ -39,7 +39,7 @@ export const nodesRouter = router({
       return {
         token,
         expiresAt,
-        installCommand: `curl -sSL https://install.wopr.bot/agent | bash -s -- ${token}`,
+        installCommand: `curl -sSL https://install.${process.env.PLATFORM_DOMAIN ?? "wopr.bot"}/agent | bash -s -- ${token}`,
         npmCommand: `REGISTRATION_TOKEN=${token} npx @wopr-network/node-agent`,
       };
     }),

@@ -81,7 +81,7 @@ function openaiAuth(resolveServiceKey: (key: string) => GatewayTenant | null) {
       return c.json(
         {
           error: {
-            message: "Incorrect API key provided. You can find your API key at https://api.wopr.bot/settings.",
+            message: `Incorrect API key provided. You can find your API key at ${process.env.PLATFORM_URL ?? "https://api.wopr.bot"}/settings.`,
             type: "invalid_request_error",
             param: null,
             code: "invalid_api_key",

@@ -62,6 +62,9 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
+    vi.stubEnv("PLATFORM_UI_URL", "https://app.example.com");
+    vi.stubEnv("PLATFORM_URL", "https://api.example.com");
+    vi.stubEnv("PLATFORM_DOMAIN", "example.com");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(() => validateRequiredEnvVars()).not.toThrow();
     expect(warnSpy).not.toHaveBeenCalled();
@@ -72,5 +75,53 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("NODE_ENV", "test");
     // Nothing set — should not throw
     expect(() => validateRequiredEnvVars()).not.toThrow();
+  });
+
+  it("warns when PLATFORM_UI_URL is not set", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    validateRequiredEnvVars();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("PLATFORM_UI_URL"));
+    warnSpy.mockRestore();
+  });
+
+  it("warns when PLATFORM_URL is not set", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    validateRequiredEnvVars();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("PLATFORM_URL"));
+    warnSpy.mockRestore();
+  });
+
+  it("warns when PLATFORM_DOMAIN is not set", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    validateRequiredEnvVars();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("PLATFORM_DOMAIN"));
+    warnSpy.mockRestore();
   });
 });

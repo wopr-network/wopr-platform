@@ -51,6 +51,22 @@ export function validateRequiredEnvVars(): void {
     );
   }
 
+  // --- Recommended (URLs will fall back to wopr.bot defaults) ---
+
+  if (!process.env.PLATFORM_UI_URL && !process.env.APP_BASE_URL) {
+    warnings.push(
+      "PLATFORM_UI_URL is not set — falling back to https://app.wopr.bot. " + "Set this for custom domains.",
+    );
+  }
+
+  if (!process.env.PLATFORM_URL) {
+    warnings.push("PLATFORM_URL is not set — falling back to https://api.wopr.bot. " + "Set this for custom domains.");
+  }
+
+  if (!process.env.PLATFORM_DOMAIN) {
+    warnings.push("PLATFORM_DOMAIN is not set — falling back to wopr.bot. " + "Set this for custom domains.");
+  }
+
   // --- Emit ---
 
   if (warnings.length > 0) {
