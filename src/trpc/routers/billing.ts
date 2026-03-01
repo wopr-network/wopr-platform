@@ -294,7 +294,7 @@ export const billingRouter = router({
       return { url: result.url, referenceId: result.referenceId };
     }),
 
-  /** Create a Stripe Customer Portal session. Tenant defaults to ctx.tenantId when omitted. */
+  /** Create a Stripe Customer Portal session. Returns null url when processor lacks portal support. */
   portalSession: protectedProcedure
     .input(z.object({ tenant: tenantIdSchema.optional(), returnUrl: urlSchema }))
     .mutation(async ({ input, ctx }) => {
@@ -304,7 +304,7 @@ export const billingRouter = router({
       }
       const { processor } = deps();
       if (!processor.supportsPortal()) {
-        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Billing portal not supported" });
+        return { url: null };
       }
       const session = await processor.createPortalSession({ tenant, returnUrl: input.returnUrl });
       return { url: session.url };

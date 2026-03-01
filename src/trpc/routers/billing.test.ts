@@ -300,6 +300,46 @@ describe("billingRouter", () => {
   });
 
   // -------------------------------------------------------------------------
+  // portalSession
+  // -------------------------------------------------------------------------
+
+  describe("portalSession", () => {
+    it("returns portal URL when processor supports portal", async () => {
+      injectDeps({
+        processor: createMockProcessor({ supportsPortal: () => true }),
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.portalSession({ returnUrl: "https://example.com/return" });
+      expect(result.url).toBe("https://pay.example.com/portal/portal_test");
+    });
+
+    it("returns null url when processor does not support portal", async () => {
+      injectDeps({
+        processor: createMockProcessor({ supportsPortal: () => false }),
+      });
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.portalSession({ returnUrl: "https://example.com/return" });
+      expect(result.url).toBeNull();
+    });
+
+    it("rejects unauthenticated request", async () => {
+      injectDeps();
+      const caller = makeCaller(makeUnauthCtx());
+      await expect(caller.portalSession({ returnUrl: "https://example.com/return" })).rejects.toThrow(
+        "Authentication required",
+      );
+    });
+
+    it("rejects cross-tenant access", async () => {
+      injectDeps();
+      const caller = makeCaller(makeCtx("user-1", "tenant-a"));
+      await expect(
+        caller.portalSession({ tenant: "tenant-b", returnUrl: "https://example.com/return" }),
+      ).rejects.toThrow("Access denied");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // dividendStats
   // -------------------------------------------------------------------------
 
