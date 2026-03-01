@@ -1,7 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PROVIDER_API_URLS } from "../config/provider-endpoints.js";
 import { PROVIDER_ENDPOINTS, validateProviderKey } from "./key-validation.js";
 
 describe("key-validation", () => {
+  describe("PROVIDER_API_URLS", () => {
+    it("exports a URL for every supported provider", () => {
+      expect(PROVIDER_API_URLS.anthropic).toBe("https://api.anthropic.com/v1/models");
+      expect(PROVIDER_API_URLS.openai).toBe("https://api.openai.com/v1/models");
+      expect(PROVIDER_API_URLS.google).toBe("https://generativelanguage.googleapis.com/v1/models");
+      expect(PROVIDER_API_URLS.discord).toBe("https://discord.com/api/v10/users/@me");
+      expect(PROVIDER_API_URLS.elevenlabs).toBe("https://api.elevenlabs.io/v1/user");
+      expect(PROVIDER_API_URLS.deepgram).toBe("https://api.deepgram.com/v1/projects");
+    });
+  });
+
   describe("PROVIDER_ENDPOINTS", () => {
     it("has entries for all supported providers", () => {
       expect(PROVIDER_ENDPOINTS.anthropic).toBeDefined();

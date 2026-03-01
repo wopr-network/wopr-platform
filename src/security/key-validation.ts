@@ -1,3 +1,4 @@
+import { PROVIDER_API_URLS } from "../config/provider-endpoints.js";
 import type { Provider, ProviderEndpoint, ValidateKeyResponse } from "./types.js";
 
 /**
@@ -5,41 +6,42 @@ import type { Provider, ProviderEndpoint, ValidateKeyResponse } from "./types.js
  * For CORS-friendly providers, the browser can call these directly.
  * For CORS-blocked providers (e.g., Anthropic), the platform proxy decrypts
  * and validates in memory without ever logging the key.
+ * URLs are sourced from PROVIDER_API_URLS; headers are provider-specific.
  */
 export const PROVIDER_ENDPOINTS: Record<Provider, ProviderEndpoint> = {
   anthropic: {
-    url: "https://api.anthropic.com/v1/models",
+    url: PROVIDER_API_URLS.anthropic,
     headers: (key) => ({
       "x-api-key": key,
       "anthropic-version": "2023-06-01",
     }),
   },
   openai: {
-    url: "https://api.openai.com/v1/models",
+    url: PROVIDER_API_URLS.openai,
     headers: (key) => ({
       Authorization: `Bearer ${key}`,
     }),
   },
   google: {
-    url: "https://generativelanguage.googleapis.com/v1/models",
+    url: PROVIDER_API_URLS.google,
     headers: (key) => ({
       "x-goog-api-key": key,
     }),
   },
   discord: {
-    url: "https://discord.com/api/v10/users/@me",
+    url: PROVIDER_API_URLS.discord,
     headers: (key) => ({
       Authorization: `Bot ${key}`,
     }),
   },
   elevenlabs: {
-    url: "https://api.elevenlabs.io/v1/user",
+    url: PROVIDER_API_URLS.elevenlabs,
     headers: (key) => ({
       "xi-api-key": key,
     }),
   },
   deepgram: {
-    url: "https://api.deepgram.com/v1/projects",
+    url: PROVIDER_API_URLS.deepgram,
     headers: (key) => ({
       Authorization: `Token ${key}`,
     }),
