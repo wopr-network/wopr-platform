@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
@@ -797,6 +797,9 @@ describe("AdapterSocket", () => {
     });
 
     it("blocks requests when monthly budget is exceeded", async () => {
+      // Freeze mid-month so twoHoursAgo never crosses a month boundary
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-02-15T12:00:00.000Z"));
       // Add old events to exceed monthly limit but not hourly ($5.00)
       const now = Date.now();
       const twoHoursAgo = now - 2 * 60 * 60 * 1000;
@@ -822,6 +825,7 @@ describe("AdapterSocket", () => {
           spendLimits: FREE_LIMITS,
         }),
       ).rejects.toThrow("Monthly spending limit exceeded");
+      vi.useRealTimers();
 
       expect(meter.events).toHaveLength(0);
     });
