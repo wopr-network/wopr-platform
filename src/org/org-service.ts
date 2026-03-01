@@ -89,9 +89,8 @@ export class OrgService {
         throw new TRPCError({ code: "CONFLICT", message: "Slug already taken" });
       }
     }
-    // Wrap tenant creation + owner membership in a transaction to prevent orphan rows
-    const result = await this.db.transaction(async (_tx) => {
-      const tenant = await this.orgRepo.createOrg(userId, name, slug);
+    const tenant = await this.orgRepo.createOrg(userId, name, slug);
+    try {
       await this.memberRepo.addMember({
         id: crypto.randomUUID(),
         orgId: tenant.id,
@@ -99,9 +98,15 @@ export class OrgService {
         role: "owner",
         joinedAt: Date.now(),
       });
-      return tenant;
-    });
-    return { id: result.id, name: result.name, slug: result.slug ?? "" };
+    } catch (err) {
+      // Compensating delete: remove the orphan tenant if member creation fails
+      await this.db
+        .delete(tenants)
+        .where(eq(tenants.id, tenant.id))
+        .catch(() => {});
+      throw err;
+    }
+    return { id: tenant.id, name: tenant.name, slug: tenant.slug ?? "" };
   }
 
   /** Get an org's details, including member/invite lists. */

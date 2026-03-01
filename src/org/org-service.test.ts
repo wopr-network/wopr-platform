@@ -25,7 +25,7 @@ describe("OrgService", () => {
   });
 
   afterAll(async () => {
-    await pool.close();
+    await pool.close().catch(() => {});
   });
 
   beforeEach(async () => {
