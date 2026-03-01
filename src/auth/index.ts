@@ -285,12 +285,13 @@ export function scopedBearerAuthWithTenant(metadataMap: Map<string, TokenMetadat
     c.set("user", { id: `token:${metadata.scope}`, roles: [metadata.scope] } satisfies AuthUser);
     c.set("authMethod", "api_key" as const);
 
-    // Reject tokens without tenant scope — legacy unscoped tokens cannot
-    // access tenant-scoped resources (WOP-1264)
-    if (!metadata.tenantId) {
-      return c.json({ error: "Token lacks tenant scope — re-authenticate with a tenant-scoped token" }, 403);
+    // Store tenant constraint if present; absence is allowed here — admin/legacy
+    // tokens have no tenantId and must still reach admin routes.
+    // Tenant-scoped routes enforce ownership via requireTenantOwnership /
+    // validateTenantOwnership (WOP-1264).
+    if (metadata.tenantId) {
+      c.set("tokenTenantId", metadata.tenantId);
     }
-    c.set("tokenTenantId", metadata.tenantId);
 
     return next();
   };
@@ -389,7 +390,7 @@ export function requireSessionOrToken(tokenMap: Map<string, TokenScope>, require
  *
  * Must be used after `scopedBearerAuthWithTenant` middleware.
  * Compares the resource's tenantId against the token's tenantId.
- * - If token has no tenantId (legacy/admin tokens), passes through.
+ * - If token has no tenantId (legacy/admin tokens), returns 403 Forbidden.
  * - If resource tenantId matches token tenantId, passes through.
  * - Otherwise, returns 403 Forbidden.
  *
