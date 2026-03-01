@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAuthUserRepository, LinkedAccount } from "../../db/auth-user-repository.js";
+import type { IOrgMemberRepository, OrgMemberRow } from "../../fleet/org-member-repository.js";
 import type { OrgService } from "../../org/org-service.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
+import { setTrpcOrgMemberRepo } from "../init.js";
 import { setOrgRouterDeps } from "./org.js";
 
 // ---------------------------------------------------------------------------
@@ -70,6 +72,30 @@ function makeMockOrgService(): OrgService {
   } as unknown as OrgService;
 }
 
+function makeMockOrgMemberRepo(): IOrgMemberRepository {
+  return {
+    findMember: vi.fn().mockImplementation(async (orgId: string, userId: string) => {
+      // test-user is a member of org-1 only
+      if (orgId === "org-1" && userId === "test-user") {
+        return { id: "m1", orgId: "org-1", userId: "test-user", role: "owner", joinedAt: Date.now() } as OrgMemberRow;
+      }
+      return null;
+    }),
+    listMembers: vi.fn(),
+    addMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    removeMember: vi.fn(),
+    countAdminsAndOwners: vi.fn(),
+    listInvites: vi.fn(),
+    createInvite: vi.fn(),
+    findInviteById: vi.fn(),
+    findInviteByToken: vi.fn(),
+    deleteInvite: vi.fn(),
+    deleteAllMembers: vi.fn(),
+    deleteAllInvites: vi.fn(),
+  } as IOrgMemberRepository;
+}
+
 function makeMockAuthUserRepo(accounts: LinkedAccount[] = []): IAuthUserRepository {
   const accts = [...accounts];
   return {
@@ -103,6 +129,7 @@ describe("tRPC org router", () => {
       { id: "a2", providerId: "github", accountId: "gh-123" },
     ]);
     setOrgRouterDeps({ orgService: mockOrgService, authUserRepo: mockAuthUserRepo });
+    setTrpcOrgMemberRepo(makeMockOrgMemberRepo());
   });
 
   // ---- getOrganization ----
@@ -363,6 +390,42 @@ describe("tRPC org router", () => {
       await expect(caller.org.disconnectOauthProvider({ provider: "github" })).rejects.toThrow(
         "Authentication required",
       );
+    });
+  });
+
+  // ---- Cross-org IDOR prevention ----
+
+  describe("cross-org mutation prevention", () => {
+    it("rejects updateOrganization for an org the user is not a member of", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.org.updateOrganization({ orgId: "org-evil", name: "Hacked" })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("rejects inviteMember for an org the user is not a member of", async () => {
+      const caller = createCaller(authedContext());
+      await expect(
+        caller.org.inviteMember({ orgId: "org-evil", email: "a@b.com", role: "member" }),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+
+    it("rejects deleteOrganization for an org the user is not a member of", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.org.deleteOrganization({ orgId: "org-evil" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+
+    it("rejects transferOwnership for an org the user is not a member of", async () => {
+      const caller = createCaller(authedContext());
+      await expect(caller.org.transferOwnership({ orgId: "org-evil", userId: "user-2" })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("allows mutations for orgs the user IS a member of", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.org.updateOrganization({ orgId: "org-1", name: "Updated" });
+      expect(result).toBeDefined();
     });
   });
 });

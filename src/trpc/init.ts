@@ -6,6 +6,7 @@
  */
 
 import { initTRPC, TRPCError } from "@trpc/server";
+import { z } from "zod";
 import type { AuthUser } from "../auth/index.js";
 import { validateTenantAccess } from "../auth/index.js";
 import type { IOrgMemberRepository } from "../fleet/org-member-repository.js";
@@ -104,3 +105,33 @@ const isAuthedWithTenant = t.middleware(async ({ ctx, next }) => {
 
 /** Procedure that requires authentication + a tenant context. */
 export const tenantProcedure = t.procedure.use(isAuthedWithTenant);
+
+/**
+ * Middleware that enforces org membership for mutations that accept `orgId` in input.
+ * Extracts orgId from rawInput, looks up membership via IOrgMemberRepository.
+ * Must be chained after isAuthed.
+ */
+const isOrgMember = t.middleware(async ({ ctx, next, getRawInput }) => {
+  if (!ctx.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Authentication required" });
+  }
+  if (!_orgMemberRepo) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Server misconfiguration: org member repository not wired",
+    });
+  }
+  const rawInput = await getRawInput();
+  const parsed = z.object({ orgId: z.string().min(1) }).safeParse(rawInput);
+  if (!parsed.success) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "orgId is required" });
+  }
+  const member = await _orgMemberRepo.findMember(parsed.data.orgId, ctx.user.id);
+  if (!member) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Not a member of this organization" });
+  }
+  return next({ ctx: { user: ctx.user, tenantId: ctx.tenantId } });
+});
+
+/** Procedure that requires authentication + org membership (orgId must be in input). */
+export const orgMemberProcedure = t.procedure.use(isAuthed).use(isOrgMember);

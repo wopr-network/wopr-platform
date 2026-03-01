@@ -8,7 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { IAuthUserRepository } from "../../db/auth-user-repository.js";
 import type { OrgService } from "../../org/org-service.js";
-import { protectedProcedure, router } from "../init.js";
+import { orgMemberProcedure, protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -78,7 +78,7 @@ export const orgRouter = router({
     }),
 
   /** Update organization name and/or slug. */
-  updateOrganization: protectedProcedure
+  updateOrganization: orgMemberProcedure
     .input(
       z.object({
         orgId: z.string().min(1),
@@ -97,7 +97,7 @@ export const orgRouter = router({
     }),
 
   /** Delete an organization. Owner only. */
-  deleteOrganization: protectedProcedure
+  deleteOrganization: orgMemberProcedure
     .input(z.object({ orgId: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
@@ -106,7 +106,7 @@ export const orgRouter = router({
     }),
 
   /** Invite a new member to the organization. */
-  inviteMember: protectedProcedure
+  inviteMember: orgMemberProcedure
     .input(
       z.object({
         orgId: z.string().min(1),
@@ -128,7 +128,7 @@ export const orgRouter = router({
     }),
 
   /** Revoke a pending invite. Admin or owner only. */
-  revokeInvite: protectedProcedure
+  revokeInvite: orgMemberProcedure
     .input(z.object({ orgId: z.string().min(1), inviteId: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
@@ -137,7 +137,7 @@ export const orgRouter = router({
     }),
 
   /** Change a member's role (admin/member only — not owner). */
-  changeRole: protectedProcedure
+  changeRole: orgMemberProcedure
     .input(
       z.object({
         orgId: z.string().min(1),
@@ -152,7 +152,7 @@ export const orgRouter = router({
     }),
 
   /** Remove a member from the organization. Admin or owner only. */
-  removeMember: protectedProcedure
+  removeMember: orgMemberProcedure
     .input(z.object({ orgId: z.string().min(1), userId: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
@@ -161,7 +161,7 @@ export const orgRouter = router({
     }),
 
   /** Transfer organization ownership to another member. Owner only. */
-  transferOwnership: protectedProcedure
+  transferOwnership: orgMemberProcedure
     .input(z.object({ orgId: z.string().min(1), userId: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
