@@ -576,10 +576,10 @@ describe("admin.banTenant", () => {
 
 describe("admin.tenantDetail", () => {
   it("aggregates user, credits, and status for a tenant", async () => {
-    mockUserStore.getById.mockReturnValue({ id: "t-1", name: "Tenant Corp" });
+    mockUserStore.getById.mockResolvedValue({ id: "t-1", name: "Tenant Corp" });
     mockCreditLedger.balance.mockResolvedValue(Credit.fromCents(2000));
     mockCreditLedger.history.mockResolvedValue([{ id: "txn-1" }]);
-    mockTenantStatusStore.get.mockReturnValue({ tenantId: "t-1", status: "active" });
+    mockTenantStatusStore.get.mockResolvedValue({ tenantId: "t-1", status: "active" });
     const caller = createCaller(adminContext());
     const result = await caller.admin.tenantDetail({ tenantId: "t-1" });
     expect(result.user).toEqual({ id: "t-1", name: "Tenant Corp" });
@@ -589,10 +589,10 @@ describe("admin.tenantDetail", () => {
   });
 
   it("returns null user and default status when tenant has no records", async () => {
-    mockUserStore.getById.mockReturnValue(null);
+    mockUserStore.getById.mockResolvedValue(null);
     mockCreditLedger.balance.mockResolvedValue(Credit.ZERO);
     mockCreditLedger.history.mockResolvedValue([]);
-    mockTenantStatusStore.get.mockReturnValue(null);
+    mockTenantStatusStore.get.mockResolvedValue(null);
     const caller = createCaller(adminContext());
     const result = await caller.admin.tenantDetail({ tenantId: "t-new" });
     expect(result.user).toBeNull();

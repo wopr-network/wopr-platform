@@ -960,10 +960,10 @@ export const adminRouter = router({
   tenantDetail: adminProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getUserStore, getCreditLedger, getTenantStatusStore, getMeterAggregator } = deps();
 
-    const user = getUserStore().getById(input.tenantId);
+    const user = await getUserStore().getById(input.tenantId);
     const balance = await getCreditLedger().balance(input.tenantId);
     const recentTransactions = await getCreditLedger().history(input.tenantId, { limit: 10 });
-    const status = getTenantStatusStore().get(input.tenantId);
+    const status = await getTenantStatusStore().get(input.tenantId);
 
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const usageSummaries = getMeterAggregator
