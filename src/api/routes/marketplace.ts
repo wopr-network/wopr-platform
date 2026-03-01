@@ -166,8 +166,8 @@ marketplaceRoutes.get("/plugins/:id/content", async (c) => {
           changelog: [],
         } satisfies PluginManifest;
       }
-    } catch {
-      /* DB unavailable */
+    } catch (err) {
+      logger.warn("marketplace plugin repo fallback failed", { err });
     }
   }
 
@@ -179,8 +179,8 @@ marketplaceRoutes.get("/plugins/:id/content", async (c) => {
     if (cached) {
       return c.json({ markdown: cached.markdown, source: cached.source, version: cached.version });
     }
-  } catch {
-    /* Content repo unavailable */
+  } catch (err) {
+    logger.warn("marketplace content repo fallback failed", { err });
   }
 
   return c.json({
