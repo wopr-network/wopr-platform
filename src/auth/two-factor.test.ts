@@ -86,7 +86,7 @@ describe("twoFactor tRPC router", () => {
 
       // Set mandate via admin first
       const admin = createCaller(adminCtx("tenant-a"));
-      await admin.twoFactor.setMandateStatus({ tenantId: "tenant-a", requireTwoFactor: true });
+      await admin.twoFactor.setMandateStatus({ requireTwoFactor: true });
 
       // Read back via user
       const user = createCaller(userCtx("tenant-a"));
@@ -99,7 +99,6 @@ describe("twoFactor tRPC router", () => {
     it("allows admin to enable 2FA mandate", async () => {
       const caller = createCaller(adminCtx("tenant-b"));
       const result = await caller.twoFactor.setMandateStatus({
-        tenantId: "tenant-b",
         requireTwoFactor: true,
       });
       expect(result.tenantId).toBe("tenant-b");
@@ -108,9 +107,8 @@ describe("twoFactor tRPC router", () => {
 
     it("allows admin to disable 2FA mandate", async () => {
       const caller = createCaller(adminCtx("tenant-c"));
-      await caller.twoFactor.setMandateStatus({ tenantId: "tenant-c", requireTwoFactor: true });
+      await caller.twoFactor.setMandateStatus({ requireTwoFactor: true });
       const result = await caller.twoFactor.setMandateStatus({
-        tenantId: "tenant-c",
         requireTwoFactor: false,
       });
       expect(result.requireTwoFactor).toBe(false);
@@ -118,8 +116,8 @@ describe("twoFactor tRPC router", () => {
 
     it("upserts on conflict — second call overwrites first", async () => {
       const caller = createCaller(adminCtx("tenant-d"));
-      await caller.twoFactor.setMandateStatus({ tenantId: "tenant-d", requireTwoFactor: true });
-      await caller.twoFactor.setMandateStatus({ tenantId: "tenant-d", requireTwoFactor: false });
+      await caller.twoFactor.setMandateStatus({ requireTwoFactor: true });
+      await caller.twoFactor.setMandateStatus({ requireTwoFactor: false });
 
       const reader = createCaller(userCtx("tenant-d"));
       const status = await reader.twoFactor.getMandateStatus();
@@ -128,16 +126,32 @@ describe("twoFactor tRPC router", () => {
 
     it("rejects non-admin user with FORBIDDEN", async () => {
       const caller = createCaller(userCtx("tenant-e"));
-      await expect(
-        caller.twoFactor.setMandateStatus({ tenantId: "tenant-e", requireTwoFactor: true }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(caller.twoFactor.setMandateStatus({ requireTwoFactor: true })).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
     });
 
     it("rejects unauthenticated call with UNAUTHORIZED", async () => {
       const caller = createCaller({ user: undefined, tenantId: undefined });
-      await expect(
-        caller.twoFactor.setMandateStatus({ tenantId: "tenant-f", requireTwoFactor: true }),
-      ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+      await expect(caller.twoFactor.setMandateStatus({ requireTwoFactor: true })).rejects.toMatchObject({
+        code: "UNAUTHORIZED",
+      });
+    });
+
+    it("tenant_admin cannot set mandate for a different tenant (IDOR prevention)", async () => {
+      // Admin of tenant-x sets mandate on their own tenant — should work
+      const adminX = createCaller(adminCtx("tenant-x"));
+      await adminX.twoFactor.setMandateStatus({ requireTwoFactor: true });
+
+      // Verify tenant-x mandate is set
+      const readerX = createCaller(userCtx("tenant-x"));
+      const statusX = await readerX.twoFactor.getMandateStatus();
+      expect(statusX.requireTwoFactor).toBe(true);
+
+      // Verify tenant-y mandate is still false (untouched)
+      const readerY = createCaller(userCtx("tenant-y"));
+      const statusY = await readerY.twoFactor.getMandateStatus();
+      expect(statusY.requireTwoFactor).toBe(false);
     });
   });
 });

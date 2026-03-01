@@ -8,7 +8,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import type { ITwoFactorRepository } from "../../security/two-factor-repository.js";
-import { protectedProcedure, router, tenantProcedure } from "../init.js";
+import { router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -51,10 +51,10 @@ export const twoFactorRouter = router({
   }),
 
   /** Enable or disable the 2FA mandate for the authenticated tenant. Admin only. */
-  setMandateStatus: protectedProcedure
-    .input(z.object({ tenantId: z.string().min(1), requireTwoFactor: z.boolean() }))
+  setMandateStatus: tenantProcedure
+    .input(z.object({ requireTwoFactor: z.boolean() }))
     .mutation(async ({ input, ctx }) => {
       assertAdmin(ctx.user);
-      return deps().twoFactorRepo.setMandateStatus(input.tenantId, input.requireTwoFactor);
+      return deps().twoFactorRepo.setMandateStatus(ctx.tenantId, input.requireTwoFactor);
     }),
 });
