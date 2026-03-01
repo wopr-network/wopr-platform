@@ -64,6 +64,19 @@ export const orgRouter = router({
     return { ...org, members };
   }),
 
+  /** Create a new team organization. The caller becomes the owner. */
+  createOrganization: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(1, "Organization name is required").max(128),
+        slug: z.string().min(3).max(48).optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { orgService } = deps();
+      return orgService.createOrg(ctx.user.id, input.name, input.slug);
+    }),
+
   /** Update organization name and/or slug. */
   updateOrganization: protectedProcedure
     .input(

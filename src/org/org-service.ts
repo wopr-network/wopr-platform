@@ -74,6 +74,41 @@ export class OrgService {
     return this.buildOrgWithMembers(tenant);
   }
 
+  /**
+   * Create a new team organization. The caller becomes the owner.
+   * Returns the created org's id, name, and slug.
+   */
+  async createOrg(userId: string, name: string, slug?: string): Promise<{ id: string; name: string; slug: string }> {
+    if (!name.trim()) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Org name cannot be blank or whitespace only" });
+    }
+    if (slug !== undefined) {
+      this.validateSlug(slug);
+      const existing = await this.orgRepo.getBySlug(slug);
+      if (existing) {
+        throw new TRPCError({ code: "CONFLICT", message: "Slug already taken" });
+      }
+    }
+    const tenant = await this.orgRepo.createOrg(userId, name, slug);
+    try {
+      await this.memberRepo.addMember({
+        id: crypto.randomUUID(),
+        orgId: tenant.id,
+        userId,
+        role: "owner",
+        joinedAt: Date.now(),
+      });
+    } catch (err) {
+      // Compensating delete: remove the orphan tenant if member creation fails
+      await this.db
+        .delete(tenants)
+        .where(eq(tenants.id, tenant.id))
+        .catch(() => {});
+      throw err;
+    }
+    return { id: tenant.id, name: tenant.name, slug: tenant.slug ?? "" };
+  }
+
   /** Get an org's details, including member/invite lists. */
   async getOrg(orgId: string): Promise<OrgWithMembers> {
     const tenant = await this.requireOrg(orgId);

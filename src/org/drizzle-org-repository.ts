@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { tenants } from "../db/schema/index.js";
@@ -35,6 +36,22 @@ export interface IOrgRepository {
 // Implementation
 // ---------------------------------------------------------------------------
 
+function isUniqueConstraintViolation(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as { code?: string }).code;
+  const cause = (err as { cause?: unknown }).cause;
+  const causeCode = cause && typeof cause === "object" ? (cause as { code?: string }).code : undefined;
+  const causeMsg = cause instanceof Error ? cause.message : "";
+  return (
+    code === "23505" ||
+    causeCode === "23505" ||
+    err.message.includes("duplicate key") ||
+    err.message.includes("UNIQUE") ||
+    causeMsg.includes("duplicate key") ||
+    causeMsg.includes("UNIQUE")
+  );
+}
+
 /** Slugify a name: lowercase, replace whitespace with hyphens, strip non-alphanumeric. */
 function slugify(name: string): string {
   return name
@@ -70,19 +87,27 @@ export class DrizzleOrgRepository implements IOrgRepository {
       });
     }
 
-    const row = (
-      await this.db
-        .insert(tenants)
-        .values({
-          id,
-          name,
-          slug: finalSlug,
-          type: "org",
-          ownerId,
-          createdAt: Date.now(),
-        })
-        .returning()
-    )[0];
+    let row: typeof tenants.$inferSelect;
+    try {
+      row = (
+        await this.db
+          .insert(tenants)
+          .values({
+            id,
+            name,
+            slug: finalSlug,
+            type: "org",
+            ownerId,
+            createdAt: Date.now(),
+          })
+          .returning()
+      )[0];
+    } catch (err) {
+      if (isUniqueConstraintViolation(err)) {
+        throw new TRPCError({ code: "CONFLICT", message: "Organization slug already taken" });
+      }
+      throw err;
+    }
 
     return toTenant(row);
   }

@@ -37,7 +37,14 @@ export function createOrgRoutes(deps: OrgRouteDeps | (() => OrgRouteDeps)): Hono
       if (err instanceof Error && (err as { status?: number }).status === 400) {
         return c.json({ error: err.message }, 400);
       }
-      // PostgreSQL or SQLite UNIQUE constraint violation
+      // Repository throws TRPCError CONFLICT for duplicate slug.
+      // Duck-type check avoids instanceof failure when pnpm deduplicates
+      // @trpc/server to multiple copies (different class objects).
+      const asAny = err as { code?: string; message?: string };
+      if (asAny.code === "CONFLICT") {
+        return c.json({ error: "An org with this slug already exists" }, 409);
+      }
+      // PostgreSQL or SQLite UNIQUE constraint violation (fallback)
       const cause = err instanceof Error ? (err.cause as Error | undefined) : undefined;
       const causeMsg = cause?.message ?? "";
       const causeCode = (cause as { code?: string } | undefined)?.code;
