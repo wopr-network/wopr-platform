@@ -162,7 +162,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
           affiliateRepo: deps.affiliateRepo,
         });
         if (matchResult && deps.notificationService && deps.getEmailForTenant) {
-          const referrerEmail = await deps.getEmailForTenant(matchResult.referrerTenantId);
+          const referrerEmail = deps.getEmailForTenant(matchResult.referrerTenantId);
           if (referrerEmail) {
             const amountDollars = (matchResult.matchAmount.toCents() / 100).toFixed(2);
             deps.notificationService.notifyAffiliateCreditMatch(
@@ -333,7 +333,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
 
       // Send payment_failed notification (non-fatal).
       if (deps.notificationService && deps.getEmailForTenant) {
-        const email = await deps.getEmailForTenant(tenant);
+        const email = deps.getEmailForTenant(tenant);
         if (email) {
           deps.notificationService.notifyAutoTopUpFailed(tenant, email);
         }
