@@ -1,6 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
+import { marketplacePlugins } from "../../src/db/schema/index.js";
 import { DrizzleMarketplacePluginRepository } from "../../src/marketplace/drizzle-marketplace-plugin-repository.js";
 import { createTestDb } from "../../src/test/db.js";
 
@@ -100,6 +102,10 @@ describe("DrizzleMarketplacePluginRepository", () => {
     expect(plugin!.installError).toBeNull();
   });
 
+  it("setInstallResult on nonexistent pluginId is a no-op", async () => {
+    await expect(repo.setInstallResult("nonexistent", Date.now(), null)).resolves.toBeUndefined();
+  });
+
   it("insert with duplicate pluginId throws", async () => {
     await repo.insert({ pluginId: "a", npmPackage: "a", version: "1.0.0" });
     await expect(
@@ -114,7 +120,7 @@ describe("DrizzleMarketplacePluginRepository", () => {
   });
 
   it("delete on nonexistent pluginId is a no-op", async () => {
-    await expect(repo.delete("nonexistent")).resolves.not.toThrow();
+    await expect(repo.delete("nonexistent")).resolves.toBeUndefined();
   });
 
   it("findAll returns plugins ordered by sortOrder ascending", async () => {
@@ -129,8 +135,10 @@ describe("DrizzleMarketplacePluginRepository", () => {
 
   it("findPendingReview returns plugins ordered by discoveredAt ascending", async () => {
     await repo.insert({ pluginId: "first", npmPackage: "first", version: "1.0.0" });
-    await new Promise((r) => setTimeout(r, 5));
     await repo.insert({ pluginId: "second", npmPackage: "second", version: "1.0.0" });
+    // Set explicit timestamps to avoid relying on wall-clock ordering
+    await db.update(marketplacePlugins).set({ discoveredAt: 1000 }).where(eq(marketplacePlugins.pluginId, "first"));
+    await db.update(marketplacePlugins).set({ discoveredAt: 2000 }).where(eq(marketplacePlugins.pluginId, "second"));
     const pending = await repo.findPendingReview();
     expect(pending).toHaveLength(2);
     expect(pending[0].pluginId).toBe("first");
