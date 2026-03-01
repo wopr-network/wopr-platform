@@ -41,7 +41,15 @@ APPROVED_PATTERNS=(
   "src/security/credential-vault/migration-check\.ts"
   "src/security/tenant-keys/schema\.ts"
   "src/security/tenant-keys/capability-settings-store\.ts"
-  "src/admin/[^/]*/[^/]*-store\.ts"  # admin stores use Drizzle query builders
+  "src/admin/analytics/analytics-store\.ts"
+  "src/admin/notes/notes-store\.ts"
+  "src/admin/credits/adjustment-store\.ts"
+  "src/admin/credits/schema\.ts"
+  "src/admin/rates/rate-store\.ts"
+  "src/admin/roles/role-store\.ts"
+  "src/admin/users/schema\.ts"
+  "src/admin/bulk/bulk-operations-store\.ts"
+  "src/admin/bulk/schema\.ts"
   "src/test/"
   "\.test\.ts"
 )
