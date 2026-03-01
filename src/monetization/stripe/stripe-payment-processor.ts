@@ -9,6 +9,7 @@ import {
   type ChargeResult,
   type CheckoutOpts,
   type CheckoutSession,
+  type Invoice,
   type IPaymentProcessor,
   PaymentMethodOwnershipError,
   type PortalOpts,
@@ -196,6 +197,26 @@ export class StripePaymentProcessor implements IPaymentProcessor {
     }
 
     await this.stripe.customers.update(mapping.processor_customer_id, { email });
+  }
+
+  async listInvoices(tenantId: string): Promise<Invoice[]> {
+    const mapping = await this.tenantStore.getByTenant(tenantId);
+    if (!mapping) {
+      return [];
+    }
+
+    const invoices = await this.stripe.invoices.list({
+      customer: mapping.processor_customer_id,
+      limit: 24,
+    });
+
+    return invoices.data.map((inv) => ({
+      id: inv.id,
+      date: new Date(inv.created * 1000).toISOString(),
+      amountCents: inv.amount_due,
+      status: inv.status ?? "unknown",
+      downloadUrl: inv.invoice_pdf ?? "",
+    }));
   }
 
   async charge(opts: ChargeOpts): Promise<ChargeResult> {

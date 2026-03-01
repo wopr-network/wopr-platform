@@ -59,6 +59,7 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
     charge: vi.fn().mockResolvedValue({ success: true }),
     getCustomerEmail: vi.fn().mockResolvedValue(""),
     updateCustomerEmail: vi.fn().mockResolvedValue(undefined),
+    listInvoices: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }

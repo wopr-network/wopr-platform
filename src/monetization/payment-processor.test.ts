@@ -66,6 +66,7 @@ describe("IPaymentProcessor types", () => {
       charge: async () => ({ success: true }),
       getCustomerEmail: async () => "",
       updateCustomerEmail: async () => undefined,
+      listInvoices: async () => [],
     };
     expectTypeOf(processor).toMatchTypeOf<IPaymentProcessor>();
   });
