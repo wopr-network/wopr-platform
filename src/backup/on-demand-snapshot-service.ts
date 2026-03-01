@@ -118,7 +118,7 @@ export class OnDemandSnapshotService {
 export class InsufficientCreditsError extends Error {
   balance: number;
   constructor(balance: number) {
-    super(`Insufficient credit balance: ${balance} cents`);
+    super(`Insufficient credit balance: ${balance} credits`);
     this.name = "InsufficientCreditsError";
     this.balance = balance;
   }

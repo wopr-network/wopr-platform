@@ -378,7 +378,7 @@ if (process.env.NODE_ENV !== "test") {
         if (usageTopupCallback) usageTopupCallback(tenantId);
       },
       onBalanceExhausted: (tenantId, newBalanceCents) => {
-        logger.warn("Credit balance exhausted via gateway", { tenantId, newBalanceCents });
+        logger.warn("Credit balance exhausted via gateway", { tenantId, balance_cents: newBalanceCents });
 
         // Fire-and-forget: look up email and enqueue notification
         (async () => {

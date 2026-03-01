@@ -168,6 +168,12 @@ describe("OnDemandSnapshotService", () => {
       await expect(service.create(createParams)).rejects.toThrow(InsufficientCreditsError);
     });
 
+    it("InsufficientCreditsError message says credits, not cents", () => {
+      const err = new InsufficientCreditsError(42);
+      expect(err.message).toContain("credits");
+      expect(err.message).not.toContain("cents");
+    });
+
     it("throws SnapshotQuotaExceededError when quota full", async () => {
       const max = SNAPSHOT_TIER_POLICIES.free.onDemandMax;
       const { service } = makeService({ countByTenant: vi.fn().mockResolvedValue(max) });

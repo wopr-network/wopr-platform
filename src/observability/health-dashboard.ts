@@ -8,7 +8,7 @@ export interface AdminHealthDeps {
   alertChecker: AlertChecker;
   /** Query active bot instances count. Should not throw (caller wraps). */
   queryActiveBots: () => number | Promise<number>;
-  /** Query total credits consumed in last 24 hours (cents). Should not throw (caller wraps). */
+  /** Query total credits consumed in last 24 hours. Should not throw (caller wraps). */
   queryCreditsConsumed24h: () => number | Promise<number>;
   /** Optional payment health probe — runs probePaymentHealth if provided. */
   probePaymentHealth?: () => Promise<PaymentHealthStatus>;
