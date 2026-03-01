@@ -135,14 +135,6 @@ const creditLedgerMock = {
   balance: vi.fn(),
 };
 
-vi.mock("better-sqlite3", () => {
-  return {
-    default: class MockDatabase {
-      pragma = vi.fn();
-    },
-  };
-});
-
 vi.mock("../../monetization/credits/credit-ledger.js", () => {
   return {
     CreditLedger: class {
