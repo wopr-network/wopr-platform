@@ -43,7 +43,6 @@ function getTenantStore(): ITenantCustomerStore | null {
   }
 }
 
-
 export const snapshotRoutes = new Hono<AuthEnv>();
 
 if (tokenMetadataMap.size === 0) {
