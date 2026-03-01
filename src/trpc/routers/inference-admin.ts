@@ -26,6 +26,18 @@ const sinceSchema = z.object({
   since: z.number().int().min(0).describe("Unix epoch ms — return data newer than this"),
 });
 
+/**
+ * Inference admin router — cost analytics dashboard.
+ *
+ * All procedures use adminProcedure (platform_admin role required).
+ * Admins intentionally have cross-tenant visibility for the cost dashboard
+ * use case — these endpoints return aggregate summaries, not per-tenant data.
+ *
+ * SECURITY: If a non-admin session cost lookup is ever added, it MUST enforce
+ * tenant ownership:
+ *   const session = await inferenceRepo.getSession(input.sessionId);
+ *   if (session.tenantId !== ctx.tenantId) throw new TRPCError({ code: "FORBIDDEN" });
+ */
 export const inferenceAdminRouter = router({
   dailyCost: adminProcedure.input(sinceSchema).query(async ({ input }) => {
     const repo = getDeps().getSessionUsageRepo();
