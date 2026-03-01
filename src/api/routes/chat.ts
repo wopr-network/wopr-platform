@@ -37,12 +37,14 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
 
     const sseWriter: SSEWriter = {
       write(chunk: string) {
-        writer.write(chunk).catch(() => {
-          // Client disconnected — ignore write errors
+        writer.write(chunk).catch((err) => {
+          logger.debug("SSE writer write error (client likely disconnected)", { err });
         });
       },
       close() {
-        writer.close().catch(() => {});
+        writer.close().catch((err) => {
+          logger.debug("SSE writer close error", { err });
+        });
       },
     };
 
@@ -53,7 +55,9 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
     if (signal) {
       signal.addEventListener("abort", () => {
         registry.remove(streamId);
-        writer.close().catch(() => {});
+        writer.close().catch((err) => {
+          logger.debug("SSE writer close error (client disconnect)", { err });
+        });
       });
     }
 
