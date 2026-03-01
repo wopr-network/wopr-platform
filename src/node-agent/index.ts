@@ -111,7 +111,7 @@ export class NodeAgent {
       agent_version: AGENT_VERSION,
     };
 
-    logger.info(`Registering with platform (secret): ${url}`);
+    logger.debug(`Registering with platform: ${url}`);
 
     const response = await fetch(url, {
       method: "POST",
@@ -140,7 +140,7 @@ export class NodeAgent {
       agent_version: AGENT_VERSION,
     };
 
-    logger.info(`Registering with platform (token): ${url}`);
+    logger.debug(`Registering with platform: ${url}`);
 
     const response = await fetch(url, {
       method: "POST",
