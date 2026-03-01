@@ -859,31 +859,6 @@ describe("tRPC appRouter", () => {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // Usage router
-  // -------------------------------------------------------------------------
-
-  describe("usage", () => {
-    it("quota returns usage info", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.usage.quota({ activeInstances: 0 });
-      expect(result).toHaveProperty("allowed");
-      expect(result).toHaveProperty("currentInstances");
-      expect(result).toHaveProperty("maxInstances");
-    });
-
-    it("quotaCheck allows creation under limit", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.usage.quotaCheck({ activeInstances: 0, softCap: false });
-      expect(result.allowed).toBe(true);
-    });
-
-    it("resourceLimits returns container limits", async () => {
-      const caller = createCaller(authedContext());
-      const result = await caller.usage.resourceLimits();
-      expect(result).toHaveProperty("Memory");
-    });
-  });
   // ---- creditOptions (WOP-916) ----
 
   describe("creditOptions", () => {

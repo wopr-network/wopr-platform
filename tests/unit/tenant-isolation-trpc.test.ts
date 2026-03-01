@@ -2,7 +2,7 @@
  * tRPC TENANT ISOLATION TESTS — WOP-822
  *
  * Verifies that a tenant-scoped caller cannot access another tenant's data
- * via the tRPC billing, capabilities, and settings routers.
+ * via the tRPC billing and settings routers.
  *
  * Pattern: create two callers with different tenantId values, attempt cross-tenant
  * access, and assert that FORBIDDEN is thrown.
@@ -11,24 +11,20 @@
  * - billing.usage, usageSummary: HAVE isolation check (pass)
  * - billing.creditsBalance, creditsHistory, creditsCheckout, portalSession:
  *   HAVE isolation check (pass) — check is `input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)`
- * - capabilities.*: use tenantProcedure — ctx.tenantId only, never user input → safe
  * - settings.*: use tenantProcedure — ctx.tenantId only, never user input → safe
  */
 
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { createTestDb, truncateAllTables } from "../../src/test/db.js"
+import { createTestDb } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
 import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { Credit } from "../../src/monetization/credit.js";
-import { CapabilitySettingsStore } from "../../src/security/tenant-keys/capability-settings-store.js";
-import { TenantKeyStore } from "../../src/security/tenant-keys/schema.js";
 import { appRouter } from "../../src/trpc/index.js";
 import type { TRPCContext } from "../../src/trpc/init.js";
 import { setTrpcOrgMemberRepo } from "../../src/trpc/init.js";
 import { setBillingRouterDeps } from "../../src/trpc/routers/billing.js";
-import { setCapabilitiesRouterDeps } from "../../src/trpc/routers/capabilities.js";
 import { setSettingsRouterDeps } from "../../src/trpc/routers/settings.js";
 
 // ---------------------------------------------------------------------------
@@ -220,105 +216,6 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
     await expect(callerA.billing.usageSummary({ tenant: TENANT_B })).rejects.toThrow("Forbidden");
   });
 
-});
-
-// ---------------------------------------------------------------------------
-// Capabilities router — uses tenantProcedure (ctx.tenantId only)
-// ---------------------------------------------------------------------------
-
-describe("tRPC tenant isolation — capabilities router (WOP-822)", () => {
-  let pool: PGlite;
-  let db: DrizzleDb;
-  let store: TenantKeyStore;
-  let capStore: CapabilitySettingsStore;
-
-  beforeEach(async () => {
-    ({ db, pool } = await createTestDb());
-    store = new TenantKeyStore(db);
-    capStore = new CapabilitySettingsStore(db);
-
-    setCapabilitiesRouterDeps({
-      getTenantKeyStore: () => store,
-      getCapabilitySettingsStore: () => capStore,
-      encrypt: (plaintext: string) => ({ ciphertext: `enc:${plaintext}`, iv: "test-iv", authTag: "tag" }),
-      deriveTenantKey: (_tenantId: string, _secret: string) => Buffer.alloc(32),
-      platformSecret: "test-platform-secret-32bytes!!ok",
-      validateProviderKey: async (_provider: string, _key: string) => ({ valid: true }),
-    });
-  });
-
-  afterEach(async () => {
-    await pool.close();
-  });
-
-  it("listKeys returns only caller's own tenant keys", async () => {
-    // Store a key directly for TENANT_B
-    await store.upsert(TENANT_B, "openai", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
-
-    // Caller for TENANT_A should see empty list
-    const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
-    const result = await callerA.capabilities.listKeys();
-    expect(result.keys).toHaveLength(0);
-
-    // Caller for TENANT_B should see their key
-    const callerB = appRouter.createCaller(ctxForTenant(TENANT_B));
-    const resultB = await callerB.capabilities.listKeys();
-    expect(resultB.keys).toHaveLength(1);
-  });
-
-  it("getKey returns NOT_FOUND for other tenant's key", async () => {
-    // Store a key for TENANT_B
-    await store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Anthropic");
-
-    // TENANT_A caller tries to get TENANT_B's key
-    const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
-    await expect(callerA.capabilities.getKey({ provider: "anthropic" })).rejects.toThrow("No key stored");
-  });
-
-  it("storeKey stores under caller's tenantId only", async () => {
-    const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
-    await callerA.capabilities.storeKey({ provider: "openai", apiKey: "sk-alpha-key", label: "A Key" });
-
-    // Key should exist for TENANT_A
-    const recordA = await store.get(TENANT_A, "openai");
-    expect(recordA).toBeDefined();
-
-    // Key should NOT exist for TENANT_B
-    const recordB = await store.get(TENANT_B, "openai");
-    expect(recordB).toBeUndefined();
-  });
-
-  it("deleteKey cannot delete other tenant's key", async () => {
-    // Store a key for TENANT_B
-    await store.upsert(TENANT_B, "anthropic", { ciphertext: "enc:sk-b", iv: "iv", authTag: "tag" }, "B Key");
-
-    // TENANT_A caller tries to delete it — should get NOT_FOUND (not B's key)
-    const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
-    await expect(callerA.capabilities.deleteKey({ provider: "anthropic" })).rejects.toThrow("No key stored");
-
-    // B's key should still be intact
-    const record = await store.get(TENANT_B, "anthropic");
-    expect(record).toBeDefined();
-  });
-
-  it("each tenant's keys are stored and retrieved independently across concurrent operations", async () => {
-    const callerA = appRouter.createCaller(ctxForTenant(TENANT_A));
-    const callerB = appRouter.createCaller(ctxForTenant(TENANT_B));
-
-    // Both store a key for the same provider
-    await callerA.capabilities.storeKey({ provider: "openai", apiKey: "sk-alpha", label: "A" });
-    await callerB.capabilities.storeKey({ provider: "openai", apiKey: "sk-bravo", label: "B" });
-
-    // Each sees only their own
-    const resultA = await callerA.capabilities.listKeys();
-    const resultB = await callerB.capabilities.listKeys();
-
-    expect(resultA.keys).toHaveLength(1);
-    expect(resultB.keys).toHaveLength(1);
-    // Labels must not cross tenants
-    expect((resultA.keys[0] as { label: string }).label).toBe("A");
-    expect((resultB.keys[0] as { label: string }).label).toBe("B");
-  });
 });
 
 // ---------------------------------------------------------------------------

@@ -94,15 +94,11 @@ import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
 import { encrypt } from "./security/encryption.js";
-import { validateProviderKey } from "./security/key-validation.js";
-import { CapabilitySettingsStore } from "./security/tenant-keys/capability-settings-store.js";
 import { TenantKeyStore } from "./security/tenant-keys/schema.js";
-import type { Provider } from "./security/types.js";
 import {
   setAddonRouterDeps,
   setAdminRouterDeps,
   setBillingRouterDeps,
-  setCapabilitiesRouterDeps,
   setFleetRouterDeps,
   setModelSelectionRouterDeps,
   setNodesRouterDeps,
@@ -496,22 +492,6 @@ if (process.env.NODE_ENV !== "test") {
   {
     const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
     setOrgRouterDeps({ orgService: getOrgService(), authUserRepo: new BetterAuthUserRepository(getPool()) });
-  }
-
-  // Wire capabilities tRPC router deps (WOP-915: +listCapabilitySettings, +updateCapabilitySettings)
-  {
-    const tenantKeyStore = new TenantKeyStore(getDb());
-    const capabilitySettingsStore = new CapabilitySettingsStore(getDb());
-    setCapabilitiesRouterDeps({
-      getTenantKeyStore: () => tenantKeyStore as never,
-      getCapabilitySettingsStore: () => capabilitySettingsStore,
-      encrypt,
-      deriveTenantKey: (tenantId: string, platformSecret: string) =>
-        createHmac("sha256", platformSecret).update(`tenant:${tenantId}`).digest(),
-      platformSecret: process.env.PLATFORM_SECRET,
-      validateProviderKey: (provider, key) => validateProviderKey(provider as Provider, key),
-    });
-    logger.info("tRPC capabilities router initialized");
   }
 
   // Wire profile tRPC router deps (reads/writes better-auth user table directly)

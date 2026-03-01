@@ -16,11 +16,6 @@
 //   admin.*         — all admin panel procedures
 //   fleet.*         — mirror of REST /fleet/bots/* (UI migration pending)
 //
-// Routers NOT yet consumed by UI (candidates for cleanup if unused):
-//   capabilities.*  — key CRUD + capability settings (listCapabilitySettings, updateCapabilitySettings)
-//   credentials.*   — admin credential vault; wire admin UI or remove
-//   usage.*         — quota check; UI uses REST /api/quota instead; wire or remove
-//
 // Adding new procedures:
 //   1. The procedure MUST be consumed by the UI or admin dashboard
 //   2. It MUST use protectedProcedure or tenantProcedure (no publicProcedure
@@ -42,8 +37,6 @@ import { accountRouter } from "./routers/account.js";
 import { addonRouter } from "./routers/addons.js";
 import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
-import { capabilitiesRouter } from "./routers/capabilities.js";
-import { credentialsRouter } from "./routers/credentials.js";
 import { fleetRouter } from "./routers/fleet.js";
 import { modelSelectionRouter } from "./routers/model-selection.js";
 import { nodesRouter } from "./routers/nodes.js";
@@ -54,7 +47,6 @@ import { profileRouter } from "./routers/profile.js";
 import { promotionsRouter, rateOverridesRouter } from "./routers/promotions.js";
 import { settingsRouter } from "./routers/settings.js";
 import { twoFactorRouter } from "./routers/two-factor.js";
-import { usageRouter } from "./routers/usage.js";
 
 export const appRouter = router({
   account: accountRouter,
@@ -62,11 +54,8 @@ export const appRouter = router({
   billing: billingRouter,
   promotions: promotionsRouter,
   rateOverrides: rateOverridesRouter,
-  capabilities: capabilitiesRouter,
-  credentials: credentialsRouter,
   fleet: fleetRouter,
   modelSelection: modelSelectionRouter,
-  usage: usageRouter,
   profile: profileRouter,
   settings: settingsRouter,
   admin: adminRouter,
@@ -88,8 +77,6 @@ export { setAddonRouterDeps } from "./routers/addons.js";
 export { setAdminRouterDeps } from "./routers/admin.js";
 // Re-export dep setters for initialization
 export { setBillingRouterDeps } from "./routers/billing.js";
-export { setCapabilitiesRouterDeps } from "./routers/capabilities.js";
-export { setCredentialsRouterDeps } from "./routers/credentials.js";
 export { setFleetRouterDeps } from "./routers/fleet.js";
 export { setModelSelectionRouterDeps } from "./routers/model-selection.js";
 export { setNodesRouterDeps } from "./routers/nodes.js";
