@@ -86,9 +86,9 @@ marketplaceRoutes.get("/plugins", async (c) => {
         merged.push(sp);
       }
     }
-  } catch {
-    // DB not available — fallback to static registry
-    merged = [...pluginRegistry];
+  } catch (err) {
+    logger.error("Marketplace plugin repo unavailable", { err });
+    return c.json({ error: "Service unavailable" }, 503);
   }
 
   const category = c.req.query("category");
@@ -148,8 +148,9 @@ marketplaceRoutes.get("/plugins/:id", async (c) => {
         changelog: [],
       } satisfies PluginManifest);
     }
-  } catch {
-    // DB unavailable — only static lookup available
+  } catch (err) {
+    logger.error("Marketplace plugin repo unavailable", { err });
+    return c.json({ error: "Service unavailable" }, 503);
   }
 
   return c.json({ error: "Plugin not found" }, 404);
@@ -192,7 +193,8 @@ marketplaceRoutes.get("/plugins/:id/content", async (c) => {
         } satisfies PluginManifest;
       }
     } catch (err) {
-      logger.warn("marketplace plugin repo fallback failed", { err });
+      logger.error("Marketplace plugin repo unavailable", { err });
+      return c.json({ error: "Service unavailable" }, 503);
     }
   }
 
@@ -205,7 +207,8 @@ marketplaceRoutes.get("/plugins/:id/content", async (c) => {
       return c.json({ markdown: cached.markdown, source: cached.source, version: cached.version });
     }
   } catch (err) {
-    logger.warn("marketplace content repo fallback failed", { err });
+    logger.error("Marketplace content repo unavailable", { err });
+    return c.json({ error: "Service unavailable" }, 503);
   }
 
   return c.json({
@@ -240,8 +243,9 @@ marketplaceRoutes.post("/plugins/:id/install", async (c) => {
       const repo = getMarketplacePluginRepo();
       const dbPlugin = await repo.findById(id);
       if (dbPlugin) pluginFound = true;
-    } catch {
-      // DB unavailable — only static lookup available
+    } catch (err) {
+      logger.error("Marketplace plugin repo unavailable during install", { err });
+      return c.json({ error: "Service unavailable" }, 503);
     }
   }
   if (!pluginFound) return c.json({ error: "Plugin not found" }, 404);
