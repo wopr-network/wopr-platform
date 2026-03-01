@@ -118,6 +118,7 @@ export class NodeAgent {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.config.nodeSecret}`,
+        ...(this.config.woprNodeSecret ? { "X-Node-Secret": this.config.woprNodeSecret } : {}),
       },
       body: JSON.stringify(body),
     });
@@ -191,6 +192,7 @@ export class NodeAgent {
     this.ws = new WebSocket(wsUrl, {
       headers: {
         Authorization: `Bearer ${this.config.nodeSecret}`,
+        ...(this.config.woprNodeSecret ? { "X-Node-Secret": this.config.woprNodeSecret } : {}),
       },
     });
 
@@ -431,6 +433,7 @@ if (isMain) {
     backupDir: process.env.BACKUP_DIR,
     s3Bucket: process.env.S3_BUCKET,
     credentialsPath: credPath,
+    woprNodeSecret: process.env.WOPR_NODE_SECRET,
   });
 
   const agent = new NodeAgent(config);

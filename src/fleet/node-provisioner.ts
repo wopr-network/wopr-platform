@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { logger } from "../config/logger.js";
 import type { DrizzleDb } from "../db/index.js";
@@ -73,6 +73,10 @@ export class NodeProvisioner {
     const nodeId = params.name ?? `node-${randomUUID().slice(0, 8)}`;
     const now = Math.floor(Date.now() / 1000);
 
+    // Generate per-node secret for cloud-init injection and hash for DB storage
+    const nodeSecret = `wopr_node_${randomUUID().replace(/-/g, "")}`;
+    const nodeSecretHash = createHash("sha256").update(nodeSecret).digest("hex");
+
     // 1. Insert placeholder
     await this.db.insert(nodes).values({
       id: nodeId,
@@ -85,11 +89,12 @@ export class NodeProvisioner {
       size,
       registeredAt: now,
       updatedAt: now,
+      nodeSecret: nodeSecretHash,
     });
 
     try {
       // 2. Create droplet
-      const userData = generateCloudInit(this.botImage);
+      const userData = generateCloudInit(this.botImage, nodeSecret);
       const droplet = await this.doClient.createDroplet({
         name: `wopr-${nodeId}`,
         region,

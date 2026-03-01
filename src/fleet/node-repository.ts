@@ -17,4 +17,6 @@ export interface INodeRepository {
   findBestTarget(excludeId: string, requiredMb: number): Promise<Node | null>;
   listTransitions(nodeId: string, limit?: number): Promise<NodeTransition[]>;
   delete(id: string): Promise<void>;
+  /** Verify a per-node secret against stored hash. Returns true/false, or null if node not found or has no secret. */
+  verifyNodeSecret(nodeId: string, secret: string): Promise<boolean | null>;
 }

@@ -90,6 +90,23 @@ internalNodeRoutes.post("/register", async (c) => {
   if (staticSecret) {
     const secretBuf = Buffer.from(staticSecret);
     if (bearerBuf.length === secretBuf.length && timingSafeEqual(bearerBuf, secretBuf)) {
+      // Verify per-node secret if the node has one stored
+      const nodeSecretHeader = c.req.header("X-Node-Secret");
+      const verified = await nodeRepo.verifyNodeSecret(registration.nodeId, nodeSecretHeader ?? "");
+
+      if (verified === false) {
+        // Node exists and has a secret, but the provided one doesn't match
+        logger.warn(`Node ${registration.nodeId} rejected: invalid per-node secret`);
+        return c.json({ success: false, error: "Invalid per-node node secret" }, 401);
+      }
+
+      if (verified === null) {
+        // Legacy node with no stored secret, or node not found — allow through
+        if (nodeSecretHeader) {
+          logger.warn(`Node ${registration.nodeId} registered with unverifiable per-node secret (legacy node)`);
+        }
+      }
+
       registrar.register(registration);
       logger.info(`Node registered via static secret: ${registration.nodeId}`);
       return c.json({ success: true });

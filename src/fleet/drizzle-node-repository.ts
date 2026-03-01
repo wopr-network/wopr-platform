@@ -200,4 +200,12 @@ export class DrizzleNodeRepository implements INodeRepository {
   async delete(id: string): Promise<void> {
     await this.db.delete(nodes).where(eq(nodes.id, id));
   }
+
+  async verifyNodeSecret(nodeId: string, secret: string): Promise<boolean | null> {
+    const rows = await this.db.select({ nodeSecret: nodes.nodeSecret }).from(nodes).where(eq(nodes.id, nodeId));
+    if (!rows[0]) return null; // node not found
+    if (!rows[0].nodeSecret) return null; // legacy node, no secret stored
+    const hash = createHash("sha256").update(secret).digest("hex");
+    return rows[0].nodeSecret === hash;
+  }
 }

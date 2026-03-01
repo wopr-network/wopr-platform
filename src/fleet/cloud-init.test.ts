@@ -45,4 +45,14 @@ describe("generateCloudInit", () => {
     const result = generateCloudInit("ghcr.io/wopr-network/wopr");
     expect(result).toContain("docker pull ghcr.io/wopr-network/wopr");
   });
+
+  it("injects WOPR_NODE_SECRET env var when nodeSecret provided", () => {
+    const result = generateCloudInit("ghcr.io/wopr-network/wopr:latest", "wopr_node_test123");
+    expect(result).toContain("WOPR_NODE_SECRET=wopr_node_test123");
+  });
+
+  it("does not inject WOPR_NODE_SECRET when not provided", () => {
+    const result = generateCloudInit("ghcr.io/wopr-network/wopr:latest");
+    expect(result).not.toContain("WOPR_NODE_SECRET");
+  });
 });

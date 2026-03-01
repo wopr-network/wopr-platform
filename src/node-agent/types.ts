@@ -35,6 +35,8 @@ export const nodeAgentConfigSchema = z
     s3Bucket: z.string().default("wopr-backups"),
     /** Path to persist credentials after token registration */
     credentialsPath: z.string().default("/etc/wopr/credentials.json"),
+    /** Per-node secret injected at provisioning time (WOPR_NODE_SECRET env var) */
+    woprNodeSecret: z.string().optional(),
   })
   .refine((c) => c.nodeSecret || c.registrationToken, "Either nodeSecret or registrationToken is required");
 

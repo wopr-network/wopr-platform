@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
@@ -356,6 +357,50 @@ describe("DrizzleNodeRepository — other methods", () => {
     expect(transitions[0].createdAt).toBe(300);
     expect(transitions[1].createdAt).toBe(200);
     expect(transitions[2].createdAt).toBe(100);
+  });
+
+  it("verifyNodeSecret returns true for correct secret", async () => {
+    const secret = "wopr_node_abc123";
+    const hash = createHash("sha256").update(secret).digest("hex");
+    await repo.registerSelfHosted({
+      nodeId: "verify-test",
+      host: "10.0.0.1",
+      capacityMb: 4096,
+      agentVersion: "1.0.0",
+      ownerUserId: "user-1",
+      label: null,
+      nodeSecretHash: hash,
+    });
+    expect(await repo.verifyNodeSecret("verify-test", secret)).toBe(true);
+  });
+
+  it("verifyNodeSecret returns false for wrong secret", async () => {
+    const secret = "wopr_node_abc123";
+    const hash = createHash("sha256").update(secret).digest("hex");
+    await repo.registerSelfHosted({
+      nodeId: "verify-wrong",
+      host: "10.0.0.1",
+      capacityMb: 4096,
+      agentVersion: "1.0.0",
+      ownerUserId: "user-1",
+      label: null,
+      nodeSecretHash: hash,
+    });
+    expect(await repo.verifyNodeSecret("verify-wrong", "wrong_secret")).toBe(false);
+  });
+
+  it("verifyNodeSecret returns null for node with no secret", async () => {
+    await repo.register({
+      nodeId: "verify-null",
+      host: "10.0.0.1",
+      capacityMb: 4096,
+      agentVersion: "1.0.0",
+    });
+    expect(await repo.verifyNodeSecret("verify-null", "any")).toBeNull();
+  });
+
+  it("verifyNodeSecret returns null for unknown node", async () => {
+    expect(await repo.verifyNodeSecret("nonexistent", "any")).toBeNull();
   });
 
   it("listTransitions respects limit parameter", async () => {

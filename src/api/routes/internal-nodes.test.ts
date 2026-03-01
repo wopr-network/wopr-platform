@@ -9,6 +9,7 @@ vi.mock("../../fleet/services.js", () => {
   };
   const mockNodeRepo = {
     getBySecret: vi.fn(),
+    verifyNodeSecret: vi.fn().mockResolvedValue(null), // default: legacy node (no stored secret)
   };
   const mockTokenStore = {
     consume: vi.fn(),
@@ -170,6 +171,65 @@ describe("POST /register", () => {
         label: "my-node",
       }),
     );
+  });
+
+  it("rejects static-secret auth when X-Node-Secret does not match stored hash", async () => {
+    process.env.NODE_SECRET = "fleet-secret";
+    const nodeRepo = getNodeRepo() as ReturnType<typeof getNodeRepo> & { verifyNodeSecret: ReturnType<typeof vi.fn> };
+    nodeRepo.verifyNodeSecret.mockResolvedValue(false);
+
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer fleet-secret",
+        "Content-Type": "application/json",
+        "X-Node-Secret": "wrong_node_secret",
+      },
+      body: JSON.stringify({ node_id: "node-1", host: "10.0.0.1", capacity_mb: 4096, agent_version: "1.0.0" }),
+    });
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toContain("node secret");
+  });
+
+  it("allows static-secret auth when node has no stored secret (legacy)", async () => {
+    process.env.NODE_SECRET = "fleet-secret";
+    const nodeRepo = getNodeRepo() as ReturnType<typeof getNodeRepo> & { verifyNodeSecret: ReturnType<typeof vi.fn> };
+    nodeRepo.verifyNodeSecret.mockResolvedValue(null);
+    const registrar = getNodeRegistrar();
+
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer fleet-secret",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ node_id: "legacy-node", host: "10.0.0.1", capacity_mb: 4096, agent_version: "1.0.0" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(registrar.register).toHaveBeenCalled();
+  });
+
+  it("allows static-secret auth when X-Node-Secret matches stored hash", async () => {
+    process.env.NODE_SECRET = "fleet-secret";
+    const nodeRepo = getNodeRepo() as ReturnType<typeof getNodeRepo> & { verifyNodeSecret: ReturnType<typeof vi.fn> };
+    nodeRepo.verifyNodeSecret.mockResolvedValue(true);
+    const registrar = getNodeRegistrar();
+
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer fleet-secret",
+        "Content-Type": "application/json",
+        "X-Node-Secret": "wopr_node_correct",
+      },
+      body: JSON.stringify({ node_id: "node-1", host: "10.0.0.1", capacity_mb: 4096, agent_version: "1.0.0" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(registrar.register).toHaveBeenCalled();
   });
 
   it("returns 401 for expired/invalid registration token", async () => {

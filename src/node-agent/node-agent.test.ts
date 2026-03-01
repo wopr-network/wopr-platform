@@ -349,6 +349,53 @@ describe("NodeAgent", () => {
     agent.stop();
     agent.stop(); // should not throw
   });
+
+  it("sends X-Node-Secret header on registration when woprNodeSecret is set", async () => {
+    const config = nodeAgentConfigSchema.parse({
+      platformUrl: "https://api.wopr.bot",
+      nodeId: "node-test",
+      nodeSecret: "shared-fleet-secret",
+      woprNodeSecret: "wopr_node_abc123def456",
+    });
+    const { docker } = mockDockerode();
+    const dockerManager = new DockerManager(docker as never);
+    const agent = new NodeAgent(config, dockerManager);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("ok") }));
+
+    // Trigger registration by calling start (stop immediately after to avoid WS connection)
+    const startPromise = agent.start();
+    // Give registration a tick to complete
+    await new Promise((r) => setImmediate(r));
+    agent.stop();
+    await startPromise.catch(() => {}); // ignore connection errors
+
+    const fetchCalls = vi.mocked(globalThis.fetch).mock.calls;
+    const registrationCall = fetchCalls.find(([url]) => String(url).includes("/internal/nodes/register"));
+    expect(registrationCall).toBeDefined();
+    const headers = registrationCall![1]?.headers as Record<string, string>;
+    expect(headers["X-Node-Secret"]).toBe("wopr_node_abc123def456");
+  });
+
+  it("does not send X-Node-Secret header when woprNodeSecret is not set", async () => {
+    const config = validConfig(); // no woprNodeSecret
+    const { docker } = mockDockerode();
+    const dockerManager = new DockerManager(docker as never);
+    const agent = new NodeAgent(config, dockerManager);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("ok") }));
+
+    const startPromise = agent.start();
+    await new Promise((r) => setImmediate(r));
+    agent.stop();
+    await startPromise.catch(() => {});
+
+    const fetchCalls = vi.mocked(globalThis.fetch).mock.calls;
+    const registrationCall = fetchCalls.find(([url]) => String(url).includes("/internal/nodes/register"));
+    expect(registrationCall).toBeDefined();
+    const headers = registrationCall![1]?.headers as Record<string, string>;
+    expect(headers["X-Node-Secret"]).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

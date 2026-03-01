@@ -1110,6 +1110,15 @@ if (process.env.NODE_ENV !== "test") {
           // Path 1: Static NODE_SECRET (backwards-compatible)
           const staticAuthResult = validateNodeAuth(authHeader);
           if (staticAuthResult === true) {
+            // Verify per-node secret if the node has one stored
+            const nodeSecretHeader = req.headers["x-node-secret"] as string | undefined;
+            const verified = await getNodeRepo().verifyNodeSecret(nodeId, nodeSecretHeader ?? "");
+            if (verified === false) {
+              logger.warn(`WebSocket rejected for node ${nodeId}: invalid per-node secret`);
+              socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+              socket.destroy();
+              return;
+            }
             wss.handleUpgrade(req, socket, head, (ws) => {
               acceptAndWireWebSocket(nodeId, ws);
             });

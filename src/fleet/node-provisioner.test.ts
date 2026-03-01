@@ -109,6 +109,33 @@ describe("NodeProvisioner", () => {
       );
     });
 
+    it("generates per-node secret hash and stores it in the initial insert", async () => {
+      const db = makeDb();
+      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+
+      await provisioner.provision({ region: "nyc1", size: "s-4vcpu-8gb" });
+
+      const insertValues = db.insert.mock.results[0].value.values;
+      expect(insertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodeSecret: expect.stringMatching(/^[a-f0-9]{64}$/), // SHA-256 hex
+        }),
+      );
+    });
+
+    it("injects WOPR_NODE_SECRET into cloud-init user_data", async () => {
+      const db = makeDb();
+      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+
+      await provisioner.provision({ region: "nyc1", size: "s-4vcpu-8gb" });
+
+      expect(doClient.createDroplet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_data: expect.stringContaining("WOPR_NODE_SECRET="),
+        }),
+      );
+    });
+
     it("marks node as failed on DO API error", async () => {
       const failingClient = makeDoClient({
         createDroplet: vi.fn().mockRejectedValue(new DOApiError(422, "Invalid region")),
