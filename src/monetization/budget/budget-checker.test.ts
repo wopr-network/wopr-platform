@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
@@ -201,6 +201,9 @@ describe("BudgetChecker", () => {
     });
 
     it("ignores events outside the hourly time window", async () => {
+      // Freeze mid-month so twoHoursAgo never crosses a month boundary
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-02-15T12:00:00.000Z"));
       const now = Date.now();
       const twoHoursAgo = now - 2 * 60 * 60 * 1000;
 
@@ -217,6 +220,7 @@ describe("BudgetChecker", () => {
       checker.clearCache();
 
       const result = await checker.check("tenant-1", FREE_LIMITS);
+      vi.useRealTimers();
       expect(result.allowed).toBe(false);
       expect(result.currentHourlySpend).toBe(0);
       expect(result.currentMonthlySpend).toBe(20);
