@@ -245,7 +245,7 @@ describe("OrgService", () => {
       expect((err as TRPCError).code).toBe("BAD_REQUEST");
     });
 
-    it("partial failure — throws when addMember fails, org still created", async () => {
+    it("partial failure — throws when addMember fails, org creation rolled back", async () => {
       const { orgRepo, memberRepo } = await setup(db);
       const failingMemberRepo = {
         ...memberRepo,
@@ -256,6 +256,7 @@ describe("OrgService", () => {
       const svc = new OrgService(orgRepo, failingMemberRepo, db);
 
       await expect(svc.createOrg("user-d", "Org D", "partial-fail-co")).rejects.toThrow("addMember boom");
+      expect(await orgRepo.getBySlug("partial-fail-co")).toBeNull();
     });
   });
 
