@@ -54,7 +54,7 @@ export function createAdminInferenceRoutes(repoFactory: () => ISessionUsageRepos
           totalCostUsd,
           totalSessions,
           avgCostPerSessionUsd: avgCostPerSession,
-          cacheHitRate,
+          cacheHitRate: cacheHitRate.hitRate,
         },
         dailyCosts,
         pageCosts,
@@ -120,8 +120,8 @@ export function createAdminInferenceRoutes(repoFactory: () => ISessionUsageRepos
     const since = Date.now() - days * 24 * 60 * 60 * 1000;
 
     try {
-      const cacheHitRate = await repo.cacheHitRate(since);
-      return c.json({ days, cacheHitRate });
+      const cacheStats = await repo.cacheHitRate(since);
+      return c.json({ days, cacheStats });
     } catch (err) {
       return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
     }

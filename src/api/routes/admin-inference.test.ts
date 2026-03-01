@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
+import type { CacheStats, ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import { createAdminInferenceRoutes } from "./admin-inference.js";
 
 /** Generate a YYYY-MM-DD string for N days ago. */
@@ -17,7 +17,9 @@ function mockRepo(overrides: Partial<ISessionUsageRepository> = {}): ISessionUsa
     sumCostBySession: vi.fn().mockResolvedValue(0),
     aggregateByDay: vi.fn().mockResolvedValue([]),
     aggregateByPage: vi.fn().mockResolvedValue([]),
-    cacheHitRate: vi.fn().mockResolvedValue(0),
+    cacheHitRate: vi
+      .fn()
+      .mockResolvedValue({ hitRate: 0, cachedTokens: 0, cacheWriteTokens: 0, uncachedTokens: 0 } satisfies CacheStats),
     aggregateSessionCost: vi.fn().mockResolvedValue({ totalCostUsd: 0, totalSessions: 0, avgCostPerSession: 0 }),
     ...overrides,
   };
@@ -82,13 +84,17 @@ describe("createAdminInferenceRoutes", () => {
     expect(body.pageCosts[0].page).toBe("/onboarding/welcome");
   });
 
-  it("GET /cache returns cache hit rate", async () => {
-    const repo = mockRepo({ cacheHitRate: vi.fn().mockResolvedValue(0.72) });
+  it("GET /cache returns cache stats", async () => {
+    const stats: CacheStats = { hitRate: 0.72, cachedTokens: 720, cacheWriteTokens: 50, uncachedTokens: 280 };
+    const repo = mockRepo({ cacheHitRate: vi.fn().mockResolvedValue(stats) });
     const routes = createAdminInferenceRoutes(() => repo);
     const req = new Request("http://localhost/cache");
     const res = await routes.fetch(req);
-    const body = (await res.json()) as { cacheHitRate: number };
-    expect(body.cacheHitRate).toBeCloseTo(0.72);
+    const body = (await res.json()) as { cacheStats: CacheStats };
+    expect(body.cacheStats.hitRate).toBeCloseTo(0.72);
+    expect(body.cacheStats.cachedTokens).toBe(720);
+    expect(body.cacheStats.cacheWriteTokens).toBe(50);
+    expect(body.cacheStats.uncachedTokens).toBe(280);
   });
 
   it("GET /session/:sessionId returns per-session usage", async () => {

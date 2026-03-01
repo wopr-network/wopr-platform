@@ -135,7 +135,7 @@ describe("DrizzleSessionUsageRepository", () => {
     expect(superpowers?.totalCostUsd).toBeCloseTo(0.05);
   });
 
-  it("calculates cache hit rate", async () => {
+  it("calculates cache hit rate and token breakdowns", async () => {
     await repo.insert({
       sessionId: "sess-6",
       userId: null,
@@ -143,7 +143,7 @@ describe("DrizzleSessionUsageRepository", () => {
       inputTokens: 1000,
       outputTokens: 100,
       cachedTokens: 700,
-      cacheWriteTokens: 0,
+      cacheWriteTokens: 50,
       model: "claude-sonnet-4-20250514",
       costUsd: 0.01,
     });
@@ -151,15 +151,19 @@ describe("DrizzleSessionUsageRepository", () => {
       sessionId: "sess-6",
       userId: null,
       page: null,
-      inputTokens: 1000,
+      inputTokens: 500,
       outputTokens: 100,
-      cachedTokens: 800,
-      cacheWriteTokens: 0,
+      cachedTokens: 0,
+      cacheWriteTokens: 100,
       model: "claude-sonnet-4-20250514",
       costUsd: 0.01,
     });
-    const rate = await repo.cacheHitRate(0);
-    // (700 + 800) / (1000 + 1000) = 75%
-    expect(rate).toBeCloseTo(0.75);
+    const stats = await repo.cacheHitRate(0);
+    // hitRate = 700 / 1500 = 0.4667
+    expect(stats.hitRate).toBeCloseTo(700 / 1500);
+    expect(stats.cachedTokens).toBe(700);
+    expect(stats.cacheWriteTokens).toBe(150);
+    // uncached = 1500 - 700 - 150 = 650
+    expect(stats.uncachedTokens).toBe(650);
   });
 });
