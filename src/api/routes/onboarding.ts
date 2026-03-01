@@ -9,6 +9,9 @@ const ANON_SESSION_COOKIE = "wopr_anon_session";
 const ANON_SESSION_MAX_AGE = 24 * 60 * 60; // 24 hours in seconds
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".wopr.bot";
 
+/** RFC 4122 UUID format (any version). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 let _service: OnboardingService | null = null;
 let _graduationService: GraduationService | null = null;
 
@@ -36,6 +39,10 @@ onboardingRoutes.post("/session", async (c) => {
   const service = getService();
   const userId = c.get("user")?.id as string | undefined;
   const anonymousId = c.req.header("x-anonymous-id") ?? undefined;
+
+  if (anonymousId && !UUID_RE.test(anonymousId)) {
+    return c.json({ error: "Invalid anonymous ID format — must be a UUID" }, 400);
+  }
 
   if (!userId && !anonymousId) {
     return c.json({ error: "Either authenticated user or x-anonymous-id header required" }, 400);
@@ -109,6 +116,10 @@ onboardingRoutes.get("/session/:id/history", async (c) => {
   const userId = c.get("user")?.id as string | undefined;
   const anonymousId = c.req.header("x-anonymous-id") ?? undefined;
 
+  if (anonymousId && !UUID_RE.test(anonymousId)) {
+    return c.json({ error: "Invalid anonymous ID format — must be a UUID" }, 400);
+  }
+
   // If the session belongs to a registered user, only a matching authenticated userId grants access.
   // If the session is anonymous (no userId), only a matching anonymousId from an unauthenticated
   // caller grants access. An authenticated user must never satisfy the anonymous branch, which
@@ -149,6 +160,9 @@ onboardingRoutes.post("/session/:id/upgrade", async (c) => {
   }
   if (!anonymousId) {
     return c.json({ error: "x-anonymous-id header required" }, 400);
+  }
+  if (!UUID_RE.test(anonymousId)) {
+    return c.json({ error: "Invalid anonymous ID format — must be a UUID" }, 400);
   }
 
   // Ownership check: verify the session identified by :id belongs to the caller's anonymousId.

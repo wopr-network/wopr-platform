@@ -226,6 +226,12 @@ const AUTH_RESET_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = {
   message: "Too many password reset requests. Please try again later.",
 };
 
+/** Anonymous onboarding session history: 10 req/min per IP (WOP-1297) */
+const ONBOARDING_SESSION_LIMIT: Omit<RateLimitConfig, "repo" | "scope"> = {
+  max: 10,
+  message: "Too many onboarding session requests",
+};
+
 // ---------------------------------------------------------------------------
 // tRPC procedure rate limits (WOP-1220)
 // ---------------------------------------------------------------------------
@@ -328,6 +334,14 @@ export const platformRateLimitRules: RateLimitRule[] = [
     pathPrefix: "/api/auth/request-password-reset",
     config: AUTH_RESET_LIMIT,
     scope: "auth:reset",
+  },
+
+  // Onboarding session history: 10 req/min (WOP-1297)
+  {
+    method: "GET",
+    pathPrefix: "/api/onboarding/session",
+    config: ONBOARDING_SESSION_LIMIT,
+    scope: "api:onboarding-session-history",
   },
 
   // Secrets validation — most restrictive, check first

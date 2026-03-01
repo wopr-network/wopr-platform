@@ -722,6 +722,19 @@ describe("trusted proxy validation (WOP-656)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// WOP-1297: onboarding session history rate limit
+// ---------------------------------------------------------------------------
+
+describe("WOP-1297: onboarding session history rate limit", () => {
+  it("includes onboarding session history rule with max 10", () => {
+    const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/onboarding/session" && r.method === "GET");
+    expect(rule).toBeDefined();
+    expect(rule?.config.max).toBe(10);
+    expect(rule?.scope).toBe("api:onboarding-session-history");
+  });
+});
+
 describe("platformRateLimitRules — billing checkout path", () => {
   let repo: IRateLimitRepository;
 

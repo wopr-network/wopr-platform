@@ -73,21 +73,45 @@ describe("GET /api/onboarding/session/:id/history", () => {
   });
 
   it("returns history when anonymous user owns the session via x-anonymous-id", async () => {
-    const session = fakeSession({ userId: null, anonymousId: "anon-123" });
-    const { app } = buildApp(session, undefined, "anon-123");
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
+    const session = fakeSession({ userId: null, anonymousId: uuid });
+    const { app } = buildApp(session, undefined, uuid);
     const res = await app.request("/api/onboarding/session/sess-1/history", {
-      headers: { "x-anonymous-id": "anon-123" },
+      headers: { "x-anonymous-id": uuid },
     });
     expect(res.status).toBe(200);
   });
 
   it("returns 404 when anonymous user does NOT own the session", async () => {
-    const session = fakeSession({ userId: null, anonymousId: "anon-123" });
-    const { app } = buildApp(session, undefined, "anon-other");
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
+    const otherUuid = "660e8400-e29b-41d4-a716-446655440000";
+    const session = fakeSession({ userId: null, anonymousId: uuid });
+    const { app } = buildApp(session, undefined, otherUuid);
     const res = await app.request("/api/onboarding/session/sess-1/history", {
-      headers: { "x-anonymous-id": "anon-other" },
+      headers: { "x-anonymous-id": otherUuid },
     });
     expect(res.status).toBe(404);
+  });
+
+  it("returns 400 when x-anonymous-id is not a valid UUID", async () => {
+    const session = fakeSession({ userId: null, anonymousId: "anon-123" });
+    const { app } = buildApp(session);
+    const res = await app.request("/api/onboarding/session/sess-1/history", {
+      headers: { "x-anonymous-id": "not-a-uuid" },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("Invalid anonymous ID format");
+  });
+
+  it("accepts a valid UUID v4 in x-anonymous-id", async () => {
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
+    const session = fakeSession({ userId: null, anonymousId: uuid });
+    const { app } = buildApp(session);
+    const res = await app.request("/api/onboarding/session/sess-1/history", {
+      headers: { "x-anonymous-id": uuid },
+    });
+    expect(res.status).toBe(200);
   });
 
   it("returns 404 when session does not exist", async () => {
@@ -105,13 +129,27 @@ describe("GET /api/onboarding/session/:id/history", () => {
 
   it("returns 404 when authenticated user forges x-anonymous-id to access anonymous session (IDOR)", async () => {
     // The session belongs to an anonymous user, not any authenticated user.
-    const session = fakeSession({ userId: null, anonymousId: "anon-victim" });
+    const victimUuid = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+    const session = fakeSession({ userId: null, anonymousId: victimUuid });
     // Authenticated attacker sends the victim's anonymousId in the header.
     const { app } = buildApp(session, "user-attacker");
     const res = await app.request("/api/onboarding/session/sess-1/history", {
-      headers: { "x-anonymous-id": "anon-victim" },
+      headers: { "x-anonymous-id": victimUuid },
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/onboarding/session", () => {
+  it("returns 400 when x-anonymous-id is not a valid UUID", async () => {
+    const { app } = buildApp(null);
+    const res = await app.request("/api/onboarding/session", {
+      method: "POST",
+      headers: { "x-anonymous-id": "short" },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("Invalid anonymous ID format");
   });
 });
 
@@ -120,15 +158,17 @@ describe("POST /api/onboarding/session/:id/upgrade", () => {
     // IDOR: attacker passes their own anonymousId but victim's session :id.
     // getSession returns the victim's session (anonymousId: "anon-victim").
     // Without an ownership check the code would proceed with upgradeAnonymousToUser.
-    const victimSession = fakeSession({ userId: null, anonymousId: "anon-victim" });
+    const victimUuid = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+    const attackerUuid = "bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb";
+    const victimSession = fakeSession({ userId: null, anonymousId: victimUuid });
     const { app, mockService } = buildApp(victimSession, "user-attacker");
     // Simulate attacker's own session upgrading if called (should NOT happen)
     mockService.upgradeAnonymousToUser.mockResolvedValue(
-      fakeSession({ userId: "user-attacker", anonymousId: "anon-attacker" }),
+      fakeSession({ userId: "user-attacker", anonymousId: attackerUuid }),
     );
     const res = await app.request("/api/onboarding/session/sess-1/upgrade", {
       method: "POST",
-      headers: { "x-anonymous-id": "anon-attacker" },
+      headers: { "x-anonymous-id": attackerUuid },
     });
     expect(res.status).toBe(404);
     // upgradeAnonymousToUser must never be called when ownership check fails
@@ -136,21 +176,23 @@ describe("POST /api/onboarding/session/:id/upgrade", () => {
   });
 
   it("returns 404 when session does not exist", async () => {
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
     const { app } = buildApp(null, "user-owner");
     const res = await app.request("/api/onboarding/session/nonexistent/upgrade", {
       method: "POST",
-      headers: { "x-anonymous-id": "anon-123" },
+      headers: { "x-anonymous-id": uuid },
     });
     expect(res.status).toBe(404);
   });
 
   it("allows upgrade when x-anonymous-id matches the session identified by :id", async () => {
-    const session = fakeSession({ userId: null, anonymousId: "anon-123" });
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
+    const session = fakeSession({ userId: null, anonymousId: uuid });
     const { app, mockService } = buildApp(session, "user-owner");
     mockService.upgradeAnonymousToUser.mockResolvedValue({ ...session, userId: "user-owner" });
     const res = await app.request("/api/onboarding/session/sess-1/upgrade", {
       method: "POST",
-      headers: { "x-anonymous-id": "anon-123" },
+      headers: { "x-anonymous-id": uuid },
     });
     expect(res.status).toBe(200);
   });
