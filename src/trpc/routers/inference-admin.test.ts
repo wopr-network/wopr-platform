@@ -8,7 +8,7 @@ import type {
   DailyCostAggregate,
   ISessionUsageRepository,
   PageCostAggregate,
-  SessionUsage,
+  SessionCostSummary,
 } from "../../inference/session-usage-repository.js";
 import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
 
@@ -32,6 +32,7 @@ function createMockRepo(overrides: Partial<ISessionUsageRepository> = {}): ISess
     aggregateByDay: vi.fn().mockResolvedValue([]),
     aggregateByPage: vi.fn().mockResolvedValue([]),
     cacheHitRate: vi.fn().mockResolvedValue(0),
+    aggregateSessionCost: vi.fn().mockResolvedValue({ totalCostUsd: 0, totalSessions: 0, avgCostPerSession: 0 }),
     ...overrides,
   } as ISessionUsageRepository;
 }
@@ -93,39 +94,23 @@ describe("inference-admin router", () => {
   });
 
   describe("sessionCost", () => {
-    it("returns total cost, call count, and records for a session", async () => {
-      const records: SessionUsage[] = [
-        {
-          id: "u1",
-          sessionId: "sess-1",
-          userId: "user-1",
-          page: "/chat",
-          inputTokens: 100,
-          outputTokens: 50,
-          cachedTokens: 20,
-          cacheWriteTokens: 10,
-          model: "gpt-4",
-          costUsd: 0.05,
-          createdAt: Date.now(),
-        },
-      ];
+    it("returns aggregate session cost summary for time range", async () => {
+      const summary: SessionCostSummary = { totalCostUsd: 1.25, totalSessions: 5, avgCostPerSession: 0.25 };
       mockRepo = createMockRepo({
-        sumCostBySession: vi.fn().mockResolvedValue(0.05),
-        findBySessionId: vi.fn().mockResolvedValue(records),
+        aggregateSessionCost: vi.fn().mockResolvedValue(summary),
       });
       setInferenceAdminDeps({ getSessionUsageRepo: () => mockRepo });
 
       const caller = inferenceAdminRouter.createCaller(authedCtx());
-      const result = await caller.sessionCost({ sessionId: "sess-1" });
+      const result = await caller.sessionCost({ since: 1000 });
 
-      expect(result.totalCostUsd).toBe(0.05);
-      expect(result.callCount).toBe(1);
-      expect(result.records).toEqual(records);
+      expect(result).toEqual(summary);
+      expect(mockRepo.aggregateSessionCost).toHaveBeenCalledWith(1000);
     });
 
-    it("rejects empty sessionId via zod validation", async () => {
+    it("rejects negative since via zod validation", async () => {
       const caller = inferenceAdminRouter.createCaller(authedCtx());
-      await expect(caller.sessionCost({ sessionId: "" })).rejects.toThrow();
+      await expect(caller.sessionCost({ since: -1 })).rejects.toThrow();
     });
   });
 

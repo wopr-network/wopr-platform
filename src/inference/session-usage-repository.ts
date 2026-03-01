@@ -36,6 +36,12 @@ export interface PageCostAggregate {
   avgCostUsd: number;
 }
 
+export interface SessionCostSummary {
+  totalCostUsd: number;
+  totalSessions: number;
+  avgCostPerSession: number;
+}
+
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
@@ -48,6 +54,7 @@ export interface ISessionUsageRepository {
   aggregateByDay(since: number): Promise<DailyCostAggregate[]>;
   aggregateByPage(since: number): Promise<PageCostAggregate[]>;
   cacheHitRate(since: number): Promise<number>;
+  aggregateSessionCost(since: number): Promise<SessionCostSummary>;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,5 +174,22 @@ export class DrizzleSessionUsageRepository implements ISessionUsageRepository {
     const cached = Number(result.rows[0]?.total_cached ?? 0);
     const input = Number(result.rows[0]?.total_input ?? 0);
     return input > 0 ? cached / input : 0;
+  }
+
+  async aggregateSessionCost(since: number): Promise<SessionCostSummary> {
+    const result = (await this.db.execute(sql`
+      SELECT
+        COALESCE(SUM(cost_usd), 0) as total_cost_usd,
+        COUNT(DISTINCT session_id) as total_sessions
+      FROM session_usage
+      WHERE created_at > ${since}
+    `)) as unknown as { rows: Array<{ total_cost_usd: string; total_sessions: string }> };
+    const totalCostUsd = Number(result.rows[0]?.total_cost_usd ?? 0);
+    const totalSessions = Number(result.rows[0]?.total_sessions ?? 0);
+    return {
+      totalCostUsd,
+      totalSessions,
+      avgCostPerSession: totalSessions > 0 ? totalCostUsd / totalSessions : 0,
+    };
   }
 }

@@ -18,6 +18,7 @@ function mockRepo(overrides: Partial<ISessionUsageRepository> = {}): ISessionUsa
     aggregateByDay: vi.fn().mockResolvedValue([]),
     aggregateByPage: vi.fn().mockResolvedValue([]),
     cacheHitRate: vi.fn().mockResolvedValue(0),
+    aggregateSessionCost: vi.fn().mockResolvedValue({ totalCostUsd: 0, totalSessions: 0, avgCostPerSession: 0 }),
     ...overrides,
   };
 }

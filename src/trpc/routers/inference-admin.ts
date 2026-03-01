@@ -43,10 +43,8 @@ export const inferenceAdminRouter = router({
     return { rate };
   }),
 
-  sessionCost: protectedProcedure.input(z.object({ sessionId: z.string().min(1) })).query(async ({ input }) => {
+  sessionCost: protectedProcedure.input(sinceSchema).query(async ({ input }) => {
     const repo = getDeps().getSessionUsageRepo();
-    const total = await repo.sumCostBySession(input.sessionId);
-    const records = await repo.findBySessionId(input.sessionId);
-    return { totalCostUsd: total, callCount: records.length, records };
+    return repo.aggregateSessionCost(input.since);
   }),
 });
