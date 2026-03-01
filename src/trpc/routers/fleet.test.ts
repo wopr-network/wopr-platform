@@ -41,6 +41,9 @@ function createCaller(ctx: TRPCContext) {
 
 const TEST_BOT_ID = "00000000-0000-4000-8000-000000000001";
 
+/** Dynamic timestamp so tests never go stale. */
+const TEST_TIMESTAMP = new Date().toISOString();
+
 const mockProfile = {
   id: TEST_BOT_ID,
   tenantId: "test-tenant",
@@ -61,10 +64,10 @@ const mockStatus = {
   containerId: "container-123",
   state: "running" as const,
   health: "healthy",
-  uptime: "2026-01-01T00:00:00Z",
-  startedAt: "2026-01-01T00:00:00Z",
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
+  uptime: TEST_TIMESTAMP,
+  startedAt: TEST_TIMESTAMP,
+  createdAt: TEST_TIMESTAMP,
+  updatedAt: TEST_TIMESTAMP,
   stats: { cpuPercent: 5.2, memoryUsageMb: 128, memoryLimitMb: 512, memoryPercent: 25.0 },
 };
 
@@ -76,8 +79,8 @@ const mockBotInstance: BotInstance = {
   billingState: "active",
   suspendedAt: null,
   destroyAfter: null,
-  createdAt: "2026-01-01T00:00:00Z",
-  updatedAt: "2026-01-01T00:00:00Z",
+  createdAt: TEST_TIMESTAMP,
+  updatedAt: TEST_TIMESTAMP,
   createdByUserId: "test-user",
 };
 
@@ -110,7 +113,7 @@ function createFleetMock() {
     stop: vi.fn().mockResolvedValue(undefined),
     restart: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
-    logs: vi.fn().mockResolvedValue("2026-01-01T00:00:00Z log line 1\n"),
+    logs: vi.fn().mockResolvedValue(`${TEST_TIMESTAMP} log line 1\n`),
     getVolumeUsage: vi.fn().mockResolvedValue(null),
     profiles: {
       get: vi.fn().mockResolvedValue(mockProfile),
@@ -330,11 +333,11 @@ describe("fleet.getInstanceHealth", () => {
 
 describe("fleet.getInstanceLogs", () => {
   it("returns logs split into string array; default tail=100", async () => {
-    fleetMock.logs.mockResolvedValue("2026-01-01T00:00:00Z log line 1\n2026-01-01T00:00:01Z log line 2");
+    fleetMock.logs.mockResolvedValue(`${TEST_TIMESTAMP} log line 1\n${TEST_TIMESTAMP} log line 2`);
     const caller = createCaller(authedContext());
     const result = await caller.fleet.getInstanceLogs({ id: TEST_BOT_ID });
     expect(result).toEqual({
-      logs: ["2026-01-01T00:00:00Z log line 1", "2026-01-01T00:00:01Z log line 2"],
+      logs: [`${TEST_TIMESTAMP} log line 1`, `${TEST_TIMESTAMP} log line 2`],
     });
     expect(fleetMock.logs).toHaveBeenCalledWith(TEST_BOT_ID, 100);
   });
