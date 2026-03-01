@@ -103,6 +103,7 @@ function mockUsageRepo(totalCost: number): ISessionUsageRepository {
     aggregateByDay: vi.fn(async () => []),
     aggregateByPage: vi.fn(async () => []),
     cacheHitRate: vi.fn(async () => 0),
+    aggregateSessionCost: vi.fn(async () => ({ totalCostUsd: 0, totalSessions: 0, avgCostPerSession: 0 })),
   };
 }
 

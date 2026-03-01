@@ -11,6 +11,7 @@ function mockRepo(costBySession: number): ISessionUsageRepository {
     aggregateByDay: vi.fn(),
     aggregateByPage: vi.fn(),
     cacheHitRate: vi.fn(),
+    aggregateSessionCost: vi.fn(),
   };
 }
 
