@@ -112,28 +112,7 @@ import {
   setSettingsRouterDeps,
   setTrpcOrgMemberRepo,
 } from "./trpc/index.js";
-
-/**
- * Validate critical environment variables at startup.
- * Fails fast if required vars are missing or weak.
- * Skip validation in test mode.
- */
-function validateRequiredEnvVars() {
-  if (process.env.NODE_ENV === "test") return;
-
-  const issues: string[] = [];
-
-  const platformSecret = process.env.PLATFORM_SECRET;
-  if (!platformSecret) {
-    issues.push("PLATFORM_SECRET is required but not set");
-  } else if (platformSecret.length < 32) {
-    issues.push("PLATFORM_SECRET must be at least 32 characters");
-  }
-
-  if (issues.length > 0) {
-    throw new Error(`Environment validation failed:\n${issues.join("\n")}`);
-  }
-}
+import { validateRequiredEnvVars } from "./validate-env.js";
 
 validateRequiredEnvVars();
 
