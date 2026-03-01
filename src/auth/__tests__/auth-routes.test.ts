@@ -235,8 +235,8 @@ describe("auth routes integration", () => {
     });
   });
 
-  describe("rate limiting", () => {
-    it("returns 429 when sign-in rate limit is exceeded", async () => {
+  describe("better-auth rate limit response passthrough", () => {
+    it("passes through 429 from better-auth on sign-in route", async () => {
       mockHandler.mockResolvedValueOnce(
         jsonResponse({ error: "Too many requests. Please try again later." }, 429, { "Retry-After": "900" }),
       );
@@ -252,7 +252,7 @@ describe("auth routes integration", () => {
       expect(body.error).toMatch(/too many/i);
     });
 
-    it("returns 429 when sign-up rate limit is exceeded", async () => {
+    it("passes through 429 from better-auth on sign-up route", async () => {
       mockHandler.mockResolvedValueOnce(
         jsonResponse({ error: "Too many requests. Please try again later." }, 429, { "Retry-After": "3600" }),
       );
@@ -309,6 +309,41 @@ describe("auth routes integration", () => {
       expect(body.error).toMatch(/uppercase/i);
       // mockHandler should NOT have been called — middleware rejected it
       expect(mockHandler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /api/auth/reset-password", () => {
+    it("rejects password failing complexity before reaching better-auth", async () => {
+      const res = await app.request("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: "alllowercase1!", // no uppercase
+          token: "some-reset-token",
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/uppercase/i);
+      // mockHandler should NOT have been called — middleware rejected it
+      expect(mockHandler).not.toHaveBeenCalled();
+    });
+
+    it("forwards to better-auth when password meets complexity requirements", async () => {
+      mockHandler.mockResolvedValueOnce(jsonResponse({ status: true }, 200));
+
+      const res = await app.request("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password: "ValidPass1!xyz",
+          token: "some-reset-token",
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockHandler).toHaveBeenCalledOnce();
     });
   });
 
