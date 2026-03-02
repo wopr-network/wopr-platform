@@ -44,15 +44,26 @@ describe("password complexity middleware", () => {
       expect(res.status).toBe(400);
     });
 
-    it("passes through a short password (let better-auth handle it)", async () => {
-      // Passwords under 12 chars are not rejected by complexity check — let better-auth handle
+    it("rejects a password shorter than 12 characters", async () => {
       const res = await postJson("/api/auth/sign-up/email", {
         email: "a@b.com",
         password: "Short1!",
         name: "Test",
       });
-      // Not a 400 from our middleware (better-auth may return its own error)
-      expect(res.status).not.toBe(400);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/12 characters/i);
+    });
+
+    it("rejects a 12-char password that fails complexity", async () => {
+      const res = await postJson("/api/auth/sign-up/email", {
+        email: "a@b.com",
+        password: "alllowercase!", // exactly 13 chars, no uppercase, no digit
+        name: "Test",
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/uppercase/i);
     });
 
     it("passes through when body is not parseable JSON (no Content-Type)", async () => {
@@ -84,12 +95,24 @@ describe("password complexity middleware", () => {
       expect(res.status).toBe(400);
     });
 
-    it("passes through a short password (let better-auth handle it)", async () => {
+    it("rejects a password shorter than 12 characters", async () => {
       const res = await postJson("/api/auth/reset-password", {
         token: "sometoken",
         password: "Short1!",
       });
-      expect(res.status).not.toBe(400);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/12 characters/i);
+    });
+
+    it("rejects a 12-char password that fails complexity", async () => {
+      const res = await postJson("/api/auth/reset-password", {
+        token: "sometoken",
+        password: "alllowercase!", // exactly 13 chars, no uppercase, no digit
+      });
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/uppercase/i);
     });
 
     it("passes through when body is not parseable (falls through to better-auth)", async () => {
