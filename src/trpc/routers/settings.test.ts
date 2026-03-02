@@ -6,8 +6,10 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { INotificationPreferencesStore } from "../../email/notification-preferences-store.js";
-import type { NotificationPrefs } from "../../email/notification-repository-types.js";
+import type {
+  INotificationPreferencesRepository,
+  NotificationPrefs,
+} from "../../email/notification-repository-types.js";
 import type { IOrgMemberRepository } from "../../fleet/org-member-repository.js";
 import { appRouter } from "../index.js";
 import type { TRPCContext } from "../init.js";
@@ -62,7 +64,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeMockPrefsStore(): INotificationPreferencesStore {
+function makeMockPrefsStore(): INotificationPreferencesRepository {
   const storage = new Map<string, NotificationPrefs>();
   return {
     get: vi.fn().mockImplementation(async (tenantId: string) => {

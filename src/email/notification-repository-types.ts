@@ -77,3 +77,25 @@ export interface NotificationRow {
   /** Unix epoch ms */
   sentAt: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Repository Interfaces
+// ---------------------------------------------------------------------------
+
+/** Repository interface for notification preferences. */
+export interface INotificationPreferencesRepository {
+  get(tenantId: string): Promise<NotificationPrefs>;
+  update(tenantId: string, prefs: Partial<NotificationPrefs>): Promise<void>;
+}
+
+/** Repository interface for the email notification queue. */
+export interface INotificationQueueRepository {
+  enqueue(tenantId: string, template: string, data: Record<string, unknown>): Promise<string>;
+  fetchPending(limit?: number): Promise<QueuedNotification[]>;
+  markSent(id: string): Promise<void>;
+  markFailed(id: string, attempts: number): Promise<void>;
+  listForTenant(
+    tenantId: string,
+    opts?: { limit?: number; offset?: number; status?: NotificationStatus },
+  ): Promise<{ entries: QueuedNotification[]; total: number }>;
+}

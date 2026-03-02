@@ -2,32 +2,25 @@ import crypto from "node:crypto";
 import { and, desc, eq, lte, or, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationQueue } from "../db/schema/notification-queue.js";
-import type { NotificationStatus, QueuedNotification } from "./notification-repository-types.js";
+import type {
+  INotificationQueueRepository,
+  NotificationStatus,
+  QueuedNotification,
+} from "./notification-repository-types.js";
 
 // Re-export domain types for backward compat
 export type { NotificationStatus, QueuedNotification } from "./notification-repository-types.js";
 
-// ---------------------------------------------------------------------------
-// Interface
-// ---------------------------------------------------------------------------
-
-/** Repository interface for the email notification queue. */
-export interface INotificationQueueStore {
-  enqueue(tenantId: string, template: string, data: Record<string, unknown>): Promise<string>;
-  fetchPending(limit?: number): Promise<QueuedNotification[]>;
-  markSent(id: string): Promise<void>;
-  markFailed(id: string, attempts: number): Promise<void>;
-  listForTenant(
-    tenantId: string,
-    opts?: { limit?: number; offset?: number; status?: NotificationStatus },
-  ): Promise<{ entries: QueuedNotification[]; total: number }>;
-}
+// Re-export with old name for backward compat
+export type { INotificationQueueRepository };
+/** @deprecated Use INotificationQueueRepository */
+export type INotificationQueueStore = INotificationQueueRepository;
 
 // ---------------------------------------------------------------------------
 // Drizzle Implementation
 // ---------------------------------------------------------------------------
 
-export class DrizzleNotificationQueueStore implements INotificationQueueStore {
+export class DrizzleNotificationQueueStore implements INotificationQueueRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Enqueue a notification for async delivery. Returns the new row ID. */

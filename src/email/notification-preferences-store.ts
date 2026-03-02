@@ -1,22 +1,17 @@
 import { eq } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationPreferences } from "../db/schema/notification-preferences.js";
-import type { NotificationPrefs } from "./notification-repository-types.js";
+import type { INotificationPreferencesRepository, NotificationPrefs } from "./notification-repository-types.js";
 
 // Re-export domain type for backward compat
 export type { NotificationPrefs } from "./notification-repository-types.js";
 
+// Re-export with old name for backward compat
+export type { INotificationPreferencesRepository };
+/** @deprecated Use INotificationPreferencesRepository */
+export type INotificationPreferencesStore = INotificationPreferencesRepository;
+
 type NotificationPrefsRow = typeof notificationPreferences.$inferInsert;
-
-// ---------------------------------------------------------------------------
-// Interface
-// ---------------------------------------------------------------------------
-
-/** Repository interface for notification preferences. */
-export interface INotificationPreferencesStore {
-  get(tenantId: string): Promise<NotificationPrefs>;
-  update(tenantId: string, prefs: Partial<NotificationPrefs>): Promise<void>;
-}
 
 // ---------------------------------------------------------------------------
 // Drizzle Implementation
@@ -32,7 +27,7 @@ const DEFAULTS: NotificationPrefs = {
   account_team_invites: true,
 };
 
-export class DrizzleNotificationPreferencesStore implements INotificationPreferencesStore {
+export class DrizzleNotificationPreferencesStore implements INotificationPreferencesRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get preferences for a tenant. Returns defaults if no row exists. */

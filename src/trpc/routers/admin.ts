@@ -14,7 +14,7 @@ import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { ITenantStatusRepository } from "../../admin/tenant-status/tenant-status-repository.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
-import type { INotificationQueueStore } from "../../email/notification-queue-store.js";
+import type { INotificationQueueRepository } from "../../email/notification-repository-types.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import type { IAffiliateFraudAdminRepository } from "../../monetization/affiliate/affiliate-admin-repository.js";
@@ -49,7 +49,7 @@ export interface AdminRouterDeps {
   getRestoreService?: () => import("../../backup/restore-service.js").RestoreService;
   getRestoreLogStore?: () => import("../../backup/restore-log-store.js").RestoreLogStore;
   getNotificationService?: () => NotificationService;
-  getNotificationQueueStore?: () => INotificationQueueStore;
+  getNotificationQueueStore?: () => INotificationQueueRepository;
   getSessionUsageRepo?: () => ISessionUsageRepository;
   getAutoTopupSettingsRepo?: () => IAutoTopupSettingsRepository;
   /** Detach all Stripe payment methods for a tenant. Returns count detached. */

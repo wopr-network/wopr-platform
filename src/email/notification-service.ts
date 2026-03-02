@@ -5,11 +5,11 @@
  * Resolves URLs and template data shapes so callers only need domain concepts.
  */
 
-import type { INotificationQueueStore } from "./notification-queue-store.js";
+import type { INotificationQueueRepository } from "./notification-repository-types.js";
 
 export class NotificationService {
   constructor(
-    private readonly queue: INotificationQueueStore,
+    private readonly queue: INotificationQueueRepository,
     private readonly appBaseUrl: string,
   ) {}
 

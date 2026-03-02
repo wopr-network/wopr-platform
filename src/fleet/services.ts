@@ -26,10 +26,12 @@ import { SpacesClient } from "../backup/spaces-client.js";
 import { EvidenceCollector } from "../compliance/evidence-collector.js";
 import { logger } from "../config/logger.js";
 import { createDb, type DrizzleDb } from "../db/index.js";
-import type { INotificationPreferencesStore } from "../email/notification-preferences-store.js";
 import { DrizzleNotificationPreferencesStore } from "../email/notification-preferences-store.js";
-import type { INotificationQueueStore } from "../email/notification-queue-store.js";
 import { DrizzleNotificationQueueStore } from "../email/notification-queue-store.js";
+import type {
+  INotificationPreferencesRepository,
+  INotificationQueueRepository,
+} from "../email/notification-repository-types.js";
 import type { ICircuitBreakerRepository } from "../gateway/circuit-breaker-repository.js";
 import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-breaker-repository.js";
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
@@ -135,8 +137,8 @@ let _tenantStatusRepo: ITenantStatusRepository | null = null;
 let _bulkOpsRepo: IBulkOperationsRepository | null = null;
 
 // Notification repositories
-let _notificationQueueStore: INotificationQueueStore | null = null;
-let _notificationPrefsStore: INotificationPreferencesStore | null = null;
+let _notificationQueueStore: INotificationQueueRepository | null = null;
+let _notificationPrefsStore: INotificationPreferencesRepository | null = null;
 
 // WebSocket layer
 let _connectionRegistry: NodeConnectionRegistry | null = null;
@@ -291,14 +293,14 @@ export function getBulkOpsRepo(): IBulkOperationsRepository {
 // Notification Repositories
 // ---------------------------------------------------------------------------
 
-export function getNotificationQueueStore(): INotificationQueueStore {
+export function getNotificationQueueStore(): INotificationQueueRepository {
   if (!_notificationQueueStore) {
     _notificationQueueStore = new DrizzleNotificationQueueStore(getDb());
   }
   return _notificationQueueStore;
 }
 
-export function getNotificationPrefsStore(): INotificationPreferencesStore {
+export function getNotificationPrefsStore(): INotificationPreferencesRepository {
   if (!_notificationPrefsStore) {
     _notificationPrefsStore = new DrizzleNotificationPreferencesStore(getDb());
   }

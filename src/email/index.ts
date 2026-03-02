@@ -15,9 +15,12 @@ export type { EmailClientConfig, EmailSendResult, SendTemplateEmailOpts } from "
 export { EmailClient, getEmailClient, resetEmailClient, setEmailClient } from "./client.js";
 export type { IBillingEmailRepository } from "./drizzle-billing-email-repository.js";
 export { DrizzleBillingEmailRepository } from "./drizzle-billing-email-repository.js";
-export type { INotificationPreferencesStore } from "./notification-preferences-store.js";
+export type {
+  INotificationPreferencesRepository,
+  INotificationPreferencesStore,
+} from "./notification-preferences-store.js";
 export { NotificationPreferencesStore } from "./notification-preferences-store.js";
-export type { INotificationQueueStore } from "./notification-queue-store.js";
+export type { INotificationQueueRepository, INotificationQueueStore } from "./notification-queue-store.js";
 export { NotificationQueueStore } from "./notification-queue-store.js";
 export type { NotificationPrefs, NotificationStatus, QueuedNotification } from "./notification-repository-types.js";
 export { NotificationService } from "./notification-service.js";

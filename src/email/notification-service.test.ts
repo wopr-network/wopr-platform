@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { NotificationQueueStore } from "./notification-queue-store.js";
+import type { INotificationQueueRepository } from "./notification-repository-types.js";
 import { NotificationService } from "./notification-service.js";
 
-function makeQueueStore(): NotificationQueueStore {
+function makeQueueStore(): INotificationQueueRepository {
   return {
     enqueue: vi.fn().mockReturnValue("notif-id-123"),
     fetchPending: vi.fn().mockReturnValue([]),
     markSent: vi.fn(),
     markFailed: vi.fn(),
     listForTenant: vi.fn().mockReturnValue({ entries: [], total: 0 }),
-  } as unknown as NotificationQueueStore;
+  } as unknown as INotificationQueueRepository;
 }
 
 describe("NotificationService", () => {
-  let queue: NotificationQueueStore;
+  let queue: INotificationQueueRepository;
   let service: NotificationService;
   const BASE_URL = "https://app.wopr.bot";
 

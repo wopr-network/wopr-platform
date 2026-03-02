@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EmailClient } from "./client.js";
-import type { NotificationPreferencesStore } from "./notification-preferences-store.js";
-import type { NotificationQueueStore, QueuedNotification } from "./notification-queue-store.js";
+import type {
+  INotificationPreferencesRepository,
+  INotificationQueueRepository,
+  QueuedNotification,
+} from "./notification-repository-types.js";
 import { NotificationWorker } from "./notification-worker.js";
 
 vi.mock("../config/logger.js", () => ({
@@ -28,17 +31,17 @@ function makeNotif(overrides: Partial<QueuedNotification> = {}): QueuedNotificat
   };
 }
 
-function makeQueue(pending: QueuedNotification[] = []): NotificationQueueStore {
+function makeQueue(pending: QueuedNotification[] = []): INotificationQueueRepository {
   return {
     enqueue: vi.fn().mockReturnValue("notif-id"),
     fetchPending: vi.fn().mockReturnValue(pending),
     markSent: vi.fn(),
     markFailed: vi.fn(),
     listForTenant: vi.fn().mockReturnValue({ entries: [], total: 0 }),
-  } as unknown as NotificationQueueStore;
+  } as unknown as INotificationQueueRepository;
 }
 
-function makePrefs(prefs: Record<string, boolean> = {}): NotificationPreferencesStore {
+function makePrefs(prefs: Record<string, boolean> = {}): INotificationPreferencesRepository {
   const defaultPrefs = {
     billing_low_balance: true,
     billing_receipts: true,
@@ -51,7 +54,7 @@ function makePrefs(prefs: Record<string, boolean> = {}): NotificationPreferences
   return {
     get: vi.fn().mockReturnValue({ ...defaultPrefs, ...prefs }),
     update: vi.fn(),
-  } as unknown as NotificationPreferencesStore;
+  } as unknown as INotificationPreferencesRepository;
 }
 
 function makeEmailClient(): EmailClient {
