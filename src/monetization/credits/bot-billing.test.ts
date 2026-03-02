@@ -36,6 +36,7 @@ function createMockDeps(nodeId: string | null = "node-1") {
     getResourceTier: vi.fn(),
     setResourceTier: vi.fn(),
     deleteAllByTenant: vi.fn(),
+    deleteById: vi.fn(),
     listByNodeWithTier: vi.fn(),
     findByTenantAndNode: vi.fn(),
     countActiveByTenant: vi.fn().mockResolvedValue(0),

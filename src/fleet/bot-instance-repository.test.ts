@@ -262,6 +262,23 @@ describe("DrizzleBotInstanceRepository", () => {
     });
   });
 
+  describe("deleteById", () => {
+    it("deletes a single bot instance by id", async () => {
+      await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });
+      await repo.create({ id: "bot-2", tenantId: "t-1", name: "b2", nodeId: "n-1" });
+
+      await repo.deleteById("bot-1");
+
+      expect(await repo.getById("bot-1")).toBeNull();
+      expect(await repo.getById("bot-2")).not.toBeNull();
+    });
+
+    it("does nothing when id does not exist", async () => {
+      await repo.deleteById("nonexistent");
+      // No error thrown
+    });
+  });
+
   describe("setBillingState", () => {
     it("suspends a bot and sets suspension timestamps", async () => {
       await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });

@@ -98,6 +98,7 @@ const mockBotInstanceRepo = {
   getResourceTier: vi.fn(),
   setResourceTier: vi.fn(),
   deleteAllByTenant: vi.fn(),
+  deleteById: vi.fn(),
   listByNodeWithTier: vi.fn().mockResolvedValue([]),
   findByTenantAndNode: vi.fn().mockResolvedValue(null),
   countActiveByTenant: vi.fn().mockResolvedValue(0),

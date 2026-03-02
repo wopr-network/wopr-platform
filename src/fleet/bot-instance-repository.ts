@@ -18,6 +18,7 @@ export interface IBotInstanceRepository {
   getResourceTier(botId: string): Promise<string | null>;
   setResourceTier(botId: string, tier: string): Promise<void>;
   deleteAllByTenant(tenantId: string): Promise<void>;
+  deleteById(instanceId: string): Promise<void>;
   /** List bot instances on a node with tier priority (enterprise > pro > starter > free). */
   listByNodeWithTier(nodeId: string): Promise<TenantWithTier[]>;
   /** Find a bot instance by tenant ID and node ID. */
