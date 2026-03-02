@@ -145,8 +145,8 @@ describe("bot-plugin routes", () => {
       expect(body.botId).toBe(TEST_BOT_ID);
       expect(body.pluginId).toBe("wopr-plugin-discord");
       expect(body.installedPlugins).toContain("wopr-plugin-discord");
-      expect(fleetMock.update).toHaveBeenCalledWith(
-        TEST_BOT_ID,
+      expect(body.dispatched).toBe(true);
+      expect(storeMock.save).toHaveBeenCalledWith(
         expect.objectContaining({
           env: expect.objectContaining({ WOPR_PLUGINS: "wopr-plugin-discord" }),
         }),
@@ -227,7 +227,6 @@ describe("bot-plugin routes", () => {
     it("stores plugin config in env under WOPR_PLUGIN_<ID>_CONFIG key", async () => {
       const config = { token: "abc123", prefix: "!" };
       const providerChoices = {};
-      fleetMock.update.mockResolvedValue({});
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
@@ -235,12 +234,14 @@ describe("bot-plugin routes", () => {
         body: JSON.stringify({ config, providerChoices }),
       });
 
-      expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, {
-        env: expect.objectContaining({
-          WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify({ config, providerChoices }),
-          WOPR_PLUGINS: "my-plugin",
+      expect(storeMock.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WOPR_PLUGIN_MY_PLUGIN_CONFIG: JSON.stringify({ config, providerChoices }),
+            WOPR_PLUGINS: "my-plugin",
+          }),
         }),
-      });
+      );
     });
 
     it("appends to existing WOPR_PLUGINS list", async () => {
@@ -287,9 +288,8 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(200);
       // store.get must have been called twice (initial + re-fetch)
       expect(storeMock.get).toHaveBeenCalledTimes(2);
-      // fleet.update must be called with BOTH plugins
-      expect(fleetMock.update).toHaveBeenCalledWith(
-        TEST_BOT_ID,
+      // store.save must be called with BOTH plugins
+      expect(storeMock.save).toHaveBeenCalledWith(
         expect.objectContaining({
           env: expect.objectContaining({
             WOPR_PLUGINS: "plugin-a,plugin-b",
@@ -361,7 +361,6 @@ describe("bot-plugin routes", () => {
         }
         return [];
       });
-      fleetMock.update.mockResolvedValue({});
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
         method: "POST",
@@ -373,8 +372,7 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(fleetMock.update).toHaveBeenCalledWith(
-        TEST_BOT_ID,
+      expect(storeMock.save).toHaveBeenCalledWith(
         expect.objectContaining({
           env: expect.objectContaining({
             ELEVENLABS_API_KEY: "sk-eleven-test",
@@ -385,8 +383,6 @@ describe("bot-plugin routes", () => {
     });
 
     it("does not inject env var when providerChoices has byok entry", async () => {
-      fleetMock.update.mockResolvedValue({});
-
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-tts-plugin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
@@ -397,14 +393,45 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(fleetMock.update).toHaveBeenCalledWith(
-        TEST_BOT_ID,
+      expect(storeMock.save).toHaveBeenCalledWith(
         expect.objectContaining({
           env: expect.not.objectContaining({
             ELEVENLABS_API_KEY: expect.anything(),
           }),
         }),
       );
+    });
+
+    it("returns dispatched: false with dispatchError when bot is not deployed", async () => {
+      mockBotInstanceRepo.getById.mockResolvedValueOnce(null);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: {}, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.dispatched).toBe(false);
+      expect(body.dispatchError).toBe("bot_not_deployed");
+      expect(body.installedPlugins).toContain("my-plugin");
+      expect(storeMock.save).toHaveBeenCalled();
+    });
+
+    it("returns dispatched: true when container update succeeds", async () => {
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: {}, providerChoices: {} }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(body.dispatched).toBe(true);
+      expect(body.dispatchError).toBeUndefined();
     });
 
     it("returns 400 for unknown capability in providerChoices", async () => {
