@@ -1,8 +1,11 @@
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NetworkPolicy } from "../network/network-policy.js";
+import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import { BotNotFoundError, FleetManager } from "./fleet-manager.js";
+import type { INodeCommandBus } from "./node-command-bus.js";
 import type { ProfileStore } from "./profile-store.js";
+import type { BotInstance, NewBotInstance } from "./repository-types.js";
 import type { BotProfile } from "./types.js";
 
 // --- Mock helpers ---
@@ -536,6 +539,239 @@ describe("FleetManager", () => {
 
       // Exactly one save reached store.save (the second was blocked by the existence check)
       expect(saveOrder).toEqual(["start", "end"]);
+    });
+  });
+
+  describe("remote dispatch via NodeCommandBus", () => {
+    function mockCommandBus(): INodeCommandBus {
+      return {
+        send: vi.fn().mockResolvedValue({ id: "cmd-1", type: "command_result", command: "bot.start", success: true }),
+      };
+    }
+
+    function mockInstanceRepo(): IBotInstanceRepository {
+      const instances = new Map<string, BotInstance>();
+      return {
+        getById: vi.fn().mockImplementation(async (id: string) => instances.get(id) ?? null),
+        listByNode: vi.fn().mockResolvedValue([]),
+        listByTenant: vi.fn().mockResolvedValue([]),
+        create: vi.fn().mockImplementation(async (data: NewBotInstance) => {
+          const inst = {
+            ...data,
+            billingState: data.billingState ?? "active",
+            suspendedAt: null,
+            destroyAfter: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            createdByUserId: null,
+          } as BotInstance;
+          instances.set(inst.id, inst);
+          return inst;
+        }),
+        reassign: vi.fn().mockResolvedValue(undefined),
+        setBillingState: vi.fn().mockResolvedValue(undefined),
+        getResourceTier: vi.fn().mockResolvedValue(null),
+        setResourceTier: vi.fn().mockResolvedValue(undefined),
+        deleteAllByTenant: vi.fn().mockResolvedValue(undefined),
+      } as unknown as IBotInstanceRepository;
+    }
+
+    it("should dispatch create via commandBus when bot instance has nodeId", async () => {
+      const docker = mockDocker();
+      const store = mockStore();
+      const bus = mockCommandBus();
+      const instanceRepo = mockInstanceRepo();
+
+      const botId = "bot-remote-1";
+      await instanceRepo.create({ id: botId, tenantId: "t1", name: "test-bot", nodeId: "node-1" });
+
+      const fleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        bus,
+        instanceRepo,
+      );
+
+      const profile = await fleet.create({
+        id: botId,
+        tenantId: "t1",
+        name: "test-bot",
+        description: "",
+        image: "ghcr.io/wopr-network/wopr:latest",
+        env: { FOO: "bar" },
+        restartPolicy: "unless-stopped",
+        releaseChannel: "stable",
+        updatePolicy: "manual",
+      });
+
+      expect(profile.id).toBe(botId);
+      expect(bus.send).toHaveBeenCalledWith("node-1", {
+        type: "bot.start",
+        payload: {
+          name: "test-bot",
+          image: "ghcr.io/wopr-network/wopr:latest",
+          env: { FOO: "bar" },
+          restart: "unless-stopped",
+        },
+      });
+      expect(docker.pull).not.toHaveBeenCalled();
+      expect(docker.createContainer).not.toHaveBeenCalled();
+    });
+
+    it("should fall back to local dockerode when no nodeId", async () => {
+      const container = mockContainer();
+      const docker = mockDocker(container);
+      const store = mockStore();
+      const bus = mockCommandBus();
+      const instanceRepo = mockInstanceRepo();
+
+      const botId = "bot-local-1";
+      await instanceRepo.create({ id: botId, tenantId: "t1", name: "local-bot", nodeId: null });
+
+      const fleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        bus,
+        instanceRepo,
+      );
+
+      await fleet.create({
+        id: botId,
+        tenantId: "t1",
+        name: "local-bot",
+        description: "",
+        image: "ghcr.io/wopr-network/wopr:latest",
+        env: {},
+        restartPolicy: "unless-stopped",
+        releaseChannel: "stable",
+        updatePolicy: "manual",
+      });
+
+      expect(bus.send).not.toHaveBeenCalled();
+      expect(docker.pull).toHaveBeenCalled();
+    });
+
+    it("should dispatch stop via commandBus when bot has nodeId", async () => {
+      const container = mockContainer();
+      const docker = mockDocker(container);
+      const store = mockStore();
+      const bus = mockCommandBus();
+      const instanceRepo = mockInstanceRepo();
+
+      const botId = "bot-stop-1";
+      await instanceRepo.create({ id: botId, tenantId: "t1", name: "stop-bot", nodeId: "node-2" });
+
+      const fleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        bus,
+        instanceRepo,
+      );
+
+      await store.save({
+        id: botId,
+        tenantId: "t1",
+        name: "stop-bot",
+        description: "",
+        image: "ghcr.io/wopr-network/wopr:latest",
+        env: {},
+        restartPolicy: "unless-stopped",
+      } as BotProfile);
+
+      await fleet.stop(botId);
+
+      expect(bus.send).toHaveBeenCalledWith("node-2", {
+        type: "bot.stop",
+        payload: { name: "stop-bot" },
+      });
+      expect(container.stop).not.toHaveBeenCalled();
+    });
+
+    it("should dispatch restart via commandBus when bot has nodeId", async () => {
+      const container = mockContainer();
+      const docker = mockDocker(container);
+      const store = mockStore();
+      const bus = mockCommandBus();
+      const instanceRepo = mockInstanceRepo();
+
+      const botId = "bot-restart-1";
+      await instanceRepo.create({ id: botId, tenantId: "t1", name: "restart-bot", nodeId: "node-3" });
+
+      const fleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        bus,
+        instanceRepo,
+      );
+
+      await store.save({
+        id: botId,
+        tenantId: "t1",
+        name: "restart-bot",
+        description: "",
+        image: "ghcr.io/wopr-network/wopr:latest",
+        env: {},
+        restartPolicy: "unless-stopped",
+      } as BotProfile);
+
+      await fleet.restart(botId);
+
+      expect(bus.send).toHaveBeenCalledWith("node-3", {
+        type: "bot.restart",
+        payload: { name: "restart-bot" },
+      });
+      expect(container.restart).not.toHaveBeenCalled();
+    });
+
+    it("should dispatch remove via commandBus when bot has nodeId", async () => {
+      const container = mockContainer();
+      const docker = mockDocker(container);
+      const store = mockStore();
+      const bus = mockCommandBus();
+      const instanceRepo = mockInstanceRepo();
+
+      const botId = "bot-remove-1";
+      await instanceRepo.create({ id: botId, tenantId: "t1", name: "remove-bot", nodeId: "node-4" });
+
+      const fleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        bus,
+        instanceRepo,
+      );
+
+      await store.save({
+        id: botId,
+        tenantId: "t1",
+        name: "remove-bot",
+        description: "",
+        image: "ghcr.io/wopr-network/wopr:latest",
+        env: {},
+        restartPolicy: "unless-stopped",
+      } as BotProfile);
+
+      await fleet.remove(botId);
+
+      expect(bus.send).toHaveBeenCalledWith("node-4", {
+        type: "bot.remove",
+        payload: { name: "remove-bot" },
+      });
+      expect(store.delete).toHaveBeenCalledWith(botId);
     });
   });
 

@@ -806,7 +806,7 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire fleet tRPC router deps (storage tier procedures + bot billing)
   {
-    const { getBotBilling, getCreditLedger } = await import("./fleet/services.js");
+    const { getBotBilling, getBotInstanceRepo, getCreditLedger, getCommandBus } = await import("./fleet/services.js");
     const DockerLib = (await import("dockerode")).default;
     const { ProfileStore } = await import("./fleet/profile-store.js");
     const { FleetManager } = await import("./fleet/fleet-manager.js");
@@ -816,7 +816,15 @@ if (process.env.NODE_ENV !== "test") {
     const tRpcDocker = new DockerLib();
     const tRpcStore = new ProfileStore(process.env.FLEET_DATA_DIR || "/data/fleet");
     const tRpcNetworkPolicy = new NetworkPolicy(tRpcDocker);
-    const tRpcFleet = new FleetManager(tRpcDocker, tRpcStore, config.discovery, tRpcNetworkPolicy, getProxyManager());
+    const tRpcFleet = new FleetManager(
+      tRpcDocker,
+      tRpcStore,
+      config.discovery,
+      tRpcNetworkPolicy,
+      getProxyManager(),
+      getCommandBus(),
+      getBotInstanceRepo(),
+    );
     let _templates: import("./fleet/profile-schema.js").ProfileTemplate[] | null = null;
     setFleetRouterDeps({
       getFleetManager: () => tRpcFleet,

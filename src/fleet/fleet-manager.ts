@@ -6,6 +6,8 @@ import type { PlatformDiscoveryConfig } from "../discovery/types.js";
 import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
 import type { NetworkPolicy } from "../network/network-policy.js";
 import type { ProxyManagerInterface } from "../proxy/types.js";
+import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import type { INodeCommandBus } from "./node-command-bus.js";
 import type { ProfileStore } from "./profile-store.js";
 import { getSharedVolumeConfig } from "./shared-volume-config.js";
 import type { BotProfile, BotStatus, ContainerStats } from "./types.js";
@@ -19,6 +21,8 @@ export class FleetManager {
   private readonly platformDiscovery: PlatformDiscoveryConfig | undefined;
   private readonly networkPolicy: NetworkPolicy | undefined;
   private readonly proxyManager: ProxyManagerInterface | undefined;
+  private readonly commandBus: INodeCommandBus | undefined;
+  private readonly instanceRepo: IBotInstanceRepository | undefined;
   private locks = new Map<string, Promise<void>>();
 
   private async withLock<T>(botId: string, fn: () => Promise<T>): Promise<T> {
@@ -43,12 +47,26 @@ export class FleetManager {
     platformDiscovery?: PlatformDiscoveryConfig,
     networkPolicy?: NetworkPolicy,
     proxyManager?: ProxyManagerInterface,
+    commandBus?: INodeCommandBus,
+    instanceRepo?: IBotInstanceRepository,
   ) {
     this.docker = docker;
     this.store = store;
     this.platformDiscovery = platformDiscovery;
     this.networkPolicy = networkPolicy;
     this.proxyManager = proxyManager;
+    this.commandBus = commandBus;
+    this.instanceRepo = instanceRepo;
+  }
+
+  /**
+   * Look up which node a bot is assigned to.
+   * Returns null if no instance repo, no instance record, or nodeId is null.
+   */
+  private async resolveNodeId(botId: string): Promise<string | null> {
+    if (!this.commandBus || !this.instanceRepo) return null;
+    const instance = await this.instanceRepo.getById(botId);
+    return instance?.nodeId ?? null;
   }
 
   /**
@@ -74,8 +92,23 @@ export class FleetManager {
       await this.store.save(profile);
 
       try {
-        await this.pullImage(profile.image);
-        await this.createContainer(profile, resourceLimits);
+        const nodeId = await this.resolveNodeId(id);
+        if (nodeId && this.commandBus) {
+          // Dispatch to remote node agent — it handles pull + create + start
+          await this.commandBus.send(nodeId, {
+            type: "bot.start",
+            payload: {
+              name: profile.name,
+              image: profile.image,
+              env: profile.env,
+              restart: profile.restartPolicy,
+            },
+          });
+        } else {
+          // Local dockerode fallback
+          await this.pullImage(profile.image);
+          await this.createContainer(profile, resourceLimits);
+        }
       } catch (err) {
         logger.error(`Failed to create container for bot ${profile.id}, rolling back profile`, {
           err,
@@ -111,9 +144,24 @@ export class FleetManager {
    */
   async start(id: string): Promise<void> {
     return this.withLock(id, async () => {
-      const container = await this.findContainer(id);
-      if (!container) throw new BotNotFoundError(id);
-      await container.start();
+      const nodeId = await this.resolveNodeId(id);
+      if (nodeId && this.commandBus) {
+        const profile = await this.store.get(id);
+        if (!profile) throw new BotNotFoundError(id);
+        await this.commandBus.send(nodeId, {
+          type: "bot.start",
+          payload: {
+            name: profile.name,
+            image: profile.image,
+            env: profile.env,
+            restart: profile.restartPolicy,
+          },
+        });
+      } else {
+        const container = await this.findContainer(id);
+        if (!container) throw new BotNotFoundError(id);
+        await container.start();
+      }
       if (this.proxyManager) {
         this.proxyManager.updateHealth(id, true);
       }
@@ -126,9 +174,19 @@ export class FleetManager {
    */
   async stop(id: string): Promise<void> {
     return this.withLock(id, async () => {
-      const container = await this.findContainer(id);
-      if (!container) throw new BotNotFoundError(id);
-      await container.stop();
+      const nodeId = await this.resolveNodeId(id);
+      if (nodeId && this.commandBus) {
+        const profile = await this.store.get(id);
+        if (!profile) throw new BotNotFoundError(id);
+        await this.commandBus.send(nodeId, {
+          type: "bot.stop",
+          payload: { name: profile.name },
+        });
+      } else {
+        const container = await this.findContainer(id);
+        if (!container) throw new BotNotFoundError(id);
+        await container.stop();
+      }
       if (this.proxyManager) {
         this.proxyManager.updateHealth(id, false);
       }
@@ -138,37 +196,55 @@ export class FleetManager {
 
   /**
    * Restart: pull new image BEFORE stopping old container to avoid downtime on pull failure.
+   * For remote bots, delegates to the node agent via NodeCommandBus.
    */
   async restart(id: string): Promise<void> {
     return this.withLock(id, async () => {
       const profile = await this.store.get(id);
       if (!profile) throw new BotNotFoundError(id);
 
-      // Pull new image first — if this fails, old container keeps running
-      await this.pullImage(profile.image);
+      const nodeId = await this.resolveNodeId(id);
+      if (nodeId && this.commandBus) {
+        await this.commandBus.send(nodeId, {
+          type: "bot.restart",
+          payload: { name: profile.name },
+        });
+      } else {
+        // Pull new image first — if this fails, old container keeps running
+        await this.pullImage(profile.image);
 
-      const container = await this.findContainer(id);
-      if (!container) throw new BotNotFoundError(id);
-      await container.restart();
+        const container = await this.findContainer(id);
+        if (!container) throw new BotNotFoundError(id);
+        await container.restart();
+      }
       logger.info(`Restarted bot ${id}`);
     });
   }
 
   /**
    * Remove a bot: stop container, remove it, optionally remove volumes, delete profile.
+   * For remote bots, delegates stop+remove to the node agent via NodeCommandBus.
    */
   async remove(id: string, removeVolumes = false): Promise<void> {
     return this.withLock(id, async () => {
       const profile = await this.store.get(id);
       if (!profile) throw new BotNotFoundError(id);
 
-      const container = await this.findContainer(id);
-      if (container) {
-        const info = await container.inspect();
-        if (info.State.Running) {
-          await container.stop();
+      const nodeId = await this.resolveNodeId(id);
+      if (nodeId && this.commandBus) {
+        await this.commandBus.send(nodeId, {
+          type: "bot.remove",
+          payload: { name: profile.name },
+        });
+      } else {
+        const container = await this.findContainer(id);
+        if (container) {
+          const info = await container.inspect();
+          if (info.State.Running) {
+            await container.stop();
+          }
+          await container.remove({ v: removeVolumes });
         }
-        await container.remove({ v: removeVolumes });
       }
 
       // Clean up tenant network if no more containers remain

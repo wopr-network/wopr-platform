@@ -144,6 +144,15 @@ vi.mock("../../monetization/credits/credit-ledger.js", () => {
   };
 });
 
+// Mock services singletons to avoid DB connection at module load time
+vi.mock("../../fleet/services.js", () => {
+  return {
+    getRecoveryOrchestrator: vi.fn(),
+    getCommandBus: vi.fn().mockReturnValue(undefined),
+    getBotInstanceRepo: vi.fn().mockReturnValue(undefined),
+  };
+});
+
 // Mock proxy singleton to avoid real DNS resolution in tests
 vi.mock("../../proxy/singleton.js", () => {
   return {

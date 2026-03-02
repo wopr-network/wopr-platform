@@ -12,7 +12,7 @@ import { findPlacement } from "../../fleet/placement.js";
 import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
-import { getNodeRepo, getRecoveryOrchestrator } from "../../fleet/services.js";
+import { getBotInstanceRepo, getCommandBus, getNodeRepo, getRecoveryOrchestrator } from "../../fleet/services.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { ContainerUpdater } from "../../fleet/updater.js";
 import { Credit } from "../../monetization/credit.js";
@@ -29,7 +29,15 @@ const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
 const networkPolicy = new NetworkPolicy(docker);
-const fleet = new FleetManager(docker, store, config.discovery, networkPolicy, getProxyManager());
+const fleet = new FleetManager(
+  docker,
+  store,
+  config.discovery,
+  networkPolicy,
+  getProxyManager(),
+  getCommandBus(),
+  getBotInstanceRepo(),
+);
 const imagePoller = new ImagePoller(docker, store);
 const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
 
