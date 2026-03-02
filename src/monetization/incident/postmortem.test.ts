@@ -110,4 +110,15 @@ describe("generatePostMortemTemplate", () => {
     );
     expect(report.sections.summary).toContain("45m");
   });
+
+  it("generated output contains no TODO placeholders", () => {
+    const report = generatePostMortemTemplate(makeIncident());
+    expect(report.markdown).not.toContain("TODO");
+    expect(report.sections.rootCause).not.toContain("TODO");
+    expect(report.sections.impact).not.toContain("TODO");
+    expect(report.sections.detection).not.toContain("TODO");
+    expect(report.sections.resolution).not.toContain("TODO");
+    expect(report.sections.actionItems).not.toContain("TODO");
+    expect(report.sections.lessonsLearned).not.toContain("TODO");
+  });
 });
