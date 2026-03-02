@@ -71,12 +71,37 @@ function deps(): FleetRouterDeps {
 // Router
 // ---------------------------------------------------------------------------
 
+const listInstancesInputSchema = z.object({
+  limit: z.number().int().min(1).max(250).default(50),
+  cursor: z.string().uuid().optional(),
+});
+
 export const fleetRouter = router({
-  /** List all bot instances with live status. Tenant-scoped: only returns bots for ctx.tenantId. */
-  listInstances: tenantProcedure.query(async ({ ctx }) => {
+  /** List all bot instances with live status. Tenant-scoped: only returns bots for ctx.tenantId.
+   *  Supports cursor-based pagination: pass `cursor` (bot id) and `limit` (default 50, max 250).
+   *  Returns `hasNextPage` and `nextCursor` for fetching subsequent pages. */
+  listInstances: tenantProcedure.input(listInstancesInputSchema.optional()).query(async ({ input, ctx }) => {
     const fleet = deps().getFleetManager();
-    const bots = await fleet.listByTenant(ctx.tenantId);
-    return { bots };
+    const allBots = await fleet.listByTenant(ctx.tenantId);
+
+    const limit = input?.limit ?? 50;
+    const cursor = input?.cursor;
+
+    // Sort by id for stable ordering
+    allBots.sort((a, b) => a.id.localeCompare(b.id));
+
+    // Find cursor position and slice
+    let startIndex = 0;
+    if (cursor) {
+      const idx = allBots.findIndex((b) => b.id === cursor);
+      if (idx !== -1) startIndex = idx + 1;
+    }
+
+    const page = allBots.slice(startIndex, startIndex + limit);
+    const hasNextPage = startIndex + limit < allBots.length;
+    const nextCursor = hasNextPage ? page[page.length - 1]?.id : undefined;
+
+    return { bots: page, hasNextPage, nextCursor };
   }),
 
   /** Get a single bot instance by ID with live status. */
