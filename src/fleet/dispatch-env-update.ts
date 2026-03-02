@@ -20,6 +20,10 @@ export async function dispatchEnvUpdate(
       return { dispatched: false, dispatchError: "bot_not_deployed" };
     }
 
+    if (instance.tenantId !== tenantId) {
+      return { dispatched: false, dispatchError: "tenant_mismatch" };
+    }
+
     await getCommandBus().send(instance.nodeId, {
       type: "bot.update",
       payload: {
