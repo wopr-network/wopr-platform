@@ -235,7 +235,16 @@ describe("admin.creditsGrant", () => {
     const caller = createCaller(adminContext());
     const result = await caller.admin.creditsGrant({ tenantId: "t-1", amount_cents: 1000, reason: "promo" });
     expect(result).toEqual({ id: "txn-1" });
-    expect(mockCreditLedger.credit).toHaveBeenCalledWith("t-1", expect.any(Credit), "signup_grant", "promo");
+    expect(mockCreditLedger.credit).toHaveBeenCalledWith(
+      "t-1",
+      expect.any(Credit),
+      "signup_grant",
+      "promo",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
     expect(mockAuditLog.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "credits.grant", outcome: "success" }),
     );
