@@ -163,7 +163,7 @@ export const adminRouter = router({
   creditsBalance: adminProcedure.input(z.object({ tenantId: tenantIdSchema })).query(async ({ input }) => {
     const { getCreditLedger } = deps();
     const balance = await getCreditLedger().balance(input.tenantId);
-    return { tenant: input.tenantId, balance_cents: balance.toCents() };
+    return { tenant: input.tenantId, balance_credits: balance.toCents() };
   }),
 
   /** Grant credits to a tenant. */
@@ -980,7 +980,7 @@ export const adminRouter = router({
 
     return {
       user: user ?? null,
-      credits: { balance_cents: balance.toCents(), recent_transactions: recentTransactions },
+      credits: { balance_credits: balance.toCents(), recent_transactions: recentTransactions },
       status: status ?? { tenantId: input.tenantId, status: "active" },
       usage: { summaries: usageSummaries, total: usageTotal },
     };

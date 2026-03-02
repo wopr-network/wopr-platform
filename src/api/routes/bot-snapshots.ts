@@ -123,7 +123,7 @@ botSnapshotRoutes.post("/", writeAuth, async (c) => {
     );
   } catch (err) {
     if (err instanceof InsufficientCreditsError) {
-      return c.json({ error: "insufficient_credits", balance: err.balance, buyUrl: "/dashboard/credits" }, 402);
+      return c.json({ error: "insufficient_credits", balance: err.balanceCredits, buyUrl: "/dashboard/credits" }, 402);
     }
     if (err instanceof SnapshotQuotaExceededError) {
       return c.json({ error: "snapshot_quota_exceeded", current: err.current, max: err.max, tier: err.tier }, 403);

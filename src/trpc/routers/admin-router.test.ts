@@ -195,11 +195,11 @@ describe("admin.auditLogExport", () => {
 // ---------------------------------------------------------------------------
 
 describe("admin.creditsBalance", () => {
-  it("returns balance in cents for admin caller", async () => {
+  it("returns balance in credits for admin caller", async () => {
     mockCreditLedger.balance.mockResolvedValue(Credit.fromCents(5000));
     const caller = createCaller(adminContext());
     const result = await caller.admin.creditsBalance({ tenantId: "t-1" });
-    expect(result).toEqual({ tenant: "t-1", balance_cents: 5000 });
+    expect(result).toEqual({ tenant: "t-1", balance_credits: 5000 });
   });
 
   it("rejects invalid tenantId with special chars", async () => {
@@ -592,7 +592,7 @@ describe("admin.tenantDetail", () => {
     const caller = createCaller(adminContext());
     const result = await caller.admin.tenantDetail({ tenantId: "t-1" });
     expect(result.user).toEqual({ id: "t-1", name: "Tenant Corp" });
-    expect(result.credits.balance_cents).toBe(2000);
+    expect(result.credits.balance_credits).toBe(2000);
     expect(result.credits.recent_transactions).toEqual([{ id: "txn-1" }]);
     expect(result.status).toEqual({ tenantId: "t-1", status: "active" });
   });
@@ -605,7 +605,7 @@ describe("admin.tenantDetail", () => {
     const caller = createCaller(adminContext());
     const result = await caller.admin.tenantDetail({ tenantId: "t-new" });
     expect(result.user).toBeNull();
-    expect(result.credits.balance_cents).toBe(0);
+    expect(result.credits.balance_credits).toBe(0);
     expect(result.status).toEqual({ tenantId: "t-new", status: "active" });
   });
 });
