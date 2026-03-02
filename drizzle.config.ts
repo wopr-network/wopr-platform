@@ -84,6 +84,7 @@ export default defineConfig({
     "./src/db/schema/coupon-codes.ts",
     "./src/db/schema/promotion-redemptions.ts",
     "./src/db/schema/adapter-rate-overrides.ts",
+    "./src/db/schema/page-contexts.ts",
   ],
   out: "./drizzle/migrations",
   dialect: "postgresql",

@@ -1,33 +1,32 @@
 /**
  * tRPC page-context router — stores and retrieves per-user page context.
  *
- * Page context is ephemeral session state: the current route and a prompt
- * string that the LLM uses for page-aware responses. When WOP-1020 lands,
- * this migrates from the in-memory Map to the session store.
+ * Page context is persisted in PostgreSQL via IPageContextRepository
+ * so it survives daemon restarts (WOP-1517).
  */
 
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { IPageContextRepository } from "../../fleet/page-context-repository.js";
 import { protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
-// In-memory page context store (keyed by user ID)
+// Deps
 // ---------------------------------------------------------------------------
 
-export interface PageContext {
-  currentPage: string;
-  pagePrompt: string | null;
+export interface PageContextRouterDeps {
+  repo: IPageContextRepository;
 }
 
-const store = new Map<string, PageContext>();
+let _deps: PageContextRouterDeps | null = null;
 
-/** Update page context for a user. Exported for testing. */
-export function updatePageContext(userId: string, ctx: PageContext): void {
-  store.set(userId, ctx);
+export function setPageContextRouterDeps(deps: PageContextRouterDeps): void {
+  _deps = deps;
 }
 
-/** Get page context for a user. Used by context providers before LLM calls. */
-export function getPageContext(userId: string): PageContext | null {
-  return store.get(userId) ?? null;
+function deps(): PageContextRouterDeps {
+  if (!_deps) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Page context not initialized" });
+  return _deps;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,16 +44,15 @@ const updatePageContextSchema = z.object({
 
 export const pageContextRouter = router({
   /** Update the page context for the current user. Called on route change. */
-  update: protectedProcedure.input(updatePageContextSchema).mutation(({ ctx, input }) => {
-    updatePageContext(ctx.user.id, {
-      currentPage: input.currentPage,
-      pagePrompt: input.pagePrompt,
-    });
+  update: protectedProcedure.input(updatePageContextSchema).mutation(async ({ ctx, input }) => {
+    await deps().repo.set(ctx.user.id, input.currentPage, input.pagePrompt);
     return { ok: true as const };
   }),
 
   /** Get the current page context for the authenticated user. */
-  current: protectedProcedure.query(({ ctx }) => {
-    return getPageContext(ctx.user.id);
+  current: protectedProcedure.query(async ({ ctx }) => {
+    const pc = await deps().repo.get(ctx.user.id);
+    if (!pc) return null;
+    return { currentPage: pc.currentPage, pagePrompt: pc.pagePrompt };
   }),
 });
