@@ -406,9 +406,17 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   }
 
   const incomingKey = c.req.header("API-Key");
-  const incomingBuf = incomingKey ? Buffer.from(incomingKey) : null;
-  const expectedBuf = Buffer.from(payramApiKey);
-  if (!incomingBuf || incomingBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(incomingBuf, expectedBuf)) {
+  if (!incomingKey) {
+    logger.error("PayRam webhook API key verification failed");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(incomingKey), Buffer.from(payramApiKey))) {
+      logger.error("PayRam webhook API key verification failed");
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+  } catch {
+    // timingSafeEqual throws on length mismatch — treat as auth failure
     logger.error("PayRam webhook API key verification failed");
     return c.json({ error: "Unauthorized" }, 401);
   }

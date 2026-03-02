@@ -1066,6 +1066,39 @@ describe("billing routes", () => {
 
       expect(res.status).not.toBe(401);
     });
+
+    it("rejects API key with wrong length without leaking expected length", async () => {
+      vi.stubEnv("PAYRAM_API_KEY", "correct-key-value");
+      vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+      setBillingDeps({
+        processor: createMockProcessor(),
+        creditLedger: new CreditLedger(db),
+        meterAggregator: new MeterAggregator(db),
+        sigPenaltyRepo: createTestSigPenaltyRepo(db),
+        affiliateRepo: new DrizzleAffiliateRepository(db),
+        payramChargeStore: new DrizzlePayRamChargeStore(db),
+        replayGuard: noOpReplayGuard,
+        payramReplayGuard: noOpReplayGuard,
+      });
+
+      const res = await billingRoutes.request("/crypto/webhook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "API-Key": "short", // Different length than "correct-key-value"
+        },
+        body: JSON.stringify({
+          reference_id: "ref-001",
+          status: "FILLED",
+          amount: "10.00",
+          filled_amount: "10.00",
+        }),
+      });
+
+      vi.unstubAllEnvs();
+
+      expect(res.status).toBe(401);
+    });
   });
 
   // -- POST /setup-intent ----------------------------------------------------
