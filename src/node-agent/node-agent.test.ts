@@ -1,3 +1,6 @@
+import { createReadStream } from "node:fs";
+import { mkdir } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BackupManager } from "./backup.js";
 import { DockerManager } from "./docker.js";
@@ -5,6 +8,39 @@ import { HealthMonitor } from "./health.js";
 import { collectHeartbeat } from "./heartbeat.js";
 import { NodeAgent } from "./index.js";
 import { ALLOWED_COMMANDS, commandSchema, nodeAgentConfigSchema } from "./types.js";
+
+vi.mock("node:stream/promises", () => ({
+  pipeline: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("node:fs/promises", async () => {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return {
+    ...actual,
+    mkdir: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    createWriteStream: vi.fn().mockReturnValue({ on: vi.fn(), write: vi.fn(), end: vi.fn() }),
+    createReadStream: vi.fn().mockReturnValue({
+      pipe: vi.fn().mockReturnValue("gunzipped-stream"),
+      on: vi.fn(),
+    }),
+  };
+});
+
+vi.mock("node:zlib", async () => {
+  const actual = await vi.importActual<typeof import("node:zlib")>("node:zlib");
+  return {
+    ...actual,
+    createGzip: vi.fn().mockReturnValue("gzip-transform"),
+    createGunzip: vi.fn().mockReturnValue("gunzip-transform"),
+  };
+});
 
 vi.mock("node:os", async () => {
   const actual = await vi.importActual<typeof import("node:os")>("node:os");
@@ -650,6 +686,109 @@ describe("DockerManager.getEventStream", () => {
 
     await manager.getEventStream({ filters: { event: ["start", "die"] } });
     expect(docker.getEvents).toHaveBeenCalledWith(expect.objectContaining({ filters: { event: ["start", "die"] } }));
+  });
+});
+
+describe("DockerManager.exportBot", () => {
+  it("exports container to a gzipped tar file", async () => {
+    const { docker, container } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    const result = await manager.exportBot("tenant_abc", "/backups");
+
+    expect(result).toBe("/backups/tenant_abc.tar.gz");
+    expect(docker.getContainer).toHaveBeenCalledWith("tenant_abc");
+    expect(container.export).toHaveBeenCalled();
+    expect(mkdir).toHaveBeenCalledWith("/backups", { recursive: true });
+    expect(pipeline).toHaveBeenCalledWith(
+      expect.anything(), // export stream
+      expect.anything(), // gzip transform
+      expect.anything(), // file write stream
+    );
+  });
+
+  it("creates parent directories recursively", async () => {
+    const { docker } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    await manager.exportBot("tenant_abc", "/data/backups/daily");
+
+    expect(mkdir).toHaveBeenCalledWith("/data/backups/daily", { recursive: true });
+  });
+
+  it("propagates export stream errors", async () => {
+    const { docker, container } = mockDockerode();
+    container.export.mockRejectedValue(new Error("container not found"));
+    const manager = new DockerManager(docker as never);
+
+    await expect(manager.exportBot("tenant_abc", "/backups")).rejects.toThrow("container not found");
+  });
+
+  it("propagates pipeline errors", async () => {
+    const { docker } = mockDockerode();
+    vi.mocked(pipeline).mockRejectedValueOnce(new Error("write failed"));
+    const manager = new DockerManager(docker as never);
+
+    await expect(manager.exportBot("tenant_abc", "/backups")).rejects.toThrow("write failed");
+  });
+});
+
+describe("DockerManager.importBot", () => {
+  it("imports tar.gz and creates container with tenant prefix", async () => {
+    const { docker, container } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    const id = await manager.importBot("mybot", "/backups", "imported:latest", { TOKEN: "abc" });
+
+    expect(id).toBe("abc123");
+    expect(createReadStream).toHaveBeenCalledWith("/backups/mybot.tar.gz");
+    expect(docker.importImage).toHaveBeenCalledWith("gunzipped-stream");
+    expect(docker.modem.followProgress).toHaveBeenCalled();
+    expect(docker.createContainer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Image: "imported:latest",
+        name: "tenant_mybot",
+        Env: ["TOKEN=abc"],
+        HostConfig: { RestartPolicy: { Name: "unless-stopped" } },
+      }),
+    );
+    expect(container.start).toHaveBeenCalled();
+  });
+
+  it("does not double-prefix names already starting with tenant_", async () => {
+    const { docker } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    await manager.importBot("tenant_existing", "/backups", "img:latest");
+
+    expect(docker.createContainer).toHaveBeenCalledWith(expect.objectContaining({ name: "tenant_existing" }));
+  });
+
+  it("passes empty env array when env is undefined", async () => {
+    const { docker } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    await manager.importBot("bot1", "/backups", "img:latest");
+
+    expect(docker.createContainer).toHaveBeenCalledWith(expect.objectContaining({ Env: [] }));
+  });
+
+  it("propagates importImage errors", async () => {
+    const { docker } = mockDockerode();
+    docker.modem.followProgress.mockImplementation((_stream: unknown, cb: (err: Error | null) => void) =>
+      cb(new Error("import failed")),
+    );
+    const manager = new DockerManager(docker as never);
+
+    await expect(manager.importBot("bot1", "/backups", "img:latest")).rejects.toThrow("import failed");
+  });
+
+  it("propagates container create errors after successful import", async () => {
+    const { docker } = mockDockerode();
+    docker.createContainer.mockRejectedValue(new Error("name conflict"));
+    const manager = new DockerManager(docker as never);
+
+    await expect(manager.importBot("bot1", "/backups", "img:latest")).rejects.toThrow("name conflict");
   });
 });
 
