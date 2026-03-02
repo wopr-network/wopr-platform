@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { detachAllPaymentMethods, detachPaymentMethod } from "./payment-methods.js";
 import { TenantCustomerStore } from "./tenant-store.js";
 
@@ -28,9 +28,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -38,7 +40,7 @@ describe("detachPaymentMethod", () => {
   let store: TenantCustomerStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new TenantCustomerStore(db);
   });
 
@@ -90,7 +92,7 @@ describe("detachAllPaymentMethods", () => {
   let store: TenantCustomerStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new TenantCustomerStore(db);
   });
 

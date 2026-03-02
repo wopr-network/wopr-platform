@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { DrizzlePhoneNumberRepository } from "./drizzle-phone-number-repository.js";
 
 describe("DrizzlePhoneNumberRepository", () => {
@@ -10,14 +10,18 @@ describe("DrizzlePhoneNumberRepository", () => {
   let repo: DrizzlePhoneNumberRepository;
 
   beforeAll(async () => {
-    const result = await createTestDb();
-    db = result.db;
-    pool = result.pool;
-    repo = new DrizzlePhoneNumberRepository(db);
+    ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
+  });
+
+  beforeEach(async () => {
+    await rollbackTestTransaction(pool);
+    repo = new DrizzlePhoneNumberRepository(db);
   });
 
   it("trackPhoneNumber inserts a new record", async () => {

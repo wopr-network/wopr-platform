@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { ADDON_KEYS } from "../../monetization/addons/addon-catalog.js";
 import { DrizzleTenantAddonRepository } from "../../monetization/addons/addon-repository.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { appRouter } from "../index.js";
 import { setTrpcOrgMemberRepo } from "../init.js";
 import { setAddonRouterDeps } from "./addons.js";
@@ -29,6 +29,7 @@ function unauthCtx() {
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
   setTrpcOrgMemberRepo({
     findMember: async (_userId: string, orgId: string) => ({
       id: "m1",
@@ -53,12 +54,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
 describe("addons router", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     setAddonRouterDeps({
       addonRepo: new DrizzleTenantAddonRepository(db),
     });

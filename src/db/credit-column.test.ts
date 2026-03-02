@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Credit } from "../monetization/credit.js";
-import { createTestDb } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
 import { creditColumn } from "./credit-column.js";
 import type { DrizzleDb } from "./index.js";
 
@@ -18,6 +18,7 @@ describe("creditColumn", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
     await pool.query(`
       CREATE TABLE IF NOT EXISTS test_credits (
         id TEXT PRIMARY KEY,
@@ -27,6 +28,7 @@ describe("creditColumn", () => {
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 

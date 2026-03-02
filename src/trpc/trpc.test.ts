@@ -12,7 +12,7 @@ import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import type { DrizzleTenantCustomerStore } from "../monetization/index.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "./index.js";
 import type { TRPCContext } from "./init.js";
 import { setTrpcOrgMemberRepo } from "./init.js";
@@ -136,6 +136,7 @@ describe("tRPC appRouter", () => {
   beforeAll(async () => {
     const testDb = await createTestDb();
     pool = testDb.pool;
+    await beginTestTransaction(pool);
     db = testDb.db;
 
     // Wire a stub org member repo so tenant access checks always pass in tests.
@@ -164,11 +165,12 @@ describe("tRPC appRouter", () => {
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   // -------------------------------------------------------------------------

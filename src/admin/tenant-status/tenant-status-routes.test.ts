@@ -24,7 +24,7 @@ import type {
   HistoryOptions,
   ICreditLedger,
 } from "../../monetization/credits/credit-ledger.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { appRouter } from "../../trpc/index.js";
 import type { TRPCContext } from "../../trpc/init.js";
 import { setAdminRouterDeps } from "../../trpc/routers/admin.js";
@@ -136,14 +136,16 @@ describe("admin tenant status tRPC routes", () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     statusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     creditLedger = makeMockLedger();

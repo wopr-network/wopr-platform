@@ -5,7 +5,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { AdminAuditLog } from "../audit-log.js";
 import { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
 import { DrizzleBulkOperationsRepository } from "./bulk-operations-repository.js";
@@ -18,9 +18,11 @@ beforeAll(async () => {
   const t = await createTestDb();
   db = t.db;
   pool = t.pool;
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -31,7 +33,7 @@ describe("BulkOperationsStore", () => {
   let store: BulkOperationsStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
 
     const balances = new Map<string, number>();
     creditStore = {

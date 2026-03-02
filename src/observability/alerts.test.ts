@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleFleetEventRepository } from "../fleet/drizzle-fleet-event-repository.js";
 import type { IFleetEventRepository } from "../fleet/fleet-event-repository.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { AlertChecker, buildAlerts } from "./alerts.js";
 import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { MetricsCollector } from "./metrics.js";
@@ -14,9 +14,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -27,7 +29,7 @@ describe("buildAlerts", () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     metrics = new MetricsCollector(new DrizzleMetricsRepository(db));
     fleetRepo = new DrizzleFleetEventRepository(db);
   });

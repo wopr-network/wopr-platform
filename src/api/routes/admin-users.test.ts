@@ -1,6 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminUsersApiRoutes } from "./admin-users.js";
 
 describe("admin-users routes", () => {
@@ -10,15 +10,17 @@ describe("admin-users routes", () => {
   beforeAll(async () => {
     const { db, pool: p } = await createTestDb();
     pool = p;
+    await beginTestTransaction(pool);
     app = createAdminUsersApiRoutes(db);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   // GET /

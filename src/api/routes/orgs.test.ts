@@ -5,7 +5,7 @@ import { RoleStore } from "../../admin/roles/role-store.js";
 import type { AuthEnv } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleOrgRepository } from "../../org/drizzle-org-repository.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createOrgRoutes } from "./orgs.js";
 
 let sharedDb: DrizzleDb;
@@ -13,9 +13,11 @@ let sharedPool: PGlite;
 
 beforeAll(async () => {
   ({ db: sharedDb, pool: sharedPool } = await createTestDb());
+  await beginTestTransaction(sharedPool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(sharedPool);
   await sharedPool.close();
 });
 
@@ -42,7 +44,7 @@ describe("POST /api/orgs", () => {
   let roleStore: RoleStore;
 
   beforeEach(async () => {
-    await truncateAllTables(sharedPool);
+    await rollbackTestTransaction(sharedPool);
     ({ app, roleStore } = buildApp(sharedDb));
   });
 
@@ -101,7 +103,7 @@ describe("GET /api/orgs", () => {
   let app: Hono<AuthEnv>;
 
   beforeEach(async () => {
-    await truncateAllTables(sharedPool);
+    await rollbackTestTransaction(sharedPool);
     ({ app } = buildApp(sharedDb));
   });
 

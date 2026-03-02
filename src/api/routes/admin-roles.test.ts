@@ -9,7 +9,7 @@ vi.mock("../../fleet/services.js", () => ({
 import { RoleStore } from "../../admin/roles/role-store.js";
 import type { AuthEnv } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "./admin-roles.js";
 
 /**
@@ -45,15 +45,17 @@ describe("admin-roles routes", () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
+    await beginTestTransaction(pool);
     roleStore = new RoleStore(db);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   // GET /:tenantId — requires tenant_admin or platform_admin role
@@ -180,15 +182,17 @@ describe("platform admin routes", () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
+    await beginTestTransaction(pool);
     roleStore = new RoleStore(db);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   // GET / — list platform admins

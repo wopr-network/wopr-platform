@@ -4,7 +4,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { DrizzleCircuitBreakerRepository } from "./drizzle-circuit-breaker-repository.js";
 
 describe("DrizzleCircuitBreakerRepository", () => {
@@ -14,16 +14,18 @@ describe("DrizzleCircuitBreakerRepository", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleCircuitBreakerRepository(db);
   });
 

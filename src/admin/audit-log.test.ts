@@ -5,7 +5,7 @@ import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-reposit
 import { createAdminAuditApiRoutes } from "../api/routes/admin-audit.js";
 import type { DrizzleDb } from "../db/index.js";
 import { adminAuditLog } from "../db/schema/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import type { AuditEntry } from "./audit-log.js";
 import { AdminAuditLog } from "./audit-log.js";
 
@@ -29,9 +29,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -39,7 +41,7 @@ describe("AdminAuditLog.log", () => {
   let auditLogInstance: AdminAuditLog;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 
@@ -98,7 +100,7 @@ describe("AdminAuditLog.query", () => {
   let auditLogInstance: AdminAuditLog;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 
@@ -221,7 +223,7 @@ describe("AdminAuditLog.exportCsv", () => {
   let auditLogInstance: AdminAuditLog;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 
@@ -286,7 +288,7 @@ describe("AdminAuditLog.exportCsv", () => {
 
 describe("entries are immutable", () => {
   it("entries are immutable - no update or delete API", async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     const auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     const row = await auditLogInstance.log(makeEntry());
 
@@ -305,7 +307,7 @@ describe("admin audit API routes", () => {
   let auditLogInstance: AdminAuditLog;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     auditLogInstance = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
   });
 

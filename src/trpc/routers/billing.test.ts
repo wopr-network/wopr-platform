@@ -12,7 +12,7 @@ import type { CreditTransaction, ICreditLedger } from "../../monetization/credit
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { type BillingRouterDeps, billingRouter, setBillingRouterDeps } from "./billing.js";
 
 // ---------------------------------------------------------------------------
@@ -183,6 +183,7 @@ describe("billingRouter", () => {
   beforeAll(async () => {
     const testDb = await createTestDb();
     pool = testDb.pool;
+    await beginTestTransaction(pool);
     db = testDb.db;
     const agg = await import("../../monetization/metering/aggregator.js");
     MeterAggregatorClass = agg.MeterAggregator as typeof MeterAggregatorClass;
@@ -191,11 +192,12 @@ describe("billingRouter", () => {
   }, 30000);
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     affiliateRepo = new DrizzleAffiliateRepository(db);
   });
 

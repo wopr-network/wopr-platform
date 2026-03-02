@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
 import { DrizzleMeterEmitter } from "./emitter.js";
@@ -36,7 +36,8 @@ describe("DrizzleMeterEmitter — happy path", () => {
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
-    await truncateAllTables(pool);
+    await beginTestTransaction(pool);
+    await rollbackTestTransaction(pool);
     tempDir = makeTempDir();
     emitter = new DrizzleMeterEmitter(db, {
       flushIntervalMs: 60_000,
@@ -52,6 +53,7 @@ describe("DrizzleMeterEmitter — happy path", () => {
     // Flush remaining events before close() to drain the buffer synchronously
     await emitter.flush();
     emitter.close();
+    await endTestTransaction(pool);
     await pool.close();
     try {
       rmSync(tempDir, { recursive: true, force: true });

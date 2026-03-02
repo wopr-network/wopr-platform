@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleOnboardingScriptRepository } from "../../onboarding/drizzle-onboarding-script-repository.js";
-import { createTestDb } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "../../test/db.js";
 import { createAdminOnboardingRoutes } from "./admin-onboarding.js";
 
 describe("admin-onboarding routes", () => {
@@ -14,11 +14,13 @@ describe("admin-onboarding routes", () => {
     const result = await createTestDb();
     db = result.db;
     pool = result.pool;
+    await beginTestTransaction(pool);
     const repo = new DrizzleOnboardingScriptRepository(db);
     app = createAdminOnboardingRoutes(() => repo);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 

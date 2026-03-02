@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { checkTenantStatus, createTenantStatusGate } from "./tenant-status-middleware.js";
 import { TenantStatusStore } from "./tenant-status-store.js";
 
@@ -13,9 +13,11 @@ beforeAll(async () => {
   const t = await createTestDb();
   db = t.db;
   pool = t.pool;
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -23,7 +25,7 @@ describe("createTenantStatusGate", () => {
   let store: TenantStatusStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new TenantStatusStore(db);
   });
 
@@ -89,7 +91,7 @@ describe("checkTenantStatus", () => {
   let store: TenantStatusStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new TenantStatusStore(db);
   });
 

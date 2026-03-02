@@ -1,21 +1,23 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 
 // TOP OF FILE - shared across ALL describes
 let pool: PGlite;
 
 beforeAll(async () => {
   ({ pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
 describe("snapshots schema (via Drizzle migration)", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("creates the snapshots table", async () => {
@@ -108,7 +110,7 @@ describe("snapshots schema (via Drizzle migration)", () => {
 
 describe("bot_profiles schema (via Drizzle migration)", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("creates the bot_profiles table", async () => {
@@ -181,7 +183,7 @@ describe("bot_profiles schema (via Drizzle migration)", () => {
 
 describe("credit_transactions schema (via Drizzle migration)", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("creates the credit_transactions table", async () => {
@@ -207,7 +209,7 @@ describe("credit_transactions schema (via Drizzle migration)", () => {
 
 describe("gateway tables schema (via Drizzle migration)", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("creates the gateway_metrics table", async () => {
@@ -288,7 +290,7 @@ describe("gateway tables schema (via Drizzle migration)", () => {
 
 describe("chat-backend tables schema (via Drizzle migration)", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("creates the session_usage table", async () => {
@@ -362,7 +364,7 @@ describe("chat-backend tables schema (via Drizzle migration)", () => {
 
 describe("credential-vault tables schema (via Drizzle migration)", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("creates the provider_credentials table", async () => {

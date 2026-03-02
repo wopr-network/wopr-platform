@@ -6,7 +6,7 @@ vi.mock("../../fleet/services.js", () => ({
   getDb: vi.fn(),
 }));
 
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminNotesApiRoutes } from "./admin-notes.js";
 
 describe("admin-notes routes", () => {
@@ -16,15 +16,17 @@ describe("admin-notes routes", () => {
   beforeAll(async () => {
     const { db, pool: p } = await createTestDb();
     pool = p;
+    await beginTestTransaction(pool);
     app = createAdminNotesApiRoutes(db);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   // GET /:tenantId

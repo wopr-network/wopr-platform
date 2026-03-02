@@ -11,7 +11,7 @@ import type { IPaymentProcessor } from "../../monetization/payment-processor.js"
 import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
 import { noOpReplayGuard } from "../../monetization/webhook-seen-repository.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -260,9 +260,11 @@ let _pool: PGlite;
 
 beforeAll(async () => {
   ({ db: _db, pool: _pool } = await createTestDb());
+  await beginTestTransaction(_pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(_pool);
   await _pool.close();
 });
 
@@ -523,7 +525,7 @@ describe("E2E: Billing flow (credit model)", () => {
     botRunningState = new Map();
     botCounter = 0;
 
-    await truncateAllTables(_pool);
+    await rollbackTestTransaction(_pool);
     tenantStore = new TenantCustomerStore(_db);
     creditLedger = new CreditLedger(_db);
 

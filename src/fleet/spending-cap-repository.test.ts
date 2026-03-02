@@ -5,7 +5,14 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { Credit } from "../monetization/credit.js";
-import { createTestDb, seedMeterEvent, seedUsageSummary, truncateAllTables } from "../test/db.js";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+  seedMeterEvent,
+  seedUsageSummary,
+} from "../test/db.js";
 import { DrizzleSpendingCapStore, getDayStart, getMonthStart } from "./spending-cap-repository.js";
 
 describe("getDayStart UTC", () => {
@@ -108,16 +115,18 @@ describe("DrizzleSpendingCapStore", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(ANCHOR);
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new DrizzleSpendingCapStore(db);
   });
 

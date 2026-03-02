@@ -5,7 +5,7 @@ import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repo
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import { DrizzleCredentialRepository } from "./credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
@@ -33,14 +33,16 @@ describe("CredentialVaultStore", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     ({ store } = buildStore(db));
   });
 
@@ -485,14 +487,16 @@ describe("Tenant isolation (tenant_api_keys)", () => {
 
   beforeAll(async () => {
     ({ db: tenantDb, pool: tenantPool } = await createTestDb());
+    await beginTestTransaction(tenantPool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(tenantPool);
     await tenantPool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(tenantPool);
+    await rollbackTestTransaction(tenantPool);
   });
 
   it("tenant A credential is not retrievable when querying tenant B", async () => {

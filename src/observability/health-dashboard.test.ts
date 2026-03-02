@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleFleetEventRepository } from "../fleet/drizzle-fleet-event-repository.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { AlertChecker, buildAlerts } from "./alerts.js";
 import { DrizzleMetricsRepository } from "./drizzle-metrics-repository.js";
 import { createAdminHealthHandler } from "./health-dashboard.js";
@@ -16,16 +16,18 @@ describe("admin health dashboard", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     metrics = new MetricsCollector(new DrizzleMetricsRepository(db));
     fleetRepo = new DrizzleFleetEventRepository(db);
   });

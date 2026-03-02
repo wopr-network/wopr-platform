@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents, recoveryItems } from "../db/schema/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import type { AdminNotifier } from "./admin-notifier.js";
 import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
 import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
@@ -101,9 +101,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -113,7 +115,7 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
   let sendCommand: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     notifier = createMockNotifier();
     sendCommand = vi.fn().mockResolvedValue({
       id: "cmd-1",
@@ -230,12 +232,14 @@ describe("RecoveryManager.triggerRecovery — state machine transitions", () => 
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
     nodeRepo = createMockNodeRepo();
   });
 
   afterEach(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
@@ -270,7 +274,7 @@ describe("RecoveryManager.checkAndRetryWaiting", () => {
   let manager: RecoveryManager;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
     manager = makeManager(db, { nodeConnections, notifier });
@@ -473,7 +477,7 @@ describe("RecoveryManager.checkAndRetryWaiting", () => {
 
 describe("Trigger 1: Node registration fires checkAndRetryWaiting", () => {
   it("calls checkAndRetryWaiting after registerNode via onNodeRegistered callback", async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     const mockNotifier = createMockNotifier();
     const mockNodeConns = createMockNodeConnections();
     const mgr = makeManager(db, { nodeConnections: mockNodeConns, notifier: mockNotifier });
@@ -488,7 +492,7 @@ describe("Acceptance criteria", () => {
   let manager: RecoveryManager;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
     manager = makeManager(db, { nodeConnections, notifier });
