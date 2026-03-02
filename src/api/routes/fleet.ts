@@ -61,6 +61,7 @@ function getFleet(): FleetManager {
       getProxyManager(),
       commandBus,
       instanceRepo,
+      undefined,
       getFleetEventEmitter(),
     );
   }
