@@ -6,6 +6,16 @@ import { collectHeartbeat } from "./heartbeat.js";
 import { NodeAgent } from "./index.js";
 import { ALLOWED_COMMANDS, commandSchema, nodeAgentConfigSchema } from "./types.js";
 
+vi.mock("node:os", async () => {
+  const actual = await vi.importActual<typeof import("node:os")>("node:os");
+  return {
+    ...actual,
+    freemem: vi.fn(() => 2 * 1024 * 1024 * 1024), // 2 GB free
+    totalmem: vi.fn(() => 16 * 1024 * 1024 * 1024), // 16 GB total
+    uptime: vi.fn(() => 3600), // 1 hour
+  };
+});
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -274,6 +284,74 @@ describe("collectHeartbeat", () => {
     expect(heartbeat.node_id).toBe("node-fail");
     expect(heartbeat.containers).toEqual([]);
   });
+
+  it("returns correct memory values from mocked OS", async () => {
+    const { docker } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    const hb = await collectHeartbeat("node-1", manager);
+
+    expect(hb.memory_total_mb).toBe(16384);
+    expect(hb.memory_used_mb).toBe(16384 - 2048);
+    expect(hb.uptime_s).toBe(3600);
+  });
+
+  it("returns zero disk stats when statfsSync throws", async () => {
+    // statfsSync throws in test env (no /proc), getDiskStats catches and returns zeros
+    const { docker } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    const hb = await collectHeartbeat("node-1", manager);
+
+    expect(typeof hb.disk_total_gb).toBe("number");
+    expect(typeof hb.disk_used_gb).toBe("number");
+  });
+
+  it("skips non-tenant containers in metrics", async () => {
+    const { docker, container } = mockDockerode();
+    docker.listContainers.mockResolvedValue([
+      { Id: "1", Names: ["/tenant_bot1"], State: "running" },
+      { Id: "2", Names: ["/system_monitor"], State: "running" },
+    ]);
+    docker.getContainer.mockReturnValue(container);
+    const manager = new DockerManager(docker as never);
+
+    const hb = await collectHeartbeat("node-1", manager);
+
+    expect(hb.containers).toHaveLength(1);
+    expect(hb.containers?.[0].name).toBe("tenant_bot1");
+  });
+
+  it("reports zero memory and uptime for non-running containers", async () => {
+    const { docker, container } = mockDockerode();
+    docker.listContainers.mockResolvedValue([{ Id: "1", Names: ["/tenant_stopped"], State: "exited" }]);
+    docker.getContainer.mockReturnValue(container);
+    const manager = new DockerManager(docker as never);
+
+    const hb = await collectHeartbeat("node-1", manager);
+
+    expect(hb.containers).toHaveLength(1);
+    expect(hb.containers?.[0].memory_mb).toBe(0);
+    expect(hb.containers?.[0].uptime_s).toBe(0);
+    expect(hb.containers?.[0].status).toBe("exited");
+  });
+
+  it("handles container stats failure gracefully for running container", async () => {
+    const { docker } = mockDockerode();
+    const failContainer = {
+      stats: vi.fn().mockRejectedValue(new Error("stats unavailable")),
+      inspect: vi.fn().mockRejectedValue(new Error("inspect failed")),
+    };
+    docker.listContainers.mockResolvedValue([{ Id: "1", Names: ["/tenant_broken"], State: "running" }]);
+    docker.getContainer.mockReturnValue(failContainer);
+    const manager = new DockerManager(docker as never);
+
+    const hb = await collectHeartbeat("node-1", manager);
+
+    expect(hb.containers).toHaveLength(1);
+    expect(hb.containers?.[0].memory_mb).toBe(0);
+    expect(hb.containers?.[0].uptime_s).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -373,7 +451,7 @@ describe("NodeAgent", () => {
     const fetchCalls = vi.mocked(globalThis.fetch).mock.calls;
     const registrationCall = fetchCalls.find(([url]) => String(url).includes("/internal/nodes/register"));
     expect(registrationCall).toBeDefined();
-    const headers = registrationCall![1]?.headers as Record<string, string>;
+    const headers = registrationCall?.[1]?.headers as Record<string, string>;
     expect(headers["X-Node-Secret"]).toBe("wopr_node_abc123def456");
   });
 
@@ -393,7 +471,7 @@ describe("NodeAgent", () => {
     const fetchCalls = vi.mocked(globalThis.fetch).mock.calls;
     const registrationCall = fetchCalls.find(([url]) => String(url).includes("/internal/nodes/register"));
     expect(registrationCall).toBeDefined();
-    const headers = registrationCall![1]?.headers as Record<string, string>;
+    const headers = registrationCall?.[1]?.headers as Record<string, string>;
     expect(headers["X-Node-Secret"]).toBeUndefined();
   });
 });
@@ -524,6 +602,54 @@ describe("commandSchema", () => {
       },
     });
     expect(cmd.type).toBe("bot.update");
+  });
+});
+
+describe("DockerManager.removeBot (error paths)", () => {
+  it("throws non-already-stopped errors from stop", async () => {
+    const { docker, container } = mockDockerode();
+    container.stop.mockRejectedValue(new Error("permission denied"));
+    const manager = new DockerManager(docker as never);
+
+    await expect(manager.removeBot("tenant_abc")).rejects.toThrow("permission denied");
+    expect(container.remove).not.toHaveBeenCalled();
+  });
+
+  it("proceeds with remove when container already stopped", async () => {
+    const { docker, container } = mockDockerode();
+    container.stop.mockRejectedValue(new Error("container already stopped"));
+    const manager = new DockerManager(docker as never);
+
+    await manager.removeBot("tenant_abc");
+    expect(container.remove).toHaveBeenCalled();
+  });
+});
+
+describe("DockerManager.getLogs (default tail)", () => {
+  it("defaults tail to 100", async () => {
+    const { docker, container } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    await manager.getLogs("tenant_abc");
+    expect(container.logs).toHaveBeenCalledWith(expect.objectContaining({ tail: 100 }));
+  });
+});
+
+describe("DockerManager.getEventStream", () => {
+  it("returns event stream with container type filter by default", async () => {
+    const { docker } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    await manager.getEventStream();
+    expect(docker.getEvents).toHaveBeenCalledWith(expect.objectContaining({ filters: { type: ["container"] } }));
+  });
+
+  it("passes custom filters", async () => {
+    const { docker } = mockDockerode();
+    const manager = new DockerManager(docker as never);
+
+    await manager.getEventStream({ filters: { event: ["start", "die"] } });
+    expect(docker.getEvents).toHaveBeenCalledWith(expect.objectContaining({ filters: { event: ["start", "die"] } }));
   });
 });
 
