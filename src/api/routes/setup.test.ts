@@ -1,6 +1,7 @@
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import type { PluginManifest } from "./marketplace-registry.js";
-import { createSetupRoutes, type SetupRouteDeps } from "./setup.js";
+import { createSetupRoutes, type SetupRouteDeps, setSetupDeps, setupRoutes } from "./setup.js";
 
 const TEST_BOT_ID = "a1b2c3d4-e5f6-4789-8abc-def012345678";
 
@@ -208,7 +209,7 @@ describe("POST /save", () => {
 
     const res = await app.request("/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-authenticated-tenant-id": "t1" },
       body: JSON.stringify({
         setupSessionId: "setup-1",
         botId: TEST_BOT_ID,
@@ -321,7 +322,7 @@ describe("POST /save", () => {
 
     const res = await app.request("/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-authenticated-tenant-id": "t1" },
       body: JSON.stringify({ setupSessionId: "setup-1", botId: TEST_BOT_ID, values: { noEnvField: "val" } }),
     });
 
@@ -345,6 +346,70 @@ describe("POST /save", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 403 when bot belongs to a different tenant", async () => {
+    const deps = makeDeps({
+      profileStore: {
+        get: vi.fn().mockResolvedValue({ id: TEST_BOT_ID, tenantId: "other-tenant", env: {} }),
+        save: vi.fn(),
+      } as never,
+    });
+    const app = createSetupRoutes(deps);
+
+    const res = await app.request("/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-authenticated-tenant-id": "my-tenant",
+      },
+      body: JSON.stringify({ setupSessionId: "setup-1", botId: TEST_BOT_ID, values: { apiKey: "sk-test" } }),
+    });
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBe("Bot does not belong to your tenant");
+  });
+
+  it("returns 401 when x-authenticated-tenant-id header is missing", async () => {
+    const deps = makeDeps({
+      profileStore: {
+        get: vi.fn().mockResolvedValue({ id: TEST_BOT_ID, tenantId: "my-tenant", env: {} }),
+        save: vi.fn(),
+      } as never,
+    });
+    const app = createSetupRoutes(deps);
+
+    const res = await app.request("/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setupSessionId: "setup-1", botId: TEST_BOT_ID, values: { apiKey: "sk-test" } }),
+    });
+
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBe("Authentication required");
+  });
+
+  it("succeeds when bot belongs to the authenticated tenant", async () => {
+    const deps = makeDeps({
+      profileStore: {
+        get: vi.fn().mockResolvedValue({ id: TEST_BOT_ID, tenantId: "my-tenant", env: {} }),
+        save: vi.fn().mockResolvedValue(undefined),
+      } as never,
+    });
+    const app = createSetupRoutes(deps);
+
+    const res = await app.request("/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-authenticated-tenant-id": "my-tenant",
+      },
+      body: JSON.stringify({ setupSessionId: "setup-1", botId: TEST_BOT_ID, values: {} }),
+    });
+
+    expect(res.status).toBe(200);
+  });
+
   it("dispatches plugin install using manifest.install[0] npm package name", async () => {
     const installMock = vi.fn().mockResolvedValue({ dispatched: true });
     const configMock = vi.fn().mockResolvedValue({ dispatched: true });
@@ -357,7 +422,7 @@ describe("POST /save", () => {
 
     const res = await app.request("/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-authenticated-tenant-id": "t1" },
       body: JSON.stringify({
         setupSessionId: "setup-1",
         botId: TEST_BOT_ID,
@@ -380,7 +445,7 @@ describe("POST /save", () => {
 
     const res = await app.request("/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-authenticated-tenant-id": "t1" },
       body: JSON.stringify({
         setupSessionId: "setup-1",
         botId: TEST_BOT_ID,
@@ -390,5 +455,66 @@ describe("POST /save", () => {
 
     expect(res.status).toBe(200);
     expect(installMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("setup route outer wrapper authentication", () => {
+  it("returns 401 when no user is authenticated (POST /)", async () => {
+    setSetupDeps(makeDeps());
+    const app = new Hono();
+    app.route("/api/chat/setup", setupRoutes);
+
+    const res = await app.request("/api/chat/setup/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "s1", pluginId: "test-plugin" }),
+    });
+    expect(res.status).toBe(401);
+    const json = await res.json();
+    expect(json.error).toBe("Authentication required");
+  });
+
+  it("returns 401 for /save when no user is authenticated", async () => {
+    setSetupDeps(makeDeps());
+    const app = new Hono();
+    app.route("/api/chat/setup", setupRoutes);
+
+    const res = await app.request("/api/chat/setup/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setupSessionId: "setup-1", botId: TEST_BOT_ID, values: { apiKey: "sk-test" } }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 401 for /rollback when no user is authenticated", async () => {
+    setSetupDeps(makeDeps());
+    const app = new Hono();
+    app.route("/api/chat/setup", setupRoutes);
+
+    const res = await app.request("/api/chat/setup/rollback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ setupSessionId: "setup-1" }),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("passes through when user is authenticated", async () => {
+    setSetupDeps(makeDeps());
+    const app = new Hono<{ Variables: { user: { id: string } } }>();
+    app.use("/*", async (c, next) => {
+      c.set("user", { id: "user-1" });
+      return next();
+    });
+    app.route("/api/chat/setup", setupRoutes);
+
+    const res = await app.request("/api/chat/setup/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "s1", pluginId: "test-plugin" }),
+    });
+    // Should not be 401 (may be 200 or another status based on handler logic)
+    expect(res.status).not.toBe(401);
   });
 });

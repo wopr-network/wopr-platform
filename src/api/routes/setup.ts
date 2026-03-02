@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
+import type { AuthEnv } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { applyDependencyConfigs, type DependencyConfigResult } from "../../fleet/apply-dependency-configs.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
@@ -10,6 +11,16 @@ import type { IPluginConfigRepository } from "../../setup/plugin-config-reposito
 import type { SetupService } from "../../setup/setup-service.js";
 import type { ISetupSessionRepository } from "../../setup/setup-session-repository.js";
 import type { PluginManifest } from "./marketplace-registry.js";
+
+/** Extract authenticated user from context, or null if not set. */
+function getUser(c: { get(key: string): unknown }): { id: string } | null {
+  try {
+    const user = c.get("user") as { id: string } | undefined;
+    return user ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const setupRequestSchema = z.object({
   sessionId: z.string().min(1),
@@ -288,7 +299,20 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       }
     }
 
-    // 4. Upsert into plugin_configs
+    // 4. Verify ownership before persisting anything
+    const profile = await deps.profileStore.get(botId);
+    if (!profile) {
+      return c.json({ error: `Bot not found: ${botId}` }, 404);
+    }
+    const authenticatedTenantId = c.req.header("x-authenticated-tenant-id");
+    if (!authenticatedTenantId) {
+      return c.json({ error: "Authentication required" }, 401);
+    }
+    if (profile.tenantId !== authenticatedTenantId) {
+      return c.json({ error: "Bot does not belong to your tenant" }, 403);
+    }
+
+    // 5. Upsert into plugin_configs
     await deps.pluginConfigRepo.upsert({
       id: randomUUID(),
       botId,
@@ -297,12 +321,6 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       encryptedFieldsJson: Object.keys(encryptedFields).length > 0 ? JSON.stringify(encryptedFields) : null,
       setupSessionId,
     });
-
-    // 5. Inject env vars into bot profile
-    const profile = await deps.profileStore.get(botId);
-    if (!profile) {
-      return c.json({ error: `Bot not found: ${botId}` }, 404);
-    }
 
     const envUpdates: Record<string, string> = {};
     for (const field of manifest.configSchema) {
@@ -415,10 +433,31 @@ function getSetupRoutesInner(): Hono {
   return _setupRoutesInner;
 }
 
-const _lazySetupRoutes = new Hono();
+const _lazySetupRoutes = new Hono<AuthEnv>();
 _lazySetupRoutes.all("/*", async (c) => {
+  // Auth must be checked here, in the outer context where resolveSessionUser()
+  // has already populated c.get("user"). inner.fetch(c.req.raw) creates a
+  // fresh Hono context with no user set, so getUser() inside the inner
+  // handlers would always return null in production.
+  const user = getUser(c);
+  if (!user) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+  // Forward authenticated identity to inner routes via headers.
+  // inner.fetch() creates a fresh Hono context that loses c.get("user").
+  const headers = new Headers(c.req.raw.headers);
+  headers.set("x-authenticated-user-id", user.id);
+  // tenantId: from tokenTenantId (API key auth) or user.id (session = personal tenant)
+  const tenantId = c.get("tokenTenantId") ?? user.id;
+  headers.set("x-authenticated-tenant-id", tenantId);
+  const req = new Request(c.req.raw.url, {
+    method: c.req.raw.method,
+    headers,
+    body: c.req.raw.body,
+    duplex: "half",
+  } as RequestInit);
   const inner = getSetupRoutesInner();
-  return inner.fetch(c.req.raw);
+  return inner.fetch(req);
 });
 
 export const setupRoutes = new Hono();
