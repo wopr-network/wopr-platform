@@ -32,7 +32,6 @@
  * INFRASTRUCTURE (no user-facing risk):
  * - src/fleet/node-provisioner.ts — node by ID (infra)
  * - src/fleet/node-connection-manager.ts — node operations (infra)
- * - src/fleet/migration-manager.ts — bot by ID (admin migration)
  *
  * ISSUES FOUND (tested below):
  * - src/api/routes/fleet.ts:121 — GET /fleet/bots listAll() returns ALL bots, no tenant filter
