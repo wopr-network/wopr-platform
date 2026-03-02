@@ -4,6 +4,7 @@ import type {
   AdapterRateOverrideCache,
 } from "../../../monetization/adapters/rate-override-repository.js";
 import type { Promotion } from "../../../monetization/promotions/promotion-repository.js";
+import { daysAgo } from "../../../test/date-helpers.js";
 import { appRouter } from "../../index.js";
 import { setPromotionsRouterDeps } from "../promotions.js";
 
@@ -52,8 +53,8 @@ function fakePromotion(overrides: Partial<Promotion> = {}): Promotion {
     couponCode: null,
     couponBatchId: null,
     createdBy: "admin-1",
-    createdAt: new Date("2025-01-01"),
-    updatedAt: new Date("2025-01-01"),
+    createdAt: daysAgo(30),
+    updatedAt: daysAgo(30),
     notes: null,
     ...overrides,
   };
@@ -65,11 +66,11 @@ function fakeRateOverride(overrides: Partial<AdapterRateOverride> = {}): Adapter
     adapterId: "openai-gpt4",
     name: "Holiday Sale",
     discountPercent: 20,
-    startsAt: new Date("2025-01-01"),
+    startsAt: daysAgo(30),
     endsAt: null,
     status: "active",
     createdBy: "admin-1",
-    createdAt: new Date("2025-01-01"),
+    createdAt: daysAgo(30),
     notes: null,
     ...overrides,
   };
@@ -377,7 +378,7 @@ describe("promotions.activate", () => {
   });
 
   it("activates immediately when startsAt is in the past", async () => {
-    deps.promotionRepo.getById.mockResolvedValue(fakePromotion({ startsAt: new Date("2020-01-01") }));
+    deps.promotionRepo.getById.mockResolvedValue(fakePromotion({ startsAt: daysAgo(365) }));
     deps.promotionRepo.updateStatus.mockResolvedValue(undefined);
 
     const caller = appRouter.createCaller(adminCtx());
@@ -612,7 +613,7 @@ describe("rateOverrides.create", () => {
     deps.rateOverrideRepo.create.mockResolvedValue(created);
 
     const caller = appRouter.createCaller(adminCtx());
-    const pastDate = new Date("2020-01-01");
+    const pastDate = daysAgo(365);
     const result = await caller.rateOverrides.create({
       adapterId: "openai-gpt4",
       name: "Holiday Sale",
