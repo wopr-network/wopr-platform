@@ -75,8 +75,14 @@ export class DaemonManager implements IDaemonManager {
       logger.warn("[onboarding] could not read WOPR auth token; daemon may not require auth");
     }
 
-    this.ready = true;
-    logger.info("[onboarding] WOPR daemon ready", { port: this.config.woprPort });
+    // Set ready ONLY if the process is still alive.
+    // The exit/error handlers set this.process = null, so check before marking ready.
+    if (this.process) {
+      this.ready = true;
+      logger.info("[onboarding] WOPR daemon ready", { port: this.config.woprPort });
+    } else {
+      logger.warn("[onboarding] WOPR daemon exited before ready flag could be set");
+    }
   }
 
   async stop(): Promise<void> {
