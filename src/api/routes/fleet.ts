@@ -29,17 +29,71 @@ const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const docker = new Docker();
 const store = new ProfileStore(DATA_DIR);
 const networkPolicy = new NetworkPolicy(docker);
-const fleet = new FleetManager(
-  docker,
-  store,
-  config.discovery,
-  networkPolicy,
-  getProxyManager(),
-  getCommandBus(),
-  getBotInstanceRepo(),
-);
-const imagePoller = new ImagePoller(docker, store);
-const updater = new ContainerUpdater(docker, store, fleet, imagePoller);
+
+// Lazy singletons — defer DB-accessing service calls until first request so
+// that importing this module in tests (without DATABASE_URL) does not crash.
+let _fleet: FleetManager | null = null;
+let _imagePoller: ImagePoller | null = null;
+let _updater: ContainerUpdater | null = null;
+
+function getFleet(): FleetManager {
+  if (!_fleet) {
+    _fleet = new FleetManager(
+      docker,
+      store,
+      config.discovery,
+      networkPolicy,
+      getProxyManager(),
+      getCommandBus(),
+      getBotInstanceRepo(),
+    );
+  }
+  return _fleet;
+}
+
+function getImagePoller(): ImagePoller {
+  if (!_imagePoller) {
+    _imagePoller = new ImagePoller(docker, store);
+  }
+  return _imagePoller;
+}
+
+function getUpdater(): ContainerUpdater {
+  if (!_updater) {
+    _updater = new ContainerUpdater(docker, store, getFleet(), getImagePoller());
+  }
+  return _updater;
+}
+
+// Proxy so callers can use `fleet.x` without changing call sites, while
+// deferring FleetManager construction until the first property access.
+const fleet = new Proxy({} as FleetManager, {
+  get(_target, prop) {
+    return (getFleet() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+  set(_target, prop, value) {
+    (getFleet() as unknown as Record<string | symbol, unknown>)[prop] = value;
+    return true;
+  },
+});
+const imagePoller = new Proxy({} as ImagePoller, {
+  get(_target, prop) {
+    return (getImagePoller() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+  set(_target, prop, value) {
+    (getImagePoller() as unknown as Record<string | symbol, unknown>)[prop] = value;
+    return true;
+  },
+});
+const updater = new Proxy({} as ContainerUpdater, {
+  get(_target, prop) {
+    return (getUpdater() as unknown as Record<string | symbol, unknown>)[prop];
+  },
+  set(_target, prop, value) {
+    (getUpdater() as unknown as Record<string | symbol, unknown>)[prop] = value;
+    return true;
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Injected billing deps — set via setFleetDeps() before the server starts.
