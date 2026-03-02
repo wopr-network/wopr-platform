@@ -34,6 +34,7 @@ function makePlugin(overrides: Partial<MarketplacePlugin> = {}): MarketplacePlug
     notes: null,
     installedAt: null,
     installError: null,
+    manifest: null,
     ...overrides,
   };
 }
