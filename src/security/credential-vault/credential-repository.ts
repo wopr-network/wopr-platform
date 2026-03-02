@@ -60,15 +60,25 @@ export interface ICredentialRepository {
   setActive(id: string, isActive: boolean): Promise<boolean>;
   markValidated(id: string): Promise<boolean>;
   deleteById(id: string): Promise<boolean>;
+}
+
+/** Narrow interface for migration-only access to provider_credentials encrypted values. */
+export interface ICredentialMigrationAccess {
   listAllWithEncryptedValue(): Promise<Array<{ id: string; encryptedValue: string }>>;
   updateEncryptedValueOnly(id: string, encryptedValue: string): Promise<void>;
+}
+
+/** Narrow interface for tenant_api_keys migration access. */
+export interface IMigrationTenantKeyAccess {
+  listAll(): Promise<Array<{ id: string; tenantId: string; encryptedKey: string }>>;
+  updateEncryptedKey(id: string, encryptedKey: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
 
-export class DrizzleCredentialRepository implements ICredentialRepository {
+export class DrizzleCredentialRepository implements ICredentialRepository, ICredentialMigrationAccess {
   constructor(private readonly db: DrizzleDb) {}
 
   async insert(data: InsertCredentialRow): Promise<void> {
@@ -187,8 +197,6 @@ export class DrizzleCredentialRepository implements ICredentialRepository {
 // ---------------------------------------------------------------------------
 // Tenant key migration access (for migrate-plaintext.ts)
 // ---------------------------------------------------------------------------
-
-import type { IMigrationTenantKeyAccess } from "./migrate-plaintext.js";
 
 export class DrizzleMigrationTenantKeyAccess implements IMigrationTenantKeyAccess {
   constructor(private readonly db: DrizzleDb) {}

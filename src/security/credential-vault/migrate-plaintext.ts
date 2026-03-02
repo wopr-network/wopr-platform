@@ -1,17 +1,11 @@
 import { encrypt } from "../encryption.js";
 import { scanForKeyLeaks } from "../key-audit.js";
-import type { ICredentialRepository } from "./credential-repository.js";
+import type { ICredentialMigrationAccess, IMigrationTenantKeyAccess } from "./credential-repository.js";
 
 export interface MigrationResult {
   table: string;
   migratedCount: number;
   errors: string[];
-}
-
-/** Narrow interface for tenant_api_keys migration access. */
-export interface IMigrationTenantKeyAccess {
-  listAll(): Promise<Array<{ id: string; tenantId: string; encryptedKey: string }>>;
-  updateEncryptedKey(id: string, encryptedKey: string): Promise<void>;
 }
 
 /**
@@ -23,7 +17,7 @@ export interface IMigrationTenantKeyAccess {
  * IMPORTANT: This is destructive — run in a transaction and back up first.
  */
 export async function migratePlaintextCredentials(
-  credentialRepo: ICredentialRepository,
+  credentialRepo: ICredentialMigrationAccess,
   vaultKey: Buffer,
   tenantKeyDeriver: (tenantId: string) => Buffer,
   tenantKeyAccess?: IMigrationTenantKeyAccess | null,

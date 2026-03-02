@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { decrypt, encrypt } from "../encryption.js";
-import type { ICredentialRepository } from "./credential-repository.js";
-import type { IMigrationTenantKeyAccess } from "./migrate-plaintext.js";
+import type { ICredentialMigrationAccess, IMigrationTenantKeyAccess } from "./credential-repository.js";
 import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 
 // ---------------------------------------------------------------------------
@@ -11,7 +10,7 @@ import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 
 function mockCredentialRepo(
   rows: Array<{ id: string; encryptedValue: string }> = [],
-): ICredentialRepository & { updates: Array<{ id: string; encryptedValue: string }> } {
+): ICredentialMigrationAccess & { updates: Array<{ id: string; encryptedValue: string }> } {
   const updates: Array<{ id: string; encryptedValue: string }> = [];
   return {
     updates,
@@ -22,16 +21,6 @@ function mockCredentialRepo(
       const row = rows.find((r) => r.id === id);
       if (row) row.encryptedValue = encryptedValue;
     },
-    // Unused methods — satisfy the interface
-    insert: async () => {},
-    getFullById: async () => null,
-    getSummaryById: async () => null,
-    list: async () => [],
-    listActiveForProvider: async () => [],
-    updateEncryptedValue: async () => false,
-    setActive: async () => false,
-    markValidated: async () => false,
-    deleteById: async () => false,
   };
 }
 
