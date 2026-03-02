@@ -810,6 +810,101 @@ describe("fleet.getStorageUsage", () => {
 });
 
 // ---------------------------------------------------------------------------
+// updateInstance
+// ---------------------------------------------------------------------------
+
+describe("fleet.updateInstance", () => {
+  it("updates bot config and returns updated profile", async () => {
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.updateInstance({
+      id: TEST_BOT_ID,
+      name: "renamed-bot",
+    });
+    expect(result).toEqual(mockProfile);
+    expect(fleetMock.update).toHaveBeenCalledWith(TEST_BOT_ID, { name: "renamed-bot" });
+  });
+
+  it("rejects empty updates", async () => {
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.updateInstance({ id: TEST_BOT_ID })).rejects.toThrow("No fields to update");
+  });
+
+  it("returns NOT_FOUND for wrong tenant", async () => {
+    fleetMock.profiles.get.mockResolvedValueOnce({ ...mockProfile, tenantId: "other-tenant" });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.updateInstance({ id: TEST_BOT_ID, name: "x" })).rejects.toThrow("Bot not found");
+  });
+
+  it("returns NOT_FOUND when bot does not exist", async () => {
+    fleetMock.profiles.get.mockResolvedValueOnce(null);
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.updateInstance({ id: TEST_BOT_ID, name: "x" })).rejects.toThrow("Bot not found");
+  });
+
+  it("returns NOT_FOUND when fleet.update throws BotNotFoundError", async () => {
+    fleetMock.update.mockRejectedValueOnce(new BotNotFoundError(TEST_BOT_ID));
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.updateInstance({ id: TEST_BOT_ID, name: "x" })).rejects.toThrow("Bot not found");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removeInstance
+// ---------------------------------------------------------------------------
+
+describe("fleet.removeInstance", () => {
+  it("removes bot and returns ok", async () => {
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.removeInstance({ id: TEST_BOT_ID });
+    expect(result).toEqual({ ok: true });
+    expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID, false);
+  });
+
+  it("passes removeVolumes option", async () => {
+    const caller = createCaller(authedContext());
+    await caller.fleet.removeInstance({ id: TEST_BOT_ID, removeVolumes: true });
+    expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID, true);
+  });
+
+  it("returns NOT_FOUND for wrong tenant", async () => {
+    fleetMock.profiles.get.mockResolvedValueOnce({ ...mockProfile, tenantId: "other-tenant" });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.removeInstance({ id: TEST_BOT_ID })).rejects.toThrow("Bot not found");
+  });
+
+  it("returns NOT_FOUND when fleet.remove throws BotNotFoundError", async () => {
+    fleetMock.remove.mockRejectedValueOnce(new BotNotFoundError(TEST_BOT_ID));
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.removeInstance({ id: TEST_BOT_ID })).rejects.toThrow("Bot not found");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// restartInstance
+// ---------------------------------------------------------------------------
+
+describe("fleet.restartInstance", () => {
+  it("restarts bot and returns ok", async () => {
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.restartInstance({ id: TEST_BOT_ID });
+    expect(result).toEqual({ ok: true });
+    expect(fleetMock.restart).toHaveBeenCalledWith(TEST_BOT_ID);
+  });
+
+  it("returns NOT_FOUND for wrong tenant", async () => {
+    fleetMock.profiles.get.mockResolvedValueOnce({ ...mockProfile, tenantId: "other-tenant" });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.restartInstance({ id: TEST_BOT_ID })).rejects.toThrow("Bot not found");
+  });
+
+  it("returns NOT_FOUND when fleet.restart throws BotNotFoundError", async () => {
+    fleetMock.restart.mockRejectedValueOnce(new BotNotFoundError(TEST_BOT_ID));
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.restartInstance({ id: TEST_BOT_ID })).rejects.toThrow("Bot not found");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // org-scoped bot ownership (WOP-1002)
 // ---------------------------------------------------------------------------
 
