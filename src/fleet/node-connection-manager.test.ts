@@ -261,7 +261,7 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
       (call) => call[0] === "message",
     )?.[1];
 
-    expect(messageHandler).toEqual(expect.any(Array));
+    expect(messageHandler).toEqual(expect.any(Function));
 
     messageHandler(heartbeatMsg);
 
