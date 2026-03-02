@@ -239,7 +239,7 @@ describe("tRPC appRouter", () => {
     it("creditsBalance returns 0 for new tenant", async () => {
       const caller = createCaller(adminAuthedContext());
       const result = await caller.admin.creditsBalance({ tenantId: "new-tenant" });
-      expect(result.balance_cents).toBe(0);
+      expect(result.balance_credits).toBe(0);
       expect(result.tenant).toBe("new-tenant");
     });
 
@@ -248,7 +248,7 @@ describe("tRPC appRouter", () => {
       await caller.admin.creditsGrant({ tenantId: "t1", amount_cents: 5000, reason: "Test grant" });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t1" });
-      expect(balance.balance_cents).toBe(5000);
+      expect(balance.balance_credits).toBe(5000);
     });
 
     it("creditsRefund refunds credits", async () => {
@@ -257,7 +257,7 @@ describe("tRPC appRouter", () => {
       await caller.admin.creditsRefund({ tenantId: "t2", amount_cents: 3000, reason: "Refund" });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t2" });
-      expect(balance.balance_cents).toBe(7000);
+      expect(balance.balance_credits).toBe(7000);
     });
 
     it("creditsCorrection applies correction", async () => {
@@ -270,7 +270,7 @@ describe("tRPC appRouter", () => {
       });
 
       const balance = await caller.admin.creditsBalance({ tenantId: "t3" });
-      expect(balance.balance_cents).toBe(3000);
+      expect(balance.balance_credits).toBe(3000);
     });
 
     it("creditsTransactions returns history", async () => {
@@ -342,15 +342,15 @@ describe("tRPC appRouter", () => {
     it("creditsBalance returns 0 for new tenant", async () => {
       const caller = createCaller(authedContext({ tenantId: undefined }));
       const result = await caller.billing.creditsBalance({ tenant: "test-user" });
-      expect(result.balance_cents).toBe(0);
+      expect(result.balance_credits).toBe(0);
     });
 
-    it("creditsBalance includes daily_burn_cents and runway_days", async () => {
+    it("creditsBalance includes daily_burn_credits and runway_days", async () => {
       const caller = createCaller(authedContext({ tenantId: undefined }));
       const result = await caller.billing.creditsBalance({ tenant: "test-user" });
-      expect(result).toHaveProperty("daily_burn_cents");
+      expect(result).toHaveProperty("daily_burn_credits");
       expect(result).toHaveProperty("runway_days");
-      expect(typeof result.daily_burn_cents).toBe("number");
+      expect(typeof result.daily_burn_credits).toBe("number");
       // runway_days is null when burn is 0
       expect(result.runway_days).toBeNull();
     });
@@ -358,8 +358,8 @@ describe("tRPC appRouter", () => {
     it("creditsBalance returns null runway_days when daily_burn is zero", async () => {
       const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
       const result = await caller.billing.creditsBalance({});
-      // No usage events → daily_burn_cents = 0 → runway_days = null
-      expect(result.daily_burn_cents).toBe(0);
+      // No usage events → daily_burn_credits = 0 → runway_days = null
+      expect(result.daily_burn_credits).toBe(0);
       expect(result.runway_days).toBeNull();
     });
 
@@ -400,7 +400,7 @@ describe("tRPC appRouter", () => {
     it("creditsBalance uses ctx.tenantId when tenant omitted", async () => {
       const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
       const result = await caller.billing.creditsBalance({});
-      expect(result.balance_cents).toBe(0);
+      expect(result.balance_credits).toBe(0);
       expect(result.tenant).toBe("ctx-tenant");
     });
 

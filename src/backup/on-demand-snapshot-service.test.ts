@@ -172,6 +172,7 @@ describe("OnDemandSnapshotService", () => {
       const err = new InsufficientCreditsError(42);
       expect(err.message).toContain("credits");
       expect(err.message).not.toContain("cents");
+      expect(err.balanceCredits).toBe(42);
     });
 
     it("throws SnapshotQuotaExceededError when quota full", async () => {

@@ -53,8 +53,8 @@ describe("admin-credits routes", () => {
       });
       const balRes = await app.request("/tenant-a/balance");
       const bal = await balRes.json();
-      // balance_cents is a Credit serialized as raw nanodollar units
-      expect(bal.balance_cents).toBeGreaterThan(0);
+      // balance_credits is a Credit serialized as raw nanodollar units
+      expect(bal.balance_credits).toBeGreaterThan(0);
     });
 
     it("rejects non-integer amount_cents with 400", async () => {
@@ -208,7 +208,7 @@ describe("admin-credits routes", () => {
       const res = await app.request("/unknown-tenant/balance");
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.balance_cents).toBe(0);
+      expect(body.balance_credits).toBe(0);
       expect(body.tenant).toBe("unknown-tenant");
     });
 
@@ -221,8 +221,8 @@ describe("admin-credits routes", () => {
       const res = await app.request("/tenant-d/balance");
       expect(res.status).toBe(200);
       const body = await res.json();
-      // balance_cents is a Credit serialized as raw nanodollar units
-      expect(body.balance_cents).toBeGreaterThan(0);
+      // balance_credits is a Credit serialized as raw nanodollar units
+      expect(body.balance_credits).toBeGreaterThan(0);
       expect(body.tenant).toBe("tenant-d");
     });
   });

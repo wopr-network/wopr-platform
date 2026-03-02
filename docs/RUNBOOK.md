@@ -428,7 +428,7 @@ curl -s "http://localhost:3100/trpc/billing.creditsBalance?input=%7B%7D" \
 **Expected:**
 
 ```json
-{"result":{"data":{"tenant":"<id>","balance_cents":0,"daily_burn_cents":0,"runway_days":null}}}
+{"result":{"data":{"tenant":"<id>","balance_credits":0,"daily_burn_credits":0,"runway_days":null}}}
 ```
 
 If you get `Authentication required`, the session is invalid — repeat step 1.
@@ -528,7 +528,7 @@ kill $LISTEN_PID 2>/dev/null
 ```bash
 curl -s "http://localhost:3100/trpc/billing.creditsBalance?input=%7B%7D" \
   -H "Origin: http://localhost:3000" \
-  -H "Cookie: better-auth.session_token=$SESSION" | jq '.result.data.balance_cents'
+  -H "Cookie: better-auth.session_token=$SESSION" | jq '.result.data.balance_credits'
 ```
 
 **Expected:** A positive number (e.g., `3000` depending on the price tier).
