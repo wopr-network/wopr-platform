@@ -75,7 +75,7 @@ describe("ISetupSessionRepository contract", () => {
       startedAt: now,
     });
     const found = await repo.findById(id);
-    expect(found).toBeDefined();
+    expect(found).not.toBeUndefined();
     expect(found!.pluginId).toBe("discord-channel");
     expect(found!.status).toBe("in_progress");
     expect(found!.collected).toBeNull();
@@ -94,7 +94,7 @@ describe("ISetupSessionRepository contract", () => {
     });
 
     const found = await repo.findBySessionId(sessionId);
-    expect(found).toBeDefined();
+    expect(found).not.toBeUndefined();
     expect(found!.id).toBe(id);
   });
 

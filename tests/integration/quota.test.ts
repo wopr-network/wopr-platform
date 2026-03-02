@@ -178,9 +178,9 @@ describe("integration: quota routes", () => {
       });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.Memory).toBeDefined();
-      expect(body.CpuQuota).toBeDefined();
-      expect(body.PidsLimit).toBeDefined();
+      expect(body.Memory).toBeTypeOf('number');
+      expect(body.CpuQuota).toBeTypeOf('number');
+      expect(body.PidsLimit).toBeTypeOf('number');
     });
   });
 });

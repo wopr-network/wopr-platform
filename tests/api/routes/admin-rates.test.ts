@@ -53,7 +53,7 @@ describe("Admin Rate API Routes", () => {
 
 			expect(response.status).toBe(400);
 			const data = await response.json();
-			expect(data.error).toBeDefined();
+			expect(data.error).toBeTypeOf('string');
 		});
 
 		it("returns 400 for negative price", async () => {
@@ -222,7 +222,7 @@ describe("Admin Rate API Routes", () => {
 
 			expect(response.status).toBe(400);
 			const data = await response.json();
-			expect(data.error).toBeDefined();
+			expect(data.error).toBeTypeOf('string');
 		});
 	});
 
@@ -507,7 +507,7 @@ describe("Error handling coverage", () => {
 
 		expect(response.status).toBe(400);
 		const data = await response.json();
-		expect(data.error).toBeDefined();
+		expect(data.error).toBeTypeOf('string');
 	});
 
 	it("DELETE /provider/:id returns 500 on internal error",  async () => {

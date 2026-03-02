@@ -92,6 +92,6 @@ describe("discoverNpmPlugins", () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     const result = await discoverNpmPlugins({ repo, notify: notifyFn, fetcher });
     expect(result.discovered).toBe(0);
-    expect(result.error).toBeDefined();
+    expect(result.error).toBeTypeOf('string');
   });
 });

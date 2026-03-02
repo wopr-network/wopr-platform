@@ -493,7 +493,7 @@ describe("tenant isolation — tenant-key routes (WOP-822)", () => {
 
     // Verify the key still exists for tenant B
     const record = await store.get(TENANT_B, "anthropic");
-    expect(record).toBeDefined();
+    expect(record).not.toBeNull();
   });
 
   it("each tenant's keys are stored and retrieved independently", async () => {

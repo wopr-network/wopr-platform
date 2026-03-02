@@ -87,11 +87,9 @@ describe("Global error handler", () => {
     expect(res2.status).toBe(500);
   });
 
-  it("main app has error handler configured", () => {
-    // Verify the main app has an error handler
-    // We can't directly test app.onError is set, but we can verify
-    // the app is an instance of Hono which supports error handling
-    expect(app).toBeDefined();
-    expect(app.request).toBeDefined();
+  it("main app has error handler configured", async () => {
+    // Hit a route that doesn't exist — the real app's notFound handler should respond
+    const res = await app.request("/this-route-does-not-exist-12345");
+    expect(res.status).toBe(404);
   });
 });

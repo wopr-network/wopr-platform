@@ -269,7 +269,7 @@ describe("AnalyticsStore — getMarginByCapability", () => {
     const result = await store.getMarginByCapability(range);
 
     const chat = result.find((r) => r.capability === "chat");
-    expect(chat).toBeDefined();
+    expect(chat).not.toBeUndefined();
     expect(chat!.marginPct).toBe(0);
     expect(Number.isNaN(chat!.marginPct)).toBe(false);
   });

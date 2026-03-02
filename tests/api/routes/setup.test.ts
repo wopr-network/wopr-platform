@@ -102,7 +102,7 @@ describe("POST /api/chat/setup", () => {
 
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.setupSessionId).toBeDefined();
+    expect(body.setupSessionId).toBeTypeOf('string');
 
     // Verify repo.insert was called
     expect(deps.setupSessionRepo.insert).toHaveBeenCalledOnce();
