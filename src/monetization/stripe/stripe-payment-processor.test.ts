@@ -1,16 +1,35 @@
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IPaymentProcessor } from "../payment-processor.js";
 import { noOpReplayGuard } from "../webhook-seen-repository.js";
 import { StripePaymentProcessor } from "./stripe-payment-processor.js";
 
+const WEBHOOK_SECRET = "whsec_test_secret";
+
+// Real Stripe instance for signature operations only (no API calls)
+const sigStripe = new Stripe("sk_test_fake");
+
+function makeSignedPayload(event: Record<string, unknown>): {
+  payload: string;
+  signature: string;
+} {
+  const payload = JSON.stringify(event);
+  const signature = sigStripe.webhooks.generateTestHeaderString({
+    payload,
+    secret: WEBHOOK_SECRET,
+  });
+  return { payload, signature };
+}
+
 function makeMockStripe() {
+  // Use the REAL constructEvent from Stripe SDK — this verifies signatures
+  const realConstructEvent = sigStripe.webhooks.constructEvent.bind(sigStripe.webhooks);
   return {
     checkout: {
       sessions: { create: vi.fn() },
     },
     webhooks: {
-      constructEvent: vi.fn(),
+      constructEvent: realConstructEvent,
     },
     billingPortal: {
       sessions: { create: vi.fn() },
@@ -62,7 +81,7 @@ describe("StripePaymentProcessor", () => {
     processor = new StripePaymentProcessor({
       stripe,
       tenantStore,
-      webhookSecret: "whsec_test",
+      webhookSecret: WEBHOOK_SECRET,
       creditLedger: {
         credit: vi.fn(),
         debit: vi.fn(),
@@ -106,7 +125,7 @@ describe("StripePaymentProcessor", () => {
       const proc = new StripePaymentProcessor({
         stripe,
         tenantStore,
-        webhookSecret: "whsec_test",
+        webhookSecret: WEBHOOK_SECRET,
         priceMap,
         creditLedger: {
           credit: vi.fn(),
@@ -134,7 +153,7 @@ describe("StripePaymentProcessor", () => {
       const proc = new StripePaymentProcessor({
         stripe,
         tenantStore,
-        webhookSecret: "whsec_test",
+        webhookSecret: WEBHOOK_SECRET,
         priceMap: new Map(),
         creditLedger: {
           credit: vi.fn(),
@@ -160,7 +179,7 @@ describe("StripePaymentProcessor", () => {
 
   describe("handleWebhook", () => {
     it("verifies signature and processes event", async () => {
-      const mockEvent = {
+      const event = {
         id: "evt_123",
         type: "checkout.session.completed",
         data: {
@@ -172,9 +191,9 @@ describe("StripePaymentProcessor", () => {
             metadata: {},
           },
         },
-      } as unknown as Stripe.Event;
+      };
 
-      (stripe.webhooks.constructEvent as ReturnType<typeof vi.fn>).mockReturnValue(mockEvent);
+      const { payload, signature } = makeSignedPayload(event);
 
       const mockLedger = {
         hasReferenceId: vi.fn().mockReturnValue(false),
@@ -189,23 +208,55 @@ describe("StripePaymentProcessor", () => {
       const proc = new StripePaymentProcessor({
         stripe,
         tenantStore,
-        webhookSecret: "whsec_test",
+        webhookSecret: WEBHOOK_SECRET,
         creditLedger: mockLedger as unknown as import("../credits/credit-ledger.js").ICreditLedger,
         replayGuard: noOpReplayGuard,
       });
 
-      const result = await proc.handleWebhook(Buffer.from("raw-body"), "sig_header");
+      const result = await proc.handleWebhook(Buffer.from(payload), signature);
 
-      expect(stripe.webhooks.constructEvent).toHaveBeenCalledWith(Buffer.from("raw-body"), "sig_header", "whsec_test");
       expect(result.eventType).toBe("checkout.session.completed");
     });
 
-    it("throws on invalid signature", async () => {
-      (stripe.webhooks.constructEvent as ReturnType<typeof vi.fn>).mockImplementation(() => {
-        throw new Error("Invalid signature");
+    it("rejects webhook with invalid signature", async () => {
+      const event = {
+        id: "evt_bad_sig",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_bad",
+            client_reference_id: "t-1",
+            customer: "cus_1",
+            amount_total: 500,
+          },
+        },
+      };
+      const payload = JSON.stringify(event);
+      // Generate signature with WRONG secret
+      const badSignature = sigStripe.webhooks.generateTestHeaderString({
+        payload,
+        secret: "whsec_wrong_secret",
       });
+      await expect(processor.handleWebhook(Buffer.from(payload), badSignature)).rejects.toThrow();
+    });
 
-      await expect(processor.handleWebhook(Buffer.from("bad"), "bad_sig")).rejects.toThrow("Invalid signature");
+    it("rejects webhook with tampered payload", async () => {
+      const event = {
+        id: "evt_tamper",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_tamper",
+            client_reference_id: "t-1",
+            customer: "cus_1",
+            amount_total: 500,
+          },
+        },
+      };
+      const { signature } = makeSignedPayload(event);
+      // Tamper the payload after signing
+      const tampered = JSON.stringify({ ...event, id: "evt_evil" });
+      await expect(processor.handleWebhook(Buffer.from(tampered), signature)).rejects.toThrow();
     });
   });
 
@@ -319,7 +370,7 @@ describe("StripePaymentProcessor", () => {
       const proc = new StripePaymentProcessor({
         stripe,
         tenantStore,
-        webhookSecret: "whsec_test",
+        webhookSecret: WEBHOOK_SECRET,
         creditLedger: mockLedger as unknown as import("../credits/credit-ledger.js").ICreditLedger,
         autoTopupEventLog:
           mockEventLog as unknown as import("../credits/auto-topup-event-log-repository.js").IAutoTopupEventLogRepository,
