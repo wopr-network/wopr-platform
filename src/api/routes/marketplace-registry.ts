@@ -71,7 +71,7 @@ export const pluginRegistry: PluginManifest[] = [
     tags: ["channel", "chat", "community"],
     capabilities: ["channel"],
     requires: [],
-    install: [],
+    install: ["@wopr-network/plugin-discord"],
     configSchema: [
       {
         key: "botToken",
