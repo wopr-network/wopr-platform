@@ -10,7 +10,7 @@
 //   billing.*       — credits, checkout, portal, plans, usage, spending limits
 //   settings.*      — notification preferences
 //   account.*       — deletion lifecycle
-//   org.*           — organization settings (stubs, WOP-815)
+//   org.*           — organization settings
 //   twoFactor.*     — 2FA mandate
 //   nodes.*         — hardware node management
 //   admin.*         — all admin panel procedures
