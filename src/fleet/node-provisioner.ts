@@ -83,6 +83,7 @@ export class NodeProvisioner {
       nodeSecretHash,
     });
 
+    let createdDropletId: number | undefined;
     try {
       // 2. Create droplet
       const userData = generateCloudInit(this.botImage, nodeSecret);
@@ -95,6 +96,7 @@ export class NodeProvisioner {
         tags: ["wopr-node"],
         user_data: userData,
       });
+      createdDropletId = droplet.id;
 
       // 3. Poll until active
       await this.updateProvisionStage(nodeId, "waiting_active");
@@ -139,6 +141,18 @@ export class NodeProvisioner {
         monthlyCostCents,
       };
     } catch (err) {
+      // Compensating action: destroy the droplet if it was created before the failure
+      if (createdDropletId !== undefined) {
+        try {
+          await this.doClient.deleteDroplet(createdDropletId);
+          logger.info(`Cleaned up orphaned droplet ${createdDropletId} after provisioning failure`);
+        } catch (cleanupErr) {
+          logger.error(`Failed to clean up orphaned droplet ${createdDropletId}`, {
+            cleanupError: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+            originalError: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
       await this.nodeRepo.markFailed(nodeId, err instanceof Error ? err.message : String(err));
       throw err;
     }
