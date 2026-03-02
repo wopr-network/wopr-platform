@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AuthEnv } from "../../auth/index.js";
+import { logger } from "../../config/logger.js";
 import type { IOnboardingSessionRepository } from "../../onboarding/drizzle-onboarding-session-repository.js";
 import { GraduationError, type GraduationService } from "../../onboarding/graduation-service.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
@@ -65,7 +66,8 @@ onboardingRoutes.post("/session", async (c) => {
 
     return c.json({ sessionId: session.id, woprSessionName: session.woprSessionName }, 201);
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    logger.error("Failed to create onboarding session", { err });
+    return c.json({ error: "Internal server error" }, 500);
   }
 });
 
@@ -141,11 +143,11 @@ onboardingRoutes.get("/session/:id/history", async (c) => {
     const history = await service.getHistory(id, limit);
     return c.json({ history });
   } catch (err) {
-    const msg = String(err);
-    if (msg.includes("not found")) {
+    if (err instanceof Error && err.message.toLowerCase().includes("not found")) {
       return c.json({ error: "Session not found" }, 404);
     }
-    return c.json({ error: msg }, 500);
+    logger.error("Failed to fetch onboarding session history", { err });
+    return c.json({ error: "Internal server error" }, 500);
   }
 });
 
@@ -180,7 +182,8 @@ onboardingRoutes.post("/session/:id/upgrade", async (c) => {
     }
     return c.json({ sessionId: session.id });
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    logger.error("Failed to upgrade onboarding session", { err });
+    return c.json({ error: "Internal server error" }, 500);
   }
 });
 
@@ -224,6 +227,7 @@ onboardingRoutes.post("/session/:id/graduate", async (c) => {
       if (err.code === "NO_BOT_INSTANCE") return c.json({ error: err.message }, 422);
       if (err.code === "UNAUTHENTICATED") return c.json({ error: err.message }, 403);
     }
-    return c.json({ error: String(err) }, 500);
+    logger.error("Failed to graduate onboarding session", { err });
+    return c.json({ error: "Internal server error" }, 500);
   }
 });
