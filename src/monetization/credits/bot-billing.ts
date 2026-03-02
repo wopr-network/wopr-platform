@@ -1,3 +1,4 @@
+import { logger } from "../../config/logger.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import type { INodeCommandBus } from "../../fleet/node-command-bus.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
@@ -49,7 +50,10 @@ export class DrizzleBotBilling implements IBotBilling {
         payload: { name: bot.name },
       });
     } catch (err) {
-      console.error(`[BotBilling] Failed to send ${type} for bot ${botId}:`, err);
+      logger.error(`[BotBilling] Failed to send ${type} for bot ${botId}:`, {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
     }
   }
 
