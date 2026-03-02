@@ -150,4 +150,29 @@ describe("NotificationService", () => {
       });
     });
   });
+
+  describe("notifyDisputeCreated", () => {
+    it("enqueues dispute-created notification", () => {
+      service.notifyDisputeCreated("t1", "admin@test.com", "dp_123", "$50.00", "fraudulent");
+      expect(queue.enqueue).toHaveBeenCalledWith("t1", "dispute-created", {
+        email: "admin@test.com",
+        disputeId: "dp_123",
+        amountDollars: "$50.00",
+        reason: "fraudulent",
+        creditsUrl: `${BASE_URL}/billing/credits`,
+      });
+    });
+  });
+
+  describe("notifyDisputeWon", () => {
+    it("enqueues dispute-won notification", () => {
+      service.notifyDisputeWon("t1", "admin@test.com", "dp_123", "$50.00");
+      expect(queue.enqueue).toHaveBeenCalledWith("t1", "dispute-won", {
+        email: "admin@test.com",
+        disputeId: "dp_123",
+        amountDollars: "$50.00",
+        creditsUrl: `${BASE_URL}/billing/credits`,
+      });
+    });
+  });
 });

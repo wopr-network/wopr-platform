@@ -85,6 +85,40 @@ export class NotificationService {
     });
   }
 
+  notifyDisputeCreated(
+    tenantId: string,
+    email: string,
+    disputeId: string,
+    amountDollars: string,
+    reason: string,
+  ): void {
+    this.queue.enqueue(tenantId, "dispute-created", {
+      email,
+      disputeId,
+      amountDollars,
+      reason,
+      creditsUrl: this.creditsUrl(),
+    });
+  }
+
+  notifyDisputeWon(tenantId: string, email: string, disputeId: string, amountDollars: string): void {
+    this.queue.enqueue(tenantId, "dispute-won", {
+      email,
+      disputeId,
+      amountDollars,
+      creditsUrl: this.creditsUrl(),
+    });
+  }
+
+  notifyDisputeLost(tenantId: string, email: string, disputeId: string, amountDollars: string): void {
+    this.queue.enqueue(tenantId, "dispute-lost", {
+      email,
+      disputeId,
+      amountDollars,
+      creditsUrl: this.creditsUrl(),
+    });
+  }
+
   notifySpendThresholdAlert(
     tenantId: string,
     email: string,

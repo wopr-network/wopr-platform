@@ -1140,4 +1140,259 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.handled).toBe(false);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // charge.dispute.created (WOP-1303)
+  // ---------------------------------------------------------------------------
+
+  describe("charge.dispute.created (WOP-1303)", () => {
+    // Customer is embedded in the expanded charge object (not directly on Dispute).
+    function makeDisputeCreatedEvent(
+      customerId: string | { id: string } | null = "cus_dispute_abc",
+      overrides?: Record<string, unknown>,
+    ): Stripe.Event {
+      return {
+        id: "evt_dispute_1",
+        type: "charge.dispute.created",
+        data: {
+          object: {
+            id: "dp_test_1",
+            charge: { id: "ch_disputed_1", customer: customerId },
+            amount: 2500,
+            currency: "usd",
+            reason: "fraudulent",
+            status: "needs_response",
+            metadata: {},
+            ...overrides,
+          },
+        },
+      } as unknown as Stripe.Event;
+    }
+
+    it("freezes tenant credits and suspends bots on dispute", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dispute-1", processorCustomerId: "cus_dispute_abc" });
+      await creditLedger.credit("tenant-dispute-1", Credit.fromCents(5000), "purchase", "seed");
+
+      const botBilling = {
+        suspendAllForTenant: vi.fn(async () => ["bot-d1"]),
+      } as unknown as import("../credits/bot-billing.js").BotBilling;
+
+      const result = await handleWebhookEvent({ ...deps, botBilling }, makeDisputeCreatedEvent());
+
+      expect(result.handled).toBe(true);
+      expect(result.event_type).toBe("charge.dispute.created");
+      expect(result.tenant).toBe("tenant-dispute-1");
+      expect(result.disputeId).toBe("dp_test_1");
+      expect(result.suspendedBots).toEqual(["bot-d1"]);
+
+      expect(await tenantStore.hasBillingHold("tenant-dispute-1")).toBe(true);
+      expect((await creditLedger.balance("tenant-dispute-1")).toCents()).toBe(2500);
+    });
+
+    it("allows negative balance when dispute amount exceeds current balance", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dispute-neg", processorCustomerId: "cus_dispute_neg" });
+
+      const result = await handleWebhookEvent(deps, makeDisputeCreatedEvent("cus_dispute_neg", { amount: 1000 }));
+
+      expect(result.handled).toBe(true);
+      expect((await creditLedger.balance("tenant-dispute-neg")).toCents()).toBe(-1000);
+    });
+
+    it("is idempotent — skips duplicate debit for same dispute ID", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dispute-idem", processorCustomerId: "cus_dispute_idem" });
+      await creditLedger.credit("tenant-dispute-idem", Credit.fromCents(5000), "purchase", "seed");
+
+      const event = makeDisputeCreatedEvent("cus_dispute_idem");
+
+      await handleWebhookEvent(deps, event);
+      await handleWebhookEvent(deps, event);
+
+      // Only debited once
+      expect((await creditLedger.balance("tenant-dispute-idem")).toCents()).toBe(2500);
+    });
+
+    it("sends admin notification when notificationService is available", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dispute-notify", processorCustomerId: "cus_dispute_notify" });
+      await creditLedger.credit("tenant-dispute-notify", Credit.fromCents(5000), "purchase", "seed");
+
+      const notifyFn = vi.fn();
+      const notificationService = {
+        notifyDisputeCreated: notifyFn,
+      } as unknown as import("../../email/notification-service.js").NotificationService;
+      const getEmailForTenant = vi.fn(() => "admin@example.com");
+
+      await handleWebhookEvent(
+        { ...deps, notificationService, getEmailForTenant },
+        makeDisputeCreatedEvent("cus_dispute_notify"),
+      );
+
+      expect(getEmailForTenant).toHaveBeenCalledWith("tenant-dispute-notify");
+      expect(notifyFn).toHaveBeenCalledWith(
+        "tenant-dispute-notify",
+        "admin@example.com",
+        "dp_test_1",
+        "$25.00",
+        "fraudulent",
+      );
+    });
+
+    it("returns handled:false when tenant not found for customer", async () => {
+      const result = await handleWebhookEvent(deps, makeDisputeCreatedEvent("cus_unknown_dispute"));
+
+      expect(result.handled).toBe(false);
+      expect(result.event_type).toBe("charge.dispute.created");
+    });
+
+    it("returns handled:false when charge is a plain string (no expanded customer)", async () => {
+      const event = {
+        id: "evt_dispute_noexp",
+        type: "charge.dispute.created",
+        data: {
+          object: {
+            id: "dp_noexp_1",
+            charge: "ch_plain_string",
+            amount: 1000,
+            currency: "usd",
+            reason: "fraudulent",
+            status: "needs_response",
+            metadata: {},
+          },
+        },
+      } as unknown as Stripe.Event;
+      const result = await handleWebhookEvent(deps, event);
+
+      expect(result.handled).toBe(false);
+    });
+
+    it("handles customer object (expanded) inside charge", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dispute-obj", processorCustomerId: "cus_dispute_obj" });
+      await creditLedger.credit("tenant-dispute-obj", Credit.fromCents(3000), "purchase", "seed");
+
+      const result = await handleWebhookEvent(deps, makeDisputeCreatedEvent({ id: "cus_dispute_obj" }));
+
+      expect(result.handled).toBe(true);
+      expect(result.tenant).toBe("tenant-dispute-obj");
+    });
+
+    it("works without botBilling (no suspension, still handled)", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dispute-no-bb", processorCustomerId: "cus_dispute_no_bb" });
+      await creditLedger.credit("tenant-dispute-no-bb", Credit.fromCents(5000), "purchase", "seed");
+
+      const result = await handleWebhookEvent(deps, makeDisputeCreatedEvent("cus_dispute_no_bb"));
+
+      expect(result.handled).toBe(true);
+      expect(result.suspendedBots).toBeUndefined();
+      expect(await tenantStore.hasBillingHold("tenant-dispute-no-bb")).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // charge.dispute.closed (WOP-1303)
+  // ---------------------------------------------------------------------------
+
+  describe("charge.dispute.closed (WOP-1303)", () => {
+    // Customer is embedded in the expanded charge object (not directly on Dispute).
+    function makeDisputeClosedEvent(
+      customerId: string | { id: string } = "cus_dispute_closed_abc",
+      overrides?: Record<string, unknown>,
+    ): Stripe.Event {
+      return {
+        id: "evt_dispute_closed_1",
+        type: "charge.dispute.closed",
+        data: {
+          object: {
+            id: "dp_closed_1",
+            charge: { id: "ch_disputed_closed", customer: customerId },
+            amount: 2500,
+            currency: "usd",
+            reason: "fraudulent",
+            status: "won",
+            metadata: {},
+            ...overrides,
+          },
+        },
+      } as unknown as Stripe.Event;
+    }
+
+    it("unfreezes tenant and re-credits when dispute is won", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dw-1", processorCustomerId: "cus_dispute_closed_abc" });
+      await tenantStore.setBillingHold("tenant-dw-1", true);
+
+      const botBilling = {
+        checkReactivation: vi.fn(async () => ["bot-r1"]),
+      } as unknown as import("../credits/bot-billing.js").BotBilling;
+
+      const result = await handleWebhookEvent({ ...deps, botBilling }, makeDisputeClosedEvent());
+
+      expect(result.handled).toBe(true);
+      expect(result.event_type).toBe("charge.dispute.closed");
+      expect(result.tenant).toBe("tenant-dw-1");
+      expect(result.disputeId).toBe("dp_closed_1");
+      expect(result.reactivatedBots).toEqual(["bot-r1"]);
+
+      expect(await tenantStore.hasBillingHold("tenant-dw-1")).toBe(false);
+      expect((await creditLedger.balance("tenant-dw-1")).toCents()).toBe(2500);
+    });
+
+    it("does NOT unfreeze or re-credit when dispute is lost", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dl-1", processorCustomerId: "cus_dispute_lost" });
+      await tenantStore.setBillingHold("tenant-dl-1", true);
+
+      const result = await handleWebhookEvent(deps, makeDisputeClosedEvent("cus_dispute_lost", { status: "lost" }));
+
+      expect(result.handled).toBe(true);
+      expect(result.disputeId).toBe("dp_closed_1");
+
+      expect(await tenantStore.hasBillingHold("tenant-dl-1")).toBe(true);
+      expect((await creditLedger.balance("tenant-dl-1")).toCents()).toBe(0);
+    });
+
+    it("is idempotent — skips duplicate re-credit for same dispute reversal", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dw-idem", processorCustomerId: "cus_dw_idem" });
+      await tenantStore.setBillingHold("tenant-dw-idem", true);
+
+      const event = makeDisputeClosedEvent("cus_dw_idem");
+
+      await handleWebhookEvent(deps, event);
+      expect((await creditLedger.balance("tenant-dw-idem")).toCents()).toBe(2500);
+
+      await handleWebhookEvent(deps, event);
+      // Still 2500, not 5000
+      expect((await creditLedger.balance("tenant-dw-idem")).toCents()).toBe(2500);
+    });
+
+    it("sends dispute-won notification when dispute is won", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dw-notify", processorCustomerId: "cus_dw_notify" });
+      await tenantStore.setBillingHold("tenant-dw-notify", true);
+
+      const notifyFn = vi.fn();
+      const notificationService = {
+        notifyDisputeWon: notifyFn,
+      } as unknown as import("../../email/notification-service.js").NotificationService;
+      const getEmailForTenant = vi.fn(() => "admin@example.com");
+
+      await handleWebhookEvent(
+        { ...deps, notificationService, getEmailForTenant },
+        makeDisputeClosedEvent("cus_dw_notify"),
+      );
+
+      expect(notifyFn).toHaveBeenCalledWith("tenant-dw-notify", "admin@example.com", "dp_closed_1", "$25.00");
+    });
+
+    it("returns handled:false when tenant not found", async () => {
+      const result = await handleWebhookEvent(deps, makeDisputeClosedEvent("cus_unknown_dc"));
+
+      expect(result.handled).toBe(false);
+    });
+
+    it("handles customer object (expanded) inside charge", async () => {
+      await tenantStore.upsert({ tenant: "tenant-dw-obj", processorCustomerId: "cus_dw_obj" });
+      await tenantStore.setBillingHold("tenant-dw-obj", true);
+
+      const result = await handleWebhookEvent(deps, makeDisputeClosedEvent({ id: "cus_dw_obj" }));
+
+      expect(result.handled).toBe(true);
+      expect(result.tenant).toBe("tenant-dw-obj");
+    });
+  });
 });

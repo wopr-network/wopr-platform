@@ -32,6 +32,8 @@ export interface WebhookResult {
   duplicate?: boolean;
   /** Bonus credits granted to referred user on first purchase (WOP-950). */
   affiliateBonus?: Credit;
+  /** Stripe dispute ID when processing charge.dispute.created/closed (WOP-1303). */
+  disputeId?: string;
 }
 
 /**
@@ -439,6 +441,165 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       logger.warn("Charge refunded — credits debited", { tenant, customerId, chargeId: charge.id, refundedCents });
 
       result = { handled: true, event_type: event.type, tenant, debitedCents: refundedCents };
+      break;
+    }
+
+    case "charge.dispute.created": {
+      const dispute = event.data.object as Stripe.Dispute;
+      // customer is not directly on Dispute — extract from the expanded charge object.
+      const disputeCharge = dispute.charge as Stripe.Charge | string | null;
+      const customerId =
+        disputeCharge && typeof disputeCharge !== "string"
+          ? typeof disputeCharge.customer === "string"
+            ? disputeCharge.customer
+            : ((disputeCharge.customer as Stripe.Customer | null)?.id ?? null)
+          : null;
+
+      if (!customerId) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      if (!mapping) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const tenant = mapping.tenant;
+      const disputeId = dispute.id;
+      const disputedCents = dispute.amount;
+
+      // Set billing hold — prevents further spend during dispute.
+      await deps.tenantStore.setBillingHold(tenant, true);
+
+      // Debit disputed amount (allow negative). Idempotent via disputeId.
+      if (disputedCents > 0 && !(await deps.creditLedger.hasReferenceId(disputeId))) {
+        await deps.creditLedger.debit(
+          tenant,
+          Credit.fromCents(disputedCents),
+          "correction",
+          `Stripe dispute (dispute: ${disputeId}, reason: ${dispute.reason})`,
+          disputeId,
+          true, // allowNegative
+        );
+      }
+
+      // Suspend all bots (non-fatal if botBilling not provided).
+      let suspendedBots: string[] | undefined;
+      if (deps.botBilling) {
+        suspendedBots = await deps.botBilling.suspendAllForTenant(tenant);
+        if (suspendedBots.length === 0) suspendedBots = undefined;
+      }
+
+      // Send admin alert notification (non-fatal).
+      if (deps.notificationService && deps.getEmailForTenant) {
+        const email = deps.getEmailForTenant(tenant);
+        if (email) {
+          const amountDollars = `$${(disputedCents / 100).toFixed(2)}`;
+          deps.notificationService.notifyDisputeCreated(tenant, email, disputeId, amountDollars, dispute.reason);
+        }
+      }
+
+      logger.warn("Charge dispute created — credits frozen, bots suspended", {
+        tenant,
+        customerId,
+        disputeId,
+        disputedCents,
+        reason: dispute.reason,
+      });
+
+      result = { handled: true, event_type: event.type, tenant, disputeId, suspendedBots };
+      break;
+    }
+
+    case "charge.dispute.closed": {
+      const dispute = event.data.object as Stripe.Dispute;
+      // customer is not directly on Dispute — extract from the expanded charge object.
+      const disputeCharge2 = dispute.charge as Stripe.Charge | string | null;
+      const customerId =
+        disputeCharge2 && typeof disputeCharge2 !== "string"
+          ? typeof disputeCharge2.customer === "string"
+            ? disputeCharge2.customer
+            : ((disputeCharge2.customer as Stripe.Customer | null)?.id ?? null)
+          : null;
+
+      if (!customerId) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      if (!mapping) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const tenant = mapping.tenant;
+      const disputeId = dispute.id;
+      const disputedCents = dispute.amount;
+
+      if (dispute.status === "won") {
+        // Dispute won — unfreeze hold and restore credits.
+        await deps.tenantStore.setBillingHold(tenant, false);
+
+        // Re-credit the disputed amount. Idempotent via reversal referenceId.
+        const reversalRef = `${disputeId}:reversal`;
+        if (disputedCents > 0 && !(await deps.creditLedger.hasReferenceId(reversalRef))) {
+          await deps.creditLedger.credit(
+            tenant,
+            Credit.fromCents(disputedCents),
+            "correction",
+            `Stripe dispute won — credits restored (dispute: ${disputeId})`,
+            reversalRef,
+            "stripe",
+          );
+        }
+
+        // Reactivate bots (non-fatal).
+        let reactivatedBots: string[] | undefined;
+        if (deps.botBilling) {
+          reactivatedBots = await deps.botBilling.checkReactivation(tenant, deps.creditLedger);
+          if (reactivatedBots.length === 0) reactivatedBots = undefined;
+        }
+
+        // Send dispute-won notification (non-fatal).
+        if (deps.notificationService && deps.getEmailForTenant) {
+          const email = deps.getEmailForTenant(tenant);
+          if (email) {
+            const amountDollars = `$${(disputedCents / 100).toFixed(2)}`;
+            deps.notificationService.notifyDisputeWon(tenant, email, disputeId, amountDollars);
+          }
+        }
+
+        logger.info("Charge dispute won — credits unfrozen, bots reactivated", {
+          tenant,
+          customerId,
+          disputeId,
+          disputedCents,
+        });
+
+        result = { handled: true, event_type: event.type, tenant, disputeId, reactivatedBots };
+      } else {
+        // Dispute lost or other terminal status — hold stays, credits remain debited.
+        // Send admin alert so the hold doesn't silently linger with no visibility.
+        if (deps.notificationService && deps.getEmailForTenant) {
+          const email = deps.getEmailForTenant(tenant);
+          if (email) {
+            const amountDollars = `$${(disputedCents / 100).toFixed(2)}`;
+            deps.notificationService.notifyDisputeLost(tenant, email, disputeId, amountDollars);
+          }
+        }
+
+        logger.warn("Charge dispute closed (not won)", {
+          tenant,
+          customerId,
+          disputeId,
+          status: dispute.status,
+        });
+
+        result = { handled: true, event_type: event.type, tenant, disputeId };
+      }
       break;
     }
 

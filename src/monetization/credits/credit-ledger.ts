@@ -36,7 +36,8 @@ export type CreditType =
   | "promo"
   | "community_dividend"
   | "affiliate_bonus"
-  | "affiliate_match";
+  | "affiliate_match"
+  | "correction";
 
 /** Transaction types that remove credits */
 export type DebitType =
