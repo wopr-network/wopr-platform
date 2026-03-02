@@ -857,8 +857,8 @@ if (process.env.NODE_ENV !== "test") {
     logger.info("better-auth migrations applied");
   }
 
-  // Daily runtime deduction cron — charges tenants for active bots + resource tier surcharges.
-  // Runs once every 24 h (offset by 1 min from midnight to avoid thundering herd).
+  // Runtime deduction scheduler — charges tenants for active bots + resource tier surcharges.
+  // Runs every 60s. Idempotent per (date, tenantId) via referenceId check.
   {
     const cronLedger = getCreditLedger();
     const botInstanceRepo = getBotInstanceRepo();
@@ -867,8 +867,8 @@ if (process.env.NODE_ENV !== "test") {
       return bots.filter((b) => b.billingState === "active").map((b) => b.id);
     });
     const getAddonCosts = buildAddonCosts(getTenantAddonRepo());
-    const DAILY_MS = 24 * 60 * 60 * 1000;
-    setInterval(() => {
+    const RUNTIME_INTERVAL_MS = 60_000;
+    const runtimeInterval = setInterval(() => {
       const today = new Date().toISOString().slice(0, 10);
       void runRuntimeDeductions({
         ledger: cronLedger,
@@ -884,15 +884,22 @@ if (process.env.NODE_ENV !== "test") {
         },
       })
         .then((result) => {
-          logger.info("Daily runtime deductions complete", result);
+          logger.info("Runtime deductions complete", result);
         })
         .catch((err) => {
-          logger.error("Daily runtime deductions failed", {
+          logger.error("Runtime deductions failed", {
             error: err instanceof Error ? err.message : String(err),
           });
         });
-    }, DAILY_MS);
-    logger.info("Daily runtime deduction cron scheduled (24h interval)");
+    }, RUNTIME_INTERVAL_MS);
+
+    const shutdownRuntimeCron = () => {
+      clearInterval(runtimeInterval);
+      logger.info("Runtime deduction scheduler stopped");
+    };
+    process.on("SIGTERM", shutdownRuntimeCron);
+    process.on("SIGINT", shutdownRuntimeCron);
+    logger.info("Runtime deduction scheduler started (60s interval)");
   }
 
   // Daily community dividend distribution — pool = sum(purchases) × matchRate, split among active users.
