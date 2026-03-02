@@ -1,5 +1,9 @@
+// Tests for the marketplace plugin seed data integrity.
+// The seed data lives in scripts/seed-marketplace-plugins.ts and is the
+// single source of truth for first-party plugin manifests.
 import { describe, expect, it } from "vitest";
-import { type PluginCategory, pluginRegistry } from "./marketplace-registry.js";
+import { FIRST_PARTY_PLUGINS } from "../../marketplace/first-party-plugins.js";
+import type { PluginCategory, PluginManifest } from "./marketplace-registry.js";
 
 const VALID_CATEGORIES: PluginCategory[] = [
   "channel",
@@ -16,8 +20,11 @@ const VALID_CATEGORIES: PluginCategory[] = [
 
 const VALID_FIELD_TYPES = ["string", "number", "boolean", "select"] as const;
 
-describe("marketplace-registry data integrity", () => {
-  it("registry is a non-empty array", () => {
+// Re-export seed data as pluginRegistry for test compatibility
+const pluginRegistry: PluginManifest[] = FIRST_PARTY_PLUGINS;
+
+describe("marketplace plugin seed data integrity", () => {
+  it("seed data is a non-empty array", () => {
     expect(Array.isArray(pluginRegistry)).toBe(true);
     expect(pluginRegistry.length).toBeGreaterThan(0);
   });

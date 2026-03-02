@@ -26,6 +26,7 @@ function makeMockRepo(existing: Map<string, MarketplacePlugin> = new Map()) {
         notes: null,
         installedAt: null,
         installError: null,
+        manifest: null,
       } satisfies MarketplacePlugin;
     }),
     update: vi.fn(),
@@ -98,6 +99,7 @@ describe("discoverNpmPlugins", () => {
           notes: null,
           installedAt: null,
           installError: null,
+          manifest: null,
         },
       ],
     ]);
@@ -187,6 +189,7 @@ describe("discoverNpmPlugins", () => {
       notes: null,
       installedAt: null,
       installError: null,
+      manifest: null,
     });
     const existing = new Map<string, MarketplacePlugin>([
       ["a", makePlugin("a")],

@@ -11,7 +11,7 @@ import { Credit } from "../../monetization/credit.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
-import { type PluginCategory, type PluginManifest, pluginRegistry } from "./marketplace-registry.js";
+import type { PluginCategory, PluginManifest } from "./marketplace-registry.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const store = new ProfileStore(DATA_DIR);
@@ -40,6 +40,41 @@ export const marketplaceRoutes = new Hono<AuditEnv>();
 const PAGINATION_DEFAULT_LIMIT = 50;
 const PAGINATION_MAX_LIMIT = 250;
 
+function dbPluginToManifest(
+  pluginId: string,
+  npmPackage: string,
+  version: string,
+  category: string | null,
+  manifest: import("../../marketplace/marketplace-repository-types.js").MarketplacePluginManifest | null,
+): PluginManifest {
+  if (manifest) {
+    return {
+      id: pluginId,
+      version,
+      category: (category ?? manifest.tags[0] ?? "integration") as PluginCategory,
+      ...manifest,
+    };
+  }
+  return {
+    id: pluginId,
+    name: npmPackage.replace(/^@wopr-network\/wopr-plugin-/, ""),
+    description: "",
+    version,
+    author: "Community",
+    icon: "Package",
+    color: "#6B7280",
+    category: (category ?? "integration") as PluginCategory,
+    tags: category ? [category] : [],
+    capabilities: [],
+    requires: [],
+    install: [],
+    configSchema: [],
+    setup: [],
+    installCount: 0,
+    changelog: [],
+  } satisfies PluginManifest;
+}
+
 /**
  * GET /api/marketplace/plugins
  *
@@ -63,43 +98,13 @@ marketplaceRoutes.get("/plugins", async (c) => {
 
   const cursor = c.req.query("cursor");
 
-  let merged: PluginManifest[];
+  let plugins: PluginManifest[];
   try {
     const repo = getMarketplacePluginRepo();
     const dbPlugins = await repo.findEnabled();
-    const staticById = new Map(pluginRegistry.map((p) => [p.id, p]));
-
-    merged = dbPlugins.map((dbp) => {
-      const staticManifest = staticById.get(dbp.pluginId);
-      if (staticManifest) {
-        return { ...staticManifest };
-      }
-      return {
-        id: dbp.pluginId,
-        name: dbp.npmPackage.replace(/^@wopr-network\/wopr-plugin-/, ""),
-        description: dbp.notes ?? "",
-        version: dbp.version,
-        author: "Community",
-        icon: "Package",
-        color: "#6B7280",
-        category: (dbp.category ?? "integration") as PluginCategory,
-        tags: dbp.category ? [dbp.category] : [],
-        capabilities: [],
-        requires: [],
-        install: [],
-        configSchema: [],
-        setup: [],
-        installCount: 0,
-        changelog: [],
-      } satisfies PluginManifest;
-    });
-
-    // Include static plugins with no DB record (backwards compat for first-party plugins)
-    for (const sp of pluginRegistry) {
-      if (!dbPlugins.some((dbp) => dbp.pluginId === sp.id)) {
-        merged.push(sp);
-      }
-    }
+    plugins = dbPlugins.map((dbp) =>
+      dbPluginToManifest(dbp.pluginId, dbp.npmPackage, dbp.version, dbp.category, dbp.manifest),
+    );
   } catch (err) {
     logger.error("Marketplace plugin repo unavailable", { err });
     return c.json({ error: "Service unavailable" }, 503);
@@ -107,12 +112,12 @@ marketplaceRoutes.get("/plugins", async (c) => {
 
   const category = c.req.query("category");
   if (category) {
-    merged = merged.filter((p) => p.category === category);
+    plugins = plugins.filter((p) => p.category === category);
   }
 
   const search = c.req.query("search")?.toLowerCase();
   if (search) {
-    merged = merged.filter(
+    plugins = plugins.filter(
       (p) =>
         p.name.toLowerCase().includes(search) ||
         p.description.toLowerCase().includes(search) ||
@@ -123,15 +128,15 @@ marketplaceRoutes.get("/plugins", async (c) => {
   // Apply cursor-based pagination: skip everything up to and including the cursor id
   let startIndex = 0;
   if (cursor) {
-    const cursorIndex = merged.findIndex((p) => p.id === cursor);
+    const cursorIndex = plugins.findIndex((p) => p.id === cursor);
     if (cursorIndex === -1) {
       return c.json({ error: "Invalid or expired cursor" }, 400);
     }
     startIndex = cursorIndex + 1;
   }
 
-  const page = merged.slice(startIndex, startIndex + limit);
-  const hasNextPage = startIndex + limit < merged.length;
+  const page = plugins.slice(startIndex, startIndex + limit);
+  const hasNextPage = startIndex + limit < plugins.length;
   const nextCursor = hasNextPage ? (page[page.length - 1]?.id ?? null) : null;
 
   return c.json({ plugins: page, nextCursor, hasNextPage });
@@ -148,33 +153,19 @@ marketplaceRoutes.get("/plugins/:id", async (c) => {
 
   const id = c.req.param("id");
 
-  // Check static registry first (rich manifest)
-  const staticPlugin = pluginRegistry.find((p) => p.id === id);
-  if (staticPlugin) return c.json(staticPlugin);
-
-  // Check DB for dynamic plugins
   try {
     const repo = getMarketplacePluginRepo();
     const dbPlugin = await repo.findById(id);
     if (dbPlugin) {
-      return c.json({
-        id: dbPlugin.pluginId,
-        name: dbPlugin.npmPackage.replace(/^@wopr-network\/wopr-plugin-/, ""),
-        description: dbPlugin.notes ?? "",
-        version: dbPlugin.version,
-        author: "Community",
-        icon: "Package",
-        color: "#6B7280",
-        category: (dbPlugin.category ?? "integration") as PluginCategory,
-        tags: dbPlugin.category ? [dbPlugin.category] : [],
-        capabilities: [],
-        requires: [],
-        install: [],
-        configSchema: [],
-        setup: [],
-        installCount: 0,
-        changelog: [],
-      } satisfies PluginManifest);
+      return c.json(
+        dbPluginToManifest(
+          dbPlugin.pluginId,
+          dbPlugin.npmPackage,
+          dbPlugin.version,
+          dbPlugin.category,
+          dbPlugin.manifest,
+        ),
+      );
     }
   } catch (err) {
     logger.error("Marketplace plugin repo unavailable", { err });
@@ -195,35 +186,22 @@ marketplaceRoutes.get("/plugins/:id/content", async (c) => {
 
   const id = c.req.param("id");
 
-  let plugin = pluginRegistry.find((p) => p.id === id);
-  if (!plugin) {
-    try {
-      const repo = getMarketplacePluginRepo();
-      const dbPlugin = await repo.findById(id);
-      if (dbPlugin) {
-        plugin = {
-          id: dbPlugin.pluginId,
-          name: dbPlugin.npmPackage.replace(/^@wopr-network\/wopr-plugin-/, ""),
-          description: dbPlugin.notes ?? "",
-          version: dbPlugin.version,
-          author: "Community",
-          icon: "Package",
-          color: "#6B7280",
-          category: (dbPlugin.category ?? "integration") as PluginCategory,
-          tags: dbPlugin.category ? [dbPlugin.category] : [],
-          capabilities: [],
-          requires: [],
-          install: [],
-          configSchema: [],
-          setup: [],
-          installCount: 0,
-          changelog: [],
-        } satisfies PluginManifest;
-      }
-    } catch (err) {
-      logger.error("Marketplace plugin repo unavailable", { err });
-      return c.json({ error: "Service unavailable" }, 503);
+  let plugin: PluginManifest | undefined;
+  try {
+    const repo = getMarketplacePluginRepo();
+    const dbPlugin = await repo.findById(id);
+    if (dbPlugin) {
+      plugin = dbPluginToManifest(
+        dbPlugin.pluginId,
+        dbPlugin.npmPackage,
+        dbPlugin.version,
+        dbPlugin.category,
+        dbPlugin.manifest,
+      );
     }
+  } catch (err) {
+    logger.error("Marketplace plugin repo unavailable", { err });
+    return c.json({ error: "Service unavailable" }, 503);
   }
 
   if (!plugin) return c.json({ error: "Plugin not found" }, 404);
@@ -264,19 +242,16 @@ marketplaceRoutes.post("/plugins/:id/install", async (c) => {
 
   const id = c.req.param("id");
 
-  // Check static registry first, then DB for dynamic plugins
-  let pluginFound = pluginRegistry.some((p) => p.id === id);
-  if (!pluginFound) {
-    try {
-      const repo = getMarketplacePluginRepo();
-      const dbPlugin = await repo.findById(id);
-      if (dbPlugin) pluginFound = true;
-    } catch (err) {
-      logger.error("Marketplace plugin repo unavailable during install", { err });
-      return c.json({ error: "Service unavailable" }, 503);
-    }
+  let installedVersion = "unknown";
+  try {
+    const repo = getMarketplacePluginRepo();
+    const dbPlugin = await repo.findById(id);
+    if (!dbPlugin) return c.json({ error: "Plugin not found" }, 404);
+    installedVersion = dbPlugin.version;
+  } catch (err) {
+    logger.error("Marketplace plugin repo unavailable during install", { err });
+    return c.json({ error: "Service unavailable" }, 503);
   }
-  if (!pluginFound) return c.json({ error: "Plugin not found" }, 404);
 
   let body: unknown;
   try {
@@ -401,12 +376,11 @@ marketplaceRoutes.post("/plugins/:id/install", async (c) => {
     tenantId: freshProfile.tenantId,
   });
 
-  const staticPlugin = pluginRegistry.find((p) => p.id === id);
   return c.json({
     success: true,
     botId,
     pluginId: id,
     installedPlugins: [...existingPlugins, id],
-    installedVersion: staticPlugin?.version ?? "unknown",
+    installedVersion,
   });
 });
