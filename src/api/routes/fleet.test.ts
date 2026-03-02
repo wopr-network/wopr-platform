@@ -1,6 +1,7 @@
 import path from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { INodeRepository } from "../../fleet/node-repository.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { Credit } from "../../monetization/credit.js";
@@ -154,6 +155,15 @@ vi.mock("../../proxy/singleton.js", () => {
     hydrateProxyRoutes: vi.fn().mockResolvedValue(undefined),
   };
 });
+
+// Controllable getNodeRepo mock — default throws DATABASE_URL error (dev mode)
+const mockGetNodeRepo = vi.fn((): INodeRepository => {
+  throw new Error("DATABASE_URL environment variable is required");
+});
+vi.mock("../../fleet/services.js", () => ({
+  getNodeRepo: () => mockGetNodeRepo(),
+  getRecoveryOrchestrator: () => null,
+}));
 
 // Import AFTER mocks are set up
 const { fleetRoutes, seedBots, setFleetDeps } = await import("./fleet.js");
@@ -426,6 +436,30 @@ describe("fleet routes", () => {
       });
 
       expect(res.status).toBe(201);
+    });
+
+    it("returns 500 when nodeRepo.list() throws an unexpected error (not DATABASE_URL)", async () => {
+      fleetMock.create.mockResolvedValue(mockProfile);
+      const dbError = new Error("Connection refused: ECONNREFUSED");
+      mockGetNodeRepo.mockImplementationOnce(
+        () =>
+          ({
+            list: vi.fn().mockRejectedValue(dbError),
+          }) as unknown as INodeRepository,
+      );
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "user-123",
+          name: "test-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+          env: { TOKEN: "abc" },
+        }),
+      });
+
+      expect(res.status).toBe(500);
     });
   });
 

@@ -257,8 +257,15 @@ fleetRoutes.post(
         availableMb: placement.availableMb,
       });
     } catch (placementErr) {
-      // Node repo not available (single-node dev mode) — skip placement
-      logger.warn("Placement skipped: node repo unavailable", { err: placementErr });
+      const msg = placementErr instanceof Error ? placementErr.message : String(placementErr);
+      if (msg.includes("DATABASE_URL")) {
+        // Node repo not configured (single-node dev mode) — skip placement
+        logger.warn("Placement skipped: node repo unavailable (no DATABASE_URL)");
+      } else {
+        // Unexpected error (DB connection failure, network error, etc.) — propagate
+        logger.error("Placement failed with unexpected error", { err: placementErr });
+        throw placementErr;
+      }
     }
 
     try {

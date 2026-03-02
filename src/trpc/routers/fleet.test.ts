@@ -345,6 +345,25 @@ describe("fleet.createInstance", () => {
     expect(result).toEqual(mockProfile);
     expect(fleetMock.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "test-tenant" }));
   });
+
+  it("propagates unexpected errors from nodeRepo.list() instead of silently swallowing them", async () => {
+    const dbError = new Error("Connection refused: ECONNREFUSED");
+    const mockNodeRepo: Partial<INodeRepository> = {
+      list: vi.fn().mockRejectedValue(dbError),
+    };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotBilling: () => null,
+      getBotInstanceRepo: () => mockBotInstanceRepo,
+      getRoleStore: () => mockRoleStore,
+      getNodeRepo: () => mockNodeRepo as INodeRepository,
+    });
+
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.createInstance(createInput)).rejects.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------

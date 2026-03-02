@@ -155,7 +155,13 @@ export const fleetRouter = router({
       }
     } catch (err) {
       if (err instanceof TRPCError) throw err;
-      // Node repo unavailable — skip placement (single-node dev)
+      // Re-throw unexpected errors (DB failures, network errors, etc.)
+      // Only silently skip when nodeRepo is simply not wired (getNodeRepo?.() returned null/undefined above)
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: err instanceof Error ? err.message : "Placement failed",
+        cause: err,
+      });
     }
 
     try {
