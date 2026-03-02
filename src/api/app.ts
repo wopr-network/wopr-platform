@@ -161,19 +161,20 @@ app.post("/api/auth/sign-up/email", async (c, next) => {
     const cloned = c.req.raw.clone();
     const body = await cloned.json();
     const password: unknown = body?.password;
-    if (typeof password === "string" && password.length >= 12) {
-      const hasUpper = /[A-Z]/.test(password);
-      const hasLower = /[a-z]/.test(password);
-      const hasDigit = /[0-9]/.test(password);
-      const hasSpecial = /[^A-Za-z0-9]/.test(password);
-      if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
-        return c.json(
-          {
-            error: "Password must contain uppercase, lowercase, a number, and a special character",
-          },
-          400,
-        );
-      }
+    if (typeof password !== "string" || password.length < 12) {
+      return c.json({ error: "Password must be at least 12 characters" }, 400);
+    }
+    const hasUpper = /[A-Z]/.test(password);
+    const hasLower = /[a-z]/.test(password);
+    const hasDigit = /[0-9]/.test(password);
+    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+    if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
+      return c.json(
+        {
+          error: "Password must contain uppercase, lowercase, a number, and a special character",
+        },
+        400,
+      );
     }
   } catch {
     // If we can't parse the body, let better-auth handle it
@@ -187,19 +188,20 @@ app.post("/api/auth/reset-password", async (c, next) => {
     const cloned = c.req.raw.clone();
     const body = await cloned.json();
     const password: unknown = body?.password;
-    if (typeof password === "string" && password.length >= 12) {
-      const hasUpper = /[A-Z]/.test(password);
-      const hasLower = /[a-z]/.test(password);
-      const hasDigit = /[0-9]/.test(password);
-      const hasSpecial = /[^A-Za-z0-9]/.test(password);
-      if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
-        return c.json(
-          {
-            error: "Password must contain uppercase, lowercase, a number, and a special character",
-          },
-          400,
-        );
-      }
+    if (typeof password !== "string" || password.length < 12) {
+      return c.json({ error: "Password must be at least 12 characters" }, 400);
+    }
+    const hasUpper = /[A-Z]/.test(password);
+    const hasLower = /[a-z]/.test(password);
+    const hasDigit = /[0-9]/.test(password);
+    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+    if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
+      return c.json(
+        {
+          error: "Password must contain uppercase, lowercase, a number, and a special character",
+        },
+        400,
+      );
     }
   } catch {
     // If we can't parse the body, let better-auth handle it
