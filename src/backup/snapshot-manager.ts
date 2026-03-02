@@ -71,8 +71,10 @@ export class SnapshotManager {
       const configPath = join(params.woprHomePath, "config.json");
       const configContent = await readFile(configPath, "utf-8");
       configHash = createHash("sha256").update(configContent).digest("hex");
-    } catch {
-      // No config.json or unreadable -- that's fine
+    } catch (err) {
+      logger.debug("Could not read config.json for hash — skipping", {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
 
     // Tar the WOPR_HOME directory
@@ -214,8 +216,10 @@ export class SnapshotManager {
       await rm(woprHomePath, { recursive: true, force: true });
       try {
         await rename(backupPath, woprHomePath);
-      } catch {
-        // backup might not exist
+      } catch (rollbackErr) {
+        logger.warn(`Failed to rollback WOPR_HOME from ${backupPath} after restore failure`, {
+          err: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+        });
       }
       throw err;
     }

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { SnapshotManager, SnapshotNotFoundError } from "./snapshot-manager.js";
@@ -43,6 +43,7 @@ describe("SnapshotManager", () => {
   }, 30000);
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(TEST_DIR, { recursive: true, force: true });
   });
 
@@ -81,6 +82,25 @@ describe("SnapshotManager", () => {
 
       expect(snapshot.configHash).toBe("");
       expect(snapshot.plugins).toEqual([]);
+    });
+
+    it("logs debug when config.json is unreadable", async () => {
+      const { logger } = await import("../config/logger.js");
+      const debugSpy = vi.spyOn(logger, "debug").mockImplementation(() => logger);
+      await rm(join(woprHomePath, "config.json"));
+
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "scheduled",
+      });
+
+      expect(debugSpy).toHaveBeenCalledWith(
+        "Could not read config.json for hash — skipping",
+        expect.objectContaining({ err: expect.any(String) }),
+      );
+      debugSpy.mockRestore();
     });
   });
 
