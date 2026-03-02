@@ -77,7 +77,7 @@ describe("chargeAutoTopup", () => {
     const result = await chargeAutoTopup(deps, "t1", Credit.fromCents(500), "auto_topup_usage");
 
     expect(result.success).toBe(true);
-    expect(result.paymentReference).toBeDefined();
+    expect(result.paymentReference).toEqual(expect.any(String));
     expect((await ledger.balance("t1")).toCents()).toBe(500);
     const history = await ledger.history("t1");
     expect(history[0].type).toBe("purchase");

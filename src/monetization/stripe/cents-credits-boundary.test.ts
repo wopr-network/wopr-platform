@@ -59,12 +59,12 @@ describe("WOP-1058: Stripe cents/credits boundary", () => {
   it("bonus tier percentages produce correct creditCents (not raw credit units)", () => {
     // $25 + 2% bonus = $25.50 = 2550 cents (NOT 25_500_000_000 nanodollars)
     const tier25 = CREDIT_PRICE_POINTS.find((p) => p.amountCents === 2500);
-    expect(tier25).toBeDefined();
+    expect(tier25).not.toBeNull();
     expect(tier25?.creditCents).toBe(2550);
 
     // $100 + 10% bonus = $110 = 11000 cents (NOT 110_000_000_000 nanodollars)
     const tier100 = CREDIT_PRICE_POINTS.find((p) => p.amountCents === 10000);
-    expect(tier100).toBeDefined();
+    expect(tier100).not.toBeNull();
     expect(tier100?.creditCents).toBe(11000);
   });
 });

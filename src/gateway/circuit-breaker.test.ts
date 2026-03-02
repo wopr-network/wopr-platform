@@ -201,7 +201,7 @@ describe("circuitBreaker", () => {
 
     const states = await getCircuitStates(repo);
     const entry = states.get("inst-states");
-    expect(entry).toBeDefined();
+    expect(entry).not.toBeUndefined();
     expect(entry?.trippedAt).not.toBeNull();
     expect(entry?.remainingPauseMs).toBeGreaterThan(0);
   });

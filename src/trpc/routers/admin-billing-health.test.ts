@@ -60,7 +60,7 @@ describe("admin.billingHealth", () => {
   it("should convert byCapability Map to plain object", async () => {
     const byCapability = new Map([["tts", { requests: 50, errors: 1, errorRate: 0.02 }]]);
     const asObject = Object.fromEntries(byCapability);
-    expect(asObject.tts).toBeDefined();
+    expect(asObject.tts).not.toBeUndefined();
     expect(asObject.tts.requests).toBe(50);
   });
 

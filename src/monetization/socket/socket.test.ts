@@ -931,7 +931,7 @@ describe("AdapterSocket", () => {
       } catch (err) {
         const error = err as Error & { httpStatus?: number; budgetCheck?: unknown };
         expect(error.httpStatus).toBe(429);
-        expect(error.budgetCheck).toBeDefined();
+        expect(error.budgetCheck).toEqual(expect.any(Object));
       }
     });
   });

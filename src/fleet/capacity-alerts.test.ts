@@ -51,7 +51,7 @@ describe("checkCapacityAlerts", () => {
     const nodes = [makeNode({ id: "node-1", usedMb: 7800, capacityMb: 8192 })]; // ~95.2%
     const alerts = checkCapacityAlerts(nodes);
     const nodeAlert = alerts.find((a) => a.nodeId === "node-1");
-    expect(nodeAlert).toBeDefined();
+    expect(nodeAlert).not.toBeUndefined();
     expect(nodeAlert?.level).toBe("critical");
     expect(nodeAlert?.message).toContain("new tenants routed elsewhere");
   });
@@ -63,7 +63,7 @@ describe("checkCapacityAlerts", () => {
     ];
     const alerts = checkCapacityAlerts(nodes);
     const fleetAlert = alerts.find((a) => a.nodeId === "fleet");
-    expect(fleetAlert).toBeDefined();
+    expect(fleetAlert).not.toBeUndefined();
     expect(fleetAlert?.level).toBe("critical");
     expect(fleetAlert?.message).toContain("add a node NOW");
   });
@@ -76,7 +76,7 @@ describe("checkCapacityAlerts", () => {
     const alerts = checkCapacityAlerts(nodes);
     // Only 1 active node above 90% — no fleet alert (needs all active > 90%)
     const fleetAlert = alerts.find((a) => a.nodeId === "fleet");
-    expect(fleetAlert).toBeDefined(); // 1 active node, all of them above 90%
+    expect(fleetAlert).not.toBeUndefined(); // 1 active node, all of them above 90%
     expect(fleetAlert?.message).toContain("1 nodes above 90%");
   });
 

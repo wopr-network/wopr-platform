@@ -66,7 +66,7 @@ describe("TenantCustomerStore", () => {
     await store.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
     const row = await store.getByTenant("t-1");
-    expect(row).toBeDefined();
+    expect(row).not.toBeNull();
     expect(row?.processor_customer_id).toBe("cus_abc123");
     expect(row?.tier).toBe("free");
   });

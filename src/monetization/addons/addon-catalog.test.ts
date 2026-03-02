@@ -10,7 +10,7 @@ describe("addon-catalog", () => {
   it("every ADDON_KEYS entry has a matching ADDON_CATALOG definition", () => {
     for (const key of ADDON_KEYS) {
       const def = ADDON_CATALOG[key];
-      expect(def).toBeDefined();
+      expect(def).not.toBeUndefined();
       expect(def.key).toBe(key);
       expect(def.label).toBeTruthy();
       expect(def.description).toBeTruthy();

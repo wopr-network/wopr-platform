@@ -13,7 +13,7 @@ describe("checkCertExpiry", () => {
   it("returns error for unreachable host", async () => {
     const result = await checkCertExpiry("localhost", 19999);
     expect(result.valid).toBe(false);
-    expect(result.error).toBeDefined();
+    expect(result.error).toEqual(expect.any(String));
   });
 
   it("flags cert expiring within threshold", async () => {
@@ -27,7 +27,7 @@ describe("checkCertExpiry", () => {
     // Port 10 is typically filtered/dropped — triggers timeout faster with short timeout
     const result = await checkCertExpiry("10.255.255.1", 443, 200);
     expect(result.valid).toBe(false);
-    expect(result.error).toBeDefined();
+    expect(result.error).toEqual(expect.any(String));
   });
 });
 
@@ -52,7 +52,7 @@ describe("checkAllCerts", () => {
     const results = await checkAllCerts(["localhost"], 30);
     expect(results).toHaveLength(1);
     expect(results[0].valid).toBe(false);
-    expect(results[0].error).toBeDefined();
+    expect(results[0].error).toEqual(expect.any(String));
   });
 
   it("uses default domains when none supplied — returns 3 results", async () => {

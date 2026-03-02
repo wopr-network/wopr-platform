@@ -58,7 +58,7 @@ describe("EvidenceCollector", () => {
       to: now.toISOString(),
     });
 
-    expect(report.generatedAt).toBeDefined();
+    expect(report.generatedAt).toEqual(expect.any(String));
     expect(report.sections.accessLogging.totalEntries).toBe(5);
     expect(report.sections.backupRecovery.totalContainers).toBe(2);
     expect(report.sections.backupRecovery.staleContainers).toBe(1);

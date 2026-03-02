@@ -43,7 +43,7 @@ describe("DrizzleMarketplacePluginRepository", () => {
 
   it("findById returns the inserted plugin", async () => {
     const found = await repo.findById("plugin-1");
-    expect(found).toBeDefined();
+    expect(found).not.toBeNull();
     expect(found?.pluginId).toBe("plugin-1");
   });
 

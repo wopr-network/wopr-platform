@@ -28,7 +28,7 @@ describe("RegistrationTokenStore", () => {
   describe("create", () => {
     it("creates a token with correct 15-minute TTL", async () => {
       const result = await store.create("user-1");
-      expect(result.token).toBeDefined();
+      expect(result.token).toEqual(expect.any(String));
       expect(typeof result.token).toBe("string");
       // expiresAt should be ~15 minutes (900s) from now
       expect(result.expiresAt).toBeGreaterThanOrEqual(now + 899);
@@ -37,7 +37,7 @@ describe("RegistrationTokenStore", () => {
 
     it("creates a token with a label", async () => {
       const result = await store.create("user-1", "Living room Mac Mini");
-      expect(result.token).toBeDefined();
+      expect(result.token).toEqual(expect.any(String));
       expect(result.expiresAt).toBeGreaterThan(now);
     });
 

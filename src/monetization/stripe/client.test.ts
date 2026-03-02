@@ -56,9 +56,9 @@ describe("createStripeClient", () => {
     const client = createStripeClient({ secretKey: "sk_test_abc", webhookSecret: "whsec_abc" });
     // Stripe client stores the API version internally
     // We verify it was created successfully
-    expect(client).toBeDefined();
-    expect(client.checkout).toBeDefined();
-    expect(client.paymentIntents).toBeDefined();
-    expect(client.setupIntents).toBeDefined();
+    expect(client).toEqual(expect.any(Object));
+    expect(client.checkout).toEqual(expect.any(Object));
+    expect(client.paymentIntents).toEqual(expect.any(Object));
+    expect(client.setupIntents).toEqual(expect.any(Object));
   });
 });

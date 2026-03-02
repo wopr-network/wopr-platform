@@ -184,9 +184,9 @@ describe("quota routes", () => {
       const res = await quotaRoutes.request("/resource-limits", { headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body.Memory).toBeDefined();
-      expect(body.CpuQuota).toBeDefined();
-      expect(body.PidsLimit).toBeDefined();
+      expect(body.Memory).toEqual(expect.any(Number));
+      expect(body.CpuQuota).toEqual(expect.any(Number));
+      expect(body.PidsLimit).toEqual(expect.any(Number));
     });
   });
 });

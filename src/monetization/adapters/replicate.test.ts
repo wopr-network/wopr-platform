@@ -67,7 +67,7 @@ describe("createReplicateAdapter", () => {
 
       const body = JSON.parse(init?.body as string);
       expect(body.input.audio).toBe("https://example.com/audio.mp3");
-      expect(body.version).toBeDefined();
+      expect(body.version).toEqual(expect.any(String));
 
       // Verify headers include auth and Prefer: wait
       const headers = init?.headers as Record<string, string>;

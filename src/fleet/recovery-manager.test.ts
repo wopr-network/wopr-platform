@@ -159,7 +159,7 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
     const importCall = sendCommand.mock.calls.find(
       (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
     );
-    expect(importCall).toBeDefined();
+    expect(importCall).not.toBeUndefined();
 
     const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
     expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v2.0.0");
@@ -185,7 +185,7 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
     const importCall = sendCommand.mock.calls.find(
       (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
     );
-    expect(importCall).toBeDefined();
+    expect(importCall).not.toBeUndefined();
 
     const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
     expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:latest");
@@ -215,7 +215,7 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
     const importCall = sendCommand.mock.calls.find(
       (args: unknown[]) => (args[1] as { type?: string })?.type === "bot.import",
     );
-    expect(importCall).toBeDefined();
+    expect(importCall).not.toBeUndefined();
 
     const importCmd = importCall?.[1] as { payload: { image: string; env: Record<string, string> } };
     expect(importCmd.payload.image).toBe("ghcr.io/wopr-network/wopr:v3.0.0");

@@ -30,7 +30,7 @@ describe("buildDiscoveryEnv", () => {
 
   it("includes extra topics alongside default topic", () => {
     const env = buildDiscoveryEnv({ enabled: true, topics: ["wopr-org-acme", "wopr-team-red"] });
-    expect(env[DISCOVERY_TOPICS_ENV]).toBeDefined();
+    expect(env[DISCOVERY_TOPICS_ENV]).toEqual(expect.any(String));
 
     const topics = env[DISCOVERY_TOPICS_ENV].split(",");
     expect(topics).toContain("wopr-service");

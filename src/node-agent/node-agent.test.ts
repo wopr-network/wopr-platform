@@ -423,7 +423,7 @@ describe("BackupManager", () => {
     const { docker } = mockDockerode();
     const manager = new DockerManager(docker as never);
     const backup = new BackupManager(manager, "/backups", "wopr-backups");
-    expect(backup).toBeDefined();
+    expect(backup).toBeInstanceOf(BackupManager);
   });
 });
 
@@ -451,7 +451,7 @@ describe("NodeAgent", () => {
     const { docker } = mockDockerode();
     const dockerManager = new DockerManager(docker as never);
     const agent = new NodeAgent(config, dockerManager);
-    expect(agent).toBeDefined();
+    expect(agent).toBeInstanceOf(NodeAgent);
   });
 
   it("stop is idempotent", () => {

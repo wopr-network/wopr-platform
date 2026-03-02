@@ -191,7 +191,7 @@ describe("DrizzleDividendRepository", () => {
       expect(stats.userEligible).toBe(false);
       expect(stats.userLastPurchaseAt).toBeNull();
       expect(stats.userWindowExpiresAt).toBeNull();
-      expect(stats.nextDistributionAt).toBeDefined();
+      expect(stats.nextDistributionAt).toEqual(expect.any(String));
     });
 
     it("marks user as eligible when they have a recent purchase", async () => {
@@ -200,8 +200,8 @@ describe("DrizzleDividendRepository", () => {
 
       const stats = await repo.getStats("t1");
       expect(stats.userEligible).toBe(true);
-      expect(stats.userLastPurchaseAt).toBeDefined();
-      expect(stats.userWindowExpiresAt).toBeDefined();
+      expect(stats.userLastPurchaseAt).toEqual(expect.any(String));
+      expect(stats.userWindowExpiresAt).toEqual(expect.any(String));
     });
   });
 

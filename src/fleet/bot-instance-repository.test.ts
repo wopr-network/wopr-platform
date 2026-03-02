@@ -39,8 +39,8 @@ describe("DrizzleBotInstanceRepository", () => {
       expect(bot.billingState).toBe("active");
       expect(bot.suspendedAt).toBeNull();
       expect(bot.destroyAfter).toBeNull();
-      expect(bot.createdAt).toBeDefined();
-      expect(bot.updatedAt).toBeDefined();
+      expect(bot.createdAt).toEqual(expect.any(String));
+      expect(bot.updatedAt).toEqual(expect.any(String));
     });
 
     it("creates a bot instance with explicit billing state", async () => {
@@ -128,7 +128,7 @@ describe("DrizzleBotInstanceRepository", () => {
       await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "node-old" });
 
       const updated = await repo.reassign("bot-1", "node-new");
-      expect(updated.updatedAt).toBeDefined();
+      expect(updated.updatedAt).toEqual(expect.any(String));
     });
 
     it("throws when bot does not exist", async () => {

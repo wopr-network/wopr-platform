@@ -37,7 +37,7 @@ describe("TenantKeyStore", () => {
       expect(id).toBeTruthy();
 
       const record = await store.get("t1", "anthropic");
-      expect(record).toBeDefined();
+      expect(record).not.toBeNull();
       expect(record?.label).toBe("My Key");
       expect(record?.tenant_id).toBe("t1");
       expect(record?.provider).toBe("anthropic");
@@ -123,7 +123,7 @@ describe("TenantKeyStore", () => {
       await store.upsert("t2", "anthropic", fakeEncrypted);
 
       await store.delete("t1", "anthropic");
-      expect(await store.get("t2", "anthropic")).toBeDefined();
+      expect(await store.get("t2", "anthropic")).not.toBeNull();
     });
   });
 

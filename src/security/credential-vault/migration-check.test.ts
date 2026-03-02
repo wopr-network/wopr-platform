@@ -177,7 +177,7 @@ describe("migratePlaintextCredentials", () => {
 
     const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     const tenantResult = results.find((r) => r.table === "tenant_api_keys");
-    expect(tenantResult).toBeDefined();
+    expect(tenantResult).not.toBeNull();
     expect(tenantResult?.migratedCount).toBe(1);
   });
 
@@ -492,7 +492,7 @@ describe("credential vault migration path", () => {
     const localTenantAccess = new DrizzleMigrationTenantKeyAccess(db);
     const results = await migratePlaintextCredentials(credRepo, vaultKey, tenantKeyDeriver, localTenantAccess);
     const tenantResult = results.find((r) => r.table === "tenant_api_keys");
-    expect(tenantResult).toBeDefined();
+    expect(tenantResult).not.toBeNull();
     const tr = tenantResult as NonNullable<typeof tenantResult>;
     expect(tr.migratedCount).toBe(1);
     expect(tr.errors).toHaveLength(0);

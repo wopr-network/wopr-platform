@@ -79,7 +79,7 @@ describe("tenant-keys routes", () => {
 
       // Verify stored in DB
       const record = await store.get(TEST_TENANT, "anthropic");
-      expect(record).toBeDefined();
+      expect(record).not.toBeNull();
       expect(record?.label).toBe("My Anthropic Key");
     });
 

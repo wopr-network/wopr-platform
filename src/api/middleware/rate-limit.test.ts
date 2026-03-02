@@ -466,7 +466,7 @@ describe("auth endpoint rate limits (WOP-839)", () => {
 describe("WOP-1092: setup-intent and crypto checkout rate limits", () => {
   it("includes setup-intent rule with max 5", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/billing/setup-intent");
-    expect(rule).toBeDefined();
+    expect(rule).not.toBeUndefined();
     expect(rule?.method).toBe("POST");
     expect(rule?.config.max).toBe(5);
     expect(rule?.scope).toBe("api:billing-setup-intent");
@@ -474,7 +474,7 @@ describe("WOP-1092: setup-intent and crypto checkout rate limits", () => {
 
   it("includes crypto checkout rule with max 10", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/billing/crypto/checkout");
-    expect(rule).toBeDefined();
+    expect(rule).not.toBeUndefined();
     expect(rule?.method).toBe("POST");
     expect(rule?.config.max).toBe(10);
     expect(rule?.scope).toBe("api:billing-crypto-checkout");
@@ -558,7 +558,7 @@ describe("WOP-1220: tRPC endpoint rate limits", () => {
 
   it("includes tRPC billing checkout rule with max 10", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/trpc/billing.creditsCheckout");
-    expect(rule).toBeDefined();
+    expect(rule).not.toBeUndefined();
     expect(rule?.method).toBe("POST");
     expect(rule?.config.max).toBe(10);
     expect(rule?.scope).toBe("trpc:billing-checkout");
@@ -566,14 +566,14 @@ describe("WOP-1220: tRPC endpoint rate limits", () => {
 
   it("includes tRPC applyCoupon rule with max 5", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/trpc/billing.applyCoupon");
-    expect(rule).toBeDefined();
+    expect(rule).not.toBeUndefined();
     expect(rule?.method).toBe("POST");
     expect(rule?.config.max).toBe(5);
   });
 
   it("includes tRPC changePassword rule with max 5 per 15min", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/trpc/profile.changePassword");
-    expect(rule).toBeDefined();
+    expect(rule).not.toBeUndefined();
     expect(rule?.config.max).toBe(5);
     expect(rule?.config.windowMs).toBe(15 * 60 * 1000);
   });
@@ -733,7 +733,7 @@ describe("trusted proxy validation (WOP-656)", () => {
 describe("WOP-1297: onboarding session history rate limit", () => {
   it("includes onboarding session history rule with max 10", () => {
     const rule = platformRateLimitRules.find((r) => r.pathPrefix === "/api/onboarding/session" && r.method === "GET");
-    expect(rule).toBeDefined();
+    expect(rule).not.toBeUndefined();
     expect(rule?.config.max).toBe(10);
     expect(rule?.scope).toBe("api:onboarding-session-history");
   });

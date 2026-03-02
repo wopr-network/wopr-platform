@@ -62,7 +62,7 @@ describe("GET /api/onboarding/session/:id/history", () => {
     const res = await app.request("/api/onboarding/session/sess-1/history");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.history).toBeDefined();
+    expect(Array.isArray(body.history)).toBe(true);
   });
 
   it("returns 404 when authenticated user does NOT own the session", async () => {

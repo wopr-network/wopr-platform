@@ -51,8 +51,8 @@ describe("CreditLedger core methods", () => {
       expect(txn.referenceId).toBe("ref-001");
       expect(txn.fundingSource).toBe("stripe");
       expect(txn.attributedUserId).toBe("user-abc");
-      expect(txn.id).toBeDefined();
-      expect(txn.createdAt).toBeDefined();
+      expect(txn.id).toEqual(expect.any(String));
+      expect(txn.createdAt).toEqual(expect.any(String));
     });
 
     it("multiple credits accumulate balance correctly", async () => {
@@ -127,7 +127,7 @@ describe("CreditLedger core methods", () => {
       expect(hist).toHaveLength(1);
 
       const txn = hist[0];
-      expect(txn.id).toBeDefined();
+      expect(txn.id).toEqual(expect.any(String));
       expect(txn.tenantId).toBe("t1");
       expect(txn.amount.toCents()).toBe(100);
       expect(txn.balanceAfter.toCents()).toBe(100);
@@ -136,7 +136,7 @@ describe("CreditLedger core methods", () => {
       expect(txn.referenceId).toBe("ref-1");
       expect(txn.fundingSource).toBe("stripe");
       expect(txn.attributedUserId).toBe("user-1");
-      expect(txn.createdAt).toBeDefined();
+      expect(txn.createdAt).toEqual(expect.any(String));
     });
 
     it("respects limit and offset for pagination", async () => {
@@ -263,7 +263,7 @@ describe("CreditLedger.debit with allowNegative", () => {
   it("debit with allowNegative=true allows negative balance", async () => {
     await ledger.credit("t1", Credit.fromCents(5), "purchase", "setup");
     const txn = await ledger.debit("t1", Credit.fromCents(10), "adapter_usage", "test", undefined, true);
-    expect(txn).toBeDefined();
+    expect(txn).not.toBeNull();
     expect((await ledger.balance("t1")).toCents()).toBe(-5);
   });
 

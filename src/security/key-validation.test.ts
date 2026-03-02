@@ -16,10 +16,10 @@ describe("key-validation", () => {
 
   describe("PROVIDER_ENDPOINTS", () => {
     it("has entries for all supported providers", () => {
-      expect(PROVIDER_ENDPOINTS.anthropic).toBeDefined();
-      expect(PROVIDER_ENDPOINTS.openai).toBeDefined();
-      expect(PROVIDER_ENDPOINTS.google).toBeDefined();
-      expect(PROVIDER_ENDPOINTS.discord).toBeDefined();
+      expect(PROVIDER_ENDPOINTS.anthropic).toEqual(expect.any(Object));
+      expect(PROVIDER_ENDPOINTS.openai).toEqual(expect.any(Object));
+      expect(PROVIDER_ENDPOINTS.google).toEqual(expect.any(Object));
+      expect(PROVIDER_ENDPOINTS.discord).toEqual(expect.any(Object));
     });
 
     it("anthropic headers include x-api-key", () => {

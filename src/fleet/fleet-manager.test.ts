@@ -105,7 +105,7 @@ describe("FleetManager", () => {
     it("saves profile, pulls image, and creates container", async () => {
       const profile = await fleet.create(PROFILE_PARAMS);
 
-      expect(profile.id).toBeDefined();
+      expect(profile.id).toEqual(expect.any(String));
       expect(profile.name).toBe("test-bot");
       expect(store.save).toHaveBeenCalledWith(expect.objectContaining({ name: "test-bot" }));
       expect(docker.pull).toHaveBeenCalledWith("ghcr.io/wopr-network/wopr:stable", {});
@@ -236,7 +236,7 @@ describe("FleetManager", () => {
       expect(status.state).toBe("running");
       expect(status.health).toBe("healthy");
       expect(status.containerId).toBe("container-123");
-      expect(status.stats).toBeDefined();
+      expect(status.stats).toEqual(expect.any(Object));
       expect(status.stats?.cpuPercent).toBeGreaterThanOrEqual(0);
     });
 
@@ -358,7 +358,7 @@ describe("FleetManager", () => {
     it("still returns profile when addRoute fails (non-fatal)", async () => {
       proxyManager.addRoute.mockRejectedValueOnce(new Error("DNS fail"));
       const profile = await proxyFleet.create(PROFILE_PARAMS);
-      expect(profile.id).toBeDefined();
+      expect(profile.id).toEqual(expect.any(String));
       expect(profile.name).toBe("test-bot");
     });
 
@@ -385,7 +385,7 @@ describe("FleetManager", () => {
       // `fleet` from the outer beforeEach has no proxyManager
       const profile = await fleet.create(PROFILE_PARAMS);
       expect(proxyManager.addRoute).not.toHaveBeenCalled();
-      expect(profile.id).toBeDefined();
+      expect(profile.id).toEqual(expect.any(String));
     });
 
     it("normalizes underscores to hyphens in subdomain", async () => {

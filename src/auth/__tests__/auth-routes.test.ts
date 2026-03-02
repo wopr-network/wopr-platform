@@ -131,7 +131,7 @@ describe("auth routes integration", () => {
 
       expect(res.status).toBe(401);
       const body = await res.json();
-      expect(body.error).toBeDefined();
+      expect(body.error).toEqual(expect.any(String));
     });
   });
 
@@ -223,7 +223,7 @@ describe("auth routes integration", () => {
 
       expect(res.status).toBe(400);
       const body = await res.json();
-      expect(body.error).toBeDefined();
+      expect(body.error).toEqual(expect.any(String));
     });
 
     it("returns error when code is missing", async () => {

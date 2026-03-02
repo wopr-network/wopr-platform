@@ -94,6 +94,6 @@ describe("createPayRamCheckout", () => {
   });
 
   it("accepts exactly $10 (minimum boundary)", async () => {
-    await expect(createPayRamCheckout(payram, chargeStore, { tenant: "t-4", amountUsd: 10 })).resolves.toBeDefined();
+    await expect(createPayRamCheckout(payram, chargeStore, { tenant: "t-4", amountUsd: 10 })).resolves.not.toBeNull();
   });
 });

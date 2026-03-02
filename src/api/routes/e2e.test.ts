@@ -339,7 +339,7 @@ describe("E2E: Bot deployment flow", () => {
     expect(status.state).toBe("running");
     expect(status.health).toBe("healthy");
     expect(status.containerId).toBe(`container-${botId}`);
-    expect(status.stats).toBeDefined();
+    expect(status.stats).toEqual(expect.any(Object));
     expect(status.stats.cpuPercent).toBeGreaterThan(0);
 
     // Step 5: Check platform health endpoint (always available, no auth)

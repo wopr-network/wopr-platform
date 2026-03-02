@@ -3,11 +3,11 @@ import { appRouter } from "../../index.js";
 
 describe("tRPC namespace structure", () => {
   it("exposes promotions at the root namespace", () => {
-    expect(appRouter.promotions).toBeDefined();
+    expect(appRouter.promotions).not.toBeUndefined();
   });
 
   it("exposes rateOverrides at the root namespace", () => {
-    expect(appRouter.rateOverrides).toBeDefined();
+    expect(appRouter.rateOverrides).not.toBeUndefined();
   });
 
   it("does NOT double-nest promotions under promotions.promotions", () => {

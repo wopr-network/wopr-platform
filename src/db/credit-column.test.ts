@@ -40,7 +40,7 @@ describe("creditColumn", () => {
     const credit = Credit.fromDollars(1.5);
     await db.insert(testTable).values({ id: "t1", amount: credit });
     const rows = await db.select().from(testTable).where(eq(testTable.id, "t1"));
-    expect(rows[0]).toBeDefined();
+    expect(rows[0]).not.toBeUndefined();
     expect(rows[0]?.amount).toBeInstanceOf(Credit);
     expect(rows[0]?.amount.toRaw()).toBe(credit.toRaw());
   });

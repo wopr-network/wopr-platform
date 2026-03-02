@@ -79,7 +79,7 @@ describe("DrizzleBulkOperationsRepository", () => {
       const result = await repo.lookupTenants(["tenant-1", "tenant-2"]);
       expect(result).toHaveLength(2);
       const t1 = result.find((r) => r.tenantId === "tenant-1");
-      expect(t1).toBeDefined();
+      expect(t1).not.toBeNull();
       expect(t1?.name).toBe("Alice");
       expect(t1?.email).toBe("alice@test.com");
       expect(t1?.status).toBe("active");

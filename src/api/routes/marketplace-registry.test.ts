@@ -143,7 +143,7 @@ describe("marketplace-registry data integrity", () => {
 
   it("discord-channel has correct shape", () => {
     const discord = pluginRegistry.find((p) => p.id === "discord-channel");
-    expect(discord).toBeDefined();
+    expect(discord).not.toBeUndefined();
     if (!discord) return;
     expect(discord.category).toBe("channel");
     expect(discord.configSchema.length).toBeGreaterThan(0);
@@ -153,7 +153,7 @@ describe("marketplace-registry data integrity", () => {
 
   it("meeting-transcriber requires discord-channel", () => {
     const mt = pluginRegistry.find((p) => p.id === "meeting-transcriber");
-    expect(mt).toBeDefined();
+    expect(mt).not.toBeUndefined();
     if (!mt) return;
     const reqIds = mt.requires.map((r) => r.id);
     expect(reqIds).toContain("discord-channel");

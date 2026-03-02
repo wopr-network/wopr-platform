@@ -83,7 +83,7 @@ describe("NodeConnectionManager.registerNode", () => {
 
     const rows = await db.select().from(nodes).where(eq(nodes.id, "node-1"));
     const node = rows[0];
-    expect(node).toBeDefined();
+    expect(node).not.toBeUndefined();
     expect(node?.status).toBe("active");
   });
 
@@ -187,7 +187,7 @@ describe("NodeConnectionManager.registerNode", () => {
 
     const evtRows = await db.select().from(recoveryEvents).where(eq(recoveryEvents.id, "evt-1"));
     expect(evtRows[0]?.status).toBe("completed");
-    expect(evtRows[0]?.completedAt).toBeDefined();
+    expect(evtRows[0]?.completedAt).toEqual(expect.any(Number));
     expect(evtRows[0]?.completedAt).not.toBeNull();
   });
 });
@@ -261,7 +261,7 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
       (call) => call[0] === "message",
     )?.[1];
 
-    expect(messageHandler).toBeDefined();
+    expect(messageHandler).toEqual(expect.any(Array));
 
     messageHandler(heartbeatMsg);
 

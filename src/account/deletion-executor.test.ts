@@ -206,7 +206,7 @@ describe("executeDeletion", () => {
         `SELECT target_tenant, target_user FROM admin_audit_log WHERE id = $1`,
         [`aal-${tenantId}`],
       );
-      expect(rows.rows[0]).toBeDefined();
+      expect(rows.rows[0]).not.toBeUndefined();
       expect(rows.rows[0]?.target_tenant).toBe("[deleted]");
       expect(rows.rows[0]?.target_user).toBe("[deleted]");
     });

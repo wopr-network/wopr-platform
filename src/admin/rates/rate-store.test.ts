@@ -33,7 +33,7 @@ describe("RateStore", () => {
         priceUsd: 0.001,
       });
 
-      expect(rate.id).toBeDefined();
+      expect(rate.id).toEqual(expect.any(String));
       expect(rate.capability).toBe("llm");
       expect(rate.display_name).toBe("LLM Chat");
       expect(rate.unit).toBe("token");
@@ -258,7 +258,7 @@ describe("RateStore", () => {
         model: "gpt-4",
       });
 
-      expect(cost.id).toBeDefined();
+      expect(cost.id).toEqual(expect.any(String));
       expect(cost.capability).toBe("llm");
       expect(cost.adapter).toBe("openai");
       expect(cost.cost_usd).toBe(0.0005);

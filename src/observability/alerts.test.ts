@@ -54,7 +54,7 @@ describe("buildAlerts", () => {
 
     const alerts = buildAlerts(metrics, fleetRepo);
     const gatewayAlert = alerts.find((a) => a.name === "gateway-error-rate");
-    expect(gatewayAlert).toBeDefined();
+    expect(gatewayAlert).not.toBeUndefined();
     // biome-ignore lint/style/noNonNullAssertion: find result is asserted defined above
     const result = await gatewayAlert!.check();
     expect(result.firing).toBe(true);
@@ -161,7 +161,7 @@ describe("AlertChecker", () => {
     await checker.checkAll();
     const statusAfterCheck = checker.getStatus();
     const fleetAlert = statusAfterCheck.find((a: { name: string }) => a.name === "fleet-unexpected-stop");
-    expect(fleetAlert).toBeDefined();
+    expect(fleetAlert).not.toBeUndefined();
     await innerPool.close();
   });
 

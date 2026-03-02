@@ -524,7 +524,7 @@ describe("billingRouter", () => {
       injectDeps();
       const caller = makeCaller(makeCtx("user-1", "tenant-1"));
       const result = await caller.affiliateInfo();
-      expect(result).toBeDefined();
+      expect(result).not.toBeNull();
     });
 
     it("rejects unauthenticated request", async () => {

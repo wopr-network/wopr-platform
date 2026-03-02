@@ -36,7 +36,7 @@ describe("RestoreLogStore", () => {
         reason: "Restoring to last known good state",
       });
 
-      expect(entry.id).toBeDefined();
+      expect(entry.id).toEqual(expect.any(String));
       expect(entry.tenant).toBe("tenant_abc");
       expect(entry.snapshotKey).toBe("nightly/node-1/tenant_abc/tenant_abc_20260214.tar.gz");
       expect(entry.preRestoreKey).toBe("pre-restore/tenant_abc_pre_restore.tar.gz");

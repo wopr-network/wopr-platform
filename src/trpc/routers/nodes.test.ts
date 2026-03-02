@@ -54,7 +54,7 @@ describe("nodesRouter", () => {
       const caller = makeCaller(makeCtx("user-1"));
       const result = await caller.createRegistrationToken({ label: "Mac Mini" });
 
-      expect(result.token).toBeDefined();
+      expect(result.token).toEqual(expect.any(String));
       expect(result.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000));
       expect(result.installCommand).toContain(result.token);
       expect(result.npmCommand).toContain(result.token);

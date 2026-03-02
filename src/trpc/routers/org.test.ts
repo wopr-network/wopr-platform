@@ -162,7 +162,7 @@ describe("tRPC org router", () => {
         slug: undefined,
         billingEmail: undefined,
       });
-      expect(result).toBeDefined();
+      expect(result).not.toBeNull();
     });
 
     it("passes billingEmail to orgService.updateOrg", async () => {
@@ -425,7 +425,7 @@ describe("tRPC org router", () => {
     it("allows mutations for orgs the user IS a member of", async () => {
       const caller = createCaller(authedContext());
       const result = await caller.org.updateOrganization({ orgId: "org-1", name: "Updated" });
-      expect(result).toBeDefined();
+      expect(result).not.toBeNull();
     });
   });
 });

@@ -38,7 +38,7 @@ describe("AuditLogger", () => {
       userAgent: "TestAgent/1.0",
     });
 
-    expect(entry.id).toBeDefined();
+    expect(entry.id).toEqual(expect.any(String));
     expect(entry.timestamp).toBeGreaterThan(0);
     expect(entry.user_id).toBe("user-1");
     expect(entry.auth_method).toBe("session");

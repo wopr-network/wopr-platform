@@ -57,7 +57,7 @@ describe("SnapshotManager", () => {
         plugins: ["discord", "slack"],
       });
 
-      expect(snapshot.id).toBeDefined();
+      expect(snapshot.id).toEqual(expect.any(String));
       expect(snapshot.instanceId).toBe("inst-1");
       expect(snapshot.userId).toBe("user-1");
       expect(snapshot.trigger).toBe("manual");

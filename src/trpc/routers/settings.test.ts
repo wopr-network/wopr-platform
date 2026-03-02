@@ -181,7 +181,7 @@ describe("settingsRouter", () => {
       });
       expect(mockPrefsStore.get).toHaveBeenCalledWith(TEST_TENANT_ID);
       // The returned value is from store.get (the mock returns defaults since update is not awaited)
-      expect(result).toBeDefined();
+      expect(result).not.toBeNull();
     });
 
     it("rejects unauthenticated calls", async () => {

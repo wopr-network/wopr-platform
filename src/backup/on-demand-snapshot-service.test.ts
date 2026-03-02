@@ -144,7 +144,7 @@ describe("OnDemandSnapshotService", () => {
           trigger: "manual",
         }),
       );
-      expect(result.snapshot).toBeDefined();
+      expect(result.snapshot).not.toBeNull();
       expect(result.estimatedMonthlyCostCents).toBeGreaterThanOrEqual(0);
     });
 

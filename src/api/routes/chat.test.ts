@@ -98,7 +98,7 @@ describe("POST /", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.streamId).toBeDefined();
+    expect(body.streamId).toEqual(expect.any(String));
     expect(typeof body.streamId).toBe("string");
   });
 

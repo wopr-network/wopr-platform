@@ -206,7 +206,7 @@ describe("OrgService", () => {
     it("happy path — creates org and owner membership", async () => {
       const owner = "owner-co1";
       const result = await service.createOrg(owner, "My Org", "my-org-co1");
-      expect(result.id).toBeDefined();
+      expect(result.id).toEqual(expect.any(String));
       expect(result.name).toBe("My Org");
       expect(result.slug).toBe("my-org-co1");
 

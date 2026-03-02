@@ -3,7 +3,7 @@ import { getPageContext, pageContextRouter, updatePageContext } from "./page-con
 
 describe("pageContextRouter", () => {
   it("exports a valid tRPC router", () => {
-    expect(pageContextRouter).toBeDefined();
+    expect(pageContextRouter).not.toBeUndefined();
   });
 
   it("stores and retrieves page context for a user", () => {

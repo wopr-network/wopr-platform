@@ -166,7 +166,7 @@ describe("MigrationOrchestrator.migrate", () => {
     const startCall = send.mock.calls.find(
       (c: unknown[]) => (c[1] as { type: string }).type === "bot.start" && c[0] === SOURCE_NODE,
     );
-    expect(startCall).toBeDefined();
+    expect(startCall).not.toBeUndefined();
   });
 
   it("auto-selects target via nodeRepo.findBestTarget when no target specified", async () => {

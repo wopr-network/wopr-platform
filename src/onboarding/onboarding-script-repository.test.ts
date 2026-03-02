@@ -24,7 +24,7 @@ describe("DrizzleOnboardingScriptRepository", () => {
 
   it("findCurrent returns the seed script", async () => {
     const script = await repo.findCurrent();
-    expect(script).toBeDefined();
+    expect(script).not.toBeNull();
     expect(script?.version).toBe(1);
     expect(script?.content).toContain("WOPR");
   });

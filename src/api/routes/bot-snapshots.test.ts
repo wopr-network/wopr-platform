@@ -137,7 +137,7 @@ describe("bot snapshot routes", () => {
       expect(res.status).toBe(402);
       const body = await res.json();
       expect(body.error).toBe("insufficient_credits");
-      expect(body.buyUrl).toBeDefined();
+      expect(body.buyUrl).toEqual(expect.any(String));
     });
 
     it("returns 403 when quota exceeded", async () => {
