@@ -51,6 +51,7 @@ import {
   getOrgMemberRepo,
   getOrgMembershipRepo,
   getOrgService,
+  getPageContextRepo,
   getPool,
   getRateLimitRepo,
   getRegistrationTokenStore,
@@ -105,6 +106,7 @@ import {
   setNodesRouterDeps,
   setOrgKeysRouterDeps,
   setOrgRouterDeps,
+  setPageContextRouterDeps,
   setProfileRouterDeps,
   setSettingsRouterDeps,
   setTrpcOrgMemberRepo,
@@ -531,6 +533,7 @@ if (process.env.NODE_ENV !== "test") {
     const vaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const pooledKeys = buildPooledKeysMap();
 
+    setPageContextRouterDeps({ repo: getPageContextRepo() });
     setSettingsRouterDeps({
       getNotificationPrefsStore,
       testProvider: async (provider, tenantId) => {

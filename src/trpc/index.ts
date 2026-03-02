@@ -82,6 +82,7 @@ export { setModelSelectionRouterDeps } from "./routers/model-selection.js";
 export { setNodesRouterDeps } from "./routers/nodes.js";
 export { setOrgRouterDeps } from "./routers/org.js";
 export { setOrgKeysRouterDeps } from "./routers/org-keys.js";
+export { setPageContextRouterDeps } from "./routers/page-context.js";
 export { setProfileRouterDeps } from "./routers/profile.js";
 export { setPromotionsRouterDeps } from "./routers/promotions.js";
 export { setSettingsRouterDeps } from "./routers/settings.js";

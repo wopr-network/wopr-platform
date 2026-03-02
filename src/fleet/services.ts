@@ -976,6 +976,22 @@ export function getSetupSessionRepo(): ISetupSessionRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Page Context Repository (WOP-1517)
+// ---------------------------------------------------------------------------
+
+import type { IPageContextRepository } from "./page-context-repository.js";
+import { DrizzlePageContextRepository } from "./page-context-repository.js";
+
+let _pageContextRepo: IPageContextRepository | null = null;
+
+export function getPageContextRepo(): IPageContextRepository {
+  if (!_pageContextRepo) {
+    _pageContextRepo = new DrizzlePageContextRepository(getDb());
+  }
+  return _pageContextRepo;
+}
+
+// ---------------------------------------------------------------------------
 // Compliance Evidence Collector (WOP-529)
 // ---------------------------------------------------------------------------
 
@@ -1173,6 +1189,7 @@ export function _resetForTest(): void {
   _onboardingService = null;
   _sessionUsageRepo = null;
   _setupSessionRepo = null;
+  _pageContextRepo = null;
   _evidenceCollector = null;
   _setupService = null;
   _pluginConfigRepo = null;
