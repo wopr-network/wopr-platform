@@ -164,17 +164,17 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
   }
 
-  // Apply env change to profile and running container
-  try {
-    await fleet.update(botId, { env: updatedEnv });
-  } catch (err) {
-    if (err instanceof BotNotFoundError) {
-      return c.json({ error: `Bot not found: ${botId}` }, 404);
-    }
-    // fleet.update() rolls back the profile internally on container failure,
-    // so the profile is reverted to freshProfile's state.
-    logger.error(`Failed to apply plugin install to container for bot ${botId}`, { err });
-    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  // Save profile with updated env (DB is source of truth)
+  const updated = { ...freshProfile, env: updatedEnv };
+  await store.save(updated);
+
+  // Dispatch env update to running container (best-effort, non-fatal)
+  let dispatch: { dispatched: boolean; dispatchError?: string } = {
+    dispatched: false,
+    dispatchError: "bot_instance_repo_not_configured",
+  };
+  if (botInstanceRepo) {
+    dispatch = await dispatchEnvUpdate(botId, freshProfile.tenantId, updatedEnv, botInstanceRepo);
   }
 
   // Emit activation meter events for billing audit trail
@@ -198,6 +198,7 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     botId,
     pluginId,
     tenantId: profile.tenantId,
+    dispatched: dispatch.dispatched,
   });
 
   return c.json(
@@ -206,6 +207,8 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
       botId,
       pluginId,
       installedPlugins: [...existingPlugins, pluginId],
+      dispatched: dispatch.dispatched,
+      ...(dispatch.dispatchError ? { dispatchError: dispatch.dispatchError } : {}),
     },
     200,
   );
@@ -612,14 +615,17 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
     updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
   }
 
-  try {
-    await fleet.update(botId, { env: updatedEnv });
-  } catch (err) {
-    if (err instanceof BotNotFoundError) {
-      return c.json({ error: `Bot not found: ${botId}` }, 404);
-    }
-    logger.error(`Failed to apply channel connect to container for bot ${botId}`, { err });
-    return c.json({ error: "Failed to apply plugin change to running container" }, 500);
+  // Save profile with updated env (DB is source of truth)
+  const updatedChannel = { ...freshProfile, env: updatedEnv };
+  await store.save(updatedChannel);
+
+  // Dispatch env update to running container (best-effort, non-fatal)
+  let channelDispatch: { dispatched: boolean; dispatchError?: string } = {
+    dispatched: false,
+    dispatchError: "bot_instance_repo_not_configured",
+  };
+  if (botInstanceRepo) {
+    channelDispatch = await dispatchEnvUpdate(botId, freshProfile.tenantId, updatedEnv, botInstanceRepo);
   }
 
   if (meterEmitter && hostedKeyNames.length > 0) {
@@ -638,7 +644,12 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
     }
   }
 
-  logger.info(`Connected channel ${pluginId} on bot ${botId}`, { botId, pluginId, tenantId: profile.tenantId });
+  logger.info(`Connected channel ${pluginId} on bot ${botId}`, {
+    botId,
+    pluginId,
+    tenantId: profile.tenantId,
+    dispatched: channelDispatch.dispatched,
+  });
 
   return c.json(
     {
@@ -646,6 +657,8 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
       botId,
       pluginId,
       installedPlugins: [...existingPlugins, pluginId],
+      dispatched: channelDispatch.dispatched,
+      ...(channelDispatch.dispatchError ? { dispatchError: channelDispatch.dispatchError } : {}),
     },
     200,
   );
