@@ -191,6 +191,7 @@ describe("billing tenant isolation (WOP-1406)", () => {
     { name: "usage", input: {} },
     { name: "usageSummary", input: {} },
     { name: "affiliateInfo" },
+    { name: "providerCosts" },
     { name: "memberUsage" },
     { name: "dividendStats" },
     { name: "dividendHistory" },

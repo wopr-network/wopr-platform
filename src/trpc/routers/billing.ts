@@ -426,7 +426,7 @@ export const billingRouter = router({
     }),
 
   /** Get provider cost estimates (BYOK users). */
-  providerCosts: protectedProcedure.query(() => {
+  providerCosts: tenantProcedure.query(() => {
     return [] as Array<{
       provider: string;
       estimatedCost: number;
