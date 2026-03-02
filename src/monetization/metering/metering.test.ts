@@ -48,34 +48,38 @@ function makeEvent(overrides: Partial<MeterEvent> = {}): MeterEvent {
 }
 
 // -- Schema -----------------------------------------------------------------
-// These tests create their own pools inline since they verify fresh schema state
+// Tests 1-3 share one pool (read-only checks). "is idempotent" uses local pools inline.
 
 describe("Drizzle schema", () => {
+  let schemaPool: PGlite;
+
+  beforeAll(async () => {
+    ({ pool: schemaPool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await schemaPool.close();
+  });
+
   it("creates meter_events table", async () => {
-    const { pool } = await createTestDb();
-    const result = await pool.query(
+    const result = await schemaPool.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'meter_events'",
     );
     expect(result.rows).toHaveLength(1);
-    await pool.close();
   });
 
   it("creates usage_summaries table", async () => {
-    const { pool } = await createTestDb();
-    const result = await pool.query(
+    const result = await schemaPool.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'usage_summaries'",
     );
     expect(result.rows).toHaveLength(1);
-    await pool.close();
   });
 
   it("creates indexes", async () => {
-    const { pool } = await createTestDb();
-    const result = await pool.query(
+    const result = await schemaPool.query(
       "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname LIKE 'idx_meter_%'",
     );
     expect(result.rows.length).toBeGreaterThanOrEqual(1);
-    await pool.close();
   });
 
   it("is idempotent", async () => {
@@ -87,7 +91,8 @@ describe("Drizzle schema", () => {
 });
 
 // -- Emitter ----------------------------------------------------------------
-// MeterEmitter tests close the pool mid-test intentionally — keep per-test isolation
+// MeterEmitter uses db.transaction() internally so we use truncateAllTables (not savepoints).
+// The flush-failure test uses its own local db/pool to avoid poisoning shared state.
 
 describe("MeterEmitter", () => {
   let db: DrizzleDb;
@@ -96,10 +101,16 @@ describe("MeterEmitter", () => {
   const TEST_WAL_PATH = `/tmp/wopr-test-wal-${Date.now()}.jsonl`;
   const TEST_DLQ_PATH = `/tmp/wopr-test-dlq-${Date.now()}.jsonl`;
 
+  beforeAll(async () => {
+    ({ db, pool } = await createTestDb());
+  });
+
+  afterAll(async () => {
+    await pool.close();
+  });
+
   beforeEach(async () => {
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
+    await truncateAllTables(pool);
     // Disable auto-flush timer in tests; we flush manually.
     emitter = new MeterEmitter(db, {
       flushIntervalMs: 60_000,
@@ -111,7 +122,6 @@ describe("MeterEmitter", () => {
 
   afterEach(async () => {
     await emitter.close();
-    await pool.close();
 
     // Clean up test files.
     try {
@@ -221,21 +231,27 @@ describe("MeterEmitter", () => {
   });
 
   it("re-adds events to buffer on flush failure", async () => {
-    emitter.emit(makeEvent());
-    emitter.emit(makeEvent());
-    expect(emitter.pending).toBe(2);
+    // Use local db/pool so closing it doesn't poison the shared beforeAll pool.
+    const { db: localDb, pool: localPool } = await createTestDb();
+    const localEmitter = new MeterEmitter(localDb, {
+      flushIntervalMs: 60_000,
+      batchSize: 100,
+      walPath: TEST_WAL_PATH,
+      dlqPath: TEST_DLQ_PATH,
+    });
 
-    await pool.close();
+    localEmitter.emit(makeEvent());
+    localEmitter.emit(makeEvent());
+    expect(localEmitter.pending).toBe(2);
+
+    await localPool.close();
     // Should not throw even though db is closed.
-    const flushed = await emitter.flush();
+    const flushed = await localEmitter.flush();
     expect(flushed).toBe(0);
     // Events should be back in the buffer for retry.
-    expect(emitter.pending).toBe(2);
+    expect(localEmitter.pending).toBe(2);
 
-    // Re-open db for afterEach cleanup.
-    const testDb = await createTestDb();
-    db = testDb.db;
-    pool = testDb.pool;
+    localEmitter.close();
   });
 
   it("queryEvents returns events for a specific tenant", async () => {
