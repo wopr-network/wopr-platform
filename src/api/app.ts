@@ -23,6 +23,7 @@ import {
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
+import { csrfProtection } from "./middleware/csrf.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { activityRoutes } from "./routes/activity.js";
 import { adminBackupRoutes } from "./routes/admin-backups.js";
@@ -245,6 +246,15 @@ app.on(["POST", "GET"], "/api/auth/*", async (c) => {
 // Routes that also accept API tokens (scopedBearerAuth) will override if needed.
 app.use("/api/*", resolveSessionUser());
 app.use("/fleet/*", resolveSessionUser());
+// CSRF protection: validate Origin/Referer on state-changing requests (WOP-1371).
+// Mounted AFTER auth middleware so unauthenticated requests get 401 before CSRF fires.
+// Must run after CORS (which sets Access-Control-Allow-Origin) so preflight requests pass.
+// Exempt: /api/auth/* (better-auth), webhooks, /internal/*, bearer-token requests.
+const _csrfMiddleware = csrfProtection({
+  allowedOrigins: (process.env.UI_ORIGIN || "http://localhost:3001").split(",").map((s) => s.trim()),
+});
+app.use("/api/*", _csrfMiddleware);
+app.use("/fleet/*", _csrfMiddleware);
 
 app.route("/health", healthRoutes);
 
