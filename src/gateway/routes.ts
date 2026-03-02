@@ -11,6 +11,7 @@ import { rateLimit } from "../api/middleware/rate-limit.js";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { audioBodyLimit, llmBodyLimit, mediaBodyLimit, webhookBodyLimit } from "./body-limit.js";
+import { botMetricsMiddleware } from "./bot-metrics-middleware.js";
 import { capabilityRateLimit } from "./capability-rate-limit.js";
 import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "./circuit-breaker.js";
 import { hydrateSpendingCaps } from "./hydrate-spending-caps.js";
@@ -150,6 +151,11 @@ export function createGatewayRoutes(config: GatewayConfig): Hono<GatewayAuthEnv>
       onTrip: config.onCircuitBreakerTrip,
     }),
   );
+
+  // 4. Per-bot application metrics (WOP-1514)
+  if (config.botMetricsTracker) {
+    gateway.use("/*", botMetricsMiddleware(config.botMetricsTracker));
+  }
 
   // LLM endpoints (OpenRouter)
   gateway.post("/chat/completions", llmBodyLimit(), chatCompletions(deps));

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { discoveryConfigSchema } from "../discovery/types.js";
+import type { BotApplicationMetrics } from "../gateway/bot-metrics-tracker.js";
 
 /** Regex for valid bot names: alphanumeric, hyphens, underscores, 1-63 chars */
 const nameRegex = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,62}$/;
@@ -137,6 +138,7 @@ export interface BotStatus {
   createdAt: string;
   updatedAt: string;
   stats: ContainerStats | null;
+  applicationMetrics: BotApplicationMetrics | null;
 }
 
 /** Image status showing current vs available digest */

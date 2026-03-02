@@ -64,6 +64,7 @@ function makeBotStatus(profile: BotProfile, running: boolean): BotStatus {
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     stats: running ? { cpuPercent: 2.5, memoryUsageMb: 128, memoryLimitMb: 512, memoryPercent: 25 } : null,
+    applicationMetrics: null,
   };
 }
 

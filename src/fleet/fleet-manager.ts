@@ -3,6 +3,7 @@ import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
 import { buildDiscoveryEnv } from "../discovery/discovery-config.js";
 import type { PlatformDiscoveryConfig } from "../discovery/types.js";
+import type { BotMetricsTracker } from "../gateway/bot-metrics-tracker.js";
 import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
 import type { NetworkPolicy } from "../network/network-policy.js";
 import type { ProxyManagerInterface } from "../proxy/types.js";
@@ -23,6 +24,7 @@ export class FleetManager {
   private readonly proxyManager: ProxyManagerInterface | undefined;
   private readonly commandBus: INodeCommandBus | undefined;
   private readonly instanceRepo: IBotInstanceRepository | undefined;
+  private readonly botMetricsTracker: BotMetricsTracker | undefined;
   private locks = new Map<string, Promise<void>>();
 
   private async withLock<T>(botId: string, fn: () => Promise<T>): Promise<T> {
@@ -49,6 +51,7 @@ export class FleetManager {
     proxyManager?: ProxyManagerInterface,
     commandBus?: INodeCommandBus,
     instanceRepo?: IBotInstanceRepository,
+    botMetricsTracker?: BotMetricsTracker,
   ) {
     this.docker = docker;
     this.store = store;
@@ -57,6 +60,7 @@ export class FleetManager {
     this.proxyManager = proxyManager;
     this.commandBus = commandBus;
     this.instanceRepo = instanceRepo;
+    this.botMetricsTracker = botMetricsTracker;
   }
 
   /**
@@ -148,6 +152,7 @@ export class FleetManager {
    */
   async start(id: string): Promise<void> {
     return this.withLock(id, async () => {
+      this.botMetricsTracker?.reset(id);
       const remote = await this.resolveNodeId(id);
       if (remote) {
         const profile = await this.store.get(id);
@@ -204,6 +209,7 @@ export class FleetManager {
    */
   async restart(id: string): Promise<void> {
     return this.withLock(id, async () => {
+      this.botMetricsTracker?.reset(id);
       const profile = await this.store.get(id);
       if (!profile) throw new BotNotFoundError(id);
 
@@ -586,6 +592,7 @@ export class FleetManager {
       createdAt: info.Created || now,
       updatedAt: now,
       stats,
+      applicationMetrics: this.botMetricsTracker?.getMetrics(profile.id) ?? null,
     };
   }
 
@@ -604,6 +611,7 @@ export class FleetManager {
       createdAt: now,
       updatedAt: now,
       stats: null,
+      applicationMetrics: null,
     };
   }
 

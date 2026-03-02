@@ -154,6 +154,8 @@ export interface GatewayConfig {
   phoneRepo?: import("../monetization/credits/drizzle-phone-number-repository.js").IPhoneNumberRepository;
   /** Spending limits repository for hydrating hardCap from DB. */
   spendingLimitsRepo?: import("../monetization/drizzle-spending-limits-repository.js").ISpendingLimitsRepository;
+  /** Per-bot application metrics tracker (WOP-1514) */
+  botMetricsTracker?: import("./bot-metrics-tracker.js").BotMetricsTracker;
 }
 
 /** Standard gateway error response. */
