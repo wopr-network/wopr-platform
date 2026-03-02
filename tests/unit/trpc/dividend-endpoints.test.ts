@@ -56,7 +56,7 @@ describe("billing.dividend* tRPC procedures", () => {
       expect(result.user_eligible).toBe(false);
       expect(result.user_last_purchase_at).toBeNull();
       expect(result.user_window_expires_at).toBeNull();
-      expect(result.next_distribution_at).toBeDefined();
+      expect(result.next_distribution_at).toBeTypeOf("string");
     });
 
     it("returns eligibility when user purchased recently", async () => {
@@ -71,8 +71,8 @@ describe("billing.dividend* tRPC procedures", () => {
 
       const result = await caller.billing.dividendStats({});
       expect(result.user_eligible).toBe(true);
-      expect(result.user_last_purchase_at).toBeDefined();
-      expect(result.user_window_expires_at).toBeDefined();
+      expect(result.user_last_purchase_at).toBeTypeOf("string");
+      expect(result.user_window_expires_at).toBeTypeOf("string");
     });
 
     it("rejects cross-tenant access", async () => {

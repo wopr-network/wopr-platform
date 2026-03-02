@@ -232,7 +232,7 @@ describe("credit gate integration with streaming", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const finalBalance = await ledger.balance(TENANT.id);
-    expect(finalBalance.toCents()).toBeLessThan(initialBalance.toCents());
-    expect(initialBalance.toCents() - finalBalance.toCents()).toBeGreaterThan(0);
+    // Expected: 0.05 * 1.3 = 0.065 USD = 6.5 cents charged
+    expect(initialBalance.toCents() - finalBalance.toCents()).toBe(6.5);
   });
 });

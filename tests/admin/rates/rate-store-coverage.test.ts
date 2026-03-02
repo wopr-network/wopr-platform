@@ -42,8 +42,10 @@ describe("RateStore - Uniqueness Constraints Coverage", () => {
 		const result1 = await store.createSellRate(input1);
 		const result2 = await store.createSellRate(input2);
 
-		expect(result1.id).toBeDefined();
-		expect(result2.id).toBeDefined();
+		expect(result1.id).toBeTypeOf("string");
+		expect(result1.id.length).toBe(36); // UUID v4 length
+		expect(result2.id).toBeTypeOf("string");
+		expect(result2.id.length).toBe(36); // UUID v4 length
 		expect(result1.id).not.toBe(result2.id);
 	});
 
@@ -105,8 +107,10 @@ describe("RateStore - Uniqueness Constraints Coverage", () => {
 		const result1 = await store.createProviderCost(input1);
 		const result2 = await store.createProviderCost(input2);
 
-		expect(result1.id).toBeDefined();
-		expect(result2.id).toBeDefined();
+		expect(result1.id).toBeTypeOf("string");
+		expect(result1.id.length).toBe(36); // UUID v4 length
+		expect(result2.id).toBeTypeOf("string");
+		expect(result2.id.length).toBe(36); // UUID v4 length
 		expect(result1.adapter).toBe("anthropic");
 		expect(result2.adapter).toBe("openrouter");
 	});

@@ -38,9 +38,12 @@ describe("getEscalationMatrix", () => {
   it("all contacts have required fields", () => {
     for (const sev of ["SEV1", "SEV2", "SEV3"] as const) {
       for (const contact of getEscalationMatrix(sev)) {
-        expect(contact.role).toBeTruthy();
-        expect(contact.channel).toBeTruthy();
-        expect(contact.target).toBeTruthy();
+        expect(contact.role).toBeTypeOf("string");
+        expect(contact.role.length).toBeGreaterThan(0);
+        expect(contact.channel).toBeTypeOf("string");
+        expect(["pagerduty", "slack", "email", "phone"]).toContain(contact.channel);
+        expect(contact.target).toBeTypeOf("string");
+        expect(contact.target.length).toBeGreaterThan(0);
         expect(contact.slaMinutes).toBeGreaterThan(0);
       }
     }
