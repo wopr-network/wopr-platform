@@ -37,17 +37,31 @@ export function setMarketplaceDeps(deps: {
 // Blocker: none — straightforward migration.
 export const marketplaceRoutes = new Hono<AuditEnv>();
 
+const PAGINATION_DEFAULT_LIMIT = 50;
+const PAGINATION_MAX_LIMIT = 250;
+
 /**
  * GET /api/marketplace/plugins
  *
- * List all available plugins in the marketplace.
+ * List available plugins in the marketplace with cursor-based pagination.
  * Query params:
  *   - category: filter by plugin category
  *   - search: search by name/description/tags
+ *   - limit: max results per page (default 50, max 250)
+ *   - cursor: last plugin id from previous page (for cursor-based pagination)
  */
 marketplaceRoutes.get("/plugins", async (c) => {
   const user = c.get("user");
   if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+  const rawLimit = c.req.query("limit");
+  const parsedLimit = rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : PAGINATION_DEFAULT_LIMIT;
+  const limit =
+    Number.isNaN(parsedLimit) || parsedLimit < 1
+      ? PAGINATION_DEFAULT_LIMIT
+      : Math.min(parsedLimit, PAGINATION_MAX_LIMIT);
+
+  const cursor = c.req.query("cursor");
 
   let merged: PluginManifest[];
   try {
@@ -106,7 +120,21 @@ marketplaceRoutes.get("/plugins", async (c) => {
     );
   }
 
-  return c.json(merged);
+  // Apply cursor-based pagination: skip everything up to and including the cursor id
+  let startIndex = 0;
+  if (cursor) {
+    const cursorIndex = merged.findIndex((p) => p.id === cursor);
+    if (cursorIndex === -1) {
+      return c.json({ error: "Invalid or expired cursor" }, 400);
+    }
+    startIndex = cursorIndex + 1;
+  }
+
+  const page = merged.slice(startIndex, startIndex + limit);
+  const hasNextPage = startIndex + limit < merged.length;
+  const nextCursor = hasNextPage ? (page[page.length - 1]?.id ?? null) : null;
+
+  return c.json({ plugins: page, nextCursor, hasNextPage });
 });
 
 /**

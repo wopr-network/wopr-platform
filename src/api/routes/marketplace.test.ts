@@ -61,6 +61,8 @@ beforeEach(() => {
   setMarketplaceDeps({ credentialVault: null, meterEmitter: null });
 });
 
+type PluginsPage = { plugins: PluginManifest[]; nextCursor: string | null; hasNextPage: boolean };
+
 describe("GET /api/marketplace/plugins", () => {
   it("returns 401 when no user session", async () => {
     const app = makeApp(null);
@@ -68,52 +70,56 @@ describe("GET /api/marketplace/plugins", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns full plugin list", async () => {
+  it("returns paginated plugin list with pagination envelope", async () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as PluginManifest[];
-    expect(Array.isArray(body)).toBe(true);
-    expect(body.length).toBeGreaterThan(0);
-    expect(body[0]).toHaveProperty("id");
-    expect(body[0]).toHaveProperty("name");
-    expect(body[0]).toHaveProperty("category");
+    const body = (await res.json()) as PluginsPage;
+    expect(Array.isArray(body.plugins)).toBe(true);
+    expect(body.plugins.length).toBeGreaterThan(0);
+    expect(body.plugins[0]).toHaveProperty("id");
+    expect(body.plugins[0]).toHaveProperty("name");
+    expect(body.plugins[0]).toHaveProperty("category");
+    expect(body).toHaveProperty("nextCursor");
+    expect(body).toHaveProperty("hasNextPage");
   });
 
   it("filters by category", async () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins?category=voice");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as PluginManifest[];
-    expect(body.length).toBeGreaterThan(0);
-    for (const plugin of body) {
+    const body = (await res.json()) as PluginsPage;
+    expect(body.plugins.length).toBeGreaterThan(0);
+    for (const plugin of body.plugins) {
       expect(plugin.category).toBe("voice");
     }
   });
 
-  it("returns empty array for category with no plugins", async () => {
+  it("returns empty plugins array for category with no plugins", async () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins?category=provider");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as PluginManifest[];
-    expect(body).toEqual([]);
+    const body = (await res.json()) as PluginsPage;
+    expect(body.plugins).toEqual([]);
+    expect(body.hasNextPage).toBe(false);
+    expect(body.nextCursor).toBeNull();
   });
 
   it("filters by search query matching name", async () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins?search=discord");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as PluginManifest[];
-    expect(body.length).toBeGreaterThan(0);
-    expect(body[0].id).toBe("discord-channel");
+    const body = (await res.json()) as PluginsPage;
+    expect(body.plugins.length).toBeGreaterThan(0);
+    expect(body.plugins[0].id).toBe("discord-channel");
   });
 
   it("filters by search query matching tags", async () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins?search=analytics");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as PluginManifest[];
-    expect(body.length).toBeGreaterThan(0);
+    const body = (await res.json()) as PluginsPage;
+    expect(body.plugins.length).toBeGreaterThan(0);
   });
 
   it("returns 503 when marketplace plugin repo throws", async () => {
@@ -124,6 +130,60 @@ describe("GET /api/marketplace/plugins", () => {
     const app = makeApp();
     const res = await app.request("/api/marketplace/plugins");
     expect(res.status).toBe(503);
+  });
+
+  it("respects limit query param", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins?limit=1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PluginsPage;
+    expect(body.plugins.length).toBe(1);
+  });
+
+  it("caps limit at 250", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins?limit=9999");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PluginsPage;
+    expect(body.plugins.length).toBeLessThanOrEqual(250);
+  });
+
+  it("uses cursor to paginate to the next page", async () => {
+    const app = makeApp();
+    // Get first page with limit=1
+    const res1 = await app.request("/api/marketplace/plugins?limit=1");
+    expect(res1.status).toBe(200);
+    const page1 = (await res1.json()) as PluginsPage;
+    expect(page1.plugins.length).toBe(1);
+    const firstId = page1.plugins[0].id;
+
+    // Use cursor to get second page
+    const res2 = await app.request(`/api/marketplace/plugins?limit=1&cursor=${firstId}`);
+    expect(res2.status).toBe(200);
+    const page2 = (await res2.json()) as PluginsPage;
+    expect(page2.plugins.length).toBe(1);
+    expect(page2.plugins[0].id).not.toBe(firstId);
+  });
+
+  it("returns hasNextPage=false and nextCursor=null on last page", async () => {
+    const app = makeApp();
+    // Fetch all plugins with a very large limit
+    const res = await app.request("/api/marketplace/plugins?limit=250");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PluginsPage;
+    expect(body.hasNextPage).toBe(false);
+    expect(body.nextCursor).toBeNull();
+  });
+
+  it("returns hasNextPage=true and a nextCursor when more results remain", async () => {
+    const app = makeApp();
+    const res = await app.request("/api/marketplace/plugins?limit=1");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PluginsPage;
+    // Only meaningful if there are at least 2 plugins in the registry
+    if (body.hasNextPage) {
+      expect(body.nextCursor).not.toBeNull();
+    }
   });
 });
 
