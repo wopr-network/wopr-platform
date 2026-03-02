@@ -160,6 +160,8 @@ export class FleetManager {
 
   /**
    * Start a stopped bot container.
+   * Valid from: stopped, created, exited, error states.
+   * Throws InvalidStateTransitionError if the container is already running.
    */
   async start(id: string): Promise<void> {
     return this.withLock(id, async () => {
@@ -180,6 +182,12 @@ export class FleetManager {
       } else {
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
+        const info = await container.inspect();
+        const currentState = info.State.Status as string;
+        const validStartStates = new Set(["stopped", "created", "exited", "dead", "error"]);
+        if (!validStartStates.has(currentState)) {
+          throw new InvalidStateTransitionError(id, "start", currentState, [...validStartStates]);
+        }
         await container.start();
       }
       if (this.proxyManager) {
@@ -198,6 +206,8 @@ export class FleetManager {
 
   /**
    * Stop a running bot container.
+   * Valid from: running, starting, restarting states.
+   * Throws InvalidStateTransitionError if the container is not running.
    */
   async stop(id: string): Promise<void> {
     return this.withLock(id, async () => {
@@ -212,6 +222,12 @@ export class FleetManager {
       } else {
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
+        const info = await container.inspect();
+        const currentState = info.State.Status as string;
+        const validStopStates = new Set(["running", "starting", "restarting"]);
+        if (!validStopStates.has(currentState)) {
+          throw new InvalidStateTransitionError(id, "stop", currentState, [...validStopStates]);
+        }
         await container.stop();
       }
       if (this.proxyManager) {
@@ -230,6 +246,8 @@ export class FleetManager {
 
   /**
    * Restart: pull new image BEFORE stopping old container to avoid downtime on pull failure.
+   * Valid from: running state only.
+   * Throws InvalidStateTransitionError if the container is not running.
    * For remote bots, delegates to the node agent via NodeCommandBus.
    */
   async restart(id: string): Promise<void> {
@@ -250,6 +268,12 @@ export class FleetManager {
 
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
+        const info = await container.inspect();
+        const currentState = info.State.Status as string;
+        const validRestartStates = new Set(["running"]);
+        if (!validRestartStates.has(currentState)) {
+          throw new InvalidStateTransitionError(id, "restart", currentState, [...validRestartStates]);
+        }
         await container.restart();
       }
       logger.info(`Restarted bot ${id}`);
@@ -666,5 +690,24 @@ export class BotNotFoundError extends Error {
   constructor(id: string) {
     super(`Bot not found: ${id}`);
     this.name = "BotNotFoundError";
+  }
+}
+
+export class InvalidStateTransitionError extends Error {
+  readonly botId: string;
+  readonly operation: string;
+  readonly currentState: string;
+  readonly validStates: string[];
+
+  constructor(botId: string, operation: string, currentState: string, validStates: string[]) {
+    super(
+      `Cannot ${operation} bot ${botId}: container is in state "${currentState}". ` +
+        `Valid states for ${operation}: ${validStates.join(", ")}.`,
+    );
+    this.name = "InvalidStateTransitionError";
+    this.botId = botId;
+    this.operation = operation;
+    this.currentState = currentState;
+    this.validStates = validStates;
   }
 }
