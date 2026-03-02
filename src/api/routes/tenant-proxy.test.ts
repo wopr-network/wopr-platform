@@ -92,6 +92,14 @@ vi.mock("../../proxy/singleton.js", () => ({
   hydrateProxyRoutes: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock better-auth — default: no session (unauthenticated)
+const mockGetSession = vi.fn().mockResolvedValue(null);
+vi.mock("../../auth/better-auth.js", () => ({
+  getAuth: vi.fn(() => ({
+    api: { getSession: mockGetSession },
+  })),
+}));
+
 const mockProxyManager = {
   getRoutes: vi.fn(),
   addRoute: vi.fn(),
@@ -104,6 +112,8 @@ describe("tenantProxyMiddleware", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Restore default: no session (unauthenticated)
+    mockGetSession.mockResolvedValue(null);
     app = new Hono();
     app.use("/*", tenantProxyMiddleware);
     // Fallback route for requests that pass through the middleware
@@ -161,6 +171,7 @@ describe("tenantProxyMiddleware", () => {
     mockProxyManager.getRoutes.mockReturnValue([
       { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
     ]);
+    mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -191,6 +202,7 @@ describe("tenantProxyMiddleware", () => {
     mockProxyManager.getRoutes.mockReturnValue([
       { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
     ]);
+    mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
@@ -202,6 +214,47 @@ describe("tenantProxyMiddleware", () => {
       expect(res.status).toBe(502);
       const body = await res.json();
       expect(body.error).toContain("Bad Gateway");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("returns 401 when no session exists for tenant request", async () => {
+    mockProxyManager.getRoutes.mockReturnValue([
+      { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
+    ]);
+
+    const res = await app.request("http://alice.wopr.bot/test", {
+      headers: { host: "alice.wopr.bot" },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("Authentication required");
+  });
+
+  it("proxies when session user is resolved", async () => {
+    mockProxyManager.getRoutes.mockReturnValue([
+      { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
+    ]);
+    mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ upstream: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    try {
+      const res = await app.request("http://alice.wopr.bot/api/data", {
+        headers: { host: "alice.wopr.bot", cookie: "session=valid" },
+      });
+      expect(res.status).toBe(200);
+
+      const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+      const upstreamHeaders = fetchCall[1]?.headers as Headers;
+      expect(upstreamHeaders.get("x-wopr-user-id")).toBe("user-42");
     } finally {
       globalThis.fetch = originalFetch;
     }

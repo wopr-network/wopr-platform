@@ -118,12 +118,37 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
     return c.json({ error: "Instance unavailable" }, 503);
   }
 
+  // Resolve session user — the proxy runs before resolveSessionUser() middleware,
+  // so we must resolve inline. Reject unauthenticated requests with 401 (WOP-1372).
+  let userId: string | undefined;
+  try {
+    userId = (c.get("user") as { id: string } | undefined)?.id;
+  } catch {
+    // Variable not set — continue to session resolution
+  }
+
+  if (!userId) {
+    try {
+      const { getAuth } = await import("../../auth/better-auth.js");
+      const auth = getAuth();
+      const session = await auth.api.getSession({ headers: c.req.raw.headers });
+      if (session?.user) {
+        userId = (session.user as { id: string }).id;
+      }
+    } catch {
+      // Session resolution failed — userId stays undefined
+    }
+  }
+
+  if (!userId) {
+    return c.json({ error: "Authentication required" }, 401);
+  }
+
   // Proxy the request to the upstream container
   const upstream = `http://${route.upstreamHost}:${route.upstreamPort}`;
   const url = new URL(c.req.url);
   const targetUrl = `${upstream}${url.pathname}${url.search}`;
 
-  const userId = (c.get("user") as { id: string } | undefined)?.id ?? "anonymous";
   const upstreamHeaders = buildUpstreamHeaders(c.req.raw.headers, userId, subdomain);
 
   let response: Response;
