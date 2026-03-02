@@ -1,8 +1,6 @@
-import { and, eq } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { tenantApiKeys } from "../../db/schema/index.js";
 import { decrypt } from "../encryption.js";
 import type { Provider } from "../types.js";
+import type { IKeyResolutionRepository } from "./key-resolution-repository.js";
 
 /** Result of resolving which API key to use. */
 export interface ResolvedKey {
@@ -25,26 +23,21 @@ export interface ResolvedKey {
  * SECURITY: The decrypted key is returned to the caller and must be discarded
  * after use. This function does not log, persist, or cache the plaintext key.
  *
- * @param db - Drizzle database with tenant_api_keys table initialized
+ * @param repo - Repository for looking up tenant BYOK keys
  * @param tenantId - The tenant requesting the key
  * @param provider - The AI provider (anthropic, openai, google, discord)
  * @param encryptionKey - The 32-byte key used to decrypt the stored BYOK key
  * @param pooledKeys - Map of provider -> pooled API key (from env vars)
  */
 export async function resolveApiKey(
-  db: DrizzleDb,
+  repo: IKeyResolutionRepository,
   tenantId: string,
   provider: Provider,
   encryptionKey: Buffer,
   pooledKeys: Map<Provider, string>,
 ): Promise<ResolvedKey | null> {
   // 1. Check for tenant BYOK key
-  const row = (
-    await db
-      .select({ encryptedKey: tenantApiKeys.encryptedKey })
-      .from(tenantApiKeys)
-      .where(and(eq(tenantApiKeys.tenantId, tenantId), eq(tenantApiKeys.provider, provider)))
-  )[0];
+  const row = await repo.findEncryptedKey(tenantId, provider);
 
   if (row) {
     const payload = JSON.parse(row.encryptedKey);

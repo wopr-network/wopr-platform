@@ -5,6 +5,7 @@ import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTra
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload, Provider } from "../types.js";
 import { buildPooledKeysMap, resolveApiKey } from "./key-resolution.js";
+import { DrizzleKeyResolutionRepository } from "./key-resolution-repository.js";
 
 async function insertTenantKey(
   pool: PGlite,
@@ -46,7 +47,13 @@ describe("resolveApiKey", () => {
     await insertTenantKey(pool, "t1", "anthropic", encrypted);
 
     const pooled = new Map<Provider, string>([["anthropic", "sk-ant-pooled"]]);
-    const result = await resolveApiKey(db, "t1", "anthropic", encryptionKey, pooled);
+    const result = await resolveApiKey(
+      new DrizzleKeyResolutionRepository(db),
+      "t1",
+      "anthropic",
+      encryptionKey,
+      pooled,
+    );
     expect(result).not.toBeNull();
     expect(result?.key).toBe("sk-ant-tenant-key");
     expect(result?.source).toBe("tenant");
@@ -55,7 +62,7 @@ describe("resolveApiKey", () => {
 
   it("falls back to pooled key when no tenant key stored", async () => {
     const pooled = new Map<Provider, string>([["openai", "sk-pooled-openai"]]);
-    const result = await resolveApiKey(db, "t1", "openai", encryptionKey, pooled);
+    const result = await resolveApiKey(new DrizzleKeyResolutionRepository(db), "t1", "openai", encryptionKey, pooled);
     expect(result).not.toBeNull();
     expect(result?.key).toBe("sk-pooled-openai");
     expect(result?.source).toBe("pooled");
@@ -64,7 +71,13 @@ describe("resolveApiKey", () => {
 
   it("returns null when neither tenant nor pooled key exists", async () => {
     const pooled = new Map<Provider, string>();
-    const result = await resolveApiKey(db, "t1", "anthropic", encryptionKey, pooled);
+    const result = await resolveApiKey(
+      new DrizzleKeyResolutionRepository(db),
+      "t1",
+      "anthropic",
+      encryptionKey,
+      pooled,
+    );
     expect(result).toBeNull();
   });
 
@@ -74,15 +87,33 @@ describe("resolveApiKey", () => {
 
     const pooled = new Map<Provider, string>([["anthropic", "sk-ant-pooled"]]);
 
-    const googleResult = await resolveApiKey(db, "t1", "google", encryptionKey, pooled);
+    const googleResult = await resolveApiKey(
+      new DrizzleKeyResolutionRepository(db),
+      "t1",
+      "google",
+      encryptionKey,
+      pooled,
+    );
     expect(googleResult?.source).toBe("tenant");
     expect(googleResult?.key).toBe("my-google-key");
 
-    const anthropicResult = await resolveApiKey(db, "t1", "anthropic", encryptionKey, pooled);
+    const anthropicResult = await resolveApiKey(
+      new DrizzleKeyResolutionRepository(db),
+      "t1",
+      "anthropic",
+      encryptionKey,
+      pooled,
+    );
     expect(anthropicResult?.source).toBe("pooled");
     expect(anthropicResult?.key).toBe("sk-ant-pooled");
 
-    const discordResult = await resolveApiKey(db, "t1", "discord", encryptionKey, pooled);
+    const discordResult = await resolveApiKey(
+      new DrizzleKeyResolutionRepository(db),
+      "t1",
+      "discord",
+      encryptionKey,
+      pooled,
+    );
     expect(discordResult).toBeNull();
   });
 
@@ -92,10 +123,22 @@ describe("resolveApiKey", () => {
 
     const pooled = new Map<Provider, string>([["anthropic", "sk-ant-pooled"]]);
 
-    const t1Result = await resolveApiKey(db, "t1", "anthropic", encryptionKey, pooled);
+    const t1Result = await resolveApiKey(
+      new DrizzleKeyResolutionRepository(db),
+      "t1",
+      "anthropic",
+      encryptionKey,
+      pooled,
+    );
     expect(t1Result?.source).toBe("tenant");
 
-    const t2Result = await resolveApiKey(db, "t2", "anthropic", encryptionKey, pooled);
+    const t2Result = await resolveApiKey(
+      new DrizzleKeyResolutionRepository(db),
+      "t2",
+      "anthropic",
+      encryptionKey,
+      pooled,
+    );
     expect(t2Result?.source).toBe("pooled");
   });
 });

@@ -5,7 +5,9 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**/*.ts"]
+    "includes": [
+      "src/**/*.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -26,7 +28,12 @@
         "noConsole": {
           "level": "error",
           "options": {
-            "allow": ["assert", "error", "info", "warn"]
+            "allow": [
+              "assert",
+              "error",
+              "info",
+              "warn"
+            ]
           }
         }
       },
@@ -66,7 +73,9 @@
   },
   "overrides": [
     {
-      "includes": ["src/db/**/*.ts"],
+      "includes": [
+        "src/db/**/*.ts"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -147,7 +156,8 @@
         "src/monetization/promotions/promotion-repository.ts",
         "src/monetization/promotions/coupon-repository.ts",
         "src/monetization/promotions/redemption-repository.ts",
-        "src/monetization/adapters/rate-override-repository.ts"
+        "src/monetization/adapters/rate-override-repository.ts",
+        "src/security/tenant-keys/key-resolution-repository.ts"
       ],
       "linter": {
         "rules": {
@@ -158,7 +168,10 @@
       }
     },
     {
-      "includes": ["src/test/**/*.ts", "src/**/*.test.ts"],
+      "includes": [
+        "src/test/**/*.ts",
+        "src/**/*.test.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

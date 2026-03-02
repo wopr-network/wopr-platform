@@ -450,7 +450,9 @@ describe("credential vault migration path", () => {
     expect(d1!.plaintextKey).toBe("sk-ant-chain-test-key-xyz");
 
     // Step 2: Rotate keys from old secret to new secret
-    const rotResult = await reEncryptAllCredentials(db, oldSecret, newSecret);
+    const rotCredAccess = new DrizzleCredentialRepository(db);
+    const rotTenantKeyAccess = new DrizzleMigrationTenantKeyAccess(db);
+    const rotResult = await reEncryptAllCredentials(rotCredAccess, rotTenantKeyAccess, oldSecret, newSecret);
     expect(rotResult.providerCredentials.migrated).toBe(1);
     expect(rotResult.providerCredentials.errors).toHaveLength(0);
 
