@@ -21,7 +21,7 @@ import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../../fleet/resource-tiers.js";
 import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
-import { createBotSchema } from "../../fleet/types.js";
+import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { Credit } from "../../monetization/credit.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
 import type { ICreditLedger as CreditLedger } from "../../monetization/credits/credit-ledger.js";
@@ -709,6 +709,106 @@ export const fleetRouter = router({
       dailyCost: tierConfig.dailyCost.toCents(),
     };
   }),
+  /** Update bot configuration (name, image, env, etc.). */
+  updateInstance: tenantProcedure
+    .input(z.object({ id: uuidSchema }).and(updateBotSchema))
+    .mutation(async ({ input, ctx }) => {
+      const { getFleetManager, getBotInstanceRepo, getRoleStore } = deps();
+      const fleet = getFleetManager();
+      const profile = await fleet.profiles.get(input.id);
+      if (!profile || profile.tenantId !== ctx.tenantId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+      }
+      // User-scoped ownership (WOP-1002)
+      if (ctx.user?.id) {
+        const botRepo = getBotInstanceRepo?.();
+        const roleStore = getRoleStore?.();
+        if (botRepo && roleStore) {
+          const instance = await botRepo.getById(input.id);
+          const role = await roleStore.getRole(ctx.user.id, ctx.tenantId);
+          if (role === "user" && instance?.createdByUserId && instance.createdByUserId !== ctx.user.id) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "You do not have permission to manage this bot" });
+          }
+        }
+      }
+      const { id: _id, ...updates } = input;
+      if (Object.keys(updates).length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No fields to update" });
+      }
+      try {
+        return await fleet.update(input.id, updates);
+      } catch (err) {
+        if (err instanceof BotNotFoundError) {
+          throw new TRPCError({ code: "NOT_FOUND", message: err.message });
+        }
+        throw err;
+      }
+    }),
+
+  /** Remove (destroy) a bot instance and optionally its volumes. */
+  removeInstance: tenantProcedure
+    .input(z.object({ id: uuidSchema, removeVolumes: z.boolean().default(false) }))
+    .mutation(async ({ input, ctx }) => {
+      const { getFleetManager, getBotInstanceRepo, getRoleStore } = deps();
+      const fleet = getFleetManager();
+      const profile = await fleet.profiles.get(input.id);
+      if (!profile || profile.tenantId !== ctx.tenantId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+      }
+      // User-scoped ownership (WOP-1002)
+      if (ctx.user?.id) {
+        const botRepo = getBotInstanceRepo?.();
+        const roleStore = getRoleStore?.();
+        if (botRepo && roleStore) {
+          const instance = await botRepo.getById(input.id);
+          const role = await roleStore.getRole(ctx.user.id, ctx.tenantId);
+          if (role === "user" && instance?.createdByUserId && instance.createdByUserId !== ctx.user.id) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "You do not have permission to manage this bot" });
+          }
+        }
+      }
+      try {
+        await fleet.remove(input.id, input.removeVolumes);
+        return { ok: true };
+      } catch (err) {
+        if (err instanceof BotNotFoundError) {
+          throw new TRPCError({ code: "NOT_FOUND", message: err.message });
+        }
+        throw err;
+      }
+    }),
+
+  /** Restart a running bot instance. */
+  restartInstance: tenantProcedure.input(z.object({ id: uuidSchema })).mutation(async ({ input, ctx }) => {
+    const { getFleetManager, getBotInstanceRepo, getRoleStore } = deps();
+    const fleet = getFleetManager();
+    const profile = await fleet.profiles.get(input.id);
+    if (!profile || profile.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+    }
+    // User-scoped ownership (WOP-1002)
+    if (ctx.user?.id) {
+      const botRepo = getBotInstanceRepo?.();
+      const roleStore = getRoleStore?.();
+      if (botRepo && roleStore) {
+        const instance = await botRepo.getById(input.id);
+        const role = await roleStore.getRole(ctx.user.id, ctx.tenantId);
+        if (role === "user" && instance?.createdByUserId && instance.createdByUserId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You do not have permission to manage this bot" });
+        }
+      }
+    }
+    try {
+      await fleet.restart(input.id);
+      return { ok: true };
+    } catch (err) {
+      if (err instanceof BotNotFoundError) {
+        throw new TRPCError({ code: "NOT_FOUND", message: err.message });
+      }
+      throw err;
+    }
+  }),
+
   activateCapability: tenantProcedure
     .input(z.object({ id: uuidSchema, capabilityId: z.string().min(1).max(64) }))
     .mutation(async ({ input, ctx }) => {
