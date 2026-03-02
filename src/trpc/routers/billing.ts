@@ -630,11 +630,12 @@ export const billingRouter = router({
       return { removed: true };
     } catch (err) {
       if (err instanceof PaymentMethodOwnershipError) {
-        throw new TRPCError({ code: "FORBIDDEN", message: err.message });
+        throw new TRPCError({ code: "FORBIDDEN", message: "Payment method does not belong to this account" });
       }
+      console.error("[billing.removePaymentMethod]", err);
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: err instanceof Error ? err.message : "Failed to remove payment method",
+        message: "Failed to remove payment method. Please try again.",
       });
     }
   }),
@@ -913,8 +914,8 @@ export const billingRouter = router({
         couponCode: input.code.toUpperCase().trim(),
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Invalid or expired coupon code";
-      throw new TRPCError({ code: "BAD_REQUEST", message });
+      console.error("[billing.applyCoupon]", err);
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired coupon code" });
     }
     if (results.length === 0) {
       throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid, expired, or already-used coupon code" });
