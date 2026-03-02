@@ -21,7 +21,7 @@ import { welcomeTemplate } from "../../email/templates.js";
 import { verifyToken } from "../../email/verification.js";
 import { getCreditLedger, getPool } from "../../fleet/services.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { SIGNUP_GRANT } from "../../monetization/credits/signup-grant.js";
+import { grantSignupCredits } from "../../monetization/credits/signup-grant.js";
 
 const UI_ORIGIN = process.env.UI_ORIGIN || "http://localhost:3001";
 
@@ -60,11 +60,15 @@ function buildRoutes(poolFactory: () => Pool, creditLedgerFactory: () => ICredit
       return c.redirect(`${UI_ORIGIN}/auth/verify?status=error&reason=invalid_or_expired`);
     }
 
-    // Grant $5 signup credit
+    // Grant $5 signup credit (idempotent — safe on link re-click)
     try {
       const ledger = creditLedgerFactory();
-      await ledger.credit(result.userId, SIGNUP_GRANT, "signup_grant", "Signup verification credit");
-      logger.info("Signup credit granted", { userId: result.userId, amount_cents: SIGNUP_GRANT.toCents() });
+      const granted = await grantSignupCredits(ledger, result.userId);
+      if (granted) {
+        logger.info("Signup credit granted", { userId: result.userId });
+      } else {
+        logger.info("Signup credit already granted, skipping", { userId: result.userId });
+      }
     } catch (err) {
       logger.error("Failed to grant signup credit", {
         userId: result.userId,

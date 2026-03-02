@@ -1,5 +1,5 @@
 import { Credit } from "../credit.js";
-import type { CreditLedger } from "./credit-ledger.js";
+import type { ICreditLedger } from "./credit-ledger.js";
 
 /** Signup grant amount: $5.00 */
 export const SIGNUP_GRANT = Credit.fromDollars(5);
@@ -11,7 +11,7 @@ export const SIGNUP_GRANT = Credit.fromDollars(5);
  *
  * @returns true if the grant was applied, false if already granted.
  */
-export async function grantSignupCredits(ledger: CreditLedger, tenantId: string): Promise<boolean> {
+export async function grantSignupCredits(ledger: ICreditLedger, tenantId: string): Promise<boolean> {
   const refId = `signup:${tenantId}`;
 
   // Idempotency check
