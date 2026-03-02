@@ -143,18 +143,21 @@ describe("NodeConnectionManager.registerNode", () => {
     expect(rows[0]?.capacityMb).toBe(16384);
   });
 
-  it("re-registers an unhealthy node as active (heartbeat recovery)", async () => {
+  it("re-registers an unhealthy node — metadata update only, status unchanged", async () => {
     await insertNode(db, { id: "node-1", status: "unhealthy" });
 
     await ncm.registerNode({
       node_id: "node-1",
-      host: "10.0.0.1",
-      capacity_mb: 8192,
-      agent_version: "1.0.0",
+      host: "10.0.0.2",
+      capacity_mb: 16384,
+      agent_version: "1.1.0",
     });
 
+    // Recovery from unhealthy → active is driven by health checks, not re-registration
     const rows = await db.select().from(nodes).where(eq(nodes.id, "node-1"));
-    expect(rows[0]?.status).toBe("active");
+    expect(rows[0]?.status).toBe("unhealthy");
+    expect(rows[0]?.host).toBe("10.0.0.2");
+    expect(rows[0]?.capacityMb).toBe(16384);
   });
 
   it("closes in-flight recovery events for the returning node", async () => {
