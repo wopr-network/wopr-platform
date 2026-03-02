@@ -13,6 +13,7 @@ import type { IDividendRepository } from "../../monetization/credits/dividend-re
 import { DrizzleSpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
+import { setTrpcOrgMemberRepo } from "../init.js";
 import { type BillingRouterDeps, billingRouter, setBillingRouterDeps } from "./billing.js";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,32 @@ function makeUnauthCtx() {
 function makeCaller(ctx: ReturnType<typeof makeCtx> | ReturnType<typeof makeUnauthCtx>) {
   return billingRouter.createCaller(ctx as Parameters<typeof billingRouter.createCaller>[0]);
 }
+
+// Wire a permissive org member repo so tenantProcedure passes validation.
+// tenantProcedure calls validateTenantAccess for non-token users; we allow all.
+beforeAll(() => {
+  setTrpcOrgMemberRepo({
+    findMember: async (_orgId, _userId) => ({
+      id: "m1",
+      orgId: _orgId,
+      userId: _userId,
+      role: "owner" as const,
+      joinedAt: Date.now(),
+    }),
+    listMembers: async () => [],
+    addMember: async () => {},
+    updateMemberRole: async () => {},
+    removeMember: async () => {},
+    countAdminsAndOwners: async () => 1,
+    listInvites: async () => [],
+    createInvite: async () => {},
+    findInviteById: async () => null,
+    findInviteByToken: async () => null,
+    deleteInvite: async () => {},
+    deleteAllMembers: async () => {},
+    deleteAllInvites: async () => {},
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Mock factories
@@ -618,6 +645,78 @@ describe("billingRouter", () => {
       const result = await caller.updateBillingEmail({ email: "new@test.com" });
       expect(result.email).toBe("new@test.com");
       expect(mockProcessor.updateCustomerEmail).toHaveBeenCalledWith("user-1", "new@test.com");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // creditsBalance
+  // -------------------------------------------------------------------------
+
+  describe("creditsBalance", () => {
+    beforeEach(() => {
+      injectDeps();
+    });
+
+    it("returns balance for own tenant", async () => {
+      const caller = makeCaller(makeCtx("user-1", "user-1"));
+      const result = await caller.creditsBalance({});
+      expect(result.tenant).toBe("user-1");
+      expect(typeof result.balance_credits).toBe("number");
+    });
+
+    it("uses ctx.tenantId as the tenant", async () => {
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.creditsBalance({});
+      expect(result.tenant).toBe("tenant-1");
+    });
+
+    it("rejects when no tenant context is provided", async () => {
+      const caller = makeCaller(makeCtx("user-1"));
+      await expect(caller.creditsBalance({})).rejects.toThrow("Tenant context required");
+    });
+
+    it("rejects unauthenticated request", async () => {
+      const caller = makeCaller(makeUnauthCtx());
+      await expect(caller.creditsBalance({})).rejects.toThrow("Authentication required");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // creditsHistory
+  // -------------------------------------------------------------------------
+
+  describe("creditsHistory", () => {
+    beforeEach(() => {
+      injectDeps();
+    });
+
+    it("returns history for own tenant", async () => {
+      const caller = makeCaller(makeCtx("user-1", "user-1"));
+      const result = await caller.creditsHistory({});
+      expect(result.entries).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it("uses ctx.tenantId as the tenant", async () => {
+      const caller = makeCaller(makeCtx("user-1", "tenant-1"));
+      const result = await caller.creditsHistory({});
+      expect(result.entries).toEqual([]);
+    });
+
+    it("rejects when no tenant context is provided", async () => {
+      const caller = makeCaller(makeCtx("user-1"));
+      await expect(caller.creditsHistory({})).rejects.toThrow("Tenant context required");
+    });
+
+    it("rejects unauthenticated request", async () => {
+      const caller = makeCaller(makeUnauthCtx());
+      await expect(caller.creditsHistory({})).rejects.toThrow("Authentication required");
+    });
+
+    it("passes filter options through", async () => {
+      const caller = makeCaller(makeCtx("user-1", "user-1"));
+      const result = await caller.creditsHistory({ type: "grant", limit: 10, offset: 0 });
+      expect(result.entries).toEqual([]);
     });
   });
 

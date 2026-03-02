@@ -340,14 +340,14 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsBalance returns 0 for new tenant", async () => {
-      const caller = createCaller(authedContext({ tenantId: undefined }));
-      const result = await caller.billing.creditsBalance({ tenant: "test-user" });
+      const caller = createCaller(authedContext({ tenantId: "test-user" }));
+      const result = await caller.billing.creditsBalance({});
       expect(result.balance_credits).toBe(0);
     });
 
     it("creditsBalance includes daily_burn_credits and runway_days", async () => {
-      const caller = createCaller(authedContext({ tenantId: undefined }));
-      const result = await caller.billing.creditsBalance({ tenant: "test-user" });
+      const caller = createCaller(authedContext({ tenantId: "test-user" }));
+      const result = await caller.billing.creditsBalance({});
       expect(result).toHaveProperty("daily_burn_credits");
       expect(result).toHaveProperty("runway_days");
       expect(typeof result.daily_burn_credits).toBe("number");
@@ -385,14 +385,14 @@ describe("tRPC appRouter", () => {
     });
 
     it("creditsHistory returns transactions", async () => {
-      const caller = createCaller(authedContext({ tenantId: undefined }));
-      const result = await caller.billing.creditsHistory({ tenant: "test-user" });
+      const caller = createCaller(authedContext({ tenantId: "test-user" }));
+      const result = await caller.billing.creditsHistory({});
       expect(result.entries).toEqual([]);
     });
 
     it("rejects unauthenticated billing requests", async () => {
       const caller = createCaller(unauthContext());
-      await expect(caller.billing.creditsBalance({ tenant: "t1" })).rejects.toThrow("Authentication required");
+      await expect(caller.billing.creditsBalance({})).rejects.toThrow("Authentication required");
     });
 
     // ---- tenant-optional overloads (WOP-687) ----
