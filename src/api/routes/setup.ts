@@ -317,7 +317,7 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
 
     // Ownership validation: authenticated tenant must own this bot
     const authenticatedTenantId = c.req.header("x-authenticated-tenant-id");
-    if (authenticatedTenantId && profile.tenantId !== authenticatedTenantId) {
+    if (!authenticatedTenantId || profile.tenantId !== authenticatedTenantId) {
       return c.json({ error: "Bot does not belong to your tenant" }, 403);
     }
 
