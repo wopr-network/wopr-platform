@@ -158,6 +158,33 @@ describe("NodeProvisioner", () => {
       expect(nodeRepo.markFailed).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("422"));
     });
 
+    it("cleans up DO droplet when DB write fails after createDroplet succeeds", async () => {
+      const nodeRepo = makeNodeRepo();
+      // Make updateProvisionData (the DB write after droplet is created) fail
+      (nodeRepo.updateProvisionData as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("DB write failed"));
+
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
+
+      await expect(provisioner.provision()).rejects.toThrow("DB write failed");
+
+      expect(doClient.deleteDroplet).toHaveBeenCalledWith(DROPLET_ID);
+    });
+
+    it("still throws original error when droplet cleanup also fails", async () => {
+      const failingDeleteClient = makeDoClient({
+        deleteDroplet: vi.fn().mockRejectedValue(new Error("DO API unreachable")),
+      });
+      const nodeRepo = makeNodeRepo();
+      (nodeRepo.updateProvisionData as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("DB write failed"));
+
+      const provisioner = new NodeProvisioner(nodeRepo, failingDeleteClient, { sshKeyId: 123 });
+
+      // Original error is preserved, not the cleanup error
+      await expect(provisioner.provision()).rejects.toThrow("DB write failed");
+
+      expect(failingDeleteClient.deleteDroplet).toHaveBeenCalledWith(DROPLET_ID);
+    });
+
     it("throws NodeProvisioningError when no public IP assigned", async () => {
       const noIpDroplet = {
         ...makeDroplet("active"),
