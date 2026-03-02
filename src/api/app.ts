@@ -23,6 +23,7 @@ import {
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
 import type { TRPCContext } from "../trpc/init.js";
+import { csrfProtection } from "./middleware/csrf.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { activityRoutes } from "./routes/activity.js";
 import { adminBackupRoutes } from "./routes/admin-backups.js";
@@ -140,6 +141,15 @@ app.use(
   }),
 );
 app.use("/*", secureHeaders());
+// CSRF protection: validate Origin/Referer on state-changing requests (WOP-1371).
+// Must run after CORS (which sets Access-Control-Allow-Origin) so preflight requests pass.
+// Exempt: /api/auth/* (better-auth), webhooks, /internal/*, bearer-token requests.
+app.use(
+  "/*",
+  csrfProtection({
+    allowedOrigins: (process.env.UI_ORIGIN || "http://localhost:3001").split(",").map((s) => s.trim()),
+  }),
+);
 // Rate limiting via DB-backed repo. Lazily initialized on first request to
 // avoid opening platform.db at module load time (tests import app.ts too).
 let _rateLimitMiddleware: MiddlewareHandler | null = null;
