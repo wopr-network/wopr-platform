@@ -16,6 +16,7 @@ import { getNodeSecretDeprecationWarnings } from "./api/routes/internal-nodes.js
 import { setMarketplaceDeps } from "./api/routes/marketplace.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
+import { authenticateWebSocketUpgrade } from "./api/routes/ws-auth.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
 import { EchoChatBackend } from "./chat/chat-backend.js";
 import { config } from "./config/index.js";
@@ -1082,7 +1083,6 @@ if (process.env.NODE_ENV !== "test") {
           const authHeader = req.headers.authorization;
           const nodeSecretHeader = req.headers["x-node-secret"] as string | undefined;
 
-          const { authenticateWebSocketUpgrade } = await import("./api/routes/ws-auth.js");
           const authResult = await authenticateWebSocketUpgrade({
             nodeId,
             authHeader,
