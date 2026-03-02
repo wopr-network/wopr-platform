@@ -345,6 +345,62 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       break;
     }
 
+    case "invoice.payment_succeeded": {
+      const invoice = event.data.object as Stripe.Invoice;
+      const customerId =
+        typeof invoice.customer === "string" ? invoice.customer : (invoice.customer as Stripe.Customer)?.id;
+
+      if (!customerId) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      if (!mapping) {
+        result = { handled: false, event_type: event.type };
+        break;
+      }
+
+      const tenant = mapping.tenant;
+      const amountPaid = (invoice as unknown as { amount_paid?: number }).amount_paid;
+
+      if (amountPaid == null || amountPaid <= 0) {
+        result = { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+        break;
+      }
+
+      // Idempotency: skip if this invoice was already credited.
+      if (await deps.creditLedger.hasReferenceId(invoice.id)) {
+        result = { handled: true, event_type: event.type, tenant, creditedCents: 0 };
+        break;
+      }
+
+      await deps.creditLedger.credit(
+        tenant,
+        Credit.fromCents(amountPaid),
+        "purchase",
+        `Stripe subscription renewal (invoice: ${invoice.id})`,
+        invoice.id,
+        "stripe",
+      );
+
+      // Reactivate suspended bots now that balance is positive (WOP-447).
+      let reactivatedBots: string[] | undefined;
+      if (deps.botBilling) {
+        reactivatedBots = await deps.botBilling.checkReactivation(tenant, deps.creditLedger);
+        if (reactivatedBots.length === 0) reactivatedBots = undefined;
+      }
+
+      result = {
+        handled: true,
+        event_type: event.type,
+        tenant,
+        creditedCents: amountPaid,
+        reactivatedBots,
+      };
+      break;
+    }
+
     case "charge.refunded": {
       const charge = event.data.object as Stripe.Charge;
       const customerId =
