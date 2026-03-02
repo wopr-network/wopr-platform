@@ -143,6 +143,9 @@ onboardingRoutes.get("/session/:id/history", async (c) => {
     const history = await service.getHistory(id, limit);
     return c.json({ history });
   } catch (err) {
+    if (err instanceof Error && err.message.toLowerCase().includes("not found")) {
+      return c.json({ error: "Session not found" }, 404);
+    }
     logger.error("Failed to fetch onboarding session history", { err });
     return c.json({ error: "Internal server error" }, 500);
   }
