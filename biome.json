@@ -24,7 +24,7 @@
         "noUnusedImports": "error"
       },
       "suspicious": {
-        "noExplicitAny": "warn",
+        "noExplicitAny": "error",
         "noConsole": {
           "level": "error",
           "options": {
@@ -38,7 +38,7 @@
         }
       },
       "style": {
-        "noNonNullAssertion": "warn",
+        "noNonNullAssertion": "error",
         "useConst": "error",
         "noRestrictedImports": {
           "level": "error",

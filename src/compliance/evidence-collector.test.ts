@@ -45,10 +45,10 @@ describe("EvidenceCollector", () => {
     };
 
     const collector = new EvidenceCollector({
-      auditRepo: mockAuditRepo as any,
-      backupStore: mockBackupStore as any,
-      adminAuditRepo: mockAdminAuditRepo as any,
-      twoFactorRepo: mockTwoFactorRepo as any,
+      auditRepo: mockAuditRepo,
+      backupStore: mockBackupStore,
+      adminAuditRepo: mockAdminAuditRepo,
+      twoFactorRepo: mockTwoFactorRepo,
     });
 
     const now = new Date();
@@ -91,10 +91,10 @@ describe("EvidenceCollector", () => {
     };
 
     const collector = new EvidenceCollector({
-      auditRepo: emptyAuditRepo as any,
-      backupStore: emptyBackupStore as any,
-      adminAuditRepo: emptyAdminRepo as any,
-      twoFactorRepo: emptyTwoFactorRepo as any,
+      auditRepo: emptyAuditRepo,
+      backupStore: emptyBackupStore,
+      adminAuditRepo: emptyAdminRepo,
+      twoFactorRepo: emptyTwoFactorRepo,
     });
 
     const report = await collector.collect({

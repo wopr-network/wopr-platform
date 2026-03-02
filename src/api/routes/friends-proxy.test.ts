@@ -68,7 +68,7 @@ describe("proxyToInstance", () => {
     mockFetch.mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
 
     await proxyToInstance("bot-1", "GET", "/p2p/friends", { ignored: true });
-    const fetchInit = mockFetch.mock.calls[0][1]!;
+    const fetchInit = mockFetch.mock.calls[0][1] as RequestInit;
     expect(fetchInit.body).toBeUndefined();
   });
 
@@ -76,7 +76,7 @@ describe("proxyToInstance", () => {
     mockFetch.mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
 
     await proxyToInstance("bot-1", "POST", "/p2p/friends", { peerId: "abc" });
-    const fetchInit = mockFetch.mock.calls[0][1]!;
+    const fetchInit = mockFetch.mock.calls[0][1] as RequestInit;
     expect(fetchInit.body).toBe(JSON.stringify({ peerId: "abc" }));
   });
 });

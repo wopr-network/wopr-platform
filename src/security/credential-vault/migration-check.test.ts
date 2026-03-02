@@ -312,11 +312,12 @@ describe("credential vault migration path", () => {
     const store = new CredentialVaultStore(repo, vaultKey);
     const decrypted = await store.decrypt("cred-legacy");
     expect(decrypted).not.toBeNull();
-    expect(decrypted!.plaintextKey).toBe("sk-ant-legacy-plaintext-key-999");
-    expect(decrypted!.provider).toBe("anthropic");
-    expect(decrypted!.keyName).toBe("Legacy Key");
-    expect(decrypted!.authType).toBe("header");
-    expect(decrypted!.authHeader).toBe("x-api-key");
+    const cred = decrypted as NonNullable<typeof decrypted>;
+    expect(cred.plaintextKey).toBe("sk-ant-legacy-plaintext-key-999");
+    expect(cred.provider).toBe("anthropic");
+    expect(cred.keyName).toBe("Legacy Key");
+    expect(cred.authType).toBe("header");
+    expect(cred.authHeader).toBe("x-api-key");
   });
 
   it("post-migration credential metadata is fully preserved", async () => {
@@ -338,12 +339,13 @@ describe("credential vault migration path", () => {
     // Verify summary metadata is intact
     const summary = await store.getById("cred-meta");
     expect(summary).not.toBeNull();
-    expect(summary!.provider).toBe("openai");
-    expect(summary!.keyName).toBe("Metadata Test");
-    expect(summary!.authType).toBe("bearer");
-    expect(summary!.authHeader).toBeNull();
-    expect(summary!.createdBy).toBe("admin-user");
-    expect(summary!.isActive).toBe(true);
+    const s = summary as NonNullable<typeof summary>;
+    expect(s.provider).toBe("openai");
+    expect(s.keyName).toBe("Metadata Test");
+    expect(s.authType).toBe("bearer");
+    expect(s.authHeader).toBeNull();
+    expect(s.createdBy).toBe("admin-user");
+    expect(s.isActive).toBe(true);
   });
 
   it("migration idempotency: running twice does not corrupt and encrypted value is unchanged", async () => {
@@ -382,7 +384,7 @@ describe("credential vault migration path", () => {
     const repo = new DrizzleCredentialRepository(db);
     const store = new CredentialVaultStore(repo, vaultKey);
     const decrypted = await store.decrypt("cred-idem");
-    expect(decrypted!.plaintextKey).toBe("sk-ant-idempotent-test-key-000");
+    expect((decrypted as NonNullable<typeof decrypted>).plaintextKey).toBe("sk-ant-idempotent-test-key-000");
   });
 
   it("partial migration failure: valid rows are migrated, invalid rows produce errors, valid rows remain readable", async () => {
@@ -416,10 +418,10 @@ describe("credential vault migration path", () => {
     const store = new CredentialVaultStore(repo, vaultKey);
 
     const d1 = await store.decrypt("cred-valid");
-    expect(d1!.plaintextKey).toBe("sk-ant-valid-plaintext-key-111");
+    expect((d1 as NonNullable<typeof d1>).plaintextKey).toBe("sk-ant-valid-plaintext-key-111");
 
     const d2 = await store.decrypt("cred-encrypted");
-    expect(d2!.plaintextKey).toBe("sk-ant-already-encrypted");
+    expect((d2 as NonNullable<typeof d2>).plaintextKey).toBe("sk-ant-already-encrypted");
   });
 
   it("key rotation after plaintext migration: full chain works", async () => {
@@ -447,7 +449,7 @@ describe("credential vault migration path", () => {
     const repo1 = new DrizzleCredentialRepository(db);
     const store1 = new CredentialVaultStore(repo1, oldKey);
     const d1 = await store1.decrypt("cred-chain");
-    expect(d1!.plaintextKey).toBe("sk-ant-chain-test-key-xyz");
+    expect((d1 as NonNullable<typeof d1>).plaintextKey).toBe("sk-ant-chain-test-key-xyz");
 
     // Step 2: Rotate keys from old secret to new secret
     const rotCredAccess = new DrizzleCredentialRepository(db);
@@ -461,9 +463,10 @@ describe("credential vault migration path", () => {
     const repo2 = new DrizzleCredentialRepository(db);
     const store2 = new CredentialVaultStore(repo2, newKey);
     const d2 = await store2.decrypt("cred-chain");
-    expect(d2!.plaintextKey).toBe("sk-ant-chain-test-key-xyz");
-    expect(d2!.provider).toBe("anthropic");
-    expect(d2!.authHeader).toBe("x-api-key");
+    const d2cred = d2 as NonNullable<typeof d2>;
+    expect(d2cred.plaintextKey).toBe("sk-ant-chain-test-key-xyz");
+    expect(d2cred.provider).toBe("anthropic");
+    expect(d2cred.authHeader).toBe("x-api-key");
 
     // Old key can no longer decrypt
     const rowRaw = await db
@@ -490,8 +493,9 @@ describe("credential vault migration path", () => {
     const results = await migratePlaintextCredentials(credRepo, vaultKey, tenantKeyDeriver, localTenantAccess);
     const tenantResult = results.find((r) => r.table === "tenant_api_keys");
     expect(tenantResult).toBeDefined();
-    expect(tenantResult!.migratedCount).toBe(1);
-    expect(tenantResult!.errors).toHaveLength(0);
+    const tr = tenantResult as NonNullable<typeof tenantResult>;
+    expect(tr.migratedCount).toBe(1);
+    expect(tr.errors).toHaveLength(0);
 
     // Verify the encrypted value is valid
     const rows = await db

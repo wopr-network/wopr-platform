@@ -121,7 +121,7 @@ describe("DrizzleMeterEmitter — happy path", () => {
     expect(rows[0].usage_units).toBe(100);
     expect(rows[0].usage_unit_type).toBe("tokens");
     expect(rows[0].tier).toBe("wopr");
-    expect(JSON.parse(rows[0].metadata!)).toEqual({ model: "gpt-4" });
+    expect(JSON.parse(rows[0].metadata as string)).toEqual({ model: "gpt-4" });
   });
 });
 
@@ -186,7 +186,7 @@ describe("DrizzleMeterEmitter — DLQ failure paths", () => {
     expect(dlq.count()).toBe(0);
 
     // Clear the buffer before close to avoid a DLQ write race during cleanup
-    em["buffer"] = [];
+    (em as unknown as { buffer: unknown[] }).buffer = [];
     em.close();
     await failPool.close();
     try {

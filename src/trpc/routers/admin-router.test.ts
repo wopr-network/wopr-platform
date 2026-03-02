@@ -83,13 +83,13 @@ const mockBotBilling = {
   listForTenant: vi.fn().mockReturnValue([]),
 };
 
-const mockDeps: AdminRouterDeps = {
-  getAuditLog: () => mockAuditLog as any,
-  getCreditLedger: () => mockCreditLedger as any,
-  getUserStore: () => mockUserStore as any,
-  getTenantStatusStore: () => mockTenantStatusStore as any,
-  getBotBilling: () => mockBotBilling as any,
-};
+const mockDeps = {
+  getAuditLog: () => mockAuditLog,
+  getCreditLedger: () => mockCreditLedger,
+  getUserStore: () => mockUserStore,
+  getTenantStatusStore: () => mockTenantStatusStore,
+  getBotBilling: () => mockBotBilling,
+} as unknown as AdminRouterDeps;
 
 beforeAll(() => {
   setAdminRouterDeps(mockDeps);
@@ -369,7 +369,7 @@ describe("admin.usersList", () => {
 
   it("rejects invalid status with ZodError", async () => {
     const caller = createCaller(adminContext());
-    await expect(caller.admin.usersList({ status: "invalid_status" as any })).rejects.toThrow();
+    await expect(caller.admin.usersList({ status: "invalid_status" as unknown as "active" })).rejects.toThrow();
   });
 });
 

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
+import type { EvidenceCollector } from "../../compliance/evidence-collector.js";
 import { createAdminComplianceRoutes } from "./admin-compliance.js";
 
 describe("GET /evidence", () => {
@@ -32,7 +33,7 @@ describe("GET /evidence", () => {
     const app = new Hono();
     app.route(
       "/",
-      createAdminComplianceRoutes(() => mockCollector as any),
+      createAdminComplianceRoutes(() => mockCollector as unknown as EvidenceCollector),
     );
 
     const res = await app.request("/evidence");

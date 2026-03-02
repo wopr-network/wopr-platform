@@ -276,7 +276,7 @@ describe("HealthMonitor", () => {
     vi.advanceTimersByTime(60_000);
 
     expect(events.some((e) => e.event === "disk_low")).toBe(true);
-    const diskEvent = events.find((e) => e.event === "disk_low")!;
+    const diskEvent = events.find((e) => e.event === "disk_low") as (typeof events)[0];
     expect(diskEvent.container).toBe("system");
     expect(diskEvent.message).toContain("90%");
 
