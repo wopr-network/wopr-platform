@@ -21,7 +21,7 @@ import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js"
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { CreditPriceMap, ITenantCustomerStore } from "../../monetization/index.js";
-import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
+import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import type { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
@@ -151,7 +151,7 @@ export interface BillingRouterDeps {
   processor: IPaymentProcessor;
   tenantStore: ITenantCustomerStore;
   creditLedger: ICreditLedger;
-  meterAggregator: MeterAggregator;
+  meterAggregator: IMeterAggregator;
   priceMap: CreditPriceMap | undefined;
   autoTopupSettingsStore: IAutoTopupSettingsRepository;
   dividendRepo: IDividendRepository;
@@ -193,8 +193,8 @@ export const billingRouter = router({
       // Compute 7-day average daily burn from usage summaries.
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const { totalCharge } = await meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
-      const daily_burn_credits = Math.round(totalCharge / 7);
-      const runway_days = daily_burn_credits > 0 ? Math.floor(balance.toCents() / daily_burn_credits) : null;
+      const daily_burn_credits = Credit.fromRaw(Math.round(totalCharge / 7)).toCentsRounded();
+      const runway_days = daily_burn_credits > 0 ? Math.floor(balance.toCentsRounded() / daily_burn_credits) : null;
 
       return { tenant, balance_credits: balance.toCentsRounded(), daily_burn_credits, runway_days };
     }),

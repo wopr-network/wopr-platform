@@ -11,6 +11,7 @@ import { DrizzleAutoTopupSettingsRepository } from "../../monetization/credits/a
 import type { CreditTransaction, ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
+import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { setTrpcOrgMemberRepo } from "../init.js";
@@ -678,6 +679,34 @@ describe("billingRouter", () => {
     it("rejects unauthenticated request", async () => {
       const caller = makeCaller(makeUnauthCtx());
       await expect(caller.creditsBalance({})).rejects.toThrow("Authentication required");
+    });
+
+    it("returns correct runway_days and daily_burn_credits with spend history", async () => {
+      // Tenant has $5.00 balance (500 cents).
+      // 7-day totalCharge = 7_000_000_000 raw (= $7.00, i.e. $1/day = 100 cents/day).
+      // Expected: daily_burn_credits = 100, runway_days = floor(500 / 100) = 5.
+      const mockLedger = makeMockLedger();
+      await mockLedger.credit("tenant-runway", Credit.fromCents(500), "signup_grant", "test grant");
+
+      const mockAggregator: IMeterAggregator = {
+        aggregate: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+        querySummaries: vi.fn().mockResolvedValue([]),
+        getTenantTotal: vi.fn().mockResolvedValue({
+          totalCost: 0,
+          totalCharge: 7_000_000_000, // $7 in 7 days = $1/day
+          eventCount: 100,
+        }),
+      };
+
+      injectDeps({ creditLedger: mockLedger, meterAggregator: mockAggregator });
+      const caller = makeCaller(makeCtx("user-1", "tenant-runway"));
+      const result = await caller.creditsBalance({});
+
+      expect(result.balance_credits).toBe(500);
+      expect(result.daily_burn_credits).toBe(100);
+      expect(result.runway_days).toBe(5);
     });
   });
 
