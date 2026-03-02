@@ -93,9 +93,9 @@ export class FleetManager {
 
       try {
         const nodeId = await this.resolveNodeId(id);
-        if (nodeId && this.commandBus) {
+        if (nodeId) {
           // Dispatch to remote node agent — it handles pull + create + start
-          await this.commandBus.send(nodeId, {
+          await this.commandBus!.send(nodeId, {
             type: "bot.start",
             payload: {
               name: profile.name,
@@ -145,10 +145,10 @@ export class FleetManager {
   async start(id: string): Promise<void> {
     return this.withLock(id, async () => {
       const nodeId = await this.resolveNodeId(id);
-      if (nodeId && this.commandBus) {
+      if (nodeId) {
         const profile = await this.store.get(id);
         if (!profile) throw new BotNotFoundError(id);
-        await this.commandBus.send(nodeId, {
+        await this.commandBus!.send(nodeId, {
           type: "bot.start",
           payload: {
             name: profile.name,
@@ -175,10 +175,10 @@ export class FleetManager {
   async stop(id: string): Promise<void> {
     return this.withLock(id, async () => {
       const nodeId = await this.resolveNodeId(id);
-      if (nodeId && this.commandBus) {
+      if (nodeId) {
         const profile = await this.store.get(id);
         if (!profile) throw new BotNotFoundError(id);
-        await this.commandBus.send(nodeId, {
+        await this.commandBus!.send(nodeId, {
           type: "bot.stop",
           payload: { name: profile.name },
         });
@@ -204,8 +204,8 @@ export class FleetManager {
       if (!profile) throw new BotNotFoundError(id);
 
       const nodeId = await this.resolveNodeId(id);
-      if (nodeId && this.commandBus) {
-        await this.commandBus.send(nodeId, {
+      if (nodeId) {
+        await this.commandBus!.send(nodeId, {
           type: "bot.restart",
           payload: { name: profile.name },
         });
@@ -231,10 +231,10 @@ export class FleetManager {
       if (!profile) throw new BotNotFoundError(id);
 
       const nodeId = await this.resolveNodeId(id);
-      if (nodeId && this.commandBus) {
-        await this.commandBus.send(nodeId, {
+      if (nodeId) {
+        await this.commandBus!.send(nodeId, {
           type: "bot.remove",
-          payload: { name: profile.name },
+          payload: { name: profile.name, removeVolumes },
         });
       } else {
         const container = await this.findContainer(id);

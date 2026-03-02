@@ -769,9 +769,46 @@ describe("FleetManager", () => {
 
       expect(bus.send).toHaveBeenCalledWith("node-4", {
         type: "bot.remove",
-        payload: { name: "remove-bot" },
+        payload: { name: "remove-bot", removeVolumes: false },
       });
       expect(store.delete).toHaveBeenCalledWith(botId);
+    });
+
+    it("should forward removeVolumes=true to remote node agent payload", async () => {
+      const docker = mockDocker();
+      const store = mockStore();
+      const bus = mockCommandBus();
+      const instanceRepo = mockInstanceRepo();
+
+      const botId = "bot-remove-vol";
+      await instanceRepo.create({ id: botId, tenantId: "t1", name: "vol-bot", nodeId: "node-5" });
+
+      const fleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        bus,
+        instanceRepo,
+      );
+
+      await store.save({
+        id: botId,
+        tenantId: "t1",
+        name: "vol-bot",
+        description: "",
+        image: "ghcr.io/wopr-network/wopr:latest",
+        env: {},
+        restartPolicy: "unless-stopped",
+      } as BotProfile);
+
+      await fleet.remove(botId, true);
+
+      expect(bus.send).toHaveBeenCalledWith("node-5", {
+        type: "bot.remove",
+        payload: { name: "vol-bot", removeVolumes: true },
+      });
     });
   });
 
