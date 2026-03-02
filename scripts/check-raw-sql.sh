@@ -37,7 +37,6 @@ APPROVED_PATTERNS=(
   "src/fleet/fleet-manager\.ts"  # container.exec() is Docker API, not raw SQL
   "src/security/tenant-keys/key-resolution\.ts"
   "src/security/credential-vault/key-rotation\.ts"
-  "src/security/credential-vault/migrate-plaintext\.ts"
   "src/security/credential-vault/migration-check\.ts"
   "src/security/tenant-keys/schema\.ts"
   "src/security/tenant-keys/capability-settings-store\.ts"

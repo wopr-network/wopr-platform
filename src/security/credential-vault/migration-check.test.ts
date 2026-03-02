@@ -6,7 +6,7 @@ import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { decrypt, encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload } from "../types.js";
-import { DrizzleCredentialRepository } from "./credential-repository.js";
+import { DrizzleCredentialRepository, DrizzleMigrationTenantKeyAccess } from "./credential-repository.js";
 import { reEncryptAllCredentials } from "./key-rotation.js";
 import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 import { auditCredentialEncryption } from "./migration-check.js";
@@ -106,10 +106,14 @@ describe("auditCredentialEncryption", () => {
 
 describe("migratePlaintextCredentials", () => {
   let vaultKey: Buffer;
+  let credRepo: DrizzleCredentialRepository;
+  let tenantAccess: DrizzleMigrationTenantKeyAccess;
 
   beforeEach(async () => {
     await truncateAllTables(pool);
     vaultKey = generateInstanceKey();
+    credRepo = new DrizzleCredentialRepository(db);
+    tenantAccess = new DrizzleMigrationTenantKeyAccess(db);
   });
 
   it("skips already-encrypted rows", async () => {
@@ -123,7 +127,7 @@ describe("migratePlaintextCredentials", () => {
       createdBy: "admin",
     });
 
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].migratedCount).toBe(0);
     expect(results[0].errors).toHaveLength(0);
   });
@@ -138,7 +142,7 @@ describe("migratePlaintextCredentials", () => {
       createdBy: "admin",
     });
 
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].migratedCount).toBe(1);
 
     // Verify the value is now encrypted JSON
@@ -154,7 +158,7 @@ describe("migratePlaintextCredentials", () => {
 
   it("handles empty provider_credentials gracefully", async () => {
     // Should not throw when table is empty
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].table).toBe("provider_credentials");
   });
 
@@ -169,14 +173,14 @@ describe("migratePlaintextCredentials", () => {
       updatedAt: Date.now(),
     });
 
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     const tenantResult = results.find((r) => r.table === "tenant_api_keys");
     expect(tenantResult).toBeDefined();
     expect(tenantResult?.migratedCount).toBe(1);
   });
 
   it("returns table name in results", async () => {
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].table).toBe("provider_credentials");
   });
 
@@ -191,11 +195,11 @@ describe("migratePlaintextCredentials", () => {
     });
 
     // First migration: should encrypt
-    const results1 = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results1 = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results1[0].migratedCount).toBe(1);
 
     // Second migration: row is now encrypted, should be skipped
-    const results2 = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results2 = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results2[0].migratedCount).toBe(0);
   });
 
@@ -210,7 +214,7 @@ describe("migratePlaintextCredentials", () => {
     });
 
     // Migrate once
-    await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
 
     // Capture the encrypted value
     const rowsBefore = await db
@@ -220,7 +224,7 @@ describe("migratePlaintextCredentials", () => {
     const valueBefore = rowsBefore[0].encryptedValue;
 
     // Migrate again — should be no-op
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].migratedCount).toBe(0);
 
     // Value should be identical (not re-encrypted)
@@ -244,7 +248,7 @@ describe("migratePlaintextCredentials", () => {
       });
     }
 
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].migratedCount).toBe(100);
     expect(results[0].errors).toHaveLength(0);
 
@@ -267,10 +271,14 @@ describe("migratePlaintextCredentials", () => {
 
 describe("credential vault migration path", () => {
   let vaultKey: Buffer;
+  let credRepo: DrizzleCredentialRepository;
+  let tenantAccess: DrizzleMigrationTenantKeyAccess;
 
   beforeEach(async () => {
     await truncateAllTables(pool);
     vaultKey = generateInstanceKey();
+    credRepo = new DrizzleCredentialRepository(db);
+    tenantAccess = new DrizzleMigrationTenantKeyAccess(db);
   });
 
   it("pre-migration plaintext credential is readable after migratePlaintextCredentials", async () => {
@@ -293,7 +301,7 @@ describe("credential vault migration path", () => {
     expect(rowsBefore[0].encryptedValue).toBe("sk-ant-legacy-plaintext-key-999");
 
     // Migrate
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].migratedCount).toBe(1);
     expect(results[0].errors).toHaveLength(0);
 
@@ -320,7 +328,7 @@ describe("credential vault migration path", () => {
       createdBy: "admin-user",
     });
 
-    await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
 
     const repo = new DrizzleCredentialRepository(db);
     const store = new CredentialVaultStore(repo, vaultKey);
@@ -347,7 +355,7 @@ describe("credential vault migration path", () => {
     });
 
     // First migration
-    const r1 = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const r1 = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(r1[0].migratedCount).toBe(1);
 
     // Capture encrypted value
@@ -358,7 +366,7 @@ describe("credential vault migration path", () => {
     const encryptedAfterFirst = rowsAfterFirst[0].encryptedValue;
 
     // Second migration (should be no-op)
-    const r2 = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const r2 = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(r2[0].migratedCount).toBe(0);
 
     // Encrypted value must be byte-identical
@@ -397,7 +405,7 @@ describe("credential vault migration path", () => {
       createdBy: "admin",
     });
 
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].migratedCount).toBe(1); // only the plaintext row
     expect(results[0].errors).toHaveLength(0);
 
@@ -429,7 +437,8 @@ describe("credential vault migration path", () => {
     });
 
     // Step 1: Migrate plaintext to encrypted with old key
-    const migrateResults = await migratePlaintextCredentials(db, oldKey, () => oldKey);
+    const oldCredRepo = new DrizzleCredentialRepository(db);
+    const migrateResults = await migratePlaintextCredentials(oldCredRepo, oldKey, () => oldKey);
     expect(migrateResults[0].migratedCount).toBe(1);
 
     // Verify readable with old key
@@ -473,7 +482,8 @@ describe("credential vault migration path", () => {
     });
 
     const tenantKeyDeriver = (_tenantId: string) => vaultKey;
-    const results = await migratePlaintextCredentials(db, vaultKey, tenantKeyDeriver);
+    const localTenantAccess = new DrizzleMigrationTenantKeyAccess(db);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, tenantKeyDeriver, localTenantAccess);
     const tenantResult = results.find((r) => r.table === "tenant_api_keys");
     expect(tenantResult).toBeDefined();
     expect(tenantResult!.migratedCount).toBe(1);
@@ -507,7 +517,7 @@ describe("credential vault migration path", () => {
     expect(findingsBefore).toHaveLength(3);
 
     // Migrate
-    const results = await migratePlaintextCredentials(db, vaultKey, () => vaultKey);
+    const results = await migratePlaintextCredentials(credRepo, vaultKey, () => vaultKey, tenantAccess);
     expect(results[0].migratedCount).toBe(3);
 
     // Post-migration audit should find 0 plaintext entries

@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
-import { providerCredentials } from "../../db/schema/index.js";
+import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,6 +60,8 @@ export interface ICredentialRepository {
   setActive(id: string, isActive: boolean): Promise<boolean>;
   markValidated(id: string): Promise<boolean>;
   deleteById(id: string): Promise<boolean>;
+  listAllWithEncryptedValue(): Promise<Array<{ id: string; encryptedValue: string }>>;
+  updateEncryptedValueOnly(id: string, encryptedValue: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +171,36 @@ export class DrizzleCredentialRepository implements ICredentialRepository {
       .where(eq(providerCredentials.id, id))
       .returning({ id: providerCredentials.id });
     return result.length > 0;
+  }
+
+  async listAllWithEncryptedValue(): Promise<Array<{ id: string; encryptedValue: string }>> {
+    return this.db
+      .select({ id: providerCredentials.id, encryptedValue: providerCredentials.encryptedValue })
+      .from(providerCredentials);
+  }
+
+  async updateEncryptedValueOnly(id: string, encryptedValue: string): Promise<void> {
+    await this.db.update(providerCredentials).set({ encryptedValue }).where(eq(providerCredentials.id, id));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tenant key migration access (for migrate-plaintext.ts)
+// ---------------------------------------------------------------------------
+
+import type { IMigrationTenantKeyAccess } from "./migrate-plaintext.js";
+
+export class DrizzleMigrationTenantKeyAccess implements IMigrationTenantKeyAccess {
+  constructor(private readonly db: DrizzleDb) {}
+
+  async listAll(): Promise<Array<{ id: string; tenantId: string; encryptedKey: string }>> {
+    return this.db
+      .select({ id: tenantApiKeys.id, tenantId: tenantApiKeys.tenantId, encryptedKey: tenantApiKeys.encryptedKey })
+      .from(tenantApiKeys);
+  }
+
+  async updateEncryptedKey(id: string, encryptedKey: string): Promise<void> {
+    await this.db.update(tenantApiKeys).set({ encryptedKey }).where(eq(tenantApiKeys.id, id));
   }
 }
 

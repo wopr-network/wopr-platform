@@ -3,10 +3,10 @@ export type {
   CredentialSummaryRow,
   ICredentialRepository,
 } from "./credential-repository.js";
-export { DrizzleCredentialRepository } from "./credential-repository.js";
+export { DrizzleCredentialRepository, DrizzleMigrationTenantKeyAccess } from "./credential-repository.js";
 export type { RotationResult } from "./key-rotation.js";
 export { reEncryptAllCredentials } from "./key-rotation.js";
-export type { MigrationResult } from "./migrate-plaintext.js";
+export type { IMigrationTenantKeyAccess, MigrationResult } from "./migrate-plaintext.js";
 export { migratePlaintextCredentials } from "./migrate-plaintext.js";
 export type { PlaintextFinding } from "./migration-check.js";
 export { auditCredentialEncryption } from "./migration-check.js";

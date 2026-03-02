@@ -1,154 +1,146 @@
 import crypto from "node:crypto";
-import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { describe, expect, it } from "vitest";
 import { decrypt, encrypt } from "../encryption.js";
+import type { ICredentialRepository } from "./credential-repository.js";
+import type { IMigrationTenantKeyAccess } from "./migrate-plaintext.js";
 import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 
+// ---------------------------------------------------------------------------
+// Mock helpers
+// ---------------------------------------------------------------------------
+
+function mockCredentialRepo(
+  rows: Array<{ id: string; encryptedValue: string }> = [],
+): ICredentialRepository & { updates: Array<{ id: string; encryptedValue: string }> } {
+  const updates: Array<{ id: string; encryptedValue: string }> = [];
+  return {
+    updates,
+    listAllWithEncryptedValue: async () => [...rows],
+    updateEncryptedValueOnly: async (id, encryptedValue) => {
+      updates.push({ id, encryptedValue });
+      // Also update the source array so re-reads see the new value
+      const row = rows.find((r) => r.id === id);
+      if (row) row.encryptedValue = encryptedValue;
+    },
+    // Unused methods — satisfy the interface
+    insert: async () => {},
+    getFullById: async () => null,
+    getSummaryById: async () => null,
+    list: async () => [],
+    listActiveForProvider: async () => [],
+    updateEncryptedValue: async () => false,
+    setActive: async () => false,
+    markValidated: async () => false,
+    deleteById: async () => false,
+  };
+}
+
+function mockTenantKeyAccess(
+  rows: Array<{ id: string; tenantId: string; encryptedKey: string }> = [],
+): IMigrationTenantKeyAccess & { updates: Array<{ id: string; encryptedKey: string }> } {
+  const updates: Array<{ id: string; encryptedKey: string }> = [];
+  return {
+    updates,
+    listAll: async () => [...rows],
+    updateEncryptedKey: async (id, encryptedKey) => {
+      updates.push({ id, encryptedKey });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 describe("migratePlaintextCredentials", () => {
-  let db: DrizzleDb;
-  let pool: PGlite;
   const vaultKey = crypto.randomBytes(32);
   const tenantKeyDeriver = (_tenantId: string) => crypto.randomBytes(32);
 
-  beforeAll(async () => {
-    ({ db, pool } = await createTestDb());
-  });
-
-  afterAll(async () => {
-    await pool.close();
-  });
-
-  beforeEach(async () => {
-    await truncateAllTables(pool);
-  });
-
   it("returns empty results when no rows exist", async () => {
-    const results = await migratePlaintextCredentials(db, vaultKey, tenantKeyDeriver);
+    const repo = mockCredentialRepo();
+    const tenantAccess = mockTenantKeyAccess();
+
+    const results = await migratePlaintextCredentials(repo, vaultKey, tenantKeyDeriver, tenantAccess);
     expect(results).toHaveLength(2);
-    const provResult = results.find((r) => r.table === "provider_credentials");
-    const tenantResult = results.find((r) => r.table === "tenant_api_keys");
-    expect(provResult?.migratedCount).toBe(0);
-    expect(tenantResult?.migratedCount).toBe(0);
+    expect(results.find((r) => r.table === "provider_credentials")?.migratedCount).toBe(0);
+    expect(results.find((r) => r.table === "tenant_api_keys")?.migratedCount).toBe(0);
+  });
+
+  it("returns only provider results when no tenant access provided", async () => {
+    const repo = mockCredentialRepo();
+
+    const results = await migratePlaintextCredentials(repo, vaultKey, tenantKeyDeriver);
+    expect(results).toHaveLength(1);
+    expect(results[0].table).toBe("provider_credentials");
   });
 
   it("skips already-encrypted provider credentials", async () => {
     const encrypted = encrypt("my-secret-key", vaultKey);
-    await db.insert(providerCredentials).values({
-      id: "cred-1",
-      provider: "openai",
-      keyName: "Production Key",
-      encryptedValue: JSON.stringify(encrypted),
-      authType: "header",
-      createdBy: "admin",
-    });
+    const repo = mockCredentialRepo([{ id: "cred-1", encryptedValue: JSON.stringify(encrypted) }]);
 
-    const results = await migratePlaintextCredentials(db, vaultKey, tenantKeyDeriver);
-    const provResult = results.find((r) => r.table === "provider_credentials");
-    expect(provResult?.migratedCount).toBe(0);
+    const results = await migratePlaintextCredentials(repo, vaultKey, tenantKeyDeriver);
+    expect(results.find((r) => r.table === "provider_credentials")?.migratedCount).toBe(0);
+    expect(repo.updates).toHaveLength(0);
   });
 
   it("encrypts plaintext provider credentials", async () => {
-    await db.insert(providerCredentials).values({
-      id: "cred-2",
-      provider: "openai",
-      keyName: "Production Key",
-      encryptedValue: "sk-plaintext-key-value",
-      authType: "header",
-      createdBy: "admin",
-    });
+    const repo = mockCredentialRepo([{ id: "cred-2", encryptedValue: "sk-plaintext-key-value" }]);
 
-    const results = await migratePlaintextCredentials(db, vaultKey, tenantKeyDeriver);
+    const results = await migratePlaintextCredentials(repo, vaultKey, tenantKeyDeriver);
     const provResult = results.find((r) => r.table === "provider_credentials");
     expect(provResult?.migratedCount).toBe(1);
     expect(provResult?.errors).toHaveLength(0);
+    expect(repo.updates).toHaveLength(1);
 
-    const rows = await db.select().from(providerCredentials);
-    const parsed = JSON.parse(rows[0].encryptedValue);
+    const parsed = JSON.parse(repo.updates[0].encryptedValue);
     expect(parsed).toHaveProperty("iv");
     expect(parsed).toHaveProperty("authTag");
     expect(parsed).toHaveProperty("ciphertext");
-
-    const decrypted = decrypt(parsed, vaultKey);
-    expect(decrypted).toBe("sk-plaintext-key-value");
+    expect(decrypt(parsed, vaultKey)).toBe("sk-plaintext-key-value");
   });
 
   it("skips empty provider credential values", async () => {
-    await db.insert(providerCredentials).values({
-      id: "cred-3",
-      provider: "openai",
-      keyName: "Empty Key",
-      encryptedValue: "   ",
-      authType: "header",
-      createdBy: "admin",
-    });
+    const repo = mockCredentialRepo([{ id: "cred-3", encryptedValue: "   " }]);
 
-    const results = await migratePlaintextCredentials(db, vaultKey, tenantKeyDeriver);
-    const provResult = results.find((r) => r.table === "provider_credentials");
-    expect(provResult?.migratedCount).toBe(0);
+    const results = await migratePlaintextCredentials(repo, vaultKey, tenantKeyDeriver);
+    expect(results.find((r) => r.table === "provider_credentials")?.migratedCount).toBe(0);
+    expect(repo.updates).toHaveLength(0);
   });
 
   it("encrypts plaintext tenant API keys", async () => {
     const stableKey = crypto.randomBytes(32);
     const stableDeriver = (_tenantId: string) => stableKey;
-    const now = Date.now();
+    const tenantAccess = mockTenantKeyAccess([{ id: "key-1", tenantId: "t-1", encryptedKey: "plaintext-tenant-key" }]);
+    const repo = mockCredentialRepo();
 
-    await db.insert(tenantApiKeys).values({
-      id: "key-1",
-      tenantId: "t-1",
-      provider: "openai",
-      encryptedKey: "plaintext-tenant-key",
-      label: "test key",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const results = await migratePlaintextCredentials(db, vaultKey, stableDeriver);
+    const results = await migratePlaintextCredentials(repo, vaultKey, stableDeriver, tenantAccess);
     const tenantResult = results.find((r) => r.table === "tenant_api_keys");
     expect(tenantResult?.migratedCount).toBe(1);
+    expect(tenantAccess.updates).toHaveLength(1);
 
-    const rows = await db.select().from(tenantApiKeys);
-    const parsed = JSON.parse(rows[0].encryptedKey);
+    const parsed = JSON.parse(tenantAccess.updates[0].encryptedKey);
     expect(parsed).toHaveProperty("iv");
-    const decrypted = decrypt(parsed, stableKey);
-    expect(decrypted).toBe("plaintext-tenant-key");
+    expect(decrypt(parsed, stableKey)).toBe("plaintext-tenant-key");
   });
 
   it("skips already-encrypted tenant API keys", async () => {
     const stableKey = crypto.randomBytes(32);
     const encrypted = encrypt("my-key", stableKey);
-    const now = Date.now();
+    const tenantAccess = mockTenantKeyAccess([
+      { id: "key-2", tenantId: "t-1", encryptedKey: JSON.stringify(encrypted) },
+    ]);
+    const repo = mockCredentialRepo();
 
-    await db.insert(tenantApiKeys).values({
-      id: "key-2",
-      tenantId: "t-1",
-      provider: "anthropic",
-      encryptedKey: JSON.stringify(encrypted),
-      label: "test key",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const results = await migratePlaintextCredentials(db, vaultKey, () => stableKey);
-    const tenantResult = results.find((r) => r.table === "tenant_api_keys");
-    expect(tenantResult?.migratedCount).toBe(0);
+    const results = await migratePlaintextCredentials(repo, vaultKey, () => stableKey, tenantAccess);
+    expect(results.find((r) => r.table === "tenant_api_keys")?.migratedCount).toBe(0);
+    expect(tenantAccess.updates).toHaveLength(0);
   });
 
   it("records errors without aborting migration for bad key length", async () => {
-    const badKey = crypto.randomBytes(16); // wrong length — encrypt() will throw
+    const badKey = crypto.randomBytes(16); // wrong length
+    const repo = mockCredentialRepo([{ id: "cred-err", encryptedValue: "plaintext-value" }]);
 
-    await db.insert(providerCredentials).values({
-      id: "cred-err",
-      provider: "openai",
-      keyName: "Error Key",
-      encryptedValue: "plaintext-value",
-      authType: "header",
-      createdBy: "admin",
-    });
-
-    const results = await migratePlaintextCredentials(db, badKey, tenantKeyDeriver);
+    const results = await migratePlaintextCredentials(repo, badKey, tenantKeyDeriver);
     const provResult = results.find((r) => r.table === "provider_credentials");
     expect(provResult?.migratedCount).toBe(0);
     expect(provResult?.errors).toHaveLength(1);

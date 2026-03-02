@@ -1,13 +1,17 @@
-import { eq } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { encrypt } from "../encryption.js";
 import { scanForKeyLeaks } from "../key-audit.js";
+import type { ICredentialRepository } from "./credential-repository.js";
 
 export interface MigrationResult {
   table: string;
   migratedCount: number;
   errors: string[];
+}
+
+/** Narrow interface for tenant_api_keys migration access. */
+export interface IMigrationTenantKeyAccess {
+  listAll(): Promise<Array<{ id: string; tenantId: string; encryptedKey: string }>>;
+  updateEncryptedKey(id: string, encryptedKey: string): Promise<void>;
 }
 
 /**
@@ -19,9 +23,10 @@ export interface MigrationResult {
  * IMPORTANT: This is destructive — run in a transaction and back up first.
  */
 export async function migratePlaintextCredentials(
-  db: DrizzleDb,
+  credentialRepo: ICredentialRepository,
   vaultKey: Buffer,
   tenantKeyDeriver: (tenantId: string) => Buffer,
+  tenantKeyAccess?: IMigrationTenantKeyAccess | null,
 ): Promise<MigrationResult[]> {
   const results: MigrationResult[] = [];
 
@@ -32,9 +37,7 @@ export async function migratePlaintextCredentials(
     errors: [],
   };
 
-  const provRows = await db
-    .select({ id: providerCredentials.id, encryptedValue: providerCredentials.encryptedValue })
-    .from(providerCredentials);
+  const provRows = await credentialRepo.listAllWithEncryptedValue();
 
   for (const row of provRows) {
     try {
@@ -55,10 +58,7 @@ export async function migratePlaintextCredentials(
     try {
       const encrypted = encrypt(row.encryptedValue, vaultKey);
       const serialized = JSON.stringify(encrypted);
-      await db
-        .update(providerCredentials)
-        .set({ encryptedValue: serialized })
-        .where(eq(providerCredentials.id, row.id));
+      await credentialRepo.updateEncryptedValueOnly(row.id, serialized);
       provResult.migratedCount++;
     } catch (err) {
       provResult.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -68,16 +68,14 @@ export async function migratePlaintextCredentials(
   results.push(provResult);
 
   // --- tenant_api_keys ---
-  try {
+  if (tenantKeyAccess) {
     const tenantResult: MigrationResult = {
       table: "tenant_api_keys",
       migratedCount: 0,
       errors: [],
     };
 
-    const tenantRows = await db
-      .select({ id: tenantApiKeys.id, tenantId: tenantApiKeys.tenantId, encryptedKey: tenantApiKeys.encryptedKey })
-      .from(tenantApiKeys);
+    const tenantRows = await tenantKeyAccess.listAll();
 
     for (const row of tenantRows) {
       try {
@@ -95,7 +93,7 @@ export async function migratePlaintextCredentials(
         const tenantKey = tenantKeyDeriver(row.tenantId);
         const encrypted = encrypt(row.encryptedKey, tenantKey);
         const serialized = JSON.stringify(encrypted);
-        await db.update(tenantApiKeys).set({ encryptedKey: serialized }).where(eq(tenantApiKeys.id, row.id));
+        await tenantKeyAccess.updateEncryptedKey(row.id, serialized);
         tenantResult.migratedCount++;
       } catch (err) {
         tenantResult.errors.push(`Row ${row.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -103,9 +101,6 @@ export async function migratePlaintextCredentials(
     }
 
     results.push(tenantResult);
-  } catch (err) {
-    if (!(err instanceof Error && err.message.includes("no such table"))) throw err;
-    // Table doesn't exist
   }
 
   return results;
