@@ -159,7 +159,7 @@ adminNodeRoutes.post("/", adminAuth, async (c) => {
       category: "config",
       details: {
         nodeId: result.nodeId,
-        dropletId: result.dropletId,
+        externalId: result.externalId,
         region: result.region,
         size: result.size,
         monthlyCostCents: result.monthlyCostCents,
