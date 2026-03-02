@@ -76,6 +76,7 @@ import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
+import { DigitalOceanNodeProvider } from "./digitalocean-node-provider.js";
 import { DOClient } from "./do-client.js";
 import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
 import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
@@ -93,6 +94,7 @@ import { MigrationOrchestrator } from "./migration-orchestrator.js";
 import { NodeCommandBus } from "./node-command-bus.js";
 import { NodeConnectionRegistry } from "./node-connection-registry.js";
 import { NodeDrainer } from "./node-drainer.js";
+import type { INodeProvider } from "./node-provider.js";
 import { NodeProvisioner } from "./node-provisioner.js";
 import { NodeRegistrar } from "./node-registrar.js";
 import type { INodeRepository } from "./node-repository.js";
@@ -169,6 +171,7 @@ let _circuitBreakerRepo: ICircuitBreakerRepository | null = null;
 
 // Infrastructure
 let _doClient: DOClient | null = null;
+let _nodeProvider: INodeProvider | null = null;
 let _nodeProvisioner: NodeProvisioner | null = null;
 let _gpuNodeProvisioner: GpuNodeProvisioner | null = null;
 let _adminAuditLog: AdminAuditLog | null = null;
@@ -498,11 +501,18 @@ export function getDOClient(): DOClient {
   return _doClient;
 }
 
+export function getNodeProvider(): INodeProvider {
+  if (!_nodeProvider) {
+    _nodeProvider = new DigitalOceanNodeProvider(getDOClient());
+  }
+  return _nodeProvider;
+}
+
 export function getNodeProvisioner(): NodeProvisioner {
   if (!_nodeProvisioner) {
     const sshKeyIdStr = process.env.DO_SSH_KEY_ID;
     if (!sshKeyIdStr) throw new Error("DO_SSH_KEY_ID environment variable is required");
-    _nodeProvisioner = new NodeProvisioner(getNodeRepo(), getDOClient(), {
+    _nodeProvisioner = new NodeProvisioner(getNodeRepo(), getNodeProvider(), {
       sshKeyId: Number(sshKeyIdStr),
       defaultRegion: process.env.DO_DEFAULT_REGION,
       defaultSize: process.env.DO_DEFAULT_SIZE,
