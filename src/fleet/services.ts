@@ -105,7 +105,8 @@ import { DrizzleOrgMembershipRepository } from "./org-membership-repository.js";
 import { OrphanCleaner } from "./orphan-cleaner.js";
 import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
-import { RegistrationTokenStore } from "./registration-token-store.js";
+import type { IRegistrationTokenRepository } from "./registration-token-store.js";
+import { DrizzleRegistrationTokenRepository } from "./registration-token-store.js";
 import { DrizzleSpendingCapStore } from "./spending-cap-repository.js";
 import type { IVpsRepository } from "./vps-repository.js";
 import { DrizzleVpsRepository } from "./vps-repository.js";
@@ -122,7 +123,7 @@ const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 
 let _pool: Pool | null = null;
 let _db: DrizzleDb | null = null;
-let _registrationTokenStore: RegistrationTokenStore | null = null;
+let _registrationTokenStore: IRegistrationTokenRepository | null = null;
 let _adminNotifier: AdminNotifier | null = null;
 
 // Repositories
@@ -203,9 +204,9 @@ export function getAuditDb(): DrizzleDb {
   return getDb();
 }
 
-export function getRegistrationTokenStore(): RegistrationTokenStore {
+export function getRegistrationTokenStore(): IRegistrationTokenRepository {
   if (!_registrationTokenStore) {
-    _registrationTokenStore = new RegistrationTokenStore(getDb());
+    _registrationTokenStore = new DrizzleRegistrationTokenRepository(getDb());
   }
   return _registrationTokenStore;
 }

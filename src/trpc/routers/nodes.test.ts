@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
 import { DrizzleNodeRepository } from "../../fleet/drizzle-node-repository.js";
 import { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
-import { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
+import { DrizzleRegistrationTokenRepository } from "../../fleet/registration-token-store.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { nodesRouter, setNodesRouterDeps } from "./nodes.js";
 
@@ -19,7 +19,7 @@ function makeCaller(ctx: ReturnType<typeof makeCtx>) {
 }
 
 describe("nodesRouter", () => {
-  let tokenStore: RegistrationTokenStore;
+  let tokenStore: DrizzleRegistrationTokenRepository;
   let nodeRepo: DrizzleNodeRepository;
   let registry: NodeConnectionRegistry;
   let botInstanceRepo: DrizzleBotInstanceRepository;
@@ -29,7 +29,7 @@ describe("nodesRouter", () => {
     const testDb = await createTestDb();
     pool = testDb.pool;
     const db = testDb.db;
-    tokenStore = new RegistrationTokenStore(db);
+    tokenStore = new DrizzleRegistrationTokenRepository(db);
     nodeRepo = new DrizzleNodeRepository(db);
     registry = new NodeConnectionRegistry();
     botInstanceRepo = new DrizzleBotInstanceRepository(db);

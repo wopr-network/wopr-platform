@@ -3,11 +3,11 @@ import { z } from "zod";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import type { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
 import type { INodeRepository } from "../../fleet/node-repository.js";
-import type { RegistrationTokenStore } from "../../fleet/registration-token-store.js";
+import type { IRegistrationTokenRepository } from "../../fleet/registration-token-store.js";
 import { protectedProcedure, router } from "../init.js";
 
 export interface NodesRouterDeps {
-  getRegistrationTokenStore: () => RegistrationTokenStore;
+  getRegistrationTokenStore: () => IRegistrationTokenRepository;
   getNodeRepo: () => INodeRepository;
   getConnectionRegistry: () => NodeConnectionRegistry;
   getBotInstanceRepo: () => IBotInstanceRepository;

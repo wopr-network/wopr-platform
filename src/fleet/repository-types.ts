@@ -269,3 +269,19 @@ export interface NewVpsSubscription {
   hostname?: string | null;
   diskSizeGb?: number;
 }
+
+// ---------------------------------------------------------------------------
+// RegistrationToken
+// ---------------------------------------------------------------------------
+
+/** Plain domain object for a registration token — mirrors `node_registration_tokens` table. */
+export interface RegistrationToken {
+  id: string;
+  userId: string;
+  label: string | null;
+  createdAt: number;
+  expiresAt: number;
+  used: boolean;
+  nodeId: string | null;
+  usedAt: number | null;
+}

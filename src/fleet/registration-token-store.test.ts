@@ -1,28 +1,27 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { RegistrationTokenStore } from "./registration-token-store.js";
+import { createTestDb, truncateAllTables } from "../test/db.js";
+import type { IRegistrationTokenRepository } from "./registration-token-store.js";
+import { DrizzleRegistrationTokenRepository } from "./registration-token-store.js";
 
 describe("RegistrationTokenStore", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let store: RegistrationTokenStore;
+  let store: IRegistrationTokenRepository;
   let now: number;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
-    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await rollbackTestTransaction(pool);
-    store = new RegistrationTokenStore(db);
+    await truncateAllTables(pool);
+    store = new DrizzleRegistrationTokenRepository(db);
     now = Math.floor(Date.now() / 1000);
   });
 

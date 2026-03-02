@@ -2,10 +2,30 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gt, lt } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { nodeRegistrationTokens } from "../db/schema/index.js";
+import type { RegistrationToken } from "./repository-types.js";
+
+// Re-export domain type for consumers
+export type { RegistrationToken };
 
 const TOKEN_TTL_S = 900; // 15 minutes
 
-export class RegistrationTokenStore {
+// ---------------------------------------------------------------------------
+// Interface
+// ---------------------------------------------------------------------------
+
+/** Repository interface for registration token operations. */
+export interface IRegistrationTokenRepository {
+  create(userId: string, label?: string): Promise<{ token: string; expiresAt: number }>;
+  consume(token: string, nodeId: string): Promise<{ userId: string; label: string | null } | null>;
+  listActive(userId: string): Promise<RegistrationToken[]>;
+  purgeExpired(): Promise<number>;
+}
+
+// ---------------------------------------------------------------------------
+// Drizzle Implementation
+// ---------------------------------------------------------------------------
+
+export class DrizzleRegistrationTokenRepository implements IRegistrationTokenRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Create a new one-time registration token. Returns the token value. */
@@ -29,13 +49,7 @@ export class RegistrationTokenStore {
    * Consume a token. Returns the token row if valid and unused, null otherwise.
    * Marks the token as used atomically.
    */
-  async consume(
-    token: string,
-    nodeId: string,
-  ): Promise<{
-    userId: string;
-    label: string | null;
-  } | null> {
+  async consume(token: string, nodeId: string): Promise<{ userId: string; label: string | null } | null> {
     const now = Math.floor(Date.now() / 1000);
 
     const row = (
@@ -62,7 +76,7 @@ export class RegistrationTokenStore {
   }
 
   /** List active (unexpired, unused) tokens for a user. */
-  async listActive(userId: string) {
+  async listActive(userId: string): Promise<RegistrationToken[]> {
     const now = Math.floor(Date.now() / 1000);
     return this.db
       .select()
