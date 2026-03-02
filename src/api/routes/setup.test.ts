@@ -61,6 +61,8 @@ function makeDeps(overrides: Partial<SetupRouteDeps> = {}): SetupRouteDeps {
       save: vi.fn().mockResolvedValue(undefined),
     } as never,
     dispatchEnvUpdate: vi.fn().mockResolvedValue({ dispatched: true }),
+    dispatchPluginInstall: vi.fn().mockResolvedValue({ dispatched: true }),
+    dispatchPluginConfig: vi.fn().mockResolvedValue({ dispatched: true }),
     platformEncryptionSecret: "test-secret-32-bytes-long-padding!",
     ...overrides,
   };

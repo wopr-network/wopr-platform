@@ -41,6 +41,15 @@ export interface SetupRouteDeps {
     tenantId: string,
     env: Record<string, string>,
   ) => Promise<{ dispatched: boolean; dispatchError?: string }>;
+  dispatchPluginInstall: (
+    botId: string,
+    npmPackage: string,
+  ) => Promise<{ dispatched: boolean; dispatchError?: string }>;
+  dispatchPluginConfig: (
+    botId: string,
+    pluginId: string,
+    config: Record<string, unknown>,
+  ) => Promise<{ dispatched: boolean; dispatchError?: string }>;
   platformEncryptionSecret: string;
 }
 
@@ -308,6 +317,26 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       await deps.dispatchEnvUpdate(botId, profile.tenantId, updatedEnv);
     }
 
+    // 6b. Dispatch plugin install + config to running daemon (non-fatal)
+    const npmPackage = manifest.install?.[0];
+    let pluginInstallResult: { dispatched: boolean; dispatchError?: string } = {
+      dispatched: false,
+      dispatchError: "no_npm_package",
+    };
+    let pluginConfigResult: { dispatched: boolean; dispatchError?: string } = {
+      dispatched: false,
+      dispatchError: "install_skipped",
+    };
+
+    if (npmPackage) {
+      pluginInstallResult = await deps.dispatchPluginInstall(botId, npmPackage);
+
+      // Only dispatch config if install succeeded
+      if (pluginInstallResult.dispatched && Object.keys(configValues).length > 0) {
+        pluginConfigResult = await deps.dispatchPluginConfig(botId, session.pluginId, configValues);
+      }
+    }
+
     // 7. Update collected on setup session
     await deps.setupSessionRepo.update(setupSessionId, {
       collected: JSON.stringify(configValues),
@@ -321,9 +350,16 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
       botId,
       pluginId: session.pluginId,
       envKeysInjected: Object.keys(envUpdates),
+      pluginInstallDispatched: pluginInstallResult.dispatched,
+      pluginConfigDispatched: pluginConfigResult.dispatched,
     });
 
-    return c.json({ ok: true, envKeysInjected: Object.keys(envUpdates) });
+    return c.json({
+      ok: true,
+      envKeysInjected: Object.keys(envUpdates),
+      pluginInstallDispatched: pluginInstallResult.dispatched,
+      pluginConfigDispatched: pluginConfigResult.dispatched,
+    });
   });
 
   return routes;

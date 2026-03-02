@@ -1002,6 +1002,8 @@ if (process.env.NODE_ENV !== "test") {
     const tenantKeyLookup = new DrizzleTenantKeyLookup(getDb());
     const { ProfileStore: SetupProfileStore } = await import("./fleet/profile-store.js");
     const { dispatchEnvUpdate: dispatchEnvUpdateFn } = await import("./fleet/dispatch-env-update.js");
+    const { dispatchPluginInstall: dispatchPluginInstallFn } = await import("./fleet/dispatch-plugin-install.js");
+    const { dispatchPluginConfig: dispatchPluginConfigFn } = await import("./fleet/dispatch-plugin-config.js");
     const { getPluginConfigRepo } = await import("./fleet/services.js");
     setSetupDeps({
       pluginRegistry,
@@ -1022,6 +1024,8 @@ if (process.env.NODE_ENV !== "test") {
       pluginConfigRepo: getPluginConfigRepo(),
       profileStore: new SetupProfileStore(process.env.FLEET_DATA_DIR || "/data/fleet"),
       dispatchEnvUpdate: (botId, tenantId, env) => dispatchEnvUpdateFn(botId, tenantId, env, getBotInstanceRepo()),
+      dispatchPluginInstall: (botId, npmPackage) => dispatchPluginInstallFn(botId, npmPackage),
+      dispatchPluginConfig: (botId, pluginId, config) => dispatchPluginConfigFn(botId, pluginId, config),
       platformEncryptionSecret: process.env.PLATFORM_ENCRYPTION_SECRET ?? "",
     });
 
