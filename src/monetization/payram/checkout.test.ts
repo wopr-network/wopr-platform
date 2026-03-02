@@ -6,7 +6,7 @@ import type { Payram } from "payram";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { PayRamChargeStore } from "./charge-store.js";
+import { PayRamChargeRepository } from "./charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "./checkout.js";
 
 function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn> } = {}): Payram {
@@ -25,7 +25,7 @@ function createMockPayram(overrides: { initiatePayment?: ReturnType<typeof vi.fn
 describe("createPayRamCheckout", () => {
   let pool: PGlite;
   let db: DrizzleDb;
-  let chargeStore: PayRamChargeStore;
+  let chargeStore: PayRamChargeRepository;
   let payram: Payram;
 
   beforeAll(async () => {
@@ -40,7 +40,7 @@ describe("createPayRamCheckout", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    chargeStore = new PayRamChargeStore(db);
+    chargeStore = new PayRamChargeRepository(db);
     payram = createMockPayram();
   });
 

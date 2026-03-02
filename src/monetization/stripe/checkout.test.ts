@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createCreditCheckoutSession, createVpsCheckoutSession } from "./checkout.js";
-import type { ITenantCustomerStore, TenantCustomerStore } from "./tenant-store.js";
+import type { ITenantCustomerRepository, TenantCustomerRepository } from "./tenant-store.js";
 
 describe("createCreditCheckoutSession", () => {
   function mockStripe(sessionCreateResult: unknown = { id: "cs_test", url: "https://checkout.stripe.com/cs_test" }) {
@@ -17,7 +17,7 @@ describe("createCreditCheckoutSession", () => {
   function mockTenantStore(existingMapping: { processor_customer_id: string } | null = null) {
     return {
       getByTenant: vi.fn().mockReturnValue(existingMapping),
-    } as unknown as TenantCustomerStore;
+    } as unknown as TenantCustomerRepository;
   }
 
   it("creates a payment-mode checkout session", async () => {
@@ -105,7 +105,7 @@ describe("createVpsCheckoutSession", () => {
   function mockTenantStore(existingMapping: { processor_customer_id: string } | null = null) {
     return {
       getByTenant: vi.fn().mockReturnValue(existingMapping),
-    } as unknown as ITenantCustomerStore;
+    } as unknown as ITenantCustomerRepository;
   }
 
   it("creates a subscription-mode checkout session", async () => {

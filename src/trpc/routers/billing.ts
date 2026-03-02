@@ -20,10 +20,10 @@ import {
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
-import type { CreditPriceMap, ITenantCustomerStore } from "../../monetization/index.js";
+import type { CreditPriceMap, ITenantCustomerRepository } from "../../monetization/index.js";
 import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
-import type { PayRamChargeStore } from "../../monetization/payram/charge-store.js";
+import type { PayRamChargeRepository } from "../../monetization/payram/charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
 import type { PromotionEngine } from "../../monetization/promotions/engine.js";
 import { assertSafeRedirectUrl } from "../../security/redirect-allowlist.js";
@@ -149,7 +149,7 @@ const PLAN_TIERS = [
 
 export interface BillingRouterDeps {
   processor: IPaymentProcessor;
-  tenantStore: ITenantCustomerStore;
+  tenantRepo: ITenantCustomerRepository;
   creditLedger: ICreditLedger;
   meterAggregator: IMeterAggregator;
   priceMap: CreditPriceMap | undefined;
@@ -158,7 +158,7 @@ export interface BillingRouterDeps {
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
   payramClient?: Payram;
-  payramChargeStore?: PayRamChargeStore;
+  payramChargeRepo?: PayRamChargeRepository;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -286,14 +286,14 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { payramClient, payramChargeStore } = deps();
-      if (!payramClient || !payramChargeStore) {
+      const { payramClient, payramChargeRepo } = deps();
+      if (!payramClient || !payramChargeRepo) {
         throw new TRPCError({
           code: "NOT_IMPLEMENTED",
           message: "Crypto payments not configured",
         });
       }
-      const result = await createPayRamCheckout(payramClient, payramChargeStore, {
+      const result = await createPayRamCheckout(payramClient, payramChargeRepo, {
         tenant,
         amountUsd: input.amountUsd,
       });
@@ -392,8 +392,8 @@ export const billingRouter = router({
   /** Get current plan tier for the authenticated user. */
   currentPlan: tenantProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId;
-    const { tenantStore } = deps();
-    const mapping = await tenantStore.getByTenant(tenant);
+    const { tenantRepo } = deps();
+    const mapping = await tenantRepo.getByTenant(tenant);
     return { tier: (mapping?.tier ?? "free") as "free" | "pro" | "team" | "enterprise" };
   }),
 
@@ -402,16 +402,16 @@ export const billingRouter = router({
     .input(z.object({ tier: z.enum(["free", "pro", "team", "enterprise"]) }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { tenantStore } = deps();
-      await tenantStore.setTier(tenant, input.tier);
+      const { tenantRepo } = deps();
+      await tenantRepo.setTier(tenant, input.tier);
       return { tier: input.tier };
     }),
 
   /** Get inference mode (byok or hosted). */
   inferenceMode: tenantProcedure.query(async ({ ctx }) => {
     const tenant = ctx.tenantId;
-    const { tenantStore } = deps();
-    const mode = await tenantStore.getInferenceMode(tenant);
+    const { tenantRepo } = deps();
+    const mode = await tenantRepo.getInferenceMode(tenant);
     return { mode: mode as "byok" | "hosted" };
   }),
 
@@ -420,8 +420,8 @@ export const billingRouter = router({
     .input(z.object({ mode: z.enum(["byok", "hosted"]) }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { tenantStore } = deps();
-      await tenantStore.setInferenceMode(tenant, input.mode);
+      const { tenantRepo } = deps();
+      await tenantRepo.setInferenceMode(tenant, input.mode);
       return { mode: input.mode };
     }),
 
@@ -590,8 +590,8 @@ export const billingRouter = router({
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { tenantStore, processor } = deps();
-      const mapping = await tenantStore.getByTenant(tenant);
+      const { tenantRepo, processor } = deps();
+      const mapping = await tenantRepo.getByTenant(tenant);
 
       if (!mapping) {
         throw new TRPCError({ code: "NOT_FOUND", message: "No billing account found" });
@@ -604,13 +604,13 @@ export const billingRouter = router({
   /** Remove a payment method. */
   removePaymentMethod: tenantProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ input, ctx }) => {
     const tenant = ctx.tenantId;
-    const { processor, creditLedger, tenantStore } = deps();
+    const { processor, creditLedger, tenantRepo } = deps();
 
     const { PaymentMethodOwnershipError } = await import("../../monetization/payment-processor.js");
 
     // Guard: prevent removing the last payment method when there's an active
     // billing hold or an outstanding balance (negative credit balance).
-    const mapping = await tenantStore.getByTenant(tenant);
+    const mapping = await tenantRepo.getByTenant(tenant);
     if (mapping) {
       const paymentMethods = await processor.listPaymentMethods(tenant);
       if (paymentMethods.length <= 1) {

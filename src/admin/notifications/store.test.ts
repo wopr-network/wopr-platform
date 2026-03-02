@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { NotificationQueueStore } from "./store.js";
+import { NotificationQueueRepository } from "./store.js";
 
 // TOP OF FILE - shared across ALL describes
 let pool: PGlite;
@@ -18,12 +18,12 @@ afterAll(async () => {
   await pool.close();
 });
 
-describe("NotificationQueueStore.enqueue", () => {
-  let store: NotificationQueueStore;
+describe("NotificationQueueRepository.enqueue", () => {
+  let store: NotificationQueueRepository;
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new NotificationQueueStore(db);
+    store = new NotificationQueueRepository(db);
   });
 
   it("creates a pending notification", async () => {
@@ -61,12 +61,12 @@ describe("NotificationQueueStore.enqueue", () => {
   });
 });
 
-describe("NotificationQueueStore.getPending", () => {
-  let store: NotificationQueueStore;
+describe("NotificationQueueRepository.getPending", () => {
+  let store: NotificationQueueRepository;
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new NotificationQueueStore(db);
+    store = new NotificationQueueRepository(db);
   });
 
   it("returns only pending notifications", async () => {
@@ -89,12 +89,12 @@ describe("NotificationQueueStore.getPending", () => {
   });
 });
 
-describe("NotificationQueueStore.markSent", () => {
-  let store: NotificationQueueStore;
+describe("NotificationQueueRepository.markSent", () => {
+  let store: NotificationQueueRepository;
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new NotificationQueueStore(db);
+    store = new NotificationQueueRepository(db);
   });
 
   it("updates status to sent and sets sentAt", async () => {
@@ -106,12 +106,12 @@ describe("NotificationQueueStore.markSent", () => {
   });
 });
 
-describe("NotificationQueueStore.markFailed", () => {
-  let store: NotificationQueueStore;
+describe("NotificationQueueRepository.markFailed", () => {
+  let store: NotificationQueueRepository;
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new NotificationQueueStore(db);
+    store = new NotificationQueueRepository(db);
   });
 
   it("increments attempts and sets status to failed", async () => {
@@ -149,12 +149,12 @@ describe("NotificationQueueStore.markFailed", () => {
   });
 });
 
-describe("NotificationQueueStore.countByStatus", () => {
-  let store: NotificationQueueStore;
+describe("NotificationQueueRepository.countByStatus", () => {
+  let store: NotificationQueueRepository;
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new NotificationQueueStore(db);
+    store = new NotificationQueueRepository(db);
   });
 
   it("returns correct counts per status", async () => {

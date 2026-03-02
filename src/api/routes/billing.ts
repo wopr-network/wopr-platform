@@ -7,7 +7,7 @@ import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
 import { type IPaymentProcessor, PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
-import type { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
+import type { DrizzlePayRamChargeRepository } from "../../monetization/payram/charge-store.js";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
 import { createPayRamClient, loadPayRamConfig } from "../../monetization/payram/client.js";
 import type { PayRamWebhookPayload } from "../../monetization/payram/types.js";
@@ -27,7 +27,7 @@ export interface BillingRouteDeps {
   /** Replay guard for PayRam webhook deduplication. */
   payramReplayGuard: IWebhookSeenRepository;
   affiliateRepo: IAffiliateRepository;
-  payramChargeStore?: DrizzlePayRamChargeStore;
+  payramChargeRepo?: DrizzlePayRamChargeRepository;
 }
 
 const metadataMap = buildTokenMetadataMap();
@@ -392,7 +392,7 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
     return c.json({ error: "Forbidden" }, 403);
   }
 
-  const { payramChargeStore: chargeStore } = getDeps();
+  const { payramChargeRepo: chargeStore } = getDeps();
   if (!payramClient || !chargeStore) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
@@ -454,7 +454,7 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     return c.json({ received: false }, 400);
   }
 
-  const { creditLedger, payramChargeStore: chargeStore2, payramReplayGuard } = getDeps();
+  const { creditLedger, payramChargeRepo: chargeStore2, payramReplayGuard } = getDeps();
   if (!chargeStore2) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }

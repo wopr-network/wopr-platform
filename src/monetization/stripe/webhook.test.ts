@@ -14,7 +14,7 @@ import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
 import { noOpReplayGuard } from "../webhook-seen-repository.js";
 import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
-import { TenantCustomerStore } from "./tenant-store.js";
+import { TenantCustomerRepository } from "./tenant-store.js";
 import type { WebhookDeps } from "./webhook.js";
 import { handleWebhookEvent } from "./webhook.js";
 
@@ -26,7 +26,7 @@ function makeReplayGuard() {
 }
 
 describe("handleWebhookEvent (credit model)", () => {
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: TenantCustomerRepository;
   let creditLedger: CreditLedger;
   let deps: WebhookDeps;
 
@@ -42,9 +42,9 @@ describe("handleWebhookEvent (credit model)", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    tenantStore = new TenantCustomerStore(db);
+    tenantRepo = new TenantCustomerRepository(db);
     creditLedger = new CreditLedger(db);
-    deps = { tenantStore, creditLedger, replayGuard: noOpReplayGuard };
+    deps = { tenantRepo, creditLedger, replayGuard: noOpReplayGuard };
   });
 
   // ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const event = createCheckoutEvent();
       await handleWebhookEvent(deps, event);
 
-      const mapping = await tenantStore.getByTenant("tenant-123");
+      const mapping = await tenantRepo.getByTenant("tenant-123");
       expect(mapping).not.toBeNull();
       expect(mapping?.processor_customer_id).toBe("cus_abc");
     });
@@ -151,7 +151,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const result = await handleWebhookEvent(deps, event);
 
       expect(result.handled).toBe(true);
-      const mapping = await tenantStore.getByTenant("tenant-123");
+      const mapping = await tenantRepo.getByTenant("tenant-123");
       expect(mapping?.processor_customer_id).toBe("cus_obj_123");
     });
 
@@ -525,7 +525,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const event = makeSubEvent("customer.subscription.created");
       await handleWebhookEvent({ ...deps, vpsRepo }, event);
 
-      const mapping = await tenantStore.getByTenant("tenant-vps-1");
+      const mapping = await tenantRepo.getByTenant("tenant-vps-1");
       expect(mapping?.processor_customer_id).toBe("cus_vps_abc");
     });
 
@@ -653,7 +653,7 @@ describe("handleWebhookEvent (credit model)", () => {
     }
 
     it("suspends bots and returns handled:true when tenant found", async () => {
-      await tenantStore.upsert({ tenant: "tenant-fail-1", processorCustomerId: "cus_fail_abc" });
+      await tenantRepo.upsert({ tenant: "tenant-fail-1", processorCustomerId: "cus_fail_abc" });
 
       const botBilling = {
         suspendAllForTenant: vi.fn(async () => ["bot-1", "bot-2"]),
@@ -669,7 +669,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("sends payment_failed notification when notificationService and getEmailForTenant are available", async () => {
-      await tenantStore.upsert({ tenant: "tenant-fail-2", processorCustomerId: "cus_fail_notify" });
+      await tenantRepo.upsert({ tenant: "tenant-fail-2", processorCustomerId: "cus_fail_notify" });
 
       const notifyFn = vi.fn();
       const notificationService = {
@@ -694,7 +694,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("handles customer object instead of string", async () => {
-      await tenantStore.upsert({ tenant: "tenant-fail-obj", processorCustomerId: "cus_obj_fail" });
+      await tenantRepo.upsert({ tenant: "tenant-fail-obj", processorCustomerId: "cus_obj_fail" });
 
       const result = await handleWebhookEvent(deps, makeInvoiceFailedEvent({ customer: { id: "cus_obj_fail" } }));
 
@@ -703,7 +703,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("handles missing botBilling gracefully (no suspension, still handled)", async () => {
-      await tenantStore.upsert({ tenant: "tenant-fail-no-billing", processorCustomerId: "cus_fail_no_billing" });
+      await tenantRepo.upsert({ tenant: "tenant-fail-no-billing", processorCustomerId: "cus_fail_no_billing" });
 
       const result = await handleWebhookEvent(deps, makeInvoiceFailedEvent({ customer: "cus_fail_no_billing" }));
 
@@ -735,7 +735,7 @@ describe("handleWebhookEvent (credit model)", () => {
     }
 
     it("credits ledger on successful subscription renewal", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-1", processorCustomerId: "cus_renew_abc" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-1", processorCustomerId: "cus_renew_abc" });
 
       const result = await handleWebhookEvent(deps, makeInvoiceSucceededEvent());
 
@@ -749,7 +749,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("reactivates suspended bots after successful renewal", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-react", processorCustomerId: "cus_renew_react" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-react", processorCustomerId: "cus_renew_react" });
 
       const botBilling = {
         checkReactivation: vi.fn(async () => ["bot-r1", "bot-r2"]),
@@ -766,7 +766,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("is idempotent — same invoice ID does not double-credit", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-idem", processorCustomerId: "cus_renew_idem" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-idem", processorCustomerId: "cus_renew_idem" });
 
       const event = makeInvoiceSucceededEvent({ customer: "cus_renew_idem", amount_paid: 800 });
 
@@ -784,7 +784,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
     it("rejects duplicate via replay guard (same event ID twice)", async () => {
       const replayGuard = makeReplayGuard();
-      await tenantStore.upsert({ tenant: "tenant-renew-replay", processorCustomerId: "cus_renew_replay" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-replay", processorCustomerId: "cus_renew_replay" });
 
       const event = makeInvoiceSucceededEvent({
         customer: "cus_renew_replay",
@@ -819,7 +819,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("handles customer object instead of string", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-obj", processorCustomerId: "cus_renew_obj" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-obj", processorCustomerId: "cus_renew_obj" });
 
       const result = await handleWebhookEvent(
         deps,
@@ -832,7 +832,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("returns creditedCents:0 when amount_paid is 0 (free trial renewal)", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-free", processorCustomerId: "cus_renew_free" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-free", processorCustomerId: "cus_renew_free" });
 
       const result = await handleWebhookEvent(
         deps,
@@ -847,7 +847,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("returns creditedCents:0 when amount_paid is null", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-null", processorCustomerId: "cus_renew_null" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-null", processorCustomerId: "cus_renew_null" });
 
       const result = await handleWebhookEvent(
         deps,
@@ -859,7 +859,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("records invoice ID as referenceId in ledger transaction", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-ref", processorCustomerId: "cus_renew_ref" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-ref", processorCustomerId: "cus_renew_ref" });
 
       await handleWebhookEvent(
         deps,
@@ -874,7 +874,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("handles missing botBilling gracefully (no reactivation, still credits)", async () => {
-      await tenantStore.upsert({ tenant: "tenant-renew-nobb", processorCustomerId: "cus_renew_nobb" });
+      await tenantRepo.upsert({ tenant: "tenant-renew-nobb", processorCustomerId: "cus_renew_nobb" });
 
       const result = await handleWebhookEvent(
         deps,
@@ -911,7 +911,7 @@ describe("handleWebhookEvent (credit model)", () => {
     }
 
     it("debits the credit ledger for the refunded amount", async () => {
-      await tenantStore.upsert({ tenant: "tenant-ref-1", processorCustomerId: "cus_ref_abc" });
+      await tenantRepo.upsert({ tenant: "tenant-ref-1", processorCustomerId: "cus_ref_abc" });
       await creditLedger.credit("tenant-ref-1", Credit.fromCents(5000), "purchase", "seed");
 
       const result = await handleWebhookEvent(deps, makeChargeRefundedEvent());
@@ -925,7 +925,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("allows negative balance after refund (tenant already spent credits)", async () => {
-      await tenantStore.upsert({ tenant: "tenant-ref-neg", processorCustomerId: "cus_ref_neg" });
+      await tenantRepo.upsert({ tenant: "tenant-ref-neg", processorCustomerId: "cus_ref_neg" });
 
       const result = await handleWebhookEvent(
         deps,
@@ -938,7 +938,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("is idempotent — skips duplicate refund for same charge ID", async () => {
-      await tenantStore.upsert({ tenant: "tenant-ref-idem", processorCustomerId: "cus_ref_idem" });
+      await tenantRepo.upsert({ tenant: "tenant-ref-idem", processorCustomerId: "cus_ref_idem" });
       await creditLedger.credit("tenant-ref-idem", Credit.fromCents(5000), "purchase", "seed");
 
       const event = makeChargeRefundedEvent({ customer: "cus_ref_idem" });
@@ -960,7 +960,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("returns handled:false when amount_refunded is 0", async () => {
-      await tenantStore.upsert({ tenant: "tenant-ref-zero", processorCustomerId: "cus_ref_zero" });
+      await tenantRepo.upsert({ tenant: "tenant-ref-zero", processorCustomerId: "cus_ref_zero" });
 
       const result = await handleWebhookEvent(
         deps,
@@ -971,7 +971,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("handles customer object instead of string", async () => {
-      await tenantStore.upsert({ tenant: "tenant-ref-obj", processorCustomerId: "cus_ref_obj" });
+      await tenantRepo.upsert({ tenant: "tenant-ref-obj", processorCustomerId: "cus_ref_obj" });
       await creditLedger.credit("tenant-ref-obj", Credit.fromCents(3000), "purchase", "seed");
 
       const result = await handleWebhookEvent(
@@ -984,7 +984,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("records charge ID as referenceId in the ledger transaction", async () => {
-      await tenantStore.upsert({ tenant: "tenant-ref-txn", processorCustomerId: "cus_ref_txn" });
+      await tenantRepo.upsert({ tenant: "tenant-ref-txn", processorCustomerId: "cus_ref_txn" });
       await creditLedger.credit("tenant-ref-txn", Credit.fromCents(5000), "purchase", "seed");
 
       await handleWebhookEvent(deps, makeChargeRefundedEvent({ customer: "cus_ref_txn", id: "ch_ref_txn_123" }));
@@ -1170,7 +1170,7 @@ describe("handleWebhookEvent (credit model)", () => {
     }
 
     it("freezes tenant credits and suspends bots on dispute", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dispute-1", processorCustomerId: "cus_dispute_abc" });
+      await tenantRepo.upsert({ tenant: "tenant-dispute-1", processorCustomerId: "cus_dispute_abc" });
       await creditLedger.credit("tenant-dispute-1", Credit.fromCents(5000), "purchase", "seed");
 
       const botBilling = {
@@ -1185,12 +1185,12 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.disputeId).toBe("dp_test_1");
       expect(result.suspendedBots).toEqual(["bot-d1"]);
 
-      expect(await tenantStore.hasBillingHold("tenant-dispute-1")).toBe(true);
+      expect(await tenantRepo.hasBillingHold("tenant-dispute-1")).toBe(true);
       expect((await creditLedger.balance("tenant-dispute-1")).toCents()).toBe(2500);
     });
 
     it("allows negative balance when dispute amount exceeds current balance", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dispute-neg", processorCustomerId: "cus_dispute_neg" });
+      await tenantRepo.upsert({ tenant: "tenant-dispute-neg", processorCustomerId: "cus_dispute_neg" });
 
       const result = await handleWebhookEvent(deps, makeDisputeCreatedEvent("cus_dispute_neg", { amount: 1000 }));
 
@@ -1199,7 +1199,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("is idempotent — skips duplicate debit for same dispute ID", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dispute-idem", processorCustomerId: "cus_dispute_idem" });
+      await tenantRepo.upsert({ tenant: "tenant-dispute-idem", processorCustomerId: "cus_dispute_idem" });
       await creditLedger.credit("tenant-dispute-idem", Credit.fromCents(5000), "purchase", "seed");
 
       const event = makeDisputeCreatedEvent("cus_dispute_idem");
@@ -1212,7 +1212,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("sends admin notification when notificationService is available", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dispute-notify", processorCustomerId: "cus_dispute_notify" });
+      await tenantRepo.upsert({ tenant: "tenant-dispute-notify", processorCustomerId: "cus_dispute_notify" });
       await creditLedger.credit("tenant-dispute-notify", Credit.fromCents(5000), "purchase", "seed");
 
       const notifyFn = vi.fn();
@@ -1265,7 +1265,7 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("handles customer object (expanded) inside charge", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dispute-obj", processorCustomerId: "cus_dispute_obj" });
+      await tenantRepo.upsert({ tenant: "tenant-dispute-obj", processorCustomerId: "cus_dispute_obj" });
       await creditLedger.credit("tenant-dispute-obj", Credit.fromCents(3000), "purchase", "seed");
 
       const result = await handleWebhookEvent(deps, makeDisputeCreatedEvent({ id: "cus_dispute_obj" }));
@@ -1275,14 +1275,14 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("works without botBilling (no suspension, still handled)", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dispute-no-bb", processorCustomerId: "cus_dispute_no_bb" });
+      await tenantRepo.upsert({ tenant: "tenant-dispute-no-bb", processorCustomerId: "cus_dispute_no_bb" });
       await creditLedger.credit("tenant-dispute-no-bb", Credit.fromCents(5000), "purchase", "seed");
 
       const result = await handleWebhookEvent(deps, makeDisputeCreatedEvent("cus_dispute_no_bb"));
 
       expect(result.handled).toBe(true);
       expect(result.suspendedBots).toBeUndefined();
-      expect(await tenantStore.hasBillingHold("tenant-dispute-no-bb")).toBe(true);
+      expect(await tenantRepo.hasBillingHold("tenant-dispute-no-bb")).toBe(true);
     });
   });
 
@@ -1315,8 +1315,8 @@ describe("handleWebhookEvent (credit model)", () => {
     }
 
     it("unfreezes tenant and re-credits when dispute is won", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dw-1", processorCustomerId: "cus_dispute_closed_abc" });
-      await tenantStore.setBillingHold("tenant-dw-1", true);
+      await tenantRepo.upsert({ tenant: "tenant-dw-1", processorCustomerId: "cus_dispute_closed_abc" });
+      await tenantRepo.setBillingHold("tenant-dw-1", true);
 
       const botBilling = {
         checkReactivation: vi.fn(async () => ["bot-r1"]),
@@ -1330,26 +1330,26 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.disputeId).toBe("dp_closed_1");
       expect(result.reactivatedBots).toEqual(["bot-r1"]);
 
-      expect(await tenantStore.hasBillingHold("tenant-dw-1")).toBe(false);
+      expect(await tenantRepo.hasBillingHold("tenant-dw-1")).toBe(false);
       expect((await creditLedger.balance("tenant-dw-1")).toCents()).toBe(2500);
     });
 
     it("does NOT unfreeze or re-credit when dispute is lost", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dl-1", processorCustomerId: "cus_dispute_lost" });
-      await tenantStore.setBillingHold("tenant-dl-1", true);
+      await tenantRepo.upsert({ tenant: "tenant-dl-1", processorCustomerId: "cus_dispute_lost" });
+      await tenantRepo.setBillingHold("tenant-dl-1", true);
 
       const result = await handleWebhookEvent(deps, makeDisputeClosedEvent("cus_dispute_lost", { status: "lost" }));
 
       expect(result.handled).toBe(true);
       expect(result.disputeId).toBe("dp_closed_1");
 
-      expect(await tenantStore.hasBillingHold("tenant-dl-1")).toBe(true);
+      expect(await tenantRepo.hasBillingHold("tenant-dl-1")).toBe(true);
       expect((await creditLedger.balance("tenant-dl-1")).toCents()).toBe(0);
     });
 
     it("is idempotent — skips duplicate re-credit for same dispute reversal", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dw-idem", processorCustomerId: "cus_dw_idem" });
-      await tenantStore.setBillingHold("tenant-dw-idem", true);
+      await tenantRepo.upsert({ tenant: "tenant-dw-idem", processorCustomerId: "cus_dw_idem" });
+      await tenantRepo.setBillingHold("tenant-dw-idem", true);
 
       const event = makeDisputeClosedEvent("cus_dw_idem");
 
@@ -1362,8 +1362,8 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("sends dispute-won notification when dispute is won", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dw-notify", processorCustomerId: "cus_dw_notify" });
-      await tenantStore.setBillingHold("tenant-dw-notify", true);
+      await tenantRepo.upsert({ tenant: "tenant-dw-notify", processorCustomerId: "cus_dw_notify" });
+      await tenantRepo.setBillingHold("tenant-dw-notify", true);
 
       const notifyFn = vi.fn();
       const notificationService = {
@@ -1386,8 +1386,8 @@ describe("handleWebhookEvent (credit model)", () => {
     });
 
     it("handles customer object (expanded) inside charge", async () => {
-      await tenantStore.upsert({ tenant: "tenant-dw-obj", processorCustomerId: "cus_dw_obj" });
-      await tenantStore.setBillingHold("tenant-dw-obj", true);
+      await tenantRepo.upsert({ tenant: "tenant-dw-obj", processorCustomerId: "cus_dw_obj" });
+      await tenantRepo.setBillingHold("tenant-dw-obj", true);
 
       const result = await handleWebhookEvent(deps, makeDisputeClosedEvent({ id: "cus_dw_obj" }));
 

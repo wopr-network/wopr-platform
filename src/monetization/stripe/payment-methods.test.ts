@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { detachAllPaymentMethods, detachPaymentMethod } from "./payment-methods.js";
-import { TenantCustomerStore } from "./tenant-store.js";
+import { TenantCustomerRepository } from "./tenant-store.js";
 
 function mockStripe(
   overrides: { paymentMethodRetrieve?: ReturnType<typeof vi.fn>; paymentMethodDetach?: ReturnType<typeof vi.fn> } = {},
@@ -37,11 +37,11 @@ afterAll(async () => {
 });
 
 describe("detachPaymentMethod", () => {
-  let store: TenantCustomerStore;
+  let store: TenantCustomerRepository;
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new TenantCustomerStore(db);
+    store = new TenantCustomerRepository(db);
   });
 
   it("calls stripe.paymentMethods.detach with the correct ID", async () => {
@@ -89,11 +89,11 @@ describe("detachPaymentMethod", () => {
 });
 
 describe("detachAllPaymentMethods", () => {
-  let store: TenantCustomerStore;
+  let store: TenantCustomerRepository;
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new TenantCustomerStore(db);
+    store = new TenantCustomerRepository(db);
   });
 
   it("returns 0 when tenant has no Stripe customer mapping", async () => {

@@ -15,7 +15,7 @@ const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { DrizzleSigPenaltyRepository } = await import("../../src/api/drizzle-sig-penalty-repository.js");
 const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
 const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
-const { TenantCustomerStore } = await import("../../src/monetization/index.js");
+const { TenantCustomerRepository } = await import("../../src/monetization/index.js");
 import type { IPaymentProcessor } from "../../src/monetization/payment-processor.js";
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
 
@@ -50,12 +50,12 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
 describe("integration: billing routes", () => {
   let pool: PGlite;
   let db: DrizzleDb;
-  let tenantStore: InstanceType<typeof TenantCustomerStore>;
+  let tenantRepo: InstanceType<typeof TenantCustomerRepository>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     ({ db, pool } = await createTestDb());
-    tenantStore = new TenantCustomerStore(db);
+    tenantRepo = new TenantCustomerRepository(db);
     setBillingDeps({
       processor: createMockProcessor(),
       creditLedger: new CreditLedger(db),

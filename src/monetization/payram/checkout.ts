@@ -1,5 +1,5 @@
 import type { Payram } from "payram";
-import type { PayRamChargeStore } from "./charge-store.js";
+import type { PayRamChargeRepository } from "./charge-store.js";
 import type { PayRamCheckoutOpts } from "./types.js";
 
 /** Minimum payment amount in USD. */
@@ -13,7 +13,7 @@ export const MIN_PAYMENT_USD = 10;
  */
 export async function createPayRamCheckout(
   payram: Payram,
-  chargeStore: PayRamChargeStore,
+  chargeStore: PayRamChargeRepository,
   opts: PayRamCheckoutOpts,
 ): Promise<{ referenceId: string; url: string }> {
   if (opts.amountUsd < MIN_PAYMENT_USD) {

@@ -15,8 +15,8 @@ export type { SetupIntentOpts } from "./setup-intent.js";
 export { createSetupIntent } from "./setup-intent.js";
 export type { StripePaymentProcessorDeps } from "./stripe-payment-processor.js";
 export { StripePaymentProcessor } from "./stripe-payment-processor.js";
-export type { ITenantCustomerStore } from "./tenant-store.js";
-export { DrizzleTenantCustomerStore, TenantCustomerStore } from "./tenant-store.js";
+export type { ITenantCustomerRepository } from "./tenant-store.js";
+export { DrizzleTenantCustomerRepository, TenantCustomerRepository } from "./tenant-store.js";
 export type {
   CreditCheckoutOpts,
   PortalSessionOpts,

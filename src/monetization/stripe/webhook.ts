@@ -11,7 +11,7 @@ import type { CreditLedger } from "../credits/credit-ledger.js";
 import type { PromotionEngine } from "../promotions/engine.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
 import type { CreditPriceMap } from "./credit-prices.js";
-import type { TenantCustomerStore } from "./tenant-store.js";
+import type { TenantCustomerRepository } from "./tenant-store.js";
 
 /**
  * Result of processing a Stripe webhook event.
@@ -40,7 +40,7 @@ export interface WebhookResult {
  * Dependencies required by the webhook handler.
  */
 export interface WebhookDeps {
-  tenantStore: TenantCustomerStore;
+  tenantRepo: TenantCustomerRepository;
   creditLedger: CreditLedger;
   /** Map of Stripe Price ID -> CreditPricePoint for bonus calculation. */
   priceMap?: CreditPriceMap;
@@ -93,7 +93,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       const customerId = typeof session.customer === "string" ? session.customer : session.customer.id;
 
       // Upsert tenant-to-customer mapping (no subscription).
-      await deps.tenantStore.upsert({
+      await deps.tenantRepo.upsert({
         tenant,
         processorCustomerId: customerId,
       });
@@ -222,7 +222,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
 
       // Upsert tenant-customer mapping.
-      await deps.tenantStore.upsert({ tenant, processorCustomerId: customerId });
+      await deps.tenantRepo.upsert({ tenant, processorCustomerId: customerId });
 
       const existing = await deps.vpsRepo.getByBotId(botId);
       if (subscription.status === "active") {
@@ -318,7 +318,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         break;
       }
 
-      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      const mapping = await deps.tenantRepo.getByProcessorCustomerId(customerId);
       if (!mapping) {
         result = { handled: false, event_type: event.type };
         break;
@@ -357,7 +357,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         break;
       }
 
-      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      const mapping = await deps.tenantRepo.getByProcessorCustomerId(customerId);
       if (!mapping) {
         result = { handled: false, event_type: event.type };
         break;
@@ -414,7 +414,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         break;
       }
 
-      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      const mapping = await deps.tenantRepo.getByProcessorCustomerId(customerId);
       if (!mapping) {
         result = { handled: false, event_type: event.type };
         break;
@@ -460,7 +460,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         break;
       }
 
-      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      const mapping = await deps.tenantRepo.getByProcessorCustomerId(customerId);
       if (!mapping) {
         result = { handled: false, event_type: event.type };
         break;
@@ -471,7 +471,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       const disputedCents = dispute.amount;
 
       // Set billing hold — prevents further spend during dispute.
-      await deps.tenantStore.setBillingHold(tenant, true);
+      await deps.tenantRepo.setBillingHold(tenant, true);
 
       // Debit disputed amount (allow negative). Idempotent via disputeId.
       if (disputedCents > 0 && !(await deps.creditLedger.hasReferenceId(disputeId))) {
@@ -529,7 +529,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         break;
       }
 
-      const mapping = await deps.tenantStore.getByProcessorCustomerId(customerId);
+      const mapping = await deps.tenantRepo.getByProcessorCustomerId(customerId);
       if (!mapping) {
         result = { handled: false, event_type: event.type };
         break;
@@ -541,7 +541,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
 
       if (dispute.status === "won") {
         // Dispute won — unfreeze hold and restore credits.
-        await deps.tenantStore.setBillingHold(tenant, false);
+        await deps.tenantRepo.setBillingHold(tenant, false);
 
         // Re-credit the disputed amount. Idempotent via reversal referenceId.
         const reversalRef = `${disputeId}:reversal`;

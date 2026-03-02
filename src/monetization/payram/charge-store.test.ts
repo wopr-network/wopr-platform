@@ -1,16 +1,16 @@
 /**
- * Unit tests for PayRamChargeStore (WOP-407).
+ * Unit tests for PayRamChargeRepository (WOP-407).
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { PayRamChargeStore } from "./charge-store.js";
+import { PayRamChargeRepository } from "./charge-store.js";
 
-describe("PayRamChargeStore", () => {
+describe("PayRamChargeRepository", () => {
   let pool: PGlite;
   let db: DrizzleDb;
-  let store: PayRamChargeStore;
+  let store: PayRamChargeRepository;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -24,7 +24,7 @@ describe("PayRamChargeStore", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new PayRamChargeStore(db);
+    store = new PayRamChargeRepository(db);
   });
 
   it("create() stores a charge", async () => {

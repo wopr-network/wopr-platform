@@ -33,12 +33,12 @@ export type { IAdminNotesRepository } from "./notes/admin-notes-repository.js";
 export type { AdminNote, AdminNoteFilters, AdminNoteInput } from "./notes/index.js";
 export { AdminNotesStore } from "./notes/index.js";
 export type {
-  IAdminNotificationQueueStore,
+  IAdminNotificationQueueRepository,
   NotificationEmailType,
   NotificationInput,
   NotificationRow,
 } from "./notifications/index.js";
-export { NotificationQueueStore } from "./notifications/index.js";
+export { NotificationQueueRepository } from "./notifications/index.js";
 export type {
   ProviderCost,
   ProviderCostFilters,

@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import type { ITenantCustomerStore, TenantCustomerStore } from "./tenant-store.js";
+import type { ITenantCustomerRepository, TenantCustomerRepository } from "./tenant-store.js";
 import type { CreditCheckoutOpts, VpsCheckoutOpts } from "./types.js";
 
 /**
@@ -13,10 +13,10 @@ import type { CreditCheckoutOpts, VpsCheckoutOpts } from "./types.js";
  */
 export async function createCreditCheckoutSession(
   stripe: Stripe,
-  tenantStore: TenantCustomerStore,
+  tenantRepo: TenantCustomerRepository,
   opts: CreditCheckoutOpts,
 ): Promise<Stripe.Checkout.Session> {
-  const existing = await tenantStore.getByTenant(opts.tenant);
+  const existing = await tenantRepo.getByTenant(opts.tenant);
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "payment",
@@ -51,10 +51,10 @@ export async function createCreditCheckoutSession(
  */
 export async function createVpsCheckoutSession(
   stripe: Stripe,
-  tenantStore: ITenantCustomerStore,
+  tenantRepo: ITenantCustomerRepository,
   opts: VpsCheckoutOpts,
 ): Promise<Stripe.Checkout.Session> {
-  const existing = await tenantStore.getByTenant(opts.tenant);
+  const existing = await tenantRepo.getByTenant(opts.tenant);
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",

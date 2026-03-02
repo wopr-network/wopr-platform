@@ -19,7 +19,7 @@ import type { INodeRepository } from "../../fleet/node-repository.js";
 import { findPlacement } from "../../fleet/placement.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../../fleet/resource-tiers.js";
-import { getTenantCustomerStore, getVpsRepo } from "../../fleet/services.js";
+import { getTenantCustomerRepository, getVpsRepo } from "../../fleet/services.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
 import { Credit } from "../../monetization/credit.js";
@@ -875,8 +875,8 @@ export const fleetRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "Bot already on VPS tier" });
       }
 
-      const tenantStore = getTenantCustomerStore();
-      const customer = await tenantStore.getByTenant(ctx.tenantId);
+      const tenantRepo = getTenantCustomerRepository();
+      const customer = await tenantRepo.getByTenant(ctx.tenantId);
       if (!customer) {
         throw new TRPCError({
           code: "PAYMENT_REQUIRED",
@@ -908,7 +908,7 @@ export const fleetRouter = router({
         }
       }
 
-      const session = await createVpsCheckoutSession(createStripeClient(stripeConfig), tenantStore, {
+      const session = await createVpsCheckoutSession(createStripeClient(stripeConfig), tenantRepo, {
         tenant: ctx.tenantId,
         botId: input.id,
         vpsPriceId,

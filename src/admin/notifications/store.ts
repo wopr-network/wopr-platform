@@ -16,7 +16,7 @@ export type {
 // ---------------------------------------------------------------------------
 
 /** Repository interface for the admin notification queue. */
-export interface IAdminNotificationQueueStore {
+export interface IAdminNotificationQueueRepository {
   enqueue(input: NotificationInput): Promise<NotificationRow>;
   getPending(limit?: number): Promise<NotificationRow[]>;
   markSent(id: string): Promise<void>;
@@ -28,7 +28,7 @@ export interface IAdminNotificationQueueStore {
 // Drizzle Implementation
 // ---------------------------------------------------------------------------
 
-export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQueueStore {
+export class DrizzleAdminNotificationQueueRepository implements IAdminNotificationQueueRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Enqueue a notification. */
@@ -125,5 +125,5 @@ export class DrizzleAdminNotificationQueueStore implements IAdminNotificationQue
   }
 }
 
-/** @deprecated Use DrizzleAdminNotificationQueueStore directly. */
-export { DrizzleAdminNotificationQueueStore as NotificationQueueStore };
+/** @deprecated Use DrizzleAdminNotificationQueueRepository directly. */
+export { DrizzleAdminNotificationQueueRepository as NotificationQueueRepository };

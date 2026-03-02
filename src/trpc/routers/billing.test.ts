@@ -209,9 +209,9 @@ describe("billingRouter", () => {
   let MeterAggregatorClass: new (
     db: DrizzleDb,
   ) => InstanceType<typeof import("../../monetization/metering/aggregator.js")["MeterAggregator"]>;
-  let TenantCustomerStoreClass: new (
+  let TenantCustomerRepositoryClass: new (
     db: DrizzleDb,
-  ) => InstanceType<typeof import("../../monetization/index.js")["TenantCustomerStore"]>;
+  ) => InstanceType<typeof import("../../monetization/index.js")["TenantCustomerRepository"]>;
 
   beforeAll(async () => {
     const testDb = await createTestDb();
@@ -221,7 +221,7 @@ describe("billingRouter", () => {
     const agg = await import("../../monetization/metering/aggregator.js");
     MeterAggregatorClass = agg.MeterAggregator as typeof MeterAggregatorClass;
     const tcs = await import("../../monetization/index.js");
-    TenantCustomerStoreClass = tcs.TenantCustomerStore as typeof TenantCustomerStoreClass;
+    TenantCustomerRepositoryClass = tcs.TenantCustomerRepository as typeof TenantCustomerRepositoryClass;
   }, 30000);
 
   afterAll(async () => {
@@ -237,7 +237,7 @@ describe("billingRouter", () => {
   function injectDeps(overrides: Partial<BillingRouterDeps> = {}) {
     const defaults: BillingRouterDeps = {
       processor: createMockProcessor(),
-      tenantStore: new TenantCustomerStoreClass(db),
+      tenantRepo: new TenantCustomerRepositoryClass(db),
       creditLedger: makeMockLedger(),
       meterAggregator: new MeterAggregatorClass(db),
       priceMap: undefined,
@@ -337,7 +337,7 @@ describe("billingRouter", () => {
 
   describe("cryptoCheckout", () => {
     it("throws NOT_IMPLEMENTED when payram not configured", async () => {
-      injectDeps({ payramClient: undefined, payramChargeStore: undefined });
+      injectDeps({ payramClient: undefined, payramChargeRepo: undefined });
       const caller = makeCaller(makeCtx("user-1", "tenant-1"));
       await expect(caller.cryptoCheckout({ amountUsd: 10 })).rejects.toThrow("Crypto payments not configured");
     });
@@ -646,7 +646,7 @@ describe("billingRouter", () => {
       };
       injectDeps({
         processor: mockProcessor,
-        tenantStore: mockTenantStore as unknown as BillingRouterDeps["tenantStore"],
+        tenantRepo: mockTenantStore as unknown as BillingRouterDeps["tenantRepo"],
       });
 
       const caller = makeCaller(makeCtx("user-1", "user-1"));

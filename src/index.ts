@@ -95,7 +95,7 @@ import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
 import { encrypt } from "./security/encryption.js";
-import { TenantKeyStore } from "./security/tenant-keys/schema.js";
+import { TenantKeyRepository } from "./security/tenant-keys/schema.js";
 import {
   setAddonRouterDeps,
   setAdminRouterDeps,
@@ -570,7 +570,7 @@ if (process.env.NODE_ENV !== "test") {
   {
     const { resolveApiKeyWithOrgFallback } = await import("./security/tenant-keys/org-key-resolution.js");
     const { RoleStore } = await import("./admin/roles/role-store.js");
-    const orgKeysTenantKeyStore = new TenantKeyStore(getDb());
+    const orgKeysTenantKeyRepository = new TenantKeyRepository(getDb());
     const roleStore = new RoleStore(getDb());
     const orgVaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const deriveTenantKey2 = (tenantId: string, platformSecret: string) =>
@@ -584,7 +584,7 @@ if (process.env.NODE_ENV !== "test") {
     const pooledKeys2 = buildPooledKeysMap2();
 
     setOrgKeysRouterDeps({
-      getTenantKeyStore: () => orgKeysTenantKeyStore as never,
+      getTenantKeyRepository: () => orgKeysTenantKeyRepository as never,
       encrypt,
       deriveTenantKey: deriveTenantKey2,
       platformSecret: process.env.PLATFORM_SECRET,
@@ -647,15 +647,15 @@ if (process.env.NODE_ENV !== "test") {
   {
     const { MeterAggregator } = await import("./monetization/metering/aggregator.js");
     const { loadCreditPriceMap } = await import("./monetization/stripe/credit-prices.js");
-    const { DrizzleTenantCustomerStore } = await import("./monetization/stripe/tenant-store.js");
+    const { DrizzleTenantCustomerRepository } = await import("./monetization/stripe/tenant-store.js");
     const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
     const { DrizzleAutoTopupSettingsRepository } = await import(
       "./monetization/credits/auto-topup-settings-repository.js"
     );
     const { StripePaymentProcessor } = await import("./monetization/stripe/stripe-payment-processor.js");
-    const { DrizzlePayRamChargeStore } = await import("./monetization/payram/charge-store.js");
+    const { DrizzlePayRamChargeRepository } = await import("./monetization/payram/charge-store.js");
 
-    const tenantStore = new DrizzleTenantCustomerStore(getDb());
+    const tenantRepo = new DrizzleTenantCustomerRepository(getDb());
     const meterAggregator = new MeterAggregator(getDb());
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
@@ -667,7 +667,7 @@ if (process.env.NODE_ENV !== "test") {
 
       const processor = new StripePaymentProcessor({
         stripe,
-        tenantStore,
+        tenantRepo,
         webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
         priceMap,
         creditLedger: getCreditLedger(),
@@ -675,7 +675,7 @@ if (process.env.NODE_ENV !== "test") {
       });
 
       // Create PayRam deps before tRPC router so both REST and tRPC can share them.
-      const payramChargeStore = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeStore(getDb()) : undefined;
+      const payramChargeRepo = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeRepository(getDb()) : undefined;
       let payramClient: import("payram").Payram | undefined;
       if (process.env.PAYRAM_API_KEY) {
         const { createPayRamClient, loadPayRamConfig } = await import("./monetization/payram/client.js");
@@ -693,7 +693,7 @@ if (process.env.NODE_ENV !== "test") {
 
       setBillingRouterDeps({
         processor,
-        tenantStore,
+        tenantRepo,
         creditLedger: getCreditLedger(),
         meterAggregator,
         priceMap,
@@ -702,7 +702,7 @@ if (process.env.NODE_ENV !== "test") {
         autoTopupSettingsStore,
         affiliateRepo: getAffiliateRepo(),
         payramClient,
-        payramChargeStore,
+        payramChargeRepo,
         auditLogger: billingAuditLogger,
       });
       logger.info("tRPC billing router initialized");
@@ -725,7 +725,7 @@ if (process.env.NODE_ENV !== "test") {
           getTenantStatusStore: () => getTenantStatusRepo(),
           getBotBilling: () => new BotBilling(getBotInstanceRepo()),
           getAutoTopupSettingsRepo: () => getAutoTopupSettingsRepo(),
-          detachAllPaymentMethods: (tenantId: string) => detachAllPaymentMethods(stripe, tenantStore, tenantId),
+          detachAllPaymentMethods: (tenantId: string) => detachAllPaymentMethods(stripe, tenantRepo, tenantId),
           getAffiliateFraudAdminRepo: () => new DrizzleAffiliateFraudAdminRepository(getDb()),
         });
         logger.info("tRPC admin router initialized");
@@ -744,7 +744,7 @@ if (process.env.NODE_ENV !== "test") {
             settingsRepo: autoTopupSettingsStore,
             chargeAutoTopup: (tenantId, amountCents, source) =>
               chargeAutoTopup(
-                { stripe, tenantStore, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
+                { stripe, tenantRepo, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
                 tenantId,
                 amountCents,
                 source,
@@ -776,7 +776,7 @@ if (process.env.NODE_ENV !== "test") {
           creditLedger: getCreditLedger(),
           chargeAutoTopup: (tenantId, amount, source) =>
             chargeAutoTopup(
-              { stripe, tenantStore, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
+              { stripe, tenantRepo, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
               tenantId,
               amount,
               source,
@@ -806,7 +806,7 @@ if (process.env.NODE_ENV !== "test") {
         replayGuard: new DrizzleWebhookSeenRepository(getDb()),
         payramReplayGuard: new DrizzleWebhookSeenRepository(getDb()),
         affiliateRepo: getAffiliateRepo(),
-        payramChargeStore,
+        payramChargeRepo,
       });
       logger.info("REST billing routes initialized");
     } else {

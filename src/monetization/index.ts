@@ -149,11 +149,11 @@ export type {
 export {
   createPayRamCheckout,
   createPayRamClient,
-  DrizzlePayRamChargeStore,
+  DrizzlePayRamChargeRepository,
   handlePayRamWebhook,
   loadPayRamConfig,
   MIN_PAYMENT_USD,
-  PayRamChargeStore,
+  PayRamChargeRepository,
 } from "./payram/index.js";
 export {
   checkInstanceQuota,
@@ -174,8 +174,8 @@ export type {
   ICreditLedger,
   IMeterAggregator,
   IMeterEmitter,
-  IPayRamChargeStore,
-  ITenantCustomerStore,
+  IPayRamChargeRepository,
+  ITenantCustomerRepository,
   PayRamChargeRecord,
 } from "./repository-types.js";
 // Socket layer — adapter orchestrator (WOP-376)
@@ -196,12 +196,12 @@ export {
   createCreditCheckoutSession,
   createPortalSession,
   createStripeClient,
-  DrizzleTenantCustomerStore,
+  DrizzleTenantCustomerRepository,
   getConfiguredPriceIds,
   getCreditAmountForPurchase,
   handleWebhookEvent,
   loadCreditPriceMap,
   loadStripeConfig,
   lookupCreditPrice,
-  TenantCustomerStore,
+  TenantCustomerRepository,
 } from "./stripe/index.js";

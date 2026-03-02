@@ -12,7 +12,7 @@ import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
 import { noOpReplayGuard } from "../webhook-seen-repository.js";
-import { PayRamChargeStore } from "./charge-store.js";
+import { PayRamChargeRepository } from "./charge-store.js";
 import type { PayRamWebhookDeps, PayRamWebhookPayload } from "./index.js";
 import { handlePayRamWebhook } from "./webhook.js";
 
@@ -40,13 +40,13 @@ afterAll(async () => {
 });
 
 describe("handlePayRamWebhook", () => {
-  let chargeStore: PayRamChargeStore;
+  let chargeStore: PayRamChargeRepository;
   let creditLedger: CreditLedger;
   let deps: PayRamWebhookDeps;
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    chargeStore = new PayRamChargeStore(db);
+    chargeStore = new PayRamChargeRepository(db);
     creditLedger = new CreditLedger(db);
     deps = { chargeStore, creditLedger, replayGuard: noOpReplayGuard };
 

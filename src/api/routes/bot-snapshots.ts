@@ -8,7 +8,7 @@ import {
 } from "../../backup/on-demand-snapshot-service.js";
 import { createOnDemandSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
-import type { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+import type { TenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 
 /** Only allow safe characters in IDs used for filesystem paths. */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
@@ -25,7 +25,7 @@ if (metadataMap.size === 0) {
 
 // Lazy-initialized service
 let _service: OnDemandSnapshotService | null = null;
-let _tenantStore: TenantCustomerStore | null = null;
+let _tenantStore: TenantCustomerRepository | null = null;
 
 function getService(): OnDemandSnapshotService {
   if (!_service) {
@@ -34,20 +34,23 @@ function getService(): OnDemandSnapshotService {
   return _service;
 }
 
-function getTenantStore(): TenantCustomerStore | null {
+function getTenantStore(): TenantCustomerRepository | null {
   return _tenantStore;
 }
 
 /** Initialize the service with runtime dependencies. */
-export function initBotSnapshotRoutes(service: OnDemandSnapshotService, tenantStore?: TenantCustomerStore): void {
+export function initBotSnapshotRoutes(service: OnDemandSnapshotService, tenantRepo?: TenantCustomerRepository): void {
   _service = service;
-  _tenantStore = tenantStore ?? null;
+  _tenantStore = tenantRepo ?? null;
 }
 
 /** Export for testing */
-export function setService(service: OnDemandSnapshotService | null, tenantStore?: TenantCustomerStore | null): void {
+export function setService(
+  service: OnDemandSnapshotService | null,
+  tenantRepo?: TenantCustomerRepository | null,
+): void {
   _service = service;
-  _tenantStore = tenantStore ?? null;
+  _tenantStore = tenantRepo ?? null;
 }
 
 /**

@@ -3,7 +3,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { tenantCustomers } from "../../db/schema/tenant-customers.js";
 import type { TenantCustomerRow } from "./types.js";
 
-export interface ITenantCustomerStore {
+export interface ITenantCustomerRepository {
   getByTenant(tenant: string): Promise<TenantCustomerRow | null>;
   getByProcessorCustomerId(processorCustomerId: string): Promise<TenantCustomerRow | null>;
   upsert(row: { tenant: string; processorCustomerId: string; tier?: string }): Promise<void>;
@@ -25,7 +25,7 @@ export interface ITenantCustomerStore {
  * Note: No subscription tracking — WOPR uses credits, not subscriptions.
  * Credit balances are managed by ICreditLedger / DrizzleCreditLedger.
  */
-export class DrizzleTenantCustomerStore implements ITenantCustomerStore {
+export class DrizzleTenantCustomerRepository implements ITenantCustomerRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Get a tenant's processor mapping. */
@@ -148,4 +148,4 @@ function mapRow(row: typeof tenantCustomers.$inferSelect): TenantCustomerRow {
 }
 
 // Backward-compat alias.
-export { DrizzleTenantCustomerStore as TenantCustomerStore };
+export { DrizzleTenantCustomerRepository as TenantCustomerRepository };

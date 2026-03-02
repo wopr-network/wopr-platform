@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import type { TenantCustomerStore } from "./tenant-store.js";
+import type { TenantCustomerRepository } from "./tenant-store.js";
 
 export interface SetupIntentOpts {
   tenant: string;
@@ -17,10 +17,10 @@ export interface SetupIntentOpts {
  */
 export async function createSetupIntent(
   stripe: Stripe,
-  tenantStore: TenantCustomerStore,
+  tenantRepo: TenantCustomerRepository,
   opts: SetupIntentOpts,
 ): Promise<Stripe.SetupIntent> {
-  const mapping = await tenantStore.getByTenant(opts.tenant);
+  const mapping = await tenantRepo.getByTenant(opts.tenant);
   if (!mapping) {
     throw new Error(`No Stripe customer found for tenant: ${opts.tenant}`);
   }

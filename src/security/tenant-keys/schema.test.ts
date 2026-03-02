@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import type { EncryptedPayload } from "../types.js";
-import { TenantKeyStore } from "./schema.js";
+import { TenantKeyRepository } from "./schema.js";
 
 const fakeEncrypted: EncryptedPayload = {
   iv: "aabbccdd",
@@ -11,10 +11,10 @@ const fakeEncrypted: EncryptedPayload = {
   ciphertext: "deadbeef",
 };
 
-describe("TenantKeyStore", () => {
+describe("TenantKeyRepository", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let store: TenantKeyStore;
+  let store: TenantKeyRepository;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -28,7 +28,7 @@ describe("TenantKeyStore", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new TenantKeyStore(db);
+    store = new TenantKeyRepository(db);
   });
 
   describe("upsert", () => {

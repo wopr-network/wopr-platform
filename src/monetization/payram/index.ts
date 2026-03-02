@@ -1,5 +1,5 @@
-export type { IPayRamChargeStore, PayRamChargeRecord } from "./charge-store.js";
-export { DrizzlePayRamChargeStore, PayRamChargeStore } from "./charge-store.js";
+export type { IPayRamChargeRepository, PayRamChargeRecord } from "./charge-store.js";
+export { DrizzlePayRamChargeRepository, PayRamChargeRepository } from "./charge-store.js";
 export { createPayRamCheckout, MIN_PAYMENT_USD } from "./checkout.js";
 export type { PayRamConfig } from "./client.js";
 export { createPayRamClient, loadPayRamConfig } from "./client.js";

@@ -5,8 +5,8 @@ import { enforceRetention } from "../../backup/retention.js";
 import { type SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
 import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
-import { getSnapshotManager, getTenantCustomerStore } from "../../fleet/services.js";
-import type { ITenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+import { getSnapshotManager, getTenantCustomerRepository } from "../../fleet/services.js";
+import type { ITenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
 const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
@@ -27,17 +27,17 @@ function getManager(): SnapshotManager {
   return getSnapshotManager();
 }
 
-let _tenantStore: ITenantCustomerStore | null = null;
+let _tenantRepo: ITenantCustomerRepository | null = null;
 
 /** Initialize the tenant store for tier lookups. */
-export function setTenantStoreForTest(store: ITenantCustomerStore | undefined): void {
-  _tenantStore = store ?? null;
+export function setTenantRepoForTest(store: ITenantCustomerRepository | undefined): void {
+  _tenantRepo = store ?? null;
 }
 
-function getTenantStore(): ITenantCustomerStore | null {
-  if (_tenantStore) return _tenantStore;
+function getTenantRepo(): ITenantCustomerRepository | null {
+  if (_tenantRepo) return _tenantRepo;
   try {
-    return getTenantCustomerStore();
+    return getTenantCustomerRepository();
   } catch {
     return null;
   }
@@ -99,7 +99,7 @@ snapshotRoutes.post("/", writeAuth, async (c) => {
   } catch {
     // tokenTenantId not set on context (legacy/admin token)
   }
-  const store = getTenantStore();
+  const store = getTenantRepo();
   const tenantRecord = lookupTenantId && store ? await store.getByTenant(lookupTenantId) : null;
   const rawTier = tenantRecord?.tier ?? "free";
   const tier = tierSchema.safeParse(rawTier);

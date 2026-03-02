@@ -2,12 +2,12 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { TenantCustomerStore } from "./tenant-store.js";
+import { TenantCustomerRepository } from "./tenant-store.js";
 
-describe("TenantCustomerStore", () => {
+describe("TenantCustomerRepository", () => {
   let pool: PGlite;
   let db: DrizzleDb;
-  let store: TenantCustomerStore;
+  let store: TenantCustomerRepository;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -21,7 +21,7 @@ describe("TenantCustomerStore", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new TenantCustomerStore(db);
+    store = new TenantCustomerRepository(db);
   });
 
   describe("upsert and getByTenant", () => {

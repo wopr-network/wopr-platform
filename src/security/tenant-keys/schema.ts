@@ -17,7 +17,7 @@ export interface TenantApiKey {
   updated_at: number;
 }
 
-export interface ITenantKeyStore {
+export interface ITenantKeyRepository {
   upsert(tenantId: string, provider: string, encryptedKey: EncryptedPayload, label?: string): Promise<string>;
   get(tenantId: string, provider: string): Promise<TenantApiKey | undefined>;
   listForTenant(tenantId: string): Promise<Omit<TenantApiKey, "encrypted_key">[]>;
@@ -26,7 +26,7 @@ export interface ITenantKeyStore {
 }
 
 /** CRUD store for tenant API keys using Drizzle ORM. */
-export class TenantKeyStore implements ITenantKeyStore {
+export class TenantKeyRepository implements ITenantKeyRepository {
   private readonly db: DrizzleDb;
 
   constructor(db: DrizzleDb) {

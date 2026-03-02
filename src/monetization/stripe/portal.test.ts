@@ -1,7 +1,7 @@
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
 import { createPortalSession } from "./portal.js";
-import type { TenantCustomerStore } from "./tenant-store.js";
+import type { TenantCustomerRepository } from "./tenant-store.js";
 
 describe("createPortalSession", () => {
   function mockStripe(portalResult: unknown = { url: "https://billing.stripe.com/session_xyz" }) {
@@ -17,7 +17,7 @@ describe("createPortalSession", () => {
   function mockTenantStore(mapping: { processor_customer_id: string } | null = null) {
     return {
       getByTenant: vi.fn().mockReturnValue(mapping),
-    } as unknown as TenantCustomerStore;
+    } as unknown as TenantCustomerRepository;
   }
 
   it("creates a portal session for an existing customer", async () => {

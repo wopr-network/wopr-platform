@@ -15,7 +15,7 @@ export interface PayRamChargeRecord {
   updatedAt: string;
 }
 
-export interface IPayRamChargeStore {
+export interface IPayRamChargeRepository {
   create(referenceId: string, tenantId: string, amountUsdCents: number): Promise<void>;
   getByReferenceId(referenceId: string): Promise<PayRamChargeRecord | null>;
   updateStatus(
@@ -34,7 +34,7 @@ export interface IPayRamChargeStore {
  * Each charge maps a PayRam reference_id to a tenant and tracks
  * the payment lifecycle (OPEN -> VERIFYING -> FILLED/CANCELLED).
  */
-export class DrizzlePayRamChargeStore implements IPayRamChargeStore {
+export class DrizzlePayRamChargeRepository implements IPayRamChargeRepository {
   constructor(private readonly db: DrizzleDb) {}
 
   /** Create a new charge record when a payment session is initiated. */
@@ -106,4 +106,4 @@ export class DrizzlePayRamChargeStore implements IPayRamChargeStore {
 }
 
 // Backward-compat alias.
-export { DrizzlePayRamChargeStore as PayRamChargeStore };
+export { DrizzlePayRamChargeRepository as PayRamChargeRepository };

@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { TenantCustomerStore } from "../../src/monetization/stripe/tenant-store.js";
+import { TenantCustomerRepository } from "../../src/monetization/stripe/tenant-store.js";
 import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
 import { noOpReplayGuard } from "../../src/monetization/webhook-seen-repository.js";
@@ -22,15 +22,15 @@ import { noOpReplayGuard } from "../../src/monetization/webhook-seen-repository.
 describe("integration: auth → billing → credit flow", () => {
   let pool: PGlite;
   let db: DrizzleDb;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: TenantCustomerRepository;
   let creditLedger: CreditLedger;
   let deps: WebhookDeps;
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
-    tenantStore = new TenantCustomerStore(db);
+    tenantRepo = new TenantCustomerRepository(db);
     creditLedger = new CreditLedger(db);
-    deps = { tenantStore, creditLedger, replayGuard: noOpReplayGuard };
+    deps = { tenantRepo, creditLedger, replayGuard: noOpReplayGuard };
   });
 
   afterEach(async () => {
@@ -46,13 +46,13 @@ describe("integration: auth → billing → credit flow", () => {
       const tenantId = "tenant-journey-1";
 
       // Step 1: User registers (starts on free tier)
-      await tenantStore.upsert({
+      await tenantRepo.upsert({
         tenant: tenantId,
         processorCustomerId: "cus_new_user",
       });
-      await tenantStore.setTier(tenantId, "free");
+      await tenantRepo.setTier(tenantId, "free");
 
-      let mapping = await tenantStore.getByTenant(tenantId);
+      let mapping = await tenantRepo.getByTenant(tenantId);
       expect(mapping?.tier).toBe("free");
       expect((await creditLedger.balance(tenantId)).toCents()).toBe(0);
 
@@ -77,14 +77,14 @@ describe("integration: auth → billing → credit flow", () => {
       // Step 3: Balance reflects the purchase
       expect((await creditLedger.balance(tenantId)).toCents()).toBe(1000);
 
-      mapping = await tenantStore.getByTenant(tenantId);
+      mapping = await tenantRepo.getByTenant(tenantId);
       expect(mapping?.processor_customer_id).toBe("cus_new_user");
     });
 
     it("handles multiple credit purchases accumulating balance", async () => {
       const tenantId = "tenant-multi-purchase";
 
-      await tenantStore.upsert({
+      await tenantRepo.upsert({
         tenant: tenantId,
         processorCustomerId: "cus_multi",
       });

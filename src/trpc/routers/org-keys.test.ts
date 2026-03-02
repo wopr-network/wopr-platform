@@ -14,7 +14,7 @@ function makeMockDeps(overrides: Partial<OrgKeysRouterDeps> = {}): OrgKeysRouter
     }
   >();
   return {
-    getTenantKeyStore: () => ({
+    getTenantKeyRepository: () => ({
       listForTenant: async (tenantId: string) => [...storedKeys.values()].filter((k) => k.tenant_id === tenantId),
       get: async (tenantId: string, provider: string) =>
         [...storedKeys.values()].find((k) => k.tenant_id === tenantId && k.provider === provider),
@@ -59,9 +59,9 @@ describe("OrgKeysRouterDeps", () => {
 
     // Store a key under org-1
     await deps
-      .getTenantKeyStore()
+      .getTenantKeyRepository()
       .upsert("org-1", "anthropic", { iv: "", authTag: "", ciphertext: "" } as never, "...k123");
-    const keys = await deps.getTenantKeyStore().listForTenant("org-1");
+    const keys = await deps.getTenantKeyRepository().listForTenant("org-1");
     expect(keys).toHaveLength(1);
     // listForTenant returns metadata only (no encrypted_key field)
     expect(keys[0]).not.toHaveProperty("encrypted_key");

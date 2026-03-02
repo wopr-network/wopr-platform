@@ -5,11 +5,11 @@ import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { TenantCustomerStore } from "../../monetization/index.js";
+import { TenantCustomerRepository } from "../../monetization/index.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
-import { DrizzlePayRamChargeStore } from "../../monetization/payram/charge-store.js";
+import { DrizzlePayRamChargeRepository } from "../../monetization/payram/charge-store.js";
 import { noOpReplayGuard } from "../../monetization/webhook-seen-repository.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
@@ -83,7 +83,7 @@ describe("billing routes", () => {
   let db: DrizzleDb;
   let pool: PGlite;
   let processor: IPaymentProcessor;
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: TenantCustomerRepository;
   let sigPenaltyRepo: ISigPenaltyRepository;
 
   beforeAll(async () => {
@@ -99,7 +99,7 @@ describe("billing routes", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     processor = createMockProcessor();
-    tenantStore = new TenantCustomerStore(db);
+    tenantRepo = new TenantCustomerRepository(db);
     sigPenaltyRepo = createTestSigPenaltyRepo(db);
     setBillingDeps({
       processor,
@@ -313,7 +313,7 @@ describe("billing routes", () => {
 
   describe("POST /portal", () => {
     it("creates portal session and returns URL", async () => {
-      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
+      tenantRepo.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const createPortalSession = vi.fn().mockResolvedValue({ url: "https://pay.example.com/portal/portal_123" });
       setBillingDeps({
@@ -389,7 +389,7 @@ describe("billing routes", () => {
     });
 
     it("returns 500 when processor API fails", async () => {
-      tenantStore.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
+      tenantRepo.upsert({ tenant: "t-1", processorCustomerId: "cus_abc123" });
 
       const createPortalSession = vi.fn().mockRejectedValue(new Error("Portal unavailable"));
       setBillingDeps({
@@ -1010,7 +1010,7 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        payramChargeStore: new DrizzlePayRamChargeStore(db),
+        payramChargeRepo: new DrizzlePayRamChargeRepository(db),
         replayGuard: noOpReplayGuard,
         payramReplayGuard: noOpReplayGuard,
       });
@@ -1076,7 +1076,7 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(db),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        payramChargeStore: new DrizzlePayRamChargeStore(db),
+        payramChargeRepo: new DrizzlePayRamChargeRepository(db),
         replayGuard: noOpReplayGuard,
         payramReplayGuard: noOpReplayGuard,
       });

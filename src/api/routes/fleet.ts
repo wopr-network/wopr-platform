@@ -858,15 +858,15 @@ fleetRoutes.post("/bots/:id/upgrade-to-vps", writeAuth, async (c) => {
     return c.json({ error: "VPS tier not configured" }, 503);
   }
 
-  const { getVpsRepo, getTenantCustomerStore } = await import("../../fleet/services.js");
+  const { getVpsRepo, getTenantCustomerRepository } = await import("../../fleet/services.js");
   const vpsRepo = getVpsRepo();
   const existing = await vpsRepo.getByBotId(botId);
   if (existing && existing.status === "active") {
     return c.json({ error: "Bot already on VPS tier" }, 409);
   }
 
-  const tenantStore = getTenantCustomerStore();
-  const customer = tenantStore.getByTenant(profile.tenantId);
+  const tenantRepo = getTenantCustomerRepository();
+  const customer = tenantRepo.getByTenant(profile.tenantId);
   if (!customer) {
     return c.json(
       {
@@ -912,7 +912,7 @@ fleetRoutes.post("/bots/:id/upgrade-to-vps", writeAuth, async (c) => {
     return c.json({ error: "Stripe not configured" }, 503);
   }
 
-  const session = await createVpsCheckoutSession(createStripeClient(stripeConfig), tenantStore, {
+  const session = await createVpsCheckoutSession(createStripeClient(stripeConfig), tenantRepo, {
     tenant: profile.tenantId,
     botId,
     vpsPriceId,

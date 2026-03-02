@@ -59,13 +59,13 @@ import type { IDividendRepository } from "../monetization/credits/dividend-repos
 import { DrizzleDividendRepository } from "../monetization/credits/dividend-repository.js";
 import type { IPhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
 import { DrizzlePhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
-import { DrizzleTenantCustomerStore, type ITenantCustomerStore } from "../monetization/index.js";
+import { DrizzleTenantCustomerRepository, type ITenantCustomerRepository } from "../monetization/index.js";
 import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
-import type { IPayRamChargeStore } from "../monetization/payram/charge-store.js";
-import { DrizzlePayRamChargeStore } from "../monetization/payram/charge-store.js";
+import type { IPayRamChargeRepository } from "../monetization/payram/charge-store.js";
+import { DrizzlePayRamChargeRepository } from "../monetization/payram/charge-store.js";
 import { SystemResourceMonitor } from "../observability/system-resources.js";
 import type { IOrgRepository } from "../org/drizzle-org-repository.js";
 import { DrizzleOrgRepository } from "../org/drizzle-org-repository.js";
@@ -647,8 +647,8 @@ let _botBilling: IBotBilling | null = null;
 let _meterEmitter: IMeterEmitter | null = null;
 let _meterAggregator: IMeterAggregator | null = null;
 let _budgetChecker: IBudgetChecker | null = null;
-let _tenantCustomerStore: ITenantCustomerStore | null = null;
-let _payramChargeStore: IPayRamChargeStore | null = null;
+let _tenantCustomerRepo: ITenantCustomerRepository | null = null;
+let _payramChargeRepo: IPayRamChargeRepository | null = null;
 let _dividendRepo: IDividendRepository | null = null;
 let _autoTopupSettingsRepo: IAutoTopupSettingsRepository | null = null;
 let _autoTopupEventLogRepo: IAutoTopupEventLogRepository | null = null;
@@ -686,14 +686,14 @@ export function getBudgetChecker(): IBudgetChecker {
   return _budgetChecker;
 }
 
-export function getTenantCustomerStore(): ITenantCustomerStore {
-  if (!_tenantCustomerStore) _tenantCustomerStore = new DrizzleTenantCustomerStore(getDb());
-  return _tenantCustomerStore;
+export function getTenantCustomerRepository(): ITenantCustomerRepository {
+  if (!_tenantCustomerRepo) _tenantCustomerRepo = new DrizzleTenantCustomerRepository(getDb());
+  return _tenantCustomerRepo;
 }
 
-export function getPayRamChargeStore(): IPayRamChargeStore {
-  if (!_payramChargeStore) _payramChargeStore = new DrizzlePayRamChargeStore(getDb());
-  return _payramChargeStore;
+export function getPayRamChargeRepository(): IPayRamChargeRepository {
+  if (!_payramChargeRepo) _payramChargeRepo = new DrizzlePayRamChargeRepository(getDb());
+  return _payramChargeRepo;
 }
 
 export function getDividendRepo(): IDividendRepository {
@@ -1143,8 +1143,8 @@ export function _resetForTest(): void {
   _meterEmitter = null;
   _meterAggregator = null;
   _budgetChecker = null;
-  _tenantCustomerStore = null;
-  _payramChargeStore = null;
+  _tenantCustomerRepo = null;
+  _payramChargeRepo = null;
   _dividendRepo = null;
   _autoTopupSettingsRepo = null;
   _autoTopupEventLogRepo = null;

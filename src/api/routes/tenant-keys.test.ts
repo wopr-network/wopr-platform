@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
+import { TenantKeyRepository } from "../../security/tenant-keys/schema.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 const TEST_TENANT = "ACME";
@@ -14,7 +14,7 @@ vi.stubEnv("PLATFORM_SECRET", "test-platform-secret-32bytes!!ok");
 
 const authHeader = { Authorization: `Bearer ${TENANT_TOKEN}` };
 
-const { tenantKeyRoutes, setStore } = await import("./tenant-keys.js");
+const { tenantKeyRoutes, setRepo } = await import("./tenant-keys.js");
 
 const app = new Hono();
 app.route("/api/tenant-keys", tenantKeyRoutes);
@@ -22,13 +22,13 @@ app.route("/api/tenant-keys", tenantKeyRoutes);
 describe("tenant-keys routes", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let store: TenantKeyStore;
+  let store: TenantKeyRepository;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     await beginTestTransaction(pool);
-    store = new TenantKeyStore(db);
-    setStore(store);
+    store = new TenantKeyRepository(db);
+    setRepo(store);
   });
 
   afterAll(async () => {

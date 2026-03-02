@@ -5,7 +5,7 @@ import { providerSchema } from "../../security/types.js";
 import { router, tenantProcedure } from "../init.js";
 
 export interface OrgKeysRouterDeps {
-  getTenantKeyStore: () => {
+  getTenantKeyRepository: () => {
     listForTenant: (tenantId: string) => Promise<unknown[]>;
     get: (
       tenantId: string,
@@ -70,16 +70,16 @@ export const orgKeysRouter = router({
   /** List org-level API keys (metadata only). Any org member can call this. */
   listOrgKeys: tenantProcedure.query(async ({ ctx }) => {
     const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
-    const { getTenantKeyStore } = deps();
-    const keys = await getTenantKeyStore().listForTenant(orgTenantId);
+    const { getTenantKeyRepository } = deps();
+    const keys = await getTenantKeyRepository().listForTenant(orgTenantId);
     return { orgTenantId, keys };
   }),
 
   /** Check if org has a key for a provider. Any org member can call this. */
   getOrgKey: tenantProcedure.input(z.object({ provider: providerSchema })).query(async ({ input, ctx }) => {
     const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
-    const { getTenantKeyStore } = deps();
-    const record = await getTenantKeyStore().get(orgTenantId, input.provider);
+    const { getTenantKeyRepository } = deps();
+    const record = await getTenantKeyRepository().get(orgTenantId, input.provider);
     if (!record) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No org key stored for this provider" });
     }
@@ -106,7 +106,7 @@ export const orgKeysRouter = router({
       const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
       await requireOrgAdmin(ctx.user.id, orgTenantId);
 
-      const { getTenantKeyStore, encrypt, deriveTenantKey, platformSecret } = deps();
+      const { getTenantKeyRepository, encrypt, deriveTenantKey, platformSecret } = deps();
       if (!platformSecret) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -117,7 +117,7 @@ export const orgKeysRouter = router({
       const tenantKey = deriveTenantKey(orgTenantId, platformSecret);
       const encryptedPayload = encrypt(input.apiKey, tenantKey);
       const maskedLabel = input.label ?? `...${input.apiKey.slice(-4)}`;
-      const id = await getTenantKeyStore().upsert(orgTenantId, input.provider, encryptedPayload, maskedLabel);
+      const id = await getTenantKeyRepository().upsert(orgTenantId, input.provider, encryptedPayload, maskedLabel);
 
       return { ok: true as const, id, provider: input.provider };
     }),
@@ -127,8 +127,8 @@ export const orgKeysRouter = router({
     const orgTenantId = await resolveOrgTenantId(ctx.user.id, ctx.tenantId);
     await requireOrgAdmin(ctx.user.id, orgTenantId);
 
-    const { getTenantKeyStore } = deps();
-    const deleted = await getTenantKeyStore().delete(orgTenantId, input.provider);
+    const { getTenantKeyRepository } = deps();
+    const deleted = await getTenantKeyRepository().delete(orgTenantId, input.provider);
     if (!deleted) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No org key stored for this provider" });
     }

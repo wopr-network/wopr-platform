@@ -4,7 +4,7 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { encrypt } from "../../security/encryption.js";
-import type { ITenantKeyStore } from "../../security/tenant-keys/schema.js";
+import type { ITenantKeyRepository } from "../../security/tenant-keys/schema.js";
 import { providerSchema } from "../../security/types.js";
 
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;
@@ -40,16 +40,16 @@ if (tokenMetadataMap.size === 0) {
 }
 tenantKeyRoutes.use("/*", scopedBearerAuthWithTenant(tokenMetadataMap, "write"));
 
-let store: ITenantKeyStore | null = null;
+let repo: ITenantKeyRepository | null = null;
 
-function getStore(): ITenantKeyStore {
-  if (!store) throw new Error("TenantKeyStore not initialized — call setStore() first");
-  return store;
+function getRepo(): ITenantKeyRepository {
+  if (!repo) throw new Error("TenantKeyRepository not initialized — call setRepo() first");
+  return repo;
 }
 
-/** Inject a TenantKeyStore for testing or production wiring. */
-export function setStore(s: ITenantKeyStore): void {
-  store = s;
+/** Inject a TenantKeyRepository for testing or production wiring. */
+export function setRepo(s: ITenantKeyRepository): void {
+  repo = s;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ tenantKeyRoutes.get("/", async (c) => {
     return c.json({ error: "Tenant context required" }, 400);
   }
 
-  const keys = await getStore().listForTenant(tenantId);
+  const keys = await getRepo().listForTenant(tenantId);
   return c.json({ keys });
 });
 
@@ -90,7 +90,7 @@ tenantKeyRoutes.get("/:provider", async (c) => {
     return c.json({ error: "Invalid provider", validProviders: providerSchema.options }, 400);
   }
 
-  const record = await getStore().get(tenantId, parsed.data);
+  const record = await getRepo().get(tenantId, parsed.data);
   if (!record) {
     return c.json({ error: "No key stored for this provider" }, 404);
   }
@@ -151,7 +151,7 @@ tenantKeyRoutes.put("/:provider", async (c) => {
   const tenantKey = deriveTenantKey(tenantId, PLATFORM_SECRET);
   const encryptedPayload = encrypt(parsed.data.apiKey, tenantKey);
 
-  const id = await getStore().upsert(tenantId, providerParsed.data, encryptedPayload, parsed.data.label ?? "");
+  const id = await getRepo().upsert(tenantId, providerParsed.data, encryptedPayload, parsed.data.label ?? "");
 
   return c.json({ ok: true, id, provider: providerParsed.data });
 });
@@ -173,7 +173,7 @@ tenantKeyRoutes.delete("/:provider", async (c) => {
     return c.json({ error: "Invalid provider", validProviders: providerSchema.options }, 400);
   }
 
-  const deleted = await getStore().delete(tenantId, parsed.data);
+  const deleted = await getRepo().delete(tenantId, parsed.data);
   if (!deleted) {
     return c.json({ error: "No key stored for this provider" }, 404);
   }

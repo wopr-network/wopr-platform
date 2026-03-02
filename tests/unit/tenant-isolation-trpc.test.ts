@@ -95,14 +95,14 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
     };
     const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
     const meterAggregator = new MeterAggregator(db);
-    const { TenantCustomerStore } = await import("../../src/monetization/stripe/tenant-store.js");
-    const tenantStore = new TenantCustomerStore(db);
+    const { TenantCustomerRepository } = await import("../../src/monetization/stripe/tenant-store.js");
+    const tenantRepo = new TenantCustomerRepository(db);
     setBillingRouterDeps({
       stripe: {
         checkout: { sessions: { create: () => Promise.resolve({ id: "cs_test", url: "https://checkout.stripe.com/test" }) } },
         billingPortal: { sessions: { create: () => Promise.resolve({ url: "https://billing.stripe.com/test" }) } },
       } as never,
-      tenantStore,
+      tenantRepo,
       creditLedger,
       meterAggregator,
       priceMap: undefined,

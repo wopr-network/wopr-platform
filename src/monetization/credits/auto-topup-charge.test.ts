@@ -6,7 +6,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
-import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
+import type { ITenantCustomerRepository } from "../stripe/tenant-store.js";
 import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import { DrizzleAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import { CreditLedger } from "./credit-ledger.js";
@@ -66,10 +66,10 @@ describe("chargeAutoTopup", () => {
 
   it("charges Stripe and credits ledger on success", async () => {
     const stripe = mockStripe();
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -86,10 +86,10 @@ describe("chargeAutoTopup", () => {
 
   it("writes success event to credit_auto_topup log", async () => {
     const stripe = mockStripe();
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -107,10 +107,10 @@ describe("chargeAutoTopup", () => {
 
   it("returns failure result and writes failure event on Stripe error", async () => {
     const stripe = mockStripe({ shouldFail: true, failMessage: "card_declined" });
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -131,10 +131,10 @@ describe("chargeAutoTopup", () => {
 
   it("returns failure when tenant has no Stripe customer", async () => {
     const stripe = mockStripe();
-    const tenantStore = { getByTenant: vi.fn().mockResolvedValue(null) };
+    const tenantRepo = { getByTenant: vi.fn().mockResolvedValue(null) };
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -148,10 +148,10 @@ describe("chargeAutoTopup", () => {
   it("returns failure when tenant has no payment methods", async () => {
     const stripe = mockStripe();
     stripe.customers.listPaymentMethods = vi.fn().mockResolvedValue({ data: [] });
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -165,10 +165,10 @@ describe("chargeAutoTopup", () => {
   it("is idempotent -- referenceId already credited means hasReferenceId returns true", async () => {
     const piId = `pi_${crypto.randomUUID()}`;
     const stripe = mockStripe({ paymentIntentId: piId });
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -191,10 +191,10 @@ describe("chargeAutoTopup", () => {
     });
     const stripe = mockStripe();
     stripe.paymentIntents.create = vi.fn().mockRejectedValue(cardError);
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -213,10 +213,10 @@ describe("chargeAutoTopup", () => {
     });
     const stripe = mockStripe();
     stripe.paymentIntents.create = vi.fn().mockRejectedValue(apiError);
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -230,10 +230,10 @@ describe("chargeAutoTopup", () => {
   it("re-throws non-Stripe errors from paymentIntents.create", async () => {
     const stripe = mockStripe();
     stripe.paymentIntents.create = vi.fn().mockRejectedValue(new TypeError("Cannot read properties of undefined"));
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -249,10 +249,10 @@ describe("chargeAutoTopup", () => {
     });
     const stripe = mockStripe();
     stripe.customers.listPaymentMethods = vi.fn().mockRejectedValue(cardError);
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };
@@ -266,10 +266,10 @@ describe("chargeAutoTopup", () => {
   it("propagates error with PaymentIntent ID when credit grant fails after Stripe charge", async () => {
     const piId = "pi_ledger_fail_test";
     const stripe = mockStripe({ paymentIntentId: piId });
-    const tenantStore = mockTenantStore();
+    const tenantRepo = mockTenantStore();
     const deps: AutoTopupChargeDeps = {
       stripe: stripe as unknown as Stripe,
-      tenantStore: tenantStore as unknown as ITenantCustomerStore,
+      tenantRepo: tenantRepo as unknown as ITenantCustomerRepository,
       creditLedger: ledger,
       eventLogRepo: new DrizzleAutoTopupEventLogRepository(db),
     };

@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import type { TenantCustomerStore } from "./tenant-store.js";
+import type { TenantCustomerRepository } from "./tenant-store.js";
 import type { PortalSessionOpts } from "./types.js";
 
 /**
@@ -10,10 +10,10 @@ import type { PortalSessionOpts } from "./types.js";
  */
 export async function createPortalSession(
   stripe: Stripe,
-  tenantStore: TenantCustomerStore,
+  tenantRepo: TenantCustomerRepository,
   opts: PortalSessionOpts,
 ): Promise<Stripe.BillingPortal.Session> {
-  const mapping = await tenantStore.getByTenant(opts.tenant);
+  const mapping = await tenantRepo.getByTenant(opts.tenant);
   if (!mapping) {
     throw new Error(`No Stripe customer found for tenant: ${opts.tenant}`);
   }

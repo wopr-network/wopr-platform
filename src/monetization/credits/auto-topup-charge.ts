@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { logger } from "../../config/logger.js";
 import type { Credit } from "../credit.js";
-import type { ITenantCustomerStore } from "../stripe/tenant-store.js";
+import type { ITenantCustomerRepository } from "../stripe/tenant-store.js";
 import type { IAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
 import type { ICreditLedger } from "./credit-ledger.js";
 
@@ -10,7 +10,7 @@ export const MAX_CONSECUTIVE_FAILURES = 3;
 
 export interface AutoTopupChargeDeps {
   stripe: Stripe;
-  tenantStore: ITenantCustomerStore;
+  tenantRepo: ITenantCustomerRepository;
   creditLedger: ICreditLedger;
   eventLogRepo: IAutoTopupEventLogRepository;
 }
@@ -38,7 +38,7 @@ export async function chargeAutoTopup(
   const amountCents = amount.toCentsFloor();
 
   // 1. Look up Stripe customer
-  const mapping = await deps.tenantStore.getByTenant(tenantId);
+  const mapping = await deps.tenantRepo.getByTenant(tenantId);
   if (!mapping) {
     const error = `No Stripe customer for tenant ${tenantId}`;
     await deps.eventLogRepo.writeEvent({ tenantId, amountCents, status: "failed", failureReason: error });

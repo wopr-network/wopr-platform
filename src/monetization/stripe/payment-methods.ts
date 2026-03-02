@@ -1,5 +1,5 @@
 import type Stripe from "stripe";
-import type { ITenantCustomerStore, TenantCustomerStore } from "./tenant-store.js";
+import type { ITenantCustomerRepository, TenantCustomerRepository } from "./tenant-store.js";
 
 export class PaymentMethodOwnershipError extends Error {
   readonly code = "PAYMENT_METHOD_NOT_OWNED" as const;
@@ -22,10 +22,10 @@ export interface DetachPaymentMethodOpts {
  */
 export async function detachPaymentMethod(
   stripe: Stripe,
-  tenantStore: TenantCustomerStore,
+  tenantRepo: TenantCustomerRepository,
   opts: DetachPaymentMethodOpts,
 ): Promise<void> {
-  const mapping = await tenantStore.getByTenant(opts.tenant);
+  const mapping = await tenantRepo.getByTenant(opts.tenant);
   if (!mapping) {
     throw new Error(`No Stripe customer found for tenant: ${opts.tenant}`);
   }
@@ -48,10 +48,10 @@ export async function detachPaymentMethod(
  */
 export async function detachAllPaymentMethods(
   stripe: Stripe,
-  tenantStore: ITenantCustomerStore,
+  tenantRepo: ITenantCustomerRepository,
   tenantId: string,
 ): Promise<number> {
-  const mapping = await tenantStore.getByTenant(tenantId);
+  const mapping = await tenantRepo.getByTenant(tenantId);
   if (!mapping) return 0;
 
   let detached = 0;

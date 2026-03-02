@@ -22,12 +22,12 @@ import { createCreditCheckoutSession } from "./checkout.js";
 import type { CreditPriceMap } from "./credit-prices.js";
 import { createPortalSession } from "./portal.js";
 import { createSetupIntent } from "./setup-intent.js";
-import type { ITenantCustomerStore } from "./tenant-store.js";
+import type { ITenantCustomerRepository } from "./tenant-store.js";
 import { handleWebhookEvent } from "./webhook.js";
 
 export interface StripePaymentProcessorDeps {
   stripe: Stripe;
-  tenantStore: ITenantCustomerStore;
+  tenantRepo: ITenantCustomerRepository;
   webhookSecret: string;
   priceMap?: CreditPriceMap;
   creditLedger: ICreditLedger;
@@ -40,7 +40,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   readonly name = "stripe";
 
   private readonly stripe: Stripe;
-  private readonly tenantStore: ITenantCustomerStore;
+  private readonly tenantRepo: ITenantCustomerRepository;
   private readonly webhookSecret: string;
   private readonly priceMap: CreditPriceMap;
   private readonly creditLedger: ICreditLedger;
@@ -50,7 +50,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
 
   constructor(deps: StripePaymentProcessorDeps) {
     this.stripe = deps.stripe;
-    this.tenantStore = deps.tenantStore;
+    this.tenantRepo = deps.tenantRepo;
     this.webhookSecret = deps.webhookSecret;
     this.priceMap = deps.priceMap ?? new Map();
     this.creditLedger = deps.creditLedger;
@@ -82,7 +82,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
 
     const session = await createCreditCheckoutSession(
       this.stripe,
-      this.tenantStore as Parameters<typeof createCreditCheckoutSession>[1],
+      this.tenantRepo as Parameters<typeof createCreditCheckoutSession>[1],
       {
         tenant: opts.tenant,
         priceId,
@@ -102,7 +102,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
 
     const result = await handleWebhookEvent(
       {
-        tenantStore: this.tenantStore as Parameters<typeof handleWebhookEvent>[0]["tenantStore"],
+        tenantRepo: this.tenantRepo as Parameters<typeof handleWebhookEvent>[0]["tenantRepo"],
         creditLedger: this.creditLedger as Parameters<typeof handleWebhookEvent>[0]["creditLedger"],
         priceMap: this.priceMap.size > 0 ? this.priceMap : undefined,
         botBilling: this.botBilling,
@@ -128,7 +128,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   async createPortalSession(opts: PortalOpts): Promise<{ url: string }> {
     const session = await createPortalSession(
       this.stripe,
-      this.tenantStore as Parameters<typeof createPortalSession>[1],
+      this.tenantRepo as Parameters<typeof createPortalSession>[1],
       {
         tenant: opts.tenant,
         returnUrl: opts.returnUrl,
@@ -139,7 +139,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async setupPaymentMethod(tenant: string): Promise<SetupResult> {
-    const intent = await createSetupIntent(this.stripe, this.tenantStore as Parameters<typeof createSetupIntent>[1], {
+    const intent = await createSetupIntent(this.stripe, this.tenantRepo as Parameters<typeof createSetupIntent>[1], {
       tenant,
     });
 
@@ -149,7 +149,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async listPaymentMethods(tenant: string): Promise<SavedPaymentMethod[]> {
-    const mapping = await this.tenantStore.getByTenant(tenant);
+    const mapping = await this.tenantRepo.getByTenant(tenant);
     if (!mapping) {
       return [];
     }
@@ -164,7 +164,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async detachPaymentMethod(tenant: string, paymentMethodId: string): Promise<void> {
-    const mapping = await this.tenantStore.getByTenant(tenant);
+    const mapping = await this.tenantRepo.getByTenant(tenant);
     if (!mapping) {
       throw new Error(`No Stripe customer found for tenant: ${tenant}`);
     }
@@ -178,7 +178,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async getCustomerEmail(tenantId: string): Promise<string> {
-    const mapping = await this.tenantStore.getByTenant(tenantId);
+    const mapping = await this.tenantRepo.getByTenant(tenantId);
     if (!mapping) {
       return "";
     }
@@ -191,7 +191,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async updateCustomerEmail(tenantId: string, email: string): Promise<void> {
-    const mapping = await this.tenantStore.getByTenant(tenantId);
+    const mapping = await this.tenantRepo.getByTenant(tenantId);
     if (!mapping) {
       throw new Error(`No Stripe customer found for tenant: ${tenantId}`);
     }
@@ -200,7 +200,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
   }
 
   async listInvoices(tenantId: string): Promise<Invoice[]> {
-    const mapping = await this.tenantStore.getByTenant(tenantId);
+    const mapping = await this.tenantRepo.getByTenant(tenantId);
     if (!mapping) {
       return [];
     }
@@ -229,7 +229,7 @@ export class StripePaymentProcessor implements IPaymentProcessor {
     const result = await chargeAutoTopup(
       {
         stripe: this.stripe,
-        tenantStore: this.tenantStore,
+        tenantRepo: this.tenantRepo,
         creditLedger: this.creditLedger,
         eventLogRepo: this.autoTopupEventLog,
       },

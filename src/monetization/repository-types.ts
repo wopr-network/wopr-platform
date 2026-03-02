@@ -14,8 +14,8 @@ export type { ICreditLedger } from "./credits/credit-ledger.js";
 export type { IDividendRepository } from "./credits/dividend-repository.js";
 export type { IMeterAggregator } from "./metering/aggregator.js";
 export type { IMeterEmitter } from "./metering/emitter.js";
-export type { IPayRamChargeStore, PayRamChargeRecord } from "./payram/charge-store.js";
-export type { ITenantCustomerStore } from "./stripe/tenant-store.js";
+export type { IPayRamChargeRepository, PayRamChargeRecord } from "./payram/charge-store.js";
+export type { ITenantCustomerRepository } from "./stripe/tenant-store.js";
 
 import type { Credit } from "./credit.js";
 

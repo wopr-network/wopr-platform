@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createSetupIntent } from "./setup-intent.js";
-import { TenantCustomerStore } from "./tenant-store.js";
+import { TenantCustomerRepository } from "./tenant-store.js";
 
 function mockStripe(overrides: { setupIntentCreate?: ReturnType<typeof vi.fn> } = {}) {
   return {
@@ -22,7 +22,7 @@ function mockStripe(overrides: { setupIntentCreate?: ReturnType<typeof vi.fn> } 
 describe("createSetupIntent", () => {
   let pool: PGlite;
   let db: DrizzleDb;
-  let store: TenantCustomerStore;
+  let store: TenantCustomerRepository;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -36,7 +36,7 @@ describe("createSetupIntent", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new TenantCustomerStore(db);
+    store = new TenantCustomerRepository(db);
   });
 
   it("calls stripe.setupIntents.create with correct customer ID", async () => {

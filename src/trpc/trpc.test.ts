@@ -10,7 +10,7 @@ import { Credit } from "../monetization/credit.js";
 import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
-import type { DrizzleTenantCustomerStore } from "../monetization/index.js";
+import type { DrizzleTenantCustomerRepository } from "../monetization/index.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "./index.js";
@@ -301,20 +301,20 @@ describe("tRPC appRouter", () => {
   // -------------------------------------------------------------------------
 
   describe("billing", () => {
-    let tenantStore: DrizzleTenantCustomerStore;
+    let tenantRepo: DrizzleTenantCustomerRepository;
 
     beforeEach(async () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/index.js");
-      tenantStore = new TenantCustomerStore(db);
+      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
       const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(db);
 
       setBillingRouterDeps({
         processor: createMockProcessor(),
-        tenantStore,
+        tenantRepo,
         creditLedger,
         meterAggregator,
         priceMap: undefined,
@@ -532,7 +532,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("billingInfo returns payment methods from processor when mapping exists", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
+      tenantRepo.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.billingInfo();
       expect(result).toHaveProperty("email");
@@ -548,7 +548,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("updateBillingEmail calls processor when mapping exists", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
+      tenantRepo.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.updateBillingEmail({ email: "new@example.com" });
       expect(result.email).toBe("new@example.com");
@@ -562,7 +562,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("removePaymentMethod returns removed true when PM belongs to tenant", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
+      tenantRepo.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       const result = await caller.billing.removePaymentMethod({ id: "pm_test" });
       expect(result.removed).toBe(true);
@@ -575,7 +575,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("changePlan persists tier change", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
+      tenantRepo.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       await caller.billing.changePlan({ tier: "pro" });
       const result = await caller.billing.currentPlan();
@@ -589,7 +589,7 @@ describe("tRPC appRouter", () => {
     });
 
     it("setInferenceMode persists mode change", async () => {
-      tenantStore.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
+      tenantRepo.upsert({ tenant: "test-tenant", processorCustomerId: "cus_test" });
       const caller = createCaller(authedContext());
       await caller.billing.setInferenceMode({ mode: "hosted" });
       const result = await caller.billing.inferenceMode();
@@ -654,7 +654,7 @@ describe("tRPC appRouter", () => {
               .fn()
               .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
           }),
-          tenantStore,
+          tenantRepo,
           creditLedger,
           meterAggregator,
           priceMap: undefined,
@@ -685,7 +685,7 @@ describe("tRPC appRouter", () => {
     describe("billing.updateAutoTopupSettings", () => {
       it("rejects enabling usage mode without payment method", async () => {
         const caller = createCaller(authedContext());
-        // tenantStore has no entry for test-tenant → no processor customer
+        // tenantRepo has no entry for test-tenant → no processor customer
         await expect(caller.billing.updateAutoTopupSettings({ usage_enabled: true })).rejects.toThrow(
           /payment method/i,
         );
@@ -716,7 +716,7 @@ describe("tRPC appRouter", () => {
               .fn()
               .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
           }),
-          tenantStore,
+          tenantRepo,
           creditLedger,
           meterAggregator,
           priceMap: undefined,
@@ -766,7 +766,7 @@ describe("tRPC appRouter", () => {
               .fn()
               .mockResolvedValue([{ id: "pm_test", label: "Visa ending 4242", isDefault: true }]),
           }),
-          tenantStore,
+          tenantRepo,
           creditLedger,
           meterAggregator,
           priceMap: undefined,
@@ -815,7 +815,7 @@ describe("tRPC appRouter", () => {
           processor: createMockProcessor({
             listPaymentMethods: async () => [{ id: "pm_1", label: "Visa ending 4242", isDefault: true }],
           }),
-          tenantStore,
+          tenantRepo,
           creditLedger,
           meterAggregator,
           priceMap: undefined,
@@ -880,13 +880,13 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/index.js");
-      const tenantStore = new TenantCustomerStore(db);
+      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo1 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         processor: createMockProcessor(),
-        tenantStore,
+        tenantRepo,
         creditLedger,
         meterAggregator,
         priceMap: loadCreditPriceMap(),
@@ -950,13 +950,13 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/index.js");
-      const tenantStore = new TenantCustomerStore(db);
+      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo2 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         processor: createMockProcessor(),
-        tenantStore,
+        tenantRepo,
         creditLedger,
         meterAggregator,
         priceMap: loadCreditPriceMap(),
@@ -991,13 +991,13 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
       const meterAggregator = new MeterAggregator(db);
-      const { TenantCustomerStore } = await import("../monetization/index.js");
-      const tenantStore = new TenantCustomerStore(db);
+      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo3 = new DrizzleSpendingLimitsRepository(db);
 
       setBillingRouterDeps({
         processor: createMockProcessor(),
-        tenantStore,
+        tenantRepo,
         creditLedger,
         meterAggregator,
         priceMap: undefined,

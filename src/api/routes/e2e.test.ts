@@ -8,7 +8,7 @@ import { Credit } from "../../monetization/credit.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
-import { TenantCustomerStore } from "../../monetization/stripe/tenant-store.js";
+import { TenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
 import { noOpReplayGuard } from "../../monetization/webhook-seen-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
@@ -493,7 +493,7 @@ describe("E2E: Bot management flow", () => {
 describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
 
-  let tenantStore: TenantCustomerStore;
+  let tenantRepo: TenantCustomerRepository;
   let creditLedger: CreditLedger;
 
   const mockCheckoutCreate = vi.fn();
@@ -526,7 +526,7 @@ describe("E2E: Billing flow (credit model)", () => {
     botCounter = 0;
 
     await rollbackTestTransaction(_pool);
-    tenantStore = new TenantCustomerStore(_db);
+    tenantRepo = new TenantCustomerRepository(_db);
     creditLedger = new CreditLedger(_db);
 
     // Inject credit ledger for quota routes
@@ -628,7 +628,7 @@ describe("E2E: Billing flow (credit model)", () => {
     } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
     const webhookResult = await handleWebhookEvent(
-      { tenantStore, creditLedger, replayGuard: noOpReplayGuard },
+      { tenantRepo, creditLedger, replayGuard: noOpReplayGuard },
       checkoutEvent,
     );
     expect(webhookResult.handled).toBe(true);
@@ -636,7 +636,7 @@ describe("E2E: Billing flow (credit model)", () => {
     expect(webhookResult.creditedCents).toBe(2500);
 
     // Step 5: Verify the tenant is now mapped to a Stripe customer
-    const mapping = await tenantStore.getByTenant(tenantId);
+    const mapping = await tenantRepo.getByTenant(tenantId);
     expect(mapping).not.toBeNull();
     expect(mapping?.processor_customer_id).toBe("cus_e2e_123");
 
@@ -684,7 +684,7 @@ describe("E2E: Billing flow (credit model)", () => {
     } as unknown as Parameters<typeof handleWebhookEvent>[1];
 
     const secondResult = await handleWebhookEvent(
-      { tenantStore, creditLedger, replayGuard: noOpReplayGuard },
+      { tenantRepo, creditLedger, replayGuard: noOpReplayGuard },
       secondCheckoutEvent,
     );
     expect(secondResult.handled).toBe(true);

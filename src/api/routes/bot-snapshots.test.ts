@@ -74,7 +74,7 @@ vi.mock("../../backup/on-demand-snapshot-service.js", () => {
 // Import AFTER mocks
 const { botSnapshotRoutes, setService } = await import("./bot-snapshots.js");
 
-// Mock TenantCustomerStore: tenant-a is "free" tier
+// Mock TenantCustomerRepository: tenant-a is "free" tier
 const mockTenantStore = {
   getByTenant: vi.fn((tenant: string) => {
     if (tenant === "tenant-a") return { tier: "free" };
