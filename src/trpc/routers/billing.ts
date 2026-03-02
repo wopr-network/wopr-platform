@@ -852,7 +852,7 @@ export const billingRouter = router({
   }),
 
   /** Record a referral attribution (called during signup if ref param present). */
-  affiliateRecordReferral: protectedProcedure
+  affiliateRecordReferral: tenantProcedure
     .input(
       z.object({
         code: z
@@ -864,7 +864,7 @@ export const billingRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const callerTenant = ctx.tenantId ?? ctx.user.id;
+      const callerTenant = ctx.tenantId;
       if (input.referredTenantId !== callerTenant) {
         throw new TRPCError({
           code: "FORBIDDEN",

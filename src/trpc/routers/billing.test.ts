@@ -562,6 +562,13 @@ describe("billingRouter", () => {
         "Authentication required",
       );
     });
+
+    it("rejects cross-tenant access (IDOR via missing tenantId)", async () => {
+      injectDeps();
+      // Caller has no tenantId — tenantProcedure should reject
+      const caller = makeCaller(makeCtx("user-1"));
+      await expect(caller.affiliateRecordReferral({ code: "abc12", referredTenantId: "user-1" })).rejects.toThrow();
+    });
   });
 
   // -------------------------------------------------------------------------
