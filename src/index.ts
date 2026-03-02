@@ -1027,7 +1027,7 @@ if (process.env.NODE_ENV !== "test") {
     const onboardingCfg = loadOnboardingConfig();
     setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo(), getGraduationService());
     // Wire setup route deps (WOP-1034, WOP-1035, WOP-1055)
-    const { pluginRegistry } = await import("./api/routes/marketplace-registry.js");
+    const { FIRST_PARTY_PLUGINS: pluginRegistry } = await import("./marketplace/first-party-plugins.js");
     const onboardingSessionRepoForSetup = getOnboardingSessionRepo();
     const setupSessionRepoForCheck = getSetupSessionRepo();
     const tenantKeyLookup = new DrizzleTenantKeyLookup(getDb());
