@@ -6,6 +6,7 @@ export const marketplacePlugins = pgTable(
     pluginId: text("plugin_id").primaryKey(),
     npmPackage: text("npm_package").notNull(),
     version: text("version").notNull(),
+    previousVersion: text("previous_version"),
     enabled: boolean("enabled").notNull().default(false),
     featured: boolean("featured").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(999),

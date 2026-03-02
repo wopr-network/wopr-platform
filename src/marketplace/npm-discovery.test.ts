@@ -16,6 +16,7 @@ function makeMockRepo(existing: Map<string, MarketplacePlugin> = new Map()) {
         pluginId: p.pluginId,
         npmPackage: p.npmPackage,
         version: p.version,
+        previousVersion: null,
         enabled: false,
         featured: false,
         sortOrder: 0,
@@ -31,6 +32,7 @@ function makeMockRepo(existing: Map<string, MarketplacePlugin> = new Map()) {
     update: vi.fn(),
     delete: vi.fn(),
     setInstallResult: vi.fn(),
+    setVersion: vi.fn(),
   };
   return { repo, inserted };
 }
@@ -88,6 +90,7 @@ describe("discoverNpmPlugins", () => {
           pluginId: "existing-plugin",
           npmPackage: "existing-plugin",
           version: "1.0.0",
+          previousVersion: null,
           enabled: true,
           featured: false,
           sortOrder: 0,
@@ -177,6 +180,7 @@ describe("discoverNpmPlugins", () => {
       pluginId,
       npmPackage: pluginId,
       version: "1.0.0",
+      previousVersion: null,
       enabled: true,
       featured: false,
       sortOrder: 0,

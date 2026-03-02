@@ -38,6 +38,7 @@ import { addonRouter } from "./routers/addons.js";
 import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
 import { fleetRouter } from "./routers/fleet.js";
+import { marketplaceRouter } from "./routers/marketplace.js";
 import { modelSelectionRouter } from "./routers/model-selection.js";
 import { nodesRouter } from "./routers/nodes.js";
 import { orgRouter } from "./routers/org.js";
@@ -55,6 +56,7 @@ export const appRouter = router({
   promotions: promotionsRouter,
   rateOverrides: rateOverridesRouter,
   fleet: fleetRouter,
+  marketplace: marketplaceRouter,
   modelSelection: modelSelectionRouter,
   profile: profileRouter,
   settings: settingsRouter,
@@ -78,6 +80,7 @@ export { setAdminRouterDeps } from "./routers/admin.js";
 // Re-export dep setters for initialization
 export { setBillingRouterDeps } from "./routers/billing.js";
 export { setFleetRouterDeps } from "./routers/fleet.js";
+export { setMarketplaceRouterDeps } from "./routers/marketplace.js";
 export { setModelSelectionRouterDeps } from "./routers/model-selection.js";
 export { setNodesRouterDeps } from "./routers/nodes.js";
 export { setOrgRouterDeps } from "./routers/org.js";
