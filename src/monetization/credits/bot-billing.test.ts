@@ -30,6 +30,7 @@ function createMockDeps(nodeId: string | null = "node-1") {
     }),
     listByNode: vi.fn(),
     listByTenant: vi.fn(),
+    listByTenantPaginated: vi.fn(),
     create: vi.fn(),
     reassign: vi.fn(),
     setBillingState: vi.fn(),

@@ -135,6 +135,7 @@ const mockBotInstanceRepo: IBotInstanceRepository = {
   getById: vi.fn().mockResolvedValue(mockBotInstance),
   listByNode: vi.fn().mockResolvedValue([]),
   listByTenant: vi.fn().mockResolvedValue([]),
+  listByTenantPaginated: vi.fn().mockResolvedValue([]),
   upsert: vi.fn(),
   updateBillingState: vi.fn(),
   delete: vi.fn(),
@@ -182,12 +183,13 @@ beforeEach(() => {
 
 describe("fleet.listInstances", () => {
   it("returns bots for tenant with pagination metadata", async () => {
+    (mockBotInstanceRepo.listByTenantPaginated as ReturnType<typeof vi.fn>).mockResolvedValueOnce([mockBotInstance]);
+    fleetMock.status.mockResolvedValue(mockStatus);
     const caller = createCaller(authedContext());
     const result = await caller.fleet.listInstances();
     expect(result.bots).toEqual([mockStatus]);
     expect(result.hasNextPage).toBe(false);
     expect(result.nextCursor).toBeUndefined();
-    expect(fleetMock.listByTenant).toHaveBeenCalledWith("test-tenant");
   });
 
   it("rejects unauthenticated", async () => {
@@ -201,30 +203,39 @@ describe("fleet.listInstances", () => {
   });
 
   it("respects limit and returns hasNextPage=true when more results exist", async () => {
-    const bot1 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000001" };
-    const bot2 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000002" };
-    const bot3 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000003" };
-    fleetMock.listByTenant.mockResolvedValue([bot1, bot2, bot3]);
+    const id1 = "00000000-0000-4000-8000-000000000001";
+    const id2 = "00000000-0000-4000-8000-000000000002";
+    const id3 = "00000000-0000-4000-8000-000000000003";
+    // listByTenantPaginated is called with limit+1=3, returns 3 rows → hasNextPage=true
+    (mockBotInstanceRepo.listByTenantPaginated as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { ...mockBotInstance, id: id1 },
+      { ...mockBotInstance, id: id2 },
+      { ...mockBotInstance, id: id3 },
+    ]);
+    fleetMock.status.mockImplementation((id: string) => Promise.resolve({ ...mockStatus, id }));
 
     const caller = createCaller(authedContext());
     const result = await caller.fleet.listInstances({ limit: 2 });
     expect(result.bots).toHaveLength(2);
-    expect(result.bots[0].id).toBe(bot1.id);
-    expect(result.bots[1].id).toBe(bot2.id);
+    expect(result.bots[0].id).toBe(id1);
+    expect(result.bots[1].id).toBe(id2);
     expect(result.hasNextPage).toBe(true);
-    expect(result.nextCursor).toBe(bot2.id);
+    expect(result.nextCursor).toBe(id2);
   });
 
   it("uses cursor to fetch next page", async () => {
-    const bot1 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000001" };
-    const bot2 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000002" };
-    const bot3 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000003" };
-    fleetMock.listByTenant.mockResolvedValue([bot1, bot2, bot3]);
+    const id3 = "00000000-0000-4000-8000-000000000003";
+    // With cursor, repo returns only the rows after cursor; only 1 row → hasNextPage=false
+    (mockBotInstanceRepo.listByTenantPaginated as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { ...mockBotInstance, id: id3 },
+    ]);
+    fleetMock.status.mockImplementation((id: string) => Promise.resolve({ ...mockStatus, id }));
 
+    const id2 = "00000000-0000-4000-8000-000000000002";
     const caller = createCaller(authedContext());
-    const result = await caller.fleet.listInstances({ limit: 2, cursor: bot2.id });
+    const result = await caller.fleet.listInstances({ limit: 2, cursor: id2 });
     expect(result.bots).toHaveLength(1);
-    expect(result.bots[0].id).toBe(bot3.id);
+    expect(result.bots[0].id).toBe(id3);
     expect(result.hasNextPage).toBe(false);
     expect(result.nextCursor).toBeUndefined();
   });

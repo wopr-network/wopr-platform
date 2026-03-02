@@ -85,6 +85,7 @@ function mockBotInstanceRepo(hasBots: boolean): IBotInstanceRepository {
           ]
         : [],
     ),
+    listByTenantPaginated: vi.fn(async () => []),
     create: vi.fn(),
     reassign: vi.fn(),
     setBillingState: vi.fn(),

@@ -80,29 +80,40 @@ export const fleetRouter = router({
   /** List all bot instances with live status. Tenant-scoped: only returns bots for ctx.tenantId.
    *  Supports cursor-based pagination: pass `cursor` (bot id) and `limit` (default 50, max 250).
    *  Returns `hasNextPage` and `nextCursor` for fetching subsequent pages. */
-  listInstances: tenantProcedure.input(listInstancesInputSchema.optional()).query(async ({ input, ctx }) => {
-    const fleet = deps().getFleetManager();
-    const allBots = await fleet.listByTenant(ctx.tenantId);
+  listInstances: tenantProcedure
+    .input(listInstancesInputSchema.default({ limit: 50 }))
+    .query(async ({ input, ctx }) => {
+      const { getFleetManager, getBotInstanceRepo } = deps();
+      const fleet = getFleetManager();
+      const { limit, cursor } = input;
 
-    const limit = input?.limit ?? 50;
-    const cursor = input?.cursor;
+      const repo = getBotInstanceRepo?.();
+      if (repo) {
+        // Fetch limit+1 rows to determine if there is a next page
+        const rows = await repo.listByTenantPaginated(ctx.tenantId, limit, cursor);
+        const hasNextPage = rows.length > limit;
+        const page = hasNextPage ? rows.slice(0, limit) : rows;
+        const nextCursor = hasNextPage ? page[page.length - 1]?.id : undefined;
+        // Enrich with live status from fleet manager
+        const bots = (await Promise.all(page.map((r) => fleet.status(r.id).catch(() => null)))).filter(
+          (b): b is NonNullable<typeof b> => b !== null,
+        );
+        return { bots, hasNextPage, nextCursor };
+      }
 
-    // Sort by id for stable ordering
-    allBots.sort((a, b) => a.id.localeCompare(b.id));
-
-    // Find cursor position and slice
-    let startIndex = 0;
-    if (cursor) {
-      const idx = allBots.findIndex((b) => b.id === cursor);
-      if (idx !== -1) startIndex = idx + 1;
-    }
-
-    const page = allBots.slice(startIndex, startIndex + limit);
-    const hasNextPage = startIndex + limit < allBots.length;
-    const nextCursor = hasNextPage ? page[page.length - 1]?.id : undefined;
-
-    return { bots: page, hasNextPage, nextCursor };
-  }),
+      // Fallback: no repo wired (e.g. tests without DB)
+      const allBots = await fleet.listByTenant(ctx.tenantId);
+      allBots.sort((a, b) => a.id.localeCompare(b.id));
+      let startIndex = 0;
+      if (cursor) {
+        const idx = allBots.findIndex((b) => b.id === cursor);
+        if (idx !== -1) startIndex = idx + 1;
+      }
+      const page = allBots.slice(startIndex, startIndex + limit);
+      const hasNextPage = startIndex + limit < allBots.length;
+      const nextCursor = hasNextPage ? page[page.length - 1]?.id : undefined;
+      return { bots: page, hasNextPage, nextCursor };
+    }),
 
   /** Get a single bot instance by ID with live status. */
   getInstance: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {

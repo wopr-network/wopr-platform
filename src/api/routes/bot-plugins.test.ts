@@ -92,6 +92,7 @@ const mockBotInstanceRepo = {
   getById: vi.fn().mockResolvedValue(mockBotInstance),
   listByNode: vi.fn(),
   listByTenant: vi.fn(),
+  listByTenantPaginated: vi.fn(),
   create: vi.fn(),
   reassign: vi.fn(),
   setBillingState: vi.fn(),

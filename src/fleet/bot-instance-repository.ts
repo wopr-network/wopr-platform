@@ -12,6 +12,7 @@ export interface IBotInstanceRepository {
   getById(id: string): Promise<BotInstance | null>;
   listByNode(nodeId: string): Promise<BotInstance[]>;
   listByTenant(tenantId: string): Promise<BotInstance[]>;
+  listByTenantPaginated(tenantId: string, limit: number, cursor?: string): Promise<BotInstance[]>;
   create(data: NewBotInstance): Promise<BotInstance>;
   reassign(id: string, nodeId: string): Promise<BotInstance>;
   setBillingState(id: string, state: BillingState): Promise<BotInstance>;

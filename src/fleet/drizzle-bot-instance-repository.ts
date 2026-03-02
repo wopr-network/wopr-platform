@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, tenantCustomers } from "../db/schema/index.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
@@ -20,6 +20,19 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
 
   async listByTenant(tenantId: string): Promise<BotInstance[]> {
     const rows = await this.db.select().from(botInstances).where(eq(botInstances.tenantId, tenantId));
+    return rows.map(toInstance);
+  }
+
+  async listByTenantPaginated(tenantId: string, limit: number, cursor?: string): Promise<BotInstance[]> {
+    const conditions = cursor
+      ? and(eq(botInstances.tenantId, tenantId), gt(botInstances.id, cursor))
+      : eq(botInstances.tenantId, tenantId);
+    const rows = await this.db
+      .select()
+      .from(botInstances)
+      .where(conditions)
+      .orderBy(botInstances.id)
+      .limit(limit + 1);
     return rows.map(toInstance);
   }
 
