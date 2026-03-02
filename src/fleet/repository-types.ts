@@ -163,6 +163,37 @@ export interface NewRecoveryItem {
   tenant: string;
   sourceNode: string;
   backupKey: string | null;
+  targetNode?: string | null;
+  status?: RecoveryItemStatus;
+  reason?: string | null;
+  retryCount?: number;
+  startedAt?: number | null;
+  completedAt?: number | null;
+}
+
+/** Payload for inserting a node in provisioning state (NodeProvisioner). */
+export interface NewProvisioningNode {
+  id: string;
+  host: string;
+  region: string;
+  size: string;
+  nodeSecretHash: string;
+}
+
+/** Payload for updating a node with real droplet data after provisioning. */
+export interface ProvisionDataUpdate {
+  host: string;
+  dropletId: string;
+  capacityMb: number;
+  monthlyCostCents: number;
+}
+
+/** Bot instance enriched with tier info for recovery priority sorting. */
+export interface TenantWithTier {
+  id: string;
+  tenantId: string;
+  name: string;
+  tier: string | null;
 }
 
 // ---------------------------------------------------------------------------

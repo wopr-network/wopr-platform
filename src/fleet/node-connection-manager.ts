@@ -1,10 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import { logger } from "../config/logger.js";
-import type { DrizzleDb } from "../db/index.js";
-import { botInstances, nodes, recoveryEvents } from "../db/schema/index.js";
+import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import type { INodeRepository } from "./node-repository.js";
+import type { NodeStatus } from "./node-state-machine.js";
 import type { OrphanCleaner } from "./orphan-cleaner.js";
+import type { IRecoveryRepository } from "./recovery-repository.js";
 
 /** Node registration request body */
 export interface NodeRegistration {
@@ -77,15 +78,24 @@ const CRASHED_STATUSES = new Set(["offline", "recovering", "failed"]);
 const HEARTBEAT_ACTIVATABLE = new Set(["active", "unhealthy"]);
 
 export class NodeConnectionManager {
-  private readonly db: DrizzleDb;
+  private readonly nodeRepo: INodeRepository;
+  private readonly botInstanceRepo: IBotInstanceRepository;
+  private readonly recoveryRepo: IRecoveryRepository;
   private readonly connections = new Map<string, WebSocket>();
   private readonly pending = new Map<string, PendingCommand>();
   private orphanCleaner?: OrphanCleaner;
   private readonly cleanupInFlight = new Set<string>();
   private readonly onNodeRegistered?: () => void;
 
-  constructor(db: DrizzleDb, options?: { onNodeRegistered?: () => void }) {
-    this.db = db;
+  constructor(
+    nodeRepo: INodeRepository,
+    botInstanceRepo: IBotInstanceRepository,
+    recoveryRepo: IRecoveryRepository,
+    options?: { onNodeRegistered?: () => void },
+  ) {
+    this.nodeRepo = nodeRepo;
+    this.botInstanceRepo = botInstanceRepo;
+    this.recoveryRepo = recoveryRepo;
     this.onNodeRegistered = options?.onNodeRegistered;
   }
 
@@ -98,57 +108,33 @@ export class NodeConnectionManager {
    * Register a new node (called from HTTP POST /internal/nodes/register)
    */
   async registerNode(registration: NodeRegistration): Promise<void> {
-    const now = Math.floor(Date.now() / 1000);
-
-    // Upsert: if node exists, update; otherwise insert
-    const rows = await this.db.select().from(nodes).where(eq(nodes.id, registration.node_id));
-    const existing = rows[0];
+    const existing = await this.nodeRepo.getById(registration.node_id);
 
     if (existing) {
-      // If the node was previously in a crashed state (offline/recovering/failed), it crashed and its
-      // tenants were migrated elsewhere. Set "returning" so the first heartbeat
-      // triggers OrphanCleaner to stop stale containers before going active.
-      const newStatus = CRASHED_STATUSES.has(existing.status) ? "returning" : "active";
+      const wasInCrashedState = CRASHED_STATUSES.has(existing.status);
 
-      await this.db
-        .update(nodes)
-        .set({
-          host: registration.host,
-          capacityMb: registration.capacity_mb,
-          agentVersion: registration.agent_version,
-          status: newStatus,
-          lastHeartbeatAt: now,
-          updatedAt: now,
-        })
-        .where(eq(nodes.id, registration.node_id));
+      // Re-register via repo (handles metadata update + state transition)
+      await this.nodeRepo.register({
+        nodeId: registration.node_id,
+        host: registration.host,
+        capacityMb: registration.capacity_mb,
+        agentVersion: registration.agent_version,
+      });
 
       // If node was in a dead state, close any in-flight recovery events
-      if (newStatus === "returning") {
-        await this.db
-          .update(recoveryEvents)
-          .set({
-            status: "completed",
-            completedAt: now,
-          })
-          .where(and(eq(recoveryEvents.nodeId, registration.node_id), eq(recoveryEvents.status, "in_progress")));
-
+      if (wasInCrashedState) {
+        await this.recoveryRepo.completeInProgressEvents(registration.node_id);
         logger.info(`Node ${registration.node_id} re-registered as returning (prior: ${existing.status})`);
       } else {
         logger.info(`Node ${registration.node_id} re-registered`);
       }
     } else {
-      await this.db.insert(nodes).values({
-        id: registration.node_id,
+      await this.nodeRepo.register({
+        nodeId: registration.node_id,
         host: registration.host,
         capacityMb: registration.capacity_mb,
-        usedMb: 0,
         agentVersion: registration.agent_version,
-        status: "active",
-        lastHeartbeatAt: now,
-        registeredAt: now,
-        updatedAt: now,
       });
-
       logger.info(`Node ${registration.node_id} registered`);
     }
 
@@ -242,22 +228,20 @@ export class NodeConnectionManager {
    * immediately setting active — cleanup handles the transition.
    */
   private async processHeartbeat(nodeId: string, msg: Record<string, unknown>): Promise<void> {
-    const now = Math.floor(Date.now() / 1000);
     const containers = msg.containers as Array<{ name: string; memory_mb: number }> | undefined;
     const usedMb = containers?.reduce((sum, c) => sum + (c.memory_mb ?? 0), 0) ?? 0;
 
     // Check current node status to decide how to handle the heartbeat
-    const rows = await this.db.select({ status: nodes.status }).from(nodes).where(eq(nodes.id, nodeId));
-    const node = rows[0];
+    const status = await this.nodeRepo.getStatus(nodeId);
 
-    if (!node) {
+    if (status === null) {
       logger.warn(`Heartbeat from unknown node ${nodeId}`);
       return;
     }
 
     // For returning nodes: trigger orphan cleanup (it will transition to active).
     // Use cleanupInFlight set to prevent double-invocation if two heartbeats race.
-    if (node.status === "returning" && this.orphanCleaner && !this.cleanupInFlight.has(nodeId)) {
+    if (status === "returning" && this.orphanCleaner && !this.cleanupInFlight.has(nodeId)) {
       this.cleanupInFlight.add(nodeId);
       const containerNames = (containers ?? []).map((c) => c.name);
 
@@ -274,19 +258,11 @@ export class NodeConnectionManager {
     }
 
     // Only flip status to active for activatable states (not "returning" — cleanup owns that transition)
-    const newStatus = HEARTBEAT_ACTIVATABLE.has(node.status) ? "active" : undefined;
+    const newStatus = HEARTBEAT_ACTIVATABLE.has(status) ? ("active" as NodeStatus) : undefined;
 
-    await this.db
-      .update(nodes)
-      .set({
-        lastHeartbeatAt: now,
-        usedMb,
-        ...(newStatus ? { status: newStatus } : {}),
-        updatedAt: now,
-      })
-      .where(eq(nodes.id, nodeId));
+    await this.nodeRepo.updateHeartbeatWithStatus(nodeId, usedMb, newStatus);
 
-    logger.debug(`Heartbeat received from ${nodeId}`, { usedMb, status: node.status });
+    logger.debug(`Heartbeat received from ${nodeId}`, { usedMb, status });
   }
 
   /**
@@ -318,14 +294,15 @@ export class NodeConnectionManager {
    * Get current status of all nodes
    */
   async listNodes(): Promise<NodeInfo[]> {
-    return this.db.select().from(nodes) as unknown as Promise<NodeInfo[]>;
+    const nodes = await this.nodeRepo.list();
+    return nodes as unknown as NodeInfo[];
   }
 
   /**
    * Get tenants assigned to a specific node
    */
   async getNodeTenants(nodeId: string): Promise<TenantAssignment[]> {
-    const instances = await this.db.select().from(botInstances).where(eq(botInstances.nodeId, nodeId));
+    const instances = await this.botInstanceRepo.listByNode(nodeId);
 
     return instances.map((inst) => ({
       id: inst.id,
@@ -340,27 +317,15 @@ export class NodeConnectionManager {
    * Find the best target node for recovery (most free capacity)
    */
   async findBestTarget(excludeNodeId: string, requiredMb: number): Promise<NodeInfo | null> {
-    const rows = await this.db
-      .select()
-      .from(nodes)
-      .where(
-        and(
-          eq(nodes.status, "active"),
-          ne(nodes.id, excludeNodeId),
-          sql`(${nodes.capacityMb} - ${nodes.usedMb}) >= ${requiredMb}`,
-        ),
-      )
-      .orderBy(desc(sql`${nodes.capacityMb} - ${nodes.usedMb}`)) // Most free capacity first
-      .limit(1);
-    return (rows[0] as unknown as NodeInfo) ?? null;
+    const node = await this.nodeRepo.findBestTarget(excludeNodeId, requiredMb);
+    return node as unknown as NodeInfo | null;
   }
 
   /**
    * Reassign a tenant to a new node (update bot_instances)
    */
   async reassignTenant(botId: string, targetNodeId: string): Promise<void> {
-    await this.db.update(botInstances).set({ nodeId: targetNodeId }).where(eq(botInstances.id, botId));
-
+    await this.botInstanceRepo.reassign(botId, targetNodeId);
     logger.info(`Reassigned bot ${botId} to node ${targetNodeId}`);
   }
 
@@ -368,18 +333,15 @@ export class NodeConnectionManager {
    * Update a node's used capacity
    */
   async addNodeCapacity(nodeId: string, deltaMb: number): Promise<void> {
-    await this.db
-      .update(nodes)
-      .set({ usedMb: sql`${nodes.usedMb} + ${deltaMb}` })
-      .where(eq(nodes.id, nodeId));
+    await this.nodeRepo.addCapacity(nodeId, deltaMb);
   }
 
   /**
    * Get a single node by ID
    */
   async getNode(nodeId: string): Promise<NodeInfo | undefined> {
-    const rows = await this.db.select().from(nodes).where(eq(nodes.id, nodeId));
-    return rows[0] as unknown as NodeInfo | undefined;
+    const node = await this.nodeRepo.getById(nodeId);
+    return node as unknown as NodeInfo | undefined;
   }
 
   /**
@@ -400,20 +362,14 @@ export class NodeConnectionManager {
       nodeSecretHash: string;
     },
   ): Promise<void> {
-    const now = Math.floor(Date.now() / 1000);
-    await this.db.insert(nodes).values({
-      id: registration.node_id,
+    await this.nodeRepo.registerSelfHosted({
+      nodeId: registration.node_id,
       host: registration.host,
       capacityMb: registration.capacity_mb,
-      usedMb: 0,
       agentVersion: registration.agent_version,
-      status: "active",
-      lastHeartbeatAt: now,
-      registeredAt: now,
-      updatedAt: now,
       ownerUserId: registration.ownerUserId,
       label: registration.label,
-      nodeSecret: registration.nodeSecretHash,
+      nodeSecretHash: registration.nodeSecretHash,
     });
 
     logger.info(`Self-hosted node ${registration.node_id} registered for user ${registration.ownerUserId}`);
@@ -428,9 +384,8 @@ export class NodeConnectionManager {
    * Look up a node by its persistent secret (hashed). Returns node or undefined.
    */
   async getNodeBySecret(secret: string): Promise<NodeInfo | undefined> {
-    const hash = createHash("sha256").update(secret).digest("hex");
-    const rows = await this.db.select().from(nodes).where(eq(nodes.nodeSecret, hash));
-    return rows[0] as unknown as NodeInfo | undefined;
+    const node = await this.nodeRepo.getBySecret(secret);
+    return node as unknown as NodeInfo | undefined;
   }
 
   /**
@@ -442,7 +397,7 @@ export class NodeConnectionManager {
       ws.close();
       this.connections.delete(nodeId);
     }
-    await this.db.delete(nodes).where(eq(nodes.id, nodeId));
+    await this.nodeRepo.delete(nodeId);
     logger.info(`Node ${nodeId} removed`);
   }
 }

@@ -11,7 +11,14 @@ import {
   NodeNotFoundError,
   type NodeStatus,
 } from "./node-state-machine.js";
-import type { Node, NodeRegistration, NodeTransition, SelfHostedNodeRegistration } from "./repository-types.js";
+import type {
+  NewProvisioningNode,
+  Node,
+  NodeRegistration,
+  NodeTransition,
+  ProvisionDataUpdate,
+  SelfHostedNodeRegistration,
+} from "./repository-types.js";
 
 type NodeRow = typeof nodes.$inferSelect;
 type TransitionRow = typeof nodeTransitions.$inferSelect;
@@ -113,6 +120,7 @@ export class DrizzleNodeRepository implements INodeRepository {
         .update(nodes)
         .set({
           host: data.host,
+          capacityMb: data.capacityMb,
           agentVersion: data.agentVersion,
           updatedAt: now,
         })
@@ -120,11 +128,13 @@ export class DrizzleNodeRepository implements INodeRepository {
       return this.transition(data.nodeId, "returning", "re_registration", "node_agent");
     }
 
-    // Healthy node re-registering — metadata update only, no transition
+    // Healthy node re-registering (including unhealthy) — metadata update only, no transition
+    // Recovery from unhealthy → active is driven by health checks, not re-registration
     const rows = await this.db
       .update(nodes)
       .set({
         host: data.host,
+        capacityMb: data.capacityMb,
         agentVersion: data.agentVersion,
         updatedAt: now,
       })
@@ -207,5 +217,79 @@ export class DrizzleNodeRepository implements INodeRepository {
     if (!rows[0].nodeSecret) return null; // legacy node, no secret stored
     const hash = createHash("sha256").update(secret).digest("hex");
     return rows[0].nodeSecret === hash;
+  }
+
+  async insertProvisioning(data: NewProvisioningNode): Promise<Node> {
+    const now = Math.floor(Date.now() / 1000);
+    const rows = await this.db
+      .insert(nodes)
+      .values({
+        id: data.id,
+        host: data.host,
+        status: "provisioning",
+        capacityMb: 0,
+        usedMb: 0,
+        provisionStage: "creating",
+        region: data.region,
+        size: data.size,
+        registeredAt: now,
+        updatedAt: now,
+        nodeSecret: data.nodeSecretHash,
+      })
+      .returning();
+    return toNode(rows[0]);
+  }
+
+  async updateProvisionData(id: string, data: ProvisionDataUpdate): Promise<void> {
+    await this.db
+      .update(nodes)
+      .set({
+        host: data.host,
+        dropletId: data.dropletId,
+        capacityMb: data.capacityMb,
+        monthlyCostCents: data.monthlyCostCents,
+        updatedAt: Math.floor(Date.now() / 1000),
+      })
+      .where(eq(nodes.id, id));
+  }
+
+  async updateProvisionStage(id: string, stage: string): Promise<void> {
+    await this.db
+      .update(nodes)
+      .set({
+        provisionStage: stage,
+        updatedAt: Math.floor(Date.now() / 1000),
+      })
+      .where(eq(nodes.id, id));
+  }
+
+  async markFailed(id: string, error: string): Promise<void> {
+    await this.db
+      .update(nodes)
+      .set({
+        status: "failed",
+        provisionStage: "failed",
+        lastError: error,
+        updatedAt: Math.floor(Date.now() / 1000),
+      })
+      .where(eq(nodes.id, id));
+  }
+
+  async getStatus(id: string): Promise<NodeStatus | null> {
+    const rows = await this.db.select({ status: nodes.status }).from(nodes).where(eq(nodes.id, id));
+    return (rows[0]?.status as NodeStatus) ?? null;
+  }
+
+  async updateHeartbeatWithStatus(id: string, usedMb: number, status?: NodeStatus): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+    await this.db
+      .update(nodes)
+      .set({
+        lastHeartbeatAt: now,
+        usedMb,
+        ...(status ? { status } : {}),
+        updatedAt: now,
+      })
+      .where(eq(nodes.id, id));
   }
 }

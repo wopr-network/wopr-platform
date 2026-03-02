@@ -5,6 +5,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents } from "../db/schema/index.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
+import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
+import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
+import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
 import type { OrphanCleaner } from "./orphan-cleaner.js";
 import { findPlacement } from "./placement.js";
@@ -36,6 +39,15 @@ async function insertNode(
   });
 }
 
+function makeNcm(db: DrizzleDb, options?: { onNodeRegistered?: () => void }): NodeConnectionManager {
+  return new NodeConnectionManager(
+    new DrizzleNodeRepository(db),
+    new DrizzleBotInstanceRepository(db),
+    new DrizzleRecoveryRepository(db),
+    options,
+  );
+}
+
 // TOP OF FILE - shared across ALL describes
 let pool: PGlite;
 let db: DrizzleDb;
@@ -52,7 +64,7 @@ describe("NodeConnectionManager.registerNode", () => {
   let ncm: NodeConnectionManager;
 
   beforeAll(() => {
-    ncm = new NodeConnectionManager(db);
+    ncm = makeNcm(db);
   });
 
   beforeEach(async () => {
@@ -131,18 +143,21 @@ describe("NodeConnectionManager.registerNode", () => {
     expect(rows[0]?.capacityMb).toBe(16384);
   });
 
-  it("re-registers an unhealthy node as active (heartbeat recovery)", async () => {
+  it("re-registers an unhealthy node — metadata update only, status unchanged", async () => {
     await insertNode(db, { id: "node-1", status: "unhealthy" });
 
     await ncm.registerNode({
       node_id: "node-1",
-      host: "10.0.0.1",
-      capacity_mb: 8192,
-      agent_version: "1.0.0",
+      host: "10.0.0.2",
+      capacity_mb: 16384,
+      agent_version: "1.1.0",
     });
 
+    // Recovery from unhealthy → active is driven by health checks, not re-registration
     const rows = await db.select().from(nodes).where(eq(nodes.id, "node-1"));
-    expect(rows[0]?.status).toBe("active");
+    expect(rows[0]?.status).toBe("unhealthy");
+    expect(rows[0]?.host).toBe("10.0.0.2");
+    expect(rows[0]?.capacityMb).toBe(16384);
   });
 
   it("closes in-flight recovery events for the returning node", async () => {
@@ -179,7 +194,7 @@ describe("NodeConnectionManager.processHeartbeat — returning status preservati
   let ncm: NodeConnectionManager;
 
   beforeAll(() => {
-    ncm = new NodeConnectionManager(db);
+    ncm = makeNcm(db);
   });
 
   beforeEach(async () => {
@@ -209,7 +224,7 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
 
   beforeAll(() => {
     orphanCleaner = makeOrphanCleaner();
-    ncm = new NodeConnectionManager(db);
+    ncm = makeNcm(db);
     ncm.setOrphanCleaner(orphanCleaner);
   });
 
@@ -294,7 +309,7 @@ describe("NodeConnectionManager heartbeat triggers OrphanCleaner for returning n
       return { nodeId: "node-1", stopped: [], kept: [], errors: [] };
     });
     orphanCleaner = makeOrphanCleaner({ clean: cleanMock });
-    const ncm2 = new NodeConnectionManager(db);
+    const ncm2 = makeNcm(db);
     ncm2.setOrphanCleaner(orphanCleaner);
 
     const mockWs = {
@@ -326,7 +341,7 @@ describe("re-registration + placement integration", () => {
   let ncm: NodeConnectionManager;
 
   beforeAll(() => {
-    ncm = new NodeConnectionManager(db);
+    ncm = makeNcm(db);
   });
 
   beforeEach(async () => {
@@ -371,8 +386,6 @@ describe("re-registration + placement integration", () => {
 });
 
 describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () => {
-  let ncm: NodeConnectionManager;
-
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
@@ -388,7 +401,7 @@ describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () =>
 
     const sentCommands: Array<{ nodeId: string; type: string; name: string }> = [];
 
-    ncm = new NodeConnectionManager(db);
+    const ncm = makeNcm(db);
 
     ncm.sendCommand = vi
       .fn()

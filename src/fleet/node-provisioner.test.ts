@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DOClient } from "./do-client.js";
 import { DOApiError } from "./do-client.js";
 import { NodeProvisioner, NodeProvisioningError } from "./node-provisioner.js";
+import type { INodeRepository } from "./node-repository.js";
 
 const NODE_ID = "node-abc12345";
 const DROPLET_ID = 12345;
@@ -30,18 +31,28 @@ function makeDoClient(overrides: Partial<DOClient> = {}): DOClient {
   } as unknown as DOClient;
 }
 
-function makeDb(nodeRow: Record<string, unknown> | undefined = undefined) {
-  const nodeRows = nodeRow ? [nodeRow] : [];
+function makeNodeRepo(nodeRow?: Record<string, unknown>): INodeRepository {
+  const node = nodeRow ?? null;
   return {
-    insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
-    update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
-    delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockResolvedValue(nodeRows),
-      }),
-    }),
-  };
+    getById: vi.fn().mockResolvedValue(node),
+    getBySecret: vi.fn().mockResolvedValue(null),
+    list: vi.fn().mockResolvedValue([]),
+    register: vi.fn().mockResolvedValue(node),
+    registerSelfHosted: vi.fn().mockResolvedValue(node),
+    transition: vi.fn().mockResolvedValue(node),
+    updateHeartbeat: vi.fn().mockResolvedValue(undefined),
+    addCapacity: vi.fn().mockResolvedValue(undefined),
+    findBestTarget: vi.fn().mockResolvedValue(null),
+    listTransitions: vi.fn().mockResolvedValue([]),
+    delete: vi.fn().mockResolvedValue(undefined),
+    verifyNodeSecret: vi.fn().mockResolvedValue(null),
+    insertProvisioning: vi.fn().mockResolvedValue(node),
+    updateProvisionData: vi.fn().mockResolvedValue(undefined),
+    updateProvisionStage: vi.fn().mockResolvedValue(undefined),
+    markFailed: vi.fn().mockResolvedValue(undefined),
+    getStatus: vi.fn().mockResolvedValue(null),
+    updateHeartbeatWithStatus: vi.fn().mockResolvedValue(undefined),
+  } as unknown as INodeRepository;
 }
 
 describe("NodeProvisioner", () => {
@@ -54,8 +65,8 @@ describe("NodeProvisioner", () => {
 
   describe("provision", () => {
     it("inserts placeholder, calls DO API, and returns result", async () => {
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       const result = await provisioner.provision({ region: "nyc1", size: "s-4vcpu-8gb" });
 
@@ -68,7 +79,7 @@ describe("NodeProvisioner", () => {
           tags: ["wopr-node"],
         }),
       );
-      expect(db.insert).toHaveBeenCalled();
+      expect(nodeRepo.insertProvisioning).toHaveBeenCalled();
       expect(result.host).toBe(PUBLIC_IP);
       expect(result.dropletId).toBe(DROPLET_ID);
       expect(result.region).toBe("nyc1");
@@ -77,8 +88,8 @@ describe("NodeProvisioner", () => {
     });
 
     it("auto-generates nodeId when name not provided", async () => {
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       const result = await provisioner.provision();
 
@@ -86,8 +97,8 @@ describe("NodeProvisioner", () => {
     });
 
     it("uses provided name", async () => {
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       const result = await provisioner.provision({ name: "my-custom-node" });
 
@@ -95,8 +106,8 @@ describe("NodeProvisioner", () => {
     });
 
     it("uses default region and size when not provided", async () => {
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, doClient, {
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, {
         sshKeyId: 123,
         defaultRegion: "sfo3",
         defaultSize: "s-2vcpu-4gb",
@@ -110,22 +121,21 @@ describe("NodeProvisioner", () => {
     });
 
     it("generates per-node secret hash and stores it in the initial insert", async () => {
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       await provisioner.provision({ region: "nyc1", size: "s-4vcpu-8gb" });
 
-      const insertValues = db.insert.mock.results[0].value.values;
-      expect(insertValues).toHaveBeenCalledWith(
+      expect(nodeRepo.insertProvisioning).toHaveBeenCalledWith(
         expect.objectContaining({
-          nodeSecret: expect.stringMatching(/^[a-f0-9]{64}$/), // SHA-256 hex
+          nodeSecretHash: expect.stringMatching(/^[a-f0-9]{64}$/), // SHA-256 hex
         }),
       );
     });
 
     it("injects WOPR_NODE_SECRET into cloud-init user_data", async () => {
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       await provisioner.provision({ region: "nyc1", size: "s-4vcpu-8gb" });
 
@@ -140,15 +150,12 @@ describe("NodeProvisioner", () => {
       const failingClient = makeDoClient({
         createDroplet: vi.fn().mockRejectedValue(new DOApiError(422, "Invalid region")),
       });
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, failingClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, failingClient, { sshKeyId: 123 });
 
       await expect(provisioner.provision()).rejects.toThrow("422");
 
-      // Should have called update to mark as failed
-      expect(db.update).toHaveBeenCalled();
-      const setCall = db.update.mock.results[0].value.set;
-      expect(setCall).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", provisionStage: "failed" }));
+      expect(nodeRepo.markFailed).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("422"));
     });
 
     it("throws NodeProvisioningError when no public IP assigned", async () => {
@@ -159,8 +166,8 @@ describe("NodeProvisioner", () => {
       const clientNoIp = makeDoClient({
         getDroplet: vi.fn().mockResolvedValue(noIpDroplet),
       });
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, clientNoIp, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, clientNoIp, { sshKeyId: 123 });
 
       await expect(provisioner.provision()).rejects.toThrow("No public IP");
     });
@@ -169,37 +176,37 @@ describe("NodeProvisioner", () => {
   describe("destroy", () => {
     it("deletes DO droplet and removes node from DB when drained", async () => {
       const drained = { id: NODE_ID, drainStatus: "drained", usedMb: 0, dropletId: String(DROPLET_ID) };
-      const db = makeDb(drained);
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo(drained);
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       await provisioner.destroy(NODE_ID);
 
       expect(doClient.deleteDroplet).toHaveBeenCalledWith(DROPLET_ID);
-      expect(db.delete).toHaveBeenCalled();
+      expect(nodeRepo.delete).toHaveBeenCalledWith(NODE_ID);
     });
 
     it("deletes node from DB when usedMb is 0 even without drainStatus", async () => {
       const empty = { id: NODE_ID, drainStatus: null, usedMb: 0, dropletId: null };
-      const db = makeDb(empty);
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo(empty);
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       await provisioner.destroy(NODE_ID);
 
       expect(doClient.deleteDroplet).not.toHaveBeenCalled(); // no dropletId
-      expect(db.delete).toHaveBeenCalled();
+      expect(nodeRepo.delete).toHaveBeenCalledWith(NODE_ID);
     });
 
     it("throws when node not found", async () => {
-      const db = makeDb(undefined);
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo(undefined);
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       await expect(provisioner.destroy("nonexistent")).rejects.toThrow("not found");
     });
 
     it("throws when node has bots and is not drained", async () => {
       const active = { id: NODE_ID, drainStatus: null, usedMb: 500, dropletId: String(DROPLET_ID) };
-      const db = makeDb(active);
-      const provisioner = new NodeProvisioner(db as never, doClient, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo(active);
+      const provisioner = new NodeProvisioner(nodeRepo, doClient, { sshKeyId: 123 });
 
       await expect(provisioner.destroy(NODE_ID)).rejects.toThrow("must be drained");
     });
@@ -209,8 +216,8 @@ describe("NodeProvisioner", () => {
     it("delegates to DOClient.listRegions", async () => {
       const regions = [{ slug: "nyc1", name: "New York 1", available: true, sizes: [] }];
       const client = makeDoClient({ listRegions: vi.fn().mockResolvedValue(regions) });
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, client, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, client, { sshKeyId: 123 });
 
       const result = await provisioner.listRegions();
 
@@ -231,8 +238,8 @@ describe("NodeProvisioner", () => {
         },
       ];
       const client = makeDoClient({ listSizes: vi.fn().mockResolvedValue(sizes) });
-      const db = makeDb();
-      const provisioner = new NodeProvisioner(db as never, client, { sshKeyId: 123 });
+      const nodeRepo = makeNodeRepo();
+      const provisioner = new NodeProvisioner(nodeRepo, client, { sshKeyId: 123 });
 
       const result = await provisioner.listSizes();
 

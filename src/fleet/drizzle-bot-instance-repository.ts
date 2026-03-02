@@ -1,8 +1,8 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
-import { botInstances } from "../db/schema/index.js";
+import { botInstances, tenantCustomers } from "../db/schema/index.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
-import type { BillingState, BotInstance, NewBotInstance } from "./repository-types.js";
+import type { BillingState, BotInstance, NewBotInstance, TenantWithTier } from "./repository-types.js";
 
 /** Drizzle-backed implementation of IBotInstanceRepository. */
 export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
@@ -107,6 +107,43 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
 
   async deleteAllByTenant(tenantId: string): Promise<void> {
     await this.db.delete(botInstances).where(eq(botInstances.tenantId, tenantId));
+  }
+
+  async listByNodeWithTier(nodeId: string): Promise<TenantWithTier[]> {
+    const rows = await this.db
+      .select({
+        id: botInstances.id,
+        tenantId: botInstances.tenantId,
+        name: botInstances.name,
+        tier: tenantCustomers.tier,
+      })
+      .from(botInstances)
+      .leftJoin(tenantCustomers, eq(botInstances.tenantId, tenantCustomers.tenant))
+      .where(eq(botInstances.nodeId, nodeId))
+      .orderBy(
+        sql`CASE ${tenantCustomers.tier}
+          WHEN 'enterprise' THEN 1
+          WHEN 'pro' THEN 2
+          WHEN 'starter' THEN 3
+          ELSE 4
+        END`,
+        botInstances.id,
+      );
+
+    return rows.map((r) => ({
+      id: r.id,
+      tenantId: r.tenantId,
+      name: r.name,
+      tier: r.tier ?? null,
+    }));
+  }
+
+  async findByTenantAndNode(tenantId: string, nodeId: string): Promise<BotInstance | null> {
+    const rows = await this.db
+      .select()
+      .from(botInstances)
+      .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.nodeId, nodeId)));
+    return rows[0] ? toInstance(rows[0]) : null;
   }
 }
 

@@ -9,5 +9,8 @@ export interface IRecoveryRepository {
   listOpenEvents(): Promise<RecoveryEvent[]>;
   listEvents(limit: number, status?: RecoveryEvent["status"]): Promise<RecoveryEvent[]>;
   getWaitingItems(eventId: string): Promise<RecoveryItem[]>;
+  listItemsByEvent(eventId: string): Promise<RecoveryItem[]>;
   incrementRetryCount(itemId: string): Promise<void>;
+  /** Close all in-progress recovery events for a node (used when node re-registers). */
+  completeInProgressEvents(nodeId: string): Promise<void>;
 }

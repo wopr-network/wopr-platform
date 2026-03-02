@@ -5,9 +5,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": [
-      "src/**/*.ts"
-    ]
+    "includes": ["src/**/*.ts"]
   },
   "formatter": {
     "enabled": true,
@@ -68,9 +66,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "src/db/**/*.ts"
-      ],
+      "includes": ["src/db/**/*.ts"],
       "linter": {
         "rules": {
           "style": {
@@ -84,9 +80,6 @@
         "src/fleet/*-repository.ts",
         "src/fleet/registration-token-store.ts",
         "src/fleet/services.ts",
-        "src/fleet/node-provisioner.ts",
-        "src/fleet/node-connection-manager.ts",
-        "src/fleet/recovery-manager.ts",
         "src/fleet/migration-manager.ts",
         "src/admin/users/user-store.ts",
         "src/admin/bulk/bulk-operations-repository.ts",
@@ -166,10 +159,7 @@
       }
     },
     {
-      "includes": [
-        "src/test/**/*.ts",
-        "src/**/*.test.ts"
-      ],
+      "includes": ["src/test/**/*.ts", "src/**/*.test.ts"],
       "linter": {
         "rules": {
           "style": {

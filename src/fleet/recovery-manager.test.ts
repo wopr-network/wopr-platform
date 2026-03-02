@@ -4,6 +4,9 @@ import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents, recoveryItems } from "../db/schema/index.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import type { AdminNotifier } from "./admin-notifier.js";
+import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
+import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
+import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
 import type { NodeConnectionManager } from "./node-connection-manager.js";
 import type { INodeRepository } from "./node-repository.js";
 import { InvalidTransitionError } from "./node-state-machine.js";
@@ -47,8 +50,33 @@ function createMockNodeRepo(overrides: Record<string, unknown> = {}): INodeRepos
     findBestTarget: vi.fn(),
     listTransitions: vi.fn(),
     delete: vi.fn(),
+    verifyNodeSecret: vi.fn(),
+    insertProvisioning: vi.fn(),
+    updateProvisionData: vi.fn(),
+    updateProvisionStage: vi.fn(),
+    markFailed: vi.fn(),
+    getStatus: vi.fn(),
+    updateHeartbeatWithStatus: vi.fn(),
     ...overrides,
   } as unknown as INodeRepository;
+}
+
+function makeManager(
+  db: DrizzleDb,
+  options: {
+    nodeRepo?: INodeRepository;
+    nodeConnections?: NodeConnectionManager;
+    notifier?: AdminNotifier;
+  } = {},
+): RecoveryManager {
+  return new RecoveryManager(
+    new DrizzleRecoveryRepository(db),
+    new DrizzleBotInstanceRepository(db),
+    new DrizzleBotProfileRepository(db),
+    options.nodeRepo ?? createMockNodeRepo(),
+    options.nodeConnections ?? createMockNodeConnections(),
+    options.notifier ?? createMockNotifier(),
+  );
 }
 
 async function insertNode(
@@ -106,7 +134,7 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
   });
 
   it("reads image and env from bot_profiles instead of hardcoding", async () => {
-    const manager = new RecoveryManager(db, createMockNodeRepo(), nodeConnections, notifier);
+    const manager = makeManager(db, { nodeConnections, notifier });
 
     await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
     await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
@@ -138,7 +166,7 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
   });
 
   it("falls back to defaults with logger.warn when no profile exists", async () => {
-    const manager = new RecoveryManager(db, createMockNodeRepo(), nodeConnections, notifier);
+    const manager = makeManager(db, { nodeConnections, notifier });
 
     await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
     await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
@@ -163,7 +191,7 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
   });
 
   it("falls back to empty env when profile env JSON is corrupt", async () => {
-    const manager = new RecoveryManager(db, createMockNodeRepo(), nodeConnections, notifier);
+    const manager = makeManager(db, { nodeConnections, notifier });
 
     await insertNode(db, { id: "dead-node", status: "active", usedMb: 1024 });
     await insertNode(db, { id: "target-node-1", host: "10.0.0.2", usedMb: 512 });
@@ -212,7 +240,7 @@ describe("RecoveryManager.triggerRecovery — state machine transitions", () => 
   });
 
   it("transitions node via state machine: offline then recovering then offline", async () => {
-    const manager = new RecoveryManager(db, nodeRepo, nodeConnections, notifier);
+    const manager = makeManager(db, { nodeRepo, nodeConnections, notifier });
 
     await insertNode(db, { id: "node-1", status: "active" });
 
@@ -228,7 +256,7 @@ describe("RecoveryManager.triggerRecovery — state machine transitions", () => 
     const err = new InvalidTransitionError("active", "recovering");
     (nodeRepo.transition as ReturnType<typeof vi.fn>).mockRejectedValueOnce(err);
 
-    const manager = new RecoveryManager(db, nodeRepo, nodeConnections, notifier);
+    const manager = makeManager(db, { nodeRepo, nodeConnections, notifier });
 
     await insertNode(db, { id: "node-1", status: "active" });
 
@@ -245,7 +273,7 @@ describe("RecoveryManager.checkAndRetryWaiting", () => {
     await truncateAllTables(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
-    manager = new RecoveryManager(db, createMockNodeRepo(), nodeConnections, notifier);
+    manager = makeManager(db, { nodeConnections, notifier });
   });
 
   it("retries waiting tenants when a recovery event has waiting items and retryCount < max", async () => {
@@ -448,7 +476,7 @@ describe("Trigger 1: Node registration fires checkAndRetryWaiting", () => {
     await truncateAllTables(pool);
     const mockNotifier = createMockNotifier();
     const mockNodeConns = createMockNodeConnections();
-    const mgr = new RecoveryManager(db, createMockNodeRepo(), mockNodeConns, mockNotifier);
+    const mgr = makeManager(db, { nodeConnections: mockNodeConns, notifier: mockNotifier });
 
     await expect(mgr.checkAndRetryWaiting()).resolves.toBeUndefined();
   });
@@ -463,7 +491,7 @@ describe("Acceptance criteria", () => {
     await truncateAllTables(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
-    manager = new RecoveryManager(db, createMockNodeRepo(), nodeConnections, notifier);
+    manager = makeManager(db, { nodeConnections, notifier });
   });
 
   it("AC: node with waiting tenants -> new node joins -> waiting tenants auto-placed", async () => {

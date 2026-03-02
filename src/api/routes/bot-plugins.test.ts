@@ -98,6 +98,8 @@ const mockBotInstanceRepo = {
   getResourceTier: vi.fn(),
   setResourceTier: vi.fn(),
   deleteAllByTenant: vi.fn(),
+  listByNodeWithTier: vi.fn().mockResolvedValue([]),
+  findByTenantAndNode: vi.fn().mockResolvedValue(null),
 };
 
 // Wire in mock deps

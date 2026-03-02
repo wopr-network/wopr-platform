@@ -502,7 +502,7 @@ export function getNodeProvisioner(): NodeProvisioner {
   if (!_nodeProvisioner) {
     const sshKeyIdStr = process.env.DO_SSH_KEY_ID;
     if (!sshKeyIdStr) throw new Error("DO_SSH_KEY_ID environment variable is required");
-    _nodeProvisioner = new NodeProvisioner(getDb(), getDOClient(), {
+    _nodeProvisioner = new NodeProvisioner(getNodeRepo(), getDOClient(), {
       sshKeyId: Number(sshKeyIdStr),
       defaultRegion: process.env.DO_DEFAULT_REGION,
       defaultSize: process.env.DO_DEFAULT_SIZE,
