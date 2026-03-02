@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { botInstances, nodes, recoveryEvents } from "../db/schema/index.js";
+import { nodeTransitions } from "../db/schema/node-transitions.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
@@ -382,6 +383,73 @@ describe("re-registration + placement integration", () => {
     const evtRows = await db.select().from(recoveryEvents).where(eq(recoveryEvents.id, "evt-1"));
     expect(evtRows[0]?.status).toBe("completed");
     expect(evtRows[0]?.completedAt).not.toBeNull();
+  });
+});
+
+describe("NodeConnectionManager.processHeartbeat — state machine integration", () => {
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+  });
+
+  it("creates a node_transitions audit record when heartbeat flips unhealthy to active", async () => {
+    const ncm = makeNcm(db);
+    await insertNode(db, { id: "node-1", status: "unhealthy" });
+
+    const fakeWs = Object.assign(new EventEmitter(), { readyState: 1 });
+    ncm.handleWebSocket("node-1", fakeWs as unknown as import("ws").WebSocket);
+
+    const heartbeat = Buffer.from(JSON.stringify({ type: "heartbeat", containers: [] }));
+    fakeWs.emit("message", heartbeat);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const rows = await db.select().from(nodes).where(eq(nodes.id, "node-1"));
+    expect(rows[0]?.status).toBe("active");
+
+    const transitions = await db.select().from(nodeTransitions).where(eq(nodeTransitions.nodeId, "node-1"));
+    expect(transitions).toHaveLength(1);
+    expect(transitions[0]?.fromStatus).toBe("unhealthy");
+    expect(transitions[0]?.toStatus).toBe("active");
+    expect(transitions[0]?.triggeredBy).toBe("heartbeat");
+  });
+
+  it("does NOT create a transition record when node is already active (no-op)", async () => {
+    const ncm = makeNcm(db);
+    await insertNode(db, { id: "node-1", status: "active" });
+
+    const fakeWs = Object.assign(new EventEmitter(), { readyState: 1 });
+    ncm.handleWebSocket("node-1", fakeWs as unknown as import("ws").WebSocket);
+
+    const heartbeat = Buffer.from(JSON.stringify({ type: "heartbeat", containers: [] }));
+    fakeWs.emit("message", heartbeat);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const transitions = await db.select().from(nodeTransitions).where(eq(nodeTransitions.nodeId, "node-1"));
+    expect(transitions).toHaveLength(0);
+  });
+
+  it("handles transition error gracefully (logs, does not throw)", async () => {
+    const ncm = makeNcm(db);
+    await insertNode(db, { id: "node-1", status: "unhealthy" });
+
+    const nodeRepo = new DrizzleNodeRepository(db);
+
+    const fakeWs = Object.assign(new EventEmitter(), { readyState: 1 });
+    ncm.handleWebSocket("node-1", fakeWs as unknown as import("ws").WebSocket);
+
+    // Transition node to offline before heartbeat fires (CAS will conflict)
+    await nodeRepo.transition("node-1", "offline", "watchdog", "test");
+
+    const heartbeat = Buffer.from(JSON.stringify({ type: "heartbeat", containers: [] }));
+    fakeWs.emit("message", heartbeat);
+
+    // Should not throw — error is caught internally
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Status should still be offline (heartbeat transition was skipped)
+    const rows = await db.select().from(nodes).where(eq(nodes.id, "node-1"));
+    expect(rows[0]?.status).toBe("offline");
   });
 });
 
