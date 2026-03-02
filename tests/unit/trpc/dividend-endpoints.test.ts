@@ -5,6 +5,7 @@ import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTra
 import { DrizzleDividendRepository } from "../../../src/monetization/credits/dividend-repository.js";
 import { appRouter } from "../../../src/trpc/index.js";
 import { setBillingRouterDeps } from "../../../src/trpc/routers/billing.js";
+import { setTrpcOrgMemberRepo } from "../../../src/trpc/init.js";
 
 describe("billing.dividend* tRPC procedures", () => {
   let pool: PGlite;
@@ -15,6 +16,27 @@ describe("billing.dividend* tRPC procedures", () => {
     ({ db, pool } = await createTestDb());
     await beginTestTransaction(pool);
     const dividendRepo = new DrizzleDividendRepository(db);
+
+    setTrpcOrgMemberRepo({
+      findMember: async (orgId: string, userId: string) => {
+        if (orgId === "t-1" && userId === "u-1") {
+          return { id: "m-1", orgId, userId, role: "owner" as const, joinedAt: Date.now() };
+        }
+        return null;
+      },
+      listMembers: async () => [],
+      addMember: async () => {},
+      updateMemberRole: async () => {},
+      removeMember: async () => {},
+      countAdminsAndOwners: async () => 1,
+      listInvites: async () => [],
+      createInvite: async () => {},
+      findInviteById: async () => null,
+      findInviteByToken: async () => null,
+      deleteInvite: async () => {},
+      deleteAllMembers: async () => {},
+      deleteAllInvites: async () => {},
+    });
 
     setBillingRouterDeps({
       stripe: {
