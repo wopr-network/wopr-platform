@@ -12,9 +12,10 @@ export function createFleetEventsRoute(emitter: FleetEventEmitter): Hono {
       return c.json({ error: "Authentication required" }, 401);
     }
 
-    // EventSource cannot send custom headers; resolve tenant from query param
-    // (same trust model as x-tenant-id header in tRPC — no extra validation).
-    const tenantId = c.req.query("tenantId") || user.id;
+    // Derive tenantId exclusively from the authenticated session — never from
+    // caller-supplied query params, which would allow IDOR (any user subscribing
+    // to another tenant's events).
+    const tenantId = user.id;
 
     const { readable, writable } = new TransformStream<string, string>();
     const writer = writable.getWriter();

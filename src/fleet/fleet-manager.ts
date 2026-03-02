@@ -69,7 +69,8 @@ export class FleetManager {
 
   private emitEvent(type: FleetEvent["type"], botId: string, tenantId?: string): void {
     if (!this.eventEmitter) return;
-    this.eventEmitter.emit({ type, botId, tenantId: tenantId ?? "", timestamp: new Date().toISOString() });
+    if (!tenantId) return; // skip — event with no tenant would be invisible to all subscribers
+    this.eventEmitter.emit({ type, botId, tenantId, timestamp: new Date().toISOString() });
   }
 
   /**
@@ -185,8 +186,13 @@ export class FleetManager {
         this.proxyManager.updateHealth(id, true);
       }
       logger.info(`Started bot ${id}`);
-      const startedProfile = await this.store.get(id);
-      this.emitEvent("bot.started", id, startedProfile?.tenantId);
+      let startedTenantId: string | undefined;
+      try {
+        startedTenantId = (await this.store.get(id))?.tenantId;
+      } catch (err) {
+        logger.warn(`Failed to fetch profile after starting bot ${id}`, { err });
+      }
+      this.emitEvent("bot.started", id, startedTenantId);
     });
   }
 
@@ -212,8 +218,13 @@ export class FleetManager {
         this.proxyManager.updateHealth(id, false);
       }
       logger.info(`Stopped bot ${id}`);
-      const stoppedProfile = await this.store.get(id);
-      this.emitEvent("bot.stopped", id, stoppedProfile?.tenantId);
+      let stoppedTenantId: string | undefined;
+      try {
+        stoppedTenantId = (await this.store.get(id))?.tenantId;
+      } catch (err) {
+        logger.warn(`Failed to fetch profile after stopping bot ${id}`, { err });
+      }
+      this.emitEvent("bot.stopped", id, stoppedTenantId);
     });
   }
 

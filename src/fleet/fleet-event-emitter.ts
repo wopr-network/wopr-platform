@@ -23,7 +23,8 @@ export class FleetEventEmitter {
     for (const listener of this.listeners) {
       try {
         listener(event);
-      } catch {
+      } catch (err) {
+        console.error("FleetEventEmitter listener error:", err);
         // Listener errors must not break emission
       }
     }
