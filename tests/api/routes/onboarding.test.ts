@@ -59,7 +59,7 @@ describe("onboardingRoutes", () => {
     const anonApp = new Hono();
     vi.resetModules();
     const mockService = {
-      createSession: vi.fn().mockResolvedValue(makeSession({ userId: null, anonymousId: "anon-x" })),
+      createSession: vi.fn().mockResolvedValue(makeSession({ userId: null, anonymousId: "550e8400-e29b-41d4-a716-446655440000" })),
       getHistory: vi.fn().mockResolvedValue([]),
       inject: vi.fn().mockResolvedValue(""),
       upgradeAnonymousToUser: vi.fn(),
@@ -72,7 +72,7 @@ describe("onboardingRoutes", () => {
 
     const res = await anonApp.request("/api/onboarding/session", {
       method: "POST",
-      headers: { "x-anonymous-id": "anon-x" },
+      headers: { "x-anonymous-id": "550e8400-e29b-41d4-a716-446655440000" },
     });
     expect(res.status).toBe(201);
   });

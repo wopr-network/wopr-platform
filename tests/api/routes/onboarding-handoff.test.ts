@@ -115,7 +115,8 @@ describe("onboarding handoff route", () => {
   describe("POST /session (anonymous cookie)", () => {
     it("sets wopr_anon_session cookie when creating anonymous session", async () => {
       vi.resetModules();
-      const anonSession = makeSession({ userId: null, anonymousId: "anon-123" });
+      const anonUuid = "550e8400-e29b-41d4-a716-446655440000";
+      const anonSession = makeSession({ userId: null, anonymousId: anonUuid });
       const localMock = {
         createSession: vi.fn().mockResolvedValue(anonSession),
         getHistory: vi.fn(),
@@ -133,11 +134,11 @@ describe("onboarding handoff route", () => {
 
       const res = await anonApp.request("/api/onboarding/session", {
         method: "POST",
-        headers: { "x-anonymous-id": "anon-123" },
+        headers: { "x-anonymous-id": anonUuid },
       });
       expect(res.status).toBe(201);
       const setCookieHeader = res.headers.get("set-cookie");
-      expect(setCookieHeader).toContain("wopr_anon_session=anon-123");
+      expect(setCookieHeader).toContain(`wopr_anon_session=${anonUuid}`);
       expect(setCookieHeader).toContain("HttpOnly");
     });
 
