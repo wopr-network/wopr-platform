@@ -1076,3 +1076,98 @@ export function getPromotionEngine(): PromotionEngine {
   }
   return _promotionEngine;
 }
+
+// ---------------------------------------------------------------------------
+// Test helpers — NOT for production use
+// ---------------------------------------------------------------------------
+
+/** @internal Inject a test database. Call before any getter. */
+export function _setDbForTest(db: DrizzleDb): void {
+  _db = db;
+}
+
+/** @internal Reset all singletons. Call in afterAll to prevent cross-test leakage. */
+export function _resetForTest(): void {
+  _pool = null;
+  _db = null;
+  _registrationTokenStore = null;
+  _adminNotifier = null;
+  _nodeRepo = null;
+  _botInstanceRepo = null;
+  _botProfileRepo = null;
+  _recoveryRepo = null;
+  _spendingCapStore = null;
+  _gpuNodeRepo = null;
+  _adminNotesRepo = null;
+  _tenantStatusRepo = null;
+  _bulkOpsRepo = null;
+  _notificationQueueStore = null;
+  _notificationPrefsStore = null;
+  _connectionRegistry = null;
+  _commandBus = null;
+  _heartbeatProcessor = null;
+  _nodeRegistrar = null;
+  _orphanCleaner = null;
+  _recoveryOrchestrator = null;
+  _migrationOrchestrator = null;
+  _nodeDrainer = null;
+  _heartbeatWatchdog = null;
+  _inferenceWatchdog = null;
+  _fleetEventRepo = null;
+  _rateLimitRepo = null;
+  _circuitBreakerRepo = null;
+  _doClient = null;
+  _nodeProvider = null;
+  _nodeProvisioner = null;
+  _gpuNodeProvisioner = null;
+  _adminAuditLog = null;
+  _restoreLogStore = null;
+  _restoreService = null;
+  _backupStatusStore = null;
+  _snapshotManager = null;
+  _creditLedger = null;
+  _creditTransactionRepo = null;
+  _botBilling = null;
+  _meterEmitter = null;
+  _meterAggregator = null;
+  _budgetChecker = null;
+  _tenantCustomerStore = null;
+  _payramChargeStore = null;
+  _dividendRepo = null;
+  _autoTopupSettingsRepo = null;
+  _autoTopupEventLogRepo = null;
+  _phoneNumberRepo = null;
+  _affiliateRepo = null;
+  _affiliateFraudRepo = null;
+  _vpsRepo = null;
+  _deletionRepo = null;
+  _deletionExecutorRepo = null;
+  _credentialRepo = null;
+  _tenantAddonRepo = undefined;
+  _systemResourceMonitor = null;
+  _backupVerifier = null;
+  _orgRepo = null;
+  _orgMemberRepo = null;
+  _orgService = null;
+  _orgMembershipRepo = null;
+  _marketplacePluginRepo = null;
+  _marketplaceContentRepo = null;
+  _userRoleRepo = null;
+  _graduationService = null;
+  _onboardingSessionRepo = null;
+  _onboardingScriptRepo = null;
+  _woprClient = null;
+  _daemonManager = null;
+  _onboardingService = null;
+  _sessionUsageRepo = null;
+  _setupSessionRepo = null;
+  _evidenceCollector = null;
+  _setupService = null;
+  _pluginConfigRepo = null;
+  _promotionRepo = null;
+  _couponRepo = null;
+  _redemptionRepo = null;
+  _rateOverrideRepo = null;
+  _rateOverrideCache = null;
+  _promotionEngine = null;
+}
