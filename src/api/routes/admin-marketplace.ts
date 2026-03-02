@@ -162,6 +162,24 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
     return c.body(null, 204);
   });
 
+  // GET /plugins/:id/install-status — poll install progress
+  routes.get("/plugins/:id/install-status", async (c) => {
+    const id = c.req.param("id");
+    const plugin = await repo().findById(id);
+    if (!plugin) {
+      return c.json({ error: "Plugin not found" }, 404);
+    }
+
+    const status = plugin.installedAt ? "installed" : plugin.installError ? "failed" : "pending";
+
+    return c.json({
+      pluginId: plugin.pluginId,
+      status,
+      installedAt: plugin.installedAt,
+      installError: plugin.installError,
+    });
+  });
+
   // POST /discover — trigger manual discovery run
   routes.post("/discover", async (c) => {
     const { discoverNpmPlugins } = await import("../../marketplace/npm-discovery.js");
