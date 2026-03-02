@@ -428,7 +428,7 @@ describe("tenant isolation — fleet routes (WOP-822)", () => {
 // ---------------------------------------------------------------------------
 
 // Import tenant-key routes (shares the same mocked FLEET_TOKEN env vars)
-const { tenantKeyRoutes, setStore } = await import("../../src/api/routes/tenant-keys.js");
+const { tenantKeyRoutes, setRepo } = await import("../../src/api/routes/tenant-keys.js");
 
 const keysApp = new Hono();
 keysApp.route("/api/tenant-keys", tenantKeyRoutes);
@@ -442,7 +442,7 @@ describe("tenant isolation — tenant-key routes (WOP-822)", () => {
     ({ db, pool } = await createTestDb());
     await beginTestTransaction(pool);
     store = new TenantKeyRepository(db);
-    setStore(store);
+    setRepo(store);
   });
 
   afterAll(async () => {
