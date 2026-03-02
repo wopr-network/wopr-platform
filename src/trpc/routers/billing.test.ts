@@ -608,7 +608,7 @@ describe("billingRouter", () => {
       });
       injectDeps({ processor: mockProcessor });
 
-      const caller = makeCaller(makeCtx("user-1"));
+      const caller = makeCaller(makeCtx("user-1", "user-1"));
       const result = await caller.billingInfo();
       expect(result.email).toBe("billing@test.com");
       expect(mockProcessor.getCustomerEmail).toHaveBeenCalledWith("user-1");
@@ -641,7 +641,7 @@ describe("billingRouter", () => {
         tenantStore: mockTenantStore as unknown as BillingRouterDeps["tenantStore"],
       });
 
-      const caller = makeCaller(makeCtx("user-1"));
+      const caller = makeCaller(makeCtx("user-1", "user-1"));
       const result = await caller.updateBillingEmail({ email: "new@test.com" });
       expect(result.email).toBe("new@test.com");
       expect(mockProcessor.updateCustomerEmail).toHaveBeenCalledWith("user-1", "new@test.com");
@@ -804,7 +804,7 @@ describe("billingRouter", () => {
     });
 
     it("emits audit entry with previous and new settings", async () => {
-      const caller = makeCaller(makeCtx("user-audit-1"));
+      const caller = makeCaller(makeCtx("user-audit-1", "user-audit-1"));
 
       // First call — creates settings (previous is null)
       await caller.updateAutoTopupSettings({
@@ -863,7 +863,7 @@ describe("billingRouter", () => {
         auditLogger: new AuditLogger(failingRepo),
       });
 
-      const caller = makeCaller(makeCtx("user-audit-2"));
+      const caller = makeCaller(makeCtx("user-audit-2", "user-audit-2"));
 
       // Should NOT throw even though audit fails
       const result = await caller.updateAutoTopupSettings({

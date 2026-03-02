@@ -247,7 +247,7 @@ export const billingRouter = router({
   }),
 
   /** Create a Stripe Checkout session for credit purchase. Tenant defaults to ctx.tenantId when omitted. */
-  creditsCheckout: protectedProcedure
+  creditsCheckout: tenantProcedure
     .input(
       z.object({
         tenant: tenantIdSchema.optional(),
@@ -257,8 +257,8 @@ export const billingRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      const tenant = input.tenant ?? ctx.tenantId;
+      if (input.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       try {
@@ -278,14 +278,14 @@ export const billingRouter = router({
     }),
 
   /** Create a PayRam crypto payment session. Returns a hosted payment URL. */
-  cryptoCheckout: protectedProcedure
+  cryptoCheckout: tenantProcedure
     .input(
       z.object({
         amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
+      const tenant = ctx.tenantId;
       const { payramClient, payramChargeStore } = deps();
       if (!payramClient || !payramChargeStore) {
         throw new TRPCError({
@@ -301,11 +301,11 @@ export const billingRouter = router({
     }),
 
   /** Create a Stripe Customer Portal session. Returns null url when processor lacks portal support. */
-  portalSession: protectedProcedure
+  portalSession: tenantProcedure
     .input(z.object({ tenant: tenantIdSchema.optional(), returnUrl: urlSchema }))
     .mutation(async ({ input, ctx }) => {
-      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      const tenant = input.tenant ?? ctx.tenantId;
+      if (input.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       try {
@@ -322,7 +322,7 @@ export const billingRouter = router({
     }),
 
   /** Query current-period usage summaries. Tenant defaults to ctx.tenantId when omitted. */
-  usage: protectedProcedure
+  usage: tenantProcedure
     .input(
       z.object({
         tenant: tenantIdSchema.optional(),
@@ -335,9 +335,9 @@ export const billingRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const { meterAggregator } = deps();
-      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
+      const tenant = input.tenant ?? ctx.tenantId;
       // Enforce tenant isolation if token is tenant-scoped
-      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      if (input.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
@@ -358,7 +358,7 @@ export const billingRouter = router({
     }),
 
   /** Get total spend for current or specified period. Tenant defaults to ctx.tenantId when omitted. */
-  usageSummary: protectedProcedure
+  usageSummary: tenantProcedure
     .input(
       z.object({
         tenant: tenantIdSchema.optional(),
@@ -367,8 +367,8 @@ export const billingRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const { meterAggregator } = deps();
-      const tenant = input.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      const tenant = input.tenant ?? ctx.tenantId;
+      if (input.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Forbidden" });
       }
 
@@ -390,36 +390,36 @@ export const billingRouter = router({
   }),
 
   /** Get current plan tier for the authenticated user. */
-  currentPlan: protectedProcedure.query(async ({ ctx }) => {
-    const tenant = ctx.tenantId ?? ctx.user.id;
+  currentPlan: tenantProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId;
     const { tenantStore } = deps();
     const mapping = await tenantStore.getByTenant(tenant);
     return { tier: (mapping?.tier ?? "free") as "free" | "pro" | "team" | "enterprise" };
   }),
 
   /** Change subscription plan. */
-  changePlan: protectedProcedure
+  changePlan: tenantProcedure
     .input(z.object({ tier: z.enum(["free", "pro", "team", "enterprise"]) }))
     .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
+      const tenant = ctx.tenantId;
       const { tenantStore } = deps();
       await tenantStore.setTier(tenant, input.tier);
       return { tier: input.tier };
     }),
 
   /** Get inference mode (byok or hosted). */
-  inferenceMode: protectedProcedure.query(async ({ ctx }) => {
-    const tenant = ctx.tenantId ?? ctx.user.id;
+  inferenceMode: tenantProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId;
     const { tenantStore } = deps();
     const mode = await tenantStore.getInferenceMode(tenant);
     return { mode: mode as "byok" | "hosted" };
   }),
 
   /** Set inference mode (byok or hosted). */
-  setInferenceMode: protectedProcedure
+  setInferenceMode: tenantProcedure
     .input(z.object({ mode: z.enum(["byok", "hosted"]) }))
     .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
+      const tenant = ctx.tenantId;
       const { tenantStore } = deps();
       await tenantStore.setInferenceMode(tenant, input.mode);
       return { mode: input.mode };
@@ -436,8 +436,8 @@ export const billingRouter = router({
   }),
 
   /** Get hosted usage summary for current billing period. */
-  hostedUsageSummary: protectedProcedure.query(async ({ ctx }) => {
-    const tenant = ctx.tenantId ?? ctx.user.id;
+  hostedUsageSummary: tenantProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId;
     const { meterAggregator, creditLedger } = deps();
 
     const periodStart = new Date();
@@ -478,7 +478,7 @@ export const billingRouter = router({
   }),
 
   /** Get hosted usage events (detailed breakdown). */
-  hostedUsageEvents: protectedProcedure
+  hostedUsageEvents: tenantProcedure
     .input(
       z
         .object({
@@ -489,7 +489,7 @@ export const billingRouter = router({
         .optional(),
     )
     .query(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
+      const tenant = ctx.tenantId;
       const { meterAggregator } = deps();
 
       const since = input?.from ? new Date(input.from).getTime() : undefined;
@@ -517,14 +517,14 @@ export const billingRouter = router({
     }),
 
   /** Get spending limits configuration. */
-  spendingLimits: protectedProcedure.query(async ({ ctx }) => {
-    const tenant = ctx.tenantId ?? ctx.user.id;
+  spendingLimits: tenantProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId;
     const { spendingLimitsRepo } = deps();
     return await spendingLimitsRepo.get(tenant);
   }),
 
   /** Update spending limits. */
-  updateSpendingLimits: protectedProcedure
+  updateSpendingLimits: tenantProcedure
     .input(
       z.object({
         global: z.object({
@@ -541,15 +541,15 @@ export const billingRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
+      const tenant = ctx.tenantId;
       const { spendingLimitsRepo } = deps();
       await spendingLimitsRepo.upsert(tenant, input);
       return await spendingLimitsRepo.get(tenant);
     }),
 
   /** Get billing info (payment methods, invoices, email). */
-  billingInfo: protectedProcedure.query(async ({ ctx }) => {
-    const tenant = ctx.tenantId ?? ctx.user.id;
+  billingInfo: tenantProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId;
     const { processor } = deps();
 
     try {
@@ -586,10 +586,10 @@ export const billingRouter = router({
   }),
 
   /** Update billing email. */
-  updateBillingEmail: protectedProcedure
+  updateBillingEmail: tenantProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
+      const tenant = ctx.tenantId;
       const { tenantStore, processor } = deps();
       const mapping = await tenantStore.getByTenant(tenant);
 
@@ -602,48 +602,46 @@ export const billingRouter = router({
     }),
 
   /** Remove a payment method. */
-  removePaymentMethod: protectedProcedure
-    .input(z.object({ id: z.string().min(1) }))
-    .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
-      const { processor, creditLedger, tenantStore } = deps();
+  removePaymentMethod: tenantProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ input, ctx }) => {
+    const tenant = ctx.tenantId;
+    const { processor, creditLedger, tenantStore } = deps();
 
-      const { PaymentMethodOwnershipError } = await import("../../monetization/payment-processor.js");
+    const { PaymentMethodOwnershipError } = await import("../../monetization/payment-processor.js");
 
-      // Guard: prevent removing the last payment method when there's an active
-      // billing hold or an outstanding balance (negative credit balance).
-      const mapping = await tenantStore.getByTenant(tenant);
-      if (mapping) {
-        const paymentMethods = await processor.listPaymentMethods(tenant);
-        if (paymentMethods.length <= 1) {
-          const hasBillingHold = mapping.billing_hold === 1;
-          const hasOutstandingBalance = (await creditLedger.balance(tenant)).isNegative();
-          if (hasBillingHold || hasOutstandingBalance) {
-            throw new TRPCError({
-              code: "FORBIDDEN",
-              message: "Cannot remove last payment method with active billing hold or outstanding balance",
-            });
-          }
+    // Guard: prevent removing the last payment method when there's an active
+    // billing hold or an outstanding balance (negative credit balance).
+    const mapping = await tenantStore.getByTenant(tenant);
+    if (mapping) {
+      const paymentMethods = await processor.listPaymentMethods(tenant);
+      if (paymentMethods.length <= 1) {
+        const hasBillingHold = mapping.billing_hold === 1;
+        const hasOutstandingBalance = (await creditLedger.balance(tenant)).isNegative();
+        if (hasBillingHold || hasOutstandingBalance) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Cannot remove last payment method with active billing hold or outstanding balance",
+          });
         }
       }
+    }
 
-      try {
-        await processor.detachPaymentMethod(tenant, input.id);
-        return { removed: true };
-      } catch (err) {
-        if (err instanceof PaymentMethodOwnershipError) {
-          throw new TRPCError({ code: "FORBIDDEN", message: err.message });
-        }
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: err instanceof Error ? err.message : "Failed to remove payment method",
-        });
+    try {
+      await processor.detachPaymentMethod(tenant, input.id);
+      return { removed: true };
+    } catch (err) {
+      if (err instanceof PaymentMethodOwnershipError) {
+        throw new TRPCError({ code: "FORBIDDEN", message: err.message });
       }
-    }),
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: err instanceof Error ? err.message : "Failed to remove payment method",
+      });
+    }
+  }),
 
   /** Get auto-topup settings for the authenticated tenant. */
-  autoTopupSettings: protectedProcedure.query(async ({ ctx }) => {
-    const tenant = ctx.tenantId ?? ctx.user.id;
+  autoTopupSettings: tenantProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId;
     const { autoTopupSettingsStore, processor } = deps();
 
     const settings = await autoTopupSettingsStore.getByTenant(tenant);
@@ -674,7 +672,7 @@ export const billingRouter = router({
   }),
 
   /** Update auto-topup settings. Validates amounts against allowed tiers. */
-  updateAutoTopupSettings: protectedProcedure
+  updateAutoTopupSettings: tenantProcedure
     .input(
       z.object({
         usage_enabled: z.boolean().optional(),
@@ -705,7 +703,7 @@ export const billingRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId ?? ctx.user.id;
+      const tenant = ctx.tenantId;
       const { autoTopupSettingsStore, processor, auditLogger } = deps();
 
       // If enabling either mode, verify payment method exists
@@ -792,11 +790,11 @@ export const billingRouter = router({
     }),
 
   /** Get current dividend pool stats and user eligibility. */
-  dividendStats: protectedProcedure
+  dividendStats: tenantProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
     .query(async ({ input, ctx }) => {
-      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      const tenant = input?.tenant ?? ctx.tenantId;
+      if (input?.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
@@ -813,7 +811,7 @@ export const billingRouter = router({
     }),
 
   /** Get paginated dividend history for the authenticated user. */
-  dividendHistory: protectedProcedure
+  dividendHistory: tenantProcedure
     .input(
       z
         .object({
@@ -824,8 +822,8 @@ export const billingRouter = router({
         .optional(),
     )
     .query(async ({ input, ctx }) => {
-      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      const tenant = input?.tenant ?? ctx.tenantId;
+      if (input?.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
@@ -834,11 +832,11 @@ export const billingRouter = router({
     }),
 
   /** Get lifetime total dividend credits for the authenticated user. */
-  dividendLifetime: protectedProcedure
+  dividendLifetime: tenantProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
     .query(async ({ input, ctx }) => {
-      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      const tenant = input?.tenant ?? ctx.tenantId;
+      if (input?.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { dividendRepo } = deps();
@@ -847,8 +845,8 @@ export const billingRouter = router({
     }),
 
   /** Get affiliate code, link, and stats for the authenticated user. */
-  affiliateInfo: protectedProcedure.query(async ({ ctx }) => {
-    const tenant = ctx.tenantId ?? ctx.user.id;
+  affiliateInfo: tenantProcedure.query(async ({ ctx }) => {
+    const tenant = ctx.tenantId;
     const { affiliateRepo } = deps();
     return await affiliateRepo.getStats(tenant);
   }),
@@ -888,11 +886,11 @@ export const billingRouter = router({
     }),
 
   /** Get per-member credit usage breakdown for an org. */
-  memberUsage: protectedProcedure
+  memberUsage: tenantProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
     .query(async ({ input, ctx }) => {
-      const tenant = input?.tenant ?? ctx.tenantId ?? ctx.user.id;
-      if (input?.tenant && input.tenant !== (ctx.tenantId ?? ctx.user.id)) {
+      const tenant = input?.tenant ?? ctx.tenantId;
+      if (input?.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
       const { creditLedger } = deps();
@@ -901,32 +899,30 @@ export const billingRouter = router({
     }),
 
   /** Apply a coupon code to grant promotion credits. */
-  applyCoupon: protectedProcedure
-    .input(z.object({ code: z.string().min(1).max(50) }))
-    .mutation(async ({ input, ctx }) => {
-      const { promotionEngine } = deps();
-      if (!promotionEngine) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Promotion engine not initialized" });
-      }
-      const tenantId = ctx.tenantId ?? ctx.user.id;
-      let results: Awaited<ReturnType<typeof promotionEngine.evaluateAndGrant>>;
-      try {
-        results = await promotionEngine.evaluateAndGrant({
-          tenantId,
-          trigger: "coupon_redeem",
-          couponCode: input.code.toUpperCase().trim(),
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Invalid or expired coupon code";
-        throw new TRPCError({ code: "BAD_REQUEST", message });
-      }
-      if (results.length === 0) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid, expired, or already-used coupon code" });
-      }
-      const totalCredits = results.reduce((sum, r) => sum + r.creditsGranted.toCents(), 0);
-      return {
-        creditsGranted: totalCredits,
-        message: `${totalCredits} credits granted`,
-      };
-    }),
+  applyCoupon: tenantProcedure.input(z.object({ code: z.string().min(1).max(50) })).mutation(async ({ input, ctx }) => {
+    const { promotionEngine } = deps();
+    if (!promotionEngine) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Promotion engine not initialized" });
+    }
+    const tenantId = ctx.tenantId;
+    let results: Awaited<ReturnType<typeof promotionEngine.evaluateAndGrant>>;
+    try {
+      results = await promotionEngine.evaluateAndGrant({
+        tenantId,
+        trigger: "coupon_redeem",
+        couponCode: input.code.toUpperCase().trim(),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Invalid or expired coupon code";
+      throw new TRPCError({ code: "BAD_REQUEST", message });
+    }
+    if (results.length === 0) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid, expired, or already-used coupon code" });
+    }
+    const totalCredits = results.reduce((sum, r) => sum + r.creditsGranted.toCents(), 0);
+    return {
+      creditsGranted: totalCredits,
+      message: `${totalCredits} credits granted`,
+    };
+  }),
 });
