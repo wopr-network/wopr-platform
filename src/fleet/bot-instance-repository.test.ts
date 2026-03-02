@@ -222,6 +222,44 @@ describe("DrizzleBotInstanceRepository", () => {
     });
   });
 
+  describe("getResourceTier / setResourceTier", () => {
+    it("returns the default 'standard' tier when none has been explicitly set", async () => {
+      await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });
+      expect(await repo.getResourceTier("bot-1")).toBe("standard");
+    });
+
+    it("sets and gets resource tier", async () => {
+      await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });
+      await repo.setResourceTier("bot-1", "gpu-large");
+      expect(await repo.getResourceTier("bot-1")).toBe("gpu-large");
+    });
+
+    it("overwrites existing resource tier", async () => {
+      await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });
+      await repo.setResourceTier("bot-1", "gpu-small");
+      await repo.setResourceTier("bot-1", "gpu-large");
+      expect(await repo.getResourceTier("bot-1")).toBe("gpu-large");
+    });
+  });
+
+  describe("deleteAllByTenant", () => {
+    it("deletes all bots for a tenant", async () => {
+      await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });
+      await repo.create({ id: "bot-2", tenantId: "t-1", name: "b2", nodeId: "n-1" });
+      await repo.create({ id: "bot-3", tenantId: "t-2", name: "b3", nodeId: "n-1" });
+
+      await repo.deleteAllByTenant("t-1");
+
+      expect(await repo.listByTenant("t-1")).toEqual([]);
+      expect(await repo.listByTenant("t-2")).toHaveLength(1);
+    });
+
+    it("does nothing when tenant has no bots", async () => {
+      await repo.deleteAllByTenant("nonexistent");
+      // No error thrown
+    });
+  });
+
   describe("setBillingState", () => {
     it("suspends a bot and sets suspension timestamps", async () => {
       await repo.create({ id: "bot-1", tenantId: "t-1", name: "b1", nodeId: "n-1" });
