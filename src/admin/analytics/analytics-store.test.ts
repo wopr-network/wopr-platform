@@ -1,6 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
+import { Credit } from "../../monetization/credit.js";
 import {
   beginTestTransaction,
   createTestDb,
@@ -8,6 +9,7 @@ import {
   rollbackTestTransaction,
   seedMeterEvent,
 } from "../../test/db.js";
+import { DrizzleAnalyticsRepository } from "./analytics-repository.js";
 import { AnalyticsStore, type DateRange } from "./analytics-store.js";
 
 describe("AnalyticsStore", () => {
@@ -44,7 +46,8 @@ describe("AnalyticsStore", () => {
     vi.useFakeTimers();
     vi.setSystemTime(ANCHOR);
     await rollbackTestTransaction(pool);
-    store = new AnalyticsStore(db);
+    const repo = new DrizzleAnalyticsRepository(db);
+    store = new AnalyticsStore(repo);
   });
 
   afterEach(() => {
@@ -65,21 +68,21 @@ describe("AnalyticsStore", () => {
       await seedMeterEvent(db, {
         id: "me-1",
         tenant: "t-1",
-        charge: 0.5,
-        cost: 0.25,
+        charge: Credit.fromDollars(0.5).toRaw(),
+        cost: Credit.fromDollars(0.25).toRaw(),
         timestamp: MID_TS,
       });
 
       const overview = await store.getRevenueOverview(RANGE);
-      expect(overview.providerCostCents).toBe(25); // 0.25 * 100
+      expect(overview.providerCostCents).toBe(25); // $0.25 = 25 cents
     });
 
     it("excludes events outside range", async () => {
       await seedMeterEvent(db, {
         id: "me-out",
         tenant: "t-1",
-        charge: 1.0,
-        cost: 0.5,
+        charge: Credit.fromDollars(1.0).toRaw(),
+        cost: Credit.fromDollars(0.5).toRaw(),
         timestamp: OUT_OF_RANGE_TS,
       });
 
@@ -109,16 +112,16 @@ describe("AnalyticsStore", () => {
       await seedMeterEvent(db, {
         id: "me-1",
         tenant: "t-1",
-        charge: 1.0,
-        cost: 0.3,
+        charge: Credit.fromDollars(1.0).toRaw(),
+        cost: Credit.fromDollars(0.3).toRaw(),
         timestamp: MID_TS,
         capability: "llm",
       });
       await seedMeterEvent(db, {
         id: "me-2",
         tenant: "t-1",
-        charge: 0.5,
-        cost: 0.1,
+        charge: Credit.fromDollars(0.5).toRaw(),
+        cost: Credit.fromDollars(0.1).toRaw(),
         timestamp: MID_TS,
         capability: "llm",
       });
@@ -126,8 +129,8 @@ describe("AnalyticsStore", () => {
       const result = await store.getMarginByCapability(RANGE);
       expect(result).toHaveLength(1);
       expect(result[0].capability).toBe("llm");
-      expect(result[0].revenueCents).toBe(150); // (1.0 + 0.5) * 100
-      expect(result[0].costCents).toBe(40); // (0.3 + 0.1) * 100
+      expect(result[0].revenueCents).toBe(150); // ($1.0 + $0.5) = $1.50 = 150 cents
+      expect(result[0].costCents).toBe(40); // ($0.3 + $0.1) = $0.40 = 40 cents
       expect(result[0].marginCents).toBe(110);
     });
 
@@ -135,16 +138,16 @@ describe("AnalyticsStore", () => {
       await seedMeterEvent(db, {
         id: "me-1",
         tenant: "t-1",
-        charge: 1.0,
-        cost: 0.5,
+        charge: Credit.fromDollars(1.0).toRaw(),
+        cost: Credit.fromDollars(0.5).toRaw(),
         timestamp: MID_TS,
         capability: "llm",
       });
       await seedMeterEvent(db, {
         id: "me-2",
         tenant: "t-1",
-        charge: 0.5,
-        cost: 0.1,
+        charge: Credit.fromDollars(0.5).toRaw(),
+        cost: Credit.fromDollars(0.1).toRaw(),
         timestamp: MID_TS,
         capability: "tts",
       });
@@ -166,16 +169,16 @@ describe("AnalyticsStore", () => {
       await seedMeterEvent(db, {
         id: "me-1",
         tenant: "t-1",
-        charge: 1.0,
-        cost: 0.5,
+        charge: Credit.fromDollars(1.0).toRaw(),
+        cost: Credit.fromDollars(0.5).toRaw(),
         timestamp: MID_TS,
         provider: "openai",
       });
       await seedMeterEvent(db, {
         id: "me-2",
         tenant: "t-1",
-        charge: 0.8,
-        cost: 0.3,
+        charge: Credit.fromDollars(0.8).toRaw(),
+        cost: Credit.fromDollars(0.3).toRaw(),
         timestamp: MID_TS,
         provider: "openai",
       });
@@ -184,29 +187,29 @@ describe("AnalyticsStore", () => {
       expect(result).toHaveLength(1);
       expect(result[0].provider).toBe("openai");
       expect(result[0].callCount).toBe(2);
-      expect(result[0].spendCents).toBe(80); // (0.5 + 0.3) * 100
+      expect(result[0].spendCents).toBe(80); // ($0.5 + $0.3) = $0.80 = 80 cents
     });
 
     it("calculates avgCostPerCallCents", async () => {
       await seedMeterEvent(db, {
         id: "me-1",
         tenant: "t-1",
-        charge: 1.0,
-        cost: 0.4,
+        charge: Credit.fromDollars(1.0).toRaw(),
+        cost: Credit.fromDollars(0.4).toRaw(),
         timestamp: MID_TS,
         provider: "anthropic",
       });
       await seedMeterEvent(db, {
         id: "me-2",
         tenant: "t-1",
-        charge: 1.0,
-        cost: 0.6,
+        charge: Credit.fromDollars(1.0).toRaw(),
+        cost: Credit.fromDollars(0.6).toRaw(),
         timestamp: MID_TS,
         provider: "anthropic",
       });
 
       const result = await store.getProviderSpend(RANGE);
-      expect(result[0].avgCostPerCallCents).toBe(50); // (0.4 + 0.6) * 100 / 2
+      expect(result[0].avgCostPerCallCents).toBe(50); // ($0.4 + $0.6) = $1.00 = 100 cents / 2 calls = 50
     });
   });
 
@@ -225,8 +228,20 @@ describe("AnalyticsStore", () => {
     it("buckets meter events by time period", async () => {
       const day1 = ANCHOR.getTime() - 20 * 24 * 60 * 60 * 1000;
       const day2 = ANCHOR.getTime() - 19 * 24 * 60 * 60 * 1000;
-      await seedMeterEvent(db, { id: "me-1", tenant: "t-1", charge: 1.0, cost: 0.5, timestamp: day1 });
-      await seedMeterEvent(db, { id: "me-2", tenant: "t-1", charge: 2.0, cost: 1.0, timestamp: day2 });
+      await seedMeterEvent(db, {
+        id: "me-1",
+        tenant: "t-1",
+        charge: Credit.fromDollars(1.0).toRaw(),
+        cost: Credit.fromDollars(0.5).toRaw(),
+        timestamp: day1,
+      });
+      await seedMeterEvent(db, {
+        id: "me-2",
+        tenant: "t-1",
+        charge: Credit.fromDollars(2.0).toRaw(),
+        cost: Credit.fromDollars(1.0).toRaw(),
+        timestamp: day2,
+      });
 
       const result = await store.getTimeSeries(RANGE, 86_400_000);
       expect(result.length).toBeGreaterThanOrEqual(2);
@@ -254,8 +269,8 @@ describe("AnalyticsStore", () => {
       await seedMeterEvent(db, {
         id: "me-1",
         tenant: "t-1",
-        charge: 1,
-        cost: 0.5,
+        charge: Credit.fromDollars(1).toRaw(),
+        cost: Credit.fromDollars(0.5).toRaw(),
         timestamp: MID_TS,
         provider: "openai",
       });
@@ -269,8 +284,8 @@ describe("AnalyticsStore", () => {
       await seedMeterEvent(db, {
         id: "me-1",
         tenant: "t-1",
-        charge: 1,
-        cost: 0.5,
+        charge: Credit.fromDollars(1).toRaw(),
+        cost: Credit.fromDollars(0.5).toRaw(),
         timestamp: MID_TS,
         capability: "llm",
       });

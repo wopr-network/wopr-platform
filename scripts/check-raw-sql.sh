@@ -38,7 +38,6 @@ APPROVED_PATTERNS=(
   "src/security/credential-vault/migration-check\.ts"
   "src/security/tenant-keys/schema\.ts"
   "src/security/tenant-keys/capability-settings-store\.ts"
-  "src/admin/analytics/analytics-store\.ts"
   "src/admin/notes/notes-store\.ts"
   "src/admin/credits/adjustment-store\.ts"
   "src/admin/credits/schema\.ts"

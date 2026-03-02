@@ -1,11 +1,4 @@
-import { sql } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-
-type QueryResult = { rows: Array<Record<string, unknown>> };
-
-async function exec(db: DrizzleDb, query: Parameters<DrizzleDb["execute"]>[0]): Promise<QueryResult> {
-  return db.execute(query) as Promise<QueryResult>;
-}
+import type { IAnalyticsRepository } from "./analytics-repository.js";
 
 export interface DateRange {
   from: number; // unix epoch ms
@@ -88,10 +81,10 @@ export interface TimeSeriesPoint {
 const MAX_TIME_SERIES_POINTS = 1000;
 
 export class AnalyticsStore {
-  private readonly db: DrizzleDb;
+  private readonly repo: IAnalyticsRepository;
 
-  constructor(db: DrizzleDb) {
-    this.db = db;
+  constructor(repo: IAnalyticsRepository) {
+    this.repo = repo;
   }
 
   private toIsoRange(range: DateRange): { from: string; to: string } {
@@ -122,38 +115,12 @@ export class AnalyticsStore {
   async getRevenueOverview(range: DateRange): Promise<RevenueOverview> {
     const iso = this.toIsoRange(range);
 
-    const creditsSoldResult = await exec(
-      this.db,
-      sql`SELECT COALESCE(SUM(amount_credits), 0)::bigint as total
-          FROM credit_transactions
-          WHERE type = 'purchase' AND amount_credits > 0
-            AND created_at >= ${iso.from} AND created_at <= ${iso.to}`,
-    );
+    const creditsSoldRaw = await this.repo.sumCreditsPurchased(iso.from, iso.to);
+    const revenueConsumedRaw = await this.repo.sumCreditsConsumed(iso.from, iso.to);
+    const providerCostCents = await this.repo.sumProviderCostCents(range.from, range.to);
 
-    const revenueConsumedResult = await exec(
-      this.db,
-      sql`SELECT COALESCE(SUM(ABS(amount_credits)), 0)::bigint as total
-          FROM credit_transactions
-          WHERE type IN ('bot_runtime', 'adapter_usage', 'addon')
-            AND created_at >= ${iso.from} AND created_at <= ${iso.to}`,
-    );
-
-    const providerCostResult = await exec(
-      this.db,
-      sql`SELECT CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as total_cents
-          FROM meter_events
-          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}`,
-    );
-
-    const creditsSoldCents = Math.round(
-      Number((creditsSoldResult.rows[0] as { total: string | number })?.total ?? 0) / 10_000_000,
-    );
-    const revenueConsumedCents = Math.round(
-      Number((revenueConsumedResult.rows[0] as { total: string | number })?.total ?? 0) / 10_000_000,
-    );
-    const providerCostCents = Number(
-      (providerCostResult.rows[0] as { total_cents: string | number })?.total_cents ?? 0,
-    );
+    const creditsSoldCents = Math.round(creditsSoldRaw / 10_000_000);
+    const revenueConsumedCents = Math.round(revenueConsumedRaw / 10_000_000);
     const grossMarginCents = revenueConsumedCents - providerCostCents;
     const grossMarginPct = revenueConsumedCents > 0 ? (grossMarginCents / revenueConsumedCents) * 100 : 0;
 
@@ -172,26 +139,11 @@ export class AnalyticsStore {
    * are lifetime ratios, not period ratios.
    */
   async getFloat(): Promise<FloatMetrics> {
-    const floatResult = await exec(
-      this.db,
-      sql`SELECT COUNT(*)::bigint as tenant_count, COALESCE(SUM(balance_credits), 0)::bigint as total_float
-          FROM credit_balances
-          WHERE balance_credits > 0`,
-    );
+    const { tenantCount, totalFloatRaw } = await this.repo.getFloatBalances();
+    const totalSoldRaw = await this.repo.sumAllTimeCreditsPurchased();
 
-    const soldResult = await exec(
-      this.db,
-      sql`SELECT COALESCE(SUM(amount_credits), 0)::bigint as total_sold
-          FROM credit_transactions
-          WHERE type = 'purchase' AND amount_credits > 0`,
-    );
-
-    const floatRow = floatResult.rows[0] as { tenant_count: string | number; total_float: string | number };
-    const soldRow = soldResult.rows[0] as { total_sold: string | number };
-
-    const totalFloatCents = Math.round(Number(floatRow?.total_float ?? 0) / 10_000_000);
-    const totalCreditsSoldCents = Math.round(Number(soldRow?.total_sold ?? 0) / 10_000_000);
-    const tenantCount = Number(floatRow?.tenant_count ?? 0);
+    const totalFloatCents = Math.round(totalFloatRaw / 10_000_000);
+    const totalCreditsSoldCents = Math.round(totalSoldRaw / 10_000_000);
 
     const floatPct = totalCreditsSoldCents > 0 ? (totalFloatCents / totalCreditsSoldCents) * 100 : 0;
     const consumedPct = 100 - floatPct;
@@ -208,58 +160,24 @@ export class AnalyticsStore {
   async getRevenueBreakdown(range: DateRange): Promise<RevenueBreakdownRow[]> {
     const iso = this.toIsoRange(range);
 
-    const perUseResult = await exec(
-      this.db,
-      sql`SELECT
-            'per_use' as category,
-            capability,
-            CAST(COALESCE(SUM(charge) * 100, 0) AS BIGINT) as revenue_cents
-          FROM meter_events
-          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
-          GROUP BY capability
-          ORDER BY revenue_cents DESC`,
-    );
-
-    const monthlyResult = await exec(
-      this.db,
-      sql`SELECT
-            'monthly' as category,
-            CASE
-              WHEN type = 'bot_runtime' THEN 'agent_seat'
-              WHEN type = 'addon' THEN 'addon'
-              ELSE type
-            END as capability,
-            COALESCE(SUM(ABS(amount_credits)), 0)::bigint as revenue_cents
-          FROM credit_transactions
-          WHERE type IN ('bot_runtime', 'addon')
-            AND created_at >= ${iso.from} AND created_at <= ${iso.to}
-          GROUP BY capability
-          ORDER BY revenue_cents DESC`,
-    );
+    const perUseRows = await this.repo.getPerUseRevenueBreakdown(range.from, range.to);
+    const monthlyRows = await this.repo.getMonthlyRevenueBreakdown(iso.from, iso.to);
 
     const result: RevenueBreakdownRow[] = [];
 
-    for (const row of perUseResult.rows as Array<{
-      category: string;
-      capability: string;
-      revenue_cents: string | number;
-    }>) {
+    for (const row of perUseRows) {
       result.push({
         category: "per_use",
         capability: row.capability,
-        revenueCents: Number(row.revenue_cents),
+        revenueCents: row.revenueCents,
       });
     }
 
-    for (const row of monthlyResult.rows as Array<{
-      category: string;
-      capability: string;
-      revenue_cents: string | number;
-    }>) {
+    for (const row of monthlyRows) {
       result.push({
         category: "monthly",
         capability: row.capability,
-        revenueCents: Math.round(Number(row.revenue_cents) / 10_000_000),
+        revenueCents: Math.round(row.revenueCents / 10_000_000),
       });
     }
 
@@ -267,23 +185,11 @@ export class AnalyticsStore {
   }
 
   async getMarginByCapability(range: DateRange): Promise<MarginByCapability[]> {
-    const result = await exec(
-      this.db,
-      sql`SELECT
-            capability,
-            CAST(COALESCE(SUM(charge) * 100, 0) AS BIGINT) as revenue_cents,
-            CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as cost_cents
-          FROM meter_events
-          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
-          GROUP BY capability
-          ORDER BY revenue_cents DESC`,
-    );
+    const rows = await this.repo.getMarginByCapability(range.from, range.to);
 
-    return (
-      result.rows as Array<{ capability: string; revenue_cents: string | number; cost_cents: string | number }>
-    ).map((row) => {
-      const revenueCents = Number(row.revenue_cents);
-      const costCents = Number(row.cost_cents);
+    return rows.map((row) => {
+      const revenueCents = row.revenueCents;
+      const costCents = row.costCents;
       const marginCents = revenueCents - costCents;
       const marginPct = revenueCents > 0 ? (marginCents / revenueCents) * 100 : 0;
       return {
@@ -297,74 +203,28 @@ export class AnalyticsStore {
   }
 
   async getProviderSpend(range: DateRange): Promise<ProviderSpendRow[]> {
-    const result = await exec(
-      this.db,
-      sql`SELECT
-            provider,
-            COUNT(*)::bigint as call_count,
-            CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as spend_cents
-          FROM meter_events
-          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
-          GROUP BY provider
-          ORDER BY spend_cents DESC`,
-    );
+    const rows = await this.repo.getProviderSpend(range.from, range.to);
 
-    return (result.rows as Array<{ provider: string; call_count: string | number; spend_cents: string | number }>).map(
-      (row) => {
-        const callCount = Number(row.call_count);
-        const spendCents = Number(row.spend_cents);
-        return {
-          provider: row.provider,
-          callCount,
-          spendCents,
-          avgCostPerCallCents: callCount > 0 ? Math.round(spendCents / callCount) : 0,
-        };
-      },
-    );
+    return rows.map((row) => {
+      const callCount = row.callCount;
+      const spendCents = row.spendCents;
+      return {
+        provider: row.provider,
+        callCount,
+        spendCents,
+        avgCostPerCallCents: callCount > 0 ? Math.round(spendCents / callCount) : 0,
+      };
+    });
   }
 
   async getTenantHealth(): Promise<TenantHealthSummary> {
     const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const totalResult = await exec(
-      this.db,
-      sql`SELECT COUNT(*)::bigint as total FROM (
-            SELECT tenant_id FROM credit_balances
-            UNION
-            SELECT tenant_id FROM tenant_status
-          ) t`,
-    );
-
-    const activeResult = await exec(
-      this.db,
-      sql`SELECT COUNT(DISTINCT tenant_id)::bigint as active
-          FROM credit_transactions
-          WHERE amount_credits < 0
-            AND created_at >= ${thirtyDaysAgoIso}`,
-    );
-
-    const withBalanceResult = await exec(
-      this.db,
-      sql`SELECT COUNT(*)::bigint as with_balance
-          FROM credit_balances
-          WHERE balance_credits > 0`,
-    );
-
-    const atRiskResult = await exec(
-      this.db,
-      sql`SELECT COUNT(*)::bigint as at_risk
-          FROM credit_balances
-          WHERE balance_credits > 0 AND balance_credits < 5000000000
-            AND tenant_id NOT IN (
-              SELECT DISTINCT tenant_id FROM credit_auto_topup WHERE status = 'success'
-            )`,
-    );
-
-    const totalTenants = Number((totalResult.rows[0] as { total: string | number })?.total ?? 0);
-    const activeTenants = Number((activeResult.rows[0] as { active: string | number })?.active ?? 0);
-    const withBalance = Number((withBalanceResult.rows[0] as { with_balance: string | number })?.with_balance ?? 0);
+    const totalTenants = await this.repo.countTotalTenants();
+    const activeTenants = await this.repo.countActiveTenants(thirtyDaysAgoIso);
+    const withBalance = await this.repo.countTenantsWithBalance();
+    const atRisk = await this.repo.countAtRiskTenants();
     const dormant = totalTenants - activeTenants;
-    const atRisk = Number((atRiskResult.rows[0] as { at_risk: string | number })?.at_risk ?? 0);
 
     return {
       totalTenants,
@@ -377,33 +237,16 @@ export class AnalyticsStore {
 
   async getAutoTopupMetrics(range: DateRange): Promise<AutoTopupMetrics> {
     const iso = this.toIsoRange(range);
+    const row = await this.repo.getAutoTopupMetrics(iso.from, iso.to);
 
-    const result = await exec(
-      this.db,
-      sql`SELECT
-            COUNT(*)::bigint as total_events,
-            COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0)::bigint as success_count,
-            COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0)::bigint as failed_count,
-            COALESCE(SUM(CASE WHEN status = 'success' THEN amount_cents ELSE 0 END), 0)::bigint as revenue_cents
-          FROM credit_auto_topup
-          WHERE created_at >= ${iso.from} AND created_at <= ${iso.to}`,
-    );
-
-    const row = result.rows[0] as {
-      total_events: string | number;
-      success_count: string | number;
-      failed_count: string | number;
-      revenue_cents: string | number;
-    };
-
-    const totalEvents = Number(row?.total_events ?? 0);
-    const failureRate = totalEvents > 0 ? (Number(row?.failed_count ?? 0) / totalEvents) * 100 : 0;
+    const totalEvents = row.totalEvents;
+    const failureRate = totalEvents > 0 ? (row.failedCount / totalEvents) * 100 : 0;
 
     return {
       totalEvents,
-      successCount: Number(row?.success_count ?? 0),
-      failedCount: Number(row?.failed_count ?? 0),
-      revenueCents: Number(row?.revenue_cents ?? 0),
+      successCount: row.successCount,
+      failedCount: row.failedCount,
+      revenueCents: row.revenueCents,
       failureRate,
     };
   }
@@ -416,58 +259,29 @@ export class AnalyticsStore {
 
     const iso = this.toIsoRange(range);
 
-    const meterResult = await exec(
-      this.db,
-      sql`SELECT
-            (FLOOR(timestamp::numeric / ${effectiveBucketMs})::bigint * ${effectiveBucketMs}) as period_start,
-            CAST(COALESCE(SUM(charge) * 100, 0) AS BIGINT) as per_use_revenue_cents,
-            CAST(COALESCE(SUM(cost) * 100, 0) AS BIGINT) as provider_cost_cents
-          FROM meter_events
-          WHERE timestamp >= ${range.from} AND timestamp <= ${range.to}
-          GROUP BY period_start
-          ORDER BY period_start`,
-    );
-
-    const creditResult = await exec(
-      this.db,
-      sql`SELECT
-            (FLOOR(EXTRACT(EPOCH FROM created_at::timestamptz) * 1000 / ${effectiveBucketMs})::bigint * ${effectiveBucketMs}) as period_start,
-            COALESCE(SUM(CASE WHEN type = 'purchase' AND amount_credits > 0 THEN amount_credits ELSE 0 END), 0)::bigint as credits_sold_cents,
-            COALESCE(SUM(CASE WHEN type IN ('bot_runtime', 'addon') THEN ABS(amount_credits) ELSE 0 END), 0)::bigint as monthly_revenue_cents
-          FROM credit_transactions
-          WHERE created_at >= ${iso.from} AND created_at <= ${iso.to}
-          GROUP BY period_start
-          ORDER BY period_start`,
-    );
+    const meterRows = await this.repo.getTimeSeriesMeter(range.from, range.to, effectiveBucketMs);
+    const creditRows = await this.repo.getTimeSeriesCredits(iso.from, iso.to, effectiveBucketMs);
 
     // Merge by period_start
     const pointMap = new Map<number, TimeSeriesPoint>();
 
-    for (const row of meterResult.rows as Array<{
-      period_start: string | number;
-      per_use_revenue_cents: string | number;
-      provider_cost_cents: string | number;
-    }>) {
-      const ps = Number(row.period_start);
+    for (const row of meterRows) {
+      const ps = row.periodStart;
       pointMap.set(ps, {
         periodStart: ps,
         periodEnd: ps + effectiveBucketMs,
         creditsSoldCents: 0,
-        revenueConsumedCents: Number(row.per_use_revenue_cents),
-        providerCostCents: Number(row.provider_cost_cents),
-        marginCents: Number(row.per_use_revenue_cents) - Number(row.provider_cost_cents),
+        revenueConsumedCents: row.perUseRevenueCents,
+        providerCostCents: row.providerCostCents,
+        marginCents: row.perUseRevenueCents - row.providerCostCents,
       });
     }
 
-    for (const row of creditResult.rows as Array<{
-      period_start: string | number;
-      credits_sold_cents: string | number;
-      monthly_revenue_cents: string | number;
-    }>) {
-      const ps = Number(row.period_start);
+    for (const row of creditRows) {
+      const ps = row.periodStart;
       const existing = pointMap.get(ps);
-      const creditsSold = Math.round(Number(row.credits_sold_cents) / 10_000_000);
-      const monthlyRevenue = Math.round(Number(row.monthly_revenue_cents) / 10_000_000);
+      const creditsSold = Math.round(row.creditsSoldRaw / 10_000_000);
+      const monthlyRevenue = Math.round(row.monthlyRevenueRaw / 10_000_000);
       if (existing) {
         existing.creditsSoldCents = creditsSold;
         existing.revenueConsumedCents += monthlyRevenue;

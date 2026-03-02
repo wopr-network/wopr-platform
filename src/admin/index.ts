@@ -3,6 +3,7 @@ export { DrizzleAdminAuditLogRepository } from "./admin-audit-log-repository.js"
 export type {
   DateRange,
   FloatMetrics,
+  IAnalyticsRepository,
   MarginByCapability,
   ProviderSpendRow,
   RevenueBreakdownRow,
@@ -10,7 +11,7 @@ export type {
   TenantHealthSummary,
   TimeSeriesPoint,
 } from "./analytics/index.js";
-export { AnalyticsStore } from "./analytics/index.js";
+export { AnalyticsStore, DrizzleAnalyticsRepository } from "./analytics/index.js";
 export type { AdminAuditLogRow, AuditCategory, AuditEntry, AuditFilters } from "./audit-log.js";
 export { AdminAuditLog } from "./audit-log.js";
 export type { IBulkOperationsRepository } from "./bulk/bulk-operations-repository.js";

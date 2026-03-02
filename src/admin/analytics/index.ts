@@ -1,3 +1,5 @@
+export type { IAnalyticsRepository } from "./analytics-repository.js";
+export { DrizzleAnalyticsRepository } from "./analytics-repository.js";
 export type {
   AutoTopupMetrics,
   DateRange,

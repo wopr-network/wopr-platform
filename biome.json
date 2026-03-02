@@ -139,7 +139,7 @@
         "src/admin/tenant-status/tenant-status-store.ts",
         "src/admin/rates/rate-store.ts",
         "src/admin/roles/role-store.ts",
-        "src/admin/analytics/analytics-store.ts",
+        "src/admin/analytics/analytics-repository.ts",
         "src/email/notification-preferences-store.ts",
         "src/email/notification-queue-store.ts",
         "src/email/drizzle-billing-email-repository.ts",
