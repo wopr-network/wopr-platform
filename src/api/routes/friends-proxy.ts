@@ -10,8 +10,8 @@ export interface ProxyResult {
   error?: string;
 }
 
-/** Allowed path prefix — all proxy targets must live under /p2p/. */
-const ALLOWED_PATH_RE = /^\/p2p\/[a-zA-Z0-9/_-]*$/;
+/** Allowed path prefixes — proxy targets must live under /p2p/ or /plugins/. */
+const ALLOWED_PATH_RE = /^\/(?:p2p|plugins)\/[a-zA-Z0-9/_-]*$|^\/plugins\/install$/;
 
 /** Allowed HTTP methods for proxying. */
 const ALLOWED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]);

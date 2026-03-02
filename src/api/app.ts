@@ -18,6 +18,7 @@ import {
   getMarketplacePluginRepo,
   getOnboardingScriptRepo,
   getOrgRepo,
+  getPluginConfigRepo,
 } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
@@ -38,6 +39,7 @@ import { adminNodeRoutes, adminRecoveryRoutes } from "./routes/admin-recovery.js
 import { adminUsersApiRoutes } from "./routes/admin-users.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
+import { createBotPluginProxyRoutes } from "./routes/bot-plugin-proxy.js";
 import { botPluginRoutes } from "./routes/bot-plugins.js";
 import { botSnapshotRoutes } from "./routes/bot-snapshots.js";
 import { channelOAuthRoutes } from "./routes/channel-oauth.js";
@@ -254,6 +256,8 @@ app.get("/health/certs", async (c) => {
 });
 app.route("/fleet", fleetRoutes);
 app.route("/fleet", botPluginRoutes);
+// Plugin proxy routes — forward install/config/enable/disable to running daemon
+app.route("/api/bots", createBotPluginProxyRoutes({ pluginConfigRepo: getPluginConfigRepo() }));
 app.route("/api/quota", quotaRoutes);
 app.route("/api/billing", billingRoutes);
 app.route("/api", secretsRoutes);
