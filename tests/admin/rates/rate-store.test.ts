@@ -4,18 +4,19 @@ import { RateStore } from "../../../src/admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../../src/db/index.js";
 import { createTestDb, truncateAllTables } from "../../../src/test/db.js"
 
+let db: DrizzleDb;
+let pool: PGlite;
+
+beforeAll(async () => {
+	({ db, pool } = await createTestDb());
+});
+
+afterAll(async () => {
+	await pool.close();
+});
+
 describe("RateStore - Sell Rates", () => {
-	let db: DrizzleDb;
-	let pool: PGlite;
 	let store: RateStore;
-
-	beforeAll(async () => {
-		({ db, pool } = await createTestDb());
-	});
-
-	afterAll(async () => {
-		await pool.close();
-	});
 
 	beforeEach(async () => {
 		await truncateAllTables(pool);
@@ -301,17 +302,7 @@ describe("RateStore - Sell Rates", () => {
 });
 
 describe("RateStore - Provider Costs", () => {
-	let db: DrizzleDb;
-	let pool: PGlite;
 	let store: RateStore;
-
-	beforeAll(async () => {
-		({ db, pool } = await createTestDb());
-	});
-
-	afterAll(async () => {
-		await pool.close();
-	});
 
 	beforeEach(async () => {
 		await truncateAllTables(pool);
@@ -517,17 +508,7 @@ describe("RateStore - Provider Costs", () => {
 });
 
 describe("RateStore - Margin Report", () => {
-	let db: DrizzleDb;
-	let pool: PGlite;
 	let store: RateStore;
-
-	beforeAll(async () => {
-		({ db, pool } = await createTestDb());
-	});
-
-	afterAll(async () => {
-		await pool.close();
-	});
 
 	beforeEach(async () => {
 		await truncateAllTables(pool);
