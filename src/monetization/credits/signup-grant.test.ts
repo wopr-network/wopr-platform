@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger } from "./credit-ledger.js";
@@ -45,5 +45,19 @@ describe("grantSignupCredits", () => {
 
   it("SIGNUP_GRANT_CENTS equals 500", () => {
     expect(SIGNUP_GRANT_CENTS).toBe(500);
+  });
+
+  it("returns false when credit() throws a unique constraint violation (TOCTOU race)", async () => {
+    // Simulate two concurrent requests: both pass hasReferenceId check,
+    // then the second credit() call loses the race and gets a unique constraint error.
+    const uniqueErr = Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+    });
+    const racingLedger = new CreditLedger(db);
+    vi.spyOn(racingLedger, "hasReferenceId").mockResolvedValue(false);
+    vi.spyOn(racingLedger, "credit").mockRejectedValue(uniqueErr);
+
+    const result = await grantSignupCredits(racingLedger, "tenant-race");
+    expect(result).toBe(false);
   });
 });
