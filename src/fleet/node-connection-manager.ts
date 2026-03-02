@@ -6,6 +6,10 @@ import type { INodeRepository } from "./node-repository.js";
 import type { NodeStatus } from "./node-state-machine.js";
 import type { OrphanCleaner } from "./orphan-cleaner.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
+import type { Node } from "./repository-types.js";
+
+// Re-export Node as NodeInfo for backwards compatibility with capacity-alerts.ts
+export type { Node as NodeInfo };
 
 /** Node registration request body */
 export interface NodeRegistration {
@@ -13,20 +17,6 @@ export interface NodeRegistration {
   host: string;
   capacity_mb: number;
   agent_version: string;
-}
-
-/** Node information returned from listNodes */
-export interface NodeInfo {
-  id: string;
-  host: string;
-  status: string;
-  capacityMb: number;
-  usedMb: number;
-  agentVersion: string | null;
-  lastHeartbeatAt: number | null;
-  registeredAt: number;
-  ownerUserId?: string | null;
-  label?: string | null;
 }
 
 /** Tenant assignment to a specific node */
@@ -293,9 +283,9 @@ export class NodeConnectionManager {
   /**
    * Get current status of all nodes
    */
-  async listNodes(): Promise<NodeInfo[]> {
+  async listNodes(): Promise<Node[]> {
     const nodes = await this.nodeRepo.list();
-    return nodes as unknown as NodeInfo[];
+    return nodes;
   }
 
   /**
@@ -316,9 +306,9 @@ export class NodeConnectionManager {
   /**
    * Find the best target node for recovery (most free capacity)
    */
-  async findBestTarget(excludeNodeId: string, requiredMb: number): Promise<NodeInfo | null> {
+  async findBestTarget(excludeNodeId: string, requiredMb: number): Promise<Node | null> {
     const node = await this.nodeRepo.findBestTarget(excludeNodeId, requiredMb);
-    return node as unknown as NodeInfo | null;
+    return node;
   }
 
   /**
@@ -339,9 +329,9 @@ export class NodeConnectionManager {
   /**
    * Get a single node by ID
    */
-  async getNode(nodeId: string): Promise<NodeInfo | undefined> {
+  async getNode(nodeId: string): Promise<Node | undefined> {
     const node = await this.nodeRepo.getById(nodeId);
-    return node as unknown as NodeInfo | undefined;
+    return node ?? undefined;
   }
 
   /**
@@ -383,9 +373,9 @@ export class NodeConnectionManager {
   /**
    * Look up a node by its persistent secret (hashed). Returns node or undefined.
    */
-  async getNodeBySecret(secret: string): Promise<NodeInfo | undefined> {
+  async getNodeBySecret(secret: string): Promise<Node | undefined> {
     const node = await this.nodeRepo.getBySecret(secret);
-    return node as unknown as NodeInfo | undefined;
+    return node ?? undefined;
   }
 
   /**
