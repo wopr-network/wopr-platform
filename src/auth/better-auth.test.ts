@@ -3,10 +3,29 @@
  *
  * Tests session resolution middleware and integration with existing auth system.
  */
+
+import { PGlite } from "@electric-sql/pglite";
 import { betterAuth } from "better-auth";
-import BetterSqlite3, { type Database as BetterSqlite3Db } from "better-sqlite3";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+/**
+ * pg.Pool-compatible wrapper around PGlite for better-auth.
+ * better-auth's Kysely PostgresDialect requires pool.connect() → client with query + release.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: test helper wrapping PGlite as pg.Pool
+function pgliteAsPool(pg: PGlite): any {
+  const client = {
+    query: (text: string, params?: unknown[]) => pg.query(text, params),
+    release: () => {},
+  };
+  return {
+    connect: () => Promise.resolve(client),
+    query: (text: string, params?: unknown[]) => pg.query(text, params),
+    end: () => Promise.resolve(),
+  };
+}
+
 import { getAuth, resetAuth, setAuth } from "./better-auth.js";
 import {
   type AuthEnv,
@@ -22,23 +41,23 @@ describe("getAuth singleton", () => {
     resetAuth();
   });
 
-  it("returns the same instance on repeated calls", () => {
-    const db = new BetterSqlite3(":memory:");
-    const auth = betterAuth({ database: db, secret: "s", emailAndPassword: { enabled: true } });
+  it("returns the same instance on repeated calls", async () => {
+    const pg = new PGlite();
+    const auth = betterAuth({ database: pgliteAsPool(pg), secret: "s", emailAndPassword: { enabled: true } });
     setAuth(auth);
     const a = getAuth();
     const b = getAuth();
     expect(a).toBe(b);
-    db.close();
+    await pg.close();
   });
 
-  it("getAuth creates a new instance when auth is reset and called with in-memory db via setAuth", () => {
+  it("getAuth creates a new instance when auth is reset and called with in-memory db via setAuth", async () => {
     resetAuth();
-    const db = new BetterSqlite3(":memory:");
-    const auth = betterAuth({ database: db, secret: "s", emailAndPassword: { enabled: true } });
+    const pg = new PGlite();
+    const auth = betterAuth({ database: pgliteAsPool(pg), secret: "s", emailAndPassword: { enabled: true } });
     setAuth(auth);
     expect(getAuth()).toBe(auth);
-    db.close();
+    await pg.close();
   });
 });
 
@@ -53,12 +72,12 @@ describe("better-auth integration", () => {
 
   describe("resolveSessionUser middleware", () => {
     let app: Hono<AuthEnv>;
-    let db: BetterSqlite3Db;
+    let pg: PGlite;
 
     beforeEach(() => {
-      db = new BetterSqlite3(":memory:");
+      pg = new PGlite();
       const auth = betterAuth({
-        database: db,
+        database: pgliteAsPool(pg),
         secret: "test-secret",
         emailAndPassword: { enabled: true },
       });
@@ -77,8 +96,8 @@ describe("better-auth integration", () => {
       });
     });
 
-    afterEach(() => {
-      db.close();
+    afterEach(async () => {
+      await pg.close();
       resetAuth();
     });
 
