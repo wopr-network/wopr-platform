@@ -111,7 +111,7 @@ internalNodeRoutes.post("/register", async (c) => {
         }
       }
 
-      registrar.register(registration);
+      await registrar.register(registration);
       logger.info(`Node registered via static secret: ${registration.nodeId}`);
       return c.json({ success: true });
     }
@@ -144,7 +144,7 @@ internalNodeRoutes.post("/register", async (c) => {
   const hashedSecret = createHash("sha256").update(nodeSecret).digest("hex");
 
   // Register self-hosted node via registrar
-  registrar.registerSelfHosted({
+  await registrar.registerSelfHosted({
     ...registration,
     nodeId,
     ownerUserId: consumed.userId,

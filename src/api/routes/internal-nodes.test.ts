@@ -349,4 +349,42 @@ describe("POST /register", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("returns 500 when registrar.register throws (static secret path)", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const registrar = getNodeRegistrar();
+    vi.mocked(registrar.register).mockRejectedValueOnce(new Error("DB write failed"));
+
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({ node_id: "n1", host: "10.0.0.1", capacity_mb: 1024, agent_version: "2.0" }),
+    });
+
+    expect(res.status).toBe(500);
+  });
+
+  it("returns 500 when registrar.registerSelfHosted throws (token path)", async () => {
+    delete process.env.NODE_SECRET;
+    const tokenStore = getRegistrationTokenStore();
+    const registrar = getNodeRegistrar();
+
+    const token = randomUUID();
+    vi.mocked(tokenStore.consume).mockReturnValue({ userId: "user-1", label: "my-node" } as never);
+    vi.mocked(registrar.registerSelfHosted).mockRejectedValueOnce(new Error("DB write failed"));
+
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ node_id: "n1", host: "10.0.0.3", capacity_mb: 2048, agent_version: "2.0" }),
+    });
+
+    expect(res.status).toBe(500);
+  });
 });
