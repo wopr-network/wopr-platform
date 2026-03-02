@@ -12,7 +12,7 @@ import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
 import { setChatDeps } from "./api/routes/chat.js";
 import { setFleetDeps } from "./api/routes/fleet.js";
-import { getNodeSecretDeprecationWarnings, validateNodeAuth } from "./api/routes/internal-nodes.js";
+import { getNodeSecretDeprecationWarnings } from "./api/routes/internal-nodes.js";
 import { setMarketplaceDeps } from "./api/routes/marketplace.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
@@ -1080,42 +1080,26 @@ if (process.env.NODE_ENV !== "test") {
         if (match) {
           const nodeId = match[1];
           const authHeader = req.headers.authorization;
-          const bearer = authHeader?.replace(/^Bearer\s+/i, "");
+          const nodeSecretHeader = req.headers["x-node-secret"] as string | undefined;
 
-          // Path 1: Static NODE_SECRET (backwards-compatible)
-          const staticAuthResult = validateNodeAuth(authHeader);
-          if (staticAuthResult === true) {
-            // Verify per-node secret if the node has one stored
-            const nodeSecretHeader = req.headers["x-node-secret"] as string | undefined;
-            const verified = await getNodeRepo().verifyNodeSecret(nodeId, nodeSecretHeader ?? "");
-            if (verified === false) {
-              logger.warn(`WebSocket rejected for node ${nodeId}: invalid per-node secret`);
-              socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-              socket.destroy();
-              return;
-            }
+          const { authenticateWebSocketUpgrade } = await import("./api/routes/ws-auth.js");
+          const authResult = await authenticateWebSocketUpgrade({
+            nodeId,
+            authHeader,
+            nodeSecretHeader,
+          });
+
+          if (authResult.authenticated) {
             wss.handleUpgrade(req, socket, head, (ws) => {
               acceptAndWireWebSocket(nodeId, ws);
             });
             return;
           }
 
-          // Path 2: Per-node persistent secret for self-hosted nodes
-          if (bearer) {
-            const nodeBySecret = await getNodeRepo().getBySecret(bearer);
-            if (nodeBySecret && nodeBySecret.id === nodeId) {
-              wss.handleUpgrade(req, socket, head, (ws) => {
-                acceptAndWireWebSocket(nodeId, ws);
-              });
-              return;
-            }
-          }
-
-          // No valid auth found
-          if (staticAuthResult === null && !bearer) {
-            // NODE_SECRET not configured and no bearer provided
+          if (authResult.reason === "no auth configured") {
             socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
           } else {
+            logger.warn(`WebSocket rejected for node ${nodeId}: ${authResult.reason}`);
             socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           }
           socket.destroy();
