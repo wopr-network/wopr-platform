@@ -8,7 +8,7 @@ vi.mock("./services.js", () => ({
   getCommandBus: () => ({ send: mockSend }),
 }));
 
-function makeRepo(instance: { nodeId?: string | null } | null): IBotInstanceRepository {
+function makeRepo(instance: { nodeId?: string | null; tenantId?: string } | null): IBotInstanceRepository {
   return {
     getById: vi.fn().mockResolvedValue(instance),
   } as unknown as IBotInstanceRepository;
@@ -21,7 +21,7 @@ describe("dispatchEnvUpdate", () => {
 
   it("dispatches bot.update when instance has a nodeId", async () => {
     mockSend.mockResolvedValue(undefined);
-    const repo = makeRepo({ nodeId: "node-1" });
+    const repo = makeRepo({ nodeId: "node-1", tenantId: "tenant-1" });
 
     const result = await dispatchEnvUpdate("bot-1", "tenant-1", { FOO: "bar" }, repo);
 
@@ -52,7 +52,7 @@ describe("dispatchEnvUpdate", () => {
 
   it("returns dispatched:false and captures error message when send throws", async () => {
     mockSend.mockRejectedValue(new Error("connection refused"));
-    const repo = makeRepo({ nodeId: "node-1" });
+    const repo = makeRepo({ nodeId: "node-1", tenantId: "tenant-1" });
 
     const result = await dispatchEnvUpdate("bot-1", "tenant-1", {}, repo);
 
@@ -61,10 +61,19 @@ describe("dispatchEnvUpdate", () => {
 
   it("handles non-Error thrown values", async () => {
     mockSend.mockRejectedValue("string error");
-    const repo = makeRepo({ nodeId: "node-1" });
+    const repo = makeRepo({ nodeId: "node-1", tenantId: "tenant-1" });
 
     const result = await dispatchEnvUpdate("bot-1", "tenant-1", {}, repo);
 
     expect(result).toEqual({ dispatched: false, dispatchError: "string error" });
+  });
+
+  it("returns dispatched:false when tenantId does not match bot owner", async () => {
+    const repo = makeRepo({ nodeId: "node-1", tenantId: "tenant-B" });
+
+    const result = await dispatchEnvUpdate("bot-1", "tenant-A", { FOO: "bar" }, repo);
+
+    expect(result).toEqual({ dispatched: false, dispatchError: "tenant_mismatch" });
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });
