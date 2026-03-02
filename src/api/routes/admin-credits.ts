@@ -230,7 +230,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
 
     try {
       const balance = await ledger.balance(tenant);
-      return c.json({ tenant, balance_cents: balance });
+      return c.json({ tenant, balance_credits: balance });
     } catch {
       return c.json({ error: "Internal server error" }, 500);
     }

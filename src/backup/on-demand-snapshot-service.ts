@@ -116,11 +116,12 @@ export class OnDemandSnapshotService {
 }
 
 export class InsufficientCreditsError extends Error {
-  balance: number;
-  constructor(balance: number) {
-    super(`Insufficient credit balance: ${balance} credits`);
+  /** Current credit balance (internal credit units, not USD cents). */
+  balanceCredits: number;
+  constructor(balanceCredits: number) {
+    super(`Insufficient credit balance: ${balanceCredits} credits`);
     this.name = "InsufficientCreditsError";
-    this.balance = balance;
+    this.balanceCredits = balanceCredits;
   }
 }
 
