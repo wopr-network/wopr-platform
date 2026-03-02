@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import { detectCapabilityConflicts } from "../../fleet/capability-conflict.js";
 import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
 import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
@@ -56,6 +57,7 @@ botPluginRoutes.use("/bots/:botId/*", async (c, next) => {
 const installPluginSchema = z.object({
   config: z.record(z.string(), z.unknown()).default({}),
   providerChoices: z.record(z.string(), z.enum(["byok", "hosted"])).default({}),
+  primaryProviderOverrides: z.record(z.string(), z.string()).optional(),
 });
 
 /** POST /fleet/bots/:botId/plugins/:pluginId — Install a plugin on a bot */
@@ -113,6 +115,36 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
     return c.json({ error: "Plugin already installed", pluginId }, 409);
   }
 
+  // --- Detect capability conflicts ---
+  const conflicts = detectCapabilityConflicts(pluginId, existingPlugins, pluginRegistry);
+  if (conflicts.length > 0 && !parsed.data.primaryProviderOverrides) {
+    return c.json(
+      {
+        error: "Capability conflict",
+        conflicts,
+        message:
+          "Another installed plugin already provides one or more of the same capabilities. Provide primaryProviderOverrides to choose which plugin is primary for each conflicting capability.",
+      },
+      409,
+    );
+  }
+
+  // --- Collect primary provider choices ---
+  const existingProviders: Record<string, string> = {};
+  const existingProvidersRaw = freshProfile.env.WOPR_CAPABILITY_PROVIDERS;
+  if (existingProvidersRaw) {
+    try {
+      Object.assign(existingProviders, JSON.parse(existingProvidersRaw));
+    } catch {
+      // Malformed — start fresh
+    }
+  }
+  if (parsed.data.primaryProviderOverrides) {
+    for (const [cap, pid] of Object.entries(parsed.data.primaryProviderOverrides)) {
+      existingProviders[cap] = pid;
+    }
+  }
+
   // Add pluginId to WOPR_PLUGINS list
   const updatedPlugins = [...existingPlugins, pluginId].join(",");
 
@@ -162,6 +194,11 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
   // Only set WOPR_HOSTED_KEYS if there are hosted keys
   if (allHostedKeys.length > 0) {
     updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
+  }
+
+  // Persist capability provider map if non-empty
+  if (Object.keys(existingProviders).length > 0) {
+    updatedEnv.WOPR_CAPABILITY_PROVIDERS = JSON.stringify(existingProviders);
   }
 
   // Save profile with updated env (DB is source of truth)
@@ -439,6 +476,26 @@ botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) =>
     delete updatedEnv.WOPR_PLUGINS_DISABLED;
   }
 
+  // Clean up WOPR_CAPABILITY_PROVIDERS entries for the removed plugin
+  const providersRaw = updatedEnv.WOPR_CAPABILITY_PROVIDERS;
+  if (providersRaw) {
+    try {
+      const providers = JSON.parse(providersRaw) as Record<string, string>;
+      for (const [cap, pid] of Object.entries(providers)) {
+        if (pid === pluginId) {
+          delete providers[cap];
+        }
+      }
+      if (Object.keys(providers).length > 0) {
+        updatedEnv.WOPR_CAPABILITY_PROVIDERS = JSON.stringify(providers);
+      } else {
+        delete updatedEnv.WOPR_CAPABILITY_PROVIDERS;
+      }
+    } catch {
+      delete updatedEnv.WOPR_CAPABILITY_PROVIDERS;
+    }
+  }
+
   let applied = false;
   try {
     await fleet.update(botId, { env: updatedEnv });
@@ -571,6 +628,36 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
     return c.json({ error: "Plugin already installed", pluginId }, 409);
   }
 
+  // --- Detect capability conflicts ---
+  const channelConflicts = detectCapabilityConflicts(pluginId, existingPlugins, pluginRegistry);
+  if (channelConflicts.length > 0 && !parsed.data.primaryProviderOverrides) {
+    return c.json(
+      {
+        error: "Capability conflict",
+        conflicts: channelConflicts,
+        message:
+          "Another installed plugin already provides one or more of the same capabilities. Provide primaryProviderOverrides to choose which plugin is primary for each conflicting capability.",
+      },
+      409,
+    );
+  }
+
+  // --- Collect primary provider choices ---
+  const channelProviders: Record<string, string> = {};
+  const channelProvidersRaw = freshProfile.env.WOPR_CAPABILITY_PROVIDERS;
+  if (channelProvidersRaw) {
+    try {
+      Object.assign(channelProviders, JSON.parse(channelProvidersRaw));
+    } catch {
+      // Malformed — start fresh
+    }
+  }
+  if (parsed.data.primaryProviderOverrides) {
+    for (const [cap, pid] of Object.entries(parsed.data.primaryProviderOverrides)) {
+      channelProviders[cap] = pid;
+    }
+  }
+
   const updatedPlugins = [...existingPlugins, pluginId].join(",");
 
   const hostedEnvVars: Record<string, string> = {};
@@ -613,6 +700,11 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
 
   if (allHostedKeys.length > 0) {
     updatedEnv.WOPR_HOSTED_KEYS = allHostedKeys.join(",");
+  }
+
+  // Persist capability provider map if non-empty
+  if (Object.keys(channelProviders).length > 0) {
+    updatedEnv.WOPR_CAPABILITY_PROVIDERS = JSON.stringify(channelProviders);
   }
 
   // Save profile with updated env (DB is source of truth)
@@ -757,6 +849,26 @@ botPluginRoutes.delete("/bots/:botId/channels/:pluginId", writeAuth, async (c) =
     updatedEnv.WOPR_PLUGINS_DISABLED = disabledPlugins.join(",");
   } else {
     delete updatedEnv.WOPR_PLUGINS_DISABLED;
+  }
+
+  // Clean up WOPR_CAPABILITY_PROVIDERS entries for the removed plugin
+  const channelProvidersRaw = updatedEnv.WOPR_CAPABILITY_PROVIDERS;
+  if (channelProvidersRaw) {
+    try {
+      const providers = JSON.parse(channelProvidersRaw) as Record<string, string>;
+      for (const [cap, pid] of Object.entries(providers)) {
+        if (pid === pluginId) {
+          delete providers[cap];
+        }
+      }
+      if (Object.keys(providers).length > 0) {
+        updatedEnv.WOPR_CAPABILITY_PROVIDERS = JSON.stringify(providers);
+      } else {
+        delete updatedEnv.WOPR_CAPABILITY_PROVIDERS;
+      }
+    } catch {
+      delete updatedEnv.WOPR_CAPABILITY_PROVIDERS;
+    }
   }
 
   let applied = false;
