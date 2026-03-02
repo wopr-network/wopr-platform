@@ -82,6 +82,26 @@ describe("SnapshotManager", () => {
       expect(snapshot.configHash).toBe("");
       expect(snapshot.plugins).toEqual([]);
     });
+
+    it("logs debug when config.json is unreadable", async () => {
+      const { vi } = await import("vitest");
+      const { logger } = await import("../config/logger.js");
+      const debugSpy = vi.spyOn(logger, "debug").mockImplementation(() => logger);
+      await rm(join(woprHomePath, "config.json"));
+
+      await manager.create({
+        instanceId: "inst-1",
+        userId: "user-1",
+        woprHomePath,
+        trigger: "scheduled",
+      });
+
+      expect(debugSpy).toHaveBeenCalledWith(
+        "Could not read config.json for hash — skipping",
+        expect.objectContaining({ err: expect.any(String) }),
+      );
+      debugSpy.mockRestore();
+    });
   });
 
   describe("get", () => {
