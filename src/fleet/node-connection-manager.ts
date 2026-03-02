@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import { logger } from "../config/logger.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { INodeRepository } from "./node-repository.js";
+import { ConcurrentTransitionError, InvalidTransitionError } from "./node-state-machine.js";
 import type { OrphanCleaner } from "./orphan-cleaner.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
 import type { Node } from "./repository-types.js";
@@ -250,11 +251,14 @@ export class NodeConnectionManager {
       try {
         await this.nodeRepo.transition(nodeId, "active", "heartbeat_received", "heartbeat");
       } catch (err) {
-        // ConcurrentTransitionError or InvalidTransitionError — status changed underneath us.
-        // Log and continue; the heartbeat timestamp update below still applies.
-        logger.debug(`Heartbeat transition skipped for ${nodeId}`, {
-          err: err instanceof Error ? err.message : String(err),
-        });
+        if (err instanceof ConcurrentTransitionError || err instanceof InvalidTransitionError) {
+          // Status changed underneath us — log and continue; the heartbeat timestamp update below still applies.
+          logger.debug(`Heartbeat transition skipped for ${nodeId}`, {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        } else {
+          throw err;
+        }
       }
     }
 

@@ -10,6 +10,7 @@ import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
 import { NodeConnectionManager } from "./node-connection-manager.js";
+import { ConcurrentTransitionError } from "./node-state-machine.js";
 import type { OrphanCleaner } from "./orphan-cleaner.js";
 import { findPlacement } from "./placement.js";
 
@@ -429,27 +430,57 @@ describe("NodeConnectionManager.processHeartbeat — state machine integration",
     expect(transitions).toHaveLength(0);
   });
 
-  it("handles transition error gracefully (logs, does not throw)", async () => {
-    const ncm = makeNcm(db);
+  it("rethrows non-transition errors from the processHeartbeat catch block", async () => {
     await insertNode(db, { id: "node-1", status: "unhealthy" });
 
     const nodeRepo = new DrizzleNodeRepository(db);
+    const unexpectedError = new Error("unexpected db failure");
+    vi.spyOn(nodeRepo, "transition").mockRejectedValueOnce(unexpectedError);
+
+    const ncm = new NodeConnectionManager(
+      nodeRepo,
+      new DrizzleBotInstanceRepository(db),
+      new DrizzleRecoveryRepository(db),
+    );
+
+    // Access private method via type cast to verify rethrow behavior
+    // biome-ignore lint/suspicious/noExplicitAny: testing private method
+    const ncmAny = ncm as any;
+    await expect(
+      ncmAny.processHeartbeat("node-1", { type: "heartbeat", containers: [] }) as Promise<void>,
+    ).rejects.toThrow("unexpected db failure");
+  });
+
+  it("handles transition error gracefully (logs, does not throw)", async () => {
+    await insertNode(db, { id: "node-1", status: "unhealthy" });
+
+    // Build a repo where transition() throws ConcurrentTransitionError so the catch block is exercised
+    const nodeRepo = new DrizzleNodeRepository(db);
+    const transitionSpy = vi
+      .spyOn(nodeRepo, "transition")
+      .mockRejectedValueOnce(new ConcurrentTransitionError("node-1"));
+
+    const ncm = new NodeConnectionManager(
+      nodeRepo,
+      new DrizzleBotInstanceRepository(db),
+      new DrizzleRecoveryRepository(db),
+    );
 
     const fakeWs = Object.assign(new EventEmitter(), { readyState: 1 });
     ncm.handleWebSocket("node-1", fakeWs as unknown as import("ws").WebSocket);
 
-    // Transition node to offline before heartbeat fires (CAS will conflict)
-    await nodeRepo.transition("node-1", "offline", "watchdog", "test");
-
     const heartbeat = Buffer.from(JSON.stringify({ type: "heartbeat", containers: [] }));
     fakeWs.emit("message", heartbeat);
 
-    // Should not throw — error is caught internally
+    // Should not throw — ConcurrentTransitionError is caught internally
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Status should still be offline (heartbeat transition was skipped)
+    // transition() was attempted once (node was unhealthy when heartbeat arrived)
+    expect(transitionSpy).toHaveBeenCalledOnce();
+
+    // Node status is still unhealthy (transition was skipped, heartbeat timestamp still updated)
     const rows = await db.select().from(nodes).where(eq(nodes.id, "node-1"));
-    expect(rows[0]?.status).toBe("offline");
+    expect(rows[0]?.status).toBe("unhealthy");
   });
 });
 
