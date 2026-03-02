@@ -27,7 +27,8 @@ describe("DrizzleDividendRepository", () => {
       expect(stats.userEligible).toBe(false);
       expect(stats.userLastPurchaseAt).toBeNull();
       expect(stats.userWindowExpiresAt).toBeNull();
-      expect(stats.nextDistributionAt).toBeDefined();
+      expect(stats.nextDistributionAt).toBeTypeOf("string");
+      expect(new Date(stats.nextDistributionAt).getTime()).toBeGreaterThan(Date.now());
     });
 
     it("computes pool from yesterday's purchase transactions", async () => {
@@ -59,8 +60,10 @@ describe("DrizzleDividendRepository", () => {
 
       const stats = await repo.getStats("t-1");
       expect(stats.userEligible).toBe(true);
-      expect(stats.userLastPurchaseAt).toBeDefined();
-      expect(stats.userWindowExpiresAt).toBeDefined();
+      expect(stats.userLastPurchaseAt).toBeTypeOf("string");
+      expect(new Date(stats.userLastPurchaseAt!).getTime()).toBeLessThanOrEqual(Date.now());
+      expect(stats.userWindowExpiresAt).toBeTypeOf("string");
+      expect(new Date(stats.userWindowExpiresAt!).getTime()).toBeGreaterThan(Date.now());
     });
 
     it("marks user ineligible when last purchase is older than 7 days", async () => {

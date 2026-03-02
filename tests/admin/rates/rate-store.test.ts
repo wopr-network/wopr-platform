@@ -32,7 +32,8 @@ describe("RateStore - Sell Rates", () => {
 
 		const result = await store.createSellRate(input);
 
-		expect(result.id).toBeDefined();
+		expect(result.id).toBeTypeOf("string");
+		expect(result.id.length).toBe(36); // UUID v4 length
 		expect(result.capability).toBe("text-generation");
 		expect(result.display_name).toBe("GPT-4");
 		expect(result.unit).toBe("1M tokens");
@@ -327,7 +328,8 @@ describe("RateStore - Provider Costs", () => {
 
 		const result = await store.createProviderCost(input);
 
-		expect(result.id).toBeDefined();
+		expect(result.id).toBeTypeOf("string");
+		expect(result.id.length).toBe(36); // UUID v4 length
 		expect(result.capability).toBe("text-generation");
 		expect(result.adapter).toBe("openrouter");
 		expect(result.unit).toBe("1M tokens");

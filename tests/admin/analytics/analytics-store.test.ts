@@ -214,12 +214,10 @@ describe("AnalyticsStore — getRevenueBreakdown", () => {
     expect(monthly.length).toBeGreaterThan(0);
 
     const chat = perUse.find((r) => r.capability === "chat");
-    expect(chat).toBeDefined();
-    expect(chat!.revenueCents).toBe(2); // 0.02 * 100 = 2
+    expect(chat).toMatchObject({ revenueCents: 2, capability: "chat" });
 
     const agentSeat = monthly.find((r) => r.capability === "agent_seat");
-    expect(agentSeat).toBeDefined();
-    expect(agentSeat!.revenueCents).toBe(500);
+    expect(agentSeat).toMatchObject({ revenueCents: 500, capability: "agent_seat" });
   });
 });
 
@@ -254,10 +252,11 @@ describe("AnalyticsStore — getMarginByCapability", () => {
     expect(result).toHaveLength(2);
 
     const chat = result.find((r) => r.capability === "chat");
-    expect(chat).toBeDefined();
-    expect(chat!.revenueCents).toBe(20);
-    expect(chat!.costCents).toBe(10);
-    expect(chat!.marginCents).toBe(10);
+    expect(chat).toMatchObject({
+      revenueCents: 20,
+      costCents: 10,
+      marginCents: 10,
+    });
     expect(chat!.marginPct).toBeCloseTo(50, 1);
   });
 
@@ -307,15 +306,17 @@ describe("AnalyticsStore — getProviderSpend", () => {
     expect(result.length).toBe(3);
 
     const openai = result.find((r) => r.provider === "openai");
-    expect(openai).toBeDefined();
-    expect(openai!.callCount).toBe(2);
-    expect(openai!.spendCents).toBe(2); // 2 * 0.01 * 100 = 2
-    expect(openai!.avgCostPerCallCents).toBe(1);
+    expect(openai).toMatchObject({
+      callCount: 2,
+      spendCents: 2,
+      avgCostPerCallCents: 1,
+    });
 
     const replicate = result.find((r) => r.provider === "replicate");
-    expect(replicate).toBeDefined();
-    expect(replicate!.callCount).toBe(1);
-    expect(replicate!.spendCents).toBe(5); // 0.05 * 100 = 5
+    expect(replicate).toMatchObject({
+      callCount: 1,
+      spendCents: 5,
+    });
   });
 });
 
@@ -446,17 +447,19 @@ describe("AnalyticsStore — getTimeSeries", () => {
     expect(result.length).toBe(2);
 
     const meterOnlyPoint = result.find((p) => p.periodStart === day1);
-    expect(meterOnlyPoint).toBeDefined();
-    expect(meterOnlyPoint!.creditsSoldCents).toBe(0);
-    expect(meterOnlyPoint!.revenueConsumedCents).toBe(20);
-    expect(meterOnlyPoint!.providerCostCents).toBe(10);
+    expect(meterOnlyPoint).toMatchObject({
+      creditsSoldCents: 0,
+      revenueConsumedCents: 20,
+      providerCostCents: 10,
+    });
 
     const creditOnlyPoint = result.find((p) => p.periodStart === day2);
-    expect(creditOnlyPoint).toBeDefined();
-    expect(creditOnlyPoint!.creditsSoldCents).toBe(500);
-    expect(creditOnlyPoint!.revenueConsumedCents).toBe(100); // bot_runtime ABS
-    expect(creditOnlyPoint!.providerCostCents).toBe(0);
-    expect(creditOnlyPoint!.marginCents).toBe(100);
+    expect(creditOnlyPoint).toMatchObject({
+      creditsSoldCents: 500,
+      revenueConsumedCents: 100,
+      providerCostCents: 0,
+      marginCents: 100,
+    });
   });
 });
 

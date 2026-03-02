@@ -16,14 +16,23 @@ const incident: IncidentSummary = {
 describe("generatePostMortemTemplate", () => {
   it("returns a report with all required sections", () => {
     const report = generatePostMortemTemplate(incident);
-    expect(report.sections.summary).toBeTruthy();
-    expect(report.sections.timeline).toBeTruthy();
-    expect(report.sections.rootCause).toBeTruthy();
-    expect(report.sections.impact).toBeTruthy();
-    expect(report.sections.detection).toBeTruthy();
-    expect(report.sections.resolution).toBeTruthy();
-    expect(report.sections.actionItems).toBeTruthy();
-    expect(report.sections.lessonsLearned).toBeTruthy();
+    // summary contains incident details
+    expect(report.sections.summary).toContain("INC-001");
+    expect(report.sections.summary).toContain("SEV1");
+    // timeline contains timestamps
+    expect(report.sections.timeline).toContain("2026-02-24T10:00:00.000Z");
+    // rootCause is a template string (contains TODO placeholder)
+    expect(report.sections.rootCause).toContain("root cause");
+    // impact contains tenant count
+    expect(report.sections.impact).toContain("42");
+    // detection contains TTD
+    expect(report.sections.detection).toContain("Time to detect");
+    // resolution contains TTR
+    expect(report.sections.resolution).toContain("Time to resolve");
+    // actionItems is a table
+    expect(report.sections.actionItems).toContain("Action");
+    // lessonsLearned has structure
+    expect(report.sections.lessonsLearned).toContain("What went well");
   });
 
   it("report title matches incident title", () => {

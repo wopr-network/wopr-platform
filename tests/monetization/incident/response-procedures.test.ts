@@ -6,7 +6,8 @@ describe("getResponseProcedure", () => {
     const proc = getResponseProcedure("SEV1");
     expect(proc.severity).toBe("SEV1");
     expect(proc.slaAcknowledgeMinutes).toBe(5);
-    expect(proc.steps.length).toBeGreaterThan(0);
+    expect(proc.slaResolveMinutes).toBe(60);
+    expect(proc.steps.length).toBeGreaterThanOrEqual(10);
     expect(proc.steps[0].order).toBe(1);
   });
 
@@ -41,8 +42,10 @@ describe("getResponseProcedure", () => {
     for (const sev of ["SEV1", "SEV2", "SEV3"] as const) {
       const proc = getResponseProcedure(sev);
       for (const step of proc.steps) {
-        expect(step.owner).toBeTruthy();
-        expect(step.action).toBeTruthy();
+        expect(step.owner).toBeTypeOf("string");
+        expect(step.owner.length).toBeGreaterThan(0);
+        expect(step.action).toBeTypeOf("string");
+        expect(step.action.length).toBeGreaterThan(0);
       }
     }
   });
