@@ -644,7 +644,7 @@ export function getCreditTransactionRepo(): ICreditTransactionRepository {
 }
 
 export function getBotBilling(): IBotBilling {
-  if (!_botBilling) _botBilling = new DrizzleBotBilling(getDb());
+  if (!_botBilling) _botBilling = new DrizzleBotBilling(getDb(), getBotInstanceRepo(), getCommandBus());
   return _botBilling;
 }
 

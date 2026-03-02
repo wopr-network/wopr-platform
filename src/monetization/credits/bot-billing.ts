@@ -1,6 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import type { INodeCommandBus } from "../../fleet/node-command-bus.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import { Credit } from "../credit.js";
 import type { ICreditLedger } from "./credit-ledger.js";
@@ -34,7 +36,26 @@ export interface IBotBilling {
  * active-bot-count queries for the daily runtime cron.
  */
 export class DrizzleBotBilling implements IBotBilling {
-  constructor(private readonly db: DrizzleDb) {}
+  constructor(
+    private readonly db: DrizzleDb,
+    private readonly botInstanceRepo?: IBotInstanceRepository | null,
+    private readonly commandBus?: INodeCommandBus | null,
+  ) {}
+
+  /** Send a command to the bot's node. Logs but never throws on failure. */
+  private async sendCommand(botId: string, type: string): Promise<void> {
+    if (!this.commandBus || !this.botInstanceRepo) return;
+    try {
+      const bot = await this.botInstanceRepo.getById(botId);
+      if (!bot?.nodeId) return;
+      await this.commandBus.send(bot.nodeId, {
+        type,
+        payload: { name: bot.name },
+      });
+    } catch (err) {
+      console.error(`[BotBilling] Failed to send ${type} for bot ${botId}:`, err);
+    }
+  }
 
   /** Count active bots for a tenant (used by runtime cron). */
   async getActiveBotCount(tenantId: string): Promise<number> {
@@ -62,6 +83,7 @@ export class DrizzleBotBilling implements IBotBilling {
         updatedAt: sql`now()`,
       })
       .where(eq(botInstances.id, botId));
+    await this.sendCommand(botId, "bot.stop");
   }
 
   /**
@@ -95,6 +117,7 @@ export class DrizzleBotBilling implements IBotBilling {
         updatedAt: sql`now()`,
       })
       .where(and(eq(botInstances.id, botId), eq(botInstances.billingState, "suspended")));
+    await this.sendCommand(botId, "bot.start");
   }
 
   /**

@@ -1,12 +1,45 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
+import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import type { INodeCommandBus } from "../../fleet/node-command-bus.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
 import { CreditLedger } from "./credit-ledger.js";
+
+function createMockDeps(nodeId: string | null = "node-1") {
+  const commandBus: INodeCommandBus = {
+    send: vi.fn().mockResolvedValue({ id: "cmd-1", type: "command_result", command: "bot.stop", success: true }),
+  };
+  const botInstanceRepo = {
+    getById: vi.fn().mockResolvedValue({
+      id: "bot-1",
+      tenantId: "tenant-1",
+      name: "my-bot",
+      nodeId,
+      billingState: "active",
+      suspendedAt: null,
+      destroyAfter: null,
+      createdAt: "",
+      updatedAt: "",
+      createdByUserId: null,
+    }),
+    listByNode: vi.fn(),
+    listByTenant: vi.fn(),
+    create: vi.fn(),
+    reassign: vi.fn(),
+    setBillingState: vi.fn(),
+    getResourceTier: vi.fn(),
+    setResourceTier: vi.fn(),
+    deleteAllByTenant: vi.fn(),
+    listByNodeWithTier: vi.fn(),
+    findByTenantAndNode: vi.fn(),
+  } as IBotInstanceRepository;
+  return { commandBus, botInstanceRepo };
+}
 
 describe("BotBilling", () => {
   let pool: PGlite;
@@ -249,6 +282,74 @@ describe("BotBilling", () => {
 
       const destroyed = await billing.destroyExpiredBots();
       expect(destroyed).toEqual([]);
+    });
+  });
+
+  describe("suspendBot with command bus", () => {
+    it("sends bot.stop command after DB update", async () => {
+      const { commandBus, botInstanceRepo } = createMockDeps();
+      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+
+      await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
+      await billingWithBus.suspendBot("bot-1");
+
+      expect(commandBus.send).toHaveBeenCalledWith("node-1", {
+        type: "bot.stop",
+        payload: { name: "my-bot" },
+      });
+    });
+
+    it("does not throw when command bus fails", async () => {
+      const { commandBus, botInstanceRepo } = createMockDeps();
+      (commandBus.send as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Node not connected"));
+      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+
+      await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
+      await expect(billingWithBus.suspendBot("bot-1")).resolves.toBeUndefined();
+    });
+
+    it("skips command when bot has no nodeId", async () => {
+      const { commandBus, botInstanceRepo } = createMockDeps(null);
+      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+
+      await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
+      await billingWithBus.suspendBot("bot-1");
+
+      expect(commandBus.send).not.toHaveBeenCalled();
+    });
+
+    it("skips command when no command bus injected", async () => {
+      await billing.registerBot("bot-1", "tenant-1", "my-bot");
+      await expect(billing.suspendBot("bot-1")).resolves.toBeUndefined();
+    });
+  });
+
+  describe("reactivateBot with command bus", () => {
+    it("sends bot.start command after DB update", async () => {
+      const { commandBus, botInstanceRepo } = createMockDeps();
+      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+
+      await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
+      await billingWithBus.suspendBot("bot-1");
+
+      (commandBus.send as ReturnType<typeof vi.fn>).mockClear();
+      await billingWithBus.reactivateBot("bot-1");
+
+      expect(commandBus.send).toHaveBeenCalledWith("node-1", {
+        type: "bot.start",
+        payload: { name: "my-bot" },
+      });
+    });
+
+    it("does not throw when command bus fails on reactivate", async () => {
+      const { commandBus, botInstanceRepo } = createMockDeps();
+      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+
+      await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
+      await billingWithBus.suspendBot("bot-1");
+
+      (commandBus.send as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("timeout"));
+      await expect(billingWithBus.reactivateBot("bot-1")).resolves.toBeUndefined();
     });
   });
 
