@@ -156,6 +156,12 @@ billingRoutes.post("/credits/checkout", adminAuth, async (c) => {
 
   const { tenant, priceId, successUrl, cancelUrl } = parsed.data;
 
+  // ── Tenant ownership check (WOP-1419) ──
+  const tokenTenantId = c.get("tokenTenantId");
+  if (tokenTenantId && tenant !== tokenTenantId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
   try {
     assertSafeRedirectUrl(successUrl);
     assertSafeRedirectUrl(cancelUrl);
@@ -201,6 +207,12 @@ billingRoutes.post("/portal", adminAuth, async (c) => {
   }
 
   const { tenant, returnUrl } = parsed.data;
+
+  // ── Tenant ownership check (WOP-1419) ──
+  const tokenTenantId = c.get("tokenTenantId");
+  if (tokenTenantId && tenant !== tokenTenantId) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
 
   try {
     assertSafeRedirectUrl(returnUrl);
@@ -372,6 +384,12 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
   const parsed = cryptoCheckoutBodySchema.safeParse(body);
   if (!parsed.success) {
     return c.json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  // ── Tenant ownership check (WOP-1419) ──
+  const tokenTenantId = c.get("tokenTenantId");
+  if (tokenTenantId && parsed.data.tenant !== tokenTenantId) {
+    return c.json({ error: "Forbidden" }, 403);
   }
 
   const { payramChargeStore: chargeStore } = getDeps();

@@ -1413,4 +1413,108 @@ describe("billing routes", () => {
       expect(res.status).toBe(401);
     });
   });
+
+  // -- Tenant isolation (IDOR) -----------------------------------------------
+
+  describe("tenant isolation", () => {
+    it("POST /credits/checkout rejects when body tenant differs from token tenant", async () => {
+      // TEST_TENANT_TOKEN is scoped to tenant t-1; body requests t-unknown → 403
+      const res = await billingRoutes.request("/credits/checkout", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant: "t-unknown",
+          priceId: "price_test_credit_5",
+          successUrl: "https://app.wopr.bot/s",
+          cancelUrl: "https://app.wopr.bot/c",
+        }),
+      });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect((json as { error: string }).error).toBe("Forbidden");
+    });
+
+    it("POST /credits/checkout allows when body tenant matches token tenant", async () => {
+      // Same tenant in body and token → should NOT be 403
+      const res = await billingRoutes.request("/credits/checkout", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant: "t-1",
+          priceId: "price_test_credit_5",
+          successUrl: "https://app.wopr.bot/s",
+          cancelUrl: "https://app.wopr.bot/c",
+        }),
+      });
+      expect(res.status).not.toBe(403);
+    });
+
+    it("POST /credits/checkout allows admin (no tokenTenantId) to specify any tenant", async () => {
+      // Admin token (no tenant scope) → no ownership check → not 403
+      const res = await billingRoutes.request("/credits/checkout", {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant: "t-1",
+          priceId: "price_test_credit_5",
+          successUrl: "https://app.wopr.bot/s",
+          cancelUrl: "https://app.wopr.bot/c",
+        }),
+      });
+      expect(res.status).not.toBe(403);
+    });
+
+    it("POST /portal rejects when body tenant differs from token tenant", async () => {
+      const res = await billingRoutes.request("/portal", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant: "t-unknown",
+          returnUrl: "https://app.wopr.bot/billing",
+        }),
+      });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect((json as { error: string }).error).toBe("Forbidden");
+    });
+
+    it("POST /portal allows when body tenant matches token tenant", async () => {
+      const res = await billingRoutes.request("/portal", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant: "t-1",
+          returnUrl: "https://app.wopr.bot/billing",
+        }),
+      });
+      expect(res.status).not.toBe(403);
+    });
+
+    it("POST /crypto/checkout rejects when body tenant differs from token tenant", async () => {
+      const res = await billingRoutes.request("/crypto/checkout", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant: "t-unknown",
+          amountUsd: 10,
+        }),
+      });
+      expect(res.status).toBe(403);
+      const json = await res.json();
+      expect((json as { error: string }).error).toBe("Forbidden");
+    });
+
+    it("POST /crypto/checkout allows when body tenant matches token tenant", async () => {
+      const res = await billingRoutes.request("/crypto/checkout", {
+        method: "POST",
+        headers: { ...tenantT1AuthHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant: "t-1",
+          amountUsd: 10,
+        }),
+      });
+      // Not 403 — may be 503 (payram not configured in tests) but not IDOR
+      expect(res.status).not.toBe(403);
+    });
+  });
 });
