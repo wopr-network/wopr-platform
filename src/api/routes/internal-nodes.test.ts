@@ -379,6 +379,75 @@ describe("POST /register", () => {
 
     expect(res.status).toBe(401);
   });
+
+  it("returns 500 when registrar.register rejects (static secret path)", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const registrar = getNodeRegistrar();
+    vi.mocked(registrar.register).mockRejectedValue(new Error("DB write failed"));
+
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({ node_id: "n1", host: "10.0.0.1", capacity_mb: 1024, agent_version: "2.0" }),
+    });
+
+    // Without `await` on line 114, this returns 200 (fire-and-forget bug)
+    // With `await`, Hono's error handler catches the rejection and returns 500
+    expect(res.status).toBe(500);
+  });
+
+  it("returns 500 when registrar.registerSelfHosted rejects (token path)", async () => {
+    delete process.env.NODE_SECRET;
+    const tokenStore = getRegistrationTokenStore();
+    const registrar = getNodeRegistrar();
+
+    const token = randomUUID();
+    vi.mocked(tokenStore.consume).mockResolvedValue({ userId: "user-1", label: "my-node" } as never);
+    vi.mocked(registrar.registerSelfHosted).mockRejectedValue(new Error("DB write failed"));
+
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ node_id: "n1", host: "10.0.0.3", capacity_mb: 2048, agent_version: "2.0" }),
+    });
+
+    // Without `await` on line 147, this returns 200 (fire-and-forget bug)
+    // With `await`, Hono's error handler catches the rejection and returns 500
+    expect(res.status).toBe(500);
+  });
+
+  it("handles duplicate registration idempotently via static secret", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const registrar = getNodeRegistrar();
+    vi.mocked(registrar.register).mockResolvedValue(undefined as never);
+
+    const reqBody = JSON.stringify({ node_id: "n1", host: "10.0.0.1", capacity_mb: 1024, agent_version: "2.0" });
+    const reqHeaders = {
+      "Content-Type": "application/json",
+      Authorization: "Bearer static-secret",
+    };
+
+    const res1 = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: reqHeaders,
+      body: reqBody,
+    });
+    const res2 = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: reqHeaders,
+      body: reqBody,
+    });
+
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+    expect(registrar.register).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("getNodeSecretDeprecationWarnings", () => {
