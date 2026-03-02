@@ -1,8 +1,24 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
+import { z } from "zod";
 import { logger } from "../../config/logger.js";
 import type { NodeRegistration } from "../../fleet/repository-types.js";
 import { getNodeRegistrar, getNodeRepo, getRegistrationTokenStore } from "../../fleet/services.js";
+
+const RegisterNodeSchema = z.object({
+  node_id: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[a-zA-Z0-9_-]+$/),
+  host: z
+    .string()
+    .min(1)
+    .max(253)
+    .regex(/^[a-zA-Z0-9._-]+$/),
+  capacity_mb: z.number().int().positive().max(1_048_576),
+  agent_version: z.string().min(1).max(32),
+});
 
 /**
  * Validate node authentication against static NODE_SECRET.
@@ -54,24 +70,12 @@ internalNodeRoutes.post("/register", async (c) => {
     return c.json({ success: false, error: "Invalid registration data" }, 400);
   }
 
-  // Runtime validation of required fields
-  if (
-    typeof rawBody !== "object" ||
-    rawBody === null ||
-    typeof (rawBody as Record<string, unknown>).node_id !== "string" ||
-    typeof (rawBody as Record<string, unknown>).host !== "string" ||
-    typeof (rawBody as Record<string, unknown>).capacity_mb !== "number" ||
-    typeof (rawBody as Record<string, unknown>).agent_version !== "string"
-  ) {
-    return c.json({ success: false, error: "Invalid registration data" }, 400);
+  const parsed = RegisterNodeSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json({ success: false, error: "Invalid registration data", details: parsed.error.flatten() }, 400);
   }
 
-  const body = rawBody as {
-    node_id: string;
-    host: string;
-    capacity_mb: number;
-    agent_version: string;
-  };
+  const body = parsed.data;
 
   const registrar = getNodeRegistrar();
   const nodeRepo = getNodeRepo();

@@ -264,4 +264,89 @@ describe("POST /register", () => {
 
     expect(res.status).toBe(400);
   });
+
+  it("returns 400 when node_id contains invalid characters", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({ node_id: "../etc/passwd", host: "10.0.0.1", capacity_mb: 1024, agent_version: "2.0" }),
+    });
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.success).toBe(false);
+  });
+
+  it("returns 400 when host contains invalid characters", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({
+        node_id: "n1",
+        host: "http://evil.com:8080/rce",
+        capacity_mb: 1024,
+        agent_version: "2.0",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when capacity_mb is negative", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({ node_id: "n1", host: "10.0.0.1", capacity_mb: -1, agent_version: "2.0" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when capacity_mb is Infinity", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({ node_id: "n1", host: "10.0.0.1", capacity_mb: Infinity, agent_version: "2.0" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when required fields are missing", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({ node_id: "n1" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when node_id exceeds max length", async () => {
+    process.env.NODE_SECRET = "static-secret";
+    const res = await internalNodeRoutes.request("/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer static-secret",
+      },
+      body: JSON.stringify({ node_id: "a".repeat(129), host: "10.0.0.1", capacity_mb: 1024, agent_version: "2.0" }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
