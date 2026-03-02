@@ -11,7 +11,6 @@ set -euo pipefail
 #   - src/fleet/node-provisioner.ts
 #   - src/fleet/node-connection-manager.ts
 #   - src/fleet/recovery-manager.ts
-#   - src/fleet/migration-manager.ts
 #   - src/fleet/fleet-manager.ts  (container.exec() is Docker API, not raw SQL)
 #   - src/test/**            (test helpers)
 #   - **/*.test.ts           (test files)
@@ -33,7 +32,6 @@ APPROVED_PATTERNS=(
   "src/fleet/node-provisioner\.ts"
   "src/fleet/node-connection-manager\.ts"
   "src/fleet/recovery-manager\.ts"
-  "src/fleet/migration-manager\.ts"
   "src/fleet/fleet-manager\.ts"  # container.exec() is Docker API, not raw SQL
   "src/security/tenant-keys/key-resolution\.ts"
   "src/security/credential-vault/key-rotation\.ts"
