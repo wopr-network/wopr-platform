@@ -8,6 +8,7 @@ import type { ContainerResourceLimits } from "../monetization/quotas/resource-li
 import type { NetworkPolicy } from "../network/network-policy.js";
 import type { ProxyManagerInterface } from "../proxy/types.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import type { FleetEvent, FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { INodeCommandBus } from "./node-command-bus.js";
 import type { IProfileStore } from "./profile-store.js";
 import { getSharedVolumeConfig } from "./shared-volume-config.js";
@@ -25,6 +26,7 @@ export class FleetManager {
   private readonly commandBus: INodeCommandBus | undefined;
   private readonly instanceRepo: IBotInstanceRepository | undefined;
   private readonly botMetricsTracker: BotMetricsTracker | undefined;
+  private readonly eventEmitter: FleetEventEmitter | undefined;
   private locks = new Map<string, Promise<void>>();
 
   private async withLock<T>(botId: string, fn: () => Promise<T>): Promise<T> {
@@ -52,6 +54,7 @@ export class FleetManager {
     commandBus?: INodeCommandBus,
     instanceRepo?: IBotInstanceRepository,
     botMetricsTracker?: BotMetricsTracker,
+    eventEmitter?: FleetEventEmitter,
   ) {
     this.docker = docker;
     this.store = store;
@@ -61,6 +64,12 @@ export class FleetManager {
     this.commandBus = commandBus;
     this.instanceRepo = instanceRepo;
     this.botMetricsTracker = botMetricsTracker;
+    this.eventEmitter = eventEmitter;
+  }
+
+  private emitEvent(type: FleetEvent["type"], botId: string, tenantId?: string): void {
+    if (!this.eventEmitter) return;
+    this.eventEmitter.emit({ type, botId, tenantId: tenantId ?? "", timestamp: new Date().toISOString() });
   }
 
   /**
@@ -141,6 +150,7 @@ export class FleetManager {
         }
       }
 
+      this.emitEvent("bot.created", profile.id, profile.tenantId);
       return profile;
     };
 
@@ -175,6 +185,8 @@ export class FleetManager {
         this.proxyManager.updateHealth(id, true);
       }
       logger.info(`Started bot ${id}`);
+      const startedProfile = await this.store.get(id);
+      this.emitEvent("bot.started", id, startedProfile?.tenantId);
     });
   }
 
@@ -200,6 +212,8 @@ export class FleetManager {
         this.proxyManager.updateHealth(id, false);
       }
       logger.info(`Stopped bot ${id}`);
+      const stoppedProfile = await this.store.get(id);
+      this.emitEvent("bot.stopped", id, stoppedProfile?.tenantId);
     });
   }
 
@@ -228,6 +242,7 @@ export class FleetManager {
         await container.restart();
       }
       logger.info(`Restarted bot ${id}`);
+      this.emitEvent("bot.restarted", id, profile.tenantId);
     });
   }
 
@@ -267,6 +282,7 @@ export class FleetManager {
         this.proxyManager.removeRoute(id);
       }
       logger.info(`Removed bot ${id}`);
+      this.emitEvent("bot.removed", id, profile.tenantId);
     });
   }
 
