@@ -24,7 +24,15 @@ export function lastNDays(n: number): { from: number; to: number } {
 
 /**
  * Return a fixed anchor date and helper to offset from it.
- * Use with vi.setSystemTime(anchor) for tests needing multiple related timestamps.
+ *
+ * WARNING: This function calls `new Date()` at invocation time. You MUST call
+ * `vi.useFakeTimers()` and `vi.setSystemTime(...)` BEFORE calling this helper,
+ * otherwise the anchor will reflect wall-clock time and tests will be non-deterministic.
+ *
+ * Correct usage:
+ *   vi.useFakeTimers();
+ *   vi.setSystemTime(new Date("2026-03-15T12:00:00Z"));
+ *   const { anchor, offsetDays } = anchoredTime(); // anchor = 2026-03-15T12:00:00Z
  */
 export function anchoredTime() {
   const anchor = new Date();

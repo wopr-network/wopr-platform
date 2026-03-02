@@ -58,10 +58,11 @@ describe("runMonthlyPhoneBilling", () => {
     queryEvents: ReturnType<typeof vi.fn>;
   };
 
-  const NOW = new Date();
+  let NOW: Date;
 
   beforeEach(() => {
     vi.useFakeTimers();
+    NOW = new Date("2026-03-15T12:00:00Z");
     vi.setSystemTime(NOW);
 
     phoneRepo = {
@@ -177,7 +178,7 @@ describe("runMonthlyPhoneBilling", () => {
   it("should skip numbers billed within the last 30 days", async () => {
     const recentlyBilled = makeNumber({
       provisionedAt: "2025-01-01T00:00:00.000Z",
-      lastBilledAt: "2026-02-01T00:00:00.000Z", // 14 days ago, within 30
+      lastBilledAt: "2026-03-01T00:00:00.000Z", // 14 days ago from 2026-03-15, within 30
     });
     phoneRepo.listActivePhoneNumbers.mockResolvedValue([recentlyBilled]);
 
