@@ -489,6 +489,13 @@ if (process.env.NODE_ENV !== "test") {
     getBotInstanceRepo,
   });
 
+  // Wire login history route repo (WOP-1399)
+  {
+    const { BetterAuthLoginHistoryRepository } = await import("./auth/login-history-repository.js");
+    const { setLoginHistoryRepoFactory } = await import("./api/routes/login-history.js");
+    setLoginHistoryRepoFactory(() => new BetterAuthLoginHistoryRepository(getPool()));
+  }
+
   // Wire org tRPC router deps
   {
     const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
