@@ -713,6 +713,181 @@ describe("handleWebhookEvent (credit model)", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // invoice.payment_succeeded (subscription renewal, WOP-1344)
+  // ---------------------------------------------------------------------------
+
+  describe("invoice.payment_succeeded (subscription renewal, WOP-1344)", () => {
+    function makeInvoiceSucceededEvent(overrides?: Record<string, unknown>): Stripe.Event {
+      return {
+        id: "evt_inv_succ_1",
+        type: "invoice.payment_succeeded",
+        data: {
+          object: {
+            id: "in_test_succ_1",
+            customer: "cus_renew_abc",
+            subscription: "sub_renew_1",
+            amount_paid: 500,
+            metadata: {},
+            ...overrides,
+          },
+        },
+      } as unknown as Stripe.Event;
+    }
+
+    it("credits ledger on successful subscription renewal", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-1", processorCustomerId: "cus_renew_abc" });
+
+      const result = await handleWebhookEvent(deps, makeInvoiceSucceededEvent());
+
+      expect(result.handled).toBe(true);
+      expect(result.event_type).toBe("invoice.payment_succeeded");
+      expect(result.tenant).toBe("tenant-renew-1");
+      expect(result.creditedCents).toBe(500);
+
+      const balance = await creditLedger.balance("tenant-renew-1");
+      expect(balance.toCents()).toBe(500);
+    });
+
+    it("reactivates suspended bots after successful renewal", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-react", processorCustomerId: "cus_renew_react" });
+
+      const botBilling = {
+        checkReactivation: vi.fn(async () => ["bot-r1", "bot-r2"]),
+      } as unknown as import("../../monetization/credits/bot-billing.js").BotBilling;
+
+      const result = await handleWebhookEvent(
+        { ...deps, botBilling },
+        makeInvoiceSucceededEvent({ customer: "cus_renew_react", amount_paid: 1000 }),
+      );
+
+      expect(result.handled).toBe(true);
+      expect(result.reactivatedBots).toEqual(["bot-r1", "bot-r2"]);
+      expect(botBilling.checkReactivation).toHaveBeenCalledWith("tenant-renew-react", creditLedger);
+    });
+
+    it("is idempotent — same invoice ID does not double-credit", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-idem", processorCustomerId: "cus_renew_idem" });
+
+      const event = makeInvoiceSucceededEvent({ customer: "cus_renew_idem", amount_paid: 800 });
+
+      const first = await handleWebhookEvent(deps, event);
+      expect(first.creditedCents).toBe(800);
+
+      const second = await handleWebhookEvent(deps, event);
+      expect(second.handled).toBe(true);
+      expect(second.creditedCents).toBe(0);
+
+      // Only credited once
+      const balance = await creditLedger.balance("tenant-renew-idem");
+      expect(balance.toCents()).toBe(800);
+    });
+
+    it("rejects duplicate via replay guard (same event ID twice)", async () => {
+      const replayGuard = makeReplayGuard();
+      await tenantStore.upsert({ tenant: "tenant-renew-replay", processorCustomerId: "cus_renew_replay" });
+
+      const event = makeInvoiceSucceededEvent({
+        customer: "cus_renew_replay",
+        amount_paid: 600,
+      });
+
+      const first = await handleWebhookEvent({ ...deps, replayGuard }, event);
+      expect(first.handled).toBe(true);
+      expect(first.creditedCents).toBe(600);
+      expect(first.duplicate).toBeUndefined();
+
+      const second = await handleWebhookEvent({ ...deps, replayGuard }, event);
+      expect(second.handled).toBe(true);
+      expect(second.duplicate).toBe(true);
+      expect(second.creditedCents).toBeUndefined();
+
+      const balance = await creditLedger.balance("tenant-renew-replay");
+      expect(balance.toCents()).toBe(600);
+    });
+
+    it("returns handled:false when tenant not found for customer", async () => {
+      const result = await handleWebhookEvent(deps, makeInvoiceSucceededEvent({ customer: "cus_unknown_renew" }));
+
+      expect(result.handled).toBe(false);
+      expect(result.event_type).toBe("invoice.payment_succeeded");
+    });
+
+    it("returns handled:false when customer ID is missing", async () => {
+      const result = await handleWebhookEvent(deps, makeInvoiceSucceededEvent({ customer: null }));
+
+      expect(result.handled).toBe(false);
+    });
+
+    it("handles customer object instead of string", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-obj", processorCustomerId: "cus_renew_obj" });
+
+      const result = await handleWebhookEvent(
+        deps,
+        makeInvoiceSucceededEvent({ customer: { id: "cus_renew_obj" }, amount_paid: 750 }),
+      );
+
+      expect(result.handled).toBe(true);
+      expect(result.tenant).toBe("tenant-renew-obj");
+      expect(result.creditedCents).toBe(750);
+    });
+
+    it("returns creditedCents:0 when amount_paid is 0 (free trial renewal)", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-free", processorCustomerId: "cus_renew_free" });
+
+      const result = await handleWebhookEvent(
+        deps,
+        makeInvoiceSucceededEvent({ customer: "cus_renew_free", amount_paid: 0 }),
+      );
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(0);
+
+      const balance = await creditLedger.balance("tenant-renew-free");
+      expect(balance.toCents()).toBe(0);
+    });
+
+    it("returns creditedCents:0 when amount_paid is null", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-null", processorCustomerId: "cus_renew_null" });
+
+      const result = await handleWebhookEvent(
+        deps,
+        makeInvoiceSucceededEvent({ customer: "cus_renew_null", amount_paid: null }),
+      );
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(0);
+    });
+
+    it("records invoice ID as referenceId in ledger transaction", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-ref", processorCustomerId: "cus_renew_ref" });
+
+      await handleWebhookEvent(
+        deps,
+        makeInvoiceSucceededEvent({ customer: "cus_renew_ref", id: "in_renewal_abc", amount_paid: 500 }),
+      );
+
+      const txns = await creditLedger.history("tenant-renew-ref");
+      expect(txns).toHaveLength(1);
+      expect(txns[0].referenceId).toBe("in_renewal_abc");
+      expect(txns[0].type).toBe("purchase");
+      expect(txns[0].description).toContain("in_renewal_abc");
+    });
+
+    it("handles missing botBilling gracefully (no reactivation, still credits)", async () => {
+      await tenantStore.upsert({ tenant: "tenant-renew-nobb", processorCustomerId: "cus_renew_nobb" });
+
+      const result = await handleWebhookEvent(
+        deps,
+        makeInvoiceSucceededEvent({ customer: "cus_renew_nobb", amount_paid: 300 }),
+      );
+
+      expect(result.handled).toBe(true);
+      expect(result.creditedCents).toBe(300);
+      expect(result.reactivatedBots).toBeUndefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // charge.refunded (WOP-1289)
   // ---------------------------------------------------------------------------
 
