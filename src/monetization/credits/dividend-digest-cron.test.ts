@@ -4,7 +4,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
 import type { NotificationService } from "../../email/notification-service.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { type DividendDigestConfig, runDividendDigestCron } from "./dividend-digest-cron.js";
 import { DrizzleDividendRepository } from "./dividend-repository.js";
@@ -38,14 +38,16 @@ describe("runDividendDigestCron", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     enqueuedCalls = [];
     mockNotificationService = {
       notifyDividendWeeklyDigest: vi.fn((tenantId: string, email: string, weeklyTotalDollars: string) => {

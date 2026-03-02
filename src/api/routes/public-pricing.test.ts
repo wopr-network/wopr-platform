@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 /**
  * Tests for the public-pricing route logic and RateStore.listPublicRates.
@@ -20,9 +20,11 @@ beforeAll(async () => {
   const t = await createTestDb();
   db = t.db;
   pool = t.pool;
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -30,7 +32,7 @@ describe("RateStore.listPublicRates (used by public pricing route)", () => {
   let store: RateStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new RateStore(db);
   });
 

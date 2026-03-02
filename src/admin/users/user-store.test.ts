@@ -4,7 +4,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminUsersApiRoutes } from "../../api/routes/admin-users.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
-import { createTestDb as createMigratedTestDb, truncateAllTables } from "../../test/db.js";
+import {
+  beginTestTransaction,
+  createTestDb as createMigratedTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "../../test/db.js";
 import { AdminUserStore } from "./user-store.js";
 
 // ---------------------------------------------------------------------------
@@ -51,9 +56,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -63,7 +70,7 @@ afterAll(async () => {
 
 describe("admin_users schema (via Drizzle migration)", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("creates admin_users table and enforces status CHECK constraint", async () => {
@@ -145,7 +152,7 @@ describe("AdminUserStore.list", () => {
   let store: AdminUserStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminUserStore(db);
   });
 
@@ -332,7 +339,7 @@ describe("AdminUserStore.search", () => {
   let store: AdminUserStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminUserStore(db);
   });
 
@@ -386,7 +393,7 @@ describe("AdminUserStore.getById", () => {
   let store: AdminUserStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminUserStore(db);
   });
 
@@ -430,7 +437,7 @@ describe("AdminUserStore.getById", () => {
 
 describe("admin users API routes", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("GET / returns paginated user list", async () => {

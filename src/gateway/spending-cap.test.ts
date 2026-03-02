@@ -9,7 +9,7 @@ import type { DrizzleDb } from "../db/index.js";
 import { meterEvents } from "../db/schema/meter-events.js";
 import { DrizzleSpendingCapStore } from "../fleet/spending-cap-repository.js";
 import { Credit } from "../monetization/credit.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { type SpendingCaps, spendingCapCheck } from "./spending-cap.js";
 import type { GatewayTenant } from "./types.js";
 
@@ -61,14 +61,16 @@ describe("spendingCapCheck", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("passes when no spending caps configured", async () => {

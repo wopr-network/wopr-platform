@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { userRoles } from "../../db/schema/user-roles.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { isValidRole, RoleStore } from "./role-store.js";
 
 let db: DrizzleDb;
@@ -11,9 +11,11 @@ let pool: PGlite;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -35,7 +37,7 @@ describe("RoleStore", () => {
   let store: RoleStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new RoleStore(db);
   });
 

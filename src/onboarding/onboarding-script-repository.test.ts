@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
 import { DrizzleOnboardingScriptRepository } from "./drizzle-onboarding-script-repository.js";
 
 describe("DrizzleOnboardingScriptRepository", () => {
@@ -13,10 +13,12 @@ describe("DrizzleOnboardingScriptRepository", () => {
     const result = await createTestDb();
     db = result.db;
     pool = result.pool;
+    await beginTestTransaction(pool);
     repo = new DrizzleOnboardingScriptRepository(db);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 

@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminAuditApiRoutes } from "./admin-audit.js";
 
 describe("admin-audit routes", () => {
@@ -16,17 +16,19 @@ describe("admin-audit routes", () => {
     const t = await createTestDb();
     db = t.db;
     pool = t.pool;
+    await beginTestTransaction(pool);
     const repo = new DrizzleAdminAuditLogRepository(db);
     auditLog = new AdminAuditLog(repo);
     app = createAdminAuditApiRoutes(db);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   // GET /

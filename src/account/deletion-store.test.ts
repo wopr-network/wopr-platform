@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore, DELETION_GRACE_DAYS } from "./deletion-store.js";
 
@@ -10,9 +10,11 @@ let pool: PGlite;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -20,7 +22,7 @@ describe("AccountDeletionStore", () => {
   let store: AccountDeletionStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     const repo = new DrizzleDeletionRepository(db);
     store = new AccountDeletionStore(repo);
   });

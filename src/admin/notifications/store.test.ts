@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { NotificationQueueStore } from "./store.js";
 
 // TOP OF FILE - shared across ALL describes
@@ -10,9 +10,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -20,7 +22,7 @@ describe("NotificationQueueStore.enqueue", () => {
   let store: NotificationQueueStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new NotificationQueueStore(db);
   });
 
@@ -63,7 +65,7 @@ describe("NotificationQueueStore.getPending", () => {
   let store: NotificationQueueStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new NotificationQueueStore(db);
   });
 
@@ -91,7 +93,7 @@ describe("NotificationQueueStore.markSent", () => {
   let store: NotificationQueueStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new NotificationQueueStore(db);
   });
 
@@ -108,7 +110,7 @@ describe("NotificationQueueStore.markFailed", () => {
   let store: NotificationQueueStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new NotificationQueueStore(db);
   });
 
@@ -151,7 +153,7 @@ describe("NotificationQueueStore.countByStatus", () => {
   let store: NotificationQueueStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new NotificationQueueStore(db);
   });
 

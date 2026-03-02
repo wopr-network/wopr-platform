@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { SnapshotManager, SnapshotNotFoundError } from "./snapshot-manager.js";
 import { DrizzleSnapshotRepository } from "./snapshot-repository.js";
 
@@ -19,16 +19,18 @@ describe("SnapshotManager", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
     await rm(TEST_DIR, { recursive: true, force: true });
     await mkdir(TEST_DIR, { recursive: true });
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
 
     const repo = new DrizzleSnapshotRepository(db);
     manager = new SnapshotManager({ snapshotDir: SNAPSHOT_DIR, repo });

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminNotesApiRoutes } from "../../api/routes/admin-notes.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { AdminNotesStore } from "./store.js";
 
 // TOP OF FILE - shared across ALL describes
@@ -12,9 +12,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -22,7 +24,7 @@ describe("AdminNotesStore.create", () => {
   let store: AdminNotesStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminNotesStore(db);
   });
 
@@ -64,7 +66,7 @@ describe("AdminNotesStore.list", () => {
   let store: AdminNotesStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminNotesStore(db);
   });
 
@@ -135,7 +137,7 @@ describe("AdminNotesStore.update", () => {
   let store: AdminNotesStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminNotesStore(db);
   });
 
@@ -175,7 +177,7 @@ describe("AdminNotesStore.delete", () => {
   let store: AdminNotesStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminNotesStore(db);
   });
 
@@ -207,7 +209,7 @@ describe("admin notes API routes", () => {
   let store: AdminNotesStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new AdminNotesStore(db);
   });
 

@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { type Context, Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { DrizzleRateLimitRepository } from "../drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../rate-limit-repository.js";
 import {
@@ -55,9 +55,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -70,7 +72,7 @@ describe("rateLimit", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
@@ -191,7 +193,7 @@ describe("rateLimitByRoute", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
@@ -265,7 +267,7 @@ describe("platform rate limit rules", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
@@ -364,7 +366,7 @@ describe("auth endpoint rate limits (WOP-839)", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
@@ -494,6 +496,7 @@ describe("WOP-1092: setup-intent and crypto checkout rate limits", () => {
       const body = await res.json();
       expect(body.error).toBe("Too many setup intent requests");
     } finally {
+      await endTestTransaction(pool);
       await pool.close();
     }
   });
@@ -514,6 +517,7 @@ describe("WOP-1092: setup-intent and crypto checkout rate limits", () => {
       const body = await res.json();
       expect(body.error).toBe("Too many crypto checkout requests");
     } finally {
+      await endTestTransaction(pool);
       await pool.close();
     }
   });
@@ -528,7 +532,7 @@ describe("WOP-1220: tRPC endpoint rate limits", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
@@ -649,7 +653,7 @@ describe("trusted proxy validation (WOP-656)", () => {
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
@@ -739,7 +743,7 @@ describe("platformRateLimitRules — billing checkout path", () => {
   let repo: IRateLimitRepository;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 

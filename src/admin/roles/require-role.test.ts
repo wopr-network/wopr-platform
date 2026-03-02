@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "../../api/routes/admin-roles.js";
 import type { AuthEnv, AuthUser } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { requirePlatformAdmin, requireTenantAdmin } from "./require-role.js";
 import { RoleStore } from "./role-store.js";
 
@@ -27,9 +27,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -37,7 +39,7 @@ describe("requirePlatformAdmin middleware", () => {
   let store: RoleStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new RoleStore(db);
   });
 
@@ -75,7 +77,7 @@ describe("requireTenantAdmin middleware", () => {
   let store: RoleStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new RoleStore(db);
   });
 
@@ -132,7 +134,7 @@ describe("admin roles API routes", () => {
   let store: RoleStore;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new RoleStore(db);
   });
 

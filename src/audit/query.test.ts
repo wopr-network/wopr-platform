@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { DrizzleAuditLogRepository, type IAuditLogRepository } from "./audit-log-repository.js";
 import { AuditLogger } from "./logger.js";
 import { countAuditLog, queryAuditLog } from "./query.js";
@@ -11,9 +11,11 @@ let pool: PGlite;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -22,7 +24,7 @@ describe("queryAuditLog", () => {
   let logger: AuditLogger;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
     // Seed test data
@@ -142,7 +144,7 @@ describe("countAuditLog", () => {
   let logger: AuditLogger;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleAuditLogRepository(db);
     logger = new AuditLogger(repo);
     await logger.log({ userId: "u1", authMethod: "session", action: "instance.create", resourceType: "instance" });

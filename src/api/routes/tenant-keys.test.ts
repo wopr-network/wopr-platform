@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { TenantKeyStore } from "../../security/tenant-keys/schema.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 const TEST_TENANT = "ACME";
 const TEST_TOKEN = `write:wopr_write_test123`;
@@ -26,16 +26,18 @@ describe("tenant-keys routes", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
     store = new TenantKeyStore(db);
     setStore(store);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   afterEach(() => {

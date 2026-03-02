@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RateStore } from "../../admin/rates/rate-store.js";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { DrizzleProviderHealthRepository } from "../drizzle-provider-health-repository.js";
 import type { IProviderHealthRepository } from "../provider-health-repository.js";
 import { ProviderRegistry } from "./provider-registry.js";
@@ -15,14 +15,16 @@ describe("ProviderRegistry", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     store = new RateStore(db);
     healthRepo = new DrizzleProviderHealthRepository(db);
   });

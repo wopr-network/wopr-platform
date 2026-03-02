@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
-import { createTestDb } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
 import { hydrateSpendingCaps } from "./hydrate-spending-caps.js";
 import type { SpendingCaps } from "./spending-cap.js";
 import type { GatewayTenant } from "./types.js";
@@ -26,9 +26,11 @@ describe("hydrateSpendingCaps", () => {
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterEach(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 

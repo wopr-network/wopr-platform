@@ -1,15 +1,17 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
 
 // TOP OF FILE - shared across ALL describes
 let pool: PGlite;
 
 beforeAll(async () => {
   ({ pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 

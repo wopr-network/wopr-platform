@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { decrypt, encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload } from "../types.js";
 import { DrizzleCredentialRepository, DrizzleMigrationTenantKeyAccess } from "./credential-repository.js";
@@ -18,15 +18,17 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
 describe("auditCredentialEncryption", () => {
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   it("returns empty array when all credentials are properly encrypted", async () => {
@@ -110,7 +112,7 @@ describe("migratePlaintextCredentials", () => {
   let tenantAccess: DrizzleMigrationTenantKeyAccess;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     vaultKey = generateInstanceKey();
     credRepo = new DrizzleCredentialRepository(db);
     tenantAccess = new DrizzleMigrationTenantKeyAccess(db);
@@ -275,7 +277,7 @@ describe("credential vault migration path", () => {
   let tenantAccess: DrizzleMigrationTenantKeyAccess;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     vaultKey = generateInstanceKey();
     credRepo = new DrizzleCredentialRepository(db);
     tenantAccess = new DrizzleMigrationTenantKeyAccess(db);

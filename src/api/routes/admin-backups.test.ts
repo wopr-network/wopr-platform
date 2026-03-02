@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleBackupStatusRepository } from "../../backup/backup-status-repository.js";
 import { BackupStatusStore } from "../../backup/backup-status-store.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminBackupRoutes, isRemotePathOwnedBy } from "./admin-backups.js";
 
 describe("admin-backups routes", () => {
@@ -14,17 +14,19 @@ describe("admin-backups routes", () => {
   beforeAll(async () => {
     const { db, pool: p } = await createTestDb();
     pool = p;
+    await beginTestTransaction(pool);
     const repo = new DrizzleBackupStatusRepository(db);
     store = new BackupStatusStore(repo);
     app = createAdminBackupRoutes(store);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
   });
 
   describe("GET /", () => {

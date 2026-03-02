@@ -25,6 +25,25 @@ export async function createTestDb(): Promise<{ db: DrizzleDb; pool: PGlite }> {
   return { db, pool };
 }
 
+/** Call once in beforeAll after createTestDb() — opens outer transaction and sets savepoint. */
+export async function beginTestTransaction(pool: PGlite): Promise<void> {
+  await pool.query("BEGIN");
+  await pool.query("SAVEPOINT test_tx");
+}
+
+/** Call in beforeEach — rolls back to savepoint and resets it. Instant cleanup vs TRUNCATE. */
+export async function rollbackTestTransaction(pool: PGlite): Promise<void> {
+  await pool.query("ROLLBACK TO SAVEPOINT test_tx");
+  await pool.query("RELEASE SAVEPOINT test_tx");
+  await pool.query("SAVEPOINT test_tx");
+}
+
+/** Call in afterAll — closes the outer transaction. */
+export async function endTestTransaction(pool: PGlite): Promise<void> {
+  await pool.query("ROLLBACK");
+}
+
+/** @deprecated Use beginTestTransaction/rollbackTestTransaction instead — 50-100x faster. */
 export async function truncateAllTables(pool: PGlite): Promise<void> {
   const result = await pool.query<{ tablename: string }>(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`);
   const tables = result.rows.map((r) => `"${r.tablename}"`).join(", ");

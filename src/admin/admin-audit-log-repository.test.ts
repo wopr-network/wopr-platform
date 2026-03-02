@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { DrizzleAdminAuditLogRepository } from "./admin-audit-log-repository.js";
 import type { AdminAuditLogRow } from "./audit-log.js";
 
@@ -10,9 +10,11 @@ let db: DrizzleDb;
 
 beforeAll(async () => {
   ({ db, pool } = await createTestDb());
+  await beginTestTransaction(pool);
 });
 
 afterAll(async () => {
+  await endTestTransaction(pool);
   await pool.close();
 });
 
@@ -37,7 +39,7 @@ describe("DrizzleAdminAuditLogRepository", () => {
   let repo: DrizzleAdminAuditLogRepository;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleAdminAuditLogRepository(db);
   });
 

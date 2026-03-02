@@ -1,6 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
 import { DrizzleSpendingLimitsRepository } from "./drizzle-spending-limits-repository.js";
 
 describe("DrizzleSpendingLimitsRepository", () => {
@@ -10,10 +10,12 @@ describe("DrizzleSpendingLimitsRepository", () => {
   beforeEach(async () => {
     const { db, pool: p } = await createTestDb();
     pool = p;
+    await beginTestTransaction(pool);
     repo = new DrizzleSpendingLimitsRepository(db);
   });
 
   afterEach(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 

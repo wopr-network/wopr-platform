@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
 import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import type { DrizzleDb } from "../db/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { capabilityRateLimit, resolveCapabilityCategory } from "./capability-rate-limit.js";
 import type { GatewayTenant } from "./types.js";
 
@@ -109,15 +109,17 @@ describe("capabilityRateLimit", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
+    await beginTestTransaction(pool);
   });
 
   afterAll(async () => {
+    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
     vi.useFakeTimers();
-    await truncateAllTables(pool);
+    await rollbackTestTransaction(pool);
     repo = new DrizzleRateLimitRepository(db);
   });
 
