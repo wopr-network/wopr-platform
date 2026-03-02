@@ -1,21 +1,94 @@
+import { PGlite } from "@electric-sql/pglite";
 import { betterAuth } from "better-auth";
-import { getMigrations } from "better-auth/db";
-import Database, { type Database as SqliteDatabase } from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+/**
+ * pg.Pool-compatible wrapper around PGlite for better-auth.
+ * better-auth's Kysely PostgresDialect requires pool.connect() → client with query + release.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: test helper wrapping PGlite as pg.Pool
+function pgliteAsPool(pg: PGlite): any {
+  const client = {
+    query: (text: string, params?: unknown[]) => pg.query(text, params),
+    release: () => {},
+  };
+  return {
+    connect: () => Promise.resolve(client),
+    query: (text: string, params?: unknown[]) => pg.query(text, params),
+    end: () => Promise.resolve(),
+  };
+}
+
+/**
+ * Create the better-auth base schema tables in PGlite.
+ * Replaces getMigrations() which requires a Kysely adapter not compatible with PGlite.
+ */
+async function initBetterAuthSchema(pg: PGlite): Promise<void> {
+  await pg.query(`
+    CREATE TABLE IF NOT EXISTS "user" (
+      "id" text PRIMARY KEY NOT NULL,
+      "name" text NOT NULL,
+      "email" text NOT NULL UNIQUE,
+      "emailVerified" boolean NOT NULL DEFAULT false,
+      "image" text,
+      "createdAt" timestamptz NOT NULL DEFAULT now(),
+      "updatedAt" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pg.query(`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "id" text PRIMARY KEY NOT NULL,
+      "expiresAt" timestamptz NOT NULL,
+      "token" text NOT NULL UNIQUE,
+      "createdAt" timestamptz NOT NULL DEFAULT now(),
+      "updatedAt" timestamptz NOT NULL DEFAULT now(),
+      "ipAddress" text,
+      "userAgent" text,
+      "userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE
+    )
+  `);
+  await pg.query(`
+    CREATE TABLE IF NOT EXISTS "account" (
+      "id" text PRIMARY KEY NOT NULL,
+      "accountId" text NOT NULL,
+      "providerId" text NOT NULL,
+      "userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
+      "accessToken" text,
+      "refreshToken" text,
+      "idToken" text,
+      "accessTokenExpiresAt" timestamptz,
+      "refreshTokenExpiresAt" timestamptz,
+      "scope" text,
+      "password" text,
+      "createdAt" timestamptz NOT NULL DEFAULT now(),
+      "updatedAt" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pg.query(`
+    CREATE TABLE IF NOT EXISTS "verification" (
+      "id" text PRIMARY KEY NOT NULL,
+      "identifier" text NOT NULL,
+      "value" text NOT NULL,
+      "expiresAt" timestamptz NOT NULL,
+      "createdAt" timestamptz,
+      "updatedAt" timestamptz
+    )
+  `);
+}
+
 describe("Forgot password flow (e2e)", () => {
-  let db: SqliteDatabase;
+  let pg: PGlite;
   let auth: ReturnType<typeof betterAuth>;
   let capturedResetUrl: string | null;
   let capturedResetToken: string | null;
 
   beforeEach(async () => {
-    db = new Database(":memory:");
+    pg = new PGlite();
     capturedResetUrl = null;
     capturedResetToken = null;
 
     auth = betterAuth({
-      database: db,
+      database: pgliteAsPool(pg),
       secret: "test-secret-for-forgot-password-e2e",
       baseURL: "http://localhost:3100",
       basePath: "/api/auth",
@@ -30,12 +103,11 @@ describe("Forgot password flow (e2e)", () => {
     });
 
     // Initialize the Better Auth schema (creates tables: user, session, account, verification)
-    const { runMigrations } = await getMigrations(auth.options);
-    await runMigrations();
+    await initBetterAuthSchema(pg);
   });
 
-  afterEach(() => {
-    db.close();
+  afterEach(async () => {
+    await pg.close();
   });
 
   /** Helper: create a user via Better Auth's API */
@@ -169,13 +241,15 @@ describe("Forgot password flow (e2e)", () => {
 
     // Manually expire the token by updating the verification table
     // Better Auth stores verifications in a "verification" table
-    const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
-    const verificationTable = rows.find((r) => r.name === "verification");
+    const { rows } = await pg.query<{ tablename: string }>(
+      `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`,
+    );
+    const verificationTable = rows.find((r) => r.tablename === "verification");
     if (verificationTable) {
-      db.prepare("UPDATE verification SET expiresAt = ? WHERE identifier = ?").run(
+      await pg.query(`UPDATE "verification" SET "expiresAt" = $1 WHERE "identifier" = $2`, [
         new Date(Date.now() - 60_000).toISOString(),
         `reset-password:${token}`,
-      );
+      ]);
     }
 
     // Attempt reset with expired token
