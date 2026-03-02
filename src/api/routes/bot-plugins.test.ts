@@ -515,6 +515,67 @@ describe("bot-plugin routes", () => {
         }),
       );
     });
+
+    it("returns 409 with conflict details when capability overlaps and no overrides provided", async () => {
+      // elevenlabs-tts provides ["voice", "tts"]; deepgram-stt provides ["voice", "stt"]
+      // Installing deepgram-stt when elevenlabs-tts is installed => voice conflict
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "elevenlabs-tts" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/deepgram-stt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: {} }),
+      });
+
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error).toBe("Capability conflict");
+      expect(body.conflicts).toEqual(expect.arrayContaining([expect.objectContaining({ capability: "voice" })]));
+    });
+
+    it("installs successfully when conflict exists and primaryProviderOverrides provided", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "elevenlabs-tts" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/deepgram-stt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          config: {},
+          primaryProviderOverrides: { voice: "deepgram-stt" },
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+
+      // Verify WOPR_CAPABILITY_PROVIDERS was persisted
+      const savedCall = storeMock.save.mock.calls[0][0];
+      const providers = JSON.parse(savedCall.env.WOPR_CAPABILITY_PROVIDERS);
+      expect(providers.voice).toBe("deepgram-stt");
+    });
+
+    it("installs with no conflict when capabilities do not overlap", async () => {
+      // discord-channel provides ["channel"]; elevenlabs-tts provides ["voice", "tts"] — no overlap
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: { TOKEN: "abc", WOPR_PLUGINS: "discord-channel" },
+      });
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/elevenlabs-tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ config: {} }),
+      });
+
+      expect(res.status).toBe(200);
+    });
   });
 
   describe("DELETE /fleet/bots/:botId/plugins/:pluginId", () => {
@@ -634,6 +695,55 @@ describe("bot-plugin routes", () => {
       });
 
       expect(res.status).toBe(401);
+    });
+
+    it("removes plugin from WOPR_CAPABILITY_PROVIDERS on uninstall", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "elevenlabs-tts,deepgram-stt",
+          WOPR_CAPABILITY_PROVIDERS: JSON.stringify({
+            voice: "elevenlabs-tts",
+            tts: "elevenlabs-tts",
+            stt: "deepgram-stt",
+          }),
+        },
+      });
+      fleetMock.update.mockResolvedValue(undefined);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/elevenlabs-tts`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      const providers = JSON.parse(savedEnv.WOPR_CAPABILITY_PROVIDERS);
+      expect(providers.voice).toBeUndefined();
+      expect(providers.tts).toBeUndefined();
+      expect(providers.stt).toBe("deepgram-stt");
+    });
+
+    it("removes WOPR_CAPABILITY_PROVIDERS entirely when last provider uninstalled", async () => {
+      storeMock.get.mockResolvedValue({
+        ...mockProfile,
+        env: {
+          TOKEN: "abc",
+          WOPR_PLUGINS: "elevenlabs-tts",
+          WOPR_CAPABILITY_PROVIDERS: JSON.stringify({ tts: "elevenlabs-tts" }),
+        },
+      });
+      fleetMock.update.mockResolvedValue(undefined);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/elevenlabs-tts`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(200);
+      const savedEnv = fleetMock.update.mock.calls[0][1].env;
+      expect(savedEnv.WOPR_CAPABILITY_PROVIDERS).toBeUndefined();
     });
   });
 
