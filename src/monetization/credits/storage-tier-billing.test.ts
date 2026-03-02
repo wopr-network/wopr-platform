@@ -1,6 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
+import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { DrizzleBotBilling } from "./bot-billing.js";
 
@@ -21,7 +22,7 @@ describe("bot-billing storage tier", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    billing = new DrizzleBotBilling(db);
+    billing = new DrizzleBotBilling(new DrizzleBotInstanceRepository(db));
   });
 
   it("new bot defaults to standard storage tier", async () => {

@@ -14,6 +14,7 @@ import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repo
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
 import type { DrizzleDb } from "../../db/index.js";
+import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
 import { Credit } from "../../monetization/credit.js";
 import { DrizzleAutoTopupSettingsRepository } from "../../monetization/credits/auto-topup-settings-repository.js";
 import { BotBilling } from "../../monetization/credits/bot-billing.js";
@@ -154,7 +155,7 @@ describe("admin tenant status tRPC routes", () => {
     statusStore = new TenantStatusStore(db);
     auditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(db));
     creditLedger = makeMockLedger();
-    botBilling = new BotBilling(db);
+    botBilling = new BotBilling(new DrizzleBotInstanceRepository(db));
 
     setAdminRouterDeps({
       getAuditLog: () => auditLog,

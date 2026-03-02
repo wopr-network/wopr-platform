@@ -5,6 +5,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { decrypt, encrypt } from "../encryption.js";
 import type { EncryptedPayload } from "../types.js";
+import { DrizzleCredentialRepository, DrizzleMigrationTenantKeyAccess } from "./credential-repository.js";
 import { reEncryptAllCredentials } from "./key-rotation.js";
 import { getVaultEncryptionKey } from "./store.js";
 
@@ -43,7 +44,9 @@ describe("reEncryptAllCredentials", () => {
       ["cred-1", "openrouter", "default", JSON.stringify(encrypted), "bearer", "test"],
     );
 
-    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const credAccess = new DrizzleCredentialRepository(db);
+    const tenantKeyAccess = new DrizzleMigrationTenantKeyAccess(db);
+    const result = await reEncryptAllCredentials(credAccess, tenantKeyAccess, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(1);
     expect(result.providerCredentials.errors).toHaveLength(0);
 
@@ -68,7 +71,9 @@ describe("reEncryptAllCredentials", () => {
       ["tk-1", "t1", "openai", JSON.stringify(encrypted), NOW_EPOCH, NOW_EPOCH],
     );
 
-    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const credAccess = new DrizzleCredentialRepository(db);
+    const tenantKeyAccess = new DrizzleMigrationTenantKeyAccess(db);
+    const result = await reEncryptAllCredentials(credAccess, tenantKeyAccess, OLD_SECRET, NEW_SECRET);
     expect(result.tenantKeys.migrated).toBe(1);
     expect(result.tenantKeys.errors).toHaveLength(0);
 
@@ -92,14 +97,18 @@ describe("reEncryptAllCredentials", () => {
       ["cred-2", "openrouter", "default", "not-valid-json", "bearer", "test"],
     );
 
-    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const credAccess = new DrizzleCredentialRepository(db);
+    const tenantKeyAccess = new DrizzleMigrationTenantKeyAccess(db);
+    const result = await reEncryptAllCredentials(credAccess, tenantKeyAccess, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(1);
     expect(result.providerCredentials.errors).toHaveLength(1);
     expect(result.providerCredentials.errors[0]).toContain("cred-2");
   });
 
   it("returns zero counts when tables are empty", async () => {
-    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const credAccess = new DrizzleCredentialRepository(db);
+    const tenantKeyAccess = new DrizzleMigrationTenantKeyAccess(db);
+    const result = await reEncryptAllCredentials(credAccess, tenantKeyAccess, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(0);
     expect(result.tenantKeys.migrated).toBe(0);
   });
@@ -114,7 +123,9 @@ describe("reEncryptAllCredentials", () => {
       );
     }
 
-    const result = await reEncryptAllCredentials(db, OLD_SECRET, NEW_SECRET);
+    const credAccess = new DrizzleCredentialRepository(db);
+    const tenantKeyAccess = new DrizzleMigrationTenantKeyAccess(db);
+    const result = await reEncryptAllCredentials(credAccess, tenantKeyAccess, OLD_SECRET, NEW_SECRET);
     expect(result.providerCredentials.migrated).toBe(3);
 
     const newKey = getVaultEncryptionKey(NEW_SECRET);

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../../db/index.js";
 import { botInstances } from "../../db/schema/bot-instances.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
+import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
 import type { INodeCommandBus } from "../../fleet/node-command-bus.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
@@ -37,6 +38,17 @@ function createMockDeps(nodeId: string | null = "node-1") {
     deleteAllByTenant: vi.fn(),
     listByNodeWithTier: vi.fn(),
     findByTenantAndNode: vi.fn(),
+    countActiveByTenant: vi.fn().mockResolvedValue(0),
+    listActiveIdsByTenant: vi.fn().mockResolvedValue([]),
+    listSuspendedIdsByTenant: vi.fn().mockResolvedValue([]),
+    listExpiredSuspendedIds: vi.fn().mockResolvedValue([]),
+    suspend: vi.fn().mockResolvedValue(undefined),
+    reactivate: vi.fn().mockResolvedValue(undefined),
+    markDestroyed: vi.fn().mockResolvedValue(undefined),
+    register: vi.fn().mockResolvedValue(undefined),
+    getStorageTier: vi.fn().mockResolvedValue(null),
+    setStorageTier: vi.fn().mockResolvedValue(undefined),
+    listActiveStorageTiers: vi.fn().mockResolvedValue([]),
   } as IBotInstanceRepository;
   return { commandBus, botInstanceRepo };
 }
@@ -57,7 +69,7 @@ describe("BotBilling", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    billing = new BotBilling(db);
+    billing = new BotBilling(new DrizzleBotInstanceRepository(db));
     ledger = new CreditLedger(db);
   });
 
@@ -288,7 +300,7 @@ describe("BotBilling", () => {
   describe("suspendBot with command bus", () => {
     it("sends bot.stop command after DB update", async () => {
       const { commandBus, botInstanceRepo } = createMockDeps();
-      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+      const billingWithBus = new BotBilling(botInstanceRepo, commandBus);
 
       await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
       await billingWithBus.suspendBot("bot-1");
@@ -302,7 +314,7 @@ describe("BotBilling", () => {
     it("does not throw when command bus fails", async () => {
       const { commandBus, botInstanceRepo } = createMockDeps();
       (commandBus.send as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Node not connected"));
-      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+      const billingWithBus = new BotBilling(botInstanceRepo, commandBus);
 
       await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
       await expect(billingWithBus.suspendBot("bot-1")).resolves.toBeUndefined();
@@ -310,7 +322,7 @@ describe("BotBilling", () => {
 
     it("skips command when bot has no nodeId", async () => {
       const { commandBus, botInstanceRepo } = createMockDeps(null);
-      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+      const billingWithBus = new BotBilling(botInstanceRepo, commandBus);
 
       await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
       await billingWithBus.suspendBot("bot-1");
@@ -327,7 +339,7 @@ describe("BotBilling", () => {
   describe("reactivateBot with command bus", () => {
     it("sends bot.start command after DB update", async () => {
       const { commandBus, botInstanceRepo } = createMockDeps();
-      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+      const billingWithBus = new BotBilling(botInstanceRepo, commandBus);
 
       await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
       await billingWithBus.suspendBot("bot-1");
@@ -343,7 +355,7 @@ describe("BotBilling", () => {
 
     it("does not throw when command bus fails on reactivate", async () => {
       const { commandBus, botInstanceRepo } = createMockDeps();
-      const billingWithBus = new BotBilling(db, botInstanceRepo, commandBus);
+      const billingWithBus = new BotBilling(botInstanceRepo, commandBus);
 
       await billingWithBus.registerBot("bot-1", "tenant-1", "my-bot");
       await billingWithBus.suspendBot("bot-1");

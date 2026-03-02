@@ -5,7 +5,9 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["src/**/*.ts"]
+    "includes": [
+      "src/**/*.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -26,7 +28,12 @@
         "noConsole": {
           "level": "error",
           "options": {
-            "allow": ["assert", "error", "info", "warn"]
+            "allow": [
+              "assert",
+              "error",
+              "info",
+              "warn"
+            ]
           }
         }
       },
@@ -66,7 +73,9 @@
   },
   "overrides": [
     {
-      "includes": ["src/db/**/*.ts"],
+      "includes": [
+        "src/db/**/*.ts"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -90,7 +99,6 @@
         "src/monetization/credits/drizzle-phone-number-repository.ts",
         "src/monetization/credits/credit-ledger.ts",
         "src/monetization/credits/dividend-repository.ts",
-        "src/monetization/credits/bot-billing.ts",
         "src/monetization/credits/credit-transaction-repository.ts",
         "src/monetization/credits/dividend-cron.ts",
         "src/monetization/budget/budget-checker.ts",
@@ -147,7 +155,8 @@
         "src/monetization/promotions/promotion-repository.ts",
         "src/monetization/promotions/coupon-repository.ts",
         "src/monetization/promotions/redemption-repository.ts",
-        "src/monetization/adapters/rate-override-repository.ts"
+        "src/monetization/adapters/rate-override-repository.ts",
+        "src/security/tenant-keys/key-resolution-repository.ts"
       ],
       "linter": {
         "rules": {
@@ -158,7 +167,10 @@
       }
     },
     {
-      "includes": ["src/test/**/*.ts", "src/**/*.test.ts"],
+      "includes": [
+        "src/test/**/*.ts",
+        "src/**/*.test.ts"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -182,7 +194,6 @@
         "src/backup/restore-log-store.ts",
         "src/backup/snapshot-manager.ts",
         "src/monetization/credits/credit-ledger.ts",
-        "src/monetization/credits/bot-billing.ts",
         "src/security/tenant-keys/schema.ts",
         "src/gateway/spending-cap.ts",
         "src/trpc/routers/two-factor.ts"

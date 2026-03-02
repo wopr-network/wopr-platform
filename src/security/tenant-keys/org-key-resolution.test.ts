@@ -7,6 +7,7 @@ import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTra
 import { encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload, Provider } from "../types.js";
 import { resolveApiKey } from "./key-resolution.js";
+import { DrizzleKeyResolutionRepository } from "./key-resolution-repository.js";
 import { resolveApiKeyWithOrgFallback } from "./org-key-resolution.js";
 
 async function insertTenantKey(
@@ -64,7 +65,8 @@ describe("resolveApiKeyWithOrgFallback", () => {
     await insertTenantKey(pool, "org-1", "anthropic", orgEncrypted);
 
     const result = await resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
+      (tid, prov, encKey) =>
+        resolveApiKey(new DrizzleKeyResolutionRepository(db), tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -84,7 +86,8 @@ describe("resolveApiKeyWithOrgFallback", () => {
     await insertTenantKey(pool, "org-1", "anthropic", orgEncrypted);
 
     const result = await resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
+      (tid, prov, encKey) =>
+        resolveApiKey(new DrizzleKeyResolutionRepository(db), tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -103,7 +106,8 @@ describe("resolveApiKeyWithOrgFallback", () => {
     const pooledKeys = new Map<Provider, string>([["anthropic", "sk-pooled"]]);
 
     const result = await resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
+      (tid, prov, encKey) =>
+        resolveApiKey(new DrizzleKeyResolutionRepository(db), tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -118,7 +122,8 @@ describe("resolveApiKeyWithOrgFallback", () => {
 
   it("returns null when no key exists anywhere", async () => {
     const result = await resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
+      (tid, prov, encKey) =>
+        resolveApiKey(new DrizzleKeyResolutionRepository(db), tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "member-1",
       "anthropic",
       encryptionKey,
@@ -134,7 +139,8 @@ describe("resolveApiKeyWithOrgFallback", () => {
     await insertTenantKey(pool, "solo-tenant", "openai", encrypted);
 
     const result = await resolveApiKeyWithOrgFallback(
-      (tid, prov, encKey) => resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
+      (tid, prov, encKey) =>
+        resolveApiKey(new DrizzleKeyResolutionRepository(db), tid, prov, encKey, new Map()).then((r) => r?.key ?? null),
       "solo-tenant",
       "openai",
       encryptionKey,
@@ -158,7 +164,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     await insertTenantKey(pool, "org-1", "openai", encrypt("org-openai", orgKey));
 
     const lookupKey = (tid: string, prov: Provider, encKey: Buffer) =>
-      resolveApiKey(db, tid, prov, encKey, new Map()).then((r) => r?.key ?? null);
+      resolveApiKey(new DrizzleKeyResolutionRepository(db), tid, prov, encKey, new Map()).then((r) => r?.key ?? null);
 
     // anthropic: personal wins
     const r1 = await resolveApiKeyWithOrgFallback(

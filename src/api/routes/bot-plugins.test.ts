@@ -100,6 +100,17 @@ const mockBotInstanceRepo = {
   deleteAllByTenant: vi.fn(),
   listByNodeWithTier: vi.fn().mockResolvedValue([]),
   findByTenantAndNode: vi.fn().mockResolvedValue(null),
+  countActiveByTenant: vi.fn().mockResolvedValue(0),
+  listActiveIdsByTenant: vi.fn().mockResolvedValue([]),
+  listSuspendedIdsByTenant: vi.fn().mockResolvedValue([]),
+  listExpiredSuspendedIds: vi.fn().mockResolvedValue([]),
+  suspend: vi.fn().mockResolvedValue(undefined),
+  reactivate: vi.fn().mockResolvedValue(undefined),
+  markDestroyed: vi.fn().mockResolvedValue(undefined),
+  register: vi.fn().mockResolvedValue(undefined),
+  getStorageTier: vi.fn().mockResolvedValue(null),
+  setStorageTier: vi.fn().mockResolvedValue(undefined),
+  listActiveStorageTiers: vi.fn().mockResolvedValue([]),
 };
 
 // Wire in mock deps

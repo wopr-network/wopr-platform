@@ -12,7 +12,13 @@ export interface TenantCapabilitySetting {
   updated_at: number;
 }
 
-export class CapabilitySettingsStore {
+/** Repository for tenant capability mode settings (hosted vs byok). */
+export interface ICapabilitySettingsRepository {
+  listForTenant(tenantId: string): Promise<TenantCapabilitySetting[]>;
+  upsert(tenantId: string, capability: string, mode: string): Promise<void>;
+}
+
+export class CapabilitySettingsStore implements ICapabilitySettingsRepository {
   private readonly db: DrizzleDb;
 
   constructor(db: DrizzleDb) {

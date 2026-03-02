@@ -519,6 +519,7 @@ if (process.env.NODE_ENV !== "test") {
   // Wire settings tRPC router deps
   {
     const { resolveApiKey, buildPooledKeysMap } = await import("./security/tenant-keys/key-resolution.js");
+    const { DrizzleKeyResolutionRepository } = await import("./security/tenant-keys/key-resolution-repository.js");
     const { validateProviderKey, PROVIDER_ENDPOINTS } = await import("./security/key-validation.js");
     const vaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const pooledKeys = buildPooledKeysMap();
@@ -530,7 +531,13 @@ if (process.env.NODE_ENV !== "test") {
         if (!PROVIDER_ENDPOINTS[validProvider]) {
           return { ok: false, error: `Unknown provider: ${provider}` };
         }
-        const resolved = await resolveApiKey(getDb(), tenantId, validProvider, vaultEncKey, pooledKeys);
+        const resolved = await resolveApiKey(
+          new DrizzleKeyResolutionRepository(getDb()),
+          tenantId,
+          validProvider,
+          vaultEncKey,
+          pooledKeys,
+        );
         if (!resolved) {
           return { ok: false, error: "No API key configured for this provider" };
         }
@@ -564,6 +571,9 @@ if (process.env.NODE_ENV !== "test") {
     const { buildPooledKeysMap: buildPooledKeysMap2, resolveApiKey: resolveApiKey2 } = await import(
       "./security/tenant-keys/key-resolution.js"
     );
+    const { DrizzleKeyResolutionRepository: DrizzleKeyResolutionRepository2 } = await import(
+      "./security/tenant-keys/key-resolution-repository.js"
+    );
     const pooledKeys2 = buildPooledKeysMap2();
 
     setOrgKeysRouterDeps({
@@ -593,7 +603,9 @@ if (process.env.NODE_ENV !== "test") {
           return { ok: false, error: `Unknown provider: ${provider}` };
         }
         const resolved = await resolveApiKeyWithOrgFallback(
-          async (tid, prov, encKey) => (await resolveApiKey2(getDb(), tid, prov, encKey, new Map()))?.key ?? null,
+          async (tid, prov, encKey) =>
+            (await resolveApiKey2(new DrizzleKeyResolutionRepository2(getDb()), tid, prov, encKey, new Map()))?.key ??
+            null,
           tenantId,
           validProvider,
           orgVaultEncKey,
@@ -704,7 +716,7 @@ if (process.env.NODE_ENV !== "test") {
           getCreditLedger: () => getCreditLedger(),
           getUserStore: () => new AdminUserStore(getDb()),
           getTenantStatusStore: () => getTenantStatusRepo(),
-          getBotBilling: () => new BotBilling(getDb()),
+          getBotBilling: () => new BotBilling(getBotInstanceRepo()),
           getAutoTopupSettingsRepo: () => getAutoTopupSettingsRepo(),
           detachAllPaymentMethods: (tenantId: string) => detachAllPaymentMethods(stripe, tenantStore, tenantId),
           getAffiliateFraudAdminRepo: () => new DrizzleAffiliateFraudAdminRepository(getDb()),

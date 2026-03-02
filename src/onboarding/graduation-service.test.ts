@@ -93,6 +93,17 @@ function mockBotInstanceRepo(hasBots: boolean): IBotInstanceRepository {
     deleteAllByTenant: vi.fn(),
     listByNodeWithTier: vi.fn(async () => []),
     findByTenantAndNode: vi.fn(async () => null),
+    countActiveByTenant: vi.fn(async () => 0),
+    listActiveIdsByTenant: vi.fn(async () => []),
+    listSuspendedIdsByTenant: vi.fn(async () => []),
+    listExpiredSuspendedIds: vi.fn(async () => []),
+    suspend: vi.fn(async () => undefined),
+    reactivate: vi.fn(async () => undefined),
+    markDestroyed: vi.fn(async () => undefined),
+    register: vi.fn(async () => undefined),
+    getStorageTier: vi.fn(async () => null),
+    setStorageTier: vi.fn(async () => undefined),
+    listActiveStorageTiers: vi.fn(async () => []),
   };
 }
 

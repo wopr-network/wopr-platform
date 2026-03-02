@@ -145,6 +145,108 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
       .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.nodeId, nodeId)));
     return rows[0] ? toInstance(rows[0]) : null;
   }
+
+  async countActiveByTenant(tenantId: string): Promise<number> {
+    const row = (
+      await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(botInstances)
+        .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "active")))
+    )[0];
+    return row?.count ?? 0;
+  }
+
+  async listActiveIdsByTenant(tenantId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: botInstances.id })
+      .from(botInstances)
+      .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "active")));
+    return rows.map((r) => r.id);
+  }
+
+  async listSuspendedIdsByTenant(tenantId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: botInstances.id })
+      .from(botInstances)
+      .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "suspended")));
+    return rows.map((r) => r.id);
+  }
+
+  async listExpiredSuspendedIds(): Promise<string[]> {
+    const rows = await this.db
+      .select({ id: botInstances.id })
+      .from(botInstances)
+      .where(and(eq(botInstances.billingState, "suspended"), sql`${botInstances.destroyAfter}::timestamp <= now()`));
+    return rows.map((r) => r.id);
+  }
+
+  async suspend(botId: string, graceDays: number): Promise<void> {
+    await this.db
+      .update(botInstances)
+      .set({
+        billingState: "suspended",
+        suspendedAt: sql`now()`,
+        destroyAfter: sql`now() + make_interval(days => ${graceDays})`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(botInstances.id, botId));
+  }
+
+  async reactivate(botId: string): Promise<void> {
+    await this.db
+      .update(botInstances)
+      .set({
+        billingState: "active",
+        suspendedAt: null,
+        destroyAfter: null,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(botInstances.id, botId), eq(botInstances.billingState, "suspended")));
+  }
+
+  async markDestroyed(botId: string): Promise<void> {
+    await this.db
+      .update(botInstances)
+      .set({
+        billingState: "destroyed",
+        updatedAt: sql`now()`,
+      })
+      .where(eq(botInstances.id, botId));
+  }
+
+  async register(botId: string, tenantId: string, name: string): Promise<void> {
+    await this.db.insert(botInstances).values({
+      id: botId,
+      tenantId,
+      name,
+      billingState: "active",
+    });
+  }
+
+  async getStorageTier(botId: string): Promise<string | null> {
+    const row = (
+      await this.db
+        .select({ storageTier: botInstances.storageTier })
+        .from(botInstances)
+        .where(eq(botInstances.id, botId))
+    )[0];
+    return row?.storageTier ?? null;
+  }
+
+  async setStorageTier(botId: string, tier: string): Promise<void> {
+    await this.db
+      .update(botInstances)
+      .set({ storageTier: tier, updatedAt: sql`now()` })
+      .where(eq(botInstances.id, botId));
+  }
+
+  async listActiveStorageTiers(tenantId: string): Promise<string[]> {
+    const rows = await this.db
+      .select({ storageTier: botInstances.storageTier })
+      .from(botInstances)
+      .where(and(eq(botInstances.tenantId, tenantId), eq(botInstances.billingState, "active")));
+    return rows.map((r) => r.storageTier ?? "free");
+  }
 }
 
 // ---------------------------------------------------------------------------
