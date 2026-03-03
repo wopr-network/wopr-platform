@@ -2,13 +2,18 @@ import { asc, eq } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { marketplacePlugins } from "../db/schema/index.js";
 import type { IMarketplacePluginRepository } from "./marketplace-plugin-repository.js";
-import type { MarketplacePlugin, NewMarketplacePlugin } from "./marketplace-repository-types.js";
+import type {
+  MarketplacePlugin,
+  MarketplacePluginManifest,
+  NewMarketplacePlugin,
+} from "./marketplace-repository-types.js";
 
 function rowToDomain(row: typeof marketplacePlugins.$inferSelect): MarketplacePlugin {
   return {
     pluginId: row.pluginId,
     npmPackage: row.npmPackage,
     version: row.version,
+    previousVersion: row.previousVersion ?? null,
     enabled: row.enabled,
     featured: row.featured,
     sortOrder: row.sortOrder,
@@ -19,6 +24,7 @@ function rowToDomain(row: typeof marketplacePlugins.$inferSelect): MarketplacePl
     notes: row.notes,
     installedAt: row.installedAt ?? null,
     installError: row.installError ?? null,
+    manifest: (row.manifest as MarketplacePluginManifest | null) ?? null,
   };
 }
 
@@ -61,6 +67,7 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
       version: plugin.version,
       category: plugin.category ?? null,
       notes: plugin.notes ?? null,
+      manifest: plugin.manifest ?? null,
       discoveredAt: now,
     });
     const inserted = await this.findById(plugin.pluginId);
@@ -77,6 +84,7 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
     if (patch.enabledBy !== undefined) updates.enabledBy = patch.enabledBy;
     if (patch.notes !== undefined) updates.notes = patch.notes;
     if (patch.version !== undefined) updates.version = patch.version;
+    if (patch.manifest !== undefined) updates.manifest = patch.manifest;
     // Auto-set enabledAt when enabling
     if (patch.enabled === true) updates.enabledAt = Date.now();
     if (Object.keys(updates).length > 0) {
@@ -95,6 +103,13 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
     await this.db
       .update(marketplacePlugins)
       .set({ installedAt, installError })
+      .where(eq(marketplacePlugins.pluginId, pluginId));
+  }
+
+  async setVersion(pluginId: string, version: string, previousVersion: string | null): Promise<void> {
+    await this.db
+      .update(marketplacePlugins)
+      .set({ version, previousVersion })
       .where(eq(marketplacePlugins.pluginId, pluginId));
   }
 }

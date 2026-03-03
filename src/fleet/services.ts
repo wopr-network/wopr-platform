@@ -64,6 +64,7 @@ import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
+import { DrizzleMeterEventRepository } from "../monetization/metering/meter-event-repository.js";
 import type { IPayRamChargeRepository } from "../monetization/payram/charge-store.js";
 import { DrizzlePayRamChargeRepository } from "../monetization/payram/charge-store.js";
 import { SystemResourceMonitor } from "../observability/system-resources.js";
@@ -672,7 +673,7 @@ export function getBotBilling(): IBotBilling {
 }
 
 export function getMeterEmitter(): IMeterEmitter {
-  if (!_meterEmitter) _meterEmitter = new DrizzleMeterEmitter(getDb());
+  if (!_meterEmitter) _meterEmitter = new DrizzleMeterEmitter(new DrizzleMeterEventRepository(getDb()));
   return _meterEmitter;
 }
 

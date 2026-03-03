@@ -73,6 +73,7 @@ import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cr
 import { startRuntimeScheduler } from "./monetization/credits/runtime-scheduler.js";
 import { DrizzleWebhookSeenRepository } from "./monetization/drizzle-webhook-seen-repository.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
+import { DrizzleMeterEventRepository } from "./monetization/metering/meter-event-repository.js";
 import { runReconciliation } from "./monetization/metering/reconciliation-cron.js";
 import {
   DrizzleAdapterUsageRepository,
@@ -96,7 +97,7 @@ import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
 import { encrypt } from "./security/encryption.js";
-import { TenantKeyRepository } from "./security/tenant-keys/schema.js";
+import { TenantKeyRepository } from "./security/tenant-keys/tenant-key-repository.js";
 import {
   setAddonRouterDeps,
   setAdminRouterDeps,
@@ -296,7 +297,7 @@ if (process.env.NODE_ENV !== "test") {
 
     const rateStore = new RateStore(getDb());
 
-    const meter = new MeterEmitter(getDb());
+    const meter = new MeterEmitter(new DrizzleMeterEventRepository(getDb()));
     const budgetChecker = new BudgetChecker(getDb());
     const creditLedger = getCreditLedger();
 
@@ -1027,7 +1028,7 @@ if (process.env.NODE_ENV !== "test") {
     const onboardingCfg = loadOnboardingConfig();
     setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo(), getGraduationService());
     // Wire setup route deps (WOP-1034, WOP-1035, WOP-1055)
-    const { pluginRegistry } = await import("./api/routes/marketplace-registry.js");
+    const { FIRST_PARTY_PLUGINS: pluginRegistry } = await import("./marketplace/first-party-plugins.js");
     const onboardingSessionRepoForSetup = getOnboardingSessionRepo();
     const setupSessionRepoForCheck = getSetupSessionRepo();
     const tenantKeyLookup = new DrizzleTenantKeyLookup(getDb());

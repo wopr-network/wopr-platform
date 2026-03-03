@@ -598,6 +598,115 @@ fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
   }
 });
 
+/** GET /fleet/bots/:id/logs/stream — SSE real-time log tailing */
+fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
+  const botId = c.req.param("id");
+  const profile = await fleet.profiles.get(botId);
+  const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
+  if (ownershipError) {
+    return ownershipError;
+  }
+
+  const rawTail = c.req.query("tail");
+  const parsedTail = rawTail != null ? Number.parseInt(rawTail, 10) : 100;
+  const tail = Number.isNaN(parsedTail) || parsedTail < 1 ? 100 : Math.min(parsedTail, 10_000);
+  const since = c.req.query("since");
+
+  let nodeStream: NodeJS.ReadableStream;
+  try {
+    const opts: { since?: string; tail: number } = { tail };
+    if (since) opts.since = since;
+    nodeStream = await fleet.logStream(botId, opts);
+  } catch (err) {
+    if (err instanceof BotNotFoundError) return c.json({ error: (err as Error).message }, 404);
+    throw err;
+  }
+
+  const { readable, writable } = new TransformStream<string, string>();
+  const writer = writable.getWriter();
+
+  let lineIndex = 0;
+  let buffer = "";
+
+  const cleanup = () => {
+    nodeStream.removeListener("data", onData);
+    nodeStream.removeListener("end", onEnd);
+    nodeStream.removeListener("error", onError);
+    const destroyable = nodeStream as unknown as { destroy?: () => void };
+    if (typeof destroyable.destroy === "function") {
+      destroyable.destroy();
+    }
+    writer.close().catch(() => {});
+  };
+
+  const onData = (chunk: Buffer | string) => {
+    buffer += chunk.toString("utf-8");
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.length === 0) continue;
+      const parsed = parseLogLines(line);
+      if (parsed.length > 0) {
+        const entry = { ...parsed[0], id: `log-${lineIndex++}` };
+        writer.write(`data: ${JSON.stringify(entry)}\n\n`).catch(() => {
+          cleanup();
+        });
+      }
+    }
+  };
+
+  const onEnd = () => {
+    if (buffer.length > 0) {
+      const parsed = parseLogLines(buffer);
+      if (parsed.length > 0) {
+        const entry = { ...parsed[0], id: `log-${lineIndex++}` };
+        writer.write(`data: ${JSON.stringify(entry)}\n\n`).catch(() => {});
+      }
+    }
+    writer
+      .write(`data: ${JSON.stringify({ type: "closed", reason: "container_stopped" })}\n\n`)
+      .then(() => writer.close())
+      .catch(() => {});
+  };
+
+  const onError = (err: Error) => {
+    logger.error("Log stream error", { botId, err });
+    writer
+      .write(`data: ${JSON.stringify({ type: "error", message: "Stream error" })}\n\n`)
+      .then(() => cleanup())
+      .catch(() => cleanup());
+  };
+
+  nodeStream.on("data", onData);
+  nodeStream.on("end", onEnd);
+  nodeStream.on("error", onError);
+
+  const signal = c.req.raw.signal;
+  if (signal) {
+    signal.addEventListener("abort", () => {
+      cleanup();
+    });
+  }
+
+  const encoder = new TextEncoder();
+  const encodedStream = readable.pipeThrough(
+    new TransformStream<string, Uint8Array>({
+      transform(chunk, controller) {
+        controller.enqueue(encoder.encode(chunk));
+      },
+    }),
+  );
+
+  return new Response(encodedStream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+});
+
 /** POST /fleet/bots/:id/update — Force update to latest image */
 fleetRoutes.post("/bots/:id/update", writeAuth, async (c) => {
   const botId = c.req.param("id");

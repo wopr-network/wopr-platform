@@ -2,7 +2,7 @@ import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NetworkPolicy } from "../network/network-policy.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
-import { BotNotFoundError, FleetManager } from "./fleet-manager.js";
+import { BotNotFoundError, FleetManager, InvalidStateTransitionError } from "./fleet-manager.js";
 import type { INodeCommandBus } from "./node-command-bus.js";
 import type { ProfileStore } from "./profile-store.js";
 import type { BotInstance, NewBotInstance } from "./repository-types.js";
@@ -45,6 +45,11 @@ function mockDocker(containerMock: ReturnType<typeof mockContainer> | null = nul
     getContainer: vi.fn().mockReturnValue(containerMock),
     modem: {
       followProgress: vi.fn((_stream: unknown, cb: (err: Error | null) => void) => cb(null)),
+      demuxStream: vi.fn(
+        (stream: NodeJS.ReadableStream, stdout: NodeJS.WritableStream, _stderr: NodeJS.WritableStream) => {
+          stream.pipe(stdout as import("node:stream").Writable);
+        },
+      ),
     },
   };
 }
@@ -135,12 +140,61 @@ describe("FleetManager", () => {
   });
 
   describe("start", () => {
-    it("starts an existing container", async () => {
-      // Need the bot in the store first so findContainer returns something
+    it("starts an existing stopped container", async () => {
+      // Container must be in a stopped/created/exited state
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "stopped", Running: false, StartedAt: "", Health: { Status: "healthy" } },
+      });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
       await fleet.start("bot-id");
       expect(container.start).toHaveBeenCalled();
+    });
+
+    it("starts an exited container", async () => {
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "exited", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.start("bot-id");
+      expect(container.start).toHaveBeenCalled();
+    });
+
+    it("starts a dead container", async () => {
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "dead", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.start("bot-id");
+      expect(container.start).toHaveBeenCalled();
+    });
+
+    it("throws InvalidStateTransitionError with 'unknown' when Status is missing/null", async () => {
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: null, Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await expect(fleet.start("bot-id")).rejects.toThrow(InvalidStateTransitionError);
+      await expect(fleet.start("bot-id")).rejects.toThrow(/unknown/);
+    });
+
+    it("throws InvalidStateTransitionError when container is already running", async () => {
+      // Default mockContainer has state "running"
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await expect(fleet.start("bot-id")).rejects.toThrow(InvalidStateTransitionError);
+      await expect(fleet.start("bot-id")).rejects.toThrow(/Cannot start bot/);
     });
 
     it("throws BotNotFoundError when container not found", async () => {
@@ -151,10 +205,23 @@ describe("FleetManager", () => {
 
   describe("stop", () => {
     it("stops a running container", async () => {
+      // Default mockContainer has state "running" — valid for stop
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
       await fleet.stop("bot-id");
       expect(container.stop).toHaveBeenCalled();
+    });
+
+    it("throws InvalidStateTransitionError when container is already stopped", async () => {
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "exited", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await expect(fleet.stop("bot-id")).rejects.toThrow(InvalidStateTransitionError);
+      await expect(fleet.stop("bot-id")).rejects.toThrow(/Cannot stop bot/);
     });
 
     it("throws BotNotFoundError when container not found", async () => {
@@ -164,8 +231,8 @@ describe("FleetManager", () => {
   });
 
   describe("restart", () => {
-    it("pulls image before restarting container", async () => {
-      // Store the profile first
+    it("pulls image before restarting a running container", async () => {
+      // Store the profile first; default mockContainer has state "running" — valid for restart
       await store.save({ id: "bot-id", ...PROFILE_PARAMS });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
@@ -174,6 +241,45 @@ describe("FleetManager", () => {
       // Pull is called first
       expect(docker.pull).toHaveBeenCalledWith(PROFILE_PARAMS.image, {});
       // Then restart
+      expect(container.restart).toHaveBeenCalled();
+    });
+
+    it("restarts a container in exited state (crash recovery)", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "exited", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.restart("bot-id");
+      expect(container.restart).toHaveBeenCalled();
+    });
+
+    it("restarts a container in stopped state", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "stopped", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.restart("bot-id");
+      expect(container.restart).toHaveBeenCalled();
+    });
+
+    it("restarts a container in dead state (crash recovery)", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "dead", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.restart("bot-id");
       expect(container.restart).toHaveBeenCalled();
     });
 
@@ -285,6 +391,77 @@ describe("FleetManager", () => {
     });
   });
 
+  describe("logStream", () => {
+    it("returns a demuxed readable stream with follow and since options", async () => {
+      const { PassThrough } = await import("node:stream");
+      const mockStream = new PassThrough();
+      container.logs.mockResolvedValue(mockStream);
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      const stream = await fleet.logStream("bot-id", { since: "2026-01-01T00:00:00Z", tail: 50 });
+      // Result is a PassThrough (demuxed), not the raw multiplexed stream
+      expect(stream).not.toBe(mockStream);
+      expect(stream).toBeDefined();
+      expect(container.logs).toHaveBeenCalledWith({
+        stdout: true,
+        stderr: true,
+        follow: true,
+        tail: 50,
+        timestamps: true,
+        since: "2026-01-01T00:00:00Z",
+      });
+      expect(docker.modem.demuxStream).toHaveBeenCalled();
+      (stream as import("node:stream").PassThrough).destroy();
+      mockStream.destroy();
+    });
+
+    it("defaults tail to 100 and omits since when not provided", async () => {
+      const { PassThrough } = await import("node:stream");
+      const mockStream = new PassThrough();
+      container.logs.mockResolvedValue(mockStream);
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.logStream("bot-id", {});
+      expect(container.logs).toHaveBeenCalledWith({
+        stdout: true,
+        stderr: true,
+        follow: true,
+        tail: 100,
+        timestamps: true,
+      });
+      mockStream.destroy();
+    });
+
+    it("throws BotNotFoundError when container not found", async () => {
+      docker.listContainers.mockResolvedValue([]);
+      await expect(fleet.logStream("missing", {})).rejects.toThrow(BotNotFoundError);
+    });
+
+    it("proxies via node-agent for remote bots", async () => {
+      const { PassThrough } = await import("node:stream");
+      const commandBus = { send: vi.fn().mockResolvedValue({ success: true, data: "remote log line\n" }) };
+      const instanceRepo = { getById: vi.fn().mockResolvedValue({ nodeId: "node-1" }) };
+      const remoteFleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        commandBus as unknown as import("./node-command-bus.js").INodeCommandBus,
+        instanceRepo as unknown as import("./bot-instance-repository.js").IBotInstanceRepository,
+      );
+      await store.save({ id: "remote-bot", ...PROFILE_PARAMS });
+
+      const stream = await remoteFleet.logStream("remote-bot", { tail: 50 });
+      expect(stream).toBeInstanceOf(PassThrough);
+      expect(commandBus.send).toHaveBeenCalledWith("node-1", {
+        type: "bot.logs",
+        payload: { name: PROFILE_PARAMS.name, tail: 50 },
+      });
+      (stream as import("node:stream").PassThrough).destroy();
+    });
+  });
+
   describe("update", () => {
     it("updates profile and recreates container if running", async () => {
       await store.save({ id: "bot-id", ...PROFILE_PARAMS });
@@ -370,6 +547,11 @@ describe("FleetManager", () => {
     });
 
     it("calls updateHealth(true) on start", async () => {
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "stopped", Running: false, StartedAt: "", Health: { Status: "healthy" } },
+      });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
       await proxyFleet.start("bot-id");
       expect(proxyManager.updateHealth).toHaveBeenCalledWith("bot-id", true);
@@ -465,6 +647,12 @@ describe("FleetManager", () => {
 
   describe("per-bot mutex", () => {
     it("serializes 5 concurrent startBot calls into exactly 1 start per call", async () => {
+      // Containers must be in stopped state so the state guard passes
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "stopped", Running: false, StartedAt: "", Health: null },
+      });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
       let startCount = 0;
@@ -482,6 +670,14 @@ describe("FleetManager", () => {
     });
 
     it("does not block operations on different bots (proves concurrency)", async () => {
+      // For this test: start needs stopped state, stop needs running state.
+      // Both bot-a and bot-b share the same mock container.
+      // Use a stopped state so start() passes, and mock stop() directly so it bypasses state check.
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "stopped", Running: false, StartedAt: "", Health: null },
+      });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
       let releaseStart!: () => void;
@@ -492,6 +688,15 @@ describe("FleetManager", () => {
           }),
       );
       const stopSpy = vi.fn();
+      // Override inspect for the stop path to return "running" state
+      let callCount = 0;
+      container.inspect.mockImplementation(async () => {
+        callCount++;
+        // First call is for bot-a start, subsequent for bot-b stop
+        return callCount === 1
+          ? { Id: "container-123", State: { Status: "stopped", Running: false } }
+          : { Id: "container-123", State: { Status: "running", Running: true } };
+      });
       container.stop.mockImplementation(async () => {
         stopSpy();
       });

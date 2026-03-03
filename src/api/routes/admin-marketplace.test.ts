@@ -15,6 +15,7 @@ function mockRepo(overrides: Partial<IMarketplacePluginRepository> = {}): IMarke
     update: vi.fn().mockResolvedValue({} as never),
     delete: vi.fn().mockResolvedValue(undefined),
     setInstallResult: vi.fn().mockResolvedValue(undefined),
+    setVersion: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -24,6 +25,7 @@ function makePlugin(overrides: Partial<MarketplacePlugin> = {}): MarketplacePlug
     pluginId: "test-plugin",
     npmPackage: "@wopr-network/wopr-plugin-test",
     version: "1.0.0",
+    previousVersion: null,
     enabled: false,
     featured: false,
     sortOrder: 999,
@@ -34,6 +36,7 @@ function makePlugin(overrides: Partial<MarketplacePlugin> = {}): MarketplacePlug
     notes: null,
     installedAt: null,
     installError: null,
+    manifest: null,
     ...overrides,
   };
 }

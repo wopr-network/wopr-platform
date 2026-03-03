@@ -181,10 +181,12 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("fleet.listInstances", () => {
-  it("returns bots for tenant", async () => {
+  it("returns bots for tenant with pagination metadata", async () => {
     const caller = createCaller(authedContext());
     const result = await caller.fleet.listInstances();
     expect(result.bots).toEqual([mockStatus]);
+    expect(result.hasNextPage).toBe(false);
+    expect(result.nextCursor).toBeUndefined();
     expect(fleetMock.listByTenant).toHaveBeenCalledWith("test-tenant");
   });
 
@@ -196,6 +198,43 @@ describe("fleet.listInstances", () => {
   it("rejects missing tenant context", async () => {
     const caller = createCaller({ user: { id: "u1", roles: ["admin"] }, tenantId: undefined });
     await expect(caller.fleet.listInstances()).rejects.toThrow("Tenant context required");
+  });
+
+  it("respects limit and returns hasNextPage=true when more results exist", async () => {
+    const bot1 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000001" };
+    const bot2 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000002" };
+    const bot3 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000003" };
+    fleetMock.listByTenant.mockResolvedValue([bot1, bot2, bot3]);
+
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.listInstances({ limit: 2 });
+    expect(result.bots).toHaveLength(2);
+    expect(result.bots[0].id).toBe(bot1.id);
+    expect(result.bots[1].id).toBe(bot2.id);
+    expect(result.hasNextPage).toBe(true);
+    expect(result.nextCursor).toBe(bot2.id);
+  });
+
+  it("uses cursor to fetch next page", async () => {
+    const bot1 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000001" };
+    const bot2 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000002" };
+    const bot3 = { ...mockStatus, id: "00000000-0000-4000-8000-000000000003" };
+    fleetMock.listByTenant.mockResolvedValue([bot1, bot2, bot3]);
+
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.listInstances({ limit: 2, cursor: bot2.id });
+    expect(result.bots).toHaveLength(1);
+    expect(result.bots[0].id).toBe(bot3.id);
+    expect(result.hasNextPage).toBe(false);
+    expect(result.nextCursor).toBeUndefined();
+  });
+
+  it("defaults to limit 50 and accepts max 250", async () => {
+    const caller = createCaller(authedContext());
+    // Default limit does not throw
+    await expect(caller.fleet.listInstances()).resolves.toBeDefined();
+    // Max 250 does not throw
+    await expect(caller.fleet.listInstances({ limit: 250 })).resolves.toBeDefined();
   });
 });
 

@@ -6,6 +6,7 @@ import { DrizzleBudgetChecker, type SpendLimits } from "../../src/monetization/b
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
 import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
+import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
 import type { MeterEvent } from "../../src/monetization/metering/types.js";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js";
@@ -66,7 +67,7 @@ describe("Billing pipeline load tests", () => {
   // Skipped: throughput assertion (>1K evt/s) is environment-dependent and flaky on CI runners.
   // This is a load/perf characterization test, not a correctness test.
   it.skip("Scenario 1: Sustained 10K events — emit + flush throughput", () => {
-    const emitter = new MeterEmitter(db, {
+    const emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,
       batchSize: 500,
       walPath,
@@ -92,7 +93,7 @@ describe("Billing pipeline load tests", () => {
   });
 
   it("Scenario 2: Burst emit — rapid emit then single flush", async () => {
-    const emitter = new MeterEmitter(db, {
+    const emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,
       batchSize: 100_000, // No auto-flush
       walPath,
@@ -133,7 +134,7 @@ describe("Billing pipeline load tests", () => {
   });
 
   it("Scenario 3: Multi-tenant load — 10 tenants", () => {
-    const emitter = new MeterEmitter(db, {
+    const emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,
       batchSize: 1000,
       walPath,
@@ -164,7 +165,7 @@ describe("Billing pipeline load tests", () => {
   });
 
   it("Scenario 4: Budget check under load — 100 tenants with active metering", () => {
-    const emitter = new MeterEmitter(db, {
+    const emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,
       batchSize: 1000,
       walPath,
@@ -211,7 +212,7 @@ describe("Billing pipeline load tests", () => {
 
   it("Scenario 5: Full pipeline — emit, flush, aggregate, budget check cycle", async () => {
     const WINDOW = 60_000;
-    const emitter = new MeterEmitter(db, {
+    const emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,
       batchSize: 500,
       walPath,
@@ -283,7 +284,7 @@ describe("Billing pipeline load tests", () => {
   });
 
   it("Scenario 6: Memory leak detection — repeated cycles", () => {
-    const emitter = new MeterEmitter(db, {
+    const emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,
       batchSize: 500,
       walPath,

@@ -9,11 +9,11 @@ import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
 import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
+import { getMarketplacePluginRepo } from "../../fleet/services.js";
 import { Credit } from "../../monetization/credit.js";
 import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
-import { pluginRegistry } from "./marketplace-registry.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const store = new ProfileStore(DATA_DIR);
@@ -116,7 +116,15 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
   }
 
   // --- Detect capability conflicts ---
-  const conflicts = detectCapabilityConflicts(pluginId, existingPlugins, pluginRegistry);
+  let allPlugins: { id: string; capabilities: string[] }[] = [];
+  try {
+    const pluginRepo = getMarketplacePluginRepo();
+    const dbPlugins = await pluginRepo.findAll();
+    allPlugins = dbPlugins.map((p) => ({ id: p.pluginId, capabilities: p.manifest?.capabilities ?? [] }));
+  } catch {
+    // If repo unavailable, skip conflict detection (non-fatal)
+  }
+  const conflicts = detectCapabilityConflicts(pluginId, existingPlugins, allPlugins);
   if (conflicts.length > 0 && !parsed.data.primaryProviderOverrides) {
     return c.json(
       {
@@ -527,9 +535,10 @@ botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) =>
 // Channel management routes — filtered view of plugins with category "channel"
 // ---------------------------------------------------------------------------
 
-/** Helper: check if a pluginId is a channel-category plugin in the registry. */
-function isChannelPlugin(pluginId: string): boolean {
-  const entry = pluginRegistry.find((p) => p.id === pluginId);
+/** Helper: check if a pluginId is a channel-category plugin (DB-backed). */
+async function isChannelPlugin(pluginId: string): Promise<boolean> {
+  const pluginRepo = getMarketplacePluginRepo();
+  const entry = await pluginRepo.findById(pluginId);
   return entry?.category === "channel";
 }
 
@@ -560,8 +569,9 @@ botPluginRoutes.get("/bots/:botId/channels", readAuth, async (c) => {
   );
 
   // Filter to only channel-category plugins
+  const channelChecks = await Promise.all(pluginIds.map((id) => isChannelPlugin(id)));
   const channels = pluginIds
-    .filter((id) => isChannelPlugin(id))
+    .filter((_, i) => channelChecks[i])
     .map((id) => ({
       pluginId: id,
       enabled: !disabledSet.has(id),
@@ -574,7 +584,7 @@ botPluginRoutes.get("/bots/:botId/channels", readAuth, async (c) => {
 botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => {
   const pluginId = c.req.param("pluginId");
 
-  if (!isChannelPlugin(pluginId)) {
+  if (!(await isChannelPlugin(pluginId))) {
     return c.json({ error: `Plugin "${pluginId}" is not a channel plugin` }, 400);
   }
 
@@ -629,7 +639,15 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
   }
 
   // --- Detect capability conflicts ---
-  const channelConflicts = detectCapabilityConflicts(pluginId, existingPlugins, pluginRegistry);
+  let channelAllPlugins: { id: string; capabilities: string[] }[] = [];
+  try {
+    const channelPluginRepo = getMarketplacePluginRepo();
+    const channelDbPlugins = await channelPluginRepo.findAll();
+    channelAllPlugins = channelDbPlugins.map((p) => ({ id: p.pluginId, capabilities: p.manifest?.capabilities ?? [] }));
+  } catch {
+    // If repo unavailable, skip conflict detection (non-fatal)
+  }
+  const channelConflicts = detectCapabilityConflicts(pluginId, existingPlugins, channelAllPlugins);
   if (channelConflicts.length > 0 && !parsed.data.primaryProviderOverrides) {
     return c.json(
       {
@@ -761,7 +779,7 @@ botPluginRoutes.delete("/bots/:botId/channels/:pluginId", writeAuth, async (c) =
   const botId = c.req.param("botId");
   const pluginId = c.req.param("pluginId");
 
-  if (!isChannelPlugin(pluginId)) {
+  if (!(await isChannelPlugin(pluginId))) {
     return c.json({ error: `Plugin "${pluginId}" is not a channel plugin` }, 400);
   }
 

@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { TenantKeyRepository } from "../../security/tenant-keys/schema.js";
+import { TenantKeyRepository } from "../../security/tenant-keys/tenant-key-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 const TEST_TENANT = "ACME";

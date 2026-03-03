@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PassThrough } from "node:stream";
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
 import { buildDiscoveryEnv } from "../discovery/discovery-config.js";
@@ -160,6 +161,8 @@ export class FleetManager {
 
   /**
    * Start a stopped bot container.
+   * Valid from: stopped, created, exited, dead, error states.
+   * Throws InvalidStateTransitionError if the container is already running.
    */
   async start(id: string): Promise<void> {
     return this.withLock(id, async () => {
@@ -180,6 +183,9 @@ export class FleetManager {
       } else {
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
+        const info = await container.inspect();
+        const validStartStates = new Set(["stopped", "created", "exited", "dead", "error"]);
+        this.assertValidState(id, info.State.Status, "start", validStartStates);
         await container.start();
       }
       if (this.proxyManager) {
@@ -198,6 +204,8 @@ export class FleetManager {
 
   /**
    * Stop a running bot container.
+   * Valid from: running, starting, restarting states.
+   * Throws InvalidStateTransitionError if the container is not running.
    */
   async stop(id: string): Promise<void> {
     return this.withLock(id, async () => {
@@ -212,6 +220,9 @@ export class FleetManager {
       } else {
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
+        const info = await container.inspect();
+        const validStopStates = new Set(["running", "starting", "restarting"]);
+        this.assertValidState(id, info.State.Status, "stop", validStopStates);
         await container.stop();
       }
       if (this.proxyManager) {
@@ -229,7 +240,9 @@ export class FleetManager {
   }
 
   /**
-   * Restart: pull new image BEFORE stopping old container to avoid downtime on pull failure.
+   * Restart: pull new image BEFORE restarting container to avoid downtime on pull failure.
+   * Valid from: running, stopped, exited, dead states.
+   * Throws InvalidStateTransitionError if the container is in an invalid state (e.g. paused).
    * For remote bots, delegates to the node agent via NodeCommandBus.
    */
   async restart(id: string): Promise<void> {
@@ -245,11 +258,14 @@ export class FleetManager {
           payload: { name: profile.name },
         });
       } else {
-        // Pull new image first — if this fails, old container keeps running
+        // Pull new image first — if this fails, old container is unchanged
         await this.pullImage(profile.image);
 
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
+        const info = await container.inspect();
+        const validRestartStates = new Set(["running", "stopped", "exited", "dead"]);
+        this.assertValidState(id, info.State.Status, "restart", validRestartStates);
         await container.restart();
       }
       logger.info(`Restarted bot ${id}`);
@@ -343,6 +359,55 @@ export class FleetManager {
       timestamps: true,
     });
     return logBuffer.toString("utf-8");
+  }
+
+  /**
+   * Stream container logs in real-time (follow mode).
+   * Returns a Node.js ReadableStream that emits plain-text log chunks (already demultiplexed).
+   * For remote bots, proxies via node-agent bot.logs command and returns a one-shot stream.
+   * Caller is responsible for destroying the stream when done.
+   */
+  async logStream(id: string, opts: { since?: string; tail?: number }): Promise<NodeJS.ReadableStream> {
+    // Check for remote node assignment first (mirrors start/stop/restart pattern)
+    const remote = await this.resolveNodeId(id);
+    if (remote) {
+      const profile = await this.store.get(id);
+      if (!profile) throw new BotNotFoundError(id);
+      const result = await remote.commandBus.send(remote.nodeId, {
+        type: "bot.logs",
+        payload: { name: profile.name, tail: opts.tail ?? 100 },
+      });
+      const logData = typeof result.data === "string" ? result.data : "";
+      const pt = new PassThrough();
+      pt.end(logData);
+      return pt;
+    }
+
+    const container = await this.findContainer(id);
+    if (!container) throw new BotNotFoundError(id);
+
+    const logOpts: Record<string, unknown> = {
+      stdout: true,
+      stderr: true,
+      follow: true,
+      tail: opts.tail ?? 100,
+      timestamps: true,
+    };
+    if (opts.since) {
+      logOpts.since = opts.since;
+    }
+
+    // Docker returns a multiplexed binary stream when Tty is false (the default for
+    // containers created by createContainer without Tty:true). Demultiplex it so
+    // callers receive plain text without 8-byte binary frame headers.
+    const multiplexed = (await container.logs(logOpts)) as unknown as NodeJS.ReadableStream;
+    const pt = new PassThrough();
+    (
+      this.docker.modem as unknown as {
+        demuxStream(stream: NodeJS.ReadableStream, stdout: PassThrough, stderr: PassThrough): void;
+      }
+    ).demuxStream(multiplexed, pt, pt);
+    return pt;
   }
 
   /** Fields that require container recreation when changed. */
@@ -473,6 +538,18 @@ export class FleetManager {
   }
 
   // --- Private helpers ---
+
+  /**
+   * Assert that a container's current state is valid for the requested operation.
+   * Guards against undefined/null Status values from Docker (uses "unknown" as fallback).
+   * Throws InvalidStateTransitionError when the state is not in validStates.
+   */
+  private assertValidState(id: string, rawStatus: unknown, operation: string, validStates: Set<string>): void {
+    const currentState = typeof rawStatus === "string" && rawStatus ? rawStatus : "unknown";
+    if (!validStates.has(currentState)) {
+      throw new InvalidStateTransitionError(id, operation, currentState, [...validStates]);
+    }
+  }
 
   private async pullImage(image: string): Promise<void> {
     logger.info(`Pulling image ${image}`);
@@ -666,5 +743,24 @@ export class BotNotFoundError extends Error {
   constructor(id: string) {
     super(`Bot not found: ${id}`);
     this.name = "BotNotFoundError";
+  }
+}
+
+export class InvalidStateTransitionError extends Error {
+  readonly botId: string;
+  readonly operation: string;
+  readonly currentState: string;
+  readonly validStates: string[];
+
+  constructor(botId: string, operation: string, currentState: string, validStates: string[]) {
+    super(
+      `Cannot ${operation} bot ${botId}: container is in state "${currentState}". ` +
+        `Valid states for ${operation}: ${validStates.join(", ")}.`,
+    );
+    this.name = "InvalidStateTransitionError";
+    this.botId = botId;
+    this.operation = operation;
+    this.currentState = currentState;
+    this.validStates = validStates;
   }
 }
