@@ -10,6 +10,7 @@ import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
 import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
 import type { MeterEvent } from "./types.js";
+import { DrizzleUsageSummaryRepository } from "./usage-summary-repository.js";
 
 function makeEmitter(db: DrizzleDb, opts: ConstructorParameters<typeof MeterEmitter>[1] = {}): MeterEmitter {
   return new MeterEmitter(new DrizzleMeterEventRepository(db), opts);
@@ -359,7 +360,7 @@ describe("MeterAggregator", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
-    aggregator = new MeterAggregator(db, { windowMs: WINDOW });
+    aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
   });
 
   afterEach(async () => {
@@ -572,7 +573,7 @@ describe("MeterAggregator - edge cases", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
-    aggregator = new MeterAggregator(db, { windowMs: WINDOW });
+    aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
   });
 
   afterEach(async () => {
@@ -794,7 +795,7 @@ describe("MeterAggregator - billing accuracy", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
-    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
+    aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: 60_000 });
   });
 
   afterEach(async () => {
@@ -1268,7 +1269,7 @@ describe("MeterEmitter - fail-closed policy", () => {
 
     it("aggregator works unchanged with new fields present", async () => {
       const WINDOW = 60_000; // 1 minute
-      const aggregator = new MeterAggregator(db, { windowMs: WINDOW });
+      const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
       const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
       emitter.emit(
         makeEvent({

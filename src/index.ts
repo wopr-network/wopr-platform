@@ -660,7 +660,8 @@ if (process.env.NODE_ENV !== "test") {
     const { DrizzlePayRamChargeRepository } = await import("./monetization/payram/charge-store.js");
 
     const tenantRepo = new DrizzleTenantCustomerRepository(getDb());
-    const meterAggregator = new MeterAggregator(getDb());
+    const { DrizzleUsageSummaryRepository } = await import("./monetization/metering/usage-summary-repository.js");
+    const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(getDb()));
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
     const stripeKey = process.env.STRIPE_SECRET_KEY;

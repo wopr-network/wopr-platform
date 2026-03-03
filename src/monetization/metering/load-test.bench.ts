@@ -8,6 +8,7 @@ import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
 import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
 import type { MeterEvent } from "./types.js";
+import { DrizzleUsageSummaryRepository } from "./usage-summary-repository.js";
 
 function makeEvent(i: number): MeterEvent {
   return {
@@ -100,7 +101,7 @@ describe("MeterAggregator throughput", () => {
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
     emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), { flushIntervalMs: 60_000, walPath, dlqPath });
-    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
+    aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: 60_000 });
   });
 
   afterEach(async () => {

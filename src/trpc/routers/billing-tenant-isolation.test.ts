@@ -152,6 +152,7 @@ describe("billing tenant isolation (WOP-1406)", () => {
     await rollbackTestTransaction(pool);
 
     const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
+    const { DrizzleUsageSummaryRepository } = await import("../../monetization/metering/usage-summary-repository.js");
     const { TenantCustomerRepository } = await import("../../monetization/index.js");
     const { DrizzleAutoTopupSettingsRepository } = await import(
       "../../monetization/credits/auto-topup-settings-repository.js"
@@ -165,7 +166,7 @@ describe("billing tenant isolation (WOP-1406)", () => {
       processor: createMockProcessor(),
       tenantRepo: new TenantCustomerRepository(db),
       creditLedger: makeMockLedger(),
-      meterAggregator: new MeterAggregator(db),
+      meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
       priceMap: undefined,
       autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
       dividendRepo: makeMockDividendRepo(),

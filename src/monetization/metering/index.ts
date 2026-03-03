@@ -13,3 +13,5 @@ export type {
   MeterEventRow,
   UsageSummary,
 } from "./types.js";
+export type { AggregatedWindowRow, IUsageSummaryRepository, UsageSummaryInsert } from "./usage-summary-repository.js";
+export { DrizzleUsageSummaryRepository, UsageSummaryRepository } from "./usage-summary-repository.js";
