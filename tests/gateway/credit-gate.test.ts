@@ -242,6 +242,8 @@ describe("credit gate integration with streaming", () => {
 });
 
 describe("debitCredits zero-cost logging", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("logs when charge is zero (free-tier / cached response)", async () => {
     const { logger } = await import("../../src/config/logger.js");
 
@@ -254,7 +256,7 @@ describe("debitCredits zero-cost logging", () => {
     await debitCredits(deps, TENANT.id, 0, 1.3, "chat-completions", "openrouter");
 
     expect(logger.info).toHaveBeenCalledWith(
-      "Zero-cost request — skipping credit deduction",
+      "Skipping credit gate: zero or negative charge",
       expect.objectContaining({
         tenantId: TENANT.id,
         costUsd: 0,
@@ -277,7 +279,7 @@ describe("debitCredits zero-cost logging", () => {
     await debitCredits(deps, TENANT.id, -0.01, 1.0, "chat-completions", "openrouter");
 
     expect(logger.info).toHaveBeenCalledWith(
-      "Zero-cost request — skipping credit deduction",
+      "Skipping credit gate: zero or negative charge",
       expect.objectContaining({
         tenantId: TENANT.id,
         costUsd: -0.01,

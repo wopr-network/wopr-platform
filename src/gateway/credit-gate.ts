@@ -107,7 +107,8 @@ export async function debitCredits(
   const chargeCredit = withMargin(Credit.fromDollars(costUsd), margin);
 
   if (chargeCredit.isZero() || chargeCredit.isNegative()) {
-    logger.info("Zero-cost request — skipping credit deduction", {
+    logger.info("Skipping credit gate: zero or negative charge", {
+      chargeCredit: chargeCredit.toRaw(),
       tenantId,
       costUsd,
       margin,
