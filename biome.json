@@ -156,7 +156,8 @@
         "src/monetization/promotions/coupon-repository.ts",
         "src/monetization/promotions/redemption-repository.ts",
         "src/monetization/adapters/rate-override-repository.ts",
-        "src/security/tenant-keys/key-resolution-repository.ts"
+        "src/security/tenant-keys/key-resolution-repository.ts",
+        "scripts/seed-marketplace-plugins.ts"
       ],
       "linter": {
         "rules": {

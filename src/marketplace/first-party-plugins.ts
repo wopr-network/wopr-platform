@@ -501,7 +501,7 @@ export const FIRST_PARTY_PLUGINS: PluginManifest[] = [
     tags: ["voice", "transcription", "meetings", "productivity"],
     capabilities: ["stt", "llm"],
     requires: [{ id: "discord-channel", label: "Discord (for voice channels)" }],
-    install: ["discord-channel"],
+    install: ["@wopr-network/plugin-discord"],
     configSchema: [
       {
         key: "summaryStyle",
