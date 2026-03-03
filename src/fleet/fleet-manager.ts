@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PassThrough } from "node:stream";
 import type Docker from "dockerode";
 import { logger } from "../config/logger.js";
 import { buildDiscoveryEnv } from "../discovery/discovery-config.js";
@@ -358,6 +359,55 @@ export class FleetManager {
       timestamps: true,
     });
     return logBuffer.toString("utf-8");
+  }
+
+  /**
+   * Stream container logs in real-time (follow mode).
+   * Returns a Node.js ReadableStream that emits plain-text log chunks (already demultiplexed).
+   * For remote bots, proxies via node-agent bot.logs command and returns a one-shot stream.
+   * Caller is responsible for destroying the stream when done.
+   */
+  async logStream(id: string, opts: { since?: string; tail?: number }): Promise<NodeJS.ReadableStream> {
+    // Check for remote node assignment first (mirrors start/stop/restart pattern)
+    const remote = await this.resolveNodeId(id);
+    if (remote) {
+      const profile = await this.store.get(id);
+      if (!profile) throw new BotNotFoundError(id);
+      const result = await remote.commandBus.send(remote.nodeId, {
+        type: "bot.logs",
+        payload: { name: profile.name, tail: opts.tail ?? 100 },
+      });
+      const logData = typeof result.data === "string" ? result.data : "";
+      const pt = new PassThrough();
+      pt.end(logData);
+      return pt;
+    }
+
+    const container = await this.findContainer(id);
+    if (!container) throw new BotNotFoundError(id);
+
+    const logOpts: Record<string, unknown> = {
+      stdout: true,
+      stderr: true,
+      follow: true,
+      tail: opts.tail ?? 100,
+      timestamps: true,
+    };
+    if (opts.since) {
+      logOpts.since = opts.since;
+    }
+
+    // Docker returns a multiplexed binary stream when Tty is false (the default for
+    // containers created by createContainer without Tty:true). Demultiplex it so
+    // callers receive plain text without 8-byte binary frame headers.
+    const multiplexed = (await container.logs(logOpts)) as unknown as NodeJS.ReadableStream;
+    const pt = new PassThrough();
+    (
+      this.docker.modem as unknown as {
+        demuxStream(stream: NodeJS.ReadableStream, stdout: PassThrough, stderr: PassThrough): void;
+      }
+    ).demuxStream(multiplexed, pt, pt);
+    return pt;
   }
 
   /** Fields that require container recreation when changed. */

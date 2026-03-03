@@ -45,6 +45,11 @@ function mockDocker(containerMock: ReturnType<typeof mockContainer> | null = nul
     getContainer: vi.fn().mockReturnValue(containerMock),
     modem: {
       followProgress: vi.fn((_stream: unknown, cb: (err: Error | null) => void) => cb(null)),
+      demuxStream: vi.fn(
+        (stream: NodeJS.ReadableStream, stdout: NodeJS.WritableStream, _stderr: NodeJS.WritableStream) => {
+          stream.pipe(stdout as import("node:stream").Writable);
+        },
+      ),
     },
   };
 }
@@ -383,6 +388,77 @@ describe("FleetManager", () => {
     it("throws BotNotFoundError when container not found", async () => {
       docker.listContainers.mockResolvedValue([]);
       await expect(fleet.logs("missing")).rejects.toThrow(BotNotFoundError);
+    });
+  });
+
+  describe("logStream", () => {
+    it("returns a demuxed readable stream with follow and since options", async () => {
+      const { PassThrough } = await import("node:stream");
+      const mockStream = new PassThrough();
+      container.logs.mockResolvedValue(mockStream);
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      const stream = await fleet.logStream("bot-id", { since: "2026-01-01T00:00:00Z", tail: 50 });
+      // Result is a PassThrough (demuxed), not the raw multiplexed stream
+      expect(stream).not.toBe(mockStream);
+      expect(stream).toBeDefined();
+      expect(container.logs).toHaveBeenCalledWith({
+        stdout: true,
+        stderr: true,
+        follow: true,
+        tail: 50,
+        timestamps: true,
+        since: "2026-01-01T00:00:00Z",
+      });
+      expect(docker.modem.demuxStream).toHaveBeenCalled();
+      (stream as import("node:stream").PassThrough).destroy();
+      mockStream.destroy();
+    });
+
+    it("defaults tail to 100 and omits since when not provided", async () => {
+      const { PassThrough } = await import("node:stream");
+      const mockStream = new PassThrough();
+      container.logs.mockResolvedValue(mockStream);
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.logStream("bot-id", {});
+      expect(container.logs).toHaveBeenCalledWith({
+        stdout: true,
+        stderr: true,
+        follow: true,
+        tail: 100,
+        timestamps: true,
+      });
+      mockStream.destroy();
+    });
+
+    it("throws BotNotFoundError when container not found", async () => {
+      docker.listContainers.mockResolvedValue([]);
+      await expect(fleet.logStream("missing", {})).rejects.toThrow(BotNotFoundError);
+    });
+
+    it("proxies via node-agent for remote bots", async () => {
+      const { PassThrough } = await import("node:stream");
+      const commandBus = { send: vi.fn().mockResolvedValue({ success: true, data: "remote log line\n" }) };
+      const instanceRepo = { getById: vi.fn().mockResolvedValue({ nodeId: "node-1" }) };
+      const remoteFleet = new FleetManager(
+        docker as unknown as Docker,
+        store,
+        undefined,
+        undefined,
+        undefined,
+        commandBus as unknown as import("./node-command-bus.js").INodeCommandBus,
+        instanceRepo as unknown as import("./bot-instance-repository.js").IBotInstanceRepository,
+      );
+      await store.save({ id: "remote-bot", ...PROFILE_PARAMS });
+
+      const stream = await remoteFleet.logStream("remote-bot", { tail: 50 });
+      expect(stream).toBeInstanceOf(PassThrough);
+      expect(commandBus.send).toHaveBeenCalledWith("node-1", {
+        type: "bot.logs",
+        payload: { name: PROFILE_PARAMS.name, tail: 50 },
+      });
+      (stream as import("node:stream").PassThrough).destroy();
     });
   });
 
