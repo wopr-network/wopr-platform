@@ -49,10 +49,11 @@ function dbPluginToManifest(
 ): PluginManifest {
   if (manifest) {
     return {
+      ...manifest,
+      tags: manifest.tags ?? [],
       id: pluginId,
       version,
-      category: (category ?? manifest.tags[0] ?? "integration") as PluginCategory,
-      ...manifest,
+      category: (category ?? manifest.tags?.[0] ?? "integration") as PluginCategory,
     };
   }
   return {

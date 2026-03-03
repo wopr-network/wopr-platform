@@ -537,13 +537,9 @@ botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) =>
 
 /** Helper: check if a pluginId is a channel-category plugin (DB-backed). */
 async function isChannelPlugin(pluginId: string): Promise<boolean> {
-  try {
-    const pluginRepo = getMarketplacePluginRepo();
-    const entry = await pluginRepo.findById(pluginId);
-    return entry?.category === "channel";
-  } catch {
-    return false;
-  }
+  const pluginRepo = getMarketplacePluginRepo();
+  const entry = await pluginRepo.findById(pluginId);
+  return entry?.category === "channel";
 }
 
 /** GET /fleet/bots/:botId/channels — List connected channels (channel-category plugins) */

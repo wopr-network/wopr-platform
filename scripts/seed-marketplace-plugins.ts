@@ -517,7 +517,7 @@ export const FIRST_PARTY_PLUGINS: PluginManifest[] = [
             required: true,
             secret: true,
             placeholder: "ghp_...",
-            validation: { pattern: "^gh[ps]_", message: "Must start with ghp_ or ghs_" },
+            validation: { pattern: "^(gh[ps]_|github_pat_)", message: "Must start with ghp_, ghs_, or github_pat_" },
           },
         ],
       },
@@ -547,7 +547,7 @@ export const FIRST_PARTY_PLUGINS: PluginManifest[] = [
     tags: ["voice", "transcription", "meetings", "productivity"],
     capabilities: ["stt", "llm"],
     requires: [{ id: "discord-channel", label: "Discord (for voice channels)" }],
-    install: ["discord-channel"],
+    install: [],
     configSchema: [
       {
         key: "summaryStyle",
@@ -897,9 +897,10 @@ async function main() {
       });
       console.log(`  inserted: ${id}`);
     } else {
+      const npmPackage = install[0] ?? `@wopr-network/wopr-plugin-${id}`;
       await db
         .update(marketplacePlugins)
-        .set({ manifest, version, category })
+        .set({ manifest, version, category, npmPackage })
         .where(eq(marketplacePlugins.pluginId, id));
       console.log(`  updated: ${id}`);
     }

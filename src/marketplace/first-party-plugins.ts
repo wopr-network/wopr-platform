@@ -338,7 +338,8 @@ export const FIRST_PARTY_PLUGINS: PluginManifest[] = [
         key: "language",
         label: "Language",
         type: "select",
-        required: true,
+        required: false,
+        default: "en",
         options: [
           { label: "English", value: "en" },
           { label: "Spanish", value: "es" },
