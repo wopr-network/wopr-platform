@@ -92,7 +92,7 @@ export class DrizzleUsageSummaryRepository implements IUsageSummaryRepository {
       eventCount: r.eventCount,
       totalCost: Number(r.totalCost),
       totalCharge: Number(r.totalCharge),
-      totalDuration: r.totalDuration,
+      totalDuration: Number(r.totalDuration),
     }));
   }
 

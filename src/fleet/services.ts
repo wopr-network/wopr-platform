@@ -62,10 +62,10 @@ import { DrizzlePhoneNumberRepository } from "../monetization/credits/drizzle-ph
 import { DrizzleTenantCustomerRepository, type ITenantCustomerRepository } from "../monetization/index.js";
 import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
+import { DrizzleUsageSummaryRepository } from "../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEventRepository } from "../monetization/metering/meter-event-repository.js";
-import { DrizzleUsageSummaryRepository } from "../monetization/metering/usage-summary-repository.js";
 import type { IPayRamChargeRepository } from "../monetization/payram/charge-store.js";
 import { DrizzlePayRamChargeRepository } from "../monetization/payram/charge-store.js";
 import { SystemResourceMonitor } from "../observability/system-resources.js";

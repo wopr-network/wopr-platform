@@ -6,7 +6,7 @@ import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { createTestDb } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { DrizzleMeterAggregator } from "./aggregator.js";
-import { DrizzleUsageSummaryRepository } from "./usage-summary-repository.js";
+import { DrizzleUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
 
 const WINDOW_MS = 60_000; // 1-minute windows
 

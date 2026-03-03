@@ -11,7 +11,7 @@ import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import type { DrizzleTenantCustomerRepository } from "../monetization/index.js";
-import { DrizzleUsageSummaryRepository } from "../monetization/metering/usage-summary-repository.js";
+import { DrizzleUsageSummaryRepository } from "../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "./index.js";

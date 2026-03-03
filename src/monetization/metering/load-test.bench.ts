@@ -5,10 +5,10 @@ import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { MeterAggregator } from "./aggregator.js";
+import { DrizzleUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
 import { MeterEmitter } from "./emitter.js";
 import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
 import type { MeterEvent } from "./types.js";
-import { DrizzleUsageSummaryRepository } from "./usage-summary-repository.js";
 
 function makeEvent(i: number): MeterEvent {
   return {

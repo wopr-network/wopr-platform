@@ -12,7 +12,7 @@ import type { CreditTransaction, ICreditLedger } from "../../monetization/credit
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../../monetization/metering/usage-summary-repository.js";
+import { DrizzleUsageSummaryRepository } from "../../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { setTrpcOrgMemberRepo } from "../init.js";

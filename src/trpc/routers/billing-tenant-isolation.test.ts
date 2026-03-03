@@ -152,7 +152,9 @@ describe("billing tenant isolation (WOP-1406)", () => {
     await rollbackTestTransaction(pool);
 
     const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
-    const { DrizzleUsageSummaryRepository } = await import("../../monetization/metering/usage-summary-repository.js");
+    const { DrizzleUsageSummaryRepository } = await import(
+      "../../monetization/metering/drizzle-usage-summary-repository.js"
+    );
     const { TenantCustomerRepository } = await import("../../monetization/index.js");
     const { DrizzleAutoTopupSettingsRepository } = await import(
       "../../monetization/credits/auto-topup-settings-repository.js"

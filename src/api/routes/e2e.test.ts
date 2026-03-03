@@ -7,7 +7,7 @@ import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle
 import { Credit } from "../../monetization/credit.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../../monetization/metering/usage-summary-repository.js";
+import { DrizzleUsageSummaryRepository } from "../../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { TenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";

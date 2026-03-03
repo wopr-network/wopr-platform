@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
+import type { IUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
 import type { UsageSummary } from "./types.js";
-import type { IUsageSummaryRepository } from "./usage-summary-repository.js";
 
 export interface IMeterAggregator {
   aggregate(now?: number): Promise<number>;
