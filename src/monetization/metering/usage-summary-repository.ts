@@ -101,11 +101,8 @@ export class DrizzleUsageSummaryRepository implements IUsageSummaryRepository {
   }
 
   async insertSummariesBatch(rows: UsageSummaryInsert[]): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      for (const row of rows) {
-        await tx.insert(usageSummaries).values(row);
-      }
-    });
+    if (rows.length === 0) return;
+    await this.db.insert(usageSummaries).values(rows);
   }
 
   async querySummaries(
