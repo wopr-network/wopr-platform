@@ -4,7 +4,7 @@ import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { encrypt } from "../../security/encryption.js";
-import type { ITenantKeyRepository } from "../../security/tenant-keys/schema.js";
+import type { ITenantKeyRepository } from "../../security/tenant-keys/tenant-key-repository.js";
 import { providerSchema } from "../../security/types.js";
 
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;

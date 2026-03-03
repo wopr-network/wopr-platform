@@ -96,7 +96,7 @@ import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
 import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
 import { encrypt } from "./security/encryption.js";
-import { TenantKeyRepository } from "./security/tenant-keys/schema.js";
+import { TenantKeyRepository } from "./security/tenant-keys/tenant-key-repository.js";
 import {
   setAddonRouterDeps,
   setAdminRouterDeps,
