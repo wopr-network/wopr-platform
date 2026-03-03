@@ -6,6 +6,7 @@ import { config } from "../../config/index.js";
 import { logger } from "../../config/logger.js";
 import { type IEmailVerifier, requireEmailVerified } from "../../email/require-verified.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
+import { FleetEventEmitter } from "../../fleet/fleet-event-emitter.js";
 import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
 import { ImagePoller } from "../../fleet/image-poller.js";
 import { findPlacement } from "../../fleet/placement.js";
@@ -35,6 +36,14 @@ const networkPolicy = new NetworkPolicy(docker);
 let _fleet: FleetManager | null = null;
 let _imagePoller: ImagePoller | null = null;
 let _updater: ContainerUpdater | null = null;
+let _fleetEventEmitter: FleetEventEmitter | null = null;
+
+export function getFleetEventEmitter(): FleetEventEmitter {
+  if (!_fleetEventEmitter) {
+    _fleetEventEmitter = new FleetEventEmitter();
+  }
+  return _fleetEventEmitter;
+}
 
 function getFleet(): FleetManager {
   if (!_fleet) {
@@ -52,6 +61,8 @@ function getFleet(): FleetManager {
       getProxyManager(),
       commandBus,
       instanceRepo,
+      undefined,
+      getFleetEventEmitter(),
     );
   }
   return _fleet;

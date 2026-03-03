@@ -46,7 +46,8 @@ import { botSnapshotRoutes } from "./routes/bot-snapshots.js";
 import { channelOAuthRoutes } from "./routes/channel-oauth.js";
 import { channelValidateRoutes } from "./routes/channel-validate.js";
 import { chatRoutes } from "./routes/chat.js";
-import { fleetRoutes } from "./routes/fleet.js";
+import { fleetRoutes, getFleetEventEmitter } from "./routes/fleet.js";
+import { createFleetEventsRoute } from "./routes/fleet-events.js";
 import { fleetResourceRoutes } from "./routes/fleet-resources.js";
 import { friendsRoutes } from "./routes/friends.js";
 import { healthRoutes } from "./routes/health.js";
@@ -267,6 +268,8 @@ app.get("/health/certs", async (c) => {
   const status = failed.length > 0 || expiringSoon.length > 0 ? 503 : 200;
   return c.json({ ok: status === 200, results, expiringSoon: expiringSoon.length, failed: failed.length }, status);
 });
+// SSE fleet events — must be mounted BEFORE /fleet to take precedence (WOP-1527)
+app.route("/fleet/events", createFleetEventsRoute(getFleetEventEmitter()));
 app.route("/fleet", fleetRoutes);
 app.route("/fleet", botPluginRoutes);
 // Plugin proxy routes — forward install/config/enable/disable to running daemon.
