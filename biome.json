@@ -194,7 +194,7 @@
         "src/backup/restore-log-store.ts",
         "src/backup/snapshot-manager.ts",
         "src/monetization/credits/credit-ledger.ts",
-        "src/security/tenant-keys/schema.ts",
+        "src/security/tenant-keys/tenant-key-repository.ts",
         "src/gateway/spending-cap.ts",
         "src/trpc/routers/two-factor.ts"
       ],
