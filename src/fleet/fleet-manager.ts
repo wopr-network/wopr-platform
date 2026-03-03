@@ -160,7 +160,7 @@ export class FleetManager {
 
   /**
    * Start a stopped bot container.
-   * Valid from: stopped, created, exited, error states.
+   * Valid from: stopped, created, exited, dead, error states.
    * Throws InvalidStateTransitionError if the container is already running.
    */
   async start(id: string): Promise<void> {
@@ -183,11 +183,8 @@ export class FleetManager {
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
         const info = await container.inspect();
-        const currentState = info.State.Status as string;
         const validStartStates = new Set(["stopped", "created", "exited", "dead", "error"]);
-        if (!validStartStates.has(currentState)) {
-          throw new InvalidStateTransitionError(id, "start", currentState, [...validStartStates]);
-        }
+        this.assertValidState(id, info.State.Status, "start", validStartStates);
         await container.start();
       }
       if (this.proxyManager) {
@@ -223,11 +220,8 @@ export class FleetManager {
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
         const info = await container.inspect();
-        const currentState = info.State.Status as string;
         const validStopStates = new Set(["running", "starting", "restarting"]);
-        if (!validStopStates.has(currentState)) {
-          throw new InvalidStateTransitionError(id, "stop", currentState, [...validStopStates]);
-        }
+        this.assertValidState(id, info.State.Status, "stop", validStopStates);
         await container.stop();
       }
       if (this.proxyManager) {
@@ -269,11 +263,8 @@ export class FleetManager {
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
         const info = await container.inspect();
-        const currentState = info.State.Status as string;
         const validRestartStates = new Set(["running"]);
-        if (!validRestartStates.has(currentState)) {
-          throw new InvalidStateTransitionError(id, "restart", currentState, [...validRestartStates]);
-        }
+        this.assertValidState(id, info.State.Status, "restart", validRestartStates);
         await container.restart();
       }
       logger.info(`Restarted bot ${id}`);
@@ -497,6 +488,18 @@ export class FleetManager {
   }
 
   // --- Private helpers ---
+
+  /**
+   * Assert that a container's current state is valid for the requested operation.
+   * Guards against undefined/null Status values from Docker (uses "unknown" as fallback).
+   * Throws InvalidStateTransitionError when the state is not in validStates.
+   */
+  private assertValidState(id: string, rawStatus: unknown, operation: string, validStates: Set<string>): void {
+    const currentState = typeof rawStatus === "string" && rawStatus ? rawStatus : "unknown";
+    if (!validStates.has(currentState)) {
+      throw new InvalidStateTransitionError(id, operation, currentState, [...validStates]);
+    }
+  }
 
   private async pullImage(image: string): Promise<void> {
     logger.info(`Pulling image ${image}`);

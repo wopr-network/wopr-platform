@@ -160,6 +160,30 @@ describe("FleetManager", () => {
       expect(container.start).toHaveBeenCalled();
     });
 
+    it("starts a dead container", async () => {
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "dead", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.start("bot-id");
+      expect(container.start).toHaveBeenCalled();
+    });
+
+    it("throws InvalidStateTransitionError with 'unknown' when Status is missing/null", async () => {
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: null, Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await expect(fleet.start("bot-id")).rejects.toThrow(InvalidStateTransitionError);
+      await expect(fleet.start("bot-id")).rejects.toThrow(/unknown/);
+    });
+
     it("throws InvalidStateTransitionError when container is already running", async () => {
       // Default mockContainer has state "running"
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
