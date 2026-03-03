@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditEnv } from "../../audit/types.js";
 import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "../../fleet/services.js";
+import { FIRST_PARTY_PLUGINS } from "../../marketplace/first-party-plugins.js";
+import type { MarketplacePlugin } from "../../marketplace/marketplace-repository-types.js";
 import { marketplaceRoutes, setMarketplaceDeps } from "./marketplace.js";
 import type { PluginManifest } from "./marketplace-registry.js";
 
@@ -12,10 +14,32 @@ const OWNER_ID = "test-user";
 let mockEnv: Record<string, string> = {};
 let mockTenantId = OWNER_ID;
 
+// Convert first-party plugin manifests to DB-row shape for mock
+function makeDbPlugin(manifest: PluginManifest): MarketplacePlugin {
+  return {
+    pluginId: manifest.id,
+    npmPackage: `@wopr-network/wopr-plugin-${manifest.id}`,
+    version: manifest.version,
+    enabled: true,
+    featured: false,
+    sortOrder: 0,
+    category: manifest.category,
+    discoveredAt: 0,
+    enabledAt: null,
+    enabledBy: null,
+    notes: null,
+    installedAt: null,
+    installError: null,
+    manifest,
+  };
+}
+
+const MOCK_DB_PLUGINS = FIRST_PARTY_PLUGINS.map(makeDbPlugin);
+
 vi.mock("../../fleet/services.js", () => ({
   getMarketplacePluginRepo: vi.fn(() => ({
-    findEnabled: vi.fn(async () => []),
-    findById: vi.fn(async () => undefined),
+    findEnabled: vi.fn(async () => MOCK_DB_PLUGINS),
+    findById: vi.fn(async (id: string) => MOCK_DB_PLUGINS.find((p) => p.pluginId === id)),
   })),
   getMarketplaceContentRepo: vi.fn(() => ({
     getByPluginId: vi.fn(async () => null),
@@ -281,7 +305,6 @@ describe("GET /api/marketplace/plugins/:id/content", () => {
     expect(res.status).toBe(503);
   });
 });
-
 describe("POST /api/marketplace/plugins/:id/install", () => {
   it("returns 401 when no user session", async () => {
     const app = makeApp(null);
