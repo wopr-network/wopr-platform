@@ -628,6 +628,17 @@ fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
   let lineIndex = 0;
   let buffer = "";
 
+  const cleanup = () => {
+    nodeStream.removeListener("data", onData);
+    nodeStream.removeListener("end", onEnd);
+    nodeStream.removeListener("error", onError);
+    const destroyable = nodeStream as unknown as { destroy?: () => void };
+    if (typeof destroyable.destroy === "function") {
+      destroyable.destroy();
+    }
+    writer.close().catch(() => {});
+  };
+
   const onData = (chunk: Buffer | string) => {
     buffer += chunk.toString("utf-8");
     const lines = buffer.split("\n");
@@ -637,7 +648,9 @@ fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
       const parsed = parseLogLines(line);
       if (parsed.length > 0) {
         const entry = { ...parsed[0], id: `log-${lineIndex++}` };
-        writer.write(`data: ${JSON.stringify(entry)}\n\n`).catch(() => {});
+        writer.write(`data: ${JSON.stringify(entry)}\n\n`).catch(() => {
+          cleanup();
+        });
       }
     }
   };
@@ -660,8 +673,8 @@ fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
     logger.error("Log stream error", { botId, err });
     writer
       .write(`data: ${JSON.stringify({ type: "error", message: "Stream error" })}\n\n`)
-      .then(() => writer.close())
-      .catch(() => {});
+      .then(() => cleanup())
+      .catch(() => cleanup());
   };
 
   nodeStream.on("data", onData);
@@ -671,14 +684,7 @@ fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
   const signal = c.req.raw.signal;
   if (signal) {
     signal.addEventListener("abort", () => {
-      nodeStream.removeListener("data", onData);
-      nodeStream.removeListener("end", onEnd);
-      nodeStream.removeListener("error", onError);
-      const destroyable = nodeStream as unknown as { destroy?: () => void };
-      if (typeof destroyable.destroy === "function") {
-        destroyable.destroy();
-      }
-      writer.close().catch(() => {});
+      cleanup();
     });
   }
 
