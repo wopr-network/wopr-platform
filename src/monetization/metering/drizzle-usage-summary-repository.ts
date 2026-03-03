@@ -102,7 +102,12 @@ export class DrizzleUsageSummaryRepository implements IUsageSummaryRepository {
 
   async insertSummariesBatch(rows: UsageSummaryInsert[]): Promise<void> {
     if (rows.length === 0) return;
-    await this.db.insert(usageSummaries).values(rows);
+    const CHUNK_SIZE = 1000; // safe limit: each row has ~10 columns, 1000*10 < 65535 param limit
+    await this.db.transaction(async (tx) => {
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        await tx.insert(usageSummaries).values(rows.slice(i, i + CHUNK_SIZE));
+      }
+    });
   }
 
   async querySummaries(
