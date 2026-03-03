@@ -542,6 +542,27 @@ describe("ContainerUpdater", () => {
 
     docker.getContainer.mockReturnValue(container);
 
+    // Sequence inspect calls: first two return "running" (for wasRunning checks in
+    // doUpdateBot and fleet.update), third returns "stopped" so fleet.start()'s
+    // assertValidState guard allows the start, subsequent calls use the default (running+healthy).
+    const runningInspect = {
+      Id: "container-123",
+      Image: "sha256:abc123",
+      Created: "2026-01-01T00:00:00Z",
+      State: { Status: "running", Running: true, StartedAt: "2026-01-01T00:00:00Z", Health: { Status: "healthy" } },
+    };
+    const stoppedInspect = {
+      Id: "container-123",
+      Image: "sha256:abc123",
+      Created: "2026-01-01T00:00:00Z",
+      State: { Status: "stopped", Running: false, StartedAt: "2026-01-01T00:00:00Z", Health: { Status: "healthy" } },
+    };
+    container.inspect
+      .mockResolvedValueOnce(runningInspect) // getContainerDigest: initial digest check
+      .mockResolvedValueOnce(runningInspect) // doUpdateBot: wasRunning check
+      .mockResolvedValueOnce(runningInspect) // fleet.update: wasRunning check
+      .mockResolvedValueOnce(stoppedInspect); // fleet.start: assertValidState (newly recreated container)
+
     const result = await updater.updateBot("bot-1");
     expect(result.success).toBe(true);
     expect(result.rolledBack).toBe(false);
@@ -564,6 +585,27 @@ describe("ContainerUpdater", () => {
       .mockResolvedValueOnce([{ Id: "container-123" }]); // get new digest
 
     docker.getContainer.mockReturnValue(container);
+
+    // Sequence inspect calls: first two return "running" (for wasRunning checks in
+    // doUpdateBot and fleet.update), third returns "stopped" so fleet.start()'s
+    // assertValidState guard allows the start.
+    const runningInspect = {
+      Id: "container-123",
+      Image: "sha256:abc123",
+      Created: "2026-01-01T00:00:00Z",
+      State: { Status: "running", Running: true, StartedAt: "2026-01-01T00:00:00Z", Health: { Status: "healthy" } },
+    };
+    const stoppedInspect = {
+      Id: "container-123",
+      Image: "sha256:abc123",
+      Created: "2026-01-01T00:00:00Z",
+      State: { Status: "stopped", Running: false, StartedAt: "2026-01-01T00:00:00Z", Health: { Status: "healthy" } },
+    };
+    container.inspect
+      .mockResolvedValueOnce(runningInspect) // getContainerDigest: initial digest check
+      .mockResolvedValueOnce(runningInspect) // doUpdateBot: wasRunning check
+      .mockResolvedValueOnce(runningInspect) // fleet.update: wasRunning check
+      .mockResolvedValueOnce(stoppedInspect); // fleet.start: assertValidState (newly recreated container)
 
     // Start first update (will block on pull)
     const first = updater.updateBot("bot-1");
