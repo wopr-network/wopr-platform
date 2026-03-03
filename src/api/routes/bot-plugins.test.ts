@@ -80,9 +80,35 @@ const mockNodeConnections = {
   isConnected: vi.fn(),
 };
 
+import { FIRST_PARTY_PLUGINS } from "../../marketplace/first-party-plugins.js";
+
+// Build a minimal DB-row shape for each first-party plugin so the route's
+// capability-conflict detection and isChannelPlugin() helper work correctly.
+const MOCK_MARKETPLACE_PLUGINS = FIRST_PARTY_PLUGINS.map((manifest) => ({
+  pluginId: manifest.id,
+  npmPackage: `@wopr-network/wopr-plugin-${manifest.id}`,
+  version: manifest.version,
+  enabled: true,
+  featured: false,
+  sortOrder: 0,
+  category: manifest.category ?? null,
+  discoveredAt: 0,
+  enabledAt: null,
+  enabledBy: null,
+  notes: null,
+  installedAt: null,
+  installError: null,
+  manifest,
+}));
+
 vi.mock("../../fleet/services.js", () => ({
   getDb: () => mockDb,
   getCommandBus: () => mockNodeConnections,
+  getMarketplacePluginRepo: () => ({
+    findAll: vi.fn(async () => MOCK_MARKETPLACE_PLUGINS),
+    findEnabled: vi.fn(async () => MOCK_MARKETPLACE_PLUGINS.filter((p) => p.enabled)),
+    findById: vi.fn(async (id: string) => MOCK_MARKETPLACE_PLUGINS.find((p) => p.pluginId === id)),
+  }),
 }));
 
 // Import AFTER mocks are set up
