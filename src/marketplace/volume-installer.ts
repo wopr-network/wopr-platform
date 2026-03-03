@@ -67,8 +67,8 @@ export async function upgradePluginOnVolume(options: UpgradeOptions): Promise<vo
   logger.info("Upgrading plugin on shared volume", { pluginId, from: existing.version, to: targetVersion, volumePath });
 
   try {
-    await runNpmInstall(npmPackage, targetVersion, volumePath, execFn);
     await repo.setVersion(pluginId, targetVersion, existing.version);
+    await runNpmInstall(npmPackage, targetVersion, volumePath, execFn);
     await repo.setInstallResult(pluginId, Date.now(), null);
     logger.info("Plugin upgraded successfully", { pluginId, pkg });
   } catch (err) {
@@ -94,6 +94,11 @@ export async function rollbackPluginOnVolume(options: RollbackOptions): Promise<
   const existing = await repo.findById(pluginId);
   if (!existing) {
     throw new Error(`Plugin not found: ${pluginId}`);
+  }
+  if (options.previousVersion !== existing.previousVersion) {
+    throw new Error(
+      `previousVersion mismatch: expected ${existing.previousVersion ?? "null"}, got ${options.previousVersion}`,
+    );
   }
 
   const pkg = `${npmPackage}@${previousVersion}`;

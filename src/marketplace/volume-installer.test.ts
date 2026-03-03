@@ -220,4 +220,52 @@ describe("rollbackPluginOnVolume", () => {
       }),
     ).rejects.toThrow("Plugin not found: missing");
   });
+
+  it("throws when previousVersion does not match existing.previousVersion", async () => {
+    const plugin = makePlugin({ version: "2.0.0", previousVersion: "1.0.0" });
+    const repo = mockRepo({ findById: vi.fn().mockResolvedValue(plugin) });
+    await expect(
+      rollbackPluginOnVolume({
+        pluginId: "test-plugin",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        previousVersion: "0.5.0",
+        volumePath: "/tmp/test-plugins",
+        repo,
+      }),
+    ).rejects.toThrow("previousVersion mismatch");
+  });
+});
+
+describe("upgradePluginOnVolume — DB-first consistency", () => {
+  it("updates DB before running npm install so a failed install leaves DB consistent", async () => {
+    const callOrder: string[] = [];
+    const setVersion = vi.fn().mockImplementation(async () => {
+      callOrder.push("setVersion");
+    });
+    const setInstallResult = vi.fn().mockImplementation(async () => {
+      callOrder.push("setInstallResult");
+    });
+    const plugin = makePlugin({ version: "1.0.0" });
+    const repo = mockRepo({ findById: vi.fn().mockResolvedValue(plugin), setVersion, setInstallResult });
+    const execFn = vi
+      .fn()
+      .mockImplementation(
+        (_cmd: string, _args: string[], _opts: object, cb: (err: null, stdout: string, stderr: string) => void) => {
+          callOrder.push("npm");
+          cb(null, "added 1 package", "");
+        },
+      );
+
+    await upgradePluginOnVolume({
+      pluginId: "test-plugin",
+      npmPackage: "@wopr-network/wopr-plugin-test",
+      targetVersion: "2.0.0",
+      volumePath: "/tmp/test-plugins",
+      repo,
+      execFn: execFn as never,
+    });
+
+    expect(callOrder[0]).toBe("setVersion");
+    expect(callOrder[1]).toBe("npm");
+  });
 });
