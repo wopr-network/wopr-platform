@@ -386,6 +386,49 @@ describe("FleetManager", () => {
     });
   });
 
+  describe("logStream", () => {
+    it("returns a readable stream with follow and since options", async () => {
+      const { PassThrough } = await import("node:stream");
+      const mockStream = new PassThrough();
+      container.logs.mockResolvedValue(mockStream);
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      const stream = await fleet.logStream("bot-id", { since: "2026-01-01T00:00:00Z", tail: 50 });
+      expect(stream).toBe(mockStream);
+      expect(container.logs).toHaveBeenCalledWith({
+        stdout: true,
+        stderr: true,
+        follow: true,
+        tail: 50,
+        timestamps: true,
+        since: "2026-01-01T00:00:00Z",
+      });
+      mockStream.destroy();
+    });
+
+    it("defaults tail to 100 and omits since when not provided", async () => {
+      const { PassThrough } = await import("node:stream");
+      const mockStream = new PassThrough();
+      container.logs.mockResolvedValue(mockStream);
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.logStream("bot-id", {});
+      expect(container.logs).toHaveBeenCalledWith({
+        stdout: true,
+        stderr: true,
+        follow: true,
+        tail: 100,
+        timestamps: true,
+      });
+      mockStream.destroy();
+    });
+
+    it("throws BotNotFoundError when container not found", async () => {
+      docker.listContainers.mockResolvedValue([]);
+      await expect(fleet.logStream("missing", {})).rejects.toThrow(BotNotFoundError);
+    });
+  });
+
   describe("update", () => {
     it("updates profile and recreates container if running", async () => {
       await store.save({ id: "bot-id", ...PROFILE_PARAMS });

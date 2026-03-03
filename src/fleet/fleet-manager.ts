@@ -360,6 +360,29 @@ export class FleetManager {
     return logBuffer.toString("utf-8");
   }
 
+  /**
+   * Stream container logs in real-time (follow mode).
+   * Returns a Node.js ReadableStream that emits log chunks.
+   * Caller is responsible for destroying the stream when done.
+   */
+  async logStream(id: string, opts: { since?: string; tail?: number }): Promise<NodeJS.ReadableStream> {
+    const container = await this.findContainer(id);
+    if (!container) throw new BotNotFoundError(id);
+
+    const logOpts: Record<string, unknown> = {
+      stdout: true,
+      stderr: true,
+      follow: true,
+      tail: opts.tail ?? 100,
+      timestamps: true,
+    };
+    if (opts.since) {
+      logOpts.since = opts.since;
+    }
+
+    return container.logs(logOpts) as unknown as NodeJS.ReadableStream;
+  }
+
   /** Fields that require container recreation when changed. */
   private static readonly CONTAINER_FIELDS = new Set<string>([
     "image",

@@ -63,6 +63,7 @@ const fleetMock = {
   status: vi.fn(),
   listAll: vi.fn(),
   logs: vi.fn(),
+  logStream: vi.fn(),
   update: vi.fn(),
   profiles: {
     get: vi.fn(),
@@ -99,6 +100,7 @@ vi.mock("../../fleet/fleet-manager.js", () => {
       status = fleetMock.status;
       listAll = fleetMock.listAll;
       logs = fleetMock.logs;
+      logStream = fleetMock.logStream;
       update = fleetMock.update;
       profiles = fleetMock.profiles;
     },
@@ -1048,5 +1050,113 @@ describe("seedBots", () => {
     seedBots(templates, existing);
 
     expect(existing.has("new-bot")).toBe(true);
+  });
+});
+
+describe("GET /fleet/bots/:id/logs/stream", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fleetMock.profiles.get = vi.fn().mockImplementation((id: string) => {
+      if (id === TEST_BOT_ID) return Promise.resolve(mockProfile);
+      return Promise.resolve(null);
+    });
+  });
+
+  it("returns 401 without auth", async () => {
+    const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 for missing bot profile", async () => {
+    const res = await app.request(`/fleet/bots/${MISSING_BOT_ID}/logs/stream`, {
+      headers: authHeader,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns SSE content type and streams log lines", async () => {
+    const { PassThrough } = await import("node:stream");
+    const mockStream = new PassThrough();
+    fleetMock.logStream.mockResolvedValue(mockStream);
+
+    const resPromise = app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream`, {
+      headers: authHeader,
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    mockStream.write("2026-01-01T00:00:00.000Z [INFO] Hello world\n");
+    mockStream.end();
+
+    const res = await resPromise;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+    expect(res.headers.get("Cache-Control")).toBe("no-cache");
+
+    const body = await res.text();
+    expect(body).toContain("data:");
+    expect(body).toContain("Hello world");
+  });
+
+  it("passes since query parameter to logStream", async () => {
+    const { PassThrough } = await import("node:stream");
+    const mockStream = new PassThrough();
+    fleetMock.logStream.mockResolvedValue(mockStream);
+
+    const resPromise = app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream?since=2026-01-01T00:00:00Z`, {
+      headers: authHeader,
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    mockStream.end();
+
+    await resPromise;
+    expect(fleetMock.logStream).toHaveBeenCalledWith(TEST_BOT_ID, {
+      since: "2026-01-01T00:00:00Z",
+      tail: 100,
+    });
+  });
+
+  it("sends closed event when stream ends", async () => {
+    const { PassThrough } = await import("node:stream");
+    const mockStream = new PassThrough();
+    fleetMock.logStream.mockResolvedValue(mockStream);
+
+    const resPromise = app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream`, {
+      headers: authHeader,
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    mockStream.end();
+
+    const res = await resPromise;
+    const body = await res.text();
+    expect(body).toContain('"type":"closed"');
+    expect(body).toContain('"reason":"container_stopped"');
+  });
+
+  it("returns 404 when logStream throws BotNotFoundError", async () => {
+    fleetMock.logStream.mockRejectedValue(new MockBotNotFoundError(TEST_BOT_ID));
+    const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream`, {
+      headers: authHeader,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("clamps tail parameter to 10000", async () => {
+    const { PassThrough } = await import("node:stream");
+    const mockStream = new PassThrough();
+    fleetMock.logStream.mockResolvedValue(mockStream);
+
+    const resPromise = app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream?tail=99999`, {
+      headers: authHeader,
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    mockStream.end();
+
+    await resPromise;
+    expect(fleetMock.logStream).toHaveBeenCalledWith(TEST_BOT_ID, {
+      tail: 10_000,
+    });
   });
 });
