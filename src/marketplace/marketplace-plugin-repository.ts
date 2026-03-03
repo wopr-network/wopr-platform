@@ -11,4 +11,5 @@ export interface IMarketplacePluginRepository {
   update(pluginId: string, patch: Partial<MarketplacePlugin>): Promise<MarketplacePlugin>;
   delete(pluginId: string): Promise<void>;
   setInstallResult(pluginId: string, installedAt: number | null, installError: string | null): Promise<void>;
+  setVersion(pluginId: string, version: string, previousVersion: string | null): Promise<void>;
 }

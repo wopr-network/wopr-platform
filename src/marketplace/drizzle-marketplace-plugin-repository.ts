@@ -9,6 +9,7 @@ function rowToDomain(row: typeof marketplacePlugins.$inferSelect): MarketplacePl
     pluginId: row.pluginId,
     npmPackage: row.npmPackage,
     version: row.version,
+    previousVersion: row.previousVersion ?? null,
     enabled: row.enabled,
     featured: row.featured,
     sortOrder: row.sortOrder,
@@ -95,6 +96,13 @@ export class DrizzleMarketplacePluginRepository implements IMarketplacePluginRep
     await this.db
       .update(marketplacePlugins)
       .set({ installedAt, installError })
+      .where(eq(marketplacePlugins.pluginId, pluginId));
+  }
+
+  async setVersion(pluginId: string, version: string, previousVersion: string | null): Promise<void> {
+    await this.db
+      .update(marketplacePlugins)
+      .set({ version, previousVersion })
       .where(eq(marketplacePlugins.pluginId, pluginId));
   }
 }

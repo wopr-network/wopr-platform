@@ -4,6 +4,7 @@ export interface MarketplacePlugin {
   pluginId: string;
   npmPackage: string;
   version: string;
+  previousVersion: string | null;
   enabled: boolean;
   featured: boolean;
   sortOrder: number;
