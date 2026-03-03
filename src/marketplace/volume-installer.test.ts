@@ -19,6 +19,7 @@ function makePlugin(overrides: Partial<MarketplacePlugin> = {}): MarketplacePlug
     notes: null,
     installedAt: Date.now(),
     installError: null,
+    manifest: null,
     ...overrides,
   };
 }

@@ -78,6 +78,13 @@
       "when": 1772220014000,
       "tag": "0061_marketplace_plugin_previous_version",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1772220014001,
+      "tag": "0062_marketplace_plugin_manifest",
+      "breakpoints": true
     }
   ]
 }

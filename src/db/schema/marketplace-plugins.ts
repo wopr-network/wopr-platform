@@ -1,4 +1,4 @@
-import { bigint, boolean, index, integer, pgTable, text } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";
 
 export const marketplacePlugins = pgTable(
   "marketplace_plugins",
@@ -17,6 +17,9 @@ export const marketplacePlugins = pgTable(
     notes: text("notes"),
     installedAt: bigint("installed_at", { mode: "number" }),
     installError: text("install_error"),
+    // Rich manifest data (icon, color, configSchema, setup steps, etc.)
+    // Stored as JSON so the DB is the single source of truth.
+    manifest: jsonb("manifest"),
   },
   (t) => [index("marketplace_plugins_enabled_idx").on(t.enabled)],
 );
