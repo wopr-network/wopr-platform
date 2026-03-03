@@ -1,9 +1,7 @@
-import { desc, eq } from "drizzle-orm";
 import { config } from "../../config/index.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { meterEvents } from "../../db/schema/meter-events.js";
 import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
+import type { IMeterEventRepository } from "./meter-event-repository.js";
 import type { MeterEvent, MeterEventRow } from "./types.js";
 import { MeterWAL } from "./wal.js";
 
@@ -45,7 +43,7 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
   readonly ready: Promise<void>;
 
   constructor(
-    private readonly db: DrizzleDb,
+    private readonly repo: IMeterEventRepository,
     opts: {
       flushIntervalMs?: number;
       batchSize?: number;
@@ -102,8 +100,7 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
     // Check which events are already in the database.
     const existingIds = new Set<string>();
     for (const e of walEvents) {
-      const row = (await this.db.select({ id: meterEvents.id }).from(meterEvents).where(eq(meterEvents.id, e.id)))[0];
-      if (row) {
+      if (await this.repo.existsById(e.id)) {
         existingIds.add(e.id);
       }
     }
@@ -144,25 +141,23 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
     const batch = this.buffer.splice(0);
 
     try {
-      await this.db.transaction(async (tx) => {
-        for (const e of batch) {
-          await tx.insert(meterEvents).values({
-            id: e.id,
-            tenant: e.tenant,
-            cost: e.cost.toRaw(),
-            charge: e.charge.toRaw(),
-            capability: e.capability,
-            provider: e.provider,
-            timestamp: e.timestamp,
-            sessionId: e.sessionId ?? null,
-            duration: e.duration ?? null,
-            usageUnits: e.usage?.units ?? null,
-            usageUnitType: e.usage?.unitType ?? null,
-            tier: e.tier ?? null,
-            metadata: e.metadata ? JSON.stringify(e.metadata) : null,
-          });
-        }
-      });
+      await this.repo.insertBatch(
+        batch.map((e) => ({
+          id: e.id,
+          tenant: e.tenant,
+          cost: e.cost.toRaw(),
+          charge: e.charge.toRaw(),
+          capability: e.capability,
+          provider: e.provider,
+          timestamp: e.timestamp,
+          sessionId: e.sessionId ?? null,
+          duration: e.duration ?? null,
+          usageUnits: e.usage?.units ?? null,
+          usageUnitType: e.usage?.unitType ?? null,
+          tier: e.tier ?? null,
+          metadata: e.metadata ? JSON.stringify(e.metadata) : null,
+        })),
+      );
 
       // Success: remove from WAL and reset retry counters.
       const flushedIds = new Set(batch.map((e) => e.id));
@@ -222,29 +217,7 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
 
   /** Query persisted events (for testing / diagnostics). */
   async queryEvents(tenant: string, limit = 50): Promise<MeterEventRow[]> {
-    const rows = await this.db
-      .select()
-      .from(meterEvents)
-      .where(eq(meterEvents.tenant, tenant))
-      .orderBy(desc(meterEvents.timestamp))
-      .limit(limit);
-
-    // Map Drizzle camelCase columns back to snake_case MeterEventRow interface
-    return rows.map((r) => ({
-      id: r.id,
-      tenant: r.tenant,
-      cost: r.cost,
-      charge: r.charge,
-      capability: r.capability,
-      provider: r.provider,
-      timestamp: r.timestamp,
-      session_id: r.sessionId,
-      duration: r.duration,
-      usage_units: r.usageUnits,
-      usage_unit_type: r.usageUnitType,
-      tier: r.tier,
-      metadata: r.metadata,
-    }));
+    return this.repo.queryByTenant(tenant, limit);
   }
 }
 

@@ -8,6 +8,7 @@ import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTra
 import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
 import { DrizzleMeterEmitter } from "./emitter.js";
+import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
 import type { MeterEvent } from "./types.js";
 
 function makeTempDir(): string {
@@ -39,7 +40,8 @@ describe("DrizzleMeterEmitter — happy path", () => {
     await beginTestTransaction(pool);
     await rollbackTestTransaction(pool);
     tempDir = makeTempDir();
-    emitter = new DrizzleMeterEmitter(db, {
+    const repo = new DrizzleMeterEventRepository(db);
+    emitter = new DrizzleMeterEmitter(repo, {
       flushIntervalMs: 60_000,
       batchSize: 100,
       walPath: join(tempDir, "wal.jsonl"),
@@ -131,7 +133,8 @@ describe("DrizzleMeterEmitter — DLQ failure paths", () => {
     const failTempDir = makeTempDir();
     const dlqPath = join(failTempDir, "dlq.jsonl");
 
-    const em = new DrizzleMeterEmitter(failDb, {
+    const failRepo = new DrizzleMeterEventRepository(failDb);
+    const em = new DrizzleMeterEmitter(failRepo, {
       flushIntervalMs: 60_000,
       walPath: join(failTempDir, "wal.jsonl"),
       dlqPath,
@@ -164,7 +167,8 @@ describe("DrizzleMeterEmitter — DLQ failure paths", () => {
     const failTempDir = makeTempDir();
     const dlqPath = join(failTempDir, "dlq.jsonl");
 
-    const em = new DrizzleMeterEmitter(failDb, {
+    const failRepo2 = new DrizzleMeterEventRepository(failDb);
+    const em = new DrizzleMeterEmitter(failRepo2, {
       flushIntervalMs: 60_000,
       walPath: join(failTempDir, "wal.jsonl"),
       dlqPath,

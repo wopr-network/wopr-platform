@@ -8,7 +8,12 @@ import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { MeterAggregator } from "./aggregator.js";
 import { MeterEmitter } from "./emitter.js";
+import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
 import type { MeterEvent } from "./types.js";
+
+function makeEmitter(db: DrizzleDb, opts: ConstructorParameters<typeof MeterEmitter>[1] = {}): MeterEmitter {
+  return new MeterEmitter(new DrizzleMeterEventRepository(db), opts);
+}
 
 // Clean up the default WAL/DLQ files before any test runs to prevent
 // stale events from being replayed into fresh in-memory databases.
@@ -112,7 +117,7 @@ describe("MeterEmitter", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     // Disable auto-flush timer in tests; we flush manually.
-    emitter = new MeterEmitter(db, {
+    emitter = makeEmitter(db, {
       flushIntervalMs: 60_000,
       batchSize: 100,
       walPath: TEST_WAL_PATH,
@@ -203,7 +208,7 @@ describe("MeterEmitter", () => {
   });
 
   it("auto-flushes when batch size is reached", async () => {
-    const smallBatch = new MeterEmitter(db, { flushIntervalMs: 60_000, batchSize: 3 });
+    const smallBatch = makeEmitter(db, { flushIntervalMs: 60_000, batchSize: 3 });
     smallBatch.emit(makeEvent());
     smallBatch.emit(makeEvent());
     // Third event triggers auto-flush.
@@ -233,7 +238,7 @@ describe("MeterEmitter", () => {
   it("re-adds events to buffer on flush failure", async () => {
     // Use local db/pool so closing it doesn't poison the shared beforeAll pool.
     const { db: localDb, pool: localPool } = await createTestDb();
-    const localEmitter = new MeterEmitter(localDb, {
+    const localEmitter = makeEmitter(localDb, {
       flushIntervalMs: 60_000,
       batchSize: 100,
       walPath: TEST_WAL_PATH,
@@ -290,7 +295,7 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
   });
 
   afterEach(async () => {
@@ -353,7 +358,7 @@ describe("MeterAggregator", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
 
@@ -566,7 +571,7 @@ describe("MeterAggregator - edge cases", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: WINDOW });
   });
 
@@ -788,7 +793,7 @@ describe("MeterAggregator - billing accuracy", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
     aggregator = new MeterAggregator(db, { windowMs: 60_000 });
   });
 
@@ -912,7 +917,7 @@ describe("MeterEmitter - edge cases", () => {
     pool = testDb.pool;
     // Clear any existing meter_events data from previous tests to ensure isolation
     await db.delete(meterEvents);
-    emitter = new MeterEmitter(db, { flushIntervalMs: 60_000, batchSize: 100 });
+    emitter = makeEmitter(db, { flushIntervalMs: 60_000, batchSize: 100 });
   });
 
   afterEach(async () => {
@@ -985,7 +990,7 @@ describe("MeterEmitter - edge cases", () => {
 describe("append-only guarantee", () => {
   it("meter_events table has no UPDATE or DELETE operations in emitter", async () => {
     const { db, pool } = await createTestDb();
-    const emitter = new MeterEmitter(db, { flushIntervalMs: 60_000 });
+    const emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
 
     emitter.emit(makeEvent({ tenant: "t-1" }));
     await emitter.flush();
@@ -1032,7 +1037,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     const testDb = await createTestDb();
     db = testDb.db;
     pool = testDb.pool;
-    emitter = new MeterEmitter(db, {
+    emitter = makeEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
       dlqPath: TEST_DLQ_PATH,
@@ -1122,7 +1127,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     writeFileSync(TEST_WAL_PATH, walContent, "utf8");
 
     // Create a new emitter -- it should replay the WAL.
-    const newEmitter = new MeterEmitter(db, {
+    const newEmitter = makeEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
       dlqPath: TEST_DLQ_PATH,
@@ -1157,7 +1162,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     writeFileSync(TEST_WAL_PATH, `${JSON.stringify(existingEvent)}\n`, "utf8");
 
     // Create a new emitter -- it should NOT duplicate the event.
-    const newEmitter = new MeterEmitter(db, {
+    const newEmitter = makeEmitter(db, {
       flushIntervalMs: 60_000,
       walPath: TEST_WAL_PATH,
       dlqPath: TEST_DLQ_PATH,

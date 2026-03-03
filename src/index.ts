@@ -73,6 +73,7 @@ import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cr
 import { startRuntimeScheduler } from "./monetization/credits/runtime-scheduler.js";
 import { DrizzleWebhookSeenRepository } from "./monetization/drizzle-webhook-seen-repository.js";
 import { MeterEmitter } from "./monetization/metering/emitter.js";
+import { DrizzleMeterEventRepository } from "./monetization/metering/meter-event-repository.js";
 import { runReconciliation } from "./monetization/metering/reconciliation-cron.js";
 import {
   DrizzleAdapterUsageRepository,
@@ -296,7 +297,7 @@ if (process.env.NODE_ENV !== "test") {
 
     const rateStore = new RateStore(getDb());
 
-    const meter = new MeterEmitter(getDb());
+    const meter = new MeterEmitter(new DrizzleMeterEventRepository(getDb()));
     const budgetChecker = new BudgetChecker(getDb());
     const creditLedger = getCreditLedger();
 
