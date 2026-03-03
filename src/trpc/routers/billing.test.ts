@@ -12,6 +12,7 @@ import type { CreditTransaction, ICreditLedger } from "../../monetization/credit
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import { DrizzleSpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
+import { DrizzleUsageSummaryRepository } from "../../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { setTrpcOrgMemberRepo } from "../init.js";
@@ -206,9 +207,7 @@ describe("billingRouter", () => {
   let db: DrizzleDb;
   let pool: PGlite;
   let affiliateRepo: DrizzleAffiliateRepository;
-  let MeterAggregatorClass: new (
-    db: DrizzleDb,
-  ) => InstanceType<typeof import("../../monetization/metering/aggregator.js")["MeterAggregator"]>;
+  let MeterAggregatorClass: typeof import("../../monetization/metering/aggregator.js")["MeterAggregator"];
   let TenantCustomerRepositoryClass: new (
     db: DrizzleDb,
   ) => InstanceType<typeof import("../../monetization/index.js")["TenantCustomerRepository"]>;
@@ -239,7 +238,7 @@ describe("billingRouter", () => {
       processor: createMockProcessor(),
       tenantRepo: new TenantCustomerRepositoryClass(db),
       creditLedger: makeMockLedger(),
-      meterAggregator: new MeterAggregatorClass(db),
+      meterAggregator: new MeterAggregatorClass(new DrizzleUsageSummaryRepository(db)),
       priceMap: undefined,
       autoTopupSettingsStore: new DrizzleAutoTopupSettingsRepository(db),
       dividendRepo: makeMockDividendRepo(),

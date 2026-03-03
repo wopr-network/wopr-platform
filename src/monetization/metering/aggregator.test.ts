@@ -6,6 +6,7 @@ import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { createTestDb } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { DrizzleMeterAggregator } from "./aggregator.js";
+import { DrizzleUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
 
 const WINDOW_MS = 60_000; // 1-minute windows
 
@@ -18,7 +19,7 @@ describe("DrizzleMeterAggregator edge cases", () => {
     const testDb = await createTestDb();
     db = testDb.db;
     pool = testDb.pool;
-    aggregator = new DrizzleMeterAggregator(db, { windowMs: WINDOW_MS });
+    aggregator = new DrizzleMeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW_MS });
   });
 
   afterEach(async () => {

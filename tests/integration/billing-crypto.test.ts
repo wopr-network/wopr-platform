@@ -15,6 +15,7 @@ const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
 const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
+const { DrizzleUsageSummaryRepository } = await import("../../src/monetization/metering/drizzle-usage-summary-repository.js");
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
 const { DrizzlePayRamChargeRepository } = await import("../../src/monetization/payram/charge-store.js");
 const { noOpReplayGuard } = await import("../../src/monetization/webhook-seen-repository.js");
@@ -66,7 +67,7 @@ describe("integration: billing crypto routes", () => {
     setBillingDeps({
       processor: createMockProcessor(),
       creditLedger: new CreditLedger(db),
-      meterAggregator: new MeterAggregator(db),
+      meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
       affiliateRepo: new DrizzleAffiliateRepository(db),
       replayGuard: noOpReplayGuard,
       payramReplayGuard: noOpReplayGuard,
@@ -138,7 +139,7 @@ describe("integration: billing crypto routes", () => {
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeRepo: new DrizzlePayRamChargeRepository(db),
         replayGuard: noOpReplayGuard,

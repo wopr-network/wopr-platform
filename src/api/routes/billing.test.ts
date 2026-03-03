@@ -7,6 +7,7 @@ import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { TenantCustomerRepository } from "../../monetization/index.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
+import { DrizzleUsageSummaryRepository } from "../../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { PaymentMethodOwnershipError } from "../../monetization/payment-processor.js";
 import { DrizzlePayRamChargeRepository } from "../../monetization/payram/charge-store.js";
@@ -104,7 +105,7 @@ describe("billing routes", () => {
     setBillingDeps({
       processor,
       creditLedger: new CreditLedger(db),
-      meterAggregator: new MeterAggregator(db),
+      meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
       sigPenaltyRepo,
       affiliateRepo: new DrizzleAffiliateRepository(db),
       replayGuard: noOpReplayGuard,
@@ -285,7 +286,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ createCheckoutSession }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -319,7 +320,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ createPortalSession }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -368,7 +369,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ supportsPortal: false }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -396,7 +397,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ createPortalSession }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -437,7 +438,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -465,7 +466,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -490,7 +491,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -529,7 +530,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -565,7 +566,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -587,7 +588,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -612,7 +613,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -643,7 +644,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -713,7 +714,7 @@ describe("billing routes", () => {
       });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
-      const aggregator = new MeterAggregator(db);
+      const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-1`, {
@@ -758,7 +759,7 @@ describe("billing routes", () => {
       });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
-      const aggregator = new MeterAggregator(db);
+      const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-2&capability=chat`, {
@@ -801,7 +802,7 @@ describe("billing routes", () => {
       });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
-      const aggregator = new MeterAggregator(db);
+      const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-3&provider=anthropic`, {
@@ -845,7 +846,7 @@ describe("billing routes", () => {
       });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
-      const aggregator = new MeterAggregator(db);
+      const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       await aggregator.aggregate(window2 + 60_000);
 
       const res = await billingRoutes.request(`/usage?tenant=t-4&startDate=${window1}&endDate=${window1 + 60_000}`, {
@@ -923,7 +924,7 @@ describe("billing routes", () => {
       });
 
       const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
-      const aggregator = new MeterAggregator(db);
+      const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       await aggregator.aggregate(windowStart + 60_000);
 
       const res = await billingRoutes.request(`/usage/summary?tenant=t-sum-1&startDate=${windowStart}`, {
@@ -1008,7 +1009,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeRepo: new DrizzlePayRamChargeRepository(db),
@@ -1026,7 +1027,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -1074,7 +1075,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor(),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeRepo: new DrizzlePayRamChargeRepository(db),
@@ -1110,7 +1111,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -1168,7 +1169,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -1190,7 +1191,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -1217,7 +1218,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ detachPaymentMethod }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -1258,7 +1259,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ detachPaymentMethod }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,
@@ -1280,7 +1281,7 @@ describe("billing routes", () => {
       setBillingDeps({
         processor: createMockProcessor({ detachPaymentMethod }),
         creditLedger: new CreditLedger(db),
-        meterAggregator: new MeterAggregator(db),
+        meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         replayGuard: noOpReplayGuard,

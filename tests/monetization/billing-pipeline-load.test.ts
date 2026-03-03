@@ -5,6 +5,7 @@ import { Credit } from "../../src/monetization/credit.js";
 import { DrizzleBudgetChecker, type SpendLimits } from "../../src/monetization/budget/budget-checker.js";
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
+import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
 import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
 import type { MeterEvent } from "../../src/monetization/metering/types.js";
@@ -218,7 +219,7 @@ describe("Billing pipeline load tests", () => {
       walPath,
       dlqPath,
     });
-    const aggregator = new MeterAggregator(db, { windowMs: WINDOW });
+    const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
     const checker = new DrizzleBudgetChecker(db);
     const ledger = new CreditLedger(db);
     const limits: SpendLimits = { maxSpendPerHour: 1000, maxSpendPerMonth: 10000 };

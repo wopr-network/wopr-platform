@@ -11,6 +11,7 @@ import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto
 import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import type { DrizzleTenantCustomerRepository } from "../monetization/index.js";
+import { DrizzleUsageSummaryRepository } from "../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IPaymentProcessor } from "../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "./index.js";
@@ -306,7 +307,7 @@ describe("tRPC appRouter", () => {
     beforeEach(async () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-      const meterAggregator = new MeterAggregator(db);
+      const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
@@ -647,7 +648,7 @@ describe("tRPC appRouter", () => {
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-        const meterAggregator = new MeterAggregator(db);
+        const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
             listPaymentMethods: vi
@@ -709,7 +710,7 @@ describe("tRPC appRouter", () => {
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-        const meterAggregator = new MeterAggregator(db);
+        const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
             listPaymentMethods: vi
@@ -759,7 +760,7 @@ describe("tRPC appRouter", () => {
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-        const meterAggregator = new MeterAggregator(db);
+        const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
             listPaymentMethods: vi
@@ -810,7 +811,7 @@ describe("tRPC appRouter", () => {
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
         const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-        const meterAggregator = new MeterAggregator(db);
+        const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
             listPaymentMethods: async () => [{ id: "pm_1", label: "Visa ending 4242", isDefault: true }],
@@ -879,7 +880,7 @@ describe("tRPC appRouter", () => {
       const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-      const meterAggregator = new MeterAggregator(db);
+      const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo1 = new DrizzleSpendingLimitsRepository(db);
@@ -949,7 +950,7 @@ describe("tRPC appRouter", () => {
       const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-      const meterAggregator = new MeterAggregator(db);
+      const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo2 = new DrizzleSpendingLimitsRepository(db);
@@ -990,7 +991,7 @@ describe("tRPC appRouter", () => {
     it("returns empty array when priceMap is undefined", async () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
-      const meterAggregator = new MeterAggregator(db);
+      const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo3 = new DrizzleSpendingLimitsRepository(db);

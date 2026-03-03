@@ -7,6 +7,7 @@ import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle
 import { Credit } from "../../monetization/credit.js";
 import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { MeterAggregator } from "../../monetization/metering/aggregator.js";
+import { DrizzleUsageSummaryRepository } from "../../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { TenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
@@ -537,7 +538,7 @@ describe("E2E: Billing flow (credit model)", () => {
     setBillingDeps({
       processor: mockProcessor,
       creditLedger,
-      meterAggregator: new MeterAggregator(_db),
+      meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(_db)),
       sigPenaltyRepo: new DrizzleSigPenaltyRepository(_db),
       affiliateRepo: new DrizzleAffiliateRepository(_db),
       replayGuard: noOpReplayGuard,

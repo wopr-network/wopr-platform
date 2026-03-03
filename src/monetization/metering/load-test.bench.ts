@@ -5,6 +5,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
 import { Credit } from "../credit.js";
 import { MeterAggregator } from "./aggregator.js";
+import { DrizzleUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
 import { MeterEmitter } from "./emitter.js";
 import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
 import type { MeterEvent } from "./types.js";
@@ -100,7 +101,7 @@ describe("MeterAggregator throughput", () => {
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
     emitter = new MeterEmitter(new DrizzleMeterEventRepository(db), { flushIntervalMs: 60_000, walPath, dlqPath });
-    aggregator = new MeterAggregator(db, { windowMs: 60_000 });
+    aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: 60_000 });
   });
 
   afterEach(async () => {

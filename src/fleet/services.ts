@@ -62,6 +62,7 @@ import { DrizzlePhoneNumberRepository } from "../monetization/credits/drizzle-ph
 import { DrizzleTenantCustomerRepository, type ITenantCustomerRepository } from "../monetization/index.js";
 import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
 import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
+import { DrizzleUsageSummaryRepository } from "../monetization/metering/drizzle-usage-summary-repository.js";
 import type { IMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
 import { DrizzleMeterEventRepository } from "../monetization/metering/meter-event-repository.js";
@@ -678,7 +679,7 @@ export function getMeterEmitter(): IMeterEmitter {
 }
 
 export function getMeterAggregator(): IMeterAggregator {
-  if (!_meterAggregator) _meterAggregator = new DrizzleMeterAggregator(getDb());
+  if (!_meterAggregator) _meterAggregator = new DrizzleMeterAggregator(new DrizzleUsageSummaryRepository(getDb()));
   return _meterAggregator;
 }
 

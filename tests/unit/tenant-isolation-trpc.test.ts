@@ -94,7 +94,8 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
       tenantsWithBalance() { return Promise.resolve([]); },
     };
     const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
-    const meterAggregator = new MeterAggregator(db);
+    const { DrizzleUsageSummaryRepository } = await import("../../src/monetization/metering/drizzle-usage-summary-repository.js");
+    const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
     const { TenantCustomerRepository } = await import("../../src/monetization/stripe/tenant-store.js");
     const tenantRepo = new TenantCustomerRepository(db);
     setBillingRouterDeps({
