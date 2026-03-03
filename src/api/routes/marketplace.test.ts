@@ -20,6 +20,7 @@ function makeDbPlugin(manifest: PluginManifest): MarketplacePlugin {
     pluginId: manifest.id,
     npmPackage: `@wopr-network/wopr-plugin-${manifest.id}`,
     version: manifest.version,
+    previousVersion: null,
     enabled: true,
     featured: false,
     sortOrder: 0,
