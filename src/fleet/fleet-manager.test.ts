@@ -239,7 +239,7 @@ describe("FleetManager", () => {
       expect(container.restart).toHaveBeenCalled();
     });
 
-    it("throws InvalidStateTransitionError when container is stopped", async () => {
+    it("restarts a container in exited state (crash recovery)", async () => {
       await store.save({ id: "bot-id", ...PROFILE_PARAMS });
       container.inspect.mockResolvedValue({
         Id: "container-123",
@@ -248,9 +248,34 @@ describe("FleetManager", () => {
       });
       docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
 
-      await expect(fleet.restart("bot-id")).rejects.toThrow(InvalidStateTransitionError);
-      await expect(fleet.restart("bot-id")).rejects.toThrow(/Cannot restart bot/);
-      expect(container.restart).not.toHaveBeenCalled();
+      await fleet.restart("bot-id");
+      expect(container.restart).toHaveBeenCalled();
+    });
+
+    it("restarts a container in stopped state", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "stopped", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.restart("bot-id");
+      expect(container.restart).toHaveBeenCalled();
+    });
+
+    it("restarts a container in dead state (crash recovery)", async () => {
+      await store.save({ id: "bot-id", ...PROFILE_PARAMS });
+      container.inspect.mockResolvedValue({
+        Id: "container-123",
+        Created: "2026-01-01T00:00:00Z",
+        State: { Status: "dead", Running: false, StartedAt: "", Health: null },
+      });
+      docker.listContainers.mockResolvedValue([{ Id: "container-123" }]);
+
+      await fleet.restart("bot-id");
+      expect(container.restart).toHaveBeenCalled();
     });
 
     it("does not restart if pull fails", async () => {

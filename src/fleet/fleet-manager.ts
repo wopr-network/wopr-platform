@@ -239,9 +239,9 @@ export class FleetManager {
   }
 
   /**
-   * Restart: pull new image BEFORE stopping old container to avoid downtime on pull failure.
-   * Valid from: running state only.
-   * Throws InvalidStateTransitionError if the container is not running.
+   * Restart: pull new image BEFORE restarting container to avoid downtime on pull failure.
+   * Valid from: running, stopped, exited, dead states.
+   * Throws InvalidStateTransitionError if the container is in an invalid state (e.g. paused).
    * For remote bots, delegates to the node agent via NodeCommandBus.
    */
   async restart(id: string): Promise<void> {
@@ -257,13 +257,13 @@ export class FleetManager {
           payload: { name: profile.name },
         });
       } else {
-        // Pull new image first — if this fails, old container keeps running
+        // Pull new image first — if this fails, old container is unchanged
         await this.pullImage(profile.image);
 
         const container = await this.findContainer(id);
         if (!container) throw new BotNotFoundError(id);
         const info = await container.inspect();
-        const validRestartStates = new Set(["running"]);
+        const validRestartStates = new Set(["running", "stopped", "exited", "dead"]);
         this.assertValidState(id, info.State.Status, "restart", validRestartStates);
         await container.restart();
       }
