@@ -604,6 +604,10 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
     }
 
     default:
+      logger.warn("Unhandled Stripe webhook event type", {
+        eventType: event.type,
+        eventId: event.id,
+      });
       result = { handled: false, event_type: event.type };
       break;
   }
