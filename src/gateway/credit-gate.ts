@@ -106,7 +106,16 @@ export async function debitCredits(
 
   const chargeCredit = withMargin(Credit.fromDollars(costUsd), margin);
 
-  if (chargeCredit.isZero() || chargeCredit.isNegative()) return;
+  if (chargeCredit.isZero() || chargeCredit.isNegative()) {
+    logger.info("Zero-cost request — skipping credit deduction", {
+      tenantId,
+      costUsd,
+      margin,
+      capability,
+      provider,
+    });
+    return;
+  }
 
   try {
     await deps.creditLedger.debit(

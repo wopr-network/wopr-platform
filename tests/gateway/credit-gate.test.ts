@@ -1,10 +1,14 @@
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { creditBalanceCheck, debitCredits, type CreditGateDeps } from "../../src/gateway/credit-gate.js";
 import type { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { Credit } from "../../src/monetization/credit.js";
 import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
 import type { GatewayTenant } from "../../src/gateway/types.js";
+
+vi.mock("../../src/config/logger.js", () => ({
+  logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+}));
 
 // ---------------------------------------------------------------------------
 // Stubs
@@ -234,5 +238,50 @@ describe("credit gate integration with streaming", () => {
     const finalBalance = await ledger.balance(TENANT.id);
     // Expected: 0.05 * 1.3 = 0.065 USD = 6.5 cents charged
     expect(initialBalance.toCents() - finalBalance.toCents()).toBeCloseTo(6.5, 2);
+  });
+});
+
+describe("debitCredits zero-cost logging", () => {
+  it("logs when charge is zero (free-tier / cached response)", async () => {
+    const { logger } = await import("../../src/config/logger.js");
+
+    const ledger = new StubCreditLedger(1000);
+    const deps: CreditGateDeps = {
+      creditLedger: ledger,
+      topUpUrl: "/credits",
+    };
+
+    await debitCredits(deps, TENANT.id, 0, 1.3, "chat-completions", "openrouter");
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Zero-cost request — skipping credit deduction",
+      expect.objectContaining({
+        tenantId: TENANT.id,
+        costUsd: 0,
+        margin: 1.3,
+        capability: "chat-completions",
+        provider: "openrouter",
+      }),
+    );
+  });
+
+  it("logs when charge after margin is negative", async () => {
+    const { logger } = await import("../../src/config/logger.js");
+
+    const ledger = new StubCreditLedger(1000);
+    const deps: CreditGateDeps = {
+      creditLedger: ledger,
+      topUpUrl: "/credits",
+    };
+
+    await debitCredits(deps, TENANT.id, -0.01, 1.0, "chat-completions", "openrouter");
+
+    expect(logger.info).toHaveBeenCalledWith(
+      "Zero-cost request — skipping credit deduction",
+      expect.objectContaining({
+        tenantId: TENANT.id,
+        costUsd: -0.01,
+      }),
+    );
   });
 });
