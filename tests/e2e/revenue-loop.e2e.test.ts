@@ -9,6 +9,7 @@ import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
 import { runRuntimeDeductions } from "../../src/monetization/credits/runtime-cron.js";
 import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
+import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
 import { AdapterSocket } from "../../src/monetization/socket/socket.js";
 import type { AdapterResult, ImageGenerationOutput, ProviderAdapter } from "../../src/monetization/adapters/types.js";
 
@@ -71,7 +72,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
       dlqPath,
     });
 
-    aggregator = new MeterAggregator(db);
+    aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
 
     // Real AdapterSocket — no mocks of platform code.
     socket = new AdapterSocket({
