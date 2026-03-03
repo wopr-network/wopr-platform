@@ -157,9 +157,9 @@ export class DrizzleUsageSummaryRepository implements IUsageSummaryRepository {
     )[0];
 
     return {
-      totalCost: row?.totalCost ?? 0,
-      totalCharge: row?.totalCharge ?? 0,
-      eventCount: row?.eventCount ?? 0,
+      totalCost: Number(row?.totalCost ?? 0),
+      totalCharge: Number(row?.totalCharge ?? 0),
+      eventCount: Number(row?.eventCount ?? 0),
     };
   }
 }
