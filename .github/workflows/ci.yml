@@ -120,7 +120,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Integration tests
-        run: pnpm exec vitest run --reporter=default --reporter=junit --outputFile.junit=test-results/integration-junit.xml "src/**/*.integration.test.ts"
+        run: pnpm exec vitest run --config vitest.config.integration.ts --passWithNoTests --reporter=default --reporter=junit --outputFile.junit=test-results/integration-junit.xml
         continue-on-error: true
 
       - name: Upload integration test results
