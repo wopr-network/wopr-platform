@@ -21,7 +21,11 @@ export interface ChatRouteDeps {
 /** Internal header used to forward authenticated user identity through inner.fetch(). */
 const INTERNAL_USER_ID_HEADER = "x-internal-user-id";
 
-/** Extract authenticated user from context, or from the internal forwarding header. */
+/** Extract authenticated user from context or internal forwarding header.
+ *  The internal header is only trusted when set server-side by the outer handler.
+ *  External requests must never reach getUser() with this header intact — the
+ *  outer lazy handler strips it before forwarding (see chatRoutes below).
+ */
 function getUser(c: {
   get(key: string): unknown;
   req?: { header?(name: string): string | undefined };
@@ -222,9 +226,12 @@ chatRoutes.route(
       const inner = getChatRoutesInner();
       // Forward authenticated identity into the inner request, since inner.fetch()
       // creates a fresh Hono context where c.get("user") would be undefined.
-      const forwarded = new Request(c.req.raw, {
-        headers: new Headers([...c.req.raw.headers, [INTERNAL_USER_ID_HEADER, user.id]]),
-      });
+      // Strip any attacker-supplied x-internal-user-id from incoming headers first,
+      // then append the server-validated identity to prevent header spoofing.
+      const safeHeaders = new Headers(c.req.raw.headers);
+      safeHeaders.delete(INTERNAL_USER_ID_HEADER);
+      safeHeaders.set(INTERNAL_USER_ID_HEADER, user.id);
+      const forwarded = new Request(c.req.raw, { headers: safeHeaders });
       return inner.fetch(forwarded);
     });
     return lazy;
