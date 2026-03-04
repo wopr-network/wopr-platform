@@ -104,22 +104,18 @@ vi.mock("../../auth/better-auth.js", () => ({
   })),
 }));
 
-// Mock fleet profile store — returns a bot profile with tenantId
+// Mock bot profile repository — returns a bot profile with tenantId
 const mockProfileStoreGet = vi.hoisted(() => vi.fn().mockResolvedValue(null));
-vi.mock("../../fleet/profile-store.js", () => {
-  return {
-    ProfileStore: function MockProfileStore() {
-      return {
-        get: (...args: unknown[]) => mockProfileStoreGet(...args),
-        init: vi.fn(),
-      };
-    },
-  };
-});
 
 // Mock org member repo for tenant access validation
 const mockFindMember = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 vi.mock("../../fleet/services.js", () => ({
+  getBotProfileRepo: vi.fn(() => ({
+    get: (...args: unknown[]) => mockProfileStoreGet(...args),
+    save: vi.fn(),
+    delete: vi.fn(),
+    list: vi.fn().mockResolvedValue([]),
+  })),
   getOrgMemberRepo: vi.fn(() => ({
     findMember: (...args: unknown[]) => mockFindMember(...args),
     listMembers: vi.fn().mockResolvedValue([]),

@@ -3,8 +3,7 @@ import { Hono } from "hono";
 import { getAuth } from "../../auth/better-auth.js";
 import { validateTenantAccess } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
-import { getOrgMemberRepo } from "../../fleet/services.js";
+import { getBotProfileRepo, getOrgMemberRepo } from "../../fleet/services.js";
 
 /**
  * Domain config, read once at startup.
@@ -30,12 +29,6 @@ const RESERVED_SUBDOMAINS = new Set([
 
 /** DNS label rules (RFC 1123) — compiled once at module scope. */
 const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
-
-const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
-
-/** Module-level singleton — initialized once, reused across requests. */
-const profileStore = new ProfileStore(FLEET_DATA_DIR);
-let profileStoreInitialized = false;
 
 /** Headers safe to forward to upstream tenant containers. */
 const FORWARDED_HEADERS = [
@@ -97,6 +90,34 @@ export function extractTenantSubdomain(host: string): string | null {
   return subdomain;
 }
 
+/** Resolve the authenticated user ID from context or session cookie. */
+async function resolveUserId(c: Parameters<MiddlewareHandler>[0]): Promise<string | undefined> {
+  try {
+    const contextUser = (c.get("user") as { id: string } | undefined)?.id;
+    if (contextUser) return contextUser;
+  } catch {
+    // Variable not set — fall through to session resolution
+  }
+  try {
+    const auth = getAuth();
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (session?.user) return (session.user as { id: string }).id;
+  } catch (err) {
+    logger.warn("Session resolution failed for tenant proxy request", { err });
+  }
+  return undefined;
+}
+
+/**
+ * Look up the tenantId for the given instanceId using the DB-backed
+ * IBotProfileRepository — the same data source as the proxy route table.
+ * Returns null on not-found, throws on error.
+ */
+async function resolveTenantId(instanceId: string): Promise<string | null> {
+  const profile = await getBotProfileRepo().get(instanceId);
+  return profile?.tenantId ?? null;
+}
+
 /**
  * Tenant subdomain proxy middleware.
  *
@@ -116,8 +137,7 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
 
   const { getProxyManager } = await import("../../proxy/singleton.js");
   const pm = getProxyManager();
-  const routes = pm.getRoutes();
-  const route = routes.find((r) => r.subdomain === subdomain);
+  const route = pm.getRoutes().find((r) => r.subdomain === subdomain);
 
   if (!route) {
     logger.debug(`Tenant not found for subdomain: ${subdomain}`);
@@ -130,41 +150,18 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
 
   // Resolve session user — the proxy runs before resolveSessionUser() middleware,
   // so we must resolve inline. Reject unauthenticated requests with 401 (WOP-1372).
-  let userId: string | undefined;
-  try {
-    userId = (c.get("user") as { id: string } | undefined)?.id;
-  } catch {
-    // Variable not set — continue to session resolution
-  }
-
-  if (!userId) {
-    try {
-      const auth = getAuth();
-      const session = await auth.api.getSession({ headers: c.req.raw.headers });
-      if (session?.user) {
-        userId = (session.user as { id: string }).id;
-      }
-    } catch (err) {
-      logger.warn("Session resolution failed for tenant proxy request", { err });
-    }
-  }
-
+  const userId = await resolveUserId(c);
   if (!userId) {
     return c.json({ error: "Authentication required" }, 401);
   }
 
   // --- Tenant ownership check (WOP-1605) ---
-  // Look up the bot profile to get its tenantId, then verify the user belongs to that tenant.
-  let tenantId: string | undefined;
+  // Use IBotProfileRepository (DB) — same source of truth as the proxy route table.
+  let tenantId: string | null;
   try {
-    if (!profileStoreInitialized) {
-      await profileStore.init();
-      profileStoreInitialized = true;
-    }
-    const profile = await profileStore.get(route.instanceId);
-    tenantId = profile?.tenantId;
+    tenantId = await resolveTenantId(route.instanceId);
   } catch (err) {
-    logger.error("ProfileStore error during tenant ownership check", { err, instanceId: route.instanceId });
+    logger.error("BotProfileRepository error during tenant ownership check", { err, instanceId: route.instanceId });
     return c.json({ error: "Internal server error" }, 500);
   }
 
@@ -172,8 +169,7 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
     return c.json({ error: "Tenant not found" }, 404);
   }
 
-  const orgMemberRepo = getOrgMemberRepo();
-  const allowed = await validateTenantAccess(userId, tenantId, orgMemberRepo);
+  const allowed = await validateTenantAccess(userId, tenantId, getOrgMemberRepo());
   if (!allowed) {
     logger.debug(`User ${userId} not authorized for tenant ${tenantId} (subdomain: ${subdomain})`);
     return c.json({ error: "Not authorized for this tenant" }, 403);
@@ -183,7 +179,6 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
   const upstream = `http://${route.upstreamHost}:${route.upstreamPort}`;
   const url = new URL(c.req.url);
   const targetUrl = `${upstream}${url.pathname}${url.search}`;
-
   const upstreamHeaders = buildUpstreamHeaders(c.req.raw.headers, userId, subdomain);
 
   let response: Response;
