@@ -19,7 +19,7 @@ export const adminMigrationRoutes = new Hono<AuthEnv>();
  * Migrate a specific bot to a target node (or auto-select).
  */
 adminMigrationRoutes.post("/:botId", adminAuth, async (c) => {
-  const botId = c.req.param("botId");
+  const botId = c.req.param("botId") as string;
 
   let body: z.infer<typeof migrateInputSchema> = {};
   try {

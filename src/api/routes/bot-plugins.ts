@@ -46,7 +46,7 @@ const writeAuth = scopedBearerAuthWithTenant(tokenMetadataMap, "write");
 
 // UUID validation middleware for :botId param
 botPluginRoutes.use("/bots/:botId/*", async (c, next) => {
-  const botId = c.req.param("botId");
+  const botId = c.req.param("botId") as string;
   if (!UUID_RE.test(botId)) {
     return c.json({ error: "Invalid bot ID" }, 400);
   }
@@ -62,8 +62,8 @@ const installPluginSchema = z.object({
 
 /** POST /fleet/bots/:botId/plugins/:pluginId — Install a plugin on a bot */
 botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
-  const botId = c.req.param("botId");
-  const pluginId = c.req.param("pluginId");
+  const botId = c.req.param("botId") as string;
+  const pluginId = c.req.param("pluginId") as string;
 
   // Validate pluginId format (alphanumeric + hyphens, 1-64 chars)
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
@@ -261,7 +261,7 @@ botPluginRoutes.post("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
 
 /** GET /fleet/bots/:botId/plugins — List installed plugins on a bot */
 botPluginRoutes.get("/bots/:botId/plugins", readAuth, async (c) => {
-  const botId = c.req.param("botId");
+  const botId = c.req.param("botId") as string;
 
   const profile = await store.get(botId);
   if (!profile) {
@@ -295,8 +295,8 @@ botPluginRoutes.get("/bots/:botId/plugins", readAuth, async (c) => {
 
 /** Shared toggle handler for PATCH and PUT /fleet/bots/:botId/plugins/:pluginId */
 async function togglePluginHandler(c: Context): Promise<Response> {
-  const botId = c.req.param("botId");
-  const pluginId = c.req.param("pluginId");
+  const botId = c.req.param("botId") as string;
+  const pluginId = c.req.param("pluginId") as string;
 
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
     return c.json({ error: "Invalid plugin ID format" }, 400);
@@ -385,8 +385,8 @@ botPluginRoutes.put("/bots/:botId/plugins/:pluginId", writeAuth, togglePluginHan
 
 /** DELETE /fleet/bots/:botId/plugins/:pluginId — Uninstall a plugin from a bot */
 botPluginRoutes.delete("/bots/:botId/plugins/:pluginId", writeAuth, async (c) => {
-  const botId = c.req.param("botId");
-  const pluginId = c.req.param("pluginId");
+  const botId = c.req.param("botId") as string;
+  const pluginId = c.req.param("pluginId") as string;
 
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
     return c.json({ error: "Invalid plugin ID format" }, 400);
@@ -544,7 +544,7 @@ async function isChannelPlugin(pluginId: string): Promise<boolean> {
 
 /** GET /fleet/bots/:botId/channels — List connected channels (channel-category plugins) */
 botPluginRoutes.get("/bots/:botId/channels", readAuth, async (c) => {
-  const botId = c.req.param("botId");
+  const botId = c.req.param("botId") as string;
 
   const profile = await store.get(botId);
   if (!profile) {
@@ -582,7 +582,7 @@ botPluginRoutes.get("/bots/:botId/channels", readAuth, async (c) => {
 
 /** POST /fleet/bots/:botId/channels/:pluginId — Connect a channel (install channel plugin) */
 botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => {
-  const pluginId = c.req.param("pluginId");
+  const pluginId = c.req.param("pluginId") as string;
 
   if (!(await isChannelPlugin(pluginId))) {
     return c.json({ error: `Plugin "${pluginId}" is not a channel plugin` }, 400);
@@ -590,7 +590,7 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
 
   // Delegate to the shared install endpoint by forwarding to the same handler logic.
   // The botId UUID middleware and ownership validation are handled below.
-  const botId = c.req.param("botId");
+  const botId = c.req.param("botId") as string;
 
   if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$/.test(pluginId)) {
     return c.json({ error: "Invalid plugin ID format" }, 400);
@@ -776,8 +776,8 @@ botPluginRoutes.post("/bots/:botId/channels/:pluginId", writeAuth, async (c) => 
 
 /** DELETE /fleet/bots/:botId/channels/:pluginId — Disconnect a channel (uninstall channel plugin) */
 botPluginRoutes.delete("/bots/:botId/channels/:pluginId", writeAuth, async (c) => {
-  const botId = c.req.param("botId");
-  const pluginId = c.req.param("pluginId");
+  const botId = c.req.param("botId") as string;
+  const pluginId = c.req.param("pluginId") as string;
 
   if (!(await isChannelPlugin(pluginId))) {
     return c.json({ error: `Plugin "${pluginId}" is not a channel plugin` }, 400);

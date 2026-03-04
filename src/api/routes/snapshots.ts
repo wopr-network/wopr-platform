@@ -167,7 +167,7 @@ snapshotRoutes.get("/", async (c) => {
 /** POST /api/instances/:id/snapshots/:sid/restore -- Restore from snapshot */
 snapshotRoutes.post("/:sid/restore", writeAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
-  const snapshotId = c.req.param("sid");
+  const snapshotId = c.req.param("sid") as string;
   if (!SAFE_ID_RE.test(instanceId) || !SAFE_ID_RE.test(snapshotId)) {
     return c.json({ error: "Invalid instance or snapshot ID" }, 400);
   }
@@ -206,7 +206,7 @@ snapshotRoutes.post("/:sid/restore", writeAuth, async (c) => {
 /** DELETE /api/instances/:id/snapshots/:sid -- Delete a snapshot */
 snapshotRoutes.delete("/:sid", writeAuth, async (c) => {
   const instanceId = c.req.param("id") as string;
-  const snapshotId = c.req.param("sid");
+  const snapshotId = c.req.param("sid") as string;
   if (!SAFE_ID_RE.test(instanceId) || !SAFE_ID_RE.test(snapshotId)) {
     return c.json({ error: "Invalid instance or snapshot ID" }, 400);
   }

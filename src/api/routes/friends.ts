@@ -130,7 +130,7 @@ friendsRoutes.post("/requests/:reqId/accept", friendsWriteAuth, async (c) => {
     return ownershipError;
   }
 
-  const reqId = c.req.param("reqId");
+  const reqId = c.req.param("reqId") as string;
   if (!SAFE_ID_RE.test(reqId)) {
     return c.json({ error: "Invalid request ID" }, 400);
   }
@@ -152,7 +152,7 @@ friendsRoutes.post("/requests/:reqId/reject", friendsWriteAuth, async (c) => {
     return ownershipError;
   }
 
-  const reqId = c.req.param("reqId");
+  const reqId = c.req.param("reqId") as string;
   if (!SAFE_ID_RE.test(reqId)) {
     return c.json({ error: "Invalid request ID" }, 400);
   }
@@ -174,7 +174,7 @@ friendsRoutes.patch("/:friendId/capabilities", friendsWriteAuth, async (c) => {
     return ownershipError;
   }
 
-  const friendId = c.req.param("friendId");
+  const friendId = c.req.param("friendId") as string;
   if (!SAFE_ID_RE.test(friendId)) {
     return c.json({ error: "Invalid friend ID" }, 400);
   }

@@ -32,7 +32,7 @@ export function createBotPluginProxyRoutes(deps: BotPluginProxyDeps): Hono {
 
   // UUID validation middleware
   routes.use("/:botId/*", async (c, next) => {
-    const botId = c.req.param("botId");
+    const botId = c.req.param("botId") as string;
     if (!UUID_RE.test(botId)) {
       return c.json({ error: "Invalid bot ID" }, 400);
     }
@@ -41,7 +41,7 @@ export function createBotPluginProxyRoutes(deps: BotPluginProxyDeps): Hono {
 
   /** POST /:botId/plugins/install — Install a plugin on a running daemon */
   routes.post("/:botId/plugins/install", writeAuth, async (c) => {
-    const botId = c.req.param("botId");
+    const botId = c.req.param("botId") as string;
 
     const profile = await store.get(botId);
     if (!profile) {
@@ -94,8 +94,8 @@ export function createBotPluginProxyRoutes(deps: BotPluginProxyDeps): Hono {
 
   /** PUT /:botId/plugins/:pluginId/config — Update plugin config (save to DB + forward to daemon) */
   routes.put("/:botId/plugins/:pluginId/config", writeAuth, async (c) => {
-    const botId = c.req.param("botId");
-    const pluginId = c.req.param("pluginId");
+    const botId = c.req.param("botId") as string;
+    const pluginId = c.req.param("pluginId") as string;
 
     if (!PLUGIN_ID_RE.test(pluginId)) {
       return c.json({ error: "Invalid plugin ID format" }, 400);
@@ -155,8 +155,8 @@ export function createBotPluginProxyRoutes(deps: BotPluginProxyDeps): Hono {
 
   /** POST /:botId/plugins/:pluginId/enable — Enable a plugin on a running daemon */
   routes.post("/:botId/plugins/:pluginId/enable", writeAuth, async (c) => {
-    const botId = c.req.param("botId");
-    const pluginId = c.req.param("pluginId");
+    const botId = c.req.param("botId") as string;
+    const pluginId = c.req.param("pluginId") as string;
 
     if (!PLUGIN_ID_RE.test(pluginId)) {
       return c.json({ error: "Invalid plugin ID format" }, 400);
@@ -180,8 +180,8 @@ export function createBotPluginProxyRoutes(deps: BotPluginProxyDeps): Hono {
 
   /** POST /:botId/plugins/:pluginId/disable — Disable a plugin on a running daemon */
   routes.post("/:botId/plugins/:pluginId/disable", writeAuth, async (c) => {
-    const botId = c.req.param("botId");
-    const pluginId = c.req.param("pluginId");
+    const botId = c.req.param("botId") as string;
+    const pluginId = c.req.param("pluginId") as string;
 
     if (!PLUGIN_ID_RE.test(pluginId)) {
       return c.json({ error: "Invalid plugin ID format" }, 400);

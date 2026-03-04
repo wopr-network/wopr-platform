@@ -228,14 +228,14 @@ const writeAuth = scopedBearerAuthWithTenant(tokenMetadataMap, "write");
 
 /** Validate :id param as UUID on all /bots/:id routes. */
 fleetRoutes.use("/bots/:id/*", async (c, next) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id") as string;
   if (!UUID_RE.test(id)) {
     return c.json({ error: "Invalid bot ID" }, 400);
   }
   return next();
 });
 fleetRoutes.use("/bots/:id", async (c, next) => {
-  const id = c.req.param("id");
+  const id = c.req.param("id") as string;
   if (!UUID_RE.test(id)) {
     return c.json({ error: "Invalid bot ID" }, 400);
   }
@@ -367,7 +367,7 @@ fleetRoutes.post(
 
 /** GET /fleet/bots/:id — Get bot details + health */
 fleetRoutes.get("/bots/:id", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   try {
     // Get bot profile to check tenant ownership
     const profile = await fleet.profiles.get(botId);
@@ -388,7 +388,7 @@ fleetRoutes.get("/bots/:id", readAuth, async (c) => {
 
 /** PATCH /fleet/bots/:id — Update bot config (triggers restart if running) */
 fleetRoutes.patch("/bots/:id", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
 
   // Check tenant ownership before allowing update
   const existingProfile = await fleet.profiles.get(botId);
@@ -424,7 +424,7 @@ fleetRoutes.patch("/bots/:id", writeAuth, async (c) => {
 
 /** DELETE /fleet/bots/:id — Stop and remove bot */
 fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
 
   // Check tenant ownership before allowing deletion
   const profile = await fleet.profiles.get(botId);
@@ -460,7 +460,7 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
 
 /** POST /fleet/bots/:id/start — Start a stopped bot */
 fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -498,7 +498,7 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
 
 /** POST /fleet/bots/:id/stop — Stop a running bot */
 fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -516,7 +516,7 @@ fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
 
 /** POST /fleet/bots/:id/restart — Restart a running bot */
 fleetRoutes.post("/bots/:id/restart", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -534,7 +534,7 @@ fleetRoutes.post("/bots/:id/restart", writeAuth, async (c) => {
 
 /** GET /fleet/bots/:id/health — Per-bot health (state, uptime, CPU, memory) */
 fleetRoutes.get("/bots/:id/health", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -558,7 +558,7 @@ fleetRoutes.get("/bots/:id/health", readAuth, async (c) => {
 
 /** GET /fleet/bots/:id/metrics — Per-bot resource metrics (CPU, memory) */
 fleetRoutes.get("/bots/:id/metrics", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -579,7 +579,7 @@ fleetRoutes.get("/bots/:id/metrics", readAuth, async (c) => {
 
 /** GET /fleet/bots/:id/logs — Tail bot container logs (returns structured JSON) */
 fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -600,7 +600,7 @@ fleetRoutes.get("/bots/:id/logs", readAuth, async (c) => {
 
 /** GET /fleet/bots/:id/logs/stream — SSE real-time log tailing */
 fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -709,7 +709,7 @@ fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
 
 /** POST /fleet/bots/:id/update — Force update to latest image */
 fleetRoutes.post("/bots/:id/update", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -730,7 +730,7 @@ fleetRoutes.post("/bots/:id/update", writeAuth, async (c) => {
 
 /** GET /fleet/bots/:id/image-status — Current vs available digest + last check time */
 fleetRoutes.get("/bots/:id/image-status", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) {
@@ -804,7 +804,7 @@ fleetRoutes.post("/seed", writeAuth, async (c) => {
 
 /** GET /fleet/bots/:id/settings — Full bot settings (identity + capabilities + plugins + status) */
 fleetRoutes.get("/bots/:id/settings", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) return ownershipError;
@@ -894,7 +894,7 @@ fleetRoutes.get("/bots/:id/settings", readAuth, async (c) => {
 
 /** PUT /fleet/bots/:id/identity — Update bot name/avatar/personality */
 fleetRoutes.put("/bots/:id/identity", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) return ownershipError;
@@ -933,8 +933,8 @@ fleetRoutes.put("/bots/:id/identity", writeAuth, async (c) => {
 
 /** POST /fleet/bots/:id/capabilities/:capabilityId/activate — Activate a superpower */
 fleetRoutes.post("/bots/:id/capabilities/:capabilityId/activate", writeAuth, async (c) => {
-  const botId = c.req.param("id");
-  const capabilityId = c.req.param("capabilityId");
+  const botId = c.req.param("id") as string;
+  const capabilityId = c.req.param("capabilityId") as string;
 
   const capEntry = CAPABILITY_ENV_MAP[capabilityId];
   if (!capEntry) {
@@ -967,7 +967,7 @@ fleetRoutes.post("/bots/:id/capabilities/:capabilityId/activate", writeAuth, asy
 
 /** POST /fleet/bots/:id/upgrade-to-vps — Initiate VPS upgrade via Stripe subscription checkout */
 fleetRoutes.post("/bots/:id/upgrade-to-vps", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) return ownershipError;
@@ -1045,7 +1045,7 @@ fleetRoutes.post("/bots/:id/upgrade-to-vps", writeAuth, async (c) => {
 
 /** GET /fleet/bots/:id/vps-info — Get VPS subscription info for a bot */
 fleetRoutes.get("/bots/:id/vps-info", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   const profile = await fleet.profiles.get(botId);
   const ownershipError = validateTenantOwnership(c, profile, profile?.tenantId);
   if (ownershipError) return ownershipError;

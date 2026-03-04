@@ -57,7 +57,7 @@ export function setService(
  * POST /api/bots/:id/snapshots -- Create an on-demand snapshot
  */
 botSnapshotRoutes.post("/", writeAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(botId)) {
     return c.json({ error: "Invalid bot ID" }, 400);
   }
@@ -140,7 +140,7 @@ botSnapshotRoutes.post("/", writeAuth, async (c) => {
  * GET /api/bots/:id/snapshots -- List all snapshots (nightly + on-demand)
  */
 botSnapshotRoutes.get("/", readAuth, async (c) => {
-  const botId = c.req.param("id");
+  const botId = c.req.param("id") as string;
   if (!SAFE_ID_RE.test(botId)) {
     return c.json({ error: "Invalid bot ID" }, 400);
   }
@@ -165,8 +165,8 @@ botSnapshotRoutes.get("/", readAuth, async (c) => {
  * DELETE /api/bots/:id/snapshots/:snapId -- Delete an on-demand snapshot
  */
 botSnapshotRoutes.delete("/:snapId", writeAuth, async (c) => {
-  const botId = c.req.param("id");
-  const snapId = c.req.param("snapId");
+  const botId = c.req.param("id") as string;
+  const snapId = c.req.param("snapId") as string;
   if (!SAFE_ID_RE.test(botId) || !SAFE_ID_RE.test(snapId)) {
     return c.json({ error: "Invalid ID" }, 400);
   }
