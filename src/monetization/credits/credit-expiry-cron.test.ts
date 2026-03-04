@@ -23,6 +23,8 @@ describe("runCreditExpiryCron", () => {
     await truncateAllTables(pool);
   });
 
+  // All tests pass an explicit `now` parameter — hardcoded dates are time-independent
+  // because runCreditExpiryCron never reads the system clock.
   it("returns empty result when no expired credits exist", async () => {
     const result = await runCreditExpiryCron({ ledger, now: "2026-01-15T00:00:00Z" });
     expect(result.processed).toBe(0);

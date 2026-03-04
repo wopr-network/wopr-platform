@@ -28,6 +28,7 @@ function makeNumber(overrides: Partial<ProvisionedPhoneNumber> = {}): Provisione
     sid: "PN-abc123",
     tenantId: "tenant-1",
     phoneNumber: "+15551234567",
+    // Time-independent: vi.setSystemTime(NOW) freezes the clock, so this is always in the past relative to NOW
     provisionedAt: "2025-01-01T00:00:00.000Z",
     lastBilledAt: null,
     ...overrides,
