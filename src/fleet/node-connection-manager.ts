@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
+import { z } from "zod";
 import { logger } from "../config/logger.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { INodeRepository } from "./node-repository.js";
@@ -44,6 +45,17 @@ export interface CommandResult {
   data?: unknown;
   error?: string;
 }
+
+/** Runtime validation for inbound WebSocket command results */
+// Keep in sync with CommandResult interface above
+const commandResultSchema = z.object({
+  id: z.string(),
+  type: z.literal("command_result"),
+  command: z.string(),
+  success: z.boolean(),
+  data: z.unknown().optional(),
+  error: z.string().optional(),
+});
 
 /** Pending command awaiting result */
 interface PendingCommand {
@@ -186,7 +198,12 @@ export class NodeConnectionManager {
 
     // Handle command result
     if (msg.type === "command_result" && typeof msg.id === "string") {
-      const result = msg as unknown as CommandResult;
+      const parsed = commandResultSchema.safeParse(msg);
+      if (!parsed.success) {
+        logger.warn(`Malformed command_result from ${nodeId}`, { id: msg.id, issues: parsed.error.issues });
+        return;
+      }
+      const result: CommandResult = parsed.data;
       const pending = this.pending.get(result.id);
       if (pending) {
         clearTimeout(pending.timeout);
