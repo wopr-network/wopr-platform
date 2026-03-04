@@ -6,6 +6,7 @@
  * - `scopedBearerAuth` middleware for operation-scoped API tokens
  */
 
+import { timingSafeEqual } from "node:crypto";
 import type { Context, Next } from "hono";
 import type { IOrgMemberRepository } from "../fleet/org-member-repository.js";
 
@@ -37,6 +38,25 @@ export function extractBearerToken(header: string | undefined): string | null {
   if (!trimmed.toLowerCase().startsWith("bearer ")) return null;
   const token = trimmed.slice(7).trim();
   return token || null;
+}
+
+/**
+ * Timing-safe lookup of a string key in a Map.
+ *
+ * Iterates all entries and compares each key using `crypto.timingSafeEqual`
+ * to prevent timing side-channel attacks. Returns the value of the first
+ * matching key, or `undefined` if no key matches.
+ */
+export function timingSafeMapLookup<V>(map: Map<string, V>, candidate: string): V | undefined {
+  const candidateBuf = Buffer.from(candidate);
+  let found: V | undefined;
+  for (const [key, value] of map) {
+    const keyBuf = Buffer.from(key);
+    if (candidateBuf.length === keyBuf.length && timingSafeEqual(candidateBuf, keyBuf)) {
+      found = value;
+    }
+  }
+  return found;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,7 +252,7 @@ export function scopedBearerAuth(tokenMap: Map<string, TokenScope>, requiredScop
     }
 
     // Look up the token in the map
-    const scope = tokenMap.get(token);
+    const scope = timingSafeMapLookup(tokenMap, token);
 
     // If not in map, try to parse scope from token format for dynamic tokens
     if (scope === undefined) {
@@ -271,7 +291,7 @@ export function scopedBearerAuthWithTenant(metadataMap: Map<string, TokenMetadat
     }
 
     // Look up the token in the metadata map
-    const metadata = metadataMap.get(token);
+    const metadata = timingSafeMapLookup(metadataMap, token);
 
     if (!metadata) {
       return c.json({ error: "Invalid or expired token" }, 401);
@@ -370,7 +390,7 @@ export function requireSessionOrToken(tokenMap: Map<string, TokenScope>, require
       return c.json({ error: "Authentication required" }, 401);
     }
 
-    const scope = tokenMap.get(token);
+    const scope = timingSafeMapLookup(tokenMap, token);
     if (scope === undefined) {
       return c.json({ error: "Invalid or expired token" }, 401);
     }

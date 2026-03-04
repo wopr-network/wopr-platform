@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
-import { type AuthEnv, type AuthUser, extractBearerToken, requireRole } from "./index.js";
+import { type AuthEnv, type AuthUser, extractBearerToken, requireRole, timingSafeMapLookup } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // extractBearerToken
@@ -122,5 +122,45 @@ describe("requireRole middleware", () => {
       headers: { "X-Test-Roles": "Admin" },
     });
     expect(res.status).toBe(403);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// timingSafeMapLookup
+// ---------------------------------------------------------------------------
+
+describe("timingSafeMapLookup", () => {
+  it("returns the value for an exact match", () => {
+    const map = new Map([["secret-token", "admin"]]);
+    expect(timingSafeMapLookup(map, "secret-token")).toBe("admin");
+  });
+
+  it("returns undefined for a non-matching key", () => {
+    const map = new Map([["secret-token", "admin"]]);
+    expect(timingSafeMapLookup(map, "wrong-token")).toBeUndefined();
+  });
+
+  it("returns undefined for a key with different length", () => {
+    const map = new Map([["short", "val"]]);
+    expect(timingSafeMapLookup(map, "a-much-longer-key")).toBeUndefined();
+  });
+
+  it("returns undefined when map is empty", () => {
+    const map = new Map<string, string>();
+    expect(timingSafeMapLookup(map, "any-token")).toBeUndefined();
+  });
+
+  it("matches the correct entry among multiple keys", () => {
+    const map = new Map([
+      ["token-aaa", "read"],
+      ["token-bbb", "write"],
+      ["token-ccc", "admin"],
+    ]);
+    expect(timingSafeMapLookup(map, "token-bbb")).toBe("write");
+  });
+
+  it("returns undefined for empty input string", () => {
+    const map = new Map([["secret", "val"]]);
+    expect(timingSafeMapLookup(map, "")).toBeUndefined();
   });
 });

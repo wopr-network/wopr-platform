@@ -10,6 +10,7 @@ import {
   extractBearerToken,
   resolveSessionUser,
   scopedBearerAuthWithTenant,
+  timingSafeMapLookup,
 } from "../auth/index.js";
 import { logger } from "../config/logger.js";
 import {
@@ -382,7 +383,7 @@ async function createTRPCContext(req: Request): Promise<TRPCContext> {
   const token = extractBearerToken(authHeader);
 
   if (token) {
-    const metadata = trpcTokenMetadataMap.get(token);
+    const metadata = timingSafeMapLookup(trpcTokenMetadataMap, token);
     if (metadata) {
       user = { id: `token:${metadata.scope}`, roles: [metadata.scope] };
       tenantId = metadata.tenantId;
