@@ -160,10 +160,6 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
           }
         }
       }
-      // Clear ownership once all streams for this session are gone
-      if (event.type === "done" && registry.listBySession(sessionId).length === 0) {
-        registry.clearOwner(sessionId);
-      }
     };
 
     // Start processing (don't await — return streamId immediately)
