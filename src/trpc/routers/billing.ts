@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import type { Payram } from "payram";
 import { z } from "zod";
 import type { AuditLogger } from "../../audit/logger.js";
+import { logger } from "../../config/logger.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
 import { Credit } from "../../monetization/credit.js";
 import {
@@ -632,7 +633,10 @@ export const billingRouter = router({
       if (err instanceof PaymentMethodOwnershipError) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Payment method does not belong to this account" });
       }
-      console.error("[billing.removePaymentMethod]", err);
+      logger.error("billing.removePaymentMethod failed", {
+        error: String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message: "Failed to remove payment method. Please try again.",
@@ -914,7 +918,10 @@ export const billingRouter = router({
         couponCode: input.code.toUpperCase().trim(),
       });
     } catch (err) {
-      console.error("[billing.applyCoupon]", err);
+      logger.error("billing.applyCoupon failed", {
+        error: String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired coupon code" });
     }
     if (results.length === 0) {
