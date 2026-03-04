@@ -1,8 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { providerCredentials } from "../../db/schema/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import type { InsertCredentialRow } from "./credential-repository.js";
 import { DrizzleCredentialRepository } from "./credential-repository.js";
@@ -139,17 +137,12 @@ describe("DrizzleCredentialRepository", () => {
   // --- Encryption-at-rest verification ---
 
   describe("encryption-at-rest", () => {
-    it("stored value in DB is not plaintext", async () => {
-      const plaintext = "sk-ant-real-secret-key-abc123";
-      await repo.insert(makeRow({ id: "enc-test", encryptedValue: `ENCRYPTED::${plaintext}` }));
+    it("stores encryptedValue verbatim (round-trip fidelity)", async () => {
+      const encryptedValue = "ENCRYPTED::v1::abc123xyz";
+      await repo.insert(makeRow({ id: "enc-test", encryptedValue }));
 
-      const [raw] = await db
-        .select({ encryptedValue: providerCredentials.encryptedValue })
-        .from(providerCredentials)
-        .where(eq(providerCredentials.id, "enc-test"));
-
-      expect(raw.encryptedValue).toBe(`ENCRYPTED::${plaintext}`);
-      expect(raw.encryptedValue).not.toBe(plaintext);
+      const result = await repo.getFullById("enc-test");
+      expect(result?.encryptedValue).toBe(encryptedValue);
     });
 
     it("updateEncryptedValue changes the stored ciphertext", async () => {
