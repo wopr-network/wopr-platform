@@ -3,15 +3,19 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { CreditLedger, InsufficientBalanceError } from "../../src/monetization/credits/credit-ledger.js";
-import { grantSignupCredits, SIGNUP_GRANT_CENTS } from "../../src/monetization/credits/signup-grant.js";
-import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
+import { DrizzleCreditLedger, InsufficientBalanceError } from "../../src/monetization/credits/credit-ledger.js";
+import { grantSignupCredits, SIGNUP_GRANT } from "../../src/monetization/credits/signup-grant.js";
+import { DrizzleBotBilling } from "../../src/monetization/credits/bot-billing.js";
 import { runRuntimeDeductions } from "../../src/monetization/credits/runtime-cron.js";
-import { MeterEmitter } from "../../src/monetization/metering/emitter.js";
+import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
 import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
+import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
 import { AdapterSocket } from "../../src/monetization/socket/socket.js";
-import type { AdapterResult, ImageGenerationOutput, ProviderAdapter } from "../../src/monetization/adapters/types.js";
+import { Credit } from "../../src/monetization/credit.js";
+import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
+import type { BotInstance } from "../../src/fleet/repository-types.js";
+import type { AdapterResult, ImageGenerationInput, ImageGenerationOutput, ProviderAdapter } from "../../src/monetization/adapters/types.js";
 
 // ---------------------------------------------------------------------------
 // Fake image-generation adapter — simulates a hosted provider (e.g., Replicate)
@@ -22,13 +26,13 @@ function createFakeImageGenAdapter(): ProviderAdapter {
     name: "fake-replicate-sdxl",
     capabilities: ["image-generation"],
     selfHosted: false,
-    async generateImage() {
+    async generateImage(_input: ImageGenerationInput) {
       return {
         result: {
           images: ["https://fake-cdn.example.com/generated-image.png"],
           model: "sdxl-1.0",
         },
-        cost: 0.02, // $0.02 wholesale cost per image
+        cost: Credit.fromDollars(0.02), // $0.02 wholesale cost per image
       } satisfies AdapterResult<ImageGenerationOutput>;
     },
   };
@@ -41,8 +45,8 @@ function createFakeImageGenAdapter(): ProviderAdapter {
 describe("E2E: core revenue loop — signup → bot → plugin → capability → credit consumed", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let ledger: CreditLedger;
-  let botBilling: BotBilling;
+  let ledger: DrizzleCreditLedger;
+  let botBilling: DrizzleBotBilling;
   let meter: MeterEmitter;
   let aggregator: MeterAggregator;
   let socket: AdapterSocket;
@@ -61,11 +65,11 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
     ({ db, pool } = await createTestDb());
 
-    ledger = new CreditLedger(db);
-    botBilling = new BotBilling(db);
+    ledger = new DrizzleCreditLedger(db);
+    botBilling = new DrizzleBotBilling(new DrizzleBotInstanceRepository(db));
 
     // Unique WAL/DLQ paths per run to avoid conflicts between parallel test runs.
-    meter = new MeterEmitter(db, {
+    meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 100,
       batchSize: 1,
       walPath,
@@ -99,14 +103,14 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   // =========================================================================
 
   it("complete revenue chain: signup → bot → capability → metered → credits deducted", async () => {
-    // STEP 1: User signs up — tenant gets signup credits ($5.00 = 500 cents)
+    // STEP 1: User signs up — tenant gets signup credits ($5.00)
     const granted = await grantSignupCredits(ledger, TENANT_ID);
     expect(granted).toBe(true);
-    expect(await ledger.balance(TENANT_ID)).toBe(SIGNUP_GRANT_CENTS); // 500 cents
+    expect((await ledger.balance(TENANT_ID)).equals(SIGNUP_GRANT)).toBe(true);
 
     // STEP 2: User creates a bot instance
     await botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
-    const botInfo = await botBilling.getBotBilling(BOT_ID);
+    const botInfo = (await botBilling.getBotBilling(BOT_ID)) as BotInstance | null;
     expect(botInfo).not.toBeNull();
     expect(botInfo!.billingState).toBe("active");
     expect(botInfo!.tenantId).toBe(TENANT_ID);
@@ -139,38 +143,39 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     expect(event.tenant).toBe(TENANT_ID);
     expect(event.capability).toBe("image-generation");
     expect(event.provider).toBe("fake-replicate-sdxl");
-    expect(event.cost).toBeCloseTo(0.02, 5);
+    // cost/charge in MeterEventRow are raw nanodollar integers
+    const costDollars = Credit.fromRaw(event.cost).toDollars();
+    const chargeDollars = Credit.fromRaw(event.charge).toDollars();
+    expect(costDollars).toBeCloseTo(0.02, 5);
     // charge = cost * margin = 0.02 * 1.3 = 0.026
-    expect(event.charge).toBeCloseTo(0.026, 5);
+    expect(chargeDollars).toBeCloseTo(0.026, 5);
 
     // STEP 5: Usage aggregation rolls up into billing_period_summaries.
     const aggregated = await aggregator.aggregate();
     expect(aggregated).toBeGreaterThanOrEqual(0);
 
     // STEP 6: Credits are deducted from the tenant's balance.
-    // Convert charge (USD) to cents for the ledger.
-    const chargeCents = Math.round(event.charge * 100); // 0.026 * 100 = 3 cents (rounded)
-    expect(chargeCents).toBeGreaterThan(0);
+    const chargeCredit = Credit.fromRaw(event.charge);
+    expect(chargeCredit.isZero()).toBe(false);
 
     await ledger.debit(
       TENANT_ID,
-      chargeCents,
+      chargeCredit,
       "adapter_usage",
       `image-generation via fake-replicate-sdxl`,
       event.id, // referenceId for idempotency
     );
 
     const balanceAfter = await ledger.balance(TENANT_ID);
-    expect(balanceAfter).toBe(SIGNUP_GRANT_CENTS - chargeCents);
-    expect(balanceAfter).toBeLessThan(SIGNUP_GRANT_CENTS);
-    expect(balanceAfter).toBeGreaterThan(0); // Still has credits left
+    expect(balanceAfter.lessThan(SIGNUP_GRANT)).toBe(true);
+    expect(balanceAfter.isNegative()).toBe(false); // Still has credits left
 
     // Verify the transaction was recorded
     const history = await ledger.history(TENANT_ID);
     expect(history.length).toBe(2); // signup_grant + adapter_usage
     const debitTx = history.find((tx) => tx.type === "adapter_usage");
     expect(debitTx).toBeDefined();
-    expect(debitTx!.amountCents).toBe(-chargeCents); // negative for debits
+    expect(debitTx!.amount.isNegative()).toBe(true); // negative for debits
     expect(debitTx!.referenceId).toBe(event.id);
   });
 
@@ -181,7 +186,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
   it("idempotent signup grant — second call is a no-op", async () => {
     expect(await grantSignupCredits(ledger, TENANT_ID)).toBe(true);
     expect(await grantSignupCredits(ledger, TENANT_ID)).toBe(false);
-    expect(await ledger.balance(TENANT_ID)).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance(TENANT_ID)).equals(SIGNUP_GRANT)).toBe(true);
   });
 
   // =========================================================================
@@ -193,7 +198,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
     // Try to debit more than the balance
     await expect(
-      ledger.debit(TENANT_ID, SIGNUP_GRANT_CENTS + 1, "adapter_usage", "should fail"),
+      ledger.debit(TENANT_ID, SIGNUP_GRANT.add(Credit.fromCents(1)), "adapter_usage", "should fail"),
     ).rejects.toThrow(InsufficientBalanceError);
   });
 
@@ -203,13 +208,14 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
   it("bot suspended by runtime cron when credits are exhausted", async () => {
     // Grant minimal credits (1 cent — less than the 17-cent daily bot cost)
-    await ledger.credit(TENANT_ID, 1, "promo", "tiny grant");
+    await ledger.credit(TENANT_ID, Credit.fromCents(1), "promo", "tiny grant");
     await botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
 
     expect(await botBilling.getActiveBotCount(TENANT_ID)).toBe(1);
 
     const result = await runRuntimeDeductions({
       ledger,
+      date: new Date().toISOString().slice(0, 10),
       getActiveBotCount: (tid) => botBilling.getActiveBotCount(tid),
       onSuspend: async (tid) => {
         await botBilling.suspendAllForTenant(tid);
@@ -219,7 +225,7 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
     expect(result.suspended).toContain(TENANT_ID);
 
     // After suspension, bot should be suspended
-    const botInfo = await botBilling.getBotBilling(BOT_ID);
+    const botInfo = (await botBilling.getBotBilling(BOT_ID)) as BotInstance | null;
     expect(botInfo!.billingState).toBe("suspended");
   });
 
@@ -229,20 +235,20 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
   it("suspended bot reactivated after credit purchase", async () => {
     // Setup: grant minimal credits, register bot, exhaust balance, suspend
-    await ledger.credit(TENANT_ID, 1, "promo", "tiny grant");
+    await ledger.credit(TENANT_ID, Credit.fromCents(1), "promo", "tiny grant");
     await botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
-    await ledger.debit(TENANT_ID, 1, "bot_runtime", "exhaust balance");
+    await ledger.debit(TENANT_ID, Credit.fromCents(1), "bot_runtime", "exhaust balance");
     await botBilling.suspendAllForTenant(TENANT_ID);
 
-    expect((await botBilling.getBotBilling(BOT_ID))!.billingState).toBe("suspended");
-    expect(await ledger.balance(TENANT_ID)).toBe(0);
+    expect(((await botBilling.getBotBilling(BOT_ID)) as BotInstance | null)!.billingState).toBe("suspended");
+    expect((await ledger.balance(TENANT_ID)).isZero()).toBe(true);
 
     // Simulate credit purchase (what the Stripe webhook handler does)
-    await ledger.credit(TENANT_ID, 1000, "purchase", "Stripe credit purchase");
+    await ledger.credit(TENANT_ID, Credit.fromCents(1000), "purchase", "Stripe credit purchase");
     const reactivated = await botBilling.checkReactivation(TENANT_ID, ledger);
 
     expect(reactivated).toContain(BOT_ID);
-    expect((await botBilling.getBotBilling(BOT_ID))!.billingState).toBe("active");
-    expect(await ledger.balance(TENANT_ID)).toBe(1000);
+    expect(((await botBilling.getBotBilling(BOT_ID)) as BotInstance | null)!.billingState).toBe("active");
+    expect((await ledger.balance(TENANT_ID)).equals(Credit.fromCents(1000))).toBe(true);
   });
 });
