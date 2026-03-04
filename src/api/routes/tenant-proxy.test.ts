@@ -97,10 +97,43 @@ vi.mock("../../proxy/singleton.js", () => ({
 }));
 
 // Mock better-auth — default: no session (unauthenticated)
-const mockGetSession = vi.fn().mockResolvedValue(null);
+const mockGetSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 vi.mock("../../auth/better-auth.js", () => ({
   getAuth: vi.fn(() => ({
     api: { getSession: mockGetSession },
+  })),
+}));
+
+// Mock fleet profile store — returns a bot profile with tenantId
+const mockProfileStoreGet = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+vi.mock("../../fleet/profile-store.js", () => {
+  return {
+    ProfileStore: function MockProfileStore() {
+      return {
+        get: (...args: unknown[]) => mockProfileStoreGet(...args),
+        init: vi.fn(),
+      };
+    },
+  };
+});
+
+// Mock org member repo for tenant access validation
+const mockFindMember = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+vi.mock("../../fleet/services.js", () => ({
+  getOrgMemberRepo: vi.fn(() => ({
+    findMember: (...args: unknown[]) => mockFindMember(...args),
+    listMembers: vi.fn().mockResolvedValue([]),
+    addMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    removeMember: vi.fn(),
+    countAdminsAndOwners: vi.fn().mockResolvedValue(0),
+    listInvites: vi.fn().mockResolvedValue([]),
+    createInvite: vi.fn(),
+    findInviteById: vi.fn().mockResolvedValue(null),
+    findInviteByToken: vi.fn().mockResolvedValue(null),
+    deleteInvite: vi.fn(),
+    deleteAllMembers: vi.fn(),
+    deleteAllInvites: vi.fn(),
   })),
 }));
 
@@ -119,6 +152,8 @@ describe("tenantProxyMiddleware", () => {
     // Restore default: no session (unauthenticated)
     mockGetSession.mockResolvedValue(null);
     mockLogger.warn.mockClear();
+    mockProfileStoreGet.mockResolvedValue(null);
+    mockFindMember.mockResolvedValue(null);
     app = new Hono();
     app.use("/*", tenantProxyMiddleware);
     // Fallback route for requests that pass through the middleware
@@ -177,6 +212,7 @@ describe("tenantProxyMiddleware", () => {
       { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
     ]);
     mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
+    mockProfileStoreGet.mockResolvedValue({ id: "i1", tenantId: "user-42", name: "alice" });
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -208,6 +244,7 @@ describe("tenantProxyMiddleware", () => {
       { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
     ]);
     mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
+    mockProfileStoreGet.mockResolvedValue({ id: "i1", tenantId: "user-42", name: "alice" });
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
@@ -259,6 +296,7 @@ describe("tenantProxyMiddleware", () => {
       { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
     ]);
     mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
+    mockProfileStoreGet.mockResolvedValue({ id: "i1", tenantId: "user-42", name: "alice" });
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue(
@@ -280,5 +318,90 @@ describe("tenantProxyMiddleware", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("returns 403 when user is not a member of the target tenant", async () => {
+    mockProxyManager.getRoutes.mockReturnValue([
+      { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
+    ]);
+    // User "user-99" is authenticated but the bot belongs to tenant "user-alice"
+    mockGetSession.mockResolvedValue({ user: { id: "user-99", role: "user" } });
+    mockProfileStoreGet.mockResolvedValue({ id: "i1", tenantId: "user-alice", name: "alice" });
+    mockFindMember.mockResolvedValue(null); // Not a member of the org
+
+    const res = await app.request("http://alice.wopr.bot/test", {
+      headers: { host: "alice.wopr.bot" },
+    });
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("Not authorized for this tenant");
+  });
+
+  it("allows proxy when user owns the target tenant (personal tenant)", async () => {
+    mockProxyManager.getRoutes.mockReturnValue([
+      { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
+    ]);
+    // User "user-42" is authenticated and the bot belongs to their personal tenant
+    mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
+    mockProfileStoreGet.mockResolvedValue({ id: "i1", tenantId: "user-42", name: "alice" });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ upstream: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    try {
+      const res = await app.request("http://alice.wopr.bot/api/data", {
+        headers: { host: "alice.wopr.bot" },
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("allows proxy when user is an org member of the target tenant", async () => {
+    mockProxyManager.getRoutes.mockReturnValue([
+      { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
+    ]);
+    mockGetSession.mockResolvedValue({ user: { id: "user-99", role: "user" } });
+    mockProfileStoreGet.mockResolvedValue({ id: "i1", tenantId: "org-acme", name: "alice" });
+    // user-99 IS a member of org-acme
+    mockFindMember.mockResolvedValue({ id: "m1", orgId: "org-acme", userId: "user-99", role: "member", joinedAt: 0 });
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ upstream: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    try {
+      const res = await app.request("http://alice.wopr.bot/api/data", {
+        headers: { host: "alice.wopr.bot" },
+      });
+      expect(res.status).toBe(200);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("returns 404 when profile not found for tenant instance", async () => {
+    mockProxyManager.getRoutes.mockReturnValue([
+      { subdomain: "alice", upstreamHost: "wopr-alice", upstreamPort: 7437, healthy: true, instanceId: "i1" },
+    ]);
+    mockGetSession.mockResolvedValue({ user: { id: "user-42", role: "user" } });
+    mockProfileStoreGet.mockResolvedValue(null); // Profile not found
+
+    const res = await app.request("http://alice.wopr.bot/test", {
+      headers: { host: "alice.wopr.bot" },
+    });
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("Tenant not found");
   });
 });

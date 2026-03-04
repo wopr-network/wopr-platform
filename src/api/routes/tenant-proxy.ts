@@ -1,7 +1,10 @@
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { getAuth } from "../../auth/better-auth.js";
+import { validateTenantAccess } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
+import { ProfileStore } from "../../fleet/profile-store.js";
+import { getOrgMemberRepo } from "../../fleet/services.js";
 
 /**
  * Domain config, read once at startup.
@@ -27,6 +30,8 @@ const RESERVED_SUBDOMAINS = new Set([
 
 /** DNS label rules (RFC 1123) — compiled once at module scope. */
 const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+
+const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
 /** Headers safe to forward to upstream tenant containers. */
 const FORWARDED_HEADERS = [
@@ -142,6 +147,28 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
 
   if (!userId) {
     return c.json({ error: "Authentication required" }, 401);
+  }
+
+  // --- Tenant ownership check (WOP-1605) ---
+  // Look up the bot profile to get its tenantId, then verify the user belongs to that tenant.
+  let tenantId: string | undefined;
+  try {
+    const store = new ProfileStore(FLEET_DATA_DIR);
+    const profile = await store.get(route.instanceId);
+    tenantId = profile?.tenantId;
+  } catch {
+    // Profile lookup failed — fall through to deny
+  }
+
+  if (!tenantId) {
+    return c.json({ error: "Tenant not found" }, 404);
+  }
+
+  const orgMemberRepo = getOrgMemberRepo();
+  const allowed = await validateTenantAccess(userId, tenantId, orgMemberRepo);
+  if (!allowed) {
+    logger.debug(`User ${userId} not authorized for tenant ${tenantId} (subdomain: ${subdomain})`);
+    return c.json({ error: "Not authorized for this tenant" }, 403);
   }
 
   // Proxy the request to the upstream container
