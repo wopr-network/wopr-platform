@@ -10,6 +10,10 @@ import { Credit } from "../../monetization/credit.js";
 const TEST_TOKEN = "test-api-token";
 vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
 
+// Tenant-scoped token for cross-tenant tests
+const TENANT_TOKEN = "tenant-scoped-api-token";
+vi.stubEnv("FLEET_TOKEN_user-123", `read:${TENANT_TOKEN}`);
+
 const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
 
 // --- Mock FleetManager ---
@@ -62,6 +66,7 @@ const fleetMock = {
   remove: vi.fn(),
   status: vi.fn(),
   listAll: vi.fn(),
+  listByTenant: vi.fn(),
   logs: vi.fn(),
   logStream: vi.fn(),
   update: vi.fn(),
@@ -99,6 +104,7 @@ vi.mock("../../fleet/fleet-manager.js", () => {
       remove = fleetMock.remove;
       status = fleetMock.status;
       listAll = fleetMock.listAll;
+      listByTenant = fleetMock.listByTenant;
       logs = fleetMock.logs;
       logStream = fleetMock.logStream;
       update = fleetMock.update;
@@ -257,6 +263,19 @@ describe("fleet routes", () => {
       const res = await app.request("/fleet/bots", { headers: authHeader });
       expect(res.status).toBe(200);
       expect(fleetMock.listAll).toHaveBeenCalled();
+    });
+
+    it("tenant-scoped token calls listByTenant and returns only that tenant's bots", async () => {
+      fleetMock.listByTenant.mockResolvedValue([mockStatus]);
+
+      const res = await app.request("/fleet/bots", {
+        headers: { Authorization: `Bearer ${TENANT_TOKEN}` },
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.bots).toHaveLength(1);
+      expect(fleetMock.listByTenant).toHaveBeenCalledWith("user-123");
+      expect(fleetMock.listAll).not.toHaveBeenCalled();
     });
   });
 

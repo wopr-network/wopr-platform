@@ -253,9 +253,8 @@ fleetRoutes.get("/bots", readAuth, async (c) => {
   } else if (isOperatorToken) {
     bots = await fleet.listAll();
   } else {
-    // Token has no tenant scope and is not an operator — return empty.
-    // This path is defensive; current auth marks all non-tenant tokens as operator.
-    bots = [];
+    // Token has no tenant scope and is not an operator — reject.
+    return c.json({ error: "Tenant scope required" }, 403);
   }
   return c.json({ bots });
 });
