@@ -1,6 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
+import { affiliateFraudEvents } from "../../db/schema/affiliate-fraud.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { DrizzleAffiliateFraudRepository } from "./affiliate-fraud-repository.js";
 
@@ -72,5 +73,24 @@ describe("DrizzleAffiliateFraudRepository", () => {
     expect(await repo.isBlocked("ref-1", "payout")).toBe(true);
     expect(await repo.isBlocked("ref-1", "signup")).toBe(false);
     expect(await repo.isBlocked("ref-999", "payout")).toBe(false);
+  });
+
+  it("returns fallback values when signals/signalDetails contain malformed JSON", async () => {
+    await db.insert(affiliateFraudEvents).values({
+      id: "fe-bad-json",
+      referralId: "ref-bad",
+      referrerTenantId: "t-bad",
+      referredTenantId: "t-bad2",
+      verdict: "blocked",
+      signals: "NOT_VALID_JSON",
+      signalDetails: "NOT_VALID_JSON",
+      phase: "signup",
+      createdAt: new Date().toISOString(),
+    });
+
+    const events = await repo.listByReferrer("t-bad");
+    expect(events).toHaveLength(1);
+    expect(events[0].signals).toEqual([]);
+    expect(events[0].signalDetails).toEqual({});
   });
 });
