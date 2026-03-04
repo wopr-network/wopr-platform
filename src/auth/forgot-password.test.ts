@@ -100,6 +100,11 @@ describe("Forgot password flow (e2e)", () => {
         },
       },
       trustedOrigins: ["http://localhost:3100"],
+      advanced: {
+        // Force origin validation even in test environment (better-auth disables it by default
+        // when NODE_ENV=test). We need this enabled to verify the redirectTo allowlist check.
+        disableOriginCheck: false,
+      },
     });
 
     // Initialize the Better Auth schema (creates tables: user, session, account, verification)
@@ -278,5 +283,99 @@ describe("Forgot password flow (e2e)", () => {
     // No email should have been sent
     expect(capturedResetUrl).toBeNull();
     expect(capturedResetToken).toBeNull();
+  });
+
+  it("rejects absolute-URL redirectTo (open-redirect prevention)", async () => {
+    const email = "redirect-test@test.com";
+    await createTestUser(email, "Password123!");
+
+    const res = await auth.handler(
+      new Request("http://localhost:3100/api/auth/request-password-reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3100",
+        },
+        body: JSON.stringify({
+          email,
+          redirectTo: "https://evil.com/steal-token",
+        }),
+      }),
+    );
+    // better-auth's originCheckMiddleware rejects untrusted absolute URLs with 403
+    expect(res.status).toBe(403);
+
+    // No reset email should have been sent
+    expect(capturedResetUrl).toBeNull();
+    expect(capturedResetToken).toBeNull();
+  });
+
+  it("rejects protocol-relative redirectTo", async () => {
+    const email = "proto-rel@test.com";
+    await createTestUser(email, "Password123!");
+
+    const res = await auth.handler(
+      new Request("http://localhost:3100/api/auth/request-password-reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3100",
+        },
+        body: JSON.stringify({
+          email,
+          redirectTo: "//evil.com/steal-token",
+        }),
+      }),
+    );
+    // Protocol-relative URLs resolve to a different origin — must be rejected
+    expect(res.status).toBe(403);
+    expect(capturedResetUrl).toBeNull();
+  });
+
+  it("accepts valid relative-path redirectTo", async () => {
+    const email = "valid-redirect@test.com";
+    await createTestUser(email, "Password123!");
+
+    const res = await auth.handler(
+      new Request("http://localhost:3100/api/auth/request-password-reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3100",
+        },
+        body: JSON.stringify({
+          email,
+          redirectTo: "/reset-password",
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: boolean };
+    expect(body.status).toBe(true);
+
+    // Reset email should have been sent with the token
+    expect(capturedResetUrl).not.toBeNull();
+    expect(capturedResetToken).not.toBeNull();
+  });
+
+  it("rejects javascript: scheme redirectTo", async () => {
+    const email = "js-scheme@test.com";
+    await createTestUser(email, "Password123!");
+
+    const res = await auth.handler(
+      new Request("http://localhost:3100/api/auth/request-password-reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "http://localhost:3100",
+        },
+        body: JSON.stringify({
+          email,
+          redirectTo: "javascript:alert(1)",
+        }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(capturedResetUrl).toBeNull();
   });
 });
