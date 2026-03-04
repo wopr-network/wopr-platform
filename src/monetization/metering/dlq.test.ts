@@ -95,6 +95,33 @@ describe("MeterDLQ", () => {
     expect(dlq.count()).toBe(2);
   });
 
+  it("count counts malformed lines (no JSON parsing)", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    const goodLine = JSON.stringify({ id: "evt-1", dlq_error: "e", dlq_retries: 1, dlq_timestamp: 0 });
+    writeFileSync(dlqPath, `${goodLine}\nnot-valid-json\n`);
+    const dlq = new MeterDLQ(dlqPath);
+    // count should return 2 (line count), not 1 (parsed count)
+    // This verifies count() does NOT use JSON.parse
+    expect(dlq.count()).toBe(2);
+  });
+
+  it("count returns correct count when file has no trailing newline", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    const line1 = JSON.stringify({ id: "evt-1", dlq_error: "e", dlq_retries: 1, dlq_timestamp: 0 });
+    const line2 = JSON.stringify({ id: "evt-2", dlq_error: "e", dlq_retries: 1, dlq_timestamp: 0 });
+    // Write two entries with no trailing newline
+    writeFileSync(dlqPath, `${line1}\n${line2}`);
+    const dlq = new MeterDLQ(dlqPath);
+    expect(dlq.count()).toBe(2);
+  });
+
+  it("count returns 0 when file is deleted between calls (ENOENT)", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    const dlq = new MeterDLQ(dlqPath);
+    // File doesn't exist at all — should not throw, return 0
+    expect(dlq.count()).toBe(0);
+  });
+
   it("readAll skips malformed lines", () => {
     mkdirSync(tmpDir, { recursive: true });
     const goodLine = JSON.stringify({ id: "evt-1", dlq_error: "e", dlq_retries: 1, dlq_timestamp: 0 });
