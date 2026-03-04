@@ -250,6 +250,14 @@ describe("fleet routes", () => {
       const body = await res.json();
       expect(body.bots).toEqual([]);
     });
+
+    it("operator token calls listAll for cross-tenant enumeration", async () => {
+      fleetMock.listAll.mockResolvedValue([mockStatus]);
+
+      const res = await app.request("/fleet/bots", { headers: authHeader });
+      expect(res.status).toBe(200);
+      expect(fleetMock.listAll).toHaveBeenCalled();
+    });
   });
 
   describe("POST /fleet/bots", () => {
