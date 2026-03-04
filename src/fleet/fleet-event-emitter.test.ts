@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type FleetEvent, FleetEventEmitter } from "./fleet-event-emitter.js";
 
 vi.mock("../config/logger.js", () => ({
@@ -23,6 +23,10 @@ describe("FleetEventEmitter", () => {
   beforeEach(() => {
     emitter = new FleetEventEmitter();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("calls listeners on emit", () => {
@@ -66,6 +70,5 @@ describe("FleetEventEmitter", () => {
     });
     emitter.emit(event);
     expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
   });
 });
