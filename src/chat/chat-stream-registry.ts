@@ -47,4 +47,28 @@ export class ChatStreamRegistry {
     const set = this.sessionIndex.get(sessionId);
     return set ? [...set] : [];
   }
+
+  private sessionOwners = new Map<string, string>();
+
+  /**
+   * Atomically claim the session for userId if unclaimed, then verify ownership.
+   * Returns true if this userId is (or just became) the owner.
+   * Replaces the separate setOwner + isOwner pattern to eliminate the TOCTOU race.
+   */
+  claimOrVerifyOwner(sessionId: string, userId: string): boolean {
+    if (!this.sessionOwners.has(sessionId)) {
+      this.sessionOwners.set(sessionId, userId);
+    }
+    return this.sessionOwners.get(sessionId) === userId;
+  }
+
+  /** Remove ownership record for a session (call on stream teardown / session destroy). */
+  clearOwner(sessionId: string): void {
+    this.sessionOwners.delete(sessionId);
+  }
+
+  /** Get the owner of a session, or undefined if not yet claimed. */
+  getOwner(sessionId: string): string | undefined {
+    return this.sessionOwners.get(sessionId);
+  }
 }

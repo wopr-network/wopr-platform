@@ -6,7 +6,7 @@ import type { ChatEvent } from "../../chat/types.js";
 import { logger } from "../../config/logger.js";
 
 const chatRequestSchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().uuid(),
   message: z.string(), // empty string = greeting trigger
 });
 
@@ -18,11 +18,25 @@ export interface ChatRouteDeps {
  * Create chat routes with injected dependencies.
  * Enables testing without real WOPR instances.
  */
-/** Extract authenticated user from context, or null if not set. */
-function getUser(c: { get(key: string): unknown }): { id: string } | null {
+/** Internal header used to forward authenticated user identity through inner.fetch(). */
+const INTERNAL_USER_ID_HEADER = "x-internal-user-id";
+
+/** Extract authenticated user from context or internal forwarding header.
+ *  The internal header is only trusted when set server-side by the outer handler.
+ *  External requests must never reach getUser() with this header intact — the
+ *  outer lazy handler strips it before forwarding (see chatRoutes below).
+ */
+function getUser(c: {
+  get(key: string): unknown;
+  req?: { header?(name: string): string | undefined };
+}): { id: string } | null {
   try {
     const user = c.get("user") as { id: string } | undefined;
-    return user ?? null;
+    if (user) return user;
+    // Fall back to internal forwarding header set by the singleton wrapper.
+    const forwarded = c.req?.header?.(INTERNAL_USER_ID_HEADER);
+    if (forwarded) return { id: forwarded };
+    return null;
   } catch {
     return null;
   }
@@ -47,6 +61,11 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
       return c.json({ error: "sessionId query parameter is required" }, 400);
     }
 
+    // --- Atomically claim session for this user (first caller wins) and verify ownership ---
+    if (!registry.claimOrVerifyOwner(sessionId, user.id)) {
+      return c.json({ error: "Session access denied" }, 403);
+    }
+
     const { readable, writable } = new TransformStream<string, string>();
     const writer = writable.getWriter();
 
@@ -65,11 +84,15 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
 
     const streamId = registry.register(sessionId, sseWriter);
 
-    // Clean up on client disconnect
+    // Clean up on client disconnect — remove stream and ownership record to prevent map growth
     const signal = c.req.raw.signal;
     if (signal) {
       signal.addEventListener("abort", () => {
         registry.remove(streamId);
+        // Only clear ownership if no more streams remain for this session
+        if (registry.listBySession(sessionId).length === 0) {
+          registry.clearOwner(sessionId);
+        }
         writer.close().catch((err) => {
           logger.debug("SSE writer close error (client disconnect)", { err });
         });
@@ -119,6 +142,11 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
     }
 
     const { sessionId, message } = parsed.data;
+
+    // --- Atomically claim session for this user (first caller wins) and verify ownership ---
+    if (!registry.claimOrVerifyOwner(sessionId, user.id)) {
+      return c.json({ error: "Session access denied" }, 403);
+    }
 
     // Fire-and-forget: process in background so POST returns immediately
     const emit = (event: ChatEvent) => {
@@ -196,7 +224,15 @@ chatRoutes.route(
         return c.json({ error: "Authentication required" }, 401);
       }
       const inner = getChatRoutesInner();
-      return inner.fetch(c.req.raw);
+      // Forward authenticated identity into the inner request, since inner.fetch()
+      // creates a fresh Hono context where c.get("user") would be undefined.
+      // Strip any attacker-supplied x-internal-user-id from incoming headers first,
+      // then append the server-validated identity to prevent header spoofing.
+      const safeHeaders = new Headers(c.req.raw.headers);
+      safeHeaders.delete(INTERNAL_USER_ID_HEADER);
+      safeHeaders.set(INTERNAL_USER_ID_HEADER, user.id);
+      const forwarded = new Request(c.req.raw, { headers: safeHeaders });
+      return inner.fetch(forwarded);
     });
     return lazy;
   })(),
