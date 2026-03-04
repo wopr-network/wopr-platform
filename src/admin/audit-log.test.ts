@@ -47,7 +47,7 @@ describe("AdminAuditLog.log", () => {
 
   it("log entry creates a row", async () => {
     const row = await auditLogInstance.log(makeEntry());
-    expect(row.id).toBeTruthy();
+    expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(row.admin_user).toBe("admin-1");
     expect(row.action).toBe("user.suspend");
     expect(row.category).toBe("account");

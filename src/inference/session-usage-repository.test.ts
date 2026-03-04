@@ -36,7 +36,7 @@ describe("DrizzleSessionUsageRepository", () => {
       model: "claude-sonnet-4-20250514",
       costUsd: 0.0042,
     });
-    expect(record.id).toBeTruthy();
+    expect(record.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(record.sessionId).toBe("sess-1");
 
     const rows = await repo.findBySessionId("sess-1");

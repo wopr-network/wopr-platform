@@ -52,7 +52,7 @@ describe("AuditLogger", () => {
 
   it("inserts audit entries", async () => {
     const entry = await logger.log(makeInput());
-    expect(entry.id).toBeTruthy();
+    expect(entry.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(entry.user_id).toBe("user-1");
     expect(entry.action).toBe("instance.create");
     expect(entry.resource_type).toBe("instance");

@@ -46,7 +46,7 @@ describe("AccountDeletionStore", () => {
 
     it("creates a pending request with correct initial state", async () => {
       const req = await store.create("tenant-1", "user-1");
-      expect(req.id).toBeTruthy();
+      expect(req.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(req.tenantId).toBe("tenant-1");
       expect(req.requestedBy).toBe("user-1");
       expect(req.status).toBe("pending");
@@ -134,7 +134,7 @@ describe("AccountDeletionStore", () => {
       await store.markCompleted(req.id, { bot_instances: 3, credit_transactions: 10 });
       const updated = await store.getById(req.id);
       expect(updated?.status).toBe("completed");
-      expect(updated?.completedAt).toBeTruthy();
+      expect(typeof updated?.completedAt).toBe("string");
       expect(JSON.parse(updated?.deletionSummary ?? "null")).toEqual({
         bot_instances: 3,
         credit_transactions: 10,

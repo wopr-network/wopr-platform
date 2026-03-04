@@ -34,7 +34,7 @@ describe("TenantKeyRepository", () => {
   describe("upsert", () => {
     it("inserts a new key and returns the id", async () => {
       const id = await store.upsert("t1", "anthropic", fakeEncrypted, "My Key");
-      expect(id).toBeTruthy();
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
       const record = await store.get("t1", "anthropic");
       expect(record).not.toBeNull();

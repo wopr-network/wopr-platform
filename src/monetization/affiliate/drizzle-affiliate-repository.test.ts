@@ -30,7 +30,7 @@ describe("DrizzleAffiliateRepository", () => {
       const result = await repo.getOrCreateCode("tenant-1");
       expect(result.tenantId).toBe("tenant-1");
       expect(result.code).toMatch(/^[a-z0-9]{6}$/);
-      expect(result.createdAt).toBeTruthy();
+      expect(typeof result.createdAt).toBe("string");
     });
 
     it("returns the same code on subsequent calls", async () => {
@@ -131,7 +131,7 @@ describe("DrizzleAffiliateRepository", () => {
       await repo.recordReferral("referrer-1", "referred-1", "abc123");
       await repo.markFirstPurchase("referred-1");
       const list = await repo.listReferrals("referrer-1");
-      expect(list[0].firstPurchaseAt).toBeTruthy();
+      expect(typeof list[0].firstPurchaseAt).toBe("string");
     });
   });
 
@@ -141,7 +141,7 @@ describe("DrizzleAffiliateRepository", () => {
       await repo.recordMatch("referred-1", Credit.fromCents(1500));
       const list = await repo.listReferrals("referrer-1");
       expect(list[0].matchAmount?.toCents()).toBe(1500);
-      expect(list[0].matchedAt).toBeTruthy();
+      expect(typeof list[0].matchedAt).toBe("string");
     });
 
     it("is idempotent — second call with matchedAt set does not overwrite", async () => {
