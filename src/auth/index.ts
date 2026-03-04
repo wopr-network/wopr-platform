@@ -49,13 +49,14 @@ export function extractBearerToken(header: string | undefined): string | null {
  */
 export function timingSafeMapLookup<V>(map: Map<string, V>, candidate: string): V | undefined {
   const candidateBuf = Buffer.from(candidate);
+  let found: V | undefined;
   for (const [key, value] of map) {
     const keyBuf = Buffer.from(key);
     if (candidateBuf.length === keyBuf.length && timingSafeEqual(candidateBuf, keyBuf)) {
-      return value;
+      found = value;
     }
   }
-  return undefined;
+  return found;
 }
 
 // ---------------------------------------------------------------------------

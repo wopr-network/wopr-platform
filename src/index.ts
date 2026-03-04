@@ -16,7 +16,7 @@ import { setMarketplaceDeps } from "./api/routes/marketplace.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
 import { authenticateWebSocketUpgrade } from "./api/routes/ws-auth.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "./auth/index.js";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant, timingSafeMapLookup } from "./auth/index.js";
 import { EchoChatBackend } from "./chat/chat-backend.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
@@ -304,7 +304,7 @@ if (process.env.NODE_ENV !== "test") {
     // The same tokens that authenticate the fleet API also authenticate gateway calls.
     const tokenMetadata = buildTokenMetadataMap();
     const resolveServiceKey = (key: string): GatewayTenant | null => {
-      const meta = tokenMetadata.get(key);
+      const meta = timingSafeMapLookup(tokenMetadata, key);
       if (!meta?.tenantId) return null;
       return {
         id: meta.tenantId,
