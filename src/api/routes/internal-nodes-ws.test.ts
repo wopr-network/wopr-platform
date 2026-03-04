@@ -59,7 +59,7 @@ describe("WebSocket nodeId binding", () => {
     expect(result.nodeId).toBe("node-1");
   });
 
-  it("rejects with no-auth-configured when no bearer", async () => {
+  it("rejects with unauthorized when no bearer", async () => {
     const result = await authenticateWebSocketUpgrade({
       nodeId: "node-1",
       authHeader: undefined,
