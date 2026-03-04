@@ -145,7 +145,7 @@ adminGpuRoutes.get("/sizes", adminAuth, async (c) => {
  * Get single GPU node details
  */
 adminGpuRoutes.get("/:nodeId", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
   const node = await getGpuNodeRepository().getById(nodeId);
 
   if (!node) {
@@ -160,7 +160,7 @@ adminGpuRoutes.get("/:nodeId", adminAuth, async (c) => {
  * Destroy a GPU node. Returns 409 if provisioning or bootstrapping.
  */
 adminGpuRoutes.delete("/:nodeId", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
 
   try {
     const node = await getGpuNodeRepository().getById(nodeId);
@@ -199,7 +199,7 @@ adminGpuRoutes.delete("/:nodeId", adminAuth, async (c) => {
  * Reboot a GPU node via DO API
  */
 adminGpuRoutes.post("/:nodeId/reboot", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
 
   try {
     const node = await getGpuNodeRepository().getById(nodeId);

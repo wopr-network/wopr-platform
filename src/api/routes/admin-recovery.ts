@@ -57,7 +57,7 @@ adminRecoveryRoutes.get("/", adminAuth, async (c) => {
  * Get recovery event details with items
  */
 adminRecoveryRoutes.get("/:eventId", adminAuth, async (c) => {
-  const eventId = c.req.param("eventId");
+  const eventId = c.req.param("eventId") as string;
   const orchestrator = getRecoveryOrchestrator();
 
   const { event, items } = await orchestrator.getEventDetails(eventId);
@@ -84,7 +84,7 @@ adminRecoveryRoutes.get("/:eventId", adminAuth, async (c) => {
  * Retry waiting tenants for a recovery event
  */
 adminRecoveryRoutes.post("/:eventId/retry", adminAuth, async (c) => {
-  const eventId = c.req.param("eventId");
+  const eventId = c.req.param("eventId") as string;
   const orchestrator = getRecoveryOrchestrator();
 
   try {
@@ -323,7 +323,7 @@ adminNodeRoutes.get("/sizes", adminAuth, async (c) => {
  * Get node detail including tenant list and provisioning info
  */
 adminNodeRoutes.get("/:nodeId", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
   const nodeRepo = getNodeRepo();
 
   const node = await nodeRepo.getById(nodeId);
@@ -346,7 +346,7 @@ adminNodeRoutes.get("/:nodeId", adminAuth, async (c) => {
  * Destroy a node (must be drained/empty first)
  */
 adminNodeRoutes.delete("/:nodeId", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
 
   try {
     const provisioner = getNodeProvisioner();
@@ -378,7 +378,7 @@ adminNodeRoutes.delete("/:nodeId", adminAuth, async (c) => {
  * Get tenants assigned to a specific node
  */
 adminNodeRoutes.get("/:nodeId/tenants", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
 
   const tenants = await getBotInstanceRepo().listByNode(nodeId);
 
@@ -394,7 +394,7 @@ adminNodeRoutes.get("/:nodeId/tenants", adminAuth, async (c) => {
  * Get live capacity stats for a node via node agent command
  */
 adminNodeRoutes.get("/:nodeId/stats", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
 
   try {
     const { getCommandBus } = await import("../../fleet/services.js");
@@ -417,7 +417,7 @@ adminNodeRoutes.get("/:nodeId/stats", adminAuth, async (c) => {
  * Drain all tenants from a node (for decommissioning or maintenance).
  */
 adminNodeRoutes.post("/:nodeId/drain", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
 
   try {
     const result = await getNodeDrainer().drain(nodeId);
@@ -444,7 +444,7 @@ adminNodeRoutes.post("/:nodeId/drain", adminAuth, async (c) => {
  * Cancel an in-progress drain (marks node back to active)
  */
 adminNodeRoutes.post("/:nodeId/cancel-drain", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
 
   try {
     // Use the state machine transition to go back to active
@@ -474,7 +474,7 @@ adminNodeRoutes.post("/:nodeId/cancel-drain", adminAuth, async (c) => {
  * Manually trigger recovery for a specific node
  */
 adminNodeRoutes.post("/:nodeId/recover", adminAuth, async (c) => {
-  const nodeId = c.req.param("nodeId");
+  const nodeId = c.req.param("nodeId") as string;
   const orchestrator = getRecoveryOrchestrator();
 
   try {

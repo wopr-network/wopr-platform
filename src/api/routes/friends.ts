@@ -38,7 +38,7 @@ const friendsWriteAuth = scopedBearerAuthWithTenant(friendsTokenMetadataMap, "wr
 
 /** GET / -- List all friends for a bot instance */
 friendsRoutes.get("/", async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -56,7 +56,7 @@ friendsRoutes.get("/", async (c) => {
 
 /** GET /discovered -- List discovered bots on the network */
 friendsRoutes.get("/discovered", async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -73,7 +73,7 @@ friendsRoutes.get("/discovered", async (c) => {
 
 /** POST /requests -- Send a friend request */
 friendsRoutes.post("/requests", friendsWriteAuth, async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -102,7 +102,7 @@ friendsRoutes.post("/requests", friendsWriteAuth, async (c) => {
 
 /** GET /requests -- List pending friend requests */
 friendsRoutes.get("/requests", async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -119,7 +119,7 @@ friendsRoutes.get("/requests", async (c) => {
 
 /** POST /requests/:reqId/accept -- Accept a friend request */
 friendsRoutes.post("/requests/:reqId/accept", friendsWriteAuth, async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -130,7 +130,7 @@ friendsRoutes.post("/requests/:reqId/accept", friendsWriteAuth, async (c) => {
     return ownershipError;
   }
 
-  const reqId = c.req.param("reqId");
+  const reqId = c.req.param("reqId") as string;
   if (!SAFE_ID_RE.test(reqId)) {
     return c.json({ error: "Invalid request ID" }, 400);
   }
@@ -141,7 +141,7 @@ friendsRoutes.post("/requests/:reqId/accept", friendsWriteAuth, async (c) => {
 
 /** POST /requests/:reqId/reject -- Reject a friend request */
 friendsRoutes.post("/requests/:reqId/reject", friendsWriteAuth, async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -152,7 +152,7 @@ friendsRoutes.post("/requests/:reqId/reject", friendsWriteAuth, async (c) => {
     return ownershipError;
   }
 
-  const reqId = c.req.param("reqId");
+  const reqId = c.req.param("reqId") as string;
   if (!SAFE_ID_RE.test(reqId)) {
     return c.json({ error: "Invalid request ID" }, 400);
   }
@@ -163,7 +163,7 @@ friendsRoutes.post("/requests/:reqId/reject", friendsWriteAuth, async (c) => {
 
 /** PATCH /:friendId/capabilities -- Set friend capabilities */
 friendsRoutes.patch("/:friendId/capabilities", friendsWriteAuth, async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -174,7 +174,7 @@ friendsRoutes.patch("/:friendId/capabilities", friendsWriteAuth, async (c) => {
     return ownershipError;
   }
 
-  const friendId = c.req.param("friendId");
+  const friendId = c.req.param("friendId") as string;
   if (!SAFE_ID_RE.test(friendId)) {
     return c.json({ error: "Invalid friend ID" }, 400);
   }
@@ -197,7 +197,7 @@ friendsRoutes.patch("/:friendId/capabilities", friendsWriteAuth, async (c) => {
 
 /** GET /auto-accept -- Get auto-accept rules */
 friendsRoutes.get("/auto-accept", async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }
@@ -214,7 +214,7 @@ friendsRoutes.get("/auto-accept", async (c) => {
 
 /** PUT /auto-accept -- Update auto-accept rules */
 friendsRoutes.put("/auto-accept", friendsWriteAuth, async (c) => {
-  const instanceId = c.req.param("id") as string;
+  const instanceId = c.req.param("id") as string as string;
   if (!SAFE_ID_RE.test(instanceId)) {
     return c.json({ error: "Invalid instance ID" }, 400);
   }

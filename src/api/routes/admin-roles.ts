@@ -30,7 +30,7 @@ export function createAdminRolesRoutes(dbOrFactory: DrizzleDb | (() => DrizzleDb
   // GET /api/admin/roles/:tenantId — list roles for a tenant
   // Platform admins can view any tenant; tenant admins can view their own
   routes.get("/:tenantId", requireTenantAdmin(getRoleStore), async (c) => {
-    const tenantId = c.req.param("tenantId");
+    const tenantId = c.req.param("tenantId") as string;
     const roles = await getRoleStore().listByTenant(tenantId);
     return c.json({ roles });
   });
@@ -38,8 +38,8 @@ export function createAdminRolesRoutes(dbOrFactory: DrizzleDb | (() => DrizzleDb
   // PUT /api/admin/roles/:tenantId/:userId — set role for user in tenant
   // Platform admins can manage any tenant; tenant admins can manage their own
   routes.put("/:tenantId/:userId", requireTenantAdmin(getRoleStore), async (c) => {
-    const tenantId = c.req.param("tenantId");
-    const userId = c.req.param("userId");
+    const tenantId = c.req.param("tenantId") as string;
+    const userId = c.req.param("userId") as string;
     const body = await c.req.json<{ role: string }>().catch(() => null);
 
     if (!body?.role || !isValidRole(body.role)) {
@@ -77,8 +77,8 @@ export function createAdminRolesRoutes(dbOrFactory: DrizzleDb | (() => DrizzleDb
   // DELETE /api/admin/roles/:tenantId/:userId — remove role
   // Platform admins can manage any tenant; tenant admins can manage their own
   routes.delete("/:tenantId/:userId", requireTenantAdmin(getRoleStore), async (c) => {
-    const tenantId = c.req.param("tenantId");
-    const userId = c.req.param("userId");
+    const tenantId = c.req.param("tenantId") as string;
+    const userId = c.req.param("userId") as string;
 
     const removed = await getRoleStore().removeRole(userId, tenantId);
     if (!removed) {
@@ -162,7 +162,7 @@ export function createPlatformAdminRoutes(dbOrFactory: DrizzleDb | (() => Drizzl
 
   // DELETE /api/admin/platform-admins/:userId — remove a platform admin
   routes.delete("/:userId", async (c) => {
-    const userId = c.req.param("userId");
+    const userId = c.req.param("userId") as string;
 
     // Prevent removing the last platform admin
     if ((await getRoleStore().countPlatformAdmins()) <= 1 && (await getRoleStore().isPlatformAdmin(userId))) {
