@@ -45,7 +45,7 @@ describe("runDeletionCron", () => {
 
     const updated = await store.getById("expired-1");
     expect(updated?.status).toBe("completed");
-    expect(typeof updated?.completedAt).toBe("string");
+    expect(updated?.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
   });
 
   it("skips non-expired pending requests", async () => {

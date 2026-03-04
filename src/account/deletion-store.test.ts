@@ -134,7 +134,7 @@ describe("AccountDeletionStore", () => {
       await store.markCompleted(req.id, { bot_instances: 3, credit_transactions: 10 });
       const updated = await store.getById(req.id);
       expect(updated?.status).toBe("completed");
-      expect(typeof updated?.completedAt).toBe("string");
+      expect(updated?.completedAt).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
       expect(JSON.parse(updated?.deletionSummary ?? "null")).toEqual({
         bot_instances: 3,
         credit_transactions: 10,

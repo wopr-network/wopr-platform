@@ -55,7 +55,7 @@ describe("DrizzleCredentialRepository", () => {
       expect(result?.authHeader).toBe("x-api-key");
       expect(result?.isActive).toBe(true);
       expect(result?.createdBy).toBe("admin-1");
-      expect(typeof result?.createdAt).toBe("string");
+      expect(result?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
     });
 
     it("returns null for non-existent ID", async () => {
@@ -153,7 +153,7 @@ describe("DrizzleCredentialRepository", () => {
 
       const row = await repo.getFullById("rot-test");
       expect(row?.encryptedValue).toBe("cipher-v2");
-      expect(typeof row?.rotatedAt).toBe("string");
+      expect(row?.rotatedAt).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
     });
   });
 
@@ -230,7 +230,7 @@ describe("DrizzleCredentialRepository", () => {
       expect(await repo.markValidated("mv-1")).toBe(true);
 
       const row = await repo.getFullById("mv-1");
-      expect(typeof row?.lastValidated).toBe("string");
+      expect(row?.lastValidated).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
     });
 
     it("returns false for non-existent ID", async () => {
