@@ -425,7 +425,7 @@ if (isMain) {
   const config = nodeAgentConfigSchema.parse({
     platformUrl: process.env.PLATFORM_URL,
     nodeId: savedCreds.nodeId ?? process.env.NODE_ID,
-    nodeSecret: savedCreds.nodeSecret ?? process.env.NODE_SECRET,
+    nodeSecret: savedCreds.nodeSecret ?? process.env.WOPR_NODE_SECRET ?? process.env.NODE_SECRET,
     registrationToken: process.env.REGISTRATION_TOKEN,
     heartbeatIntervalMs: process.env.HEARTBEAT_INTERVAL_MS,
     backupDir: process.env.BACKUP_DIR,
