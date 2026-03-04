@@ -10,26 +10,34 @@ export interface AdminRolesRouteDeps {
 }
 
 /**
- * Create admin role management API routes with an explicit database.
- * Used in tests to inject an in-memory database.
+ * Create admin role management API routes.
+ *
+ * Accepts either a `DrizzleDb` instance (for tests) or a `() => DrizzleDb`
+ * factory (for production, where DB is opened lazily on first request).
  */
-export function createAdminRolesRoutes(db: DrizzleDb): Hono<AuthEnv> {
-  const roleStore = new RoleStore(db);
+export function createAdminRolesRoutes(dbOrFactory: DrizzleDb | (() => DrizzleDb)): Hono<AuthEnv> {
+  const resolveDb = typeof dbOrFactory === "function" ? dbOrFactory : () => dbOrFactory;
+  let roleStore: RoleStore | undefined;
+  function getRoleStore(): RoleStore {
+    if (!roleStore) roleStore = new RoleStore(resolveDb());
+    return roleStore;
+  }
+
   const routes = new Hono<AuthEnv>();
 
   // --- Tenant role routes ---
 
   // GET /api/admin/roles/:tenantId — list roles for a tenant
   // Platform admins can view any tenant; tenant admins can view their own
-  routes.get("/:tenantId", requireTenantAdmin(roleStore), async (c) => {
+  routes.get("/:tenantId", requireTenantAdmin(getRoleStore), async (c) => {
     const tenantId = c.req.param("tenantId");
-    const roles = await roleStore.listByTenant(tenantId);
+    const roles = await getRoleStore().listByTenant(tenantId);
     return c.json({ roles });
   });
 
   // PUT /api/admin/roles/:tenantId/:userId — set role for user in tenant
   // Platform admins can manage any tenant; tenant admins can manage their own
-  routes.put("/:tenantId/:userId", requireTenantAdmin(roleStore), async (c) => {
+  routes.put("/:tenantId/:userId", requireTenantAdmin(getRoleStore), async (c) => {
     const tenantId = c.req.param("tenantId");
     const userId = c.req.param("userId");
     const body = await c.req.json<{ role: string }>().catch(() => null);
@@ -40,12 +48,14 @@ export function createAdminRolesRoutes(db: DrizzleDb): Hono<AuthEnv> {
 
     const currentUser = c.get("user");
 
-    // Only platform admins can grant platform_admin role
-    if (body.role === "platform_admin" && !(await roleStore.isPlatformAdmin(currentUser.id))) {
+    // Only platform admins can grant platform_admin role.
+    // Bearer tokens with "admin" scope are implicitly platform admins.
+    const isAdmin = currentUser.roles.includes("admin") || (await getRoleStore().isPlatformAdmin(currentUser.id));
+    if (body.role === "platform_admin" && !isAdmin) {
       return c.json({ error: "Only platform admins can grant platform_admin role" }, 403);
     }
 
-    await roleStore.setRole(userId, tenantId, body.role, currentUser.id);
+    await getRoleStore().setRole(userId, tenantId, body.role, currentUser.id);
 
     try {
       getAdminAuditLog().log({
@@ -66,11 +76,11 @@ export function createAdminRolesRoutes(db: DrizzleDb): Hono<AuthEnv> {
 
   // DELETE /api/admin/roles/:tenantId/:userId — remove role
   // Platform admins can manage any tenant; tenant admins can manage their own
-  routes.delete("/:tenantId/:userId", requireTenantAdmin(roleStore), async (c) => {
+  routes.delete("/:tenantId/:userId", requireTenantAdmin(getRoleStore), async (c) => {
     const tenantId = c.req.param("tenantId");
     const userId = c.req.param("userId");
 
-    const removed = await roleStore.removeRole(userId, tenantId);
+    const removed = await getRoleStore().removeRole(userId, tenantId);
     if (!removed) {
       return c.json({ error: "Role not found" }, 404);
     }
@@ -99,18 +109,27 @@ export function createAdminRolesRoutes(db: DrizzleDb): Hono<AuthEnv> {
 }
 
 /**
- * Create platform admin management routes with an explicit database.
+ * Create platform admin management routes.
+ *
+ * Accepts either a `DrizzleDb` instance (for tests) or a `() => DrizzleDb`
+ * factory (for production, where DB is opened lazily on first request).
  */
-export function createPlatformAdminRoutes(db: DrizzleDb): Hono<AuthEnv> {
-  const roleStore = new RoleStore(db);
+export function createPlatformAdminRoutes(dbOrFactory: DrizzleDb | (() => DrizzleDb)): Hono<AuthEnv> {
+  const resolveDb = typeof dbOrFactory === "function" ? dbOrFactory : () => dbOrFactory;
+  let roleStore: RoleStore | undefined;
+  function getRoleStore(): RoleStore {
+    if (!roleStore) roleStore = new RoleStore(resolveDb());
+    return roleStore;
+  }
+
   const routes = new Hono<AuthEnv>();
 
   // All platform admin routes require platform_admin role
-  routes.use("*", requirePlatformAdmin(roleStore));
+  routes.use("*", requirePlatformAdmin(getRoleStore));
 
   // GET /api/admin/platform-admins — list all platform admins
   routes.get("/", async (c) => {
-    const admins = await roleStore.listPlatformAdmins();
+    const admins = await getRoleStore().listPlatformAdmins();
     return c.json({ admins });
   });
 
@@ -123,7 +142,7 @@ export function createPlatformAdminRoutes(db: DrizzleDb): Hono<AuthEnv> {
     }
 
     const currentUser = c.get("user");
-    await roleStore.setRole(body.userId, RoleStore.PLATFORM_TENANT, "platform_admin", currentUser.id);
+    await getRoleStore().setRole(body.userId, RoleStore.PLATFORM_TENANT, "platform_admin", currentUser.id);
 
     try {
       getAdminAuditLog().log({
@@ -146,11 +165,11 @@ export function createPlatformAdminRoutes(db: DrizzleDb): Hono<AuthEnv> {
     const userId = c.req.param("userId");
 
     // Prevent removing the last platform admin
-    if ((await roleStore.countPlatformAdmins()) <= 1 && (await roleStore.isPlatformAdmin(userId))) {
+    if ((await getRoleStore().countPlatformAdmins()) <= 1 && (await getRoleStore().isPlatformAdmin(userId))) {
       return c.json({ error: "Cannot remove the last platform admin" }, 409);
     }
 
-    const removed = await roleStore.removeRole(userId, RoleStore.PLATFORM_TENANT);
+    const removed = await getRoleStore().removeRole(userId, RoleStore.PLATFORM_TENANT);
     if (!removed) {
       return c.json({ error: "Platform admin not found" }, 404);
     }

@@ -315,49 +315,22 @@ app.route("/api/admin/gpu", adminGpuRoutes);
 app.route("/api/admin/inference", adminInferenceRoutes);
 app.route("/api/admin/migrate", adminMigrationRoutes);
 app.route("/api/admin/users", adminUsersApiRoutes);
-// Admin roles routes (WOP-1607) — deferred init so DB is not opened at import time
+// Admin roles routes (WOP-1607) — uses getDb factory so the DB is not opened
+// at import time. createAdminRolesRoutes / createPlatformAdminRoutes accept a
+// factory and defer RoleStore construction to the first request. Context variables
+// set by _rolesAdminAuth are preserved because we use app.route() directly
+// (no .fetch(c.req.raw) indirection that would strip Hono context).
 {
   const _rolesAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
-  let _rolesDb: ReturnType<typeof getDb> | undefined;
-  let _adminRolesRoutes: ReturnType<typeof createAdminRolesRoutes> | undefined;
-  let _platformAdminRoutes: ReturnType<typeof createPlatformAdminRoutes> | undefined;
-
-  function initRolesRoutes() {
-    if (!_rolesDb) {
-      _rolesDb = getDb();
-      _adminRolesRoutes = createAdminRolesRoutes(_rolesDb);
-      _platformAdminRoutes = createPlatformAdminRoutes(_rolesDb);
-    }
-  }
 
   const _adminRoles = new Hono();
   _adminRoles.use("*", _rolesAdminAuth);
-  _adminRoles.route(
-    "/",
-    (() => {
-      const inner = new Hono();
-      inner.all("*", (c) => {
-        initRolesRoutes();
-        return (_adminRolesRoutes as ReturnType<typeof createAdminRolesRoutes>).fetch(c.req.raw);
-      });
-      return inner;
-    })(),
-  );
+  _adminRoles.route("/", createAdminRolesRoutes(getDb));
   app.route("/api/admin/roles", _adminRoles);
 
   const _adminPlatformAdmins = new Hono();
   _adminPlatformAdmins.use("*", _rolesAdminAuth);
-  _adminPlatformAdmins.route(
-    "/",
-    (() => {
-      const inner = new Hono();
-      inner.all("*", (c) => {
-        initRolesRoutes();
-        return (_platformAdminRoutes as ReturnType<typeof createPlatformAdminRoutes>).fetch(c.req.raw);
-      });
-      return inner;
-    })(),
-  );
+  _adminPlatformAdmins.route("/", createPlatformAdminRoutes(getDb));
   app.route("/api/admin/platform-admins", _adminPlatformAdmins);
 }
 // Admin onboarding script editor (WOP-1027)
