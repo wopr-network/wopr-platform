@@ -21,10 +21,10 @@ export async function authenticateWebSocketUpgrade(req: WsAuthRequest): Promise<
   const { nodeId, authHeader } = req;
   const bearer = authHeader?.replace(/^Bearer\s+/i, "");
 
-  // Per-node persistent secret
+  // Per-node persistent secret — timing-safe comparison via verifyNodeSecret
   if (bearer) {
-    const nodeBySecret = await getNodeRepo().getBySecret(bearer);
-    if (nodeBySecret && nodeBySecret.id === nodeId) {
+    const verified = await getNodeRepo().verifyNodeSecret(nodeId, bearer);
+    if (verified === true) {
       return { authenticated: true, nodeId };
     }
   }

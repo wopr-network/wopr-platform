@@ -127,6 +127,8 @@ describe("POST /register", () => {
   });
 
   it("returns 400 for invalid JSON body", async () => {
+    const tokenStore = getRegistrationTokenStore();
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",
@@ -141,6 +143,8 @@ describe("POST /register", () => {
   });
 
   it("returns 400 when node_id contains invalid characters", async () => {
+    const tokenStore = getRegistrationTokenStore();
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",
@@ -156,6 +160,8 @@ describe("POST /register", () => {
   });
 
   it("returns 400 when host contains invalid characters", async () => {
+    const tokenStore = getRegistrationTokenStore();
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",
@@ -174,6 +180,8 @@ describe("POST /register", () => {
   });
 
   it("returns 400 when capacity_mb is negative", async () => {
+    const tokenStore = getRegistrationTokenStore();
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",
@@ -187,6 +195,8 @@ describe("POST /register", () => {
   });
 
   it("returns 400 when capacity_mb is Infinity", async () => {
+    const tokenStore = getRegistrationTokenStore();
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",
@@ -200,6 +210,8 @@ describe("POST /register", () => {
   });
 
   it("returns 400 when required fields are missing", async () => {
+    const tokenStore = getRegistrationTokenStore();
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",
@@ -213,6 +225,8 @@ describe("POST /register", () => {
   });
 
   it("returns 400 when node_id exceeds max length", async () => {
+    const tokenStore = getRegistrationTokenStore();
+    vi.mocked(tokenStore.consume).mockResolvedValue(null);
     const token = randomUUID();
     const res = await internalNodeRoutes.request("/register", {
       method: "POST",

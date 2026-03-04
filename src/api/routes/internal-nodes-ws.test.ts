@@ -29,12 +29,11 @@ describe("WebSocket nodeId binding", () => {
     vi.clearAllMocks();
   });
 
-  it("per-node secret (Path 2) rejects when bearer resolves to different nodeId", async () => {
+  it("per-node secret (Path 2) rejects when verifyNodeSecret returns false", async () => {
     const nodeRepo = getNodeRepo() as ReturnType<typeof getNodeRepo> & {
-      getBySecret: ReturnType<typeof vi.fn>;
+      verifyNodeSecret: ReturnType<typeof vi.fn>;
     };
-    // Bearer resolves to node-2, but URL says node-1
-    nodeRepo.getBySecret.mockResolvedValue({ id: "node-2" });
+    nodeRepo.verifyNodeSecret.mockResolvedValue(false);
 
     const result = await authenticateWebSocketUpgrade({
       nodeId: "node-1",
@@ -44,11 +43,11 @@ describe("WebSocket nodeId binding", () => {
     expect(result.authenticated).toBe(false);
   });
 
-  it("per-node secret (Path 2) accepts when bearer resolves to matching nodeId", async () => {
+  it("per-node secret (Path 2) accepts when verifyNodeSecret returns true", async () => {
     const nodeRepo = getNodeRepo() as ReturnType<typeof getNodeRepo> & {
-      getBySecret: ReturnType<typeof vi.fn>;
+      verifyNodeSecret: ReturnType<typeof vi.fn>;
     };
-    nodeRepo.getBySecret.mockResolvedValue({ id: "node-1" });
+    nodeRepo.verifyNodeSecret.mockResolvedValue(true);
 
     const result = await authenticateWebSocketUpgrade({
       nodeId: "node-1",
