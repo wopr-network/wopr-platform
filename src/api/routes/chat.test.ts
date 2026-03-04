@@ -157,6 +157,22 @@ describe("chatRoutes singleton — outer auth gate", () => {
     // Must be 401, not 404 or 500 (which would indicate it reached inner.fetch)
     expect(res.status).toBe(401);
   });
+
+  it("forwards authenticated user to inner handler so authed requests succeed", async () => {
+    // When user IS present in the outer context, the singleton wrapper must
+    // forward the identity so inner handlers don't return 401.
+    setChatDeps({ backend: createMockBackend([]) });
+    const authedChatRoutes = new Hono<AuthEnv>();
+    authedChatRoutes.use("/*", async (c, next) => {
+      c.set("user", { id: "test-user", roles: [] });
+      c.set("authMethod", "session");
+      return next();
+    });
+    authedChatRoutes.route("/", chatRoutes);
+    const res = await authedChatRoutes.request(`/stream?sessionId=${TEST_SESSION}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+  });
 });
 
 describe("GET /stream", () => {
@@ -299,6 +315,41 @@ describe("session ownership (IDOR prevention)", () => {
     const resB = await appB.request(`/stream?sessionId=${sessionId}`);
     expect(resB.status).toBe(403);
     const body = await resB.json();
+    expect(body.error).toBe("Session access denied");
+  });
+
+  it("GET /stream claims unclaimed session so a subsequent GET by another user is denied", async () => {
+    // IDOR: attacker GETs /stream on an unclaimed sessionId first, then victim POSTs.
+    // The attacker's GET should claim ownership so the victim's subsequent GET is denied.
+    const backend = createMockBackend([{ type: "done" }]);
+    const routes = createChatRoutes({ backend });
+
+    const attackerApp = new Hono<AuthEnv>();
+    attackerApp.use("/*", async (c, next) => {
+      c.set("user", { id: "attacker", roles: [] });
+      c.set("authMethod", "session");
+      return next();
+    });
+    attackerApp.route("/", routes);
+
+    const victimApp = new Hono<AuthEnv>();
+    victimApp.use("/*", async (c, next) => {
+      c.set("user", { id: "victim", roles: [] });
+      c.set("authMethod", "session");
+      return next();
+    });
+    victimApp.route("/", routes);
+
+    const sessionId = crypto.randomUUID();
+
+    // Attacker subscribes first on an unclaimed session
+    const attackerStreamRes = await attackerApp.request(`/stream?sessionId=${sessionId}`);
+    expect(attackerStreamRes.status).toBe(200);
+
+    // Victim tries to stream the same session — should be 403
+    const victimStreamRes = await victimApp.request(`/stream?sessionId=${sessionId}`);
+    expect(victimStreamRes.status).toBe(403);
+    const body = await victimStreamRes.json();
     expect(body.error).toBe("Session access denied");
   });
 

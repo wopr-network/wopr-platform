@@ -18,11 +18,21 @@ export interface ChatRouteDeps {
  * Create chat routes with injected dependencies.
  * Enables testing without real WOPR instances.
  */
-/** Extract authenticated user from context, or null if not set. */
-function getUser(c: { get(key: string): unknown }): { id: string } | null {
+/** Internal header used to forward authenticated user identity through inner.fetch(). */
+const INTERNAL_USER_ID_HEADER = "x-internal-user-id";
+
+/** Extract authenticated user from context, or from the internal forwarding header. */
+function getUser(c: {
+  get(key: string): unknown;
+  req?: { header?(name: string): string | undefined };
+}): { id: string } | null {
   try {
     const user = c.get("user") as { id: string } | undefined;
-    return user ?? null;
+    if (user) return user;
+    // Fall back to internal forwarding header set by the singleton wrapper.
+    const forwarded = c.req?.header?.(INTERNAL_USER_ID_HEADER);
+    if (forwarded) return { id: forwarded };
+    return null;
   } catch {
     return null;
   }
@@ -47,7 +57,8 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
       return c.json({ error: "sessionId query parameter is required" }, 400);
     }
 
-    // --- Ownership check ---
+    // --- Bind session to user (first caller wins) and check ownership ---
+    registry.setOwner(sessionId, user.id);
     if (!registry.isOwner(sessionId, user.id)) {
       return c.json({ error: "Session access denied" }, 403);
     }
@@ -207,7 +218,12 @@ chatRoutes.route(
         return c.json({ error: "Authentication required" }, 401);
       }
       const inner = getChatRoutesInner();
-      return inner.fetch(c.req.raw);
+      // Forward authenticated identity into the inner request, since inner.fetch()
+      // creates a fresh Hono context where c.get("user") would be undefined.
+      const forwarded = new Request(c.req.raw, {
+        headers: new Headers([...c.req.raw.headers, [INTERNAL_USER_ID_HEADER, user.id]]),
+      });
+      return inner.fetch(forwarded);
     });
     return lazy;
   })(),
