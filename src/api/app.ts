@@ -318,7 +318,18 @@ app.route("/api/admin/users", adminUsersApiRoutes);
 // Admin roles routes (WOP-1607) — deferred init so DB is not opened at import time
 {
   const _rolesAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
-  let _rolesDb: ReturnType<typeof getDb> | null = null;
+  let _rolesDb: ReturnType<typeof getDb> | undefined;
+  let _adminRolesRoutes: ReturnType<typeof createAdminRolesRoutes> | undefined;
+  let _platformAdminRoutes: ReturnType<typeof createPlatformAdminRoutes> | undefined;
+
+  function initRolesRoutes() {
+    if (!_rolesDb) {
+      _rolesDb = getDb();
+      _adminRolesRoutes = createAdminRolesRoutes(_rolesDb);
+      _platformAdminRoutes = createPlatformAdminRoutes(_rolesDb);
+    }
+  }
+
   const _adminRoles = new Hono();
   _adminRoles.use("*", _rolesAdminAuth);
   _adminRoles.route(
@@ -326,8 +337,8 @@ app.route("/api/admin/users", adminUsersApiRoutes);
     (() => {
       const inner = new Hono();
       inner.all("*", (c) => {
-        if (!_rolesDb) _rolesDb = getDb();
-        return createAdminRolesRoutes(_rolesDb).fetch(c.req.raw);
+        initRolesRoutes();
+        return (_adminRolesRoutes as ReturnType<typeof createAdminRolesRoutes>).fetch(c.req.raw);
       });
       return inner;
     })(),
@@ -341,8 +352,8 @@ app.route("/api/admin/users", adminUsersApiRoutes);
     (() => {
       const inner = new Hono();
       inner.all("*", (c) => {
-        if (!_rolesDb) _rolesDb = getDb();
-        return createPlatformAdminRoutes(_rolesDb).fetch(c.req.raw);
+        initRolesRoutes();
+        return (_platformAdminRoutes as ReturnType<typeof createPlatformAdminRoutes>).fetch(c.req.raw);
       });
       return inner;
     })(),
