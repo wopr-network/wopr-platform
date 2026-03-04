@@ -1138,12 +1138,8 @@ if (process.env.NODE_ENV !== "test") {
             return;
           }
 
-          if (authResult.reason === "no auth configured") {
-            socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
-          } else {
-            logger.warn(`WebSocket rejected for node ${nodeId}: ${authResult.reason}`);
-            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-          }
+          logger.warn(`WebSocket rejected for node ${nodeId}: ${authResult.reason}`);
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           socket.destroy();
         } else {
           socket.destroy();
