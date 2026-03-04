@@ -18,10 +18,18 @@ class AdminUserCreator implements IUserCreator {
   ) {}
 
   async createUser(userId: string): Promise<void> {
-    // Swap BEFORE await — prevents concurrent signups from double-promoting
+    // Swap to no-op BEFORE await to prevent concurrent double-promoting.
+    // Save the current creator so we can restore it on failure.
+    const previous = this.holder.creator;
     this.holder.creator = new UserCreator();
-    await this.roleStore.setRole(userId, "*", "platform_admin", "bootstrap");
-    logger.info(`Bootstrap: first user ${userId} auto-promoted to platform_admin`);
+    try {
+      await this.roleStore.setRole(userId, "*", "platform_admin", "bootstrap");
+      logger.info(`Bootstrap: first user ${userId} auto-promoted to platform_admin`);
+    } catch (err) {
+      // Restore holder so the next signup can retry bootstrap
+      this.holder.creator = previous;
+      throw err;
+    }
   }
 }
 

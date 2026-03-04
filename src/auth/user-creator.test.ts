@@ -51,4 +51,48 @@ describe("createUserCreator", () => {
 
     expect(store.setRole).not.toHaveBeenCalled();
   });
+
+  it("retries bootstrap on transient setRole failure", async () => {
+    const calls: Array<{ userId: string }> = [];
+    let failOnce = true;
+    const store = {
+      countPlatformAdmins: vi.fn().mockResolvedValue(0),
+      setRole: vi.fn(async (userId: string) => {
+        if (failOnce) {
+          failOnce = false;
+          throw new Error("transient DB error");
+        }
+        calls.push({ userId });
+      }),
+    } as unknown as RoleStore;
+
+    const creator = await createUserCreator(store);
+
+    // First call fails — should NOT permanently disable bootstrap
+    await expect(creator.createUser("user-1")).rejects.toThrow("transient DB error");
+
+    // Second call should still attempt promotion
+    await creator.createUser("user-2");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].userId).toBe("user-2");
+  });
+
+  it("concurrent calls promote only the first user (race condition)", async () => {
+    const calls: Array<{ userId: string }> = [];
+    const store = {
+      countPlatformAdmins: vi.fn().mockResolvedValue(0),
+      setRole: vi.fn(async (userId: string) => {
+        calls.push({ userId });
+      }),
+    } as unknown as RoleStore;
+
+    const creator = await createUserCreator(store);
+
+    // Simulate concurrent signups
+    await Promise.all([creator.createUser("user-a"), creator.createUser("user-b")]);
+
+    // Only one should be promoted
+    expect(store.setRole).toHaveBeenCalledOnce();
+  });
 });

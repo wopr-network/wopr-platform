@@ -23,13 +23,17 @@ const BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET || "";
 const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || "http://localhost:3100";
 
 let _userCreator: IUserCreator | null = null;
+let _userCreatorPromise: Promise<IUserCreator> | null = null;
 
 async function getUserCreator(): Promise<IUserCreator> {
-  if (!_userCreator) {
-    const roleStore = new RoleStore(getDb());
-    _userCreator = await createUserCreator(roleStore);
+  if (_userCreator) return _userCreator;
+  if (!_userCreatorPromise) {
+    _userCreatorPromise = createUserCreator(new RoleStore(getDb())).then((creator) => {
+      _userCreator = creator;
+      return creator;
+    });
   }
-  return _userCreator;
+  return _userCreatorPromise;
 }
 
 function authOptions(pool: Pool): BetterAuthOptions {
@@ -80,7 +84,20 @@ function authOptions(pool: Pool): BetterAuthOptions {
       user: {
         create: {
           after: async (user) => {
+            // Bootstrap: auto-promote first signup to platform_admin (WOP-1681)
+            // Must run before any early returns so OAuth/verified signups don't skip it.
+            try {
+              const userCreator = await getUserCreator();
+              await userCreator.createUser(user.id);
+            } catch (error) {
+              // Log but don't block signup
+              logger.error("Failed to run user creator:", error);
+            }
+
+            // emailVerified users (OAuth signups) don't need verification email
+            // or personal tenant creation — return early after bootstrap check.
             if (user.emailVerified) return;
+
             // Send verification email after signup
             try {
               await initVerificationSchema(pool);
@@ -106,15 +123,6 @@ function authOptions(pool: Pool): BetterAuthOptions {
             } catch (error) {
               // Log but don't block signup
               logger.error("Failed to create personal tenant:", error);
-            }
-
-            // Bootstrap: auto-promote first signup to platform_admin (WOP-1681)
-            try {
-              const userCreator = await getUserCreator();
-              await userCreator.createUser(user.id);
-            } catch (error) {
-              // Log but don't block signup
-              logger.error("Failed to run user creator:", error);
             }
           },
         },
@@ -210,4 +218,5 @@ export function resetAuth(): void {
  */
 export function resetUserCreator(): void {
   _userCreator = null;
+  _userCreatorPromise = null;
 }
