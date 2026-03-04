@@ -632,7 +632,8 @@ export const billingRouter = router({
       if (err instanceof PaymentMethodOwnershipError) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Payment method does not belong to this account" });
       }
-      console.error("[billing.removePaymentMethod]", err);
+      const { logger } = await import("../../config/logger.js");
+      logger.error(`billing.removePaymentMethod failed: ${String(err)}`);
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
         message: "Failed to remove payment method. Please try again.",
@@ -914,7 +915,8 @@ export const billingRouter = router({
         couponCode: input.code.toUpperCase().trim(),
       });
     } catch (err) {
-      console.error("[billing.applyCoupon]", err);
+      const { logger } = await import("../../config/logger.js");
+      logger.error(`billing.applyCoupon failed: ${String(err)}`);
       throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired coupon code" });
     }
     if (results.length === 0) {
