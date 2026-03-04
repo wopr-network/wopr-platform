@@ -227,7 +227,7 @@ describe("gateway route mounting — webhook route ordering", () => {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: "test=1",
       });
-      expect(res.status, `${path} should not be 404`).not.toBe(404);
+      expect(res.status, `${path} should be 400 (Twilio HMAC missing sig, not 401/404)`).toBe(400);
     }
   });
 
