@@ -464,7 +464,7 @@ describe("NodeAgent", () => {
     agent.stop(); // should not throw
   });
 
-  it("sends X-Node-Secret header on registration when woprNodeSecret is set", async () => {
+  it("does not send X-Node-Secret header on registration (header removed in WOP-1614)", async () => {
     const config = nodeAgentConfigSchema.parse({
       platformUrl: "https://api.wopr.bot",
       nodeId: "node-test",
@@ -488,7 +488,7 @@ describe("NodeAgent", () => {
     const registrationCall = fetchCalls.find(([url]) => String(url).includes("/internal/nodes/register"));
     expect(registrationCall).toBeDefined();
     const headers = registrationCall?.[1]?.headers as Record<string, string>;
-    expect(headers["X-Node-Secret"]).toBe("wopr_node_abc123def456");
+    expect(headers["X-Node-Secret"]).toBeUndefined();
   });
 
   it("does not send X-Node-Secret header when woprNodeSecret is not set", async () => {

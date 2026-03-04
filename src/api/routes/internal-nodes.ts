@@ -1,4 +1,4 @@
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logger } from "../../config/logger.js";
@@ -21,52 +21,10 @@ const RegisterNodeSchema = z.object({
   agent_version: z.string().min(1).max(32),
 });
 
-/**
- * Validate node authentication against static NODE_SECRET.
- * Returns true if valid, false if invalid credentials, null if NODE_SECRET not configured.
- *
- * Kept for backwards compatibility with existing static secret auth and WebSocket upgrade handler.
- */
-export function validateNodeAuth(authHeader: string | undefined): boolean | null {
-  const nodeSecret = process.env.NODE_SECRET;
-  if (!nodeSecret) return null; // Not configured
-  if (process.env.DISABLE_STATIC_NODE_SECRET === "true") return false; // Kill-switch active
-  if (!authHeader) return false;
-  const token = authHeader.replace(/^Bearer\s+/i, "");
-  const a = Buffer.from(token);
-  const b = Buffer.from(nodeSecret);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
-
-/**
- * Returns deprecation warning messages for NODE_SECRET configuration.
- * Called at startup to log warnings. Pure function for testability.
- */
-export function getNodeSecretDeprecationWarnings(): string[] {
-  const warnings: string[] = [];
-  if (!process.env.NODE_SECRET) return warnings;
-
-  warnings.push(
-    "[DEPRECATED] NODE_SECRET is set. Static shared-secret node auth is deprecated and will be removed in a future version. " +
-      "Migrate to per-node secrets (WOPR_NODE_SECRET) or registration tokens. " +
-      "Set DISABLE_STATIC_NODE_SECRET=true to disable the static secret auth path now.",
-  );
-
-  if (process.env.DISABLE_STATIC_NODE_SECRET === "true") {
-    warnings.push(
-      "NODE_SECRET is set but static secret auth is disabled (DISABLE_STATIC_NODE_SECRET=true). " +
-        "Only per-node secrets and registration tokens will be accepted.",
-    );
-  }
-
-  return warnings;
-}
-
 // BOUNDARY(WOP-805): REST is the correct layer for internal node APIs.
-// Node agents authenticate with static NODE_SECRET or per-node persistent
-// secrets — not session cookies. This is machine-to-machine communication
-// that does not go through the dashboard UI.
+// Node agents authenticate with per-node persistent secrets or registration
+// tokens. This is machine-to-machine communication that does not go through
+// the dashboard UI.
 /**
  * Internal API routes for node agent communication.
  */
@@ -76,10 +34,9 @@ export const internalNodeRoutes = new Hono();
  * POST /internal/nodes/register
  * Node registration (called on agent boot).
  *
- * Supports 3 auth paths:
- * 1. Static NODE_SECRET (backwards-compatible)
- * 2. Per-node persistent secret (returning self-hosted agent)
- * 3. One-time registration token (new self-hosted node, UUID format)
+ * Supports 2 auth paths:
+ * 1. Per-node persistent secret (returning self-hosted agent)
+ * 2. One-time registration token (new self-hosted node, UUID format)
  */
 internalNodeRoutes.post("/register", async (c) => {
   const authHeader = c.req.header("Authorization");
@@ -120,37 +77,7 @@ internalNodeRoutes.post("/register", async (c) => {
     agentVersion: body.agent_version,
   };
 
-  // Path 1: Static NODE_SECRET (backwards-compatible, can be disabled)
-  const staticSecret = process.env.NODE_SECRET;
-  const staticDisabled = process.env.DISABLE_STATIC_NODE_SECRET === "true";
-  const bearerBuf = Buffer.from(bearer);
-  if (staticSecret && !staticDisabled) {
-    const secretBuf = Buffer.from(staticSecret);
-    if (bearerBuf.length === secretBuf.length && timingSafeEqual(bearerBuf, secretBuf)) {
-      // Verify per-node secret if the node has one stored
-      const nodeSecretHeader = c.req.header("X-Node-Secret");
-      const verified = await nodeRepo.verifyNodeSecret(registration.nodeId, nodeSecretHeader ?? "");
-
-      if (verified === false) {
-        // Node exists and has a secret, but the provided one doesn't match
-        logger.warn(`Node ${registration.nodeId} rejected: invalid per-node secret`);
-        return c.json({ success: false, error: "Invalid per-node node secret" }, 401);
-      }
-
-      if (verified === null) {
-        // Legacy node with no stored secret, or node not found — allow through
-        if (nodeSecretHeader) {
-          logger.warn(`Node ${registration.nodeId} registered with unverifiable per-node secret (legacy node)`);
-        }
-      }
-
-      await registrar.register(registration);
-      logger.info(`Node registered via static secret: ${registration.nodeId}`);
-      return c.json({ success: true });
-    }
-  }
-
-  // Path 2: Per-node persistent secret (returning agent)
+  // Path 1: Per-node persistent secret (returning agent)
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuidPattern.test(bearer)) {
     // Might be a per-node secret (wopr_node_ prefix or similar non-UUID format)

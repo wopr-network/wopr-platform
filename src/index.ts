@@ -12,7 +12,6 @@ import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
 import { setChatDeps } from "./api/routes/chat.js";
 import { setFleetDeps } from "./api/routes/fleet.js";
-import { getNodeSecretDeprecationWarnings } from "./api/routes/internal-nodes.js";
 import { setMarketplaceDeps } from "./api/routes/marketplace.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
@@ -1111,9 +1110,6 @@ if (process.env.NODE_ENV !== "test") {
 
   const server = serve({ fetch: app.fetch, port }, () => {
     logger.info(`wopr-platform listening on http://0.0.0.0:${port}`);
-    for (const warning of getNodeSecretDeprecationWarnings()) {
-      logger.warn(warning);
-    }
   });
 
   // Set up WebSocket server for node agent connections
@@ -1129,12 +1125,10 @@ if (process.env.NODE_ENV !== "test") {
         if (match) {
           const nodeId = match[1];
           const authHeader = req.headers.authorization;
-          const nodeSecretHeader = req.headers["x-node-secret"] as string | undefined;
 
           const authResult = await authenticateWebSocketUpgrade({
             nodeId,
             authHeader,
-            nodeSecretHeader,
           });
 
           if (authResult.authenticated) {
@@ -1144,12 +1138,8 @@ if (process.env.NODE_ENV !== "test") {
             return;
           }
 
-          if (authResult.reason === "no auth configured") {
-            socket.write("HTTP/1.1 503 Service Unavailable\r\n\r\n");
-          } else {
-            logger.warn(`WebSocket rejected for node ${nodeId}: ${authResult.reason}`);
-            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-          }
+          logger.warn(`WebSocket rejected for node ${nodeId}: ${authResult.reason}`);
+          socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
           socket.destroy();
         } else {
           socket.destroy();
