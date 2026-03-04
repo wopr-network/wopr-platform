@@ -1,3 +1,5 @@
+import { logger } from "../config/logger.js";
+
 export type FleetEventType = "bot.started" | "bot.stopped" | "bot.created" | "bot.removed" | "bot.restarted";
 
 export interface FleetEvent {
@@ -24,7 +26,7 @@ export class FleetEventEmitter {
       try {
         listener(event);
       } catch (err) {
-        console.error("FleetEventEmitter listener error:", err);
+        logger.error("FleetEventEmitter listener error", { err });
         // Listener errors must not break emission
       }
     }
