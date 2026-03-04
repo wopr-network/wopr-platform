@@ -1125,12 +1125,10 @@ if (process.env.NODE_ENV !== "test") {
         if (match) {
           const nodeId = match[1];
           const authHeader = req.headers.authorization;
-          const nodeSecretHeader = req.headers["x-node-secret"] as string | undefined;
 
           const authResult = await authenticateWebSocketUpgrade({
             nodeId,
             authHeader,
-            nodeSecretHeader,
           });
 
           if (authResult.authenticated) {

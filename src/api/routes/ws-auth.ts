@@ -3,7 +3,6 @@ import { getNodeRepo } from "../../fleet/services.js";
 export interface WsAuthRequest {
   nodeId: string;
   authHeader: string | undefined;
-  nodeSecretHeader: string | undefined;
 }
 
 export interface WsAuthResult {
@@ -32,7 +31,7 @@ export async function authenticateWebSocketUpgrade(req: WsAuthRequest): Promise<
 
   // No valid auth
   if (!bearer) {
-    return { authenticated: false, reason: "no auth configured" };
+    return { authenticated: false, reason: "unauthorized" };
   }
   return { authenticated: false, reason: "unauthorized" };
 }

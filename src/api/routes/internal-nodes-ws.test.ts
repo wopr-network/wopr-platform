@@ -39,7 +39,6 @@ describe("WebSocket nodeId binding", () => {
     const result = await authenticateWebSocketUpgrade({
       nodeId: "node-1",
       authHeader: "Bearer wopr_node_abc",
-      nodeSecretHeader: undefined,
     });
 
     expect(result.authenticated).toBe(false);
@@ -54,7 +53,6 @@ describe("WebSocket nodeId binding", () => {
     const result = await authenticateWebSocketUpgrade({
       nodeId: "node-1",
       authHeader: "Bearer wopr_node_abc",
-      nodeSecretHeader: undefined,
     });
 
     expect(result.authenticated).toBe(true);
@@ -65,10 +63,9 @@ describe("WebSocket nodeId binding", () => {
     const result = await authenticateWebSocketUpgrade({
       nodeId: "node-1",
       authHeader: undefined,
-      nodeSecretHeader: undefined,
     });
 
     expect(result.authenticated).toBe(false);
-    expect(result.reason).toContain("no auth configured");
+    expect(result.reason).toContain("unauthorized");
   });
 });
