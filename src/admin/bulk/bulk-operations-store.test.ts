@@ -8,7 +8,7 @@ import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js"
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { AdminAuditLog } from "../audit-log.js";
 import { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
-import { DrizzleBulkOperationsRepository } from "./bulk-operations-repository.js";
+import { DrizzleBulkOperationsRepository, type IBulkOperationsRepository } from "./bulk-operations-repository.js";
 import { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk-operations-store.js";
 
 let db: DrizzleDb;
@@ -256,6 +256,39 @@ describe("BulkOperationsStore", () => {
     it("fails for non-existent operation ID", async () => {
       await expect(() => store.undoGrant("00000000-0000-0000-0000-000000000000", "admin-1")).rejects.toThrow(
         "not found",
+      );
+    });
+
+    it("throws descriptive error when stored tenantIds JSON is corrupt", async () => {
+      const operationId = "corrupt-op-id";
+      const corruptRepo: IBulkOperationsRepository = {
+        async lookupTenants() {
+          return [];
+        },
+        async lookupTenantsForExport() {
+          return [];
+        },
+        async listMatchingTenantIds() {
+          return [];
+        },
+        async insertUndoableGrant() {},
+        async getUndoableGrant(id) {
+          if (id !== operationId) return null;
+          return {
+            operationId,
+            tenantIds: "not valid json {{{",
+            amountCents: 100,
+            adminUser: "admin-1",
+            createdAt: Date.now(),
+            undoDeadline: Date.now() + 300_000,
+            undone: false,
+          };
+        },
+        async markGrantUndone() {},
+      };
+      const corruptStore = new BulkOperationsStore(corruptRepo, creditStore, tenantStatusStore, auditLog);
+      await expect(() => corruptStore.undoGrant(operationId, "admin-1")).rejects.toThrow(
+        `Stored tenant IDs are corrupt for grant ${operationId}`,
       );
     });
   });
