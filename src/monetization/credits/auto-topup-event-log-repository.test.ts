@@ -42,8 +42,8 @@ describe("DrizzleAutoTopupEventLogRepository", () => {
     expect(rows[0].status).toBe("success");
     expect(rows[0].failureReason).toBeNull();
     expect(rows[0].paymentReference).toBe("pi_abc123");
-    expect(rows[0].id).toBeTruthy();
-    expect(rows[0].createdAt).toBeTruthy();
+    expect(rows[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(rows[0].createdAt).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
   });
 
   it("writes a failed event with failure reason", async () => {

@@ -56,8 +56,7 @@ describe("CredentialVaultStore", () => {
         authHeader: "x-api-key",
         createdBy: "admin-1",
       });
-      expect(id).toBeTruthy();
-      expect(id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it("encrypts the key before storing", async () => {
@@ -469,7 +468,7 @@ describe("CredentialVaultStore", () => {
         createdBy: "admin-1",
       });
 
-      expect(id).toBeTruthy();
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(await storeNoAudit.getById(id)).not.toBeNull();
     });
   });

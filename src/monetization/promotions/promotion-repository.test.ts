@@ -39,7 +39,7 @@ describe("DrizzlePromotionRepository", () => {
   describe("create", () => {
     it("returns a promotion with id, correct fields, totalUses=0", async () => {
       const promo = await repo.create(basePromotion);
-      expect(promo.id).toBeTruthy();
+      expect(promo.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(promo.name).toBe("Test Promo");
       expect(promo.type).toBe("coupon_fixed");
       expect(promo.status).toBe("active");

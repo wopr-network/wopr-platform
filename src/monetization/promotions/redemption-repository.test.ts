@@ -51,7 +51,7 @@ describe("DrizzleRedemptionRepository", () => {
         creditTransactionId: "tx-abc",
         purchaseAmountCredits: 1000,
       });
-      expect(r.id).toBeTruthy();
+      expect(r.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
       expect(r.promotionId).toBe(promotionId);
       expect(r.tenantId).toBe("tenant-1");
       expect(r.creditsGranted).toBe(200);

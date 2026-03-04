@@ -33,7 +33,7 @@ describe("DrizzleAdminNotificationQueueRepository.enqueue", () => {
       recipientEmail: "user@example.com",
     });
 
-    expect(row.id).toBeTruthy();
+    expect(row.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(row.tenantId).toBe("tenant-1");
     expect(row.emailType).toBe("welcome");
     expect(row.recipientEmail).toBe("user@example.com");

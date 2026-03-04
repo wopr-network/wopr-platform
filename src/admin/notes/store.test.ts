@@ -35,7 +35,7 @@ describe("AdminNotesStore.create", () => {
       content: "Test note content",
     });
 
-    expect(note.id).toBeTruthy();
+    expect(note.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(note.tenantId).toBe("tenant-1");
     expect(note.authorId).toBe("admin-1");
     expect(note.content).toBe("Test note content");

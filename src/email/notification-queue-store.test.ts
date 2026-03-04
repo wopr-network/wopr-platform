@@ -29,7 +29,7 @@ describe("DrizzleNotificationQueueStore", () => {
   describe("enqueue", () => {
     it("creates a pending notification row", async () => {
       const id = await store.enqueue("tenant-1", "low-balance", { email: "user@example.com" });
-      expect(id).toBeTruthy();
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
       const rows = await db.select().from(notificationQueue);
       expect(rows).toHaveLength(1);

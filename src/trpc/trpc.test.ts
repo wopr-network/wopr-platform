@@ -798,7 +798,7 @@ describe("tRPC appRouter", () => {
         });
 
         expect(result.schedule_enabled).toBe(true);
-        expect(result.schedule_next_at).toBeTruthy();
+        expect(result.schedule_next_at).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
         if (result.schedule_next_at) {
           expect(new Date(result.schedule_next_at).getTime()).toBeGreaterThan(Date.now());
         }

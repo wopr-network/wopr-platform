@@ -56,7 +56,7 @@ describe("POST /api/orgs", () => {
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.id).toBeTruthy();
+    expect(body.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(body.slug).toBe("my-org");
 
     // Verify role was assigned

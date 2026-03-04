@@ -75,7 +75,7 @@ describe("tenant-keys routes", () => {
       const body = await res.json();
       expect(body.ok).toBe(true);
       expect(body.provider).toBe("anthropic");
-      expect(body.id).toBeTruthy();
+      expect(body.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
       // Verify stored in DB
       const record = await store.get(TEST_TENANT, "anthropic");

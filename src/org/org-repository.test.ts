@@ -32,7 +32,7 @@ describe("DrizzleOrgRepository", () => {
       expect(org.slug).toBe("my-org");
       expect(org.type).toBe("org");
       expect(org.ownerId).toBe("user-1");
-      expect(org.id).toBeTruthy();
+      expect(org.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
     it("throws on duplicate slug", async () => {

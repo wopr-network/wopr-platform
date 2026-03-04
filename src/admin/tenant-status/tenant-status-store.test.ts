@@ -145,7 +145,7 @@ describe("TenantStatusStore", () => {
     it("sets data deletion deadline", async () => {
       await store.ban("tenant-1", "violation", "admin-1");
       const row = await store.get("tenant-1");
-      expect(row?.dataDeleteAfter).toBeTruthy();
+      expect(row?.dataDeleteAfter).toMatch(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/);
     });
 
     it("creates the row if tenant does not exist", async () => {
