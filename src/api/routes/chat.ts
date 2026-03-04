@@ -57,9 +57,8 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
       return c.json({ error: "sessionId query parameter is required" }, 400);
     }
 
-    // --- Bind session to user (first caller wins) and check ownership ---
-    registry.setOwner(sessionId, user.id);
-    if (!registry.isOwner(sessionId, user.id)) {
+    // --- Atomically claim session for this user (first caller wins) and verify ownership ---
+    if (!registry.claimOrVerifyOwner(sessionId, user.id)) {
       return c.json({ error: "Session access denied" }, 403);
     }
 
@@ -81,11 +80,15 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
 
     const streamId = registry.register(sessionId, sseWriter);
 
-    // Clean up on client disconnect
+    // Clean up on client disconnect — remove stream and ownership record to prevent map growth
     const signal = c.req.raw.signal;
     if (signal) {
       signal.addEventListener("abort", () => {
         registry.remove(streamId);
+        // Only clear ownership if no more streams remain for this session
+        if (registry.listBySession(sessionId).length === 0) {
+          registry.clearOwner(sessionId);
+        }
         writer.close().catch((err) => {
           logger.debug("SSE writer close error (client disconnect)", { err });
         });
@@ -136,9 +139,8 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
 
     const { sessionId, message } = parsed.data;
 
-    // --- Bind session to user (first caller wins) and check ownership ---
-    registry.setOwner(sessionId, user.id);
-    if (!registry.isOwner(sessionId, user.id)) {
+    // --- Atomically claim session for this user (first caller wins) and verify ownership ---
+    if (!registry.claimOrVerifyOwner(sessionId, user.id)) {
       return c.json({ error: "Session access denied" }, 403);
     }
 
@@ -157,6 +159,10 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
             registry.remove(id);
           }
         }
+      }
+      // Clear ownership once all streams for this session are gone
+      if (event.type === "done" && registry.listBySession(sessionId).length === 0) {
+        registry.clearOwner(sessionId);
       }
     };
 

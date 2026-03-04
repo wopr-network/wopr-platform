@@ -42,9 +42,9 @@ describe("ChatStreamRegistry", () => {
 });
 
 describe("session ownership", () => {
-  it("setOwner records the owner of a session", () => {
+  it("claimOrVerifyOwner claims an unclaimed session and returns true", () => {
     const registry = new ChatStreamRegistry();
-    registry.setOwner("session-1", "user-a");
+    expect(registry.claimOrVerifyOwner("session-1", "user-a")).toBe(true);
     expect(registry.getOwner("session-1")).toBe("user-a");
   });
 
@@ -53,22 +53,34 @@ describe("session ownership", () => {
     expect(registry.getOwner("unknown")).toBeUndefined();
   });
 
-  it("setOwner does not overwrite an existing owner", () => {
+  it("claimOrVerifyOwner does not overwrite an existing owner", () => {
     const registry = new ChatStreamRegistry();
-    registry.setOwner("session-1", "user-a");
-    registry.setOwner("session-1", "user-b");
+    registry.claimOrVerifyOwner("session-1", "user-a");
+    registry.claimOrVerifyOwner("session-1", "user-b");
     expect(registry.getOwner("session-1")).toBe("user-a");
   });
 
-  it("isOwner returns true for the session owner", () => {
+  it("claimOrVerifyOwner returns true for the owner and false for others", () => {
     const registry = new ChatStreamRegistry();
-    registry.setOwner("session-1", "user-a");
-    expect(registry.isOwner("session-1", "user-a")).toBe(true);
-    expect(registry.isOwner("session-1", "user-b")).toBe(false);
+    registry.claimOrVerifyOwner("session-1", "user-a");
+    expect(registry.claimOrVerifyOwner("session-1", "user-a")).toBe(true);
+    expect(registry.claimOrVerifyOwner("session-1", "user-b")).toBe(false);
   });
 
-  it("isOwner returns true for unowned sessions (first user claims it)", () => {
+  it("claimOrVerifyOwner is atomic — concurrent second caller cannot claim", () => {
     const registry = new ChatStreamRegistry();
-    expect(registry.isOwner("session-1", "user-a")).toBe(true);
+    // Simulate two concurrent callers: both call before either checks return value
+    const r1 = registry.claimOrVerifyOwner("session-1", "user-a");
+    const r2 = registry.claimOrVerifyOwner("session-1", "user-b");
+    // Only the first caller gets true; second gets false
+    expect(r1).toBe(true);
+    expect(r2).toBe(false);
+  });
+
+  it("clearOwner removes the ownership record", () => {
+    const registry = new ChatStreamRegistry();
+    registry.claimOrVerifyOwner("session-1", "user-a");
+    registry.clearOwner("session-1");
+    expect(registry.getOwner("session-1")).toBeUndefined();
   });
 });
