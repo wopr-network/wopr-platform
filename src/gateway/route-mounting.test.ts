@@ -197,9 +197,10 @@ describe("gateway route mounting — public routes", () => {
 describe("gateway route mounting — webhook route ordering", () => {
   it("webhook routes are reachable when Twilio is fully configured", async () => {
     const sigPenaltyRepo = {
-      recordFailure: vi.fn(),
-      getFailureCount: vi.fn().mockResolvedValue(0),
-      isBlocked: vi.fn().mockResolvedValue(false),
+      get: vi.fn().mockResolvedValue(null),
+      recordFailure: vi.fn().mockResolvedValue({ failures: 1, blockedUntil: 0 }),
+      clear: vi.fn().mockResolvedValue(undefined),
+      purgeStale: vi.fn().mockResolvedValue(0),
     };
     const config = buildTestConfig({
       providers: {
