@@ -38,6 +38,7 @@ import { adminNotesRoutes } from "./routes/admin-notes.js";
 import { mountAdminOnboardingRoutes } from "./routes/admin-onboarding.js";
 import { adminRateRoutes } from "./routes/admin-rates.js";
 import { adminNodeRoutes, adminRecoveryRoutes } from "./routes/admin-recovery.js";
+import { createAdminRolesRoutes, createPlatformAdminRoutes } from "./routes/admin-roles.js";
 import { adminUsersApiRoutes } from "./routes/admin-users.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
@@ -314,6 +315,24 @@ app.route("/api/admin/gpu", adminGpuRoutes);
 app.route("/api/admin/inference", adminInferenceRoutes);
 app.route("/api/admin/migrate", adminMigrationRoutes);
 app.route("/api/admin/users", adminUsersApiRoutes);
+// Admin roles routes (WOP-1607) — uses getDb factory so the DB is not opened
+// at import time. createAdminRolesRoutes / createPlatformAdminRoutes accept a
+// factory and defer RoleStore construction to the first request. Context variables
+// set by _rolesAdminAuth are preserved because we use app.route() directly
+// (no .fetch(c.req.raw) indirection that would strip Hono context).
+{
+  const _rolesAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
+
+  const _adminRoles = new Hono();
+  _adminRoles.use("*", _rolesAdminAuth);
+  _adminRoles.route("/", createAdminRolesRoutes(getDb));
+  app.route("/api/admin/roles", _adminRoles);
+
+  const _adminPlatformAdmins = new Hono();
+  _adminPlatformAdmins.use("*", _rolesAdminAuth);
+  _adminPlatformAdmins.route("/", createPlatformAdminRoutes(getDb));
+  app.route("/api/admin/platform-admins", _adminPlatformAdmins);
+}
 // Admin onboarding script editor (WOP-1027)
 app.route("/api/admin/onboarding", mountAdminOnboardingRoutes(getOnboardingScriptRepo));
 // Admin marketplace routes (WOP-1031)
