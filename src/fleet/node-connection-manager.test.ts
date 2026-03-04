@@ -569,3 +569,115 @@ describe("end-to-end: node crash -> recovery -> reboot -> orphan cleanup", () =>
     expect(bot2Rows[0]?.nodeId).toBe("node-2");
   });
 });
+
+describe("NodeConnectionManager.handleMessage — command_result validation", () => {
+  let ncm: NodeConnectionManager;
+
+  beforeAll(() => {
+    ncm = makeNcm(db);
+  });
+
+  beforeEach(async () => {
+    await truncateAllTables(pool);
+  });
+
+  it("ignores command_result with missing 'command' field", async () => {
+    await insertNode(db, { id: "node-1", status: "active" });
+
+    const mockWs = {
+      readyState: 1,
+      on: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    ncm.handleWebSocket("node-1", mockWs as never);
+
+    const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === "message",
+    )?.[1];
+
+    // Malformed: has type and id but missing 'command' and 'success'
+    const malformed = Buffer.from(JSON.stringify({ type: "command_result", id: "cmd-999" }));
+
+    // Should not throw
+    messageHandler(malformed);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // No crash — message was silently discarded
+  });
+
+  it("ignores command_result with wrong 'success' type", async () => {
+    await insertNode(db, { id: "node-1", status: "active" });
+
+    const mockWs = {
+      readyState: 1,
+      on: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    ncm.handleWebSocket("node-1", mockWs as never);
+
+    const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === "message",
+    )?.[1];
+
+    // Malformed: success is a string instead of boolean
+    const malformed = Buffer.from(
+      JSON.stringify({
+        type: "command_result",
+        id: "cmd-999",
+        command: "bot.start",
+        success: "yes",
+      }),
+    );
+
+    messageHandler(malformed);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // No crash — message was silently discarded
+  });
+
+  it("processes valid command_result correctly after validation", async () => {
+    await insertNode(db, { id: "node-1", status: "active" });
+
+    const mockWs = {
+      readyState: 1,
+      on: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    ncm.handleWebSocket("node-1", mockWs as never);
+
+    const messageHandler = (mockWs.on as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) => call[0] === "message",
+    )?.[1];
+
+    // Start a command so there's a pending entry
+    const commandPromise = ncm.sendCommand("node-1", { type: "bot.start", payload: { name: "test" } });
+
+    // Get the command ID from the sent message
+    const sentData = JSON.parse((mockWs.send as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+    const cmdId = sentData.id;
+
+    // Send a valid command_result back
+    const validResult = Buffer.from(
+      JSON.stringify({
+        type: "command_result",
+        id: cmdId,
+        command: "bot.start",
+        success: true,
+        data: { containerId: "abc123" },
+      }),
+    );
+
+    messageHandler(validResult);
+
+    const result = await commandPromise;
+    expect(result.id).toBe(cmdId);
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ containerId: "abc123" });
+  });
+});
