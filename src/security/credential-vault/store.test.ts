@@ -1,6 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../../admin/audit-log.js";
 import type { DrizzleDb } from "../../db/index.js";
@@ -45,8 +45,6 @@ describe("CredentialVaultStore", () => {
     await rollbackTestTransaction(pool);
     ({ store } = buildStore(db));
   });
-
-  afterEach(() => {});
 
   describe("create", () => {
     it("returns a UUID for the new credential", async () => {
