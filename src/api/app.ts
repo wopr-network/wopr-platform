@@ -38,6 +38,7 @@ import { adminNotesRoutes } from "./routes/admin-notes.js";
 import { mountAdminOnboardingRoutes } from "./routes/admin-onboarding.js";
 import { adminRateRoutes } from "./routes/admin-rates.js";
 import { adminNodeRoutes, adminRecoveryRoutes } from "./routes/admin-recovery.js";
+import { createAdminRolesRoutes, createPlatformAdminRoutes } from "./routes/admin-roles.js";
 import { adminUsersApiRoutes } from "./routes/admin-users.js";
 import { adminAuditRoutes, auditRoutes } from "./routes/audit.js";
 import { billingRoutes } from "./routes/billing.js";
@@ -314,6 +315,40 @@ app.route("/api/admin/gpu", adminGpuRoutes);
 app.route("/api/admin/inference", adminInferenceRoutes);
 app.route("/api/admin/migrate", adminMigrationRoutes);
 app.route("/api/admin/users", adminUsersApiRoutes);
+// Admin roles routes (WOP-1607) — deferred init so DB is not opened at import time
+{
+  const _rolesAdminAuth = scopedBearerAuthWithTenant(buildTokenMetadataMap(), "admin");
+  let _rolesDb: ReturnType<typeof getDb> | null = null;
+  const _adminRoles = new Hono();
+  _adminRoles.use("*", _rolesAdminAuth);
+  _adminRoles.route(
+    "/",
+    (() => {
+      const inner = new Hono();
+      inner.all("*", (c) => {
+        if (!_rolesDb) _rolesDb = getDb();
+        return createAdminRolesRoutes(_rolesDb).fetch(c.req.raw);
+      });
+      return inner;
+    })(),
+  );
+  app.route("/api/admin/roles", _adminRoles);
+
+  const _adminPlatformAdmins = new Hono();
+  _adminPlatformAdmins.use("*", _rolesAdminAuth);
+  _adminPlatformAdmins.route(
+    "/",
+    (() => {
+      const inner = new Hono();
+      inner.all("*", (c) => {
+        if (!_rolesDb) _rolesDb = getDb();
+        return createPlatformAdminRoutes(_rolesDb).fetch(c.req.raw);
+      });
+      return inner;
+    })(),
+  );
+  app.route("/api/admin/platform-admins", _adminPlatformAdmins);
+}
 // Admin onboarding script editor (WOP-1027)
 app.route("/api/admin/onboarding", mountAdminOnboardingRoutes(getOnboardingScriptRepo));
 // Admin marketplace routes (WOP-1031)
