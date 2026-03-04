@@ -95,6 +95,16 @@ describe("MeterDLQ", () => {
     expect(dlq.count()).toBe(2);
   });
 
+  it("count counts malformed lines (no JSON parsing)", () => {
+    mkdirSync(tmpDir, { recursive: true });
+    const goodLine = JSON.stringify({ id: "evt-1", dlq_error: "e", dlq_retries: 1, dlq_timestamp: 0 });
+    writeFileSync(dlqPath, `${goodLine}\nnot-valid-json\n`);
+    const dlq = new MeterDLQ(dlqPath);
+    // count should return 2 (line count), not 1 (parsed count)
+    // This verifies count() does NOT use JSON.parse
+    expect(dlq.count()).toBe(2);
+  });
+
   it("readAll skips malformed lines", () => {
     mkdirSync(tmpDir, { recursive: true });
     const goodLine = JSON.stringify({ id: "evt-1", dlq_error: "e", dlq_retries: 1, dlq_timestamp: 0 });

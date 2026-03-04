@@ -80,6 +80,17 @@ export class MeterDLQ {
    * Get the number of events in the DLQ.
    */
   count(): number {
-    return this.readAll().length;
+    if (!existsSync(this.dlqPath)) {
+      return 0;
+    }
+    const content = readFileSync(this.dlqPath, "utf8");
+    if (!content) {
+      return 0;
+    }
+    let n = 0;
+    for (let i = 0; i < content.length; i++) {
+      if (content.charCodeAt(i) === 10) n++;
+    }
+    return n;
   }
 }
