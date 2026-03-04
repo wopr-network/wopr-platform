@@ -184,7 +184,12 @@ export class BulkOperationsStore implements IBulkOperationsStore {
     if (grant.undone) throw new Error("Grant operation has already been undone");
     if (Date.now() > grant.undoDeadline) throw new Error("Undo window has expired (5 minutes)");
 
-    const tenantIds: string[] = JSON.parse(grant.tenantIds);
+    let tenantIds: string[];
+    try {
+      tenantIds = JSON.parse(grant.tenantIds) as string[];
+    } catch {
+      throw new Error(`Stored tenant IDs are corrupt for grant ${grant.operationId}`);
+    }
     const errors: Array<{ tenantId: string; error: string }> = [];
     let succeeded = 0;
 
