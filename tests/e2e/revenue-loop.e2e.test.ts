@@ -3,9 +3,9 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { DrizzleCreditLedger, InsufficientBalanceError } from "../../src/monetization/credits/credit-ledger.js";
+import { CreditLedger, InsufficientBalanceError } from "../../src/monetization/credits/credit-ledger.js";
 import { grantSignupCredits, SIGNUP_GRANT } from "../../src/monetization/credits/signup-grant.js";
-import { DrizzleBotBilling } from "../../src/monetization/credits/bot-billing.js";
+import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
 import { runRuntimeDeductions } from "../../src/monetization/credits/runtime-cron.js";
 import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
@@ -45,8 +45,8 @@ function createFakeImageGenAdapter(): ProviderAdapter {
 describe("E2E: core revenue loop — signup → bot → plugin → capability → credit consumed", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let ledger: DrizzleCreditLedger;
-  let botBilling: DrizzleBotBilling;
+  let ledger: CreditLedger;
+  let botBilling: BotBilling;
   let meter: MeterEmitter;
   let aggregator: MeterAggregator;
   let socket: AdapterSocket;
@@ -65,8 +65,8 @@ describe("E2E: core revenue loop — signup → bot → plugin → capability �
 
     ({ db, pool } = await createTestDb());
 
-    ledger = new DrizzleCreditLedger(db);
-    botBilling = new DrizzleBotBilling(new DrizzleBotInstanceRepository(db));
+    ledger = new CreditLedger(db);
+    botBilling = new BotBilling(new DrizzleBotInstanceRepository(db));
 
     // Unique WAL/DLQ paths per run to avoid conflicts between parallel test runs.
     meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {

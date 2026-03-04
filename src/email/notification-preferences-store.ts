@@ -8,8 +8,6 @@ export type { NotificationPrefs } from "./notification-repository-types.js";
 
 // Re-export with old name for backward compat
 export type { INotificationPreferencesRepository };
-/** @deprecated Use INotificationPreferencesRepository */
-export type INotificationPreferencesStore = INotificationPreferencesRepository;
 
 type NotificationPrefsRow = typeof notificationPreferences.$inferInsert;
 
@@ -90,6 +88,3 @@ export class DrizzleNotificationPreferencesStore implements INotificationPrefere
     }
   }
 }
-
-/** @deprecated Use DrizzleNotificationPreferencesStore directly. */
-export { DrizzleNotificationPreferencesStore as NotificationPreferencesStore };

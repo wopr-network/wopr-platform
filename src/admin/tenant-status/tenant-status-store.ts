@@ -11,9 +11,6 @@ import type { ITenantStatusRepository } from "./tenant-status-repository.js";
 
 export type { TenantAccountStatus };
 
-/** @deprecated Use TenantStatusRecord from admin-repository-types.js */
-export type TenantStatusRow = TenantStatusRecord;
-
 export { GRACE_PERIOD_DAYS, BAN_DELETE_DAYS };
 
 /**

@@ -2,12 +2,12 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { NotificationPreferencesStore } from "./notification-preferences-store.js";
+import { DrizzleNotificationPreferencesStore } from "./notification-preferences-store.js";
 
-describe("NotificationPreferencesStore", () => {
+describe("DrizzleNotificationPreferencesStore", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let store: NotificationPreferencesStore;
+  let store: DrizzleNotificationPreferencesStore;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -21,7 +21,7 @@ describe("NotificationPreferencesStore", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new NotificationPreferencesStore(db);
+    store = new DrizzleNotificationPreferencesStore(db);
   });
 
   describe("get", () => {

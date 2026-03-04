@@ -38,7 +38,7 @@ export type {
   NotificationInput,
   NotificationRow,
 } from "./notifications/index.js";
-export { NotificationQueueRepository } from "./notifications/index.js";
+export { DrizzleAdminNotificationQueueRepository } from "./notifications/index.js";
 export type {
   ProviderCost,
   ProviderCostFilters,

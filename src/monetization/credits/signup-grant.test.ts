@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { CreditLedger } from "./credit-ledger.js";
-import { grantSignupCredits, SIGNUP_GRANT_CENTS } from "./signup-grant.js";
+import { grantSignupCredits, SIGNUP_GRANT } from "./signup-grant.js";
 
 describe("grantSignupCredits", () => {
   let pool: PGlite;
@@ -26,25 +26,25 @@ describe("grantSignupCredits", () => {
   it("grants credits to a new tenant and returns true", async () => {
     const result = await grantSignupCredits(ledger, "tenant-1");
     expect(result).toBe(true);
-    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT.toCents());
   });
 
   it("returns false for duplicate grant (idempotency)", async () => {
     await grantSignupCredits(ledger, "tenant-1");
     const result = await grantSignupCredits(ledger, "tenant-1");
     expect(result).toBe(false);
-    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT.toCents());
   });
 
   it("grants independently to different tenants", async () => {
     await grantSignupCredits(ledger, "tenant-1");
     await grantSignupCredits(ledger, "tenant-2");
-    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT_CENTS);
-    expect((await ledger.balance("tenant-2")).toCents()).toBe(SIGNUP_GRANT_CENTS);
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(SIGNUP_GRANT.toCents());
+    expect((await ledger.balance("tenant-2")).toCents()).toBe(SIGNUP_GRANT.toCents());
   });
 
-  it("SIGNUP_GRANT_CENTS equals 500", () => {
-    expect(SIGNUP_GRANT_CENTS).toBe(500);
+  it("SIGNUP_GRANT.toCents() equals 500", () => {
+    expect(SIGNUP_GRANT.toCents()).toBe(500);
   });
 
   it("returns false when credit() throws a unique constraint violation (TOCTOU race)", async () => {
