@@ -236,10 +236,10 @@ describe("tRPC tenant isolation — settings router (WOP-822)", () => {
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     await beginTestTransaction(pool);
-    const { NotificationPreferencesStore } = await import(
+    const { DrizzleNotificationPreferencesStore } = await import(
       "../../src/email/notification-preferences-store.js"
     );
-    const notifStore = new NotificationPreferencesStore(db);
+    const notifStore = new DrizzleNotificationPreferencesStore(db);
 
     setSettingsRouterDeps({ getNotificationPrefsStore: () => notifStore });
   });

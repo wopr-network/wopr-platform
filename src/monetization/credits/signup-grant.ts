@@ -42,6 +42,3 @@ function isUniqueConstraintViolation(err: unknown): boolean {
   if ((err as { code?: string }).code === "23505") return true;
   return err.message.includes("UNIQUE") || err.message.includes("duplicate key");
 }
-
-/** @deprecated use SIGNUP_GRANT */
-export const SIGNUP_GRANT_CENTS = SIGNUP_GRANT.toCents();

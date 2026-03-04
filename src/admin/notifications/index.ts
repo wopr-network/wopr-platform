@@ -4,4 +4,4 @@ export type {
   NotificationInput,
   NotificationRow,
 } from "./store.js";
-export { NotificationQueueRepository } from "./store.js";
+export { DrizzleAdminNotificationQueueRepository } from "./store.js";

@@ -13,8 +13,6 @@ export type { NotificationStatus, QueuedNotification } from "./notification-repo
 
 // Re-export with old name for backward compat
 export type { INotificationQueueRepository };
-/** @deprecated Use INotificationQueueRepository */
-export type INotificationQueueStore = INotificationQueueRepository;
 
 // ---------------------------------------------------------------------------
 // Drizzle Implementation
@@ -127,6 +125,3 @@ export class DrizzleNotificationQueueStore implements INotificationQueueReposito
     return { entries, total };
   }
 }
-
-/** @deprecated Use DrizzleNotificationQueueStore directly. */
-export { DrizzleNotificationQueueStore as NotificationQueueStore };

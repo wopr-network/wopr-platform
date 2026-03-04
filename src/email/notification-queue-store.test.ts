@@ -4,12 +4,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationQueue } from "../db/schema/notification-queue.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { NotificationQueueStore } from "./notification-queue-store.js";
+import { DrizzleNotificationQueueStore } from "./notification-queue-store.js";
 
-describe("NotificationQueueStore", () => {
+describe("DrizzleNotificationQueueStore", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let store: NotificationQueueStore;
+  let store: DrizzleNotificationQueueStore;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -23,7 +23,7 @@ describe("NotificationQueueStore", () => {
 
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
-    store = new NotificationQueueStore(db);
+    store = new DrizzleNotificationQueueStore(db);
   });
 
   describe("enqueue", () => {

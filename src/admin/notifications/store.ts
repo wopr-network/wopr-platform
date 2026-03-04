@@ -124,6 +124,3 @@ export class DrizzleAdminNotificationQueueRepository implements IAdminNotificati
     return result;
   }
 }
-
-/** @deprecated Use DrizzleAdminNotificationQueueRepository directly. */
-export { DrizzleAdminNotificationQueueRepository as NotificationQueueRepository };
