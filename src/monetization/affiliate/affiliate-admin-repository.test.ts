@@ -87,6 +87,25 @@ describe("DrizzleAffiliateFraudAdminRepository", () => {
       expect(result.events).toHaveLength(0);
       expect(result.total).toBe(0);
     });
+
+    it("returns fallback values when signals/signalDetails contain malformed JSON", async () => {
+      await db.insert(affiliateFraudEvents).values({
+        id: "fe-bad-json",
+        referralId: "ref-bad",
+        referrerTenantId: "t-bad",
+        referredTenantId: "t-bad2",
+        verdict: "blocked",
+        signals: "NOT_VALID_JSON",
+        signalDetails: "NOT_VALID_JSON",
+        phase: "payout",
+        createdAt: new Date().toISOString(),
+      });
+
+      const result = await repo.listSuppressions(50, 0);
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].signals).toEqual([]);
+      expect(result.events[0].signalDetails).toEqual({});
+    });
   });
 
   describe("listVelocityReferrers", () => {

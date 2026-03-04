@@ -57,8 +57,20 @@ export class DrizzleAffiliateFraudRepository implements IAffiliateFraudRepositor
       referrerTenantId: r.referrerTenantId,
       referredTenantId: r.referredTenantId,
       verdict: r.verdict as "blocked" | "flagged" | "clean",
-      signals: JSON.parse(r.signals) as string[],
-      signalDetails: JSON.parse(r.signalDetails) as Record<string, string>,
+      signals: (() => {
+        try {
+          return JSON.parse(r.signals) as string[];
+        } catch {
+          return [];
+        }
+      })(),
+      signalDetails: (() => {
+        try {
+          return JSON.parse(r.signalDetails) as Record<string, string>;
+        } catch {
+          return {};
+        }
+      })(),
       phase: r.phase as "signup" | "payout",
       createdAt: r.createdAt,
     }));
