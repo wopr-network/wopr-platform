@@ -33,6 +33,10 @@ const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
 const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
+/** Module-level singleton — initialized once, reused across requests. */
+const profileStore = new ProfileStore(FLEET_DATA_DIR);
+let profileStoreInitialized = false;
+
 /** Headers safe to forward to upstream tenant containers. */
 const FORWARDED_HEADERS = [
   "content-type",
@@ -153,11 +157,15 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
   // Look up the bot profile to get its tenantId, then verify the user belongs to that tenant.
   let tenantId: string | undefined;
   try {
-    const store = new ProfileStore(FLEET_DATA_DIR);
-    const profile = await store.get(route.instanceId);
+    if (!profileStoreInitialized) {
+      await profileStore.init();
+      profileStoreInitialized = true;
+    }
+    const profile = await profileStore.get(route.instanceId);
     tenantId = profile?.tenantId;
-  } catch {
-    // Profile lookup failed — fall through to deny
+  } catch (err) {
+    logger.error("ProfileStore error during tenant ownership check", { err, instanceId: route.instanceId });
+    return c.json({ error: "Internal server error" }, 500);
   }
 
   if (!tenantId) {
