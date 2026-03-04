@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { createTestDb } from "../../test/db.js";
 import { DrizzleUsageSummaryRepository, type UsageSummaryInsert } from "./drizzle-usage-summary-repository.js";
 import { DrizzleMeterEventRepository, type MeterEventInsert } from "./meter-event-repository.js";
 
@@ -40,7 +40,7 @@ describe("DrizzleMeterEventRepository", () => {
   let repo: DrizzleMeterEventRepository;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await pool.query("TRUNCATE meter_events, usage_summaries RESTART IDENTITY CASCADE");
     repo = new DrizzleMeterEventRepository(db);
   });
 
@@ -187,7 +187,7 @@ describe("DrizzleUsageSummaryRepository", () => {
   let eventRepo: DrizzleMeterEventRepository;
 
   beforeEach(async () => {
-    await truncateAllTables(pool);
+    await pool.query("TRUNCATE meter_events, usage_summaries RESTART IDENTITY CASCADE");
     repo = new DrizzleUsageSummaryRepository(db);
     eventRepo = new DrizzleMeterEventRepository(db);
   });
