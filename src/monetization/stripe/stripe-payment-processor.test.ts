@@ -2,7 +2,7 @@ import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Credit } from "../credit.js";
 import type { IAutoTopupEventLogRepository } from "../credits/auto-topup-event-log-repository.js";
-import type { ICreditLedger } from "../credits/credit-ledger.js";
+import type { CreditTransaction, ICreditLedger } from "../credits/credit-ledger.js";
 import { PaymentMethodOwnershipError } from "../payment-processor.js";
 import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
 import type { CreditPriceMap } from "./credit-prices.js";
@@ -123,7 +123,7 @@ describe("StripePaymentProcessor", () => {
           { id: "pm_1", card: { brand: "visa", last4: "4242" } },
           { id: "pm_2", card: { brand: "mastercard", last4: "5555" } },
         ],
-      } as never);
+      } as unknown as Stripe.Response<Stripe.ApiList<Stripe.PaymentMethod>>);
 
       const result = await processor.listPaymentMethods("tenant-1");
       expect(result).toEqual([
@@ -136,7 +136,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
       vi.mocked(mocks.stripe.customers.listPaymentMethods).mockResolvedValue({
         data: [{ id: "pm_bank", card: undefined }],
-      } as never);
+      } as unknown as Stripe.Response<Stripe.ApiList<Stripe.PaymentMethod>>);
 
       const result = await processor.listPaymentMethods("tenant-1");
       expect(result).toEqual([{ id: "pm_bank", label: "Payment method pm_bank", isDefault: true }]);
@@ -158,7 +158,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.paymentMethods.retrieve).mockResolvedValue({
         id: "pm_1",
         customer: "cus_OTHER",
-      } as never);
+      } as unknown as Stripe.Response<Stripe.PaymentMethod>);
 
       await expect(processor.detachPaymentMethod("tenant-1", "pm_1")).rejects.toThrow(PaymentMethodOwnershipError);
     });
@@ -168,7 +168,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.paymentMethods.retrieve).mockResolvedValue({
         id: "pm_1",
         customer: null,
-      } as never);
+      } as unknown as Stripe.Response<Stripe.PaymentMethod>);
 
       await expect(processor.detachPaymentMethod("tenant-1", "pm_1")).rejects.toThrow(PaymentMethodOwnershipError);
     });
@@ -178,8 +178,10 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.paymentMethods.retrieve).mockResolvedValue({
         id: "pm_1",
         customer: "cus_123",
-      } as never);
-      vi.mocked(mocks.stripe.paymentMethods.detach).mockResolvedValue({} as never);
+      } as unknown as Stripe.Response<Stripe.PaymentMethod>);
+      vi.mocked(mocks.stripe.paymentMethods.detach).mockResolvedValue(
+        {} as unknown as Stripe.Response<Stripe.PaymentMethod>,
+      );
 
       await processor.detachPaymentMethod("tenant-1", "pm_1");
       expect(mocks.stripe.paymentMethods.detach).toHaveBeenCalledWith("pm_1");
@@ -196,7 +198,9 @@ describe("StripePaymentProcessor", () => {
 
     it("returns empty string when customer is deleted", async () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
-      vi.mocked(mocks.stripe.customers.retrieve).mockResolvedValue({ deleted: true } as never);
+      vi.mocked(mocks.stripe.customers.retrieve).mockResolvedValue({
+        deleted: true,
+      } as unknown as Stripe.Response<Stripe.DeletedCustomer>);
       expect(await processor.getCustomerEmail("tenant-1")).toBe("");
     });
 
@@ -205,7 +209,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.customers.retrieve).mockResolvedValue({
         deleted: false,
         email: "user@example.com",
-      } as never);
+      } as unknown as Stripe.Response<Stripe.Customer>);
       expect(await processor.getCustomerEmail("tenant-1")).toBe("user@example.com");
     });
 
@@ -214,7 +218,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.customers.retrieve).mockResolvedValue({
         deleted: false,
         email: null,
-      } as never);
+      } as unknown as Stripe.Response<Stripe.Customer>);
       expect(await processor.getCustomerEmail("tenant-1")).toBe("");
     });
   });
@@ -231,7 +235,7 @@ describe("StripePaymentProcessor", () => {
 
     it("calls stripe.customers.update with email", async () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
-      vi.mocked(mocks.stripe.customers.update).mockResolvedValue({} as never);
+      vi.mocked(mocks.stripe.customers.update).mockResolvedValue({} as unknown as Stripe.Response<Stripe.Customer>);
 
       await processor.updateCustomerEmail("tenant-1", "new@example.com");
       expect(mocks.stripe.customers.update).toHaveBeenCalledWith("cus_123", { email: "new@example.com" });
@@ -265,7 +269,7 @@ describe("StripePaymentProcessor", () => {
             invoice_pdf: null,
           },
         ],
-      } as never);
+      } as unknown as Stripe.Response<Stripe.ApiList<Stripe.Invoice>>);
 
       const result = await processor.listInvoices("tenant-1");
       expect(result).toEqual([
@@ -294,7 +298,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
       vi.mocked(mocks.stripe.invoices.list).mockResolvedValue({
         data: [{ id: "in_3", created: 1700000000, amount_due: 100, status: null, invoice_pdf: null }],
-      } as never);
+      } as unknown as Stripe.Response<Stripe.ApiList<Stripe.Invoice>>);
 
       const result = await processor.listInvoices("tenant-1");
       expect(result[0].status).toBe("unknown");
@@ -326,13 +330,13 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
       vi.mocked(mocks.stripe.customers.listPaymentMethods).mockResolvedValue({
         data: [{ id: "pm_1" }],
-      } as never);
+      } as unknown as Stripe.Response<Stripe.ApiList<Stripe.PaymentMethod>>);
       vi.mocked(mocks.stripe.paymentIntents.create).mockResolvedValue({
         id: "pi_123",
         status: "succeeded",
-      } as never);
+      } as unknown as Stripe.Response<Stripe.PaymentIntent>);
       vi.mocked(mocks.creditLedger.hasReferenceId).mockResolvedValue(false);
-      vi.mocked(mocks.creditLedger.credit).mockResolvedValue({} as never);
+      vi.mocked(mocks.creditLedger.credit).mockResolvedValue({} as unknown as CreditTransaction);
       vi.mocked(mocks.autoTopupEventLog.writeEvent).mockResolvedValue(undefined);
 
       const result = await processor.charge({
@@ -367,7 +371,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
       vi.mocked(mocks.stripe.setupIntents.create).mockResolvedValue({
         client_secret: "seti_secret_123",
-      } as never);
+      } as unknown as Stripe.Response<Stripe.SetupIntent>);
 
       const result = await processor.setupPaymentMethod("tenant-1");
       expect(result.clientSecret).toBe("seti_secret_123");
@@ -377,7 +381,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
       vi.mocked(mocks.stripe.setupIntents.create).mockResolvedValue({
         client_secret: null,
-      } as never);
+      } as unknown as Stripe.Response<Stripe.SetupIntent>);
 
       const result = await processor.setupPaymentMethod("tenant-1");
       expect(result.clientSecret).toBe("");
@@ -398,7 +402,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.tenantRepo.getByTenant).mockResolvedValue(makeTenantRow());
       vi.mocked(mocks.stripe.billingPortal.sessions.create).mockResolvedValue({
         url: "https://billing.stripe.com/session/abc",
-      } as never);
+      } as unknown as Stripe.Response<Stripe.BillingPortal.Session>);
 
       const result = await processor.createPortalSession({
         tenant: "tenant-1",
@@ -426,7 +430,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.checkout.sessions.create).mockResolvedValue({
         id: "cs_1",
         url: "https://checkout.stripe.com/cs_1",
-      } as unknown as never);
+      } as unknown as Stripe.Response<Stripe.Checkout.Session>);
 
       const result = await processor.createCheckoutSession({
         tenant: "tenant-1",
@@ -456,7 +460,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.checkout.sessions.create).mockResolvedValue({
         id: "cs_2",
         url: "https://checkout.stripe.com/cs_2",
-      } as unknown as never);
+      } as unknown as Stripe.Response<Stripe.Checkout.Session>);
 
       const result = await processorWithPrices.createCheckoutSession({
         tenant: "tenant-1",
@@ -466,6 +470,11 @@ describe("StripePaymentProcessor", () => {
       });
 
       expect(result.id).toBe("cs_2");
+      expect(mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          line_items: expect.arrayContaining([expect.objectContaining({ price: "price_500" })]),
+        }),
+      );
     });
 
     it("throws when no priceId and no matching price in map", async () => {
@@ -484,7 +493,7 @@ describe("StripePaymentProcessor", () => {
       vi.mocked(mocks.stripe.checkout.sessions.create).mockResolvedValue({
         id: "cs_3",
         url: null,
-      } as unknown as never);
+      } as unknown as Stripe.Response<Stripe.Checkout.Session>);
 
       const result = await processor.createCheckoutSession({
         tenant: "tenant-1",
