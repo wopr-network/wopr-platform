@@ -1,7 +1,30 @@
 import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateFraudEvents } from "../../db/schema/affiliate-fraud.js";
+
+function parseSignals(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    logger.warn("affiliate-fraud-repository: failed to parse signals JSON", { raw });
+    return [];
+  }
+}
+
+function parseSignalDetails(raw: string): Record<string, string> {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, string>)
+      : {};
+  } catch {
+    logger.warn("affiliate-fraud-repository: failed to parse signalDetails JSON", { raw });
+    return {};
+  }
+}
 
 export interface FraudEventInput {
   referralId: string;
@@ -57,20 +80,8 @@ export class DrizzleAffiliateFraudRepository implements IAffiliateFraudRepositor
       referrerTenantId: r.referrerTenantId,
       referredTenantId: r.referredTenantId,
       verdict: r.verdict as "blocked" | "flagged" | "clean",
-      signals: (() => {
-        try {
-          return JSON.parse(r.signals) as string[];
-        } catch {
-          return [];
-        }
-      })(),
-      signalDetails: (() => {
-        try {
-          return JSON.parse(r.signalDetails) as Record<string, string>;
-        } catch {
-          return {};
-        }
-      })(),
+      signals: parseSignals(r.signals),
+      signalDetails: parseSignalDetails(r.signalDetails),
       phase: r.phase as "signup" | "payout",
       createdAt: r.createdAt,
     }));
