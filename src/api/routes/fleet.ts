@@ -245,11 +245,16 @@ fleetRoutes.use("/bots/:id", async (c, next) => {
 /** GET /fleet/bots — List bots for the authenticated tenant */
 fleetRoutes.get("/bots", readAuth, async (c) => {
   const tokenTenantId = c.get("tokenTenantId");
+  const isOperatorToken = c.get("isOperatorToken");
+
   let bots: Awaited<ReturnType<typeof fleet.listAll>>;
   if (tokenTenantId) {
     bots = await fleet.listByTenant(tokenTenantId);
-  } else {
+  } else if (isOperatorToken) {
     bots = await fleet.listAll();
+  } else {
+    // Token has no tenant scope and is not an operator — reject.
+    return c.json({ error: "Tenant scope required" }, 403);
   }
   return c.json({ bots });
 });
