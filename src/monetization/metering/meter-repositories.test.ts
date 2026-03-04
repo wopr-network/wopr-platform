@@ -58,9 +58,15 @@ describe("DrizzleMeterEventRepository", () => {
 
   describe("insertBatch", () => {
     it("inserts nothing when given empty array", async () => {
+      // Insert a sentinel under a known tenant, then confirm empty batch adds no rows
+      const sentinel = makeMeterEvent({ tenant: "sentinel", timestamp: 1000 });
+      await repo.insertBatch([sentinel]);
       await repo.insertBatch([]);
-      const rows = await repo.queryByTenant("any", 100);
-      expect(rows).toEqual([]);
+      // Only the sentinel row should exist; no rows under any other tenant
+      const sentinelRows = await repo.queryByTenant("sentinel", 100);
+      expect(sentinelRows).toHaveLength(1);
+      const otherRows = await repo.queryByTenant("other-tenant", 100);
+      expect(otherRows).toEqual([]);
     });
 
     it("inserts a single event", async () => {
