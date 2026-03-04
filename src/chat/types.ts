@@ -7,6 +7,7 @@ export type ChatEvent =
 
 /** POST /api/chat request body */
 export interface ChatRequest {
+  /** UUIDv4 session identifier — must be owned by the authenticated user */
   sessionId: string;
   message: string;
 }

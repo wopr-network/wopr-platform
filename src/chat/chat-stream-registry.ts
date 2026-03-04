@@ -47,4 +47,24 @@ export class ChatStreamRegistry {
     const set = this.sessionIndex.get(sessionId);
     return set ? [...set] : [];
   }
+
+  private sessionOwners = new Map<string, string>();
+
+  /** Record the owner of a session. First call wins — subsequent calls with different userId are no-ops. */
+  setOwner(sessionId: string, userId: string): void {
+    if (!this.sessionOwners.has(sessionId)) {
+      this.sessionOwners.set(sessionId, userId);
+    }
+  }
+
+  /** Get the owner of a session, or undefined if not yet claimed. */
+  getOwner(sessionId: string): string | undefined {
+    return this.sessionOwners.get(sessionId);
+  }
+
+  /** Check if userId owns the session. Returns true if session is unclaimed (first user will claim it). */
+  isOwner(sessionId: string, userId: string): boolean {
+    const owner = this.sessionOwners.get(sessionId);
+    return owner === undefined || owner === userId;
+  }
 }

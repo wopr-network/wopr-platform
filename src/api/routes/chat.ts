@@ -6,7 +6,7 @@ import type { ChatEvent } from "../../chat/types.js";
 import { logger } from "../../config/logger.js";
 
 const chatRequestSchema = z.object({
-  sessionId: z.string().min(1),
+  sessionId: z.string().uuid(),
   message: z.string(), // empty string = greeting trigger
 });
 
@@ -45,6 +45,11 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
     const sessionId = c.req.query("sessionId");
     if (!sessionId) {
       return c.json({ error: "sessionId query parameter is required" }, 400);
+    }
+
+    // --- Ownership check ---
+    if (!registry.isOwner(sessionId, user.id)) {
+      return c.json({ error: "Session access denied" }, 403);
     }
 
     const { readable, writable } = new TransformStream<string, string>();
@@ -119,6 +124,12 @@ export function createChatRoutes(deps: ChatRouteDeps): Hono {
     }
 
     const { sessionId, message } = parsed.data;
+
+    // --- Bind session to user (first caller wins) and check ownership ---
+    registry.setOwner(sessionId, user.id);
+    if (!registry.isOwner(sessionId, user.id)) {
+      return c.json({ error: "Session access denied" }, 403);
+    }
 
     // Fire-and-forget: process in background so POST returns immediately
     const emit = (event: ChatEvent) => {
