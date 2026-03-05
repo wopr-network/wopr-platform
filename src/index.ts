@@ -646,6 +646,8 @@ if (process.env.NODE_ENV !== "test") {
     });
   }
 
+  const cronIntervals: ReturnType<typeof setInterval>[] = [];
+
   // Wire billing tRPC router deps
   {
     const { MeterAggregator } = await import("./monetization/metering/aggregator.js");
@@ -665,6 +667,7 @@ if (process.env.NODE_ENV !== "test") {
     const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(getDb()));
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
+
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     if (stripeKey) {
       const Stripe = (await import("stripe")).default;
@@ -745,27 +748,29 @@ if (process.env.NODE_ENV !== "test") {
         const { getTenantStatusRepo, getAutoTopupEventLogRepo } = await import("./fleet/services.js");
         const { checkTenantStatus } = await import("./admin/tenant-status/tenant-status-middleware.js");
         const HOUR_MS = 60 * 60 * 1000;
-        setInterval(() => {
-          void runScheduledTopups({
-            settingsRepo: autoTopupSettingsStore,
-            chargeAutoTopup: (tenantId, amountCents, source) =>
-              chargeAutoTopup(
-                { stripe, tenantRepo, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
-                tenantId,
-                amountCents,
-                source,
-              ),
-            checkTenantStatus: (tenantId) => checkTenantStatus(getTenantStatusRepo(), tenantId),
-          })
-            .then((result) => {
-              logger.info("Scheduled auto-topup cron complete", result);
+        cronIntervals.push(
+          setInterval(() => {
+            void runScheduledTopups({
+              settingsRepo: autoTopupSettingsStore,
+              chargeAutoTopup: (tenantId, amountCents, source) =>
+                chargeAutoTopup(
+                  { stripe, tenantRepo, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
+                  tenantId,
+                  amountCents,
+                  source,
+                ),
+              checkTenantStatus: (tenantId) => checkTenantStatus(getTenantStatusRepo(), tenantId),
             })
-            .catch((err) => {
-              logger.error("Scheduled auto-topup cron failed", {
-                error: err instanceof Error ? err.message : String(err),
+              .then((result) => {
+                logger.info("Scheduled auto-topup cron complete", result);
+              })
+              .catch((err) => {
+                logger.error("Scheduled auto-topup cron failed", {
+                  error: err instanceof Error ? err.message : String(err),
+                });
               });
-            });
-        }, HOUR_MS);
+          }, HOUR_MS),
+        );
         logger.info("Hourly scheduled auto-topup cron started");
       }
 
@@ -912,20 +917,22 @@ if (process.env.NODE_ENV !== "test") {
   {
     const expiryLedger = getCreditLedger();
     const HOURLY_MS = 60 * 60 * 1000;
-    setInterval(() => {
-      const now = new Date().toISOString();
-      void runCreditExpiryCron({ ledger: expiryLedger, now })
-        .then((result) => {
-          if (result.processed > 0) {
-            logger.info("Credit expiry cron complete", result);
-          }
-        })
-        .catch((err) => {
-          logger.error("Credit expiry cron failed", {
-            error: err instanceof Error ? err.message : String(err),
+    cronIntervals.push(
+      setInterval(() => {
+        const now = new Date().toISOString();
+        void runCreditExpiryCron({ ledger: expiryLedger, now })
+          .then((result) => {
+            if (result.processed > 0) {
+              logger.info("Credit expiry cron complete", result);
+            }
+          })
+          .catch((err) => {
+            logger.error("Credit expiry cron failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
-        });
-    }, HOURLY_MS);
+      }, HOURLY_MS),
+    );
     logger.info("Hourly credit expiry cron scheduled (1h interval)");
   }
 
@@ -936,25 +943,27 @@ if (process.env.NODE_ENV !== "test") {
     const dividendTxRepo = getCreditTransactionRepo();
     const dividendLedger = getCreditLedger();
     const DAILY_MS = 24 * 60 * 60 * 1000;
-    setInterval(() => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const targetDate = yesterday.toISOString().slice(0, 10);
-      void runDividendCron({
-        creditTransactionRepo: dividendTxRepo,
-        ledger: dividendLedger,
-        matchRate: dividendMatchRate,
-        targetDate,
-      })
-        .then((result) => {
-          logger.info("Daily dividend distribution complete", result);
+    cronIntervals.push(
+      setInterval(() => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const targetDate = yesterday.toISOString().slice(0, 10);
+        void runDividendCron({
+          creditTransactionRepo: dividendTxRepo,
+          ledger: dividendLedger,
+          matchRate: dividendMatchRate,
+          targetDate,
         })
-        .catch((err) => {
-          logger.error("Daily dividend distribution failed", {
-            error: err instanceof Error ? err.message : String(err),
+          .then((result) => {
+            logger.info("Daily dividend distribution complete", result);
+          })
+          .catch((err) => {
+            logger.error("Daily dividend distribution failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
-        });
-    }, DAILY_MS);
+      }, DAILY_MS),
+    );
     logger.info("Daily dividend distribution cron scheduled (24h interval)");
   }
 
@@ -964,23 +973,25 @@ if (process.env.NODE_ENV !== "test") {
     const appBaseUrl = process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot";
     const notificationService = new NotificationService(getNotificationQueueStore(), appBaseUrl);
     const WEEKLY_MS = 7 * 24 * 60 * 60 * 1000;
-    setInterval(() => {
-      const today = new Date().toISOString().slice(0, 10);
-      void runDividendDigestCron({
-        dividendRepo: getDividendRepo(),
-        notificationService,
-        appBaseUrl,
-        digestDate: today,
-      })
-        .then((result) => {
-          logger.info("Weekly dividend digest complete", result);
+    cronIntervals.push(
+      setInterval(() => {
+        const today = new Date().toISOString().slice(0, 10);
+        void runDividendDigestCron({
+          dividendRepo: getDividendRepo(),
+          notificationService,
+          appBaseUrl,
+          digestDate: today,
         })
-        .catch((err) => {
-          logger.error("Weekly dividend digest failed", {
-            error: err instanceof Error ? err.message : String(err),
+          .then((result) => {
+            logger.info("Weekly dividend digest complete", result);
+          })
+          .catch((err) => {
+            logger.error("Weekly dividend digest failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
-        });
-    }, WEEKLY_MS);
+      }, WEEKLY_MS),
+    );
     logger.info("Weekly dividend digest cron scheduled (7d interval)");
   }
 
@@ -991,36 +1002,38 @@ if (process.env.NODE_ENV !== "test") {
     const usageSummaryRepo = new DrizzleUsageSummaryRepository(reconciliationDb);
     const adapterUsageRepo = new DrizzleAdapterUsageRepository(reconciliationDb);
     const DAILY_MS = 24 * 60 * 60 * 1000;
-    setInterval(() => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const targetDate = yesterday.toISOString().slice(0, 10);
-      void runReconciliation({
-        usageSummaryRepo,
-        adapterUsageRepo,
-        targetDate,
-        onFlagForReview: (tenantId, driftRaw) => {
-          logger.error("Tenant flagged for billing review — drift exceeds threshold", {
-            tenantId,
-            driftRaw,
-            driftDisplay: Credit.fromRaw(Math.abs(driftRaw)).toDisplayString(),
-          });
-        },
-      })
-        .then((result) => {
-          logger.info("Daily metering/ledger reconciliation complete", {
-            date: result.date,
-            tenantsChecked: result.tenantsChecked,
-            discrepancies: result.discrepancies.length,
-            flagged: result.flagged.length,
-          });
+    cronIntervals.push(
+      setInterval(() => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const targetDate = yesterday.toISOString().slice(0, 10);
+        void runReconciliation({
+          usageSummaryRepo,
+          adapterUsageRepo,
+          targetDate,
+          onFlagForReview: (tenantId, driftRaw) => {
+            logger.error("Tenant flagged for billing review — drift exceeds threshold", {
+              tenantId,
+              driftRaw,
+              driftDisplay: Credit.fromRaw(Math.abs(driftRaw)).toDisplayString(),
+            });
+          },
         })
-        .catch((err) => {
-          logger.error("Daily metering/ledger reconciliation failed", {
-            error: err instanceof Error ? err.message : String(err),
+          .then((result) => {
+            logger.info("Daily metering/ledger reconciliation complete", {
+              date: result.date,
+              tenantsChecked: result.tenantsChecked,
+              discrepancies: result.discrepancies.length,
+              flagged: result.flagged.length,
+            });
+          })
+          .catch((err) => {
+            logger.error("Daily metering/ledger reconciliation failed", {
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
-        });
-    }, DAILY_MS);
+      }, DAILY_MS),
+    );
     logger.info("Daily metering/ledger reconciliation cron scheduled (24h interval)");
   }
 
@@ -1069,22 +1082,34 @@ if (process.env.NODE_ENV !== "test") {
     {
       const CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
       const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
-      setInterval(() => {
-        void getSetupService()
-          .cleanupStaleSessions(STALE_THRESHOLD_MS)
-          .then((results) => {
-            if (results.length > 0) {
-              logger.info("Stale setup sessions rolled back", { count: results.length });
-            }
-          })
-          .catch((err) => {
-            logger.error("Setup session cleanup failed", {
-              error: err instanceof Error ? err.message : String(err),
+      cronIntervals.push(
+        setInterval(() => {
+          void getSetupService()
+            .cleanupStaleSessions(STALE_THRESHOLD_MS)
+            .then((results) => {
+              if (results.length > 0) {
+                logger.info("Stale setup sessions rolled back", { count: results.length });
+              }
+            })
+            .catch((err) => {
+              logger.error("Setup session cleanup failed", {
+                error: err instanceof Error ? err.message : String(err),
+              });
             });
-          });
-      }, CLEANUP_INTERVAL_MS);
+        }, CLEANUP_INTERVAL_MS),
+      );
       logger.info("Setup session cleanup scheduled (15m interval, 30m stale threshold)");
     }
+
+    // Graceful shutdown: clear all cron intervals
+    const clearCronIntervals = () => {
+      for (const id of cronIntervals) {
+        clearInterval(id);
+      }
+      logger.info("All cron intervals cleared");
+    };
+    process.on("SIGTERM", clearCronIntervals);
+    process.on("SIGINT", clearCronIntervals);
 
     // Wire chat deps (echo backend until WOPR instance integration)
     setChatDeps({ backend: new EchoChatBackend() });
