@@ -239,6 +239,22 @@ describe("billing tenant isolation (WOP-1406)", () => {
     });
   }
 
+  it("rejects session-cookie user claiming another user's personal tenant (WOP-1706)", async () => {
+    // Simulates: attacker sets wopr_tenant_id cookie to victim's user ID.
+    // The x-tenant-id header carries that value to createTRPCContext.
+    // tenantProcedure must reject because attacker is not the victim.
+    const caller = makeCaller(makeCtx("attacker-user", "victim-user"));
+
+    await expect(caller.creditsBalance()).rejects.toThrow(/Not authorized for this tenant/);
+  });
+
+  it("rejects session-cookie user claiming an org they do not belong to (WOP-1706)", async () => {
+    // Simulates: attacker sets wopr_tenant_id cookie to an org ID they're not a member of.
+    const caller = makeCaller(makeCtx("attacker-user", "org-secret"));
+
+    await expect(caller.creditsBalance()).rejects.toThrow(/Not authorized for this tenant/);
+  });
+
   it("allows legitimate tenant to access their own data", async () => {
     // user-tenant-alpha accessing their own tenant (tenant-alpha)
     // validateTenantAccess: tenantId === userId? No ("tenant-alpha" !== "user-tenant-alpha")
