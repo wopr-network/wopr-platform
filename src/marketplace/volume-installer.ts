@@ -2,6 +2,18 @@ import { execFile as defaultExecFile } from "node:child_process";
 import { logger } from "../config/logger.js";
 import type { IMarketplacePluginRepository } from "./marketplace-plugin-repository.js";
 
+const VALID_NPM_PACKAGE = /^(@[a-z0-9~][a-z0-9-._~]*\/)?[a-z0-9~][a-z0-9-._~]*$/;
+const VALID_SEMVER = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$/;
+
+function validateNpmPackageSpec(npmPackage: string, version: string): void {
+  if (!VALID_NPM_PACKAGE.test(npmPackage)) {
+    throw new Error(`Invalid npm package name: ${npmPackage}`);
+  }
+  if (!VALID_SEMVER.test(version)) {
+    throw new Error(`Invalid npm version: ${version}`);
+  }
+}
+
 export interface InstallOptions {
   pluginId: string;
   npmPackage: string;
@@ -17,9 +29,10 @@ async function runNpmInstall(
   volumePath: string,
   execFn: typeof defaultExecFile,
 ): Promise<void> {
+  validateNpmPackageSpec(npmPackage, version);
   const pkg = `${npmPackage}@${version}`;
   await new Promise<string>((resolve, reject) => {
-    execFn("npm", ["install", pkg], { cwd: volumePath, timeout: 120_000 }, (err, stdout, stderr) => {
+    execFn("npm", ["install", "--", pkg], { cwd: volumePath, timeout: 120_000 }, (err, stdout, stderr) => {
       if (err) {
         reject(new Error(stderr || err.message));
       } else {
@@ -67,6 +80,7 @@ export async function upgradePluginOnVolume(options: UpgradeOptions): Promise<vo
   logger.info("Upgrading plugin on shared volume", { pluginId, from: existing.version, to: targetVersion, volumePath });
 
   try {
+    validateNpmPackageSpec(npmPackage, targetVersion);
     await repo.setVersion(pluginId, targetVersion, existing.version);
     await runNpmInstall(npmPackage, targetVersion, volumePath, execFn);
     await repo.setInstallResult(pluginId, Date.now(), null);

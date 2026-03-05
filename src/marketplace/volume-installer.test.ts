@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IMarketplacePluginRepository } from "./marketplace-plugin-repository.js";
 import type { MarketplacePlugin } from "./marketplace-repository-types.js";
 import { installPluginToVolume, rollbackPluginOnVolume, upgradePluginOnVolume } from "./volume-installer.js";
@@ -62,7 +62,7 @@ describe("installPluginToVolume", () => {
 
     expect(execFn).toHaveBeenCalledWith(
       "npm",
-      ["install", "@wopr-network/wopr-plugin-test@1.0.0"],
+      ["install", "--", "@wopr-network/wopr-plugin-test@1.0.0"],
       expect.objectContaining({ cwd: "/tmp/test-plugins" }),
       expect.any(Function),
     );
@@ -122,7 +122,7 @@ describe("upgradePluginOnVolume", () => {
 
     expect(execFn).toHaveBeenCalledWith(
       "npm",
-      ["install", "@wopr-network/wopr-plugin-test@2.0.0"],
+      ["install", "--", "@wopr-network/wopr-plugin-test@2.0.0"],
       expect.objectContaining({ cwd: "/tmp/test-plugins" }),
       expect.any(Function),
     );
@@ -201,7 +201,7 @@ describe("rollbackPluginOnVolume", () => {
 
     expect(execFn).toHaveBeenCalledWith(
       "npm",
-      ["install", "@wopr-network/wopr-plugin-test@1.0.0"],
+      ["install", "--", "@wopr-network/wopr-plugin-test@1.0.0"],
       expect.objectContaining({ cwd: "/tmp/test-plugins" }),
       expect.any(Function),
     );
@@ -234,6 +234,234 @@ describe("rollbackPluginOnVolume", () => {
         repo,
       }),
     ).rejects.toThrow("previousVersion mismatch");
+  });
+});
+
+describe("npm package validation", () => {
+  const validExec = vi.fn((_cmd: unknown, _args: unknown, _opts: unknown, cb: Function) => cb(null, "", ""));
+
+  beforeEach(() => {
+    validExec.mockClear();
+  });
+
+  it("rejects package names with path traversal", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "../malicious-pkg",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("rejects npm alias syntax", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "npm:evil-pkg",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("rejects URL-based package specs", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "https://evil.com/pkg.tgz",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("rejects invalid version strings", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "@wopr-network/wopr-plugin-test",
+      version: "1.0.0; rm -rf /",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm version"));
+  });
+
+  it("rejects git-based package specs via upgrade (which rethrows)", async () => {
+    const plugin = makePlugin({ version: "1.0.0" });
+    const repo = mockRepo({ findById: vi.fn().mockResolvedValue(plugin) });
+    await expect(
+      upgradePluginOnVolume({
+        pluginId: "p1",
+        npmPackage: "git+ssh://git@github.com/evil/pkg.git",
+        targetVersion: "1.0.0",
+        volumePath: "/tmp/vol",
+        repo,
+        execFn: validExec as never,
+      }),
+    ).rejects.toThrow("Invalid npm package name");
+  });
+
+  it("rejects package names starting with a dash (flag injection)", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "--global",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("rejects scoped package names where scope starts with a dash", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "@-evil/pkg",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("passes -- separator before package name to prevent flag injection", async () => {
+    const execFn = vi.fn((_cmd: unknown, _args: unknown, _opts: unknown, cb: Function) => cb(null, "", ""));
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "lodash",
+      version: "4.17.21",
+      volumePath: "/tmp/vol",
+      repo: mockRepo(),
+      execFn: execFn as never,
+    });
+    expect(execFn).toHaveBeenCalledWith(
+      "npm",
+      ["install", "--", "lodash@4.17.21"],
+      expect.any(Object),
+      expect.any(Function),
+    );
+  });
+
+  it("allows valid scoped packages", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "1.0.0",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows valid unscoped packages", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "lodash",
+        version: "4.17.21",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows semver with pre-release tags", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "2.0.0-beta.1",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows semver with hyphenated pre-release and build metadata", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "1.0.0-rc-1",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      installPluginToVolume({
+        pluginId: "p2",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "1.2.3+build-456",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("upgradePluginOnVolume — validation before DB mutation", () => {
+  it("rejects invalid package before calling setVersion", async () => {
+    const setVersion = vi.fn().mockResolvedValue(undefined);
+    const plugin = makePlugin({ version: "1.0.0" });
+    const repo = mockRepo({ findById: vi.fn().mockResolvedValue(plugin), setVersion });
+    await expect(
+      upgradePluginOnVolume({
+        pluginId: "p1",
+        npmPackage: "--evil",
+        targetVersion: "1.0.0",
+        volumePath: "/tmp/vol",
+        repo,
+      }),
+    ).rejects.toThrow("Invalid npm package name");
+    expect(setVersion).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid version before calling setVersion", async () => {
+    const setVersion = vi.fn().mockResolvedValue(undefined);
+    const plugin = makePlugin({ version: "1.0.0" });
+    const repo = mockRepo({ findById: vi.fn().mockResolvedValue(plugin), setVersion });
+    await expect(
+      upgradePluginOnVolume({
+        pluginId: "p1",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        targetVersion: "not-a-version",
+        volumePath: "/tmp/vol",
+        repo,
+      }),
+    ).rejects.toThrow("Invalid npm version");
+    expect(setVersion).not.toHaveBeenCalled();
   });
 });
 
