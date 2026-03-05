@@ -22,29 +22,31 @@ import { decrypt } from "../../src/security/encryption.js";
 import type { EncryptedPayload } from "../../src/security/types.js";
 
 // ---------------------------------------------------------------------------
-// Env setup — MUST be before route imports
+// Constants
 // ---------------------------------------------------------------------------
 
 const TENANT_ID = "tenant-secrets-test";
+const TENANT_ID_B = "tenant-secrets-other";
 const TOKEN = "wopr_write_secretstoken000001";
+const TOKEN_B = "wopr_write_secretstoken000002";
 const PLATFORM_SECRET = "test-platform-secret-32bytes!!ok";
-
-vi.stubEnv(`FLEET_TOKEN_${TENANT_ID}`, `write:${TOKEN}`);
-vi.stubEnv("PLATFORM_SECRET", PLATFORM_SECRET);
 
 const authHeaders = { Authorization: `Bearer ${TOKEN}` };
 const jsonHeaders = { "Content-Type": "application/json", ...authHeaders };
+const authHeadersB = { Authorization: `Bearer ${TOKEN_B}` };
+const jsonHeadersB = { "Content-Type": "application/json", ...authHeadersB };
 
 /** Derive tenant encryption key — same logic as src/api/routes/tenant-keys.ts */
 function deriveTenantKey(tenantId: string, platformSecret: string): Buffer {
   return createHmac("sha256", platformSecret).update(`tenant:${tenantId}`).digest();
 }
 
-// Dynamic import AFTER env stubs
-const { tenantKeyRoutes, setRepo } = await import("../../src/api/routes/tenant-keys.js");
-
-const app = new Hono();
-app.route("/api/tenant-keys", tenantKeyRoutes);
+// Dynamic imports — populated in beforeAll after env stubs + resetModules
+let tenantKeyRoutes: Awaited<typeof import("../../src/api/routes/tenant-keys.js")>["tenantKeyRoutes"];
+let setRepo: Awaited<typeof import("../../src/api/routes/tenant-keys.js")>["setRepo"];
+let resolveApiKey: Awaited<typeof import("../../src/security/tenant-keys/key-resolution.js")>["resolveApiKey"];
+let DrizzleKeyResolutionRepository: Awaited<typeof import("../../src/security/tenant-keys/key-resolution-repository.js")>["DrizzleKeyResolutionRepository"];
+let app: Hono;
 
 // ---------------------------------------------------------------------------
 // E2E: Secrets management lifecycle
@@ -56,6 +58,28 @@ describe("E2E: secrets management — store → retrieve → rotate → resolve 
   let store: TenantKeyRepository;
 
   beforeAll(async () => {
+    // Stub env BEFORE importing route modules that read env at import time
+    vi.stubEnv(`FLEET_TOKEN_${TENANT_ID}`, `write:${TOKEN}`);
+    vi.stubEnv(`FLEET_TOKEN_${TENANT_ID_B}`, `write:${TOKEN_B}`);
+    vi.stubEnv("PLATFORM_SECRET", PLATFORM_SECRET);
+
+    // Reset module registry so route modules pick up fresh env values
+    vi.resetModules();
+
+    // Dynamic imports after env stubs
+    const routesMod = await import("../../src/api/routes/tenant-keys.js");
+    tenantKeyRoutes = routesMod.tenantKeyRoutes;
+    setRepo = routesMod.setRepo;
+
+    const keyResMod = await import("../../src/security/tenant-keys/key-resolution.js");
+    resolveApiKey = keyResMod.resolveApiKey;
+
+    const keyResRepoMod = await import("../../src/security/tenant-keys/key-resolution-repository.js");
+    DrizzleKeyResolutionRepository = keyResRepoMod.DrizzleKeyResolutionRepository;
+
+    app = new Hono();
+    app.route("/api/tenant-keys", tenantKeyRoutes);
+
     ({ db, pool } = await createTestDb());
     await beginTestTransaction(pool);
     store = new TenantKeyRepository(db);
@@ -65,6 +89,7 @@ describe("E2E: secrets management — store → retrieve → rotate → resolve 
   afterAll(async () => {
     await endTestTransaction(pool);
     await pool.close();
+    vi.unstubAllEnvs();
   });
 
   beforeEach(async () => {
@@ -226,14 +251,6 @@ describe("E2E: secrets management — store → retrieve → rotate → resolve 
       headers: jsonHeaders,
       body: JSON.stringify({ provider: "anthropic", apiKey }),
     });
-
-    // Use resolveApiKey to simulate bot key resolution
-    const { resolveApiKey } = await import(
-      "../../src/security/tenant-keys/key-resolution.js"
-    );
-    const { DrizzleKeyResolutionRepository } = await import(
-      "../../src/security/tenant-keys/key-resolution-repository.js"
-    );
 
     const resolutionRepo = new DrizzleKeyResolutionRepository(db);
     const tenantKey = deriveTenantKey(TENANT_ID, PLATFORM_SECRET);
@@ -411,6 +428,27 @@ describe("E2E: secrets management — store → retrieve → rotate → resolve 
       method: "DELETE",
       headers: authHeaders,
     });
+    expect(res.status).toBe(404);
+  });
+
+  // -----------------------------------------------------------------------
+  // 11. Tenant isolation — secrets cannot be accessed across tenants
+  // -----------------------------------------------------------------------
+
+  it("secrets from tenant A are not accessible by tenant B", async () => {
+    // Tenant A stores a secret
+    await app.request("/api/tenant-keys/anthropic", {
+      method: "PUT",
+      headers: jsonHeaders,
+      body: JSON.stringify({ provider: "anthropic", apiKey: "sk-ant-tenant-a-only" }),
+    });
+
+    // Tenant B tries to retrieve it
+    const res = await app.request("/api/tenant-keys/anthropic", {
+      headers: authHeadersB,
+    });
+
+    // Tenant B should get 404 (no secret for their tenant)
     expect(res.status).toBe(404);
   });
 });
