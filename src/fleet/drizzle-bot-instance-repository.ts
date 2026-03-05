@@ -40,7 +40,7 @@ export class DrizzleBotInstanceRepository implements IBotInstanceRepository {
     return created;
   }
 
-  async reassign(id: string, nodeId: string): Promise<BotInstance> {
+  async reassign(id: string, nodeId: string | null): Promise<BotInstance> {
     const now = new Date().toISOString();
     const result = await this.db
       .update(botInstances)

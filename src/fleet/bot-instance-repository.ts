@@ -13,7 +13,7 @@ export interface IBotInstanceRepository {
   listByNode(nodeId: string): Promise<BotInstance[]>;
   listByTenant(tenantId: string): Promise<BotInstance[]>;
   create(data: NewBotInstance): Promise<BotInstance>;
-  reassign(id: string, nodeId: string): Promise<BotInstance>;
+  reassign(id: string, nodeId: string | null): Promise<BotInstance>;
   setBillingState(id: string, state: BillingState): Promise<BotInstance>;
   getResourceTier(botId: string): Promise<string | null>;
   setResourceTier(botId: string, tier: string): Promise<void>;
