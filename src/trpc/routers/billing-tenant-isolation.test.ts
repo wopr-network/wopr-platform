@@ -245,14 +245,14 @@ describe("billing tenant isolation (WOP-1406)", () => {
     // tenantProcedure must reject because attacker is not the victim.
     const caller = makeCaller(makeCtx("attacker-user", "victim-user"));
 
-    await expect(caller.creditsBalance()).rejects.toThrow("Not authorized for this tenant");
+    await expect(caller.creditsBalance()).rejects.toThrow(/Not authorized for this tenant/);
   });
 
   it("rejects session-cookie user claiming an org they do not belong to (WOP-1706)", async () => {
     // Simulates: attacker sets wopr_tenant_id cookie to an org ID they're not a member of.
     const caller = makeCaller(makeCtx("attacker-user", "org-secret"));
 
-    await expect(caller.creditsBalance()).rejects.toThrow("Not authorized for this tenant");
+    await expect(caller.creditsBalance()).rejects.toThrow(/Not authorized for this tenant/);
   });
 
   it("allows legitimate tenant to access their own data", async () => {
