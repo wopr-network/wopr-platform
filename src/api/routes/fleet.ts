@@ -444,13 +444,8 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
     // Capacity freed -- check if any waiting recovery tenants can now be placed
     Promise.resolve()
       .then(() => {
-        // Retry any waiting recovery items now that capacity freed up
         const repo = getRecoveryOrchestrator();
-        return repo
-          .listEvents()
-          .then((events) =>
-            events.reduce((p, e) => p.then(() => repo.retryWaiting(e.id)), Promise.resolve(undefined as unknown)),
-          );
+        return repo.listEvents().then((events) => Promise.allSettled(events.map((e) => repo.retryWaiting(e.id))));
       })
       .catch((err) => {
         logger.error("Auto-retry after bot removal failed", { err });

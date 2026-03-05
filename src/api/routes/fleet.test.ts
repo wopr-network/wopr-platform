@@ -178,9 +178,10 @@ vi.mock("../../proxy/singleton.js", () => {
 const mockGetNodeRepo = vi.fn((): INodeRepository => {
   throw new Error("DATABASE_URL environment variable is required");
 });
+const mockGetRecoveryOrchestrator = vi.fn<() => unknown>(() => null);
 vi.mock("../../fleet/services.js", () => ({
   getNodeRepo: () => mockGetNodeRepo(),
-  getRecoveryOrchestrator: () => null,
+  getRecoveryOrchestrator: (...args: unknown[]) => mockGetRecoveryOrchestrator(...(args as [])),
 }));
 
 // Import AFTER mocks are set up
@@ -583,6 +584,33 @@ describe("fleet routes", () => {
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}?removeVolumes=true`, { method: "DELETE", headers: authHeader });
       expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID, true);
+    });
+
+    it("retries all waiting recovery events even if one fails", async () => {
+      const mockOrchestrator = {
+        listEvents: vi.fn().mockResolvedValue([{ id: "ev-1" }, { id: "ev-2" }, { id: "ev-3" }]),
+        retryWaiting: vi
+          .fn()
+          .mockRejectedValueOnce(new Error("boom"))
+          .mockResolvedValueOnce(undefined)
+          .mockResolvedValueOnce(undefined),
+      };
+      mockGetRecoveryOrchestrator.mockReturnValue(mockOrchestrator);
+      fleetMock.remove.mockResolvedValue(undefined);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, { method: "DELETE", headers: authHeader });
+      expect(res.status).toBe(204);
+
+      // Allow the fire-and-forget promise to settle
+      await new Promise((r) => setTimeout(r, 50));
+
+      // All 3 events must have been retried, not just the first
+      expect(mockOrchestrator.retryWaiting).toHaveBeenCalledTimes(3);
+      expect(mockOrchestrator.retryWaiting).toHaveBeenCalledWith("ev-1");
+      expect(mockOrchestrator.retryWaiting).toHaveBeenCalledWith("ev-2");
+      expect(mockOrchestrator.retryWaiting).toHaveBeenCalledWith("ev-3");
+
+      mockGetRecoveryOrchestrator.mockReturnValue(null);
     });
   });
 
