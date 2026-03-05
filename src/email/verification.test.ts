@@ -29,7 +29,8 @@ describe("email verification", () => {
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL,
         name TEXT,
-        "createdAt" TEXT
+        "createdAt" TEXT,
+        "emailVerified" boolean DEFAULT false
       )
     `);
     await initVerificationSchema(pool);
