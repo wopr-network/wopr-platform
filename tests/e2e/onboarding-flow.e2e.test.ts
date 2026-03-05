@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
@@ -32,10 +35,10 @@ function stubWoprClient(): IWoprClient {
 
 function testConfig(): OnboardingConfig {
   return {
-    woprPort: 3847,
+    woprPort: Math.floor(Math.random() * 10000) + 40000,
     llmProvider: "anthropic",
     llmModel: "test-model",
-    woprDataDir: "/tmp/wopr-test",
+    woprDataDir: fs.mkdtempSync(path.join(os.tmpdir(), "wopr-test-")),
     enabled: true,
   };
 }
