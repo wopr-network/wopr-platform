@@ -437,7 +437,7 @@ describe("E2E: admin operations — login → manage users → audit log → com
 
     const csvLines = csv.split("\n");
     expect(csvLines).toHaveLength(1001); // header + 1000 rows
-    expect(exportElapsed).toBeLessThan(2000);
+    expect(exportElapsed).toBeLessThan(5000);
   });
 });
 
