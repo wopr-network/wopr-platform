@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { unlink } from "node:fs/promises";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -32,9 +34,9 @@ describe("E2E: adapter socket — meters capability usage and charges credits co
   let TENANT_ID: string;
 
   beforeEach(async () => {
-    const suffix = `${Date.now()}-${randomUUID()}`;
-    walPath = `/tmp/wopr-e2e-adapter-socket-wal-${suffix}.jsonl`;
-    dlqPath = `/tmp/wopr-e2e-adapter-socket-dlq-${suffix}.jsonl`;
+    const suffix = randomUUID();
+    walPath = join(tmpdir(), `wopr-e2e-adapter-socket-wal-${suffix}.jsonl`);
+    dlqPath = join(tmpdir(), `wopr-e2e-adapter-socket-dlq-${suffix}.jsonl`);
 
     ({ db, pool } = await createTestDb());
 
@@ -43,7 +45,7 @@ describe("E2E: adapter socket — meters capability usage and charges credits co
 
     meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,
-      batchSize: 1,
+      batchSize: 10000,
       walPath,
       dlqPath,
     });
@@ -55,10 +57,14 @@ describe("E2E: adapter socket — meters capability usage and charges credits co
   });
 
   afterEach(async () => {
-    meter.close();
-    await pool.close();
-    await unlink(walPath).catch(() => {});
-    await unlink(dlqPath).catch(() => {});
+    try {
+      await meter.flush();
+      meter.close();
+    } finally {
+      await pool.close();
+      await unlink(walPath).catch(() => {});
+      await unlink(dlqPath).catch(() => {});
+    }
   });
 
   it("image generation — metered and charged", async () => {
