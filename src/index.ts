@@ -1101,15 +1101,7 @@ if (process.env.NODE_ENV !== "test") {
       logger.info("Setup session cleanup scheduled (15m interval, 30m stale threshold)");
     }
 
-    // Graceful shutdown: clear all cron intervals
-    const clearCronIntervals = () => {
-      for (const id of cronIntervals) {
-        clearInterval(id);
-      }
-      logger.info("All cron intervals cleared");
-    };
-    process.on("SIGTERM", clearCronIntervals);
-    process.on("SIGINT", clearCronIntervals);
+    // Shutdown handlers are registered after server creation (below)
 
     // Wire chat deps (echo backend until WOPR instance integration)
     setChatDeps({ backend: new EchoChatBackend() });
@@ -1175,4 +1167,27 @@ if (process.env.NODE_ENV !== "test") {
       }
     })();
   });
+
+  // Graceful shutdown: clear cron intervals, close servers, exit
+  const gracefulShutdown = () => {
+    logger.info("Shutting down gracefully...");
+    for (const id of cronIntervals) {
+      clearInterval(id);
+    }
+    logger.info("All cron intervals cleared");
+    wss.close(() => {
+      logger.info("WebSocket server closed");
+    });
+    server.close(() => {
+      logger.info("HTTP server closed");
+      process.exit(0);
+    });
+    // Force exit if close hangs
+    setTimeout(() => {
+      logger.warn("Graceful shutdown timed out, forcing exit");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+  process.on("SIGTERM", gracefulShutdown);
+  process.on("SIGINT", gracefulShutdown);
 }
