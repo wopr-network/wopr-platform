@@ -143,6 +143,7 @@ const GDPR_TABLES: Array<{ table: string; col: string }> = [
   { table: "payram_charges", col: "tenant_id" },
   { table: "tenant_status", col: "tenant_id" },
   { table: "tenant_customers", col: "tenant" },
+  { table: "user_roles", col: "tenant_id" },
 ];
 
 const AUTH_TABLES: Array<{ table: string; col: string }> = [
@@ -201,10 +202,18 @@ describe("E2E: account deletion GDPR flow", () => {
     const cronResult = await runDeletionCron(store, executorDeps);
     expect(cronResult.processed).toBe(1);
     expect(cronResult.succeeded).toBe(1);
+    expect(cronResult.results[0]?.errors ?? []).toEqual([]);
     expect(cronResult.failed).toBe(0);
 
     // 5. Assert ALL tenant data purged
     await assertRowCounts(pool, GDPR_TABLES, tenantId, 0);
+
+    // backup_status uses container_id pattern, not tenant_id directly
+    const backupRows = await pool.query<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM backup_status WHERE container_id LIKE $1`,
+      [`%${tenantId}%`],
+    );
+    expect(Number(backupRows.rows[0]?.c ?? 0)).toBe(0);
 
     // 6. Assert auth user deleted
     await assertRowCounts(pool, AUTH_TABLES, tenantId, 0);
@@ -226,6 +235,7 @@ describe("E2E: account deletion GDPR flow", () => {
   it("cron is idempotent — running again after purge produces no error", async () => {
     const tenantId = `gdpr-idempotent-${randomUUID().slice(0, 8)}`;
     await seedTenant(pool, tenantId);
+    await seedAuthTables(pool, tenantId);
 
     // Create and expire request
     const request = await store.create(tenantId, tenantId);
@@ -237,6 +247,7 @@ describe("E2E: account deletion GDPR flow", () => {
     // First run — purge
     const first = await runDeletionCron(store, executorDeps);
     expect(first.succeeded).toBe(1);
+    expect(first.results[0]?.errors ?? []).toEqual([]);
 
     // Second run — no pending expired requests, should be a no-op
     const second = await runDeletionCron(store, executorDeps);
@@ -295,6 +306,7 @@ describe("E2E: account deletion GDPR flow", () => {
     const cronResult = await runDeletionCron(store, executorDeps);
     expect(cronResult.processed).toBe(1);
     expect(cronResult.succeeded).toBe(1);
+    expect(cronResult.results[0]?.errors ?? []).toEqual([]);
 
     // All data purged
     await assertRowCounts(pool, GDPR_TABLES, tenantId, 0);
