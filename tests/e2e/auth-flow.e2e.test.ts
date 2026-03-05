@@ -78,6 +78,7 @@ async function initBetterAuthSchema(pg: PGlite): Promise<void> {
 
 const BASE_URL = "http://localhost:3100";
 const AUTH_PATH = "/api/auth";
+const SESSION_COOKIE = "better-auth.session_token";
 
 describe("E2E: auth flow — register → login → session → logout", () => {
   let pg: PGlite;
@@ -92,6 +93,7 @@ describe("E2E: auth flow — register → login → session → logout", () => {
       basePath: AUTH_PATH,
       emailAndPassword: { enabled: true },
       trustedOrigins: [BASE_URL],
+      advanced: { cookiePrefix: "better-auth" },
     });
     await initBetterAuthSchema(pg);
   });
@@ -104,8 +106,8 @@ describe("E2E: auth flow — register → login → session → logout", () => {
   function extractSessionCookie(res: Response): string | null {
     const setCookie = res.headers.get("set-cookie");
     if (!setCookie) return null;
-    // better-auth sets "better-auth.session_token=<value>; ..."
-    const match = setCookie.match(/better-auth\.session_token=([^;]+)/);
+    // better-auth sets "<SESSION_COOKIE>=<value>; ..."
+    const match = setCookie.match(new RegExp(`${SESSION_COOKIE.replace(".", "\\.")}=([^;]+)`));
     return match ? match[1] : null;
   }
 
@@ -116,7 +118,7 @@ describe("E2E: auth flow — register → login → session → logout", () => {
   ): Request {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (opts.cookie) {
-      headers.Cookie = `better-auth.session_token=${opts.cookie}`;
+      headers.Cookie = `${SESSION_COOKIE}=${opts.cookie}`;
     }
     return new Request(`${BASE_URL}${AUTH_PATH}${path}`, {
       method: opts.method ?? "POST",
