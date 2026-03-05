@@ -219,11 +219,12 @@ describe("E2E: account deletion GDPR flow", () => {
     await assertRowCounts(pool, AUTH_TABLES, tenantId, 0);
 
     // 7. Admin audit log anonymized (not deleted)
-    const auditRows = await pool.query<{ target_tenant: string }>(
-      `SELECT target_tenant FROM admin_audit_log WHERE id = $1`,
+    const auditRows = await pool.query<{ target_tenant: string; target_user: string }>(
+      `SELECT target_tenant, target_user FROM admin_audit_log WHERE id = $1`,
       [`aal-${tenantId}`],
     );
     expect(auditRows.rows[0]?.target_tenant).toBe("[deleted]");
+    expect(auditRows.rows[0]?.target_user).toBe("[deleted]");
 
     // 8. Deletion request marked completed
     const completed = await store.getById(request.id);
