@@ -646,7 +646,7 @@ if (process.env.NODE_ENV !== "test") {
     });
   }
 
-  const cronIntervals: ReturnType<typeof setInterval>[] = [];
+  const cronIntervals: NodeJS.Timeout[] = [];
 
   // Wire billing tRPC router deps
   {
