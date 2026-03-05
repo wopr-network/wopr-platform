@@ -62,7 +62,7 @@ describe("E2E: onboarding flow — new user → setup wizard → first bot runni
   });
 
   afterEach(async () => {
-    await pool.close();
+    if (pool) await pool.close();
   });
 
   // =========================================================================
