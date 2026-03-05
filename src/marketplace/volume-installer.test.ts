@@ -237,6 +237,124 @@ describe("rollbackPluginOnVolume", () => {
   });
 });
 
+describe("npm package validation", () => {
+  const validExec = vi.fn((_cmd: unknown, _args: unknown, _opts: unknown, cb: Function) => cb(null, "", ""));
+
+  it("rejects package names with path traversal", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "../malicious-pkg",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("rejects npm alias syntax", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "npm:evil-pkg",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("rejects URL-based package specs", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "https://evil.com/pkg.tgz",
+      version: "1.0.0",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm package name"));
+  });
+
+  it("rejects invalid version strings", async () => {
+    const setInstallResult = vi.fn().mockResolvedValue(undefined);
+    const repo = mockRepo({ setInstallResult });
+    await installPluginToVolume({
+      pluginId: "p1",
+      npmPackage: "@wopr-network/wopr-plugin-test",
+      version: "1.0.0; rm -rf /",
+      volumePath: "/tmp/vol",
+      repo,
+      execFn: validExec as never,
+    });
+    expect(validExec).not.toHaveBeenCalled();
+    expect(setInstallResult).toHaveBeenCalledWith("p1", null, expect.stringContaining("Invalid npm version"));
+  });
+
+  it("rejects git-based package specs via upgrade (which rethrows)", async () => {
+    const plugin = makePlugin({ version: "1.0.0" });
+    const repo = mockRepo({ findById: vi.fn().mockResolvedValue(plugin) });
+    await expect(
+      upgradePluginOnVolume({
+        pluginId: "p1",
+        npmPackage: "git+ssh://git@github.com/evil/pkg.git",
+        targetVersion: "1.0.0",
+        volumePath: "/tmp/vol",
+        repo,
+        execFn: validExec as never,
+      }),
+    ).rejects.toThrow("Invalid npm package name");
+  });
+
+  it("allows valid scoped packages", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "1.0.0",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows valid unscoped packages", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "lodash",
+        version: "4.17.21",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("allows semver with pre-release tags", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "2.0.0-beta.1",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("upgradePluginOnVolume — DB-first consistency", () => {
   it("updates DB before running npm install so a failed install leaves DB consistent", async () => {
     const callOrder: string[] = [];
