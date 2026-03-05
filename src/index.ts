@@ -1175,13 +1175,19 @@ if (process.env.NODE_ENV !== "test") {
       clearInterval(id);
     }
     logger.info("All cron intervals cleared");
-    wss.close(() => {
-      logger.info("WebSocket server closed");
-    });
-    server.close(() => {
-      logger.info("HTTP server closed");
-      process.exit(0);
-    });
+    const closeWss = new Promise<void>((resolve) =>
+      wss.close(() => {
+        logger.info("WebSocket server closed");
+        resolve();
+      }),
+    );
+    const closeServer = new Promise<void>((resolve) =>
+      server.close(() => {
+        logger.info("HTTP server closed");
+        resolve();
+      }),
+    );
+    Promise.all([closeWss, closeServer]).then(() => process.exit(0));
     // Force exit if close hangs
     setTimeout(() => {
       logger.warn("Graceful shutdown timed out, forcing exit");
