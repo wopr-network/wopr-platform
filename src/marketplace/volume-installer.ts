@@ -3,7 +3,7 @@ import { logger } from "../config/logger.js";
 import type { IMarketplacePluginRepository } from "./marketplace-plugin-repository.js";
 
 const VALID_NPM_PACKAGE = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
-const VALID_SEMVER = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$/;
+const VALID_SEMVER = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$/;
 
 function validateNpmPackageSpec(npmPackage: string, version: string): void {
   if (!VALID_NPM_PACKAGE.test(npmPackage)) {

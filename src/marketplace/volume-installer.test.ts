@@ -353,6 +353,30 @@ describe("npm package validation", () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it("allows semver with hyphenated pre-release and build metadata", async () => {
+    await expect(
+      installPluginToVolume({
+        pluginId: "p1",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "1.0.0-rc-1",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      installPluginToVolume({
+        pluginId: "p2",
+        npmPackage: "@wopr-network/wopr-plugin-test",
+        version: "1.2.3+build-456",
+        volumePath: "/tmp/vol",
+        repo: mockRepo(),
+        execFn: validExec as never,
+      }),
+    ).resolves.toBeUndefined();
+  });
 });
 
 describe("upgradePluginOnVolume — DB-first consistency", () => {
