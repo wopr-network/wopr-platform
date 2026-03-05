@@ -211,8 +211,8 @@ describe("E2E: auth flow — register → login → session → logout", () => {
         body: { email: "wrong-pw@test.com", password: WRONG_PASSWORD },
       }),
     );
-    // better-auth returns 401 or 400 for bad credentials
-    expect(res.status).not.toBe(200);
+    // better-auth returns 401 for invalid credentials
+    expect(res.status).toBe(401);
   });
 
   // =========================================================================
@@ -261,7 +261,7 @@ describe("E2E: auth flow — register → login → session → logout", () => {
 
     // Second logout — same cookie, already invalidated
     const logout2 = await auth.handler(authRequest("/sign-out", { cookie: token! }));
-    // Must not be 500 — idempotent
-    expect(logout2.status).not.toBe(500);
+    // better-auth sign-out is idempotent — returns 200 even for already-invalidated sessions
+    expect(logout2.status).toBe(200);
   });
 });
