@@ -112,15 +112,12 @@ describe("E2E: email verification — register → verify email → login verifi
     expect(await isEmailVerified(pool, userId)).toBe(true);
 
     // Step 5b: Assert both email_verified (our column) and "emailVerified" (better-auth column) are consistent.
-    // Known issue: verifyToken() only updates email_verified, not better-auth's "emailVerified".
-    // This test documents the divergence so it can be tracked.
     const { rows: userRows } = await pg.query(
       `SELECT email_verified, "emailVerified" FROM "user" WHERE id = $1`,
       [userId],
     );
     expect(userRows[0].email_verified).toBe(true);
-    // better-auth's "emailVerified" is NOT updated by verifyToken() — documents known divergence
-    expect(userRows[0].emailVerified).toBe(false);
+    expect(userRows[0].emailVerified).toBe(true);
 
     // Step 6: Login — should succeed and return session
     const loginRes = await auth.handler(
