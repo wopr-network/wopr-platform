@@ -75,7 +75,7 @@ export async function verifyToken(pool: Pool, token: string): Promise<{ userId: 
 
   // raw SQL: better-auth manages its own schema outside Drizzle
   await pool.query(
-    `UPDATE "user" SET email_verified = true, verification_token = NULL, verification_expires = NULL WHERE id = $1`,
+    `UPDATE "user" SET email_verified = true, "emailVerified" = true, verification_token = NULL, verification_expires = NULL WHERE id = $1`,
     [row.id],
   );
 
