@@ -94,3 +94,9 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 **Gate 2 — Raw SQL Pattern Ban (`scripts/check-raw-sql.sh`):** `.prepare()` and `.exec()` calls are banned outside approved files. Even inside repository files, prefer Drizzle query builders (`db.select()`, `db.insert()`, `db.update()`, `db.delete()`). Raw `.prepare()` is a last resort and requires a comment: `// raw SQL: Drizzle cannot express <reason>`.
 
 **Adding a new repository:** Create `src/<domain>/drizzle-<name>-repository.ts` implementing `I<Name>Repository`. Add it to the biome.json overrides approved section. Wire it in `src/fleet/services.ts`.
+
+## Gotchas
+
+- **Fake time in tests**: Capture `baseNow` before `vi.useFakeTimers()`, then use `baseNow + offsetMs` for all `setSystemTime()` calls to avoid non-deterministic behavior.
+- **Test IDs**: Use `crypto.randomUUID()` instead of `Date.now()` to prevent ID collision failures in parallel test runs.
+- **Cleanup on failure**: Always place watchers/intervals/timers in a `finally` block to guarantee cleanup even if assertions fail.
