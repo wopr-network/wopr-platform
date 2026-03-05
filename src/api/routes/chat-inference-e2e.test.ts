@@ -125,6 +125,7 @@ describe("E2E: Chat/inference flow", () => {
   });
 
   it("budget guard rejects when credits exhausted", async () => {
+    const { app } = createAuthedChatApp("tenant-exhaust");
     const sessionId = crypto.randomUUID();
     const tier: BudgetTier = "anonymous"; // $0.10 cap
 
@@ -163,6 +164,24 @@ describe("E2E: Chat/inference flow", () => {
     const budgetExhausted = await checkSessionBudget(usageRepo, sessionId, tier);
     expect(budgetExhausted.allowed).toBe(false);
     expect(budgetExhausted.remainingUsd).toBeCloseTo(0, 2);
+
+    // Step 5: Exercise POST /chat route under exhausted budget.
+    // The route layer does not enforce budget (budget check is a separate concern),
+    // so POST still succeeds — but no new usage rows should be created by the route.
+    const rowsBefore = await usageRepo.findBySessionId(sessionId);
+    const sseRes = await app.request(`/chat/stream?sessionId=${sessionId}`);
+    const postRes = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, message: "should be budget-gated by caller" }),
+    });
+    // Route accepts the request (budget enforcement is caller's responsibility)
+    expect(postRes.status).toBe(200);
+    // Consume SSE to let processing complete
+    await sseRes.text();
+    // Verify the route itself did not insert any usage rows
+    const rowsAfter = await usageRepo.findBySessionId(sessionId);
+    expect(rowsAfter).toHaveLength(rowsBefore.length);
   });
 
   it("concurrent sessions from same tenant share independent budgets", async () => {
@@ -320,18 +339,26 @@ describe("E2E: Chat/inference flow", () => {
     const sessionId = crypto.randomUUID();
 
     // Open SSE stream first
-    await app.request(`/chat/stream?sessionId=${sessionId}`);
+    const sseRes = await app.request(`/chat/stream?sessionId=${sessionId}`);
 
-    // Measure POST latency
+    // Measure end-to-end: from POST until SSE yields chat message
     const start = performance.now();
-    const res = await app.request("/chat", {
+    const postRes = await app.request("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionId, message: "perf test" }),
     });
+    expect(postRes.status).toBe(200);
+
+    // Consume the SSE stream to completion (wait for actual response data)
+    const text = await sseRes.text();
     const elapsed = performance.now() - start;
 
-    expect(res.status).toBe(200);
+    // Verify we actually received the streamed response
+    expect(text).toContain('data: {"type":"text","delta":"Echo: perf test"}');
+    expect(text).toContain('data: {"type":"done"}');
+
+    // End-to-end latency (POST → SSE message received) should be under 2s
     expect(elapsed).toBeLessThan(2000);
   });
 
