@@ -16,7 +16,7 @@ describe("E2E: node agent registration → heartbeat → fleet bot assignment", 
   let tokenRepo: DrizzleRegistrationTokenRepository;
 
   // Unique IDs per test file run (tests share a fresh DB each time)
-  const suffix = Date.now();
+  const suffix = crypto.randomUUID();
   const NODE_ID = `node-e2e-${suffix}`;
   const TENANT_ID = `tenant-e2e-${suffix}`;
   const BOT_ID = `bot-e2e-${suffix}`;
@@ -103,7 +103,22 @@ describe("E2E: node agent registration → heartbeat → fleet bot assignment", 
   });
 
   it("missed heartbeats → node offline → bot unassigned", async () => {
+    const baseNow = Date.now();
     vi.useFakeTimers();
+    vi.setSystemTime(baseNow);
+
+    const onRecovery = vi.fn();
+    const onStatusChange = vi.fn();
+    const watchdog = new HeartbeatWatchdog(
+      nodeRepo as INodeRepository,
+      onRecovery,
+      onStatusChange,
+      {
+        unhealthyThresholdS: 90,
+        offlineThresholdS: 300,
+        checkIntervalMs: 1000,
+      },
+    );
 
     try {
       const registered = await nodeRepo.register({
@@ -126,23 +141,10 @@ describe("E2E: node agent registration → heartbeat → fleet bot assignment", 
       const botsBefore = await botRepo.listByNode(NODE_ID);
       expect(botsBefore).toHaveLength(1);
 
-      const onRecovery = vi.fn();
-      const onStatusChange = vi.fn();
-      const watchdog = new HeartbeatWatchdog(
-        nodeRepo as INodeRepository,
-        onRecovery,
-        onStatusChange,
-        {
-          unhealthyThresholdS: 90,
-          offlineThresholdS: 300,
-          checkIntervalMs: 1000,
-        },
-      );
-
       watchdog.start();
 
-      // Advance past unhealthy threshold (90s)
-      vi.setSystemTime(Date.now() + 100_000);
+      // Advance past unhealthy threshold (90s from baseNow)
+      vi.setSystemTime(baseNow + 100_000);
       await vi.advanceTimersByTimeAsync(1000);
 
       const nodeAfterUnhealthy = await nodeRepo.getById(NODE_ID);
@@ -150,8 +152,8 @@ describe("E2E: node agent registration → heartbeat → fleet bot assignment", 
       expect(onStatusChange).toHaveBeenCalledWith(NODE_ID, "unhealthy");
       expect(onRecovery).not.toHaveBeenCalled();
 
-      // Advance past offline threshold (300s total from last heartbeat)
-      vi.setSystemTime(Date.now() + 210_000);
+      // Advance past offline threshold (300s total from baseNow)
+      vi.setSystemTime(baseNow + 310_000);
       await vi.advanceTimersByTimeAsync(1000);
 
       const nodeAfterOffline = await nodeRepo.getById(NODE_ID);
@@ -173,9 +175,8 @@ describe("E2E: node agent registration → heartbeat → fleet bot assignment", 
       expect(statuses).toContain("active→unhealthy");
       expect(statuses).toContain("unhealthy→offline");
       expect(statuses).toContain("provisioning→active");
-
-      watchdog.stop();
     } finally {
+      watchdog.stop();
       vi.useRealTimers();
     }
   });
