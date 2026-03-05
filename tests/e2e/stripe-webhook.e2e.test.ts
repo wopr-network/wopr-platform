@@ -21,7 +21,6 @@ vi.mock("../../src/config/logger.js", () => ({
 }));
 
 const TEST_TOKEN = "test-webhook-token";
-vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
 
 const WEBHOOK_SECRET = "whsec_test_e2e_secret_for_stripe_webhook";
 
@@ -43,6 +42,7 @@ describe("E2E: Stripe webhook -> credit grant -> bot reactivation", () => {
   const BOT_NAME = "e2e-suspended-bot";
 
   beforeEach(async () => {
+    vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
     ({ db, pool } = await createTestDb());
 
     TENANT_ID = `e2e-stripe-wh-${randomUUID().slice(0, 8)}`;
@@ -65,6 +65,7 @@ describe("E2E: Stripe webhook -> credit grant -> bot reactivation", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await pool.close();
   });
 
@@ -197,11 +198,7 @@ describe("E2E: Stripe webhook -> credit grant -> bot reactivation", () => {
     expect(result.eventType).toBe("checkout.session.completed");
   });
 
-  // ------------------------------------------------------------------
-  // TEST 5: Full HTTP route — POST /billing/webhook with valid signature returns 200
-  // ------------------------------------------------------------------
-
-  it("POST /billing/webhook with valid signature returns 200", async () => {
+  async function buildBillingApp() {
     const { billingRoutes, setBillingDeps } = await import("../../src/api/routes/billing.js");
     const { Hono } = await import("hono");
 
@@ -221,6 +218,15 @@ describe("E2E: Stripe webhook -> credit grant -> bot reactivation", () => {
     });
 
     app.route("/billing", billingRoutes);
+    return app;
+  }
+
+  // ------------------------------------------------------------------
+  // TEST 5: Full HTTP route — POST /billing/webhook with valid signature returns 200
+  // ------------------------------------------------------------------
+
+  it("POST /billing/webhook with valid signature returns 200", async () => {
+    const app = await buildBillingApp();
 
     await botBilling.registerBot(BOT_ID, TENANT_ID, BOT_NAME);
     await botBilling.suspendBot(BOT_ID);
@@ -255,25 +261,7 @@ describe("E2E: Stripe webhook -> credit grant -> bot reactivation", () => {
   // ------------------------------------------------------------------
 
   it("POST /billing/webhook with invalid signature returns 400", async () => {
-    const { billingRoutes, setBillingDeps } = await import("../../src/api/routes/billing.js");
-    const { Hono } = await import("hono");
-
-    const app = new Hono();
-
-    const affiliateRepo = new DrizzleAffiliateRepository(db);
-    const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
-
-    setBillingDeps({
-      processor,
-      creditLedger,
-      meterAggregator,
-      sigPenaltyRepo,
-      replayGuard,
-      payramReplayGuard: replayGuard,
-      affiliateRepo,
-    });
-
-    app.route("/billing", billingRoutes);
+    const app = await buildBillingApp();
 
     const event = buildCheckoutEvent();
     const body = JSON.stringify(event);
@@ -297,25 +285,7 @@ describe("E2E: Stripe webhook -> credit grant -> bot reactivation", () => {
   // ------------------------------------------------------------------
 
   it("POST /billing/webhook with missing stripe-signature returns 400", async () => {
-    const { billingRoutes, setBillingDeps } = await import("../../src/api/routes/billing.js");
-    const { Hono } = await import("hono");
-
-    const app = new Hono();
-
-    const affiliateRepo = new DrizzleAffiliateRepository(db);
-    const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
-
-    setBillingDeps({
-      processor,
-      creditLedger,
-      meterAggregator,
-      sigPenaltyRepo,
-      replayGuard,
-      payramReplayGuard: replayGuard,
-      affiliateRepo,
-    });
-
-    app.route("/billing", billingRoutes);
+    const app = await buildBillingApp();
 
     const res = await app.request("/billing/webhook", {
       method: "POST",
