@@ -106,6 +106,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   });
 
   afterEach(async () => {
+    await meter.flush();
     meter.close();
     await pool.close();
     await unlink(walPath).catch(() => {});
@@ -196,8 +197,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
     const budgetChecker = new BudgetChecker(db, { cacheTtlMs: 0 });
 
     // Insert a meter event worth $0.60 to exceed $0.50 hourly limit
-    const { meterEvents } = await import("../../src/db/schema/meter-events.js");
-    await db.insert(meterEvents).values({
+    await new DrizzleMeterEventRepository(db).insertBatch([{
       id: `budget-test-${Date.now()}`,
       tenant: TENANT_ID,
       cost: Credit.fromDollars(0.3).toRaw(),
@@ -205,7 +205,13 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
       capability: "chat",
       provider: "openrouter",
       timestamp: Date.now(),
-    });
+      sessionId: null,
+      duration: null,
+      usageUnits: null,
+      usageUnitType: null,
+      tier: null,
+      metadata: null,
+    }]);
 
     const result = await budgetChecker.check(TENANT_ID, {
       maxSpendPerHour: 0.5,
@@ -376,9 +382,8 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
 
   it("OpenAI protocol: budget denial returns 429 and no meter event emitted", async () => {
     // Insert a high-spend meter event so hourly budget is exceeded
-    const { meterEvents } = await import("../../src/db/schema/meter-events.js");
     const budgetTenantId = `openai-budget-${randomUUID()}`;
-    await db.insert(meterEvents).values({
+    await new DrizzleMeterEventRepository(db).insertBatch([{
       id: `openai-budget-test-${randomUUID()}`,
       tenant: budgetTenantId,
       cost: Credit.fromDollars(1.0).toRaw(),
@@ -386,7 +391,13 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
       capability: "chat-completions",
       provider: "openrouter",
       timestamp: Date.now(),
-    });
+      sessionId: null,
+      duration: null,
+      usageUnits: null,
+      usageUnitType: null,
+      tier: null,
+      metadata: null,
+    }]);
     await grantSignupCredits(ledger, budgetTenantId);
 
     const { createOpenAIRoutes } = await import("../../src/gateway/protocol/openai.js");
@@ -520,9 +531,8 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   });
 
   it("Anthropic protocol: budget denial returns 429 and no meter event emitted", async () => {
-    const { meterEvents } = await import("../../src/db/schema/meter-events.js");
     const budgetTenantId = `anthropic-budget-${randomUUID()}`;
-    await db.insert(meterEvents).values({
+    await new DrizzleMeterEventRepository(db).insertBatch([{
       id: `anthropic-budget-test-${randomUUID()}`,
       tenant: budgetTenantId,
       cost: Credit.fromDollars(1.0).toRaw(),
@@ -530,7 +540,13 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
       capability: "chat-completions",
       provider: "openrouter",
       timestamp: Date.now(),
-    });
+      sessionId: null,
+      duration: null,
+      usageUnits: null,
+      usageUnitType: null,
+      tier: null,
+      metadata: null,
+    }]);
     await grantSignupCredits(ledger, budgetTenantId);
 
     const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
