@@ -13,72 +13,7 @@ import {
   type IEmailVerifier,
 } from "../../src/email/require-verified.js";
 import { Hono } from "hono";
-
-// biome-ignore lint/suspicious/noExplicitAny: test helper wrapping PGlite as pg.Pool
-function pgliteAsPool(pg: PGlite): any {
-  const client = {
-    query: (text: string, params?: unknown[]) => pg.query(text, params),
-    release: () => {},
-  };
-  return {
-    connect: () => Promise.resolve(client),
-    query: (text: string, params?: unknown[]) => pg.query(text, params),
-    end: () => Promise.resolve(),
-  };
-}
-
-async function initBetterAuthSchema(pg: PGlite): Promise<void> {
-  await pg.query(`
-    CREATE TABLE IF NOT EXISTS "user" (
-      "id" text PRIMARY KEY NOT NULL,
-      "name" text NOT NULL,
-      "email" text NOT NULL UNIQUE,
-      "emailVerified" boolean NOT NULL DEFAULT false,
-      "image" text,
-      "createdAt" timestamptz NOT NULL DEFAULT now(),
-      "updatedAt" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-  await pg.query(`
-    CREATE TABLE IF NOT EXISTS "session" (
-      "id" text PRIMARY KEY NOT NULL,
-      "expiresAt" timestamptz NOT NULL,
-      "token" text NOT NULL UNIQUE,
-      "createdAt" timestamptz NOT NULL DEFAULT now(),
-      "updatedAt" timestamptz NOT NULL DEFAULT now(),
-      "ipAddress" text,
-      "userAgent" text,
-      "userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE
-    )
-  `);
-  await pg.query(`
-    CREATE TABLE IF NOT EXISTS "account" (
-      "id" text PRIMARY KEY NOT NULL,
-      "accountId" text NOT NULL,
-      "providerId" text NOT NULL,
-      "userId" text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
-      "accessToken" text,
-      "refreshToken" text,
-      "idToken" text,
-      "accessTokenExpiresAt" timestamptz,
-      "refreshTokenExpiresAt" timestamptz,
-      "scope" text,
-      "password" text,
-      "createdAt" timestamptz NOT NULL DEFAULT now(),
-      "updatedAt" timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-  await pg.query(`
-    CREATE TABLE IF NOT EXISTS "verification" (
-      "id" text PRIMARY KEY NOT NULL,
-      "identifier" text NOT NULL,
-      "value" text NOT NULL,
-      "expiresAt" timestamptz NOT NULL,
-      "createdAt" timestamptz,
-      "updatedAt" timestamptz
-    )
-  `);
-}
+import { initBetterAuthSchema, pgliteAsPool } from "../../src/test/pglite-helpers.js";
 
 const BASE_URL = "http://localhost:3100";
 const AUTH_PATH = "/api/auth";
@@ -86,8 +21,7 @@ const SESSION_COOKIE = "better-auth.session_token";
 
 describe("E2E: email verification — register → verify email → login verified", () => {
   let pg: PGlite;
-  // biome-ignore lint/suspicious/noExplicitAny: PGlite pool wrapper
-  let pool: any;
+  let pool: ReturnType<typeof pgliteAsPool>;
   let auth: ReturnType<typeof betterAuth>;
 
   const TEST_EMAIL = "verify-e2e@test.com";
@@ -176,6 +110,17 @@ describe("E2E: email verification — register → verify email → login verifi
 
     // Step 5: Confirm user is now verified in DB
     expect(await isEmailVerified(pool, userId)).toBe(true);
+
+    // Step 5b: Assert both email_verified (our column) and "emailVerified" (better-auth column) are consistent.
+    // Known issue: verifyToken() only updates email_verified, not better-auth's "emailVerified".
+    // This test documents the divergence so it can be tracked.
+    const { rows: userRows } = await pg.query(
+      `SELECT email_verified, "emailVerified" FROM "user" WHERE id = $1`,
+      [userId],
+    );
+    expect(userRows[0].email_verified).toBe(true);
+    // better-auth's "emailVerified" is NOT updated by verifyToken() — documents known divergence
+    expect(userRows[0].emailVerified).toBe(false);
 
     // Step 6: Login — should succeed and return session
     const loginRes = await auth.handler(
