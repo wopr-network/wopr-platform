@@ -262,23 +262,14 @@ describe("E2E: org/team management — create org → invite → assign role →
       joinedAt: Date.now(),
     });
 
-    // Add a regular member
-    await memberRepo.addMember({
-      id: randomUUID(),
-      orgId: org.id,
-      userId: VIEWER_ID,
-      role: "member",
-      joinedAt: Date.now(),
-    });
+    // Demote the owner's member record so MEMBER_ID is the sole admin/owner
+    await memberRepo.updateMemberRole(org.id, OWNER_ID, "member");
 
-    // Owner (role=owner) + MEMBER_ID (role=admin) = 2 admins/owners
-    // Removing the admin leaves owner as the only admin/owner → allowed
-    await orgService.removeMember(org.id, OWNER_ID, MEMBER_ID);
-
-    // Now try to remove the owner → rejected because owner can't be removed
+    // Now countAdminsAndOwners = 1 (only MEMBER_ID with role "admin")
+    // MEMBER_ID (admin) attempts to remove themselves — guard should prevent it
     await expect(
-      orgService.removeMember(org.id, OWNER_ID, OWNER_ID),
-    ).rejects.toThrow("Cannot remove the owner");
+      orgService.removeMember(org.id, MEMBER_ID, MEMBER_ID),
+    ).rejects.toThrow("Cannot remove the last admin");
   });
 
   // =========================================================================
@@ -321,6 +312,9 @@ describe("E2E: org/team management — create org → invite → assign role →
 
     const bots = await db.select().from(botInstances).where(eq(botInstances.tenantId, org.id));
     expect(bots).toHaveLength(0);
+
+    const invites = await memberRepo.listInvites(org.id);
+    expect(invites).toHaveLength(0);
   });
 
   // =========================================================================
