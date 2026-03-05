@@ -162,16 +162,16 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
     const errorParam = c.req.query("error");
 
     if (errorParam) {
-      return c.html(callbackHtml("error", errorParam, getUiOrigin()));
+      return c.html(callbackHtml("error", errorParam, getUiOrigins()));
     }
 
     if (!code || !state) {
-      return c.html(callbackHtml("error", "Missing code or state parameter", getUiOrigin()));
+      return c.html(callbackHtml("error", "Missing code or state parameter", getUiOrigins()));
     }
 
     const pending = await oauthRepo.consumePending(state);
     if (!pending) {
-      return c.html(callbackHtml("error", "Invalid or expired OAuth state", getUiOrigin()));
+      return c.html(callbackHtml("error", "Invalid or expired OAuth state", getUiOrigins()));
     }
 
     // Probabilistic cleanup: ~1% of requests purge expired rows so the table
@@ -182,7 +182,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
 
     const config = getProviderConfig(pending.provider);
     if (!config) {
-      return c.html(callbackHtml("error", "Provider configuration not found", getUiOrigin()));
+      return c.html(callbackHtml("error", "Provider configuration not found", getUiOrigins()));
     }
 
     // Exchange code for token
@@ -206,7 +206,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
           status: tokenResponse.status,
           body: text.slice(0, 500),
         });
-        return c.html(callbackHtml("error", "Token exchange failed", getUiOrigin()));
+        return c.html(callbackHtml("error", "Token exchange failed", getUiOrigins()));
       }
 
       const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
@@ -214,26 +214,26 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       // Slack returns { ok: true, access_token: "..." } or { ok: false, error: "..." }
       if (pending.provider === "slack") {
         if (!tokenData.ok) {
-          return c.html(callbackHtml("error", `Slack error: ${tokenData.error}`, getUiOrigin()));
+          return c.html(callbackHtml("error", `Slack error: ${tokenData.error}`, getUiOrigins()));
         }
       }
 
       // Extract the access token (provider-specific field names)
       const accessToken = extractAccessToken(pending.provider, tokenData);
       if (!accessToken) {
-        return c.html(callbackHtml("error", "No access token in response", getUiOrigin()));
+        return c.html(callbackHtml("error", "No access token in response", getUiOrigins()));
       }
 
       // Store the completed token keyed by state for frontend polling
       await oauthRepo.completeWithToken(state, accessToken, pending.userId);
 
-      return c.html(callbackHtml("success", state, getUiOrigin()));
+      return c.html(callbackHtml("success", state, getUiOrigins()));
     } catch (err) {
       logger.error("OAuth token exchange error", {
         provider: pending.provider,
         error: err instanceof Error ? err.message : String(err),
       });
-      return c.html(callbackHtml("error", "Token exchange failed", getUiOrigin()));
+      return c.html(callbackHtml("error", "Token exchange failed", getUiOrigins()));
     }
   });
 
@@ -313,8 +313,13 @@ function htmlEscape(str: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function getUiOrigin(): string {
-  return (process.env.UI_ORIGIN || "http://localhost:3001").split(",")[0].trim();
+function getUiOrigins(): string[] {
+  const raw = process.env.UI_ORIGIN || "http://localhost:3001";
+  const origins = raw
+    .split(",")
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+  return origins.length > 0 ? origins : ["http://localhost:3001"];
 }
 
 /**
@@ -323,7 +328,7 @@ function getUiOrigin(): string {
  * On error, posts `{ type: "wopr-oauth-callback", status: "error", error }`.
  * Then closes the popup.
  */
-function callbackHtml(status: "success" | "error", payload: string, uiOrigin: string): string {
+function callbackHtml(status: "success" | "error", payload: string, uiOrigins: string[]): string {
   // JSON.stringify does not escape </script>, which would allow XSS if payload
   // contains that substring. Replace it so the string cannot break out of the
   // script block regardless of what the OAuth provider returns.
@@ -333,6 +338,8 @@ function callbackHtml(status: "success" | "error", payload: string, uiOrigin: st
       ? `{ type: "wopr-oauth-callback", status: "success", state: ${safeJson(payload)} }`
       : `{ type: "wopr-oauth-callback", status: "error", error: ${safeJson(payload)} }`;
 
+  const originsArray = `[${uiOrigins.map((o) => safeJson(o)).join(",")}]`;
+
   return `<!DOCTYPE html>
 <html>
 <head><title>OAuth Callback</title></head>
@@ -340,7 +347,9 @@ function callbackHtml(status: "success" | "error", payload: string, uiOrigin: st
 <p>${status === "success" ? "Authorization successful. This window will close." : `Error: ${htmlEscape(payload)}`}</p>
 <script>
   if (window.opener) {
-    window.opener.postMessage(${message}, ${safeJson(uiOrigin)});
+    ${originsArray}.forEach(function(origin) {
+      window.opener.postMessage(${message}, origin);
+    });
   }
   setTimeout(function() { window.close(); }, 1500);
 </script>

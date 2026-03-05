@@ -160,6 +160,7 @@ describe("POST /initiate", () => {
 
 describe("GET /callback", () => {
   it("uses UI_ORIGIN as postMessage target, not window.location.origin", async () => {
+    const savedUiOrigin = process.env.UI_ORIGIN;
     process.env.UI_ORIGIN = "https://app.wopr.network";
     try {
       const app = await unauthedApp();
@@ -168,20 +169,23 @@ describe("GET /callback", () => {
       expect(html).not.toContain("window.location.origin");
       expect(html).toContain("https://app.wopr.network");
     } finally {
-      delete process.env.UI_ORIGIN;
+      if (savedUiOrigin !== undefined) process.env.UI_ORIGIN = savedUiOrigin;
+      else delete process.env.UI_ORIGIN;
     }
   });
 
-  it("uses first origin when UI_ORIGIN is comma-separated", async () => {
+  it("posts to all origins when UI_ORIGIN is comma-separated", async () => {
+    const savedUiOrigin = process.env.UI_ORIGIN;
     process.env.UI_ORIGIN = "https://app.wopr.network,https://staging.wopr.network";
     try {
       const app = await unauthedApp();
       const res = await app.request("/callback");
       const html = await res.text();
       expect(html).toContain("https://app.wopr.network");
-      expect(html).not.toContain("https://staging.wopr.network");
+      expect(html).toContain("https://staging.wopr.network");
     } finally {
-      delete process.env.UI_ORIGIN;
+      if (savedUiOrigin !== undefined) process.env.UI_ORIGIN = savedUiOrigin;
+      else delete process.env.UI_ORIGIN;
     }
   });
 
