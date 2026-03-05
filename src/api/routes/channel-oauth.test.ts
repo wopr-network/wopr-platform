@@ -159,6 +159,32 @@ describe("POST /initiate", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /callback", () => {
+  it("uses UI_ORIGIN as postMessage target, not window.location.origin", async () => {
+    process.env.UI_ORIGIN = "https://app.wopr.network";
+    try {
+      const app = await unauthedApp();
+      const res = await app.request("/callback");
+      const html = await res.text();
+      expect(html).not.toContain("window.location.origin");
+      expect(html).toContain("https://app.wopr.network");
+    } finally {
+      delete process.env.UI_ORIGIN;
+    }
+  });
+
+  it("uses first origin when UI_ORIGIN is comma-separated", async () => {
+    process.env.UI_ORIGIN = "https://app.wopr.network,https://staging.wopr.network";
+    try {
+      const app = await unauthedApp();
+      const res = await app.request("/callback");
+      const html = await res.text();
+      expect(html).toContain("https://app.wopr.network");
+      expect(html).not.toContain("https://staging.wopr.network");
+    } finally {
+      delete process.env.UI_ORIGIN;
+    }
+  });
+
   it("returns error HTML for missing code and state", async () => {
     const app = await unauthedApp();
     const res = await app.request("/callback");

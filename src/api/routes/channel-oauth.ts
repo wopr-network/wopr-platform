@@ -162,16 +162,16 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
     const errorParam = c.req.query("error");
 
     if (errorParam) {
-      return c.html(callbackHtml("error", errorParam));
+      return c.html(callbackHtml("error", errorParam, getUiOrigin()));
     }
 
     if (!code || !state) {
-      return c.html(callbackHtml("error", "Missing code or state parameter"));
+      return c.html(callbackHtml("error", "Missing code or state parameter", getUiOrigin()));
     }
 
     const pending = await oauthRepo.consumePending(state);
     if (!pending) {
-      return c.html(callbackHtml("error", "Invalid or expired OAuth state"));
+      return c.html(callbackHtml("error", "Invalid or expired OAuth state", getUiOrigin()));
     }
 
     // Probabilistic cleanup: ~1% of requests purge expired rows so the table
@@ -182,7 +182,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
 
     const config = getProviderConfig(pending.provider);
     if (!config) {
-      return c.html(callbackHtml("error", "Provider configuration not found"));
+      return c.html(callbackHtml("error", "Provider configuration not found", getUiOrigin()));
     }
 
     // Exchange code for token
@@ -206,7 +206,7 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
           status: tokenResponse.status,
           body: text.slice(0, 500),
         });
-        return c.html(callbackHtml("error", "Token exchange failed"));
+        return c.html(callbackHtml("error", "Token exchange failed", getUiOrigin()));
       }
 
       const tokenData = (await tokenResponse.json()) as Record<string, unknown>;
@@ -214,26 +214,26 @@ export function createChannelOAuthRoutes(oauthRepo: IOAuthStateRepository): Hono
       // Slack returns { ok: true, access_token: "..." } or { ok: false, error: "..." }
       if (pending.provider === "slack") {
         if (!tokenData.ok) {
-          return c.html(callbackHtml("error", `Slack error: ${tokenData.error}`));
+          return c.html(callbackHtml("error", `Slack error: ${tokenData.error}`, getUiOrigin()));
         }
       }
 
       // Extract the access token (provider-specific field names)
       const accessToken = extractAccessToken(pending.provider, tokenData);
       if (!accessToken) {
-        return c.html(callbackHtml("error", "No access token in response"));
+        return c.html(callbackHtml("error", "No access token in response", getUiOrigin()));
       }
 
       // Store the completed token keyed by state for frontend polling
       await oauthRepo.completeWithToken(state, accessToken, pending.userId);
 
-      return c.html(callbackHtml("success", state));
+      return c.html(callbackHtml("success", state, getUiOrigin()));
     } catch (err) {
       logger.error("OAuth token exchange error", {
         provider: pending.provider,
         error: err instanceof Error ? err.message : String(err),
       });
-      return c.html(callbackHtml("error", "Token exchange failed"));
+      return c.html(callbackHtml("error", "Token exchange failed", getUiOrigin()));
     }
   });
 
@@ -313,13 +313,17 @@ function htmlEscape(str: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function getUiOrigin(): string {
+  return (process.env.UI_ORIGIN || "http://localhost:3001").split(",")[0].trim();
+}
+
 /**
  * Generate an HTML page that communicates back to the opener window.
  * On success, posts `{ type: "wopr-oauth-callback", status: "success", state }`.
  * On error, posts `{ type: "wopr-oauth-callback", status: "error", error }`.
  * Then closes the popup.
  */
-function callbackHtml(status: "success" | "error", payload: string): string {
+function callbackHtml(status: "success" | "error", payload: string, uiOrigin: string): string {
   // JSON.stringify does not escape </script>, which would allow XSS if payload
   // contains that substring. Replace it so the string cannot break out of the
   // script block regardless of what the OAuth provider returns.
@@ -336,7 +340,7 @@ function callbackHtml(status: "success" | "error", payload: string): string {
 <p>${status === "success" ? "Authorization successful. This window will close." : `Error: ${htmlEscape(payload)}`}</p>
 <script>
   if (window.opener) {
-    window.opener.postMessage(${message}, window.location.origin);
+    window.opener.postMessage(${message}, ${safeJson(uiOrigin)});
   }
   setTimeout(function() { window.close(); }, 1500);
 </script>
