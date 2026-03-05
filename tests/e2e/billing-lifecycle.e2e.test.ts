@@ -60,9 +60,9 @@ describe("E2E: billing lifecycle — pricing → purchase → usage → upgrade/
   let BOT_ID: string;
 
   beforeEach(async () => {
-    const ts = Date.now();
-    walPath = `/tmp/wopr-e2e-billing-wal-${ts}.jsonl`;
-    dlqPath = `/tmp/wopr-e2e-billing-dlq-${ts}.jsonl`;
+    const suffix = `${Date.now()}-${randomUUID()}`;
+    walPath = `/tmp/wopr-e2e-billing-wal-${suffix}.jsonl`;
+    dlqPath = `/tmp/wopr-e2e-billing-dlq-${suffix}.jsonl`;
 
     ({ db, pool } = await createTestDb());
 
@@ -74,7 +74,7 @@ describe("E2E: billing lifecycle — pricing → purchase → usage → upgrade/
     botBilling = new BotBilling(new DrizzleBotInstanceRepository(db));
 
     meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
-      flushIntervalMs: 100,
+      flushIntervalMs: 60_000,
       batchSize: 1,
       walPath,
       dlqPath,
