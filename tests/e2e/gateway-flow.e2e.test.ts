@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleRateLimitRepository } from "../../src/api/drizzle-rate-limit-repository.js";
@@ -83,9 +85,8 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   const TENANT_ID = `e2e-gateway-${Date.now()}`;
 
   beforeEach(async () => {
-    const ts = Date.now();
-    walPath = `/tmp/wopr-e2e-gw-wal-${ts}.jsonl`;
-    dlqPath = `/tmp/wopr-e2e-gw-dlq-${ts}.jsonl`;
+    walPath = `${tmpdir()}/wopr-e2e-gw-wal-${randomUUID()}.jsonl`;
+    dlqPath = `${tmpdir()}/wopr-e2e-gw-dlq-${randomUUID()}.jsonl`;
 
     ({ db, pool } = await createTestDb());
 
@@ -223,33 +224,35 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-21T12:00:00Z"));
 
-    const cbRepo = new DrizzleCircuitBreakerRepository(db);
-    const instanceId = `inst-${Date.now()}`;
+    try {
+      const cbRepo = new DrizzleCircuitBreakerRepository(db);
+      const instanceId = `inst-${Date.now()}`;
 
-    const maxReqs = 3;
+      const maxReqs = 3;
 
-    for (let i = 0; i < maxReqs; i++) {
-      await cbRepo.incrementOrReset(instanceId, 10_000);
+      for (let i = 0; i < maxReqs; i++) {
+        await cbRepo.incrementOrReset(instanceId, 10_000);
+      }
+
+      const state = await cbRepo.incrementOrReset(instanceId, 10_000);
+      expect(state.count).toBe(maxReqs + 1);
+      expect(state.count).toBeGreaterThan(maxReqs);
+
+      await cbRepo.trip(instanceId);
+
+      const tripped = await cbRepo.get(instanceId);
+      expect(tripped).not.toBeNull();
+      expect(tripped!.trippedAt).not.toBeNull();
+
+      vi.advanceTimersByTime(300_001);
+
+      await cbRepo.reset(instanceId);
+      const reset = await cbRepo.get(instanceId);
+      expect(reset!.trippedAt).toBeNull();
+      expect(reset!.count).toBe(0);
+    } finally {
+      vi.useRealTimers();
     }
-
-    const state = await cbRepo.incrementOrReset(instanceId, 10_000);
-    expect(state.count).toBe(maxReqs + 1);
-    expect(state.count).toBeGreaterThan(maxReqs);
-
-    await cbRepo.trip(instanceId);
-
-    const tripped = await cbRepo.get(instanceId);
-    expect(tripped).not.toBeNull();
-    expect(tripped!.trippedAt).not.toBeNull();
-
-    vi.advanceTimersByTime(300_001);
-
-    await cbRepo.reset(instanceId);
-    const reset = await cbRepo.get(instanceId);
-    expect(reset!.trippedAt).toBeNull();
-    expect(reset!.count).toBe(0);
-
-    vi.useRealTimers();
   });
 
   // =========================================================================
@@ -341,6 +344,84 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   });
 
   // =========================================================================
+  // TEST 6b: OpenAI protocol — negative paths
+  // =========================================================================
+
+  it("OpenAI protocol: invalid bearer token returns 401", async () => {
+    const { createOpenAIRoutes } = await import("../../src/gateway/protocol/openai.js");
+
+    const app = createOpenAIRoutes({
+      meter,
+      budgetChecker: new BudgetChecker(db, { cacheTtlMs: 0 }),
+      creditLedger: ledger,
+      topUpUrl: "/billing",
+      providers: { openrouter: { apiKey: "fake-key" } },
+      defaultMargin: 1.3,
+      fetchFn: async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+      resolveServiceKey: (_key) => null,
+      withMarginFn: withMargin,
+    });
+
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer bad-key", "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "Hello" }] }),
+    });
+
+    expect(res.status).toBe(401);
+    await meter.flush();
+    const events = await meter.queryEvents(TENANT_ID);
+    expect(events.length).toBe(0);
+  });
+
+  it("OpenAI protocol: budget denial returns 429 and no meter event emitted", async () => {
+    // Insert a high-spend meter event so hourly budget is exceeded
+    const { meterEvents } = await import("../../src/db/schema/meter-events.js");
+    const budgetTenantId = `openai-budget-${randomUUID()}`;
+    await db.insert(meterEvents).values({
+      id: `openai-budget-test-${randomUUID()}`,
+      tenant: budgetTenantId,
+      cost: Credit.fromDollars(1.0).toRaw(),
+      charge: Credit.fromDollars(1.3).toRaw(),
+      capability: "chat-completions",
+      provider: "openrouter",
+      timestamp: Date.now(),
+    });
+    await grantSignupCredits(ledger, budgetTenantId);
+
+    const { createOpenAIRoutes } = await import("../../src/gateway/protocol/openai.js");
+
+    const app = createOpenAIRoutes({
+      meter,
+      budgetChecker: new BudgetChecker(db, { cacheTtlMs: 0 }),
+      creditLedger: ledger,
+      topUpUrl: "/billing",
+      providers: { openrouter: { apiKey: "fake-key" } },
+      defaultMargin: 1.3,
+      fetchFn: async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+      resolveServiceKey: (key) =>
+        key === "budget-test-key"
+          ? { id: budgetTenantId, spendLimits: { maxSpendPerHour: 0.5, maxSpendPerMonth: 5 } }
+          : null,
+      withMarginFn: withMargin,
+    });
+
+    const eventsBefore = await meter.queryEvents(budgetTenantId);
+
+    const res = await app.request("/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer budget-test-key", "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "Hello" }] }),
+    });
+
+    expect(res.status).toBe(429);
+    await meter.flush();
+    const eventsAfter = await meter.queryEvents(budgetTenantId);
+    // No new meter events should have been emitted by the gateway on budget rejection
+    expect(eventsAfter.length).toBe(eventsBefore.length);
+  });
+
+  // =========================================================================
   // TEST 7: Anthropic protocol path — full Hono app test
   // =========================================================================
 
@@ -408,6 +489,139 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   });
 
   // =========================================================================
+  // TEST 7b: Anthropic protocol — negative paths
+  // =========================================================================
+
+  it("Anthropic protocol: invalid x-api-key returns 401 and no meter event emitted", async () => {
+    const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
+
+    const app = createAnthropicRoutes({
+      meter,
+      budgetChecker: new BudgetChecker(db, { cacheTtlMs: 0 }),
+      creditLedger: ledger,
+      topUpUrl: "/billing",
+      providers: { openrouter: { apiKey: "fake-key" } },
+      defaultMargin: 1.3,
+      fetchFn: async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+      resolveServiceKey: (_key) => null,
+      withMarginFn: withMargin,
+    });
+
+    const res = await app.request("/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": "bad-key", "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 100, messages: [{ role: "user", content: "Hello" }] }),
+    });
+
+    expect(res.status).toBe(401);
+    await meter.flush();
+    const events = await meter.queryEvents(TENANT_ID);
+    expect(events.length).toBe(0);
+  });
+
+  it("Anthropic protocol: budget denial returns 429 and no meter event emitted", async () => {
+    const { meterEvents } = await import("../../src/db/schema/meter-events.js");
+    const budgetTenantId = `anthropic-budget-${randomUUID()}`;
+    await db.insert(meterEvents).values({
+      id: `anthropic-budget-test-${randomUUID()}`,
+      tenant: budgetTenantId,
+      cost: Credit.fromDollars(1.0).toRaw(),
+      charge: Credit.fromDollars(1.3).toRaw(),
+      capability: "chat-completions",
+      provider: "openrouter",
+      timestamp: Date.now(),
+    });
+    await grantSignupCredits(ledger, budgetTenantId);
+
+    const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
+
+    const app = createAnthropicRoutes({
+      meter,
+      budgetChecker: new BudgetChecker(db, { cacheTtlMs: 0 }),
+      creditLedger: ledger,
+      topUpUrl: "/billing",
+      providers: { openrouter: { apiKey: "fake-key" } },
+      defaultMargin: 1.3,
+      fetchFn: async () => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+      resolveServiceKey: (key) =>
+        key === "anthropic-budget-test-key"
+          ? { id: budgetTenantId, spendLimits: { maxSpendPerHour: 0.5, maxSpendPerMonth: 5 } }
+          : null,
+      withMarginFn: withMargin,
+    });
+
+    const eventsBefore = await meter.queryEvents(budgetTenantId);
+
+    const res = await app.request("/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": "anthropic-budget-test-key", "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 100, messages: [{ role: "user", content: "Hello" }] }),
+    });
+
+    expect(res.status).toBe(429);
+    await meter.flush();
+    const eventsAfter = await meter.queryEvents(budgetTenantId);
+    // No new meter events should have been emitted by the gateway on budget rejection
+    expect(eventsAfter.length).toBe(eventsBefore.length);
+  });
+
+  it("Anthropic protocol: upstream error returns 502 and no meter event emitted", async () => {
+    await grantSignupCredits(ledger, TENANT_ID);
+
+    const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
+
+    const app = createAnthropicRoutes({
+      meter,
+      budgetChecker: new BudgetChecker(db, { cacheTtlMs: 0 }),
+      creditLedger: ledger,
+      topUpUrl: "/billing",
+      providers: { openrouter: { apiKey: "fake-key" } },
+      defaultMargin: 1.3,
+      fetchFn: async () => new Response(JSON.stringify({ error: { message: "Internal Server Error" } }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+      resolveServiceKey: (key) =>
+        key === "anthropic-test-key"
+          ? { id: TENANT_ID, spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null } }
+          : null,
+      withMarginFn: withMargin,
+    });
+
+    const upstreamErrorTenantId = `anthropic-upstream-${randomUUID()}`;
+    await grantSignupCredits(ledger, upstreamErrorTenantId);
+
+    const appForUpstream = createAnthropicRoutes({
+      meter,
+      budgetChecker: new BudgetChecker(db, { cacheTtlMs: 0 }),
+      creditLedger: ledger,
+      topUpUrl: "/billing",
+      providers: { openrouter: { apiKey: "fake-key" } },
+      defaultMargin: 1.3,
+      fetchFn: async () => new Response(JSON.stringify({ error: { message: "Internal Server Error" } }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }),
+      resolveServiceKey: (key) =>
+        key === "upstream-error-key"
+          ? { id: upstreamErrorTenantId, spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null } }
+          : null,
+      withMarginFn: withMargin,
+    });
+
+    const res = await appForUpstream.request("/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": "upstream-error-key", "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "claude-3-5-sonnet-20241022", max_tokens: 100, messages: [{ role: "user", content: "Hello" }] }),
+    });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    await meter.flush();
+    const events = await meter.queryEvents(upstreamErrorTenantId);
+    expect(events.length).toBe(0);
+  });
+
+  // =========================================================================
   // TEST 8: Provider failure — no meter event emitted
   // =========================================================================
 
@@ -452,6 +666,6 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
     });
     const elapsed = performance.now() - start;
 
-    expect(elapsed).toBeLessThan(5000);
+    expect(elapsed).toBeLessThan(500);
   });
 });
