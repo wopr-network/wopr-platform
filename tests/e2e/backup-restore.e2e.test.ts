@@ -29,7 +29,7 @@ function makeSpacesClient(overrides?: Partial<SpacesClient>): SpacesClient {
   } as unknown as SpacesClient;
 }
 
-describe("E2E: Backup & Restore (snapshot → verify → restore)", () => {
+describe.sequential("E2E: Backup & Restore (snapshot → verify → restore)", () => {
   let db: DrizzleDb;
   let pool: PGlite;
   let snapshotRepo: DrizzleSnapshotRepository;
@@ -58,7 +58,7 @@ describe("E2E: Backup & Restore (snapshot → verify → restore)", () => {
 
   afterEach(async () => {
     await pool.close();
-    await rm(TEST_BASE, { recursive: true, force: true });
+    await rm(testDir, { recursive: true, force: true });
   });
 
   // -----------------------------------------------------------------------
@@ -78,13 +78,14 @@ describe("E2E: Backup & Restore (snapshot → verify → restore)", () => {
       plugins: ["discord", "web"],
       temperature: 0.7,
     };
-    await writeFile(join(woprHome, "config.json"), JSON.stringify(originalConfig));
+    const originalConfigJson = JSON.stringify(originalConfig);
+    await writeFile(join(woprHome, "config.json"), originalConfigJson);
     await writeFile(join(woprHome, "state.json"), JSON.stringify({ running: true, uptime: 3600 }));
     await mkdir(join(woprHome, "data"), { recursive: true });
     await writeFile(join(woprHome, "data", "memory.db"), "fake-db-content");
 
     const originalConfigHash = createHash("sha256")
-      .update(JSON.stringify(originalConfig))
+      .update(originalConfigJson)
       .digest("hex");
 
     // 2. Create snapshot of bot state
@@ -321,7 +322,7 @@ describe("E2E: Backup & Restore (snapshot → verify → restore)", () => {
   // Edge case: Stale backup detection
   // -----------------------------------------------------------------------
 
-  it("marks backups as stale when last successful backup is >24h ago", async () => {
+  it("detects stale backup when container has no prior successful backup", async () => {
     const containerId = `tenant_stale_${randomUUID().slice(0, 8)}`;
 
     // Record a failure (no successful backup = stale)
