@@ -176,7 +176,10 @@ export type Auth = ReturnType<typeof betterAuth>;
  * Must be called before the server starts accepting requests.
  */
 export async function runAuthMigrations(): Promise<void> {
-  const { getMigrations } = await import("better-auth/db");
+  // better-auth 1.5.x: NodeNext moduleResolution fails to resolve getMigrations type from the
+  // better-auth/db sub-path export due to a missing "import" condition; cast to access it safely
+  type DbModule = { getMigrations: (opts: BetterAuthOptions) => Promise<{ runMigrations: () => Promise<void> }> };
+  const { getMigrations } = (await import("better-auth/db")) as unknown as DbModule;
   const { runMigrations } = await getMigrations(authOptions(getPool()));
   await runMigrations();
 }
