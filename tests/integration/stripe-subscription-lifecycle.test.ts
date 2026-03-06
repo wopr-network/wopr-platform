@@ -196,6 +196,9 @@ describe.skipIf(!canRun)("Stripe subscription lifecycle (real API)", () => {
 		expect(result.handled).toBe(true);
 		expect(result.event_type).toBe("customer.subscription.updated");
 		expect(result.tenant).toBe(TENANT);
+		// Verify the handler recognized the existing subscription and updated its status
+		expect(mock.updates).toHaveLength(1);
+		expect(mock.updates[0]).toEqual({ botId: BOT_ID, status: "active" });
 	}, 30_000);
 
 	it("downgrades via cancel_at_period_end and processes the updated event", async () => {
