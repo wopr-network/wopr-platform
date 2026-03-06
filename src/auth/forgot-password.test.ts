@@ -32,7 +32,7 @@ describe("Forgot password flow (e2e)", () => {
         // when NODE_ENV=test). We need this enabled to verify the redirectTo allowlist check.
         disableOriginCheck: false,
       },
-    });
+    }) as unknown as ReturnType<typeof betterAuth>;
 
     // Initialize the Better Auth schema (creates tables: user, session, account, verification)
     await initBetterAuthSchema(pg);

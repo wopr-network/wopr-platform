@@ -26,7 +26,7 @@ function pgliteAsPool(pg: PGlite): any {
   };
 }
 
-import { getAuth, resetAuth, setAuth } from "./better-auth.js";
+import { type Auth, getAuth, resetAuth, setAuth } from "./better-auth.js";
 import {
   type AuthEnv,
   requireSessionOrToken,
@@ -44,7 +44,7 @@ describe("getAuth singleton", () => {
   it("returns the same instance on repeated calls", async () => {
     const pg = new PGlite();
     const auth = betterAuth({ database: pgliteAsPool(pg), secret: "s", emailAndPassword: { enabled: true } });
-    setAuth(auth);
+    setAuth(auth as unknown as Auth);
     const a = getAuth();
     const b = getAuth();
     expect(a).toBe(b);
@@ -55,7 +55,7 @@ describe("getAuth singleton", () => {
     resetAuth();
     const pg = new PGlite();
     const auth = betterAuth({ database: pgliteAsPool(pg), secret: "s", emailAndPassword: { enabled: true } });
-    setAuth(auth);
+    setAuth(auth as unknown as Auth);
     expect(getAuth()).toBe(auth);
     await pg.close();
   });
@@ -81,7 +81,7 @@ describe("better-auth integration", () => {
         secret: "test-secret",
         emailAndPassword: { enabled: true },
       });
-      setAuth(auth);
+      setAuth(auth as unknown as Auth);
 
       app = new Hono<AuthEnv>();
       app.use("/*", resolveSessionUser());
