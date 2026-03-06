@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "../../src/test/db.js";
 import { Credit } from "../../src/monetization/credit.js";
 import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
 import { DrizzleAffiliateFraudRepository } from "../../src/monetization/affiliate/affiliate-fraud-repository.js";
@@ -16,21 +16,17 @@ describe("affiliate credit-match e2e", () => {
 	let affiliateRepo: DrizzleAffiliateRepository;
 	let fraudRepo: DrizzleAffiliateFraudRepository;
 
-	beforeAll(async () => {
+	beforeEach(async () => {
 		({ db, pool } = await createTestDb());
 		await beginTestTransaction(pool);
-	});
-
-	afterAll(async () => {
-		await endTestTransaction(pool);
-		await pool.close();
-	});
-
-	beforeEach(async () => {
-		await rollbackTestTransaction(pool);
 		ledger = new CreditLedger(db);
 		affiliateRepo = new DrizzleAffiliateRepository(db);
 		fraudRepo = new DrizzleAffiliateFraudRepository(db);
+	});
+
+	afterEach(async () => {
+		await endTestTransaction(pool);
+		await pool.close();
 	});
 
 	it("happy path — referrer gets commission (matchRate × purchase)", async () => {
