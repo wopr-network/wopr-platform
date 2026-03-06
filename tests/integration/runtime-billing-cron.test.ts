@@ -38,6 +38,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     await pool.close();
   });
 
+  // pglite does not support ROLLBACK TO SAVEPOINT — using truncate instead
   beforeEach(async () => {
     await truncateAllTables(pool);
   });
