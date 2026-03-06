@@ -52,16 +52,14 @@ function makeFakeTenantRepo(tenantId: string, customerId: string): ITenantCustom
     }),
     getByProcessorCustomerId: vi.fn().mockResolvedValue(null),
     upsert: vi.fn().mockResolvedValue(undefined),
-    delete: vi.fn().mockResolvedValue(undefined),
-    list: vi.fn().mockResolvedValue([]),
-    listProcessorIds: vi.fn().mockResolvedValue([]),
     setTier: vi.fn().mockResolvedValue(undefined),
     setBillingHold: vi.fn().mockResolvedValue(undefined),
     hasBillingHold: vi.fn().mockResolvedValue(false),
-    getInferenceMode: vi.fn().mockResolvedValue("byok"),
+    getInferenceMode: vi.fn().mockResolvedValue("hosted"),
     setInferenceMode: vi.fn().mockResolvedValue(undefined),
+    list: vi.fn().mockResolvedValue([]),
     buildCustomerIdMap: vi.fn().mockResolvedValue({}),
-  } as unknown as ITenantCustomerRepository;
+  };
 }
 
 describe("E2E: Stripe auto-topup — balance depletion triggers charge and credit grant", () => {
@@ -85,6 +83,30 @@ describe("E2E: Stripe auto-topup — balance depletion triggers charge and credi
     await pool?.close();
   });
 
+  function makeChargeDeps(
+    fakeStripe: ReturnType<typeof makeFakeStripe>,
+    fakeTenantRepo: ITenantCustomerRepository,
+  ): AutoTopupChargeDeps {
+    return {
+      stripe: fakeStripe as unknown as Stripe,
+      tenantRepo: fakeTenantRepo,
+      creditLedger: ledger,
+      eventLogRepo,
+    };
+  }
+
+  function makeTriggerFn(deps: AutoTopupChargeDeps) {
+    return () =>
+      maybeTriggerUsageTopup(
+        {
+          settingsRepo,
+          creditLedger: ledger,
+          chargeAutoTopup: (tid, amount, source) => chargeAutoTopup(deps, tid, amount, source),
+        },
+        TENANT_ID,
+      );
+  }
+
   it("depleted balance triggers auto-topup: Stripe PaymentIntent created, ledger credited", async () => {
     const piId = `pi_${randomUUID()}`;
     const fakeStripe = makeFakeStripe({ paymentIntentId: piId });
@@ -101,21 +123,8 @@ describe("E2E: Stripe auto-topup — balance depletion triggers charge and credi
     const balanceBefore = await ledger.balance(TENANT_ID);
     expect(balanceBefore.toCents()).toBe(100);
 
-    const deps: AutoTopupChargeDeps = {
-      stripe: fakeStripe as unknown as Stripe,
-      tenantRepo: fakeTenantRepo,
-      creditLedger: ledger,
-      eventLogRepo,
-    };
-
-    await maybeTriggerUsageTopup(
-      {
-        settingsRepo,
-        creditLedger: ledger,
-        chargeAutoTopup: (tid, amount, source) => chargeAutoTopup(deps, tid, amount, source),
-      },
-      TENANT_ID,
-    );
+    const deps = makeChargeDeps(fakeStripe, fakeTenantRepo);
+    await makeTriggerFn(deps)();
 
     expect(fakeStripe.paymentIntents.create).toHaveBeenCalledTimes(1);
     const createCall = fakeStripe.paymentIntents.create.mock.calls[0][0];
@@ -156,38 +165,19 @@ describe("E2E: Stripe auto-topup — balance depletion triggers charge and credi
     // Balance: 100 cents (below threshold of 200) — both triggers would fire based on balance alone
     await ledger.debit(TENANT_ID, Credit.fromCents(400), "adapter_usage", "usage");
 
-    const deps: AutoTopupChargeDeps = {
-      stripe: fakeStripe as unknown as Stripe,
-      tenantRepo: fakeTenantRepo,
-      creditLedger: ledger,
-      eventLogRepo,
-    };
+    const deps = makeChargeDeps(fakeStripe, fakeTenantRepo);
 
     // Simulate in-flight guard already held (i.e., a concurrent trigger acquired it first)
     const tryAcquireSpy = vi.spyOn(settingsRepo, "tryAcquireUsageInFlight");
 
     // First call: guard available — charge fires
     tryAcquireSpy.mockResolvedValueOnce(true);
-    await maybeTriggerUsageTopup(
-      {
-        settingsRepo,
-        creditLedger: ledger,
-        chargeAutoTopup: (tid, amount, source) => chargeAutoTopup(deps, tid, amount, source),
-      },
-      TENANT_ID,
-    );
+    await makeTriggerFn(deps)();
     expect(fakeStripe.paymentIntents.create).toHaveBeenCalledTimes(1);
 
     // Second concurrent trigger: guard already held — charge must NOT fire even though balance is still low
     tryAcquireSpy.mockResolvedValueOnce(false);
-    await maybeTriggerUsageTopup(
-      {
-        settingsRepo,
-        creditLedger: ledger,
-        chargeAutoTopup: (tid, amount, source) => chargeAutoTopup(deps, tid, amount, source),
-      },
-      TENANT_ID,
-    );
+    await makeTriggerFn(deps)();
     // Still only one charge — in-flight guard blocked the second attempt
     expect(fakeStripe.paymentIntents.create).toHaveBeenCalledTimes(1);
 
@@ -207,21 +197,8 @@ describe("E2E: Stripe auto-topup — balance depletion triggers charge and credi
 
     await ledger.debit(TENANT_ID, Credit.fromCents(400), "adapter_usage", "usage");
 
-    const deps: AutoTopupChargeDeps = {
-      stripe: fakeStripe as unknown as Stripe,
-      tenantRepo: fakeTenantRepo,
-      creditLedger: ledger,
-      eventLogRepo,
-    };
-
-    await maybeTriggerUsageTopup(
-      {
-        settingsRepo,
-        creditLedger: ledger,
-        chargeAutoTopup: (tid, amount, source) => chargeAutoTopup(deps, tid, amount, source),
-      },
-      TENANT_ID,
-    );
+    const deps = makeChargeDeps(fakeStripe, fakeTenantRepo);
+    await makeTriggerFn(deps)();
 
     expect(fakeStripe.paymentIntents.create).toHaveBeenCalledTimes(1);
 
