@@ -21,8 +21,8 @@ importers:
         specifier: ^10.39.0
         version: 10.39.0
       '@trpc/server':
-        specifier: ^11.10.0
-        version: 11.10.0(typescript@5.9.3)
+        specifier: ^11.11.0
+        version: 11.11.0(typescript@5.9.3)
       better-auth:
         specifier: ^1.4.19
         version: 1.4.19(better-sqlite3@12.6.2)(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.15)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(pg@8.19.0))(pg@8.19.0)(vitest@4.0.18(@opentelemetry/api@1.9.0)(@types/node@25.3.2)(tsx@4.21.0)(yaml@2.8.2))
@@ -994,8 +994,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@trpc/server@11.10.0':
-    resolution: {integrity: sha512-zZjTrR6He61e5TiT7e/bQqab/jRcXBZM8Fg78Yoo8uh5pz60dzzbYuONNUCOkafv5ppXVMms4NHYfNZgzw50vg==}
+  '@trpc/server@11.11.0':
+    resolution: {integrity: sha512-5CBK5Oit8qv2k2zgIHrUsa12tnCIVpZIJLvMa4n2tejuWz/d7Qb1B1v9zZioapr7y8sEvnk8zPcNnxcT2LlQxg==}
     peerDependencies:
       typescript: '>=5.7.2'
 
@@ -1032,8 +1032,8 @@ packages:
   '@types/node@25.3.2':
     resolution: {integrity: sha512-RpV6r/ij22zRRdyBPcxDeKAzH43phWVKEjL2iksqo1Vz3CuBUrgmPpPhALKiRfU7OMCmeeO9vECBMsV0hMTG8Q==}
 
-  '@types/node@25.3.3':
-    resolution: {integrity: sha512-DpzbrH7wIcBaJibpKo9nnSQL0MTRdnWttGyE5haGwK86xgMOkFLp7vEyfQPGLOJh5wNYiJ3V9PmUMDhV9u8kkQ==}
+  '@types/node@25.3.5':
+    resolution: {integrity: sha512-oX8xrhvpiyRCQkG1MFchB09f+cXftgIXb3a7UUa4Y3wpmZPw5tyZGTLWhlESOLq1Rq6oDlc8npVU2/9xiCuXMA==}
 
   '@types/pg-pool@2.0.7':
     resolution: {integrity: sha512-U4CwmGVQcbEuqpyju8/ptOKg6gEC+Tqsvj2xS9o1g71bUh8twxnC6ZL5rZKCsGN0iyH0CwgUyc9VR5owNQF9Ng==}
@@ -2758,13 +2758,13 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@trpc/server@11.10.0(typescript@5.9.3)':
+  '@trpc/server@11.11.0(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 25.3.3
+      '@types/node': 25.3.5
     optional: true
 
   '@types/chai@5.2.3':
@@ -2805,7 +2805,7 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
-  '@types/node@25.3.3':
+  '@types/node@25.3.5':
     dependencies:
       undici-types: 7.18.2
     optional: true
