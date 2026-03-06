@@ -26,20 +26,22 @@ describe("tRPC profile router", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetUser.mockReturnValue({
+    mockGetUser.mockResolvedValue({
       id: "test-user",
       name: "Test User",
       email: "test@example.com",
       image: null,
       twoFactorEnabled: false,
     });
-    mockUpdateUser.mockImplementation((_id: string, data: Record<string, unknown>) => ({
-      id: "test-user",
-      name: data.name ?? "Test User",
-      email: "test@example.com",
-      image: data.image ?? null,
-      twoFactorEnabled: false,
-    }));
+    mockUpdateUser.mockImplementation((_id: string, data: Record<string, unknown>) =>
+      Promise.resolve({
+        id: "test-user",
+        name: data.name ?? "Test User",
+        email: "test@example.com",
+        image: data.image ?? null,
+        twoFactorEnabled: false,
+      }),
+    );
     mockChangePassword.mockResolvedValue(true);
     setProfileRouterDeps({
       getUser: mockGetUser,
@@ -65,7 +67,7 @@ describe("tRPC profile router", () => {
     });
 
     it("returns twoFactorEnabled: true when 2FA is enabled", async () => {
-      mockGetUser.mockReturnValue({
+      mockGetUser.mockResolvedValue({
         id: "test-user",
         name: "Test User",
         email: "test@example.com",
@@ -92,7 +94,7 @@ describe("tRPC profile router", () => {
     });
 
     it("includes twoFactorEnabled in update response", async () => {
-      mockUpdateUser.mockReturnValue({
+      mockUpdateUser.mockResolvedValue({
         id: "test-user",
         name: "New Name",
         email: "test@example.com",
