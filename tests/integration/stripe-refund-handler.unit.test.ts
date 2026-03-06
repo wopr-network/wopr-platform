@@ -10,6 +10,10 @@ import { TenantCustomerRepository } from "../../src/monetization/stripe/tenant-s
 import { handleWebhookEvent, type WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { createTestDb } from "../../src/test/db.js";
 
+// Unit tests for the charge.refunded webhook handler.
+// Uses fabricated Stripe.Event objects to test handler logic in isolation.
+// For real Stripe test-mode integration, see tests/e2e/ (requires STRIPE_SECRET_KEY=sk_test_...).
+
 vi.mock("../../src/config/logger.js", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
