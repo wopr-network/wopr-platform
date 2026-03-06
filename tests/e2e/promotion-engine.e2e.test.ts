@@ -38,11 +38,11 @@ describe("E2E: promotion engine — coupons, purchase-triggered promos, limits",
   });
 
   afterEach(async () => {
-    await pool.close();
+    await pool?.close();
   });
 
   it("coupon redemption — happy path: grants credits and records redemption", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
 
     const promo = await promotionRepo.create({
       name: "Launch Coupon",
@@ -78,8 +78,8 @@ describe("E2E: promotion engine — coupons, purchase-triggered promos, limits",
   });
 
   it("coupon — max redemptions enforced (totalUseLimit)", async () => {
-    const tenantA = `tenant-a-${randomUUID().slice(0, 8)}`;
-    const tenantB = `tenant-b-${randomUUID().slice(0, 8)}`;
+    const tenantA = `tenant-a-${randomUUID()}`;
+    const tenantB = `tenant-b-${randomUUID()}`;
 
     await promotionRepo.create({
       name: "One-Time Coupon",
@@ -113,7 +113,7 @@ describe("E2E: promotion engine — coupons, purchase-triggered promos, limits",
   });
 
   it("coupon — single-use per tenant (perUserLimit)", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
 
     await promotionRepo.create({
       name: "Single Use Per User",
@@ -146,7 +146,7 @@ describe("E2E: promotion engine — coupons, purchase-triggered promos, limits",
   });
 
   it("purchase-triggered promotion — spend $50, get $5 bonus", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
 
     await promotionRepo.create({
       name: "Spend $50 Get $5",
@@ -174,7 +174,7 @@ describe("E2E: promotion engine — coupons, purchase-triggered promos, limits",
   });
 
   it("expired promotion — no credits granted", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
 
     const pastDate = new Date(Date.now() - 86_400_000);
     await promotionRepo.create({
