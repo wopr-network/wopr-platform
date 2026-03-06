@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { and, count, eq, gte, isNotNull, isNull, sql, sum } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, sql, sum } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateCodes, affiliateReferrals } from "../../db/schema/affiliate.js";
 import { Credit } from "../credit.js";
@@ -337,7 +337,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
           and(
             eq(affiliateReferrals.referrerTenantId, referrerTenantId),
             isNotNull(affiliateReferrals.matchedAt),
-            gte(affiliateReferrals.matchedAt, thirtyDaysAgo),
+            sql`CAST(${affiliateReferrals.matchedAt} AS timestamptz) >= CAST(${thirtyDaysAgo} AS timestamptz)`,
             eq(affiliateReferrals.payoutSuppressed, false),
           ),
         )
@@ -355,7 +355,7 @@ export class DrizzleAffiliateRepository implements IAffiliateRepository {
           and(
             eq(affiliateReferrals.referrerTenantId, referrerTenantId),
             isNotNull(affiliateReferrals.matchedAt),
-            gte(affiliateReferrals.matchedAt, thirtyDaysAgo),
+            sql`CAST(${affiliateReferrals.matchedAt} AS timestamptz) >= CAST(${thirtyDaysAgo} AS timestamptz)`,
             eq(affiliateReferrals.payoutSuppressed, false),
           ),
         )
