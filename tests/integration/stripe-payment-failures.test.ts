@@ -2,7 +2,7 @@ import Stripe from "stripe";
 import { describe, expect, it } from "vitest";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
-const canRun = STRIPE_SECRET_KEY.startsWith("sk_test_");
+const canRun = process.env.RUN_STRIPE_REAL_INTEGRATION_TESTS === "1";
 
 describe.skipIf(!canRun)(
 	"Stripe payment failure handling (real test-mode calls)",
@@ -25,8 +25,8 @@ describe.skipIf(!canRun)(
 				});
 				throw new Error("Expected PaymentIntent to fail but it succeeded");
 			} catch (err) {
-				expect(err).toBeInstanceOf(Stripe.errors.StripeCardError);
-				return err as Stripe.errors.StripeCardError;
+				if (!(err instanceof Stripe.errors.StripeCardError)) throw err;
+				return err;
 			}
 		}
 
