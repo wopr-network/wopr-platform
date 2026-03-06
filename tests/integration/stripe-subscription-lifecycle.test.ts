@@ -15,8 +15,8 @@ const isRealKey = STRIPE_SECRET_KEY.startsWith("sk_test_");
 
 // Recurring prices for subscription tests (created in Stripe test mode).
 // These are distinct from the one-time credit prices in .env.
-const PRICE_LOW = "price_1T4Q1hB8WYGBr2WGTgYKgBvc"; // $5/mo recurring
-const PRICE_HIGH = "price_1T7pdTB8WYGBr2WGfOFbNwUr"; // $100/mo recurring
+const PRICE_LOW = process.env.STRIPE_MONTHLY_PRICE_ID_LOW ?? "price_1T4Q1hB8WYGBr2WGTgYKgBvc"; // $5/mo recurring
+const PRICE_HIGH = process.env.STRIPE_MONTHLY_PRICE_ID_HIGH ?? "price_1T7pdTB8WYGBr2WGfOFbNwUr"; // $100/mo recurring
 
 const canRun = isRealKey;
 
@@ -27,7 +27,7 @@ function makeStripe(): Stripe {
 /** Build a synthetic Stripe event for passing to handleWebhookEvent. */
 function syntheticEvent(type: string, object: unknown): Stripe.Event {
 	return {
-		id: `evt_test_${type.replace(/\./g, "_")}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+		id: `evt_test_${type.replace(/\./g, "_")}_${crypto.randomUUID()}`,
 		object: "event",
 		type,
 		api_version: null,
@@ -43,7 +43,7 @@ function syntheticEvent(type: string, object: unknown): Stripe.Event {
 }
 
 /** Minimal mock of IVpsRepository for capturing calls. */
-function mockVpsRepo(existing?: { botId: string; tenantId: string; stripeSubscriptionId: string; stripeCustomerId: string; status: string }) {
+function mockVpsRepo(existing?: { botId: string; tenantId: string; stripeSubscriptionId: string; stripeCustomerId: string; status: VpsStatus }) {
 	const creates: NewVpsSubscription[] = [];
 	const updates: Array<{ botId: string; status: VpsStatus }> = [];
 	return {
@@ -303,22 +303,22 @@ describe.skipIf(!canRun)("Stripe subscription lifecycle (real API)", () => {
 		const invoices = await stripe.invoices.list({ customer: customer.id, limit: 1 });
 		const invoice = invoices.data[0];
 
-		if (invoice) {
-			const suspendedBots: string[] = [];
-			deps.botBilling = {
-				suspendAllForTenant: async () => {
-					suspendedBots.push(BOT_ID);
-					return [BOT_ID];
-				},
-			} as WebhookDeps["botBilling"];
+		expect(invoice).toBeDefined();
 
-			const result = await handleWebhookEvent(deps, syntheticEvent("invoice.payment_failed", invoice));
+		const suspendedBots: string[] = [];
+		deps.botBilling = {
+			suspendAllForTenant: async () => {
+				suspendedBots.push(BOT_ID);
+				return [BOT_ID];
+			},
+		} as WebhookDeps["botBilling"];
 
-			expect(result.handled).toBe(true);
-			expect(result.event_type).toBe("invoice.payment_failed");
-			expect(result.tenant).toBe(TENANT);
-			expect(result.suspendedBots).toContain(BOT_ID);
-		}
+		const result = await handleWebhookEvent(deps, syntheticEvent("invoice.payment_failed", invoice));
+
+		expect(result.handled).toBe(true);
+		expect(result.event_type).toBe("invoice.payment_failed");
+		expect(result.tenant).toBe(TENANT);
+		expect(result.suspendedBots).toContain(BOT_ID);
 
 		if (subscription) {
 			try { await stripe.subscriptions.cancel(subscription.id); } catch { /* already canceled */ }
