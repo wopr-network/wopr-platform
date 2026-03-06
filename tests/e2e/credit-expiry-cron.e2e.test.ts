@@ -21,7 +21,7 @@ describe("credit-expiry-cron e2e", () => {
   });
 
   afterEach(async () => {
-    await pool.close();
+    await pool?.close();
   });
 
   it("full expiry — sweeps entire grant and zeros balance", async () => {
