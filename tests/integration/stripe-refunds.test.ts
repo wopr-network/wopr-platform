@@ -56,7 +56,10 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
     eventId?: string;
     customerId?: string;
     amountRefunded: number;
+    /** The incremental amount of this specific refund. Defaults to amountRefunded. */
+    refundAmount?: number;
   }): Stripe.Event {
+    const incrementalAmount = opts.refundAmount ?? opts.amountRefunded;
     return {
       id: opts.eventId ?? `evt_${randomUUID()}`,
       type: "charge.refunded",
@@ -65,6 +68,9 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
           id: opts.chargeId ?? `ch_${randomUUID()}`,
           customer: opts.customerId ?? CUSTOMER_ID,
           amount_refunded: opts.amountRefunded,
+          refunds: {
+            data: [{ amount: incrementalAmount }],
+          },
         },
       },
     } as unknown as Stripe.Event;
@@ -161,11 +167,13 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
     await grantCredits(10000);
 
     const chargeId = `ch_${randomUUID()}`;
-    const event1 = buildChargeRefundedEvent({ chargeId, amountRefunded: 3000 });
+    // Stripe sends cumulative amount_refunded; refundAmount is the incremental amount.
+    const event1 = buildChargeRefundedEvent({ chargeId, amountRefunded: 3000, refundAmount: 3000 });
     const event2 = buildChargeRefundedEvent({
       chargeId,
       eventId: `evt_${randomUUID()}`,
-      amountRefunded: 2000,
+      amountRefunded: 5000, // cumulative: 3000 + 2000
+      refundAmount: 2000,   // incremental amount of this specific refund
     });
 
     const result1 = await handleWebhookEvent(deps, event1);
