@@ -13,6 +13,7 @@ export interface AuthUser {
   name: string;
   email: string;
   image: string | null;
+  twoFactorEnabled: boolean;
 }
 
 export interface LinkedAccount {
@@ -34,7 +35,10 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
 
   async getUser(userId: string): Promise<AuthUser | null> {
     // raw SQL: better-auth manages its own schema outside Drizzle
-    const { rows } = await this.pool.query(`SELECT id, name, email, image FROM "user" WHERE id = $1`, [userId]);
+    const { rows } = await this.pool.query(
+      `SELECT id, name, email, image, COALESCE("twoFactorEnabled", false) AS "twoFactorEnabled" FROM "user" WHERE id = $1`,
+      [userId],
+    );
     return (rows[0] as AuthUser | undefined) ?? null;
   }
 
@@ -57,7 +61,10 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
       await this.pool.query(`UPDATE "user" SET ${fields.join(", ")} WHERE id = $${paramIndex}`, values);
     }
     // raw SQL: better-auth manages its own schema outside Drizzle
-    const { rows } = await this.pool.query(`SELECT id, name, email, image FROM "user" WHERE id = $1`, [userId]);
+    const { rows } = await this.pool.query(
+      `SELECT id, name, email, image, COALESCE("twoFactorEnabled", false) AS "twoFactorEnabled" FROM "user" WHERE id = $1`,
+      [userId],
+    );
     if (rows.length === 0) throw new Error(`User not found: ${userId}`);
     return rows[0] as AuthUser;
   }

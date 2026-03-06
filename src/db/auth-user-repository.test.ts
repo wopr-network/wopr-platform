@@ -19,7 +19,13 @@ describe("BetterAuthUserRepository", () => {
 
   describe("getUser", () => {
     it("returns user when found", async () => {
-      const user: AuthUser = { id: "u-1", name: "Alice", email: "alice@test.com", image: null };
+      const user: AuthUser = {
+        id: "u-1",
+        name: "Alice",
+        email: "alice@test.com",
+        image: null,
+        twoFactorEnabled: false,
+      };
       (pool.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ rows: [user] });
 
       const result = await repo.getUser("u-1");
@@ -35,7 +41,13 @@ describe("BetterAuthUserRepository", () => {
 
   describe("updateUser", () => {
     it("updates name and returns updated user", async () => {
-      const updated: AuthUser = { id: "u-1", name: "Bob", email: "alice@test.com", image: null };
+      const updated: AuthUser = {
+        id: "u-1",
+        name: "Bob",
+        email: "alice@test.com",
+        image: null,
+        twoFactorEnabled: false,
+      };
       const queryMock = pool.query as ReturnType<typeof vi.fn>;
       queryMock.mockResolvedValueOnce({ rows: [] }); // UPDATE
       queryMock.mockResolvedValueOnce({ rows: [updated] }); // SELECT
@@ -45,7 +57,13 @@ describe("BetterAuthUserRepository", () => {
     });
 
     it("updates image to null", async () => {
-      const updated: AuthUser = { id: "u-1", name: "Alice", email: "alice@test.com", image: null };
+      const updated: AuthUser = {
+        id: "u-1",
+        name: "Alice",
+        email: "alice@test.com",
+        image: null,
+        twoFactorEnabled: false,
+      };
       const queryMock = pool.query as ReturnType<typeof vi.fn>;
       queryMock.mockResolvedValueOnce({ rows: [] });
       queryMock.mockResolvedValueOnce({ rows: [updated] });
@@ -68,6 +86,7 @@ describe("BetterAuthUserRepository", () => {
         name: "Carol",
         email: "carol@test.com",
         image: "https://example.com/img.png",
+        twoFactorEnabled: false,
       };
       const queryMock = pool.query as ReturnType<typeof vi.fn>;
       queryMock.mockResolvedValueOnce({ rows: [] });
