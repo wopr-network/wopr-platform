@@ -94,16 +94,18 @@ describe("E2E: metering reconciliation", () => {
       // Aggregate
       const summaryRepo = new DrizzleUsageSummaryRepository(db);
       const aggregator = new MeterAggregator(summaryRepo, { windowMs: WINDOW_MS });
-      const inserted = await aggregator.aggregate(Date.now());
+      const inserted = await aggregator.aggregate(windowStart + 2 * WINDOW_MS);
       expect(inserted).toBeGreaterThanOrEqual(1);
 
-      // Verify usage summary
-      const total = await aggregator.getTenantTotal("tenant-recon", 0);
-      expect(total.eventCount).toBe(10);
-      expect(total.totalCost).toBe(costPerEvent.toRaw() * 10);
-      expect(total.totalCharge).toBe(chargePerEvent.toRaw() * 10);
-
-      emitter.close();
+      try {
+        // Verify usage summary
+        const total = await aggregator.getTenantTotal("tenant-recon", 0);
+        expect(total.eventCount).toBe(10);
+        expect(total.totalCost).toBe(costPerEvent.toRaw() * 10);
+        expect(total.totalCharge).toBe(chargePerEvent.toRaw() * 10);
+      } finally {
+        emitter.close();
+      }
     });
   });
 
@@ -140,10 +142,12 @@ describe("E2E: metering reconciliation", () => {
       const postRows = await repo.queryByTenant("tenant-crash", 100);
       expect(postRows).toHaveLength(5);
 
-      // WAL should be cleared after successful replay
-      expect(wal.isEmpty()).toBe(true);
-
-      emitter.close();
+      try {
+        // WAL should be cleared after successful replay
+        expect(wal.isEmpty()).toBe(true);
+      } finally {
+        emitter.close();
+      }
     });
   });
 
@@ -217,10 +221,12 @@ describe("E2E: metering reconciliation", () => {
       expect(entries[0].dlq_error).toContain("DB connection lost");
       expect(entries[0].dlq_retries).toBe(MAX_RETRIES);
 
-      // Buffer should be empty (event moved to DLQ, not retried)
-      expect(emitter.pending).toBe(0);
-
-      emitter.close();
+      try {
+        // Buffer should be empty (event moved to DLQ, not retried)
+        expect(emitter.pending).toBe(0);
+      } finally {
+        emitter.close();
+      }
     });
   });
 });
