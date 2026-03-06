@@ -4,10 +4,23 @@ import { afterEach, describe, expect, it } from "vitest";
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? "";
 
+const REQUIRED_PRICE_VARS = [
+	"STRIPE_CREDIT_PRICE_5",
+	"STRIPE_CREDIT_PRICE_10",
+	"STRIPE_CREDIT_PRICE_25",
+	"STRIPE_CREDIT_PRICE_50",
+	"STRIPE_CREDIT_PRICE_100",
+] as const;
+
+const hasAllStripeConfig =
+	STRIPE_SECRET_KEY.startsWith("sk_test_") &&
+	STRIPE_WEBHOOK_SECRET.length > 0 &&
+	REQUIRED_PRICE_VARS.every((v) => process.env[v]);
+
 // Track resources for cleanup
 const createdCustomerIds: string[] = [];
 
-describe.skipIf(!STRIPE_SECRET_KEY.startsWith("sk_test_"))(
+describe.skipIf(!hasAllStripeConfig)(
 	"Stripe API integration (real test-mode calls)",
 	() => {
 		// Defer construction so file loads without error when key is absent
@@ -25,8 +38,7 @@ describe.skipIf(!STRIPE_SECRET_KEY.startsWith("sk_test_"))(
 		});
 
 		it("creates a checkout session with a real price ID", async () => {
-			const priceId = process.env.STRIPE_CREDIT_PRICE_5;
-			expect(priceId).toBeTruthy();
+			const priceId = process.env.STRIPE_CREDIT_PRICE_5!;
 
 			const customer = await stripe.customers.create({
 				metadata: { wopr_test: "stripe-api-integration" },
@@ -139,23 +151,14 @@ describe.skipIf(!STRIPE_SECRET_KEY.startsWith("sk_test_"))(
 		});
 
 		it("validates all STRIPE_CREDIT_PRICE_* env vars resolve to active prices", async () => {
-			const priceEnvVars = [
-				"STRIPE_CREDIT_PRICE_5",
-				"STRIPE_CREDIT_PRICE_10",
-				"STRIPE_CREDIT_PRICE_25",
-				"STRIPE_CREDIT_PRICE_50",
-				"STRIPE_CREDIT_PRICE_100",
-			] as const;
-
 			const expectedAmounts = [500, 1000, 2500, 5000, 10000];
 
-			for (let i = 0; i < priceEnvVars.length; i++) {
-				const priceId = process.env[priceEnvVars[i]];
-				expect(priceId, `${priceEnvVars[i]} must be set`).toBeTruthy();
+			for (let i = 0; i < REQUIRED_PRICE_VARS.length; i++) {
+				const priceId = process.env[REQUIRED_PRICE_VARS[i]]!;
 
-				const price = await stripe.prices.retrieve(priceId!);
-				expect(price.active, `${priceEnvVars[i]} (${priceId}) must be active`).toBe(true);
-				expect(price.unit_amount, `${priceEnvVars[i]} amount mismatch`).toBe(expectedAmounts[i]);
+				const price = await stripe.prices.retrieve(priceId);
+				expect(price.active, `${REQUIRED_PRICE_VARS[i]} (${priceId}) must be active`).toBe(true);
+				expect(price.unit_amount, `${REQUIRED_PRICE_VARS[i]} amount mismatch`).toBe(expectedAmounts[i]);
 				expect(price.currency).toBe("usd");
 			}
 		});
