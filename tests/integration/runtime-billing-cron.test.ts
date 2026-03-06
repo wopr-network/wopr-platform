@@ -13,7 +13,7 @@ import {
   buildResourceTierCosts,
   runRuntimeDeductions,
 } from "../../src/monetization/credits/runtime-cron.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js";
+import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 
 vi.mock("../../src/config/logger.js", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -29,19 +29,17 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    await beginTestTransaction(pool);
     ledger = new CreditLedger(db);
     botInstanceRepo = new DrizzleBotInstanceRepository(db);
     botBilling = new BotBilling(botInstanceRepo, null);
   });
 
   afterAll(async () => {
-    await endTestTransaction(pool);
     await pool.close();
   });
 
   beforeEach(async () => {
-    await rollbackTestTransaction(pool);
+    await truncateAllTables(pool);
   });
 
   it("deducts $0.17 for a single active bot", async () => {
