@@ -33,7 +33,7 @@ describe.skipIf(!canRun)(
 		it("rejects a generic declined card (tok_chargeDeclined)", async () => {
 			const err = await expectPaymentIntentFailure("tok_chargeDeclined");
 
-			expect(err.type).toBe("StripeCardError");
+			expect(err.type).toBe("card_error");
 			expect(err.code).toBe("card_declined");
 			expect(err.decline_code).toBe("generic_decline");
 			expect(err.statusCode).toBe(402);
@@ -44,7 +44,7 @@ describe.skipIf(!canRun)(
 				"tok_chargeDeclinedInsufficientFunds",
 			);
 
-			expect(err.type).toBe("StripeCardError");
+			expect(err.type).toBe("card_error");
 			expect(err.code).toBe("card_declined");
 			expect(err.decline_code).toBe("insufficient_funds");
 			expect(err.statusCode).toBe(402);
@@ -55,7 +55,7 @@ describe.skipIf(!canRun)(
 				"tok_chargeDeclinedExpiredCard",
 			);
 
-			expect(err.type).toBe("StripeCardError");
+			expect(err.type).toBe("card_error");
 			expect(err.code).toBe("expired_card");
 			expect(err.decline_code).toBe("expired_card");
 			expect(err.statusCode).toBe(402);
@@ -66,7 +66,7 @@ describe.skipIf(!canRun)(
 				"tok_chargeDeclinedProcessingError",
 			);
 
-			expect(err.type).toBe("StripeCardError");
+			expect(err.type).toBe("card_error");
 			expect(err.code).toBe("processing_error");
 			expect(err.decline_code).toBe("processing_error");
 			expect(err.statusCode).toBe(402);
