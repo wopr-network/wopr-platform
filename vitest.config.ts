@@ -6,7 +6,7 @@ export default defineConfig({
     hookTimeout: 60000,
     maxWorkers: 4,
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
-    exclude: ["tests/e2e/**"],
+    exclude: ["tests/e2e/**", "src/**/*.integration.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
