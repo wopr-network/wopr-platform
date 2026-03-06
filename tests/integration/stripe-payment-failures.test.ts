@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 const canRun =
@@ -13,21 +13,40 @@ describe.skipIf(!canRun)(
 			? new Stripe(STRIPE_SECRET_KEY)
 			: (undefined as unknown as Stripe);
 
+		// Track PaymentIntent IDs for cleanup
+		const createdPaymentIntentIds: string[] = [];
+
+		afterEach(async () => {
+			for (const piId of createdPaymentIntentIds) {
+				try {
+					await stripe.paymentIntents.cancel(piId);
+				} catch {
+					// Ignore — may already be in a terminal state
+				}
+			}
+			createdPaymentIntentIds.length = 0;
+		});
+
 		/** Helper: attempt a PaymentIntent with a test token that we expect to fail. */
 		async function expectPaymentIntentFailure(
 			cardToken: string,
 		): Promise<Stripe.errors.StripeCardError> {
 			try {
-				await stripe.paymentIntents.create({
+				const pi = await stripe.paymentIntents.create({
 					amount: 500,
 					currency: "usd",
 					payment_method_data: { type: "card", card: { token: cardToken } },
 					confirm: true,
 					return_url: "https://example.com/return",
+					metadata: { test: "true", testSuite: "stripe-payment-failures" },
 				});
+				createdPaymentIntentIds.push(pi.id);
 				throw new Error("Expected PaymentIntent to fail but it succeeded");
 			} catch (err) {
 				if (!(err instanceof Stripe.errors.StripeCardError)) throw err;
+				if (err.payment_intent?.id) {
+					createdPaymentIntentIds.push(err.payment_intent.id);
+				}
 				return err;
 			}
 		}
@@ -83,7 +102,9 @@ describe.skipIf(!canRun)(
 				confirm: true,
 				return_url: "https://example.com/return",
 				expand: ["latest_charge"],
+				metadata: { test: "true", testSuite: "stripe-payment-failures" },
 			});
+			createdPaymentIntentIds.push(pi.id);
 
 			expect(pi.status).toBe("succeeded");
 
