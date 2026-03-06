@@ -983,7 +983,7 @@ describe("handleWebhookEvent (credit model)", () => {
       expect(result.debitedCents).toBe(1500);
     });
 
-    it("records charge ID as referenceId in the ledger transaction", async () => {
+    it("records event ID as referenceId in the ledger transaction", async () => {
       await tenantRepo.upsert({ tenant: "tenant-ref-txn", processorCustomerId: "cus_ref_txn" });
       await creditLedger.credit("tenant-ref-txn", Credit.fromCents(5000), "purchase", "seed");
 
@@ -991,7 +991,7 @@ describe("handleWebhookEvent (credit model)", () => {
 
       const txns = await creditLedger.history("tenant-ref-txn", { type: "refund" });
       expect(txns).toHaveLength(1);
-      expect(txns[0].referenceId).toBe("ch_ref_txn_123");
+      expect(txns[0].referenceId).toBe("evt_charge_ref_1");
       expect(txns[0].type).toBe("refund");
       expect(txns[0].description).toContain("ch_ref_txn_123");
     });

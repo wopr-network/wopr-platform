@@ -407,7 +407,11 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
       const charge = event.data.object as Stripe.Charge;
       const customerId =
         typeof charge.customer === "string" ? charge.customer : (charge.customer as Stripe.Customer)?.id;
-      const refundedCents = charge.amount_refunded;
+      // Use the incremental amount from the latest Refund object (data[0], newest first).
+      // charge.amount_refunded is cumulative across all refunds on this charge, so using
+      // it directly would over-debit on subsequent partial refund events.
+      const latestRefund = charge.refunds?.data?.[0];
+      const refundedCents = latestRefund?.amount ?? charge.amount_refunded;
 
       if (!customerId || !refundedCents || refundedCents <= 0) {
         result = { handled: false, event_type: event.type };
@@ -422,8 +426,10 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
 
       const tenant = mapping.tenant;
 
-      // Idempotency: skip if this charge was already refunded in the ledger.
-      if (await deps.creditLedger.hasReferenceId(charge.id)) {
+      // Idempotency: use event.id (not charge.id) so that partial refunds — which
+      // produce separate charge.refunded events with the same charge.id — each
+      // debit the ledger, while true webhook replays (same event.id) are skipped.
+      if (await deps.creditLedger.hasReferenceId(event.id)) {
         result = { handled: true, event_type: event.type, tenant, debitedCents: 0 };
         break;
       }
@@ -434,7 +440,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         Credit.fromCents(refundedCents),
         "refund",
         `Stripe refund (charge: ${charge.id})`,
-        charge.id,
+        event.id,
         true, // allowNegative
       );
 
