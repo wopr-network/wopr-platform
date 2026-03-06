@@ -422,8 +422,10 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
 
       const tenant = mapping.tenant;
 
-      // Idempotency: skip if this charge was already refunded in the ledger.
-      if (await deps.creditLedger.hasReferenceId(charge.id)) {
+      // Idempotency: use event.id (not charge.id) so that partial refunds — which
+      // produce separate charge.refunded events with the same charge.id — each
+      // debit the ledger, while true webhook replays (same event.id) are skipped.
+      if (await deps.creditLedger.hasReferenceId(event.id)) {
         result = { handled: true, event_type: event.type, tenant, debitedCents: 0 };
         break;
       }
@@ -434,7 +436,7 @@ export async function handleWebhookEvent(deps: WebhookDeps, event: Stripe.Event)
         Credit.fromCents(refundedCents),
         "refund",
         `Stripe refund (charge: ${charge.id})`,
-        charge.id,
+        event.id,
         true, // allowNegative
       );
 

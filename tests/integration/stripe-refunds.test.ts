@@ -157,11 +157,41 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
     expect(refundTx!.balanceAfter.equals(Credit.fromCents(-3000))).toBe(true);
   });
 
-  it("double refund on same charge ID is idempotent — no double deduction", async () => {
+  it("two partial refund events with the same charge.id but different event.id both debit the ledger", async () => {
+    await grantCredits(10000);
+
+    const chargeId = `ch_${randomUUID()}`;
+    const event1 = buildChargeRefundedEvent({ chargeId, amountRefunded: 3000 });
+    const event2 = buildChargeRefundedEvent({
+      chargeId,
+      eventId: `evt_${randomUUID()}`,
+      amountRefunded: 2000,
+    });
+
+    const result1 = await handleWebhookEvent(deps, event1);
+    expect(result1.handled).toBe(true);
+    expect(result1.debitedCents).toBe(3000);
+
+    const balanceAfterFirst = await creditLedger.balance(TENANT_ID);
+    expect(balanceAfterFirst.equals(Credit.fromCents(7000))).toBe(true);
+
+    const result2 = await handleWebhookEvent(deps, event2);
+    expect(result2.handled).toBe(true);
+    expect(result2.debitedCents).toBe(2000);
+
+    const balanceAfterSecond = await creditLedger.balance(TENANT_ID);
+    expect(balanceAfterSecond.equals(Credit.fromCents(5000))).toBe(true);
+
+    const refundHistory = await creditLedger.history(TENANT_ID, { type: "refund" });
+    expect(refundHistory).toHaveLength(2);
+  });
+
+  it("replaying the same webhook event.id is idempotent — no double deduction", async () => {
     await grantCredits(5000);
 
     const chargeId = `ch_${randomUUID()}`;
-    const event = buildChargeRefundedEvent({ chargeId, amountRefunded: 5000 });
+    const eventId = `evt_${randomUUID()}`;
+    const event = buildChargeRefundedEvent({ chargeId, eventId, amountRefunded: 5000 });
 
     const result1 = await handleWebhookEvent(deps, event);
     expect(result1.handled).toBe(true);
@@ -170,15 +200,10 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
     const balanceAfterFirst = await creditLedger.balance(TENANT_ID);
     expect(balanceAfterFirst.isZero()).toBe(true);
 
-    const event2 = buildChargeRefundedEvent({
-      chargeId,
-      eventId: `evt_${randomUUID()}`,
-      amountRefunded: 5000,
-    });
-    const result2 = await handleWebhookEvent(deps, event2);
-
+    // Replay the exact same event (same event.id) — replay guard intercepts it
+    const result2 = await handleWebhookEvent(deps, event);
     expect(result2.handled).toBe(true);
-    expect(result2.debitedCents).toBe(0);
+    expect(result2.duplicate).toBe(true);
 
     const balanceAfterSecond = await creditLedger.balance(TENANT_ID);
     expect(balanceAfterSecond.isZero()).toBe(true);
