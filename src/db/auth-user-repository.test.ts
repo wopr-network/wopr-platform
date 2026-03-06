@@ -1,5 +1,7 @@
+import { PGlite } from "@electric-sql/pglite";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { initBetterAuthSchema, pgliteAsPool } from "../test/pglite-helpers.js";
 import { type AuthUser, BetterAuthUserRepository } from "./auth-user-repository.js";
 
 function createMockPool() {
@@ -152,6 +154,28 @@ describe("BetterAuthUserRepository", () => {
     it("returns false when rowCount is null", async () => {
       (pool.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ rowCount: null });
       expect(await repo.unlinkAccount("u-1", "google")).toBe(false);
+    });
+  });
+
+  describe("pglite schema guard — twoFactorEnabled column", () => {
+    it("getUser does not throw 'column does not exist' when schema initialized via initBetterAuthSchema", async () => {
+      const pg = new PGlite();
+      await initBetterAuthSchema(pg);
+      const pgPool = pgliteAsPool(pg) as unknown as Pool;
+      const pgRepo = new BetterAuthUserRepository(pgPool);
+
+      // Insert a user without twoFactorEnabled (column should default to false)
+      await pg.query(
+        `INSERT INTO "user" (id, name, email, "emailVerified", "createdAt", "updatedAt") VALUES ($1, $2, $3, false, now(), now())`,
+        ["u-pg-1", "Test User", "test@pglite.example"],
+      );
+
+      // Must not throw "column twoFactorEnabled does not exist"
+      const user = await pgRepo.getUser("u-pg-1");
+      expect(user).not.toBeNull();
+      expect(user?.twoFactorEnabled).toBe(false);
+
+      await pg.close();
     });
   });
 });
