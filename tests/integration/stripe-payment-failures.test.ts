@@ -2,7 +2,9 @@ import Stripe from "stripe";
 import { describe, expect, it } from "vitest";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
-const canRun = process.env.RUN_STRIPE_REAL_INTEGRATION_TESTS === "1";
+const canRun =
+  process.env.RUN_STRIPE_REAL_INTEGRATION_TESTS === "1" &&
+  process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") === true;
 
 describe.skipIf(!canRun)(
 	"Stripe payment failure handling (real test-mode calls)",
