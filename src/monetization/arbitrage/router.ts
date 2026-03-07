@@ -8,6 +8,7 @@
  */
 
 import type { AdapterCapability, AdapterResult, ProviderAdapter } from "../adapters/types.js";
+import { Credit } from "../credit.js";
 import type { ProviderRegistry } from "./provider-registry.js";
 import type { MarginRecord, ModelProviderEntry, RoutingDecision } from "./types.js";
 import { NoProviderAvailableError } from "./types.js";
@@ -42,7 +43,7 @@ export interface ArbitrageRequest {
   /** Optional model specifier (for model-level arbitrage like "gemini-2.5-pro") */
   model?: string;
   /** Sell price that will be charged to user (for margin tracking) */
-  sellPrice?: number;
+  sellPrice?: Credit;
 }
 
 export class ArbitrageRouter {
@@ -84,16 +85,18 @@ export class ArbitrageRouter {
 
         // Track margin if sell price is known
         if (request.sellPrice !== undefined && this.onMarginRecord) {
-          const costUsd = result.cost.toDollars();
+          const providerCost = result.cost;
+          const sellPrice = request.sellPrice;
+          const margin = sellPrice.subtract(providerCost);
           this.onMarginRecord({
             tenantId: request.tenantId,
             capability: request.capability,
             adapter: entry.adapter,
             tier: entry.tier,
-            providerCost: costUsd,
-            sellPrice: request.sellPrice,
-            margin: request.sellPrice - costUsd,
-            marginPct: request.sellPrice > 0 ? ((request.sellPrice - costUsd) / request.sellPrice) * 100 : 0,
+            providerCost,
+            sellPrice,
+            margin,
+            marginPct: sellPrice.toRaw() > 0 ? (margin.toRaw() / sellPrice.toRaw()) * 100 : 0,
             timestamp: Date.now(),
           });
         }
