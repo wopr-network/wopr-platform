@@ -30,9 +30,10 @@ vi.mock("../../src/config/logger.js", () => ({
 // ---------------------------------------------------------------------------
 
 function createMockPayram(initiatePayment: ReturnType<typeof vi.fn>): Payram {
-  return {
-    payments: { initiatePayment },
-  } as unknown as Payram;
+  const stub: Pick<Payram, "payments"> = {
+    payments: { initiatePayment } as Payram["payments"],
+  };
+  return stub as Payram;
 }
 
 function makeWebhookPayload(overrides: Partial<PayRamWebhookPayload> = {}): PayRamWebhookPayload {
@@ -67,7 +68,7 @@ describe("E2E: PayRam crypto checkout and webhook flow", () => {
   });
 
   afterEach(async () => {
-    await pool.close();
+    if (pool) await pool.close();
   });
 
   // ------------------------------------------------------------------
@@ -210,7 +211,44 @@ describe("E2E: PayRam crypto checkout and webhook flow", () => {
   });
 
   // ------------------------------------------------------------------
-  // TEST 5: Unknown reference_id returns handled:false — no crash
+  // TEST 5: OVER_FILLED webhook credits original amount, not overpaid amount
+  // ------------------------------------------------------------------
+
+  it("OVER_FILLED webhook credits original requested amount — overpayment stays in wallet", async () => {
+    const refId = `ref-overfilled-${randomUUID().slice(0, 8)}`;
+
+    // Charge was for $20 (2000 cents), but customer sent more crypto
+    await chargeStore.create(refId, TENANT_ID, 2000);
+
+    const result = await handlePayRamWebhook(
+      { chargeStore, creditLedger, replayGuard },
+      makeWebhookPayload({
+        reference_id: refId,
+        status: "OVER_FILLED",
+        amount: "22.50",
+        currency: "USDC",
+        filled_amount: "22.50",
+      }),
+    );
+
+    expect(result.handled).toBe(true);
+    expect(result.status).toBe("OVER_FILLED");
+    expect(result.tenant).toBe(TENANT_ID);
+    // Credits the original requested amount ($20 = 2000 cents), not the overpaid amount
+    expect(result.creditedCents).toBe(2000);
+
+    // Verify charge record updated
+    const charge = await chargeStore.getByReferenceId(refId);
+    expect(charge!.status).toBe("OVER_FILLED");
+    expect(charge!.creditedAt).not.toBeNull();
+
+    // Balance reflects original amount, not the overpaid crypto amount
+    const balance = await creditLedger.balance(TENANT_ID);
+    expect(balance.equals(Credit.fromCents(2000))).toBe(true);
+  });
+
+  // ------------------------------------------------------------------
+  // TEST 6: Unknown reference_id returns handled:false — no crash
   // ------------------------------------------------------------------
 
   it("FILLED webhook with unknown reference_id returns handled:false and grants no credits", async () => {
@@ -226,7 +264,7 @@ describe("E2E: PayRam crypto checkout and webhook flow", () => {
   });
 
   // ------------------------------------------------------------------
-  // TEST 6: Full checkout -> webhook cycle with real DB state
+  // TEST 7: Full checkout -> webhook cycle with real DB state
   // ------------------------------------------------------------------
 
   it("full cycle: checkout creation followed by FILLED webhook grants correct credits", async () => {
