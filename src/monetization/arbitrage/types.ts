@@ -4,6 +4,8 @@
  * WOP-463: Provider arbitrage router for multi-provider routing with maximum margin.
  */
 
+import type { Credit } from "../credit.js";
+
 /** A provider entry in the routing registry. Maps to provider_costs DB rows. */
 export interface ModelProviderEntry {
   /** Capability or model name */
@@ -46,12 +48,12 @@ export interface MarginRecord {
   adapter: string;
   /** Provider tier */
   tier: "gpu" | "hosted";
-  /** What we paid the provider (USD) */
-  providerCost: number;
-  /** What we charged the user (USD) */
-  sellPrice: number;
+  /** What we paid the provider */
+  providerCost: Credit;
+  /** What we charged the user */
+  sellPrice: Credit;
   /** Margin = sellPrice - providerCost */
-  margin: number;
+  margin: Credit;
   /** Margin percentage = margin / sellPrice * 100 */
   marginPct: number;
   /** Unix epoch ms */

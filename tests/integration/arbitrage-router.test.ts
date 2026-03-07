@@ -49,6 +49,13 @@ class StubTTSAdapter implements ProviderAdapter {
   }
 }
 
+// ── Shared adapter key constants ──
+
+const PROVIDER_A = "provider-a";
+const PROVIDER_B = "provider-b";
+const SELF_HOSTED_TTS = "self-hosted-tts";
+const ELEVENLABS = "elevenlabs";
+
 // ── Helpers ──
 
 function makeOkResult(costDollars: number): AdapterResult<TTSOutput> {
@@ -65,6 +72,14 @@ function makeOkResult(costDollars: number): AdapterResult<TTSOutput> {
 
 function make5xxError(status = 500): Error {
   return Object.assign(new Error(`Server error ${status}`), { httpStatus: status });
+}
+
+function createProviderCostParams(adapter: string, costUsd: number) {
+  return { capability: "tts", adapter, unit: "1K_chars", costUsd, isActive: true };
+}
+
+function makeAdapters(...pairs: [string, StubTTSAdapter][]): Map<string, ProviderAdapter> {
+  return new Map<string, ProviderAdapter>(pairs);
 }
 
 // ── Tests ──
@@ -96,27 +111,12 @@ describe("ArbitrageRouter e2e", () => {
   }
 
   it("routes to cheapest provider (A@$0.01 over B@$0.02)", async () => {
-    await store.createProviderCost({
-      capability: "tts",
-      adapter: "provider-a",
-      unit: "1K_chars",
-      costUsd: 0.01,
-      isActive: true,
-    });
-    await store.createProviderCost({
-      capability: "tts",
-      adapter: "provider-b",
-      unit: "1K_chars",
-      costUsd: 0.02,
-      isActive: true,
-    });
+    await store.createProviderCost(createProviderCostParams(PROVIDER_A, 0.01));
+    await store.createProviderCost(createProviderCostParams(PROVIDER_B, 0.02));
 
-    const adapterA = new StubTTSAdapter("provider-a", makeOkResult(0.01));
-    const adapterB = new StubTTSAdapter("provider-b", makeOkResult(0.02));
-    const adapters = new Map<string, ProviderAdapter>([
-      ["provider-a", adapterA],
-      ["provider-b", adapterB],
-    ]);
+    const adapterA = new StubTTSAdapter(PROVIDER_A, makeOkResult(0.01));
+    const adapterB = new StubTTSAdapter(PROVIDER_B, makeOkResult(0.02));
+    const adapters = makeAdapters([PROVIDER_A, adapterA], [PROVIDER_B, adapterB]);
 
     const registry = makeRegistry();
     const router = new ArbitrageRouter({ registry, adapters });
@@ -127,33 +127,18 @@ describe("ArbitrageRouter e2e", () => {
       input: { text: "hello" },
     });
 
-    expect(result.provider).toBe("provider-a");
+    expect(result.provider).toBe(PROVIDER_A);
     expect(adapterA.callCount).toBe(1);
     expect(adapterB.callCount).toBe(0);
   });
 
   it("fails over to B when A throws 5xx", async () => {
-    await store.createProviderCost({
-      capability: "tts",
-      adapter: "provider-a",
-      unit: "1K_chars",
-      costUsd: 0.01,
-      isActive: true,
-    });
-    await store.createProviderCost({
-      capability: "tts",
-      adapter: "provider-b",
-      unit: "1K_chars",
-      costUsd: 0.02,
-      isActive: true,
-    });
+    await store.createProviderCost(createProviderCostParams(PROVIDER_A, 0.01));
+    await store.createProviderCost(createProviderCostParams(PROVIDER_B, 0.02));
 
-    const adapterA = new StubTTSAdapter("provider-a", make5xxError());
-    const adapterB = new StubTTSAdapter("provider-b", makeOkResult(0.02));
-    const adapters = new Map<string, ProviderAdapter>([
-      ["provider-a", adapterA],
-      ["provider-b", adapterB],
-    ]);
+    const adapterA = new StubTTSAdapter(PROVIDER_A, make5xxError());
+    const adapterB = new StubTTSAdapter(PROVIDER_B, makeOkResult(0.02));
+    const adapters = makeAdapters([PROVIDER_A, adapterA], [PROVIDER_B, adapterB]);
 
     const registry = makeRegistry();
     const router = new ArbitrageRouter({ registry, adapters });
@@ -164,7 +149,7 @@ describe("ArbitrageRouter e2e", () => {
       input: { text: "hello" },
     });
 
-    expect(result.provider).toBe("provider-b");
+    expect(result.provider).toBe(PROVIDER_B);
     expect(adapterA.callCount).toBe(1);
     expect(adapterB.callCount).toBe(1);
   });
@@ -183,35 +168,41 @@ describe("ArbitrageRouter e2e", () => {
         capability: "tts",
         tenantId: "tenant-1",
         input: { text: "hello" },
-        sellPrice: 0.05,
+        sellPrice: Credit.fromDollars(0.05),
       }),
     ).rejects.toBeInstanceOf(NoProviderAvailableError);
 
     expect(marginRecords).toHaveLength(0);
   });
 
-  it("prefers GPU tier provider over cheaper hosted provider", async () => {
-    await store.createProviderCost({
-      capability: "tts",
-      adapter: "self-hosted-tts",
-      unit: "1K_chars",
-      costUsd: 0.05,
-      isActive: true,
-    });
-    await store.createProviderCost({
-      capability: "tts",
-      adapter: "elevenlabs",
-      unit: "1K_chars",
-      costUsd: 0.01,
-      isActive: true,
-    });
+  it("throws NoProviderAvailableError when all providers are unhealthy", async () => {
+    await store.createProviderCost(createProviderCostParams(PROVIDER_A, 0.01));
+    await store.createProviderCost(createProviderCostParams(PROVIDER_B, 0.02));
+    await healthRepo.markUnhealthy(PROVIDER_A);
+    await healthRepo.markUnhealthy(PROVIDER_B);
 
-    const gpuAdapter = new StubTTSAdapter("self-hosted-tts", makeOkResult(0.05));
-    const hostedAdapter = new StubTTSAdapter("elevenlabs", makeOkResult(0.01));
-    const adapters = new Map<string, ProviderAdapter>([
-      ["self-hosted-tts", gpuAdapter],
-      ["elevenlabs", hostedAdapter],
-    ]);
+    const adapterA = new StubTTSAdapter(PROVIDER_A, makeOkResult(0.01));
+    const adapterB = new StubTTSAdapter(PROVIDER_B, makeOkResult(0.02));
+    const adapters = makeAdapters([PROVIDER_A, adapterA], [PROVIDER_B, adapterB]);
+
+    const registry = makeRegistry();
+    const router = new ArbitrageRouter({ registry, adapters });
+
+    await expect(
+      router.route({ capability: "tts", tenantId: "tenant-1", input: { text: "hello" } }),
+    ).rejects.toBeInstanceOf(NoProviderAvailableError);
+
+    expect(adapterA.callCount).toBe(0);
+    expect(adapterB.callCount).toBe(0);
+  });
+
+  it("prefers GPU tier provider over cheaper hosted provider", async () => {
+    await store.createProviderCost(createProviderCostParams(SELF_HOSTED_TTS, 0.05));
+    await store.createProviderCost(createProviderCostParams(ELEVENLABS, 0.01));
+
+    const gpuAdapter = new StubTTSAdapter(SELF_HOSTED_TTS, makeOkResult(0.05));
+    const hostedAdapter = new StubTTSAdapter(ELEVENLABS, makeOkResult(0.01));
+    const adapters = makeAdapters([SELF_HOSTED_TTS, gpuAdapter], [ELEVENLABS, hostedAdapter]);
 
     const registry = makeRegistry();
     const router = new ArbitrageRouter({ registry, adapters });
@@ -222,22 +213,16 @@ describe("ArbitrageRouter e2e", () => {
       input: { text: "hello" },
     });
 
-    expect(result.provider).toBe("self-hosted-tts");
+    expect(result.provider).toBe(SELF_HOSTED_TTS);
     expect(gpuAdapter.callCount).toBe(1);
     expect(hostedAdapter.callCount).toBe(0);
   });
 
   it("onMarginRecord fires with correct cost/revenue/margin", async () => {
-    await store.createProviderCost({
-      capability: "tts",
-      adapter: "provider-a",
-      unit: "1K_chars",
-      costUsd: 0.01,
-      isActive: true,
-    });
+    await store.createProviderCost(createProviderCostParams(PROVIDER_A, 0.01));
 
-    const adapterA = new StubTTSAdapter("provider-a", makeOkResult(0.008));
-    const adapters = new Map<string, ProviderAdapter>([["provider-a", adapterA]]);
+    const adapterA = new StubTTSAdapter(PROVIDER_A, makeOkResult(0.008));
+    const adapters = makeAdapters([PROVIDER_A, adapterA]);
 
     const marginRecords: MarginRecord[] = [];
     const registry = makeRegistry();
@@ -251,17 +236,17 @@ describe("ArbitrageRouter e2e", () => {
       capability: "tts",
       tenantId: "tenant-1",
       input: { text: "hello" },
-      sellPrice: 0.02,
+      sellPrice: Credit.fromDollars(0.02),
     });
 
     expect(marginRecords).toHaveLength(1);
     const record = marginRecords[0];
     expect(record.tenantId).toBe("tenant-1");
     expect(record.capability).toBe("tts");
-    expect(record.adapter).toBe("provider-a");
-    expect(record.providerCost).toBeCloseTo(0.008, 5);
-    expect(record.sellPrice).toBe(0.02);
-    expect(record.margin).toBeCloseTo(0.012, 5);
+    expect(record.adapter).toBe(PROVIDER_A);
+    expect(record.providerCost.toDollars()).toBeCloseTo(0.008, 5);
+    expect(record.sellPrice.toDollars()).toBe(0.02);
+    expect(record.margin.toDollars()).toBeCloseTo(0.012, 5);
     // marginPct = (0.02 - 0.008) / 0.02 * 100 = 60%
     expect(record.marginPct).toBeCloseTo(60, 0);
     expect(record.timestamp).toBeGreaterThan(0);

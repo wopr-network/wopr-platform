@@ -247,7 +247,7 @@ describe("ArbitrageRouter", () => {
         capability: "tts",
         tenantId: "tenant-1",
         input: { text: "hello" },
-        sellPrice: 0.02,
+        sellPrice: Credit.fromDollars(0.02),
       });
 
       expect(marginRecords).toHaveLength(1);
@@ -256,9 +256,9 @@ describe("ArbitrageRouter", () => {
       expect(record.capability).toBe("tts");
       expect(record.adapter).toBe("elevenlabs");
       expect(record.tier).toBe("hosted");
-      expect(record.providerCost).toBe(0.012);
-      expect(record.sellPrice).toBe(0.02);
-      expect(record.margin).toBeCloseTo(0.008, 5);
+      expect(record.providerCost.toDollars()).toBe(0.012);
+      expect(record.sellPrice.toDollars()).toBe(0.02);
+      expect(record.margin.toDollars()).toBeCloseTo(0.008, 5);
       expect(record.marginPct).toBeCloseTo(40, 0);
       expect(record.timestamp).toBeGreaterThan(0);
     });
