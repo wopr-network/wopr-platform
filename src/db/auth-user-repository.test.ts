@@ -1,6 +1,8 @@
+import { PGlite } from "@electric-sql/pglite";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type AuthUser, BetterAuthUserRepository } from "./auth-user-repository.js";
+import { initBetterAuthSchema, pgliteAsPool } from "../test/pglite-helpers.js";
+import { type AuthUser, BetterAuthUserRepository, initTwoFactorSchema } from "./auth-user-repository.js";
 
 function createMockPool() {
   return {
@@ -19,7 +21,13 @@ describe("BetterAuthUserRepository", () => {
 
   describe("getUser", () => {
     it("returns user when found", async () => {
-      const user: AuthUser = { id: "u-1", name: "Alice", email: "alice@test.com", image: null };
+      const user: AuthUser = {
+        id: "u-1",
+        name: "Alice",
+        email: "alice@test.com",
+        image: null,
+        twoFactorEnabled: false,
+      };
       (pool.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ rows: [user] });
 
       const result = await repo.getUser("u-1");
@@ -35,7 +43,13 @@ describe("BetterAuthUserRepository", () => {
 
   describe("updateUser", () => {
     it("updates name and returns updated user", async () => {
-      const updated: AuthUser = { id: "u-1", name: "Bob", email: "alice@test.com", image: null };
+      const updated: AuthUser = {
+        id: "u-1",
+        name: "Bob",
+        email: "alice@test.com",
+        image: null,
+        twoFactorEnabled: false,
+      };
       const queryMock = pool.query as ReturnType<typeof vi.fn>;
       queryMock.mockResolvedValueOnce({ rows: [] }); // UPDATE
       queryMock.mockResolvedValueOnce({ rows: [updated] }); // SELECT
@@ -45,7 +59,13 @@ describe("BetterAuthUserRepository", () => {
     });
 
     it("updates image to null", async () => {
-      const updated: AuthUser = { id: "u-1", name: "Alice", email: "alice@test.com", image: null };
+      const updated: AuthUser = {
+        id: "u-1",
+        name: "Alice",
+        email: "alice@test.com",
+        image: null,
+        twoFactorEnabled: false,
+      };
       const queryMock = pool.query as ReturnType<typeof vi.fn>;
       queryMock.mockResolvedValueOnce({ rows: [] });
       queryMock.mockResolvedValueOnce({ rows: [updated] });
@@ -68,6 +88,7 @@ describe("BetterAuthUserRepository", () => {
         name: "Carol",
         email: "carol@test.com",
         image: "https://example.com/img.png",
+        twoFactorEnabled: false,
       };
       const queryMock = pool.query as ReturnType<typeof vi.fn>;
       queryMock.mockResolvedValueOnce({ rows: [] });
@@ -133,6 +154,60 @@ describe("BetterAuthUserRepository", () => {
     it("returns false when rowCount is null", async () => {
       (pool.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ rowCount: null });
       expect(await repo.unlinkAccount("u-1", "google")).toBe(false);
+    });
+  });
+
+  describe("initTwoFactorSchema", () => {
+    it("adds twoFactorEnabled column when missing and getUser returns false default", async () => {
+      const pg = new PGlite();
+      // Create user table WITHOUT twoFactorEnabled to simulate pre-migration state
+      await pg.query(`
+        CREATE TABLE IF NOT EXISTS "user" (
+          "id" text PRIMARY KEY NOT NULL,
+          "name" text NOT NULL,
+          "email" text NOT NULL UNIQUE,
+          "emailVerified" boolean NOT NULL DEFAULT false,
+          "image" text,
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          "updatedAt" timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      const pgPool = pgliteAsPool(pg) as unknown as Pool;
+      await initTwoFactorSchema(pgPool);
+
+      await pg.query(
+        `INSERT INTO "user" (id, name, email, "emailVerified", "createdAt", "updatedAt") VALUES ($1, $2, $3, false, now(), now())`,
+        ["u-2fa-init", "Test", "test@2fa.example"],
+      );
+
+      const pgRepo = new BetterAuthUserRepository(pgPool);
+      const user = await pgRepo.getUser("u-2fa-init");
+      expect(user).not.toBeNull();
+      expect(user?.twoFactorEnabled).toBe(false);
+
+      await pg.close();
+    });
+  });
+
+  describe("pglite schema guard — twoFactorEnabled column", () => {
+    it("getUser does not throw 'column does not exist' when schema initialized via initBetterAuthSchema", async () => {
+      const pg = new PGlite();
+      await initBetterAuthSchema(pg);
+      const pgPool = pgliteAsPool(pg) as unknown as Pool;
+      const pgRepo = new BetterAuthUserRepository(pgPool);
+
+      // Insert a user without twoFactorEnabled (column should default to false)
+      await pg.query(
+        `INSERT INTO "user" (id, name, email, "emailVerified", "createdAt", "updatedAt") VALUES ($1, $2, $3, false, now(), now())`,
+        ["u-pg-1", "Test User", "test@pglite.example"],
+      );
+
+      // Must not throw "column twoFactorEnabled does not exist"
+      const user = await pgRepo.getUser("u-pg-1");
+      expect(user).not.toBeNull();
+      expect(user?.twoFactorEnabled).toBe(false);
+
+      await pg.close();
     });
   });
 });

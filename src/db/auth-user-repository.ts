@@ -8,11 +8,21 @@
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import type { Pool } from "pg";
 
+/**
+ * Ensure the twoFactorEnabled column exists on the better-auth user table.
+ * Idempotent — safe to call on every startup alongside runAuthMigrations().
+ */
+export async function initTwoFactorSchema(pool: Pool): Promise<void> {
+  // raw SQL: better-auth manages its own schema outside Drizzle
+  await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "twoFactorEnabled" BOOLEAN NOT NULL DEFAULT false`);
+}
+
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
   image: string | null;
+  twoFactorEnabled: boolean;
 }
 
 export interface LinkedAccount {
@@ -34,8 +44,13 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
 
   async getUser(userId: string): Promise<AuthUser | null> {
     // raw SQL: better-auth manages its own schema outside Drizzle
-    const { rows } = await this.pool.query(`SELECT id, name, email, image FROM "user" WHERE id = $1`, [userId]);
-    return (rows[0] as AuthUser | undefined) ?? null;
+    const { rows } = await this.pool.query(
+      `SELECT id, name, email, image, "twoFactorEnabled" FROM "user" WHERE id = $1`,
+      [userId],
+    );
+    const row = rows[0] as AuthUser | undefined;
+    if (row) row.twoFactorEnabled = row.twoFactorEnabled ?? false;
+    return row ?? null;
   }
 
   async updateUser(userId: string, data: { name?: string; image?: string | null }): Promise<AuthUser> {
@@ -57,9 +72,14 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
       await this.pool.query(`UPDATE "user" SET ${fields.join(", ")} WHERE id = $${paramIndex}`, values);
     }
     // raw SQL: better-auth manages its own schema outside Drizzle
-    const { rows } = await this.pool.query(`SELECT id, name, email, image FROM "user" WHERE id = $1`, [userId]);
+    const { rows } = await this.pool.query(
+      `SELECT id, name, email, image, "twoFactorEnabled" FROM "user" WHERE id = $1`,
+      [userId],
+    );
     if (rows.length === 0) throw new Error(`User not found: ${userId}`);
-    return rows[0] as AuthUser;
+    const result = rows[0] as AuthUser;
+    result.twoFactorEnabled = result.twoFactorEnabled ?? false;
+    return result;
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {

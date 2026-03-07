@@ -36,6 +36,7 @@ export async function initBetterAuthSchema(pg: PGlite): Promise<void> {
       "email" text NOT NULL UNIQUE,
       "emailVerified" boolean NOT NULL DEFAULT false,
       "image" text,
+      "twoFactorEnabled" boolean NOT NULL DEFAULT false,
       "createdAt" timestamptz NOT NULL DEFAULT now(),
       "updatedAt" timestamptz NOT NULL DEFAULT now()
     )

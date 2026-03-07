@@ -26,13 +26,22 @@ describe("tRPC profile router", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetUser.mockReturnValue({ id: "test-user", name: "Test User", email: "test@example.com", image: null });
-    mockUpdateUser.mockImplementation((_id: string, data: Record<string, unknown>) => ({
+    mockGetUser.mockResolvedValue({
       id: "test-user",
-      name: data.name ?? "Test User",
+      name: "Test User",
       email: "test@example.com",
-      image: data.image ?? null,
-    }));
+      image: null,
+      twoFactorEnabled: false,
+    });
+    mockUpdateUser.mockImplementation((_id: string, data: Record<string, unknown>) =>
+      Promise.resolve({
+        id: "test-user",
+        name: data.name ?? "Test User",
+        email: "test@example.com",
+        image: data.image ?? null,
+        twoFactorEnabled: false,
+      }),
+    );
     mockChangePassword.mockResolvedValue(true);
     setProfileRouterDeps({
       getUser: mockGetUser,
@@ -51,6 +60,25 @@ describe("tRPC profile router", () => {
       expect(mockGetUser).toHaveBeenCalledWith("test-user");
     });
 
+    it("returns twoFactorEnabled: false when 2FA is not enabled", async () => {
+      const caller = createCaller(authedContext());
+      const result = await caller.profile.getProfile();
+      expect(result.twoFactorEnabled).toBe(false);
+    });
+
+    it("returns twoFactorEnabled: true when 2FA is enabled", async () => {
+      mockGetUser.mockResolvedValue({
+        id: "test-user",
+        name: "Test User",
+        email: "test@example.com",
+        image: null,
+        twoFactorEnabled: true,
+      });
+      const caller = createCaller(authedContext());
+      const result = await caller.profile.getProfile();
+      expect(result.twoFactorEnabled).toBe(true);
+    });
+
     it("rejects unauthenticated request", async () => {
       const caller = createCaller(unauthContext());
       await expect(caller.profile.getProfile()).rejects.toThrow("Authentication required");
@@ -63,6 +91,19 @@ describe("tRPC profile router", () => {
       const result = await caller.profile.updateProfile({ name: "New Name" });
       expect(result.name).toBe("New Name");
       expect(mockUpdateUser).toHaveBeenCalledWith("test-user", { name: "New Name" });
+    });
+
+    it("includes twoFactorEnabled in update response", async () => {
+      mockUpdateUser.mockResolvedValue({
+        id: "test-user",
+        name: "New Name",
+        email: "test@example.com",
+        image: null,
+        twoFactorEnabled: true,
+      });
+      const caller = createCaller(authedContext());
+      const result = await caller.profile.updateProfile({ name: "New Name" });
+      expect(result.twoFactorEnabled).toBe(true);
     });
 
     it("updates avatar URL", async () => {

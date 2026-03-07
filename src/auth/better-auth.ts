@@ -13,6 +13,7 @@ import { twoFactor } from "better-auth/plugins";
 import type { Pool } from "pg";
 import { RoleStore } from "../admin/roles/role-store.js";
 import { logger } from "../config/logger.js";
+import { initTwoFactorSchema } from "../db/auth-user-repository.js";
 import { getEmailClient } from "../email/client.js";
 import { passwordResetEmailTemplate, verifyEmailTemplate } from "../email/templates.js";
 import { generateVerificationToken, initVerificationSchema, PgEmailVerifier } from "../email/verification.js";
@@ -182,6 +183,7 @@ export async function runAuthMigrations(): Promise<void> {
   const { getMigrations } = (await import("better-auth/db")) as unknown as DbModule;
   const { runMigrations } = await getMigrations(authOptions(getPool()));
   await runMigrations();
+  await initTwoFactorSchema(getPool());
 }
 
 let _auth: Auth | null = null;

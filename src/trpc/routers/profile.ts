@@ -11,11 +11,13 @@ import { protectedProcedure, router } from "../init.js";
 // ---------------------------------------------------------------------------
 
 export interface ProfileRouterDeps {
-  getUser: (userId: string) => Promise<{ id: string; name: string; email: string; image: string | null } | null>;
+  getUser: (
+    userId: string,
+  ) => Promise<{ id: string; name: string; email: string; image: string | null; twoFactorEnabled: boolean } | null>;
   updateUser: (
     userId: string,
     data: { name?: string; image?: string | null },
-  ) => Promise<{ id: string; name: string; email: string; image: string | null }>;
+  ) => Promise<{ id: string; name: string; email: string; image: string | null; twoFactorEnabled: boolean }>;
   changePassword: (userId: string, currentPassword: string, newPassword: string) => Promise<boolean>;
 }
 
@@ -41,7 +43,13 @@ export const profileRouter = router({
     if (!user) {
       throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
     }
-    return { id: user.id, name: user.name, email: user.email, image: user.image };
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      image: user.image,
+      twoFactorEnabled: user.twoFactorEnabled,
+    };
   }),
 
   /** Update the authenticated user's display name and/or avatar. */
@@ -57,7 +65,13 @@ export const profileRouter = router({
         ...(input.name !== undefined && { name: input.name }),
         ...(input.image !== undefined && { image: input.image }),
       });
-      return { id: updated.id, name: updated.name, email: updated.email, image: updated.image };
+      return {
+        id: updated.id,
+        name: updated.name,
+        email: updated.email,
+        image: updated.image,
+        twoFactorEnabled: updated.twoFactorEnabled,
+      };
     }),
 
   /** Change the authenticated user's password. */
