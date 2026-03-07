@@ -44,7 +44,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
   });
 
   it("charges $0.50/day for gpu_acceleration addon", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
@@ -74,7 +74,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
   });
 
   it("stacks multiple addon charges ($0.50 + $0.20 = $0.70)", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
@@ -101,7 +101,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
   });
 
   it("stops charging after addon is disabled", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
@@ -146,7 +146,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
   });
 
   it("suspends tenant when balance insufficient for addon after bot runtime deduction", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
@@ -181,7 +181,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
   });
 
   it("does not double-charge when billing runs twice on the same date", async () => {
-    const tenantId = `tenant-${randomUUID().slice(0, 8)}`;
+    const tenantId = `tenant-${randomUUID()}`;
     const botId = randomUUID();
 
     await botBilling.registerBot(botId, tenantId, "test-bot");
