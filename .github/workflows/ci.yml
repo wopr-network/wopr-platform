@@ -101,6 +101,12 @@ jobs:
           reporter: java-junit
           fail-on-error: false
 
+      - name: Coverage Report
+        if: github.event_name == 'pull_request'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+
   integration-test:
     runs-on: [self-hosted, Linux, X64]
     permissions:
