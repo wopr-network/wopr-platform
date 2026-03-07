@@ -2,7 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { initBetterAuthSchema, pgliteAsPool } from "../test/pglite-helpers.js";
-import { type AuthUser, BetterAuthUserRepository } from "./auth-user-repository.js";
+import { type AuthUser, BetterAuthUserRepository, initTwoFactorSchema } from "./auth-user-repository.js";
 
 function createMockPool() {
   return {
@@ -154,6 +154,38 @@ describe("BetterAuthUserRepository", () => {
     it("returns false when rowCount is null", async () => {
       (pool.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ rowCount: null });
       expect(await repo.unlinkAccount("u-1", "google")).toBe(false);
+    });
+  });
+
+  describe("initTwoFactorSchema", () => {
+    it("adds twoFactorEnabled column when missing and getUser returns false default", async () => {
+      const pg = new PGlite();
+      // Create user table WITHOUT twoFactorEnabled to simulate pre-migration state
+      await pg.query(`
+        CREATE TABLE IF NOT EXISTS "user" (
+          "id" text PRIMARY KEY NOT NULL,
+          "name" text NOT NULL,
+          "email" text NOT NULL UNIQUE,
+          "emailVerified" boolean NOT NULL DEFAULT false,
+          "image" text,
+          "createdAt" timestamptz NOT NULL DEFAULT now(),
+          "updatedAt" timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      const pgPool = pgliteAsPool(pg) as unknown as Pool;
+      await initTwoFactorSchema(pgPool);
+
+      await pg.query(
+        `INSERT INTO "user" (id, name, email, "emailVerified", "createdAt", "updatedAt") VALUES ($1, $2, $3, false, now(), now())`,
+        ["u-2fa-init", "Test", "test@2fa.example"],
+      );
+
+      const pgRepo = new BetterAuthUserRepository(pgPool);
+      const user = await pgRepo.getUser("u-2fa-init");
+      expect(user).not.toBeNull();
+      expect(user?.twoFactorEnabled).toBe(false);
+
+      await pg.close();
     });
   });
 

@@ -8,6 +8,15 @@
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import type { Pool } from "pg";
 
+/**
+ * Ensure the twoFactorEnabled column exists on the better-auth user table.
+ * Idempotent — safe to call on every startup alongside runAuthMigrations().
+ */
+export async function initTwoFactorSchema(pool: Pool): Promise<void> {
+  // raw SQL: better-auth manages its own schema outside Drizzle
+  await pool.query(`ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "twoFactorEnabled" BOOLEAN NOT NULL DEFAULT false`);
+}
+
 export interface AuthUser {
   id: string;
   name: string;
