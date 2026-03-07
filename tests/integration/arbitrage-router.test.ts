@@ -89,6 +89,7 @@ describe("ArbitrageRouter e2e", () => {
   let db: DrizzleDb;
   let store: RateStore;
   let healthRepo: IProviderHealthRepository;
+  let tenantId: string;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -104,10 +105,11 @@ describe("ArbitrageRouter e2e", () => {
     await rollbackTestTransaction(pool);
     store = new RateStore(db);
     healthRepo = new DrizzleProviderHealthRepository(db);
+    tenantId = crypto.randomUUID();
   });
 
   function makeRegistry(): ProviderRegistry {
-    return new ProviderRegistry({ rateStore: store, healthRepo, cacheTtlMs: 1, unhealthyTtlMs: 60_000 });
+    return new ProviderRegistry({ rateStore: store, healthRepo, cacheTtlMs: 0, unhealthyTtlMs: 60_000 });
   }
 
   it("routes to cheapest provider (A@$0.01 over B@$0.02)", async () => {
@@ -123,7 +125,7 @@ describe("ArbitrageRouter e2e", () => {
 
     const result = await router.route({
       capability: "tts",
-      tenantId: "tenant-1",
+      tenantId,
       input: { text: "hello" },
     });
 
@@ -145,7 +147,7 @@ describe("ArbitrageRouter e2e", () => {
 
     const result = await router.route({
       capability: "tts",
-      tenantId: "tenant-1",
+      tenantId,
       input: { text: "hello" },
     });
 
@@ -166,7 +168,7 @@ describe("ArbitrageRouter e2e", () => {
     await expect(
       router.route({
         capability: "tts",
-        tenantId: "tenant-1",
+        tenantId,
         input: { text: "hello" },
         sellPrice: Credit.fromDollars(0.05),
       }),
@@ -189,7 +191,7 @@ describe("ArbitrageRouter e2e", () => {
     const router = new ArbitrageRouter({ registry, adapters });
 
     await expect(
-      router.route({ capability: "tts", tenantId: "tenant-1", input: { text: "hello" } }),
+      router.route({ capability: "tts", tenantId, input: { text: "hello" } }),
     ).rejects.toBeInstanceOf(NoProviderAvailableError);
 
     expect(adapterA.callCount).toBe(0);
@@ -209,7 +211,7 @@ describe("ArbitrageRouter e2e", () => {
 
     const result = await router.route({
       capability: "tts",
-      tenantId: "tenant-1",
+      tenantId,
       input: { text: "hello" },
     });
 
@@ -234,14 +236,14 @@ describe("ArbitrageRouter e2e", () => {
 
     await router.route({
       capability: "tts",
-      tenantId: "tenant-1",
+      tenantId,
       input: { text: "hello" },
       sellPrice: Credit.fromDollars(0.02),
     });
 
     expect(marginRecords).toHaveLength(1);
     const record = marginRecords[0];
-    expect(record.tenantId).toBe("tenant-1");
+    expect(record.tenantId).toBe(tenantId);
     expect(record.capability).toBe("tts");
     expect(record.adapter).toBe(PROVIDER_A);
     expect(record.providerCost.toDollars()).toBeCloseTo(0.008, 5);
