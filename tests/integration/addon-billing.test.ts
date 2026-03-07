@@ -67,9 +67,10 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     expect(balance.toCents()).toBe(500 - DAILY_BOT_COST.toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
 
     const history = await ledger.history(tenantId);
-    const addonTx = history.find((tx) => tx.type === "addon");
-    expect(addonTx).toBeDefined();
-    expect(addonTx!.description).toContain("add-on");
+    const addonTransactions = history.filter((tx) => tx.type === "addon");
+    expect(addonTransactions).toHaveLength(1);
+    expect(addonTransactions[0].description).toContain("add-on");
+    expect(addonTransactions[0].amount.toCents()).toBe(-ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
   });
 
   it("stacks multiple addon charges ($0.50 + $0.20 = $0.70)", async () => {
