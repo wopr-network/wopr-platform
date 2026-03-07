@@ -45,10 +45,12 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
   async getUser(userId: string): Promise<AuthUser | null> {
     // raw SQL: better-auth manages its own schema outside Drizzle
     const { rows } = await this.pool.query(
-      `SELECT id, name, email, image, COALESCE("twoFactorEnabled", false) AS "twoFactorEnabled" FROM "user" WHERE id = $1`,
+      `SELECT id, name, email, image, "twoFactorEnabled" FROM "user" WHERE id = $1`,
       [userId],
     );
-    return (rows[0] as AuthUser | undefined) ?? null;
+    const row = rows[0] as AuthUser | undefined;
+    if (row) row.twoFactorEnabled = row.twoFactorEnabled ?? false;
+    return row ?? null;
   }
 
   async updateUser(userId: string, data: { name?: string; image?: string | null }): Promise<AuthUser> {
@@ -71,11 +73,13 @@ export class BetterAuthUserRepository implements IAuthUserRepository {
     }
     // raw SQL: better-auth manages its own schema outside Drizzle
     const { rows } = await this.pool.query(
-      `SELECT id, name, email, image, COALESCE("twoFactorEnabled", false) AS "twoFactorEnabled" FROM "user" WHERE id = $1`,
+      `SELECT id, name, email, image, "twoFactorEnabled" FROM "user" WHERE id = $1`,
       [userId],
     );
     if (rows.length === 0) throw new Error(`User not found: ${userId}`);
-    return rows[0] as AuthUser;
+    const result = rows[0] as AuthUser;
+    result.twoFactorEnabled = result.twoFactorEnabled ?? false;
+    return result;
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {
