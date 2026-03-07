@@ -198,11 +198,13 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     const result1 = await runRuntimeDeductions(cfg);
     expect(result1.processed).toBe(1);
     expect(result1.skipped).toEqual([]);
+    expect(result1.errors).toEqual([]);
 
     // Second run on same date — should skip the tenant, not charge again
     const result2 = await runRuntimeDeductions(cfg);
     expect(result2.processed).toBe(0);
     expect(result2.skipped).toContain(tenantId);
+    expect(result2.errors).toEqual([]);
 
     // Balance unchanged after second run
     const balance = await ledger.balance(tenantId);
