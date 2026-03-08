@@ -14,6 +14,7 @@ import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { ITenantStatusRepository } from "../../admin/tenant-status/tenant-status-repository.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
+import { logger } from "../../config/logger.js";
 import type { INotificationQueueRepository } from "../../email/notification-repository-types.js";
 import type { NotificationService } from "../../email/notification-service.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
@@ -416,14 +417,18 @@ export const adminRouter = router({
 
       // Send email notification if requested
       if (input.notifyByEmail) {
-        const { getNotificationService, getBulkStore } = deps();
-        const service = getNotificationService?.();
-        if (service && getBulkStore) {
-          const tenants = await getBulkStore().dryRun([input.tenantId]);
-          const tenant = tenants.find((t) => t.tenantId === input.tenantId);
-          if (tenant) {
-            service.notifyAdminSuspended(input.tenantId, tenant.email, input.reason);
+        try {
+          const { getNotificationService, getBulkStore } = deps();
+          const service = getNotificationService?.();
+          if (service && getBulkStore) {
+            const tenants = await getBulkStore().dryRun([input.tenantId]);
+            const tenant = tenants.find((t) => t.tenantId === input.tenantId);
+            if (tenant) {
+              service.notifyAdminSuspended(input.tenantId, tenant.email, input.reason);
+            }
           }
+        } catch (err) {
+          logger.error("notification failed after suspendTenant — operation was committed", { err });
         }
       }
 
@@ -480,14 +485,18 @@ export const adminRouter = router({
 
       // Send email notification if requested
       if (input.notifyByEmail) {
-        const { getNotificationService, getBulkStore } = deps();
-        const service = getNotificationService?.();
-        if (service && getBulkStore) {
-          const tenants = await getBulkStore().dryRun([input.tenantId]);
-          const tenant = tenants.find((t) => t.tenantId === input.tenantId);
-          if (tenant) {
-            service.notifyAdminReactivated(input.tenantId, tenant.email);
+        try {
+          const { getNotificationService, getBulkStore } = deps();
+          const service = getNotificationService?.();
+          if (service && getBulkStore) {
+            const tenants = await getBulkStore().dryRun([input.tenantId]);
+            const tenant = tenants.find((t) => t.tenantId === input.tenantId);
+            if (tenant) {
+              service.notifyAdminReactivated(input.tenantId, tenant.email);
+            }
           }
+        } catch (err) {
+          logger.error("notification failed after reactivateTenant — operation was committed", { err });
         }
       }
 
