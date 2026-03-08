@@ -249,7 +249,10 @@ const { healthRoutes } = await import("./health.js");
 // Default deps for Bot deployment/management describe blocks (billing flow overrides in beforeEach)
 setFleetDeps({
   creditLedger: { balance: vi.fn().mockResolvedValue(Credit.fromCents(10000)) } as never,
-  botBilling: { registerBot: vi.fn(), getActiveBotCount: vi.fn().mockReturnValue(0) } as never,
+  botBilling: {
+    registerBot: vi.fn().mockResolvedValue(undefined),
+    getActiveBotCount: vi.fn().mockReturnValue(0),
+  } as never,
   emailVerifier: { isVerified: vi.fn().mockReturnValue(true) },
 });
 
@@ -548,7 +551,7 @@ describe("E2E: Billing flow (credit model)", () => {
     setFleetDeps({
       creditLedger,
       botBilling: {
-        registerBot: vi.fn(),
+        registerBot: vi.fn().mockResolvedValue(undefined),
         getActiveBotCount: vi.fn().mockReturnValue(0),
         suspendBot: vi.fn(),
         suspendAllForTenant: vi.fn().mockReturnValue([]),

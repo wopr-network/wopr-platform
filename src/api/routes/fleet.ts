@@ -357,7 +357,7 @@ fleetRoutes.post(
 
       // Register bot in billing system for lifecycle tracking
       try {
-        getDeps().botBilling.registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
+        await getDeps().botBilling.registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
       } catch (regErr) {
         logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
       }
