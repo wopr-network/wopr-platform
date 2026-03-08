@@ -42,11 +42,30 @@ describe("validateRequiredEnvVars", () => {
     expect(() => validateRequiredEnvVars()).toThrow("BETTER_AUTH_SECRET");
   });
 
+  it("throws when PLATFORM_ENCRYPTION_SECRET is missing", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    // PLATFORM_ENCRYPTION_SECRET not set
+    expect(() => validateRequiredEnvVars()).toThrow("PLATFORM_ENCRYPTION_SECRET");
+  });
+
+  it("throws when PLATFORM_ENCRYPTION_SECRET is too short", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "short");
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    expect(() => validateRequiredEnvVars()).toThrow("at least 32 characters");
+  });
+
   it("warns (does not throw) when STRIPE_CREDIT_PRICE_* are missing", () => {
     vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
     vi.stubEnv("DATABASE_URL", "postgresql://x");
     vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     expect(() => validateRequiredEnvVars()).not.toThrow();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("STRIPE_CREDIT_PRICE_"));
@@ -58,6 +77,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("DATABASE_URL", "postgresql://x");
     vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
     vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
@@ -85,6 +105,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("DATABASE_URL", "postgresql://x");
     vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
     vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
@@ -101,6 +122,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("DATABASE_URL", "postgresql://x");
     vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
     vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
@@ -117,6 +139,7 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("DATABASE_URL", "postgresql://x");
     vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
     vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");

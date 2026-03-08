@@ -36,6 +36,13 @@ export function validateRequiredEnvVars(): void {
     errors.push("BETTER_AUTH_URL is required but not set (default: http://localhost:3100)");
   }
 
+  const platformEncryptionSecret = process.env.PLATFORM_ENCRYPTION_SECRET;
+  if (!platformEncryptionSecret) {
+    errors.push("PLATFORM_ENCRYPTION_SECRET is required but not set");
+  } else if (platformEncryptionSecret.length < 32) {
+    errors.push("PLATFORM_ENCRYPTION_SECRET must be at least 32 characters");
+  }
+
   // --- Recommended (billing will break without these) ---
 
   const creditPriceVars = [
