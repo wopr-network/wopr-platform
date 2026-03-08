@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { INodeRepository } from "../../fleet/node-repository.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
+import type { RecoveryOrchestrator } from "../../fleet/recovery-orchestrator.js";
+import { getRecoveryOrchestrator } from "../../fleet/services.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { Credit } from "../../monetization/credit.js";
 
@@ -180,7 +182,7 @@ const mockGetNodeRepo = vi.fn((): INodeRepository => {
 });
 vi.mock("../../fleet/services.js", () => ({
   getNodeRepo: () => mockGetNodeRepo(),
-  getRecoveryOrchestrator: () => null,
+  getRecoveryOrchestrator: vi.fn().mockReturnValue(null),
 }));
 
 // Import AFTER mocks are set up
@@ -583,6 +585,37 @@ describe("fleet routes", () => {
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}?removeVolumes=true`, { method: "DELETE", headers: authHeader });
       expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID, true);
+    });
+
+    it("retries all waiting recovery events even when some fail (Promise.allSettled)", async () => {
+      fleetMock.remove.mockResolvedValue(undefined);
+
+      const retryWaiting = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("event-1 failed"))
+        .mockResolvedValueOnce({ recovered: [], failed: [] });
+
+      const listEvents = vi.fn().mockResolvedValue([{ id: "evt-1" }, { id: "evt-2" }]);
+
+      vi.mocked(getRecoveryOrchestrator).mockReturnValue({
+        listEvents,
+        retryWaiting,
+      } as unknown as RecoveryOrchestrator);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(204);
+
+      // Allow the fire-and-forget promise to settle
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Both events must have been retried despite first one failing
+      expect(retryWaiting).toHaveBeenCalledTimes(2);
+      expect(retryWaiting).toHaveBeenCalledWith("evt-1");
+      expect(retryWaiting).toHaveBeenCalledWith("evt-2");
     });
   });
 
