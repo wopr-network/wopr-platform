@@ -1211,7 +1211,12 @@ if (process.env.NODE_ENV !== "test") {
         resolve();
       }),
     );
-    Promise.all([closeWss, closeServer]).then(() => process.exit(0));
+    Promise.all([closeWss, closeServer])
+      .then(() => process.exit(0))
+      .catch((err) => {
+        logger.warn("Shutdown error", { err });
+        process.exit(1);
+      });
     // Force exit if close hangs
     setTimeout(() => {
       logger.warn("Graceful shutdown timed out, forcing exit");
