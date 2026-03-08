@@ -120,7 +120,7 @@ function authOptions(pool: Pool): BetterAuthOptions {
             // Auto-create personal tenant for the new user (WOP-1000)
             try {
               const { getOrgRepo } = await import("../fleet/services.js");
-              getOrgRepo().ensurePersonalTenant(user.id, user.name || user.email);
+              await getOrgRepo().ensurePersonalTenant(user.id, user.name || user.email);
             } catch (error) {
               // Log but don't block signup
               logger.error("Failed to create personal tenant:", error);
