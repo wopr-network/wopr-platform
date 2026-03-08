@@ -367,12 +367,17 @@ export class DrizzleCreditLedger implements ICreditLedger {
   async lifetimeSpend(tenantId: string): Promise<Credit> {
     const rows = await this.db
       .select({
+        // raw SQL: Drizzle cannot express COALESCE(SUM(ABS(...))) with typed operators
         totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
       })
       .from(creditTransactions)
       .where(and(eq(creditTransactions.tenantId, tenantId), lt(creditTransactions.amount, Credit.ZERO)));
 
-    return Credit.fromRaw(Number(String(rows[0]?.totalRaw ?? 0)));
+    const raw = BigInt(String(rows[0]?.totalRaw ?? 0));
+    if (raw > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(`lifetimeSpend overflow: ${raw}`);
+    }
+    return Credit.fromRaw(Number(raw));
   }
 
   /** Batch version of lifetimeSpend — single query for multiple tenants. */
@@ -381,6 +386,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
     const rows = await this.db
       .select({
         tenantId: creditTransactions.tenantId,
+        // raw SQL: Drizzle cannot express COALESCE(SUM(ABS(...))) with typed operators
         totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
       })
       .from(creditTransactions)
@@ -389,7 +395,11 @@ export class DrizzleCreditLedger implements ICreditLedger {
 
     const result = new Map<string, Credit>();
     for (const row of rows) {
-      result.set(row.tenantId, Credit.fromRaw(Number(String(row.totalRaw))));
+      const raw = BigInt(String(row.totalRaw));
+      if (raw > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error(`lifetimeSpend overflow: ${raw}`);
+      }
+      result.set(row.tenantId, Credit.fromRaw(Number(raw)));
     }
     // Fill zeros for tenants with no debit transactions
     for (const id of tenantIds) {
