@@ -61,7 +61,7 @@ export class DrizzleExportRepository implements IExportRepository {
       .set({
         status,
         ...(downloadUrl !== undefined ? { downloadUrl } : {}),
-        updatedAt: sql`now()::text`,
+        updatedAt: sql`now()`,
       })
       .where(eq(accountExportRequests.id, id));
   }
