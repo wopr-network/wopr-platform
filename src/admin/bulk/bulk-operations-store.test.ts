@@ -77,7 +77,24 @@ describe("BulkOperationsStore", () => {
       async hasReferenceId() {
         return false;
       },
-      async history() {
+      async history(tenantId: string) {
+        if (tenantId === "tenant-1") {
+          return [
+            {
+              id: "txn-1",
+              tenantId: "tenant-1",
+              amount: Credit.fromCents(500),
+              balanceAfter: Credit.fromCents(500),
+              type: "signup_grant" as const,
+              description: "Welcome grant",
+              referenceId: null,
+              fundingSource: null,
+              attributedUserId: null,
+              createdAt: "2026-01-01T00:00:00.000Z",
+              expiresAt: null,
+            },
+          ];
+        }
         return [];
       },
       async tenantsWithBalance() {
@@ -537,6 +554,50 @@ describe("BulkOperationsStore", () => {
       expect(result.csv).toContain(
         "tenant_id,name,email,status,role,credit_balance_cents,agent_count,lifetime_spend_cents,last_seen",
       );
+    });
+
+    it("includes transaction_history column when enabled", async () => {
+      const result = await store.bulkExport(
+        {
+          tenantIds: ["tenant-1"],
+          fields: [
+            { key: "account_info", enabled: false },
+            { key: "credit_balance", enabled: false },
+            { key: "monthly_products", enabled: false },
+            { key: "lifetime_spend", enabled: false },
+            { key: "last_seen", enabled: false },
+            { key: "transaction_history", enabled: true },
+          ],
+        },
+        "admin-1",
+      );
+      const lines = result.csv.split("\n");
+      expect(lines[0]).toBe("tenant_id,transaction_history");
+      // Data row should contain JSON-serialized transaction array.
+      // Assert on the serialized value directly rather than parsing the CSV field,
+      // to avoid brittle manual quote-stripping that breaks on JSON values with commas.
+      const expectedJson = JSON.stringify([
+        {
+          type: "signup_grant",
+          amount_cents: 500,
+          description: "Welcome grant",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ]);
+      expect(result.csv).toContain(expectedJson.replace(/"/g, '""'));
+    });
+
+    it("produces empty JSON array for tenant with no transactions", async () => {
+      const result = await store.bulkExport(
+        {
+          tenantIds: ["tenant-2"],
+          fields: [{ key: "transaction_history", enabled: true }],
+        },
+        "admin-1",
+      );
+      const lines = result.csv.split("\n");
+      expect(lines[0]).toBe("tenant_id,transaction_history");
+      expect(lines[1]).toContain("[]");
     });
 
     it("handles empty result for valid tenant IDs with no matching rows", async () => {

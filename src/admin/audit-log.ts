@@ -85,7 +85,10 @@ export class AdminAuditLog {
 
     const header =
       "id,admin_user,action,category,target_tenant,target_user,details,ip_address,user_agent,created_at,outcome";
-    const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csvEscape = (v: string): string => {
+      if (/^[=+\-@]/.test(v)) v = `'${v}`;
+      return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    };
     const lines = rows.map((r) => {
       const fields = [
         csvEscape(r.id),

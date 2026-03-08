@@ -381,8 +381,44 @@ export class BulkOperationsStore implements IBulkOperationsStore {
     if (enabledKeys.has("monthly_products")) headers.push("agent_count");
     if (enabledKeys.has("lifetime_spend")) headers.push("lifetime_spend_cents");
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
+    if (enabledKeys.has("transaction_history")) headers.push("transaction_history");
 
-    const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csvEscape = (v: string): string => {
+      if (/^[=+\-@]/.test(v)) v = `'${v}`;
+      return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    };
+
+    // Pre-fetch all transaction histories in batches to avoid unbounded concurrency.
+    const historyByTenant = new Map<string, Awaited<ReturnType<typeof this.creditStore.history>>>();
+    if (enabledKeys.has("transaction_history")) {
+      // Deduplicate tenant IDs — rows may contain duplicate tenants.
+      const tenantIds = [
+        ...new Set(
+          rows
+            .map((r) => r.tenantId)
+            .filter((id) => id != null)
+            .map(String),
+        ),
+      ];
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < tenantIds.length; i += BATCH_SIZE) {
+        const batch = tenantIds.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (tenantId) => {
+            try {
+              // limit: 250 is the maximum supported by the credit ledger per single call.
+              const txns = await this.creditStore.history(tenantId, { limit: 250 });
+              historyByTenant.set(tenantId, txns);
+            } catch (err) {
+              // Log and use empty history so a single failure doesn't abort the entire export.
+              console.error(`[bulk-export] failed to fetch history for tenant ${tenantId}:`, err);
+              historyByTenant.set(tenantId, []);
+            }
+          }),
+        );
+      }
+    }
+
     const lines: string[] = [];
     for (const r of rows) {
       const fields: string[] = [csvEscape(String(r.tenantId ?? ""))];
@@ -401,6 +437,21 @@ export class BulkOperationsStore implements IBulkOperationsStore {
         fields.push(String(spend));
       }
       if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));
+      if (enabledKeys.has("transaction_history")) {
+        // historyByTenant is pre-fetched before the loop to avoid N+1 queries.
+        // limit: 250 is the maximum supported by the credit ledger per call.
+        // High-volume tenants with >250 transactions will be silently capped at 250 per call.
+        const txns = historyByTenant.get(String(r.tenantId)) ?? [];
+        const serialized = JSON.stringify(
+          txns.map((t) => ({
+            type: t.type,
+            amount_cents: t.amount.toCents(),
+            description: t.description,
+            created_at: t.createdAt,
+          })),
+        );
+        fields.push(csvEscape(serialized));
+      }
       lines.push(fields.join(","));
     }
 
