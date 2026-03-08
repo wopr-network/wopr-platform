@@ -65,6 +65,7 @@ function makeMinimalDeps(overrides: Partial<BillingRouterDeps> = {}): BillingRou
       tenantsWithBalance: vi.fn(),
       expiredCredits: vi.fn(),
       memberUsage: vi.fn(),
+      lifetimeSpend: vi.fn(),
     } as unknown as BillingRouterDeps["creditLedger"],
     meterAggregator: {
       getByTenant: vi.fn(),

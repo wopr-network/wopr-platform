@@ -68,6 +68,7 @@ function createMocks() {
     tenantsWithBalance: vi.fn(),
     memberUsage: vi.fn(),
     expiredCredits: vi.fn(),
+    lifetimeSpend: vi.fn(),
   };
 
   const replayGuard: IWebhookSeenRepository = {

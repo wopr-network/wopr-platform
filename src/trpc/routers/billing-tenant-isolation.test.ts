@@ -109,6 +109,9 @@ function makeMockLedger(): ICreditLedger {
     async memberUsage() {
       return [];
     },
+    async lifetimeSpend() {
+      return Credit.fromCents(0);
+    },
   };
 }
 

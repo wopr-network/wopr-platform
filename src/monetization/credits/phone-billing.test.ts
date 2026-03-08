@@ -51,6 +51,7 @@ describe("runMonthlyPhoneBilling", () => {
     history: ReturnType<typeof vi.fn>;
     tenantsWithBalance: ReturnType<typeof vi.fn>;
     memberUsage: ReturnType<typeof vi.fn>;
+    lifetimeSpend: ReturnType<typeof vi.fn>;
   };
   let meter: {
     emit: ReturnType<typeof vi.fn>;
@@ -83,6 +84,7 @@ describe("runMonthlyPhoneBilling", () => {
       history: vi.fn(),
       tenantsWithBalance: vi.fn(),
       memberUsage: vi.fn(),
+      lifetimeSpend: vi.fn(),
     };
 
     meter = {

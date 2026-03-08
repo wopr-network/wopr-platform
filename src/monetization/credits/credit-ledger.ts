@@ -123,6 +123,7 @@ export interface ICreditLedger {
   history(tenantId: string, opts?: HistoryOptions): Promise<CreditTransaction[]>;
   tenantsWithBalance(): Promise<Array<{ tenantId: string; balance: Credit }>>;
   memberUsage(tenantId: string): Promise<MemberUsageSummary[]>;
+  lifetimeSpend(tenantId: string): Promise<Credit>;
 }
 
 /**
@@ -359,6 +360,18 @@ export class DrizzleCreditLedger implements ICreditLedger {
         totalDebit: Credit.fromRaw(Number(r.totalDebitRaw)),
         transactionCount: r.transactionCount,
       }));
+  }
+
+  /** Sum of all debit transactions (absolute value) for a tenant. */
+  async lifetimeSpend(tenantId: string): Promise<Credit> {
+    const rows = await this.db
+      .select({
+        totalRaw: sql<number>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
+      })
+      .from(creditTransactions)
+      .where(and(eq(creditTransactions.tenantId, tenantId), sql`${creditTransactions.amount} < 0`));
+
+    return Credit.fromRaw(Number(rows[0]?.totalRaw ?? 0));
   }
 
   /** Return expired credit grant transactions not yet processed by the expiry cron. */

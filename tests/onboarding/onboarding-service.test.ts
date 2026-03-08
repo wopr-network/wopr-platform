@@ -253,6 +253,7 @@ describe("OnboardingService", () => {
         history: vi.fn().mockResolvedValue([]),
         tenantsWithBalance: vi.fn().mockResolvedValue([]),
         memberUsage: vi.fn().mockResolvedValue([]),
+        lifetimeSpend: vi.fn().mockResolvedValue({ toCents: () => 0 }),
       };
       const tenantResolver = vi.fn().mockResolvedValue("tenant-1");
       (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(makeSession({ userId: "u1" }));
@@ -281,6 +282,7 @@ describe("OnboardingService", () => {
         history: vi.fn().mockResolvedValue([]),
         tenantsWithBalance: vi.fn().mockResolvedValue([]),
         memberUsage: vi.fn().mockResolvedValue([]),
+        lifetimeSpend: vi.fn().mockResolvedValue({ toCents: () => 0 }),
       };
       const tenantResolver = vi.fn().mockResolvedValue("tenant-1");
       (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(makeSession({ userId: null, anonymousId: "anon-1" }));
@@ -301,6 +303,7 @@ describe("OnboardingService", () => {
         history: vi.fn().mockResolvedValue([]),
         tenantsWithBalance: vi.fn().mockResolvedValue([]),
         memberUsage: vi.fn().mockResolvedValue([]),
+        lifetimeSpend: vi.fn().mockResolvedValue({ toCents: () => 0 }),
       };
       const tenantResolver = vi.fn().mockResolvedValue(null); // no tenant found
       (repo.getById as ReturnType<typeof vi.fn>).mockResolvedValue(makeSession({ userId: "u1" }));

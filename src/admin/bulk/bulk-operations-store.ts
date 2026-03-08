@@ -433,8 +433,8 @@ export class BulkOperationsStore implements IBulkOperationsStore {
       if (enabledKeys.has("credit_balance")) fields.push(String(r.creditBalanceCents ?? 0));
       if (enabledKeys.has("monthly_products")) fields.push(String(r.agentCount ?? 0));
       if (enabledKeys.has("lifetime_spend")) {
-        const spend = await this.creditStore.balance(String(r.tenantId));
-        fields.push(String(spend));
+        const spend = await this.creditStore.lifetimeSpend(String(r.tenantId));
+        fields.push(String(spend.toCents()));
       }
       if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));
       if (enabledKeys.has("transaction_history")) {

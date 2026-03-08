@@ -27,6 +27,7 @@ function makeMockLedger(): ICreditLedger {
     tenantsWithBalance: vi.fn().mockResolvedValue([]),
     expiredCredits: vi.fn().mockResolvedValue([]),
     memberUsage: vi.fn().mockResolvedValue([]),
+    lifetimeSpend: vi.fn().mockResolvedValue(Credit.ZERO),
   };
 }
 
