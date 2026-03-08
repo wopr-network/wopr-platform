@@ -419,7 +419,6 @@ export class BulkOperationsStore implements IBulkOperationsStore {
       }
     }
 
-    const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const tenantIdList = rows.map((r) => String(r.tenantId ?? ""));
     const lifetimeSpendMap = enabledKeys.has("lifetime_spend")
       ? await this.creditStore.lifetimeSpendBatch(tenantIdList)
