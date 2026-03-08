@@ -1852,7 +1852,7 @@ export const adminRouter = router({
   complianceDeletionRequests: adminProcedure
     .input(
       z.object({
-        status: z.string().optional(),
+        status: z.enum(["pending", "cancelled", "completed"]).optional(),
         limit: z.number().int().positive().max(100).default(50),
         offset: z.number().int().nonnegative().default(0),
       }),
@@ -1872,19 +1872,43 @@ export const adminRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const store = deps().getAccountDeletionStore?.();
+      const { getAuditLog, getAccountDeletionStore } = deps();
+      const store = getAccountDeletionStore?.();
       if (!store)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Account deletion store not initialized" });
-      return store.create(input.tenantId, ctx.user.id);
+      const adminUser = ctx.user.id;
+      const result = await store.create(input.tenantId, adminUser);
+      getAuditLog().log({
+        adminUser,
+        action: "compliance.trigger_deletion",
+        category: "account",
+        targetTenant: input.tenantId,
+        details: { requestId: result.id, reason: input.reason },
+        outcome: "success",
+      });
+      return result;
     }),
 
   complianceCancelDeletion: adminProcedure
     .input(z.object({ requestId: z.string().min(1).max(128) }))
-    .mutation(async ({ input }) => {
-      const store = deps().getAccountDeletionStore?.();
+    .mutation(async ({ input, ctx }) => {
+      const { getAuditLog, getAccountDeletionStore } = deps();
+      const store = getAccountDeletionStore?.();
       if (!store)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Account deletion store not initialized" });
+      const existing = await store.getById(input.requestId);
+      if (!existing || existing.status !== "pending")
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pending deletion request not found" });
+      const adminUser = ctx.user.id;
       await store.cancel(input.requestId, "Cancelled by admin");
+      getAuditLog().log({
+        adminUser,
+        action: "compliance.cancel_deletion",
+        category: "account",
+        targetTenant: existing.tenantId,
+        details: { requestId: input.requestId },
+        outcome: "success",
+      });
       return { success: true };
     }),
 });

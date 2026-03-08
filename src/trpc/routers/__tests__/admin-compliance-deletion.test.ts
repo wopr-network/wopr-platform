@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAccountDeletionStore } from "../../../account/deletion-store.js";
 import type { DeletionRequest } from "../../../account/repository-types.js";
 import type { AdminRouterDeps } from "../admin.js";
@@ -96,7 +96,8 @@ function nonAdminCtx(): CallerCtx {
 describe("admin.complianceDeletionRequests", () => {
   const store = makeMockDeletionStore();
 
-  beforeAll(() => {
+  beforeEach(() => {
+    vi.clearAllMocks();
     setAdminRouterDeps(makeDeps(store));
   });
 
@@ -122,7 +123,8 @@ describe("admin.complianceDeletionRequests", () => {
 describe("admin.complianceTriggerDeletion", () => {
   const store = makeMockDeletionStore();
 
-  beforeAll(() => {
+  beforeEach(() => {
+    vi.clearAllMocks();
     setAdminRouterDeps(makeDeps(store));
   });
 
@@ -144,7 +146,8 @@ describe("admin.complianceTriggerDeletion", () => {
 describe("admin.complianceCancelDeletion", () => {
   const store = makeMockDeletionStore();
 
-  beforeAll(() => {
+  beforeEach(() => {
+    vi.clearAllMocks();
     setAdminRouterDeps(makeDeps(store));
   });
 

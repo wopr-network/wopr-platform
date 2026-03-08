@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { accountDeletionRequests } from "../db/schema/account-deletion-requests.js";
 import type { DeletionRequest } from "./repository-types.js";
@@ -105,7 +105,7 @@ export class DrizzleDeletionRepository implements IDeletionRepository {
         .select()
         .from(accountDeletionRequests)
         .where(where)
-        .orderBy(sql`${accountDeletionRequests.createdAt} DESC`)
+        .orderBy(desc(accountDeletionRequests.createdAt))
         .limit(opts.limit)
         .offset(opts.offset),
       this.db.select({ count: sql<number>`count(*)::int` }).from(accountDeletionRequests).where(where),
