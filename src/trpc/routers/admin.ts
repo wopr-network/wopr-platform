@@ -1881,7 +1881,7 @@ export const adminRouter = router({
       if (existingPending) {
         throw new TRPCError({ code: "CONFLICT", message: "A deletion request is already pending for this tenant" });
       }
-      const result = await store.create(input.tenantId, adminUser);
+      const result = await store.create(input.tenantId, adminUser, input.reason);
       getAuditLog().log({
         adminUser,
         action: "compliance.trigger_deletion",

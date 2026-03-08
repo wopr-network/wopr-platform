@@ -56,6 +56,7 @@ const SAMPLE_DELETION_REQUEST: DeletionRequest = {
   requestedBy: TEST_USER_ID,
   status: "pending",
   deleteAfter: "2026-03-30T00:00:00Z",
+  reason: null,
   cancelReason: null,
   completedAt: null,
   deletionSummary: null,

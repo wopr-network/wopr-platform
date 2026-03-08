@@ -12,6 +12,7 @@ export interface InsertDeletionRequest {
   tenantId: string;
   requestedBy: string;
   graceDays: number;
+  reason?: string | null;
 }
 
 /** Repository interface for account deletion request storage. */
@@ -42,6 +43,7 @@ export class DrizzleDeletionRepository implements IDeletionRepository {
       tenantId: data.tenantId,
       requestedBy: data.requestedBy,
       status: "pending",
+      reason: data.reason ?? null,
       deleteAfter: sql`(now() + make_interval(days => ${data.graceDays}))::text`,
     });
   }
@@ -126,6 +128,7 @@ function toRequest(row: typeof accountDeletionRequests.$inferSelect): DeletionRe
     requestedBy: row.requestedBy,
     status: row.status,
     deleteAfter: row.deleteAfter,
+    reason: row.reason,
     cancelReason: row.cancelReason,
     completedAt: row.completedAt,
     deletionSummary: row.deletionSummary,

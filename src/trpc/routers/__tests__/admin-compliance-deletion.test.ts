@@ -14,6 +14,7 @@ const mockDeletionRequest: DeletionRequest = {
   requestedBy: "admin-1",
   status: "pending",
   deleteAfter: "2026-04-07T00:00:00.000Z",
+  reason: null,
   cancelReason: null,
   completedAt: null,
   deletionSummary: null,
@@ -132,7 +133,7 @@ describe("admin.complianceTriggerDeletion", () => {
     const caller = adminRouter.createCaller(adminCtx());
     const result = await caller.complianceTriggerDeletion({ tenantId: "t-1", reason: "GDPR request" });
     expect(result).toEqual(mockDeletionRequest);
-    expect(store.create).toHaveBeenCalledWith("t-1", "admin-1");
+    expect(store.create).toHaveBeenCalledWith("t-1", "admin-1", "GDPR request");
   });
 
   it("rejects non-admin users", async () => {
