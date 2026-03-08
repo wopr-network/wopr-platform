@@ -1730,7 +1730,7 @@ export const adminRouter = router({
       if (!repo) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU allocation repo not initialized" });
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = repo.upsert(input);
+        const result = await repo.upsert(input);
         deps()
           .getAuditLog()
           .log({
@@ -1778,7 +1778,7 @@ export const adminRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU configuration repo not initialized" });
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = repo.upsert(input);
+        const result = await repo.upsert(input);
         deps()
           .getAuditLog()
           .log({
