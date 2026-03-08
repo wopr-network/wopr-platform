@@ -17,6 +17,8 @@ import type { AdminUserStore } from "../../admin/users/user-store.js";
 import { logger } from "../../config/logger.js";
 import type { INotificationQueueRepository } from "../../email/notification-repository-types.js";
 import type { NotificationService } from "../../email/notification-service.js";
+import type { IGpuAllocationRepository } from "../../fleet/gpu-allocation-repository.js";
+import type { IGpuConfigurationRepository } from "../../fleet/gpu-configuration-repository.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import type { IAffiliateFraudAdminRepository } from "../../monetization/affiliate/affiliate-admin-repository.js";
 import { Credit } from "../../monetization/credit.js";
@@ -63,6 +65,8 @@ export interface AdminRouterDeps {
   queryActiveBots?: () => number | Promise<number>;
   queryActiveTenantCount?: () => number | Promise<number>;
   getAffiliateFraudAdminRepo?: () => IAffiliateFraudAdminRepository;
+  getGpuAllocationRepo?: () => IGpuAllocationRepository;
+  getGpuConfigurationRepo?: () => IGpuConfigurationRepository;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -1699,5 +1703,55 @@ export const adminRouter = router({
       const adminUserId = ctx.user?.id ?? "unknown";
       await repo.blockFingerprint(input.fingerprint, adminUserId);
       return { success: true };
+    }),
+
+  // ---------------------------------------------------------------------------
+  // GPU Dashboard — Allocation & Configuration (WOP-1968)
+  // ---------------------------------------------------------------------------
+
+  gpuAllocations: adminProcedure.query(async () => {
+    const repo = deps().getGpuAllocationRepo?.();
+    if (!repo) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU allocation repo not initialized" });
+    return repo.list();
+  }),
+
+  updateGpuAllocation: adminProcedure
+    .input(
+      z.object({
+        id: z.string().min(1).max(128),
+        gpuNodeId: z.string().min(1).max(128),
+        tenantId: z.string().min(1).max(128),
+        botInstanceId: z.string().min(1).max(128).nullable(),
+        priority: z.enum(["low", "normal", "high"]),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const repo = deps().getGpuAllocationRepo?.();
+      if (!repo) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU allocation repo not initialized" });
+      return repo.upsert(input);
+    }),
+
+  gpuConfigurations: adminProcedure.query(async () => {
+    const repo = deps().getGpuConfigurationRepo?.();
+    if (!repo)
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU configuration repo not initialized" });
+    return repo.list();
+  }),
+
+  updateGpuConfiguration: adminProcedure
+    .input(
+      z.object({
+        gpuNodeId: z.string().min(1).max(128),
+        memoryLimitMib: z.number().int().positive().nullable(),
+        modelAssignments: z.array(z.string().min(1).max(128)),
+        maxConcurrency: z.number().int().min(1).max(64),
+        notes: z.string().max(1024).nullable(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const repo = deps().getGpuConfigurationRepo?.();
+      if (!repo)
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU configuration repo not initialized" });
+      return repo.upsert({ ...input, updatedAt: 0 });
     }),
 });

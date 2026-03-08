@@ -731,6 +731,8 @@ if (process.env.NODE_ENV !== "test") {
         const { BulkOperationsStore } = await import("./admin/bulk/bulk-operations-store.js");
         const { DrizzleBulkOperationsRepository } = await import("./admin/bulk/bulk-operations-repository.js");
         const appBaseUrl = process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot";
+        const { DrizzleGpuAllocationRepository } = await import("./fleet/gpu-allocation-repository.js");
+        const { DrizzleGpuConfigurationRepository } = await import("./fleet/gpu-configuration-repository.js");
         setAdminRouterDeps({
           getAuditLog: () => new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
           getCreditLedger: () => getCreditLedger(),
@@ -749,6 +751,8 @@ if (process.env.NODE_ENV !== "test") {
               new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
               new NotificationService(getNotificationQueueStore(), appBaseUrl),
             ),
+          getGpuAllocationRepo: () => new DrizzleGpuAllocationRepository(getDb()),
+          getGpuConfigurationRepo: () => new DrizzleGpuConfigurationRepository(getDb()),
         });
         logger.info("tRPC admin router initialized");
       }
