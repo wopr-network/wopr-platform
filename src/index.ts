@@ -722,7 +722,8 @@ if (process.env.NODE_ENV !== "test") {
       // Wire admin tRPC router deps — ban cascade needs Stripe + auto-topup repo (WOP-1064)
       {
         const { detachAllPaymentMethods } = await import("./monetization/stripe/payment-methods.js");
-        const { getTenantStatusRepo, getAutoTopupSettingsRepo } = await import("./fleet/services.js");
+        const { getTenantStatusRepo, getAutoTopupSettingsRepo, getExportRepo } = await import("./fleet/services.js");
+        const { AccountExportStore } = await import("./account/export-store.js");
         const { AdminAuditLog } = await import("./admin/audit-log.js");
         const { DrizzleAdminAuditLogRepository } = await import("./admin/admin-audit-log-repository.js");
         const { AdminUserStore } = await import("./admin/users/user-store.js");
@@ -753,6 +754,7 @@ if (process.env.NODE_ENV !== "test") {
             ),
           getGpuAllocationRepo: () => getGpuAllocationRepo(),
           getGpuConfigurationRepo: () => getGpuConfigurationRepo(),
+          getExportStore: () => new AccountExportStore(getExportRepo()),
         });
         logger.info("tRPC admin router initialized");
       }

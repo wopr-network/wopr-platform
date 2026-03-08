@@ -115,6 +115,7 @@
         "src/monetization/stripe/tenant-store.ts",
         "src/account/deletion-repository.ts",
         "src/account/deletion-executor-repository.ts",
+        "src/account/export-repository.ts",
         "src/security/credential-vault/credential-repository.ts",
         "src/security/credential-vault/key-rotation.ts",
         "src/security/credential-vault/migration-check.ts",
