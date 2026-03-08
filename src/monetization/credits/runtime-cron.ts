@@ -205,8 +205,10 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
                   `runtime-storage:${cfg.date}:${tenantId}`,
                 );
               }
-              result.suspended.push(tenantId);
-              if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+              if (!result.suspended.includes(tenantId)) {
+                result.suspended.push(tenantId);
+                if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+              }
             }
           }
         }

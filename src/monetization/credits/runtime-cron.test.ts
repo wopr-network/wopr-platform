@@ -280,6 +280,23 @@ describe("runRuntimeDeductions", () => {
     expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
   });
 
+  it("storage tier else-branch does not double-suspend when runtime already suspended", async () => {
+    // tenant has 10 cents — runtime deduction (17 cents) will suspend them,
+    // then storage tier (5 cents) should NOT call onSuspend again
+    await ledger.credit("tenant-1", Credit.fromCents(10), "purchase", "top-up");
+    const onSuspend = vi.fn();
+    const result = await runRuntimeDeductions({
+      ledger,
+      date: TODAY,
+      getActiveBotCount: async () => 1,
+      getStorageTierCosts: async () => Credit.fromCents(5),
+      onSuspend,
+    });
+    expect(result.suspended).toContain("tenant-1");
+    expect(result.suspended.filter((id) => id === "tenant-1")).toHaveLength(1);
+    expect(onSuspend).toHaveBeenCalledTimes(1);
+  });
+
   it("buildResourceTierCosts: deducts pro tier surcharge via getResourceTierCosts", async () => {
     const proTierCost = RESOURCE_TIERS.pro.dailyCost.toCents();
     const startBalance = 17 + proTierCost + 10;
