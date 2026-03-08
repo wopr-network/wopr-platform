@@ -216,6 +216,19 @@ app.post("/api/auth/reset-password", async (c, next) => {
   return next();
 });
 
+// Resolve session user from better-auth cookie on all API and fleet routes.
+// This sets c.set("user") if a valid session cookie is present.
+// Routes that also accept API tokens (scopedBearerAuth) will override if needed.
+// Must be registered BEFORE any route handlers that depend on c.get("user"),
+// because Hono executes middleware and handlers in strict registration order.
+app.use("/api/*", resolveSessionUser());
+app.use("/fleet/*", resolveSessionUser());
+
+// Login history — must be mounted BEFORE the better-auth catch-all so Hono
+// matches this specific path before the /api/auth/* wildcard, and AFTER
+// resolveSessionUser() so session is populated when the handler runs (WOP-1974).
+app.route("/api/auth/login-history", loginHistoryRoutes);
+
 // better-auth handler — serves /api/auth/* (signup, login, session, etc.)
 // Lazily initialized to avoid opening DB at import time.
 //
@@ -244,11 +257,6 @@ app.on(["POST", "GET"], "/api/auth/*", async (c) => {
   return getAuth().handler(req);
 });
 
-// Resolve session user from better-auth cookie on all API and fleet routes.
-// This sets c.set("user") if a valid session cookie is present.
-// Routes that also accept API tokens (scopedBearerAuth) will override if needed.
-app.use("/api/*", resolveSessionUser());
-app.use("/fleet/*", resolveSessionUser());
 // CSRF protection: validate Origin/Referer on state-changing requests (WOP-1371).
 // Mounted AFTER auth middleware so unauthenticated requests get 401 before CSRF fires.
 // Must run after CORS (which sets Access-Control-Allow-Origin) so preflight requests pass.
@@ -350,7 +358,6 @@ app.route("/api/channels", channelValidateRoutes);
 app.route("/api/tenant-keys", tenantKeyRoutes);
 app.route("/api/v1/pricing", publicPricingRoutes);
 app.route("/api/activity", activityRoutes);
-app.route("/api/auth/login-history", loginHistoryRoutes);
 app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
 app.route("/api/chat/setup", setupRoutes);
