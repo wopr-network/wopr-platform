@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { INodeRepository } from "../../fleet/node-repository.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
+import type { RecoveryOrchestrator } from "../../fleet/recovery-orchestrator.js";
+import { getRecoveryOrchestrator } from "../../fleet/services.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { Credit } from "../../monetization/credit.js";
 
@@ -153,15 +155,6 @@ vi.mock("../../monetization/credits/credit-ledger.js", () => {
   };
 });
 
-// Mock services singletons to avoid DB connection at module load time
-vi.mock("../../fleet/services.js", () => {
-  return {
-    getRecoveryOrchestrator: vi.fn(),
-    getCommandBus: vi.fn().mockReturnValue(undefined),
-    getBotInstanceRepo: vi.fn().mockReturnValue(undefined),
-  };
-});
-
 // Mock proxy singleton to avoid real DNS resolution in tests
 vi.mock("../../proxy/singleton.js", () => {
   return {
@@ -178,9 +171,12 @@ vi.mock("../../proxy/singleton.js", () => {
 const mockGetNodeRepo = vi.fn((): INodeRepository => {
   throw new Error("DATABASE_URL environment variable is required");
 });
+// Mock services singletons to avoid DB connection at module load time (merged single vi.mock)
 vi.mock("../../fleet/services.js", () => ({
   getNodeRepo: () => mockGetNodeRepo(),
-  getRecoveryOrchestrator: () => null,
+  getRecoveryOrchestrator: vi.fn().mockReturnValue(null),
+  getCommandBus: vi.fn().mockReturnValue(undefined),
+  getBotInstanceRepo: vi.fn().mockReturnValue(undefined),
 }));
 
 // Import AFTER mocks are set up
@@ -583,6 +579,37 @@ describe("fleet routes", () => {
 
       await app.request(`/fleet/bots/${TEST_BOT_ID}?removeVolumes=true`, { method: "DELETE", headers: authHeader });
       expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID, true);
+    });
+
+    it("retries all waiting recovery events even when some fail (sequential loop)", async () => {
+      fleetMock.remove.mockResolvedValue(undefined);
+
+      const retryWaiting = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("event-1 failed"))
+        .mockResolvedValueOnce({ recovered: [], failed: [] });
+
+      const listEvents = vi.fn().mockResolvedValue([{ id: "evt-1" }, { id: "evt-2" }]);
+
+      vi.mocked(getRecoveryOrchestrator).mockReturnValue({
+        listEvents,
+        retryWaiting,
+      } as unknown as RecoveryOrchestrator);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, {
+        method: "DELETE",
+        headers: authHeader,
+      });
+
+      expect(res.status).toBe(204);
+
+      // Wait until both events have been retried
+      await vi.waitFor(() => expect(retryWaiting).toHaveBeenCalledTimes(2));
+
+      // Both events must have been retried despite first one failing
+      expect(retryWaiting).toHaveBeenCalledTimes(2);
+      expect(retryWaiting).toHaveBeenCalledWith("evt-1");
+      expect(retryWaiting).toHaveBeenCalledWith("evt-2");
     });
   });
 
