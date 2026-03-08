@@ -96,13 +96,13 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
     vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_abc");
+    vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_abc");
     vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
     vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
-    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_abc");
-    vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_abc");
     vi.stubEnv("PLATFORM_UI_URL", "https://app.example.com");
     vi.stubEnv("PLATFORM_URL", "https://api.example.com");
     vi.stubEnv("PLATFORM_DOMAIN", "example.com");
@@ -116,6 +116,44 @@ describe("validateRequiredEnvVars", () => {
     vi.stubEnv("NODE_ENV", "test");
     // Nothing set — should not throw
     expect(() => validateRequiredEnvVars()).not.toThrow();
+  });
+
+  it("warns when STRIPE_SECRET_KEY is not set", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
+    vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test_value");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+    validateRequiredEnvVars();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("STRIPE_SECRET_KEY"));
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("STRIPE_WEBHOOK_SECRET"));
+    warnSpy.mockRestore();
+  });
+
+  it("warns when STRIPE_WEBHOOK_SECRET is not set", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "b".repeat(32));
+    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_abc");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
+    vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+    validateRequiredEnvVars();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("STRIPE_WEBHOOK_SECRET"));
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("STRIPE_SECRET_KEY"));
+    warnSpy.mockRestore();
   });
 
   it("warns when PLATFORM_UI_URL is not set", () => {
@@ -166,42 +204,6 @@ describe("validateRequiredEnvVars", () => {
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
     validateRequiredEnvVars();
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("PLATFORM_DOMAIN"));
-    warnSpy.mockRestore();
-  });
-
-  it("warns when STRIPE_SECRET_KEY is not set", () => {
-    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
-    vi.stubEnv("DATABASE_URL", "postgresql://x");
-    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
-    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
-    vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test_value");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
-    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
-    validateRequiredEnvVars();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("STRIPE_SECRET_KEY"));
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("STRIPE_WEBHOOK_SECRET"));
-    warnSpy.mockRestore();
-  });
-
-  it("warns when STRIPE_WEBHOOK_SECRET is not set", () => {
-    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
-    vi.stubEnv("DATABASE_URL", "postgresql://x");
-    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
-    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
-    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_abc");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_5", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_10", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_25", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_x");
-    vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_x");
-    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => logger);
-    validateRequiredEnvVars();
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("STRIPE_WEBHOOK_SECRET"));
-    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining("STRIPE_SECRET_KEY"));
     warnSpy.mockRestore();
   });
 });
