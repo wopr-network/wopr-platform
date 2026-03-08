@@ -281,9 +281,11 @@ describe("runRuntimeDeductions", () => {
   });
 
   it("storage tier else-branch does not double-suspend when runtime already suspended", async () => {
-    // tenant has 10 cents — runtime deduction (17 cents) will suspend them,
-    // then storage tier (5 cents) should NOT call onSuspend again
-    await ledger.credit("tenant-1", Credit.fromCents(10), "purchase", "top-up");
+    // tenant has exactly 17 cents — runtime deduction (17 cents) brings balance to exactly 0,
+    // triggering the zero-crossing suspend in the runtime block.
+    // Storage cost (5 cents) then tries to suspend again via its else-branch (balance 0 < 5).
+    // The !result.suspended.includes(tenantId) guard must prevent onSuspend being called twice.
+    await ledger.credit("tenant-1", Credit.fromCents(17), "purchase", "top-up");
     const onSuspend = vi.fn();
     const result = await runRuntimeDeductions({
       ledger,
