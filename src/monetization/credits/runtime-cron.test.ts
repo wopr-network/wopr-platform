@@ -222,6 +222,24 @@ describe("runRuntimeDeductions", () => {
     expect((await ledger.balance("tenant-1")).toCents()).toBe(0);
   });
 
+  it("suspends tenant when full deduction causes balance to drop to exactly 0", async () => {
+    // Balance = exactly 1 bot * DAILY_BOT_COST = 17 cents → full deduction → 0
+    await ledger.credit("tenant-1", Credit.fromCents(17), "purchase", "top-up");
+    const onSuspend = vi.fn();
+    const onCreditsExhausted = vi.fn();
+    const result = await runRuntimeDeductions({
+      ledger,
+      date: TODAY,
+      getActiveBotCount: async () => 1,
+      onSuspend,
+      onCreditsExhausted,
+    });
+    expect(result.suspended).toContain("tenant-1");
+    expect(onSuspend).toHaveBeenCalledWith("tenant-1");
+    expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(0);
+  });
+
   it("fires onCreditsExhausted on partial deduction when balance hits 0", async () => {
     await ledger.credit("tenant-1", Credit.fromCents(10), "purchase", "top-up");
     const onCreditsExhausted = vi.fn();
