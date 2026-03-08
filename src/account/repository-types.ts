@@ -10,6 +10,7 @@ export interface DeletionRequest {
   requestedBy: string;
   status: string;
   deleteAfter: string;
+  reason: string | null;
   cancelReason: string | null;
   completedAt: string | null;
   deletionSummary: string | null;

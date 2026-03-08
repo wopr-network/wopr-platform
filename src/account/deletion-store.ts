@@ -7,21 +7,26 @@ export type { DeletionRequest } from "./repository-types.js";
 export const DELETION_GRACE_DAYS = 30;
 
 export interface IAccountDeletionStore {
-  create(tenantId: string, requestedBy: string): Promise<DeletionRequest>;
+  create(tenantId: string, requestedBy: string, reason?: string | null): Promise<DeletionRequest>;
   getById(id: string): Promise<DeletionRequest | null>;
   getPendingForTenant(tenantId: string): Promise<DeletionRequest | null>;
   cancel(id: string, reason: string): Promise<void>;
   markCompleted(id: string, summary: Record<string, number>): Promise<void>;
   findExpired(): Promise<DeletionRequest[]>;
+  list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }>;
 }
 
 export class AccountDeletionStore implements IAccountDeletionStore {
   constructor(private readonly repo: IDeletionRepository) {}
 
   /** Create a new deletion request with a 30-day grace period. Returns the created request. */
-  async create(tenantId: string, requestedBy: string): Promise<DeletionRequest> {
+  async create(tenantId: string, requestedBy: string, reason?: string | null): Promise<DeletionRequest> {
     const id = crypto.randomUUID();
-    await this.repo.insert({ id, tenantId, requestedBy, graceDays: DELETION_GRACE_DAYS });
+    await this.repo.insert({ id, tenantId, requestedBy, graceDays: DELETION_GRACE_DAYS, reason });
     const created = await this.repo.getById(id);
     if (!created) throw new Error(`Failed to retrieve newly created deletion request: ${id}`);
     return created;
@@ -50,5 +55,14 @@ export class AccountDeletionStore implements IAccountDeletionStore {
   /** Find all pending requests whose grace period has expired. */
   async findExpired(): Promise<DeletionRequest[]> {
     return this.repo.findExpired();
+  }
+
+  /** List deletion requests with optional status filter and pagination. */
+  async list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }> {
+    return this.repo.list(opts);
   }
 }

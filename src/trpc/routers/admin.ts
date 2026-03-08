@@ -6,6 +6,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { IAccountDeletionStore } from "../../account/deletion-store.js";
 import type { IAccountExportStore } from "../../account/export-store.js";
 import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
@@ -69,6 +70,7 @@ export interface AdminRouterDeps {
   getGpuAllocationRepo?: () => IGpuAllocationRepository;
   getGpuConfigurationRepo?: () => IGpuConfigurationRepository;
   getExportStore?: () => IAccountExportStore;
+  getAccountDeletionStore?: () => IAccountDeletionStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -1841,5 +1843,76 @@ export const adminRouter = router({
           details: { requestId: request.id, reason: input.reason },
         });
       return request;
+    }),
+
+  // ---------------------------------------------------------------------------
+  // Compliance: Deletion Requests (WOP-1966)
+  // ---------------------------------------------------------------------------
+
+  complianceDeletionRequests: adminProcedure
+    .input(
+      z.object({
+        status: z.enum(["pending", "cancelled", "completed"]).optional(),
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().nonnegative().default(0),
+      }),
+    )
+    .query(async ({ input }) => {
+      const store = deps().getAccountDeletionStore?.();
+      if (!store)
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Account deletion store not initialized" });
+      return store.list({ status: input.status, limit: input.limit, offset: input.offset });
+    }),
+
+  complianceTriggerDeletion: adminProcedure
+    .input(
+      z.object({
+        tenantId: tenantIdSchema,
+        reason: z.string().min(1).max(1000),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { getAuditLog, getAccountDeletionStore } = deps();
+      const store = getAccountDeletionStore?.();
+      if (!store)
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Account deletion store not initialized" });
+      const adminUser = ctx.user.id;
+      const existingPending = await store.getPendingForTenant(input.tenantId);
+      if (existingPending) {
+        throw new TRPCError({ code: "CONFLICT", message: "A deletion request is already pending for this tenant" });
+      }
+      const result = await store.create(input.tenantId, adminUser, input.reason);
+      getAuditLog().log({
+        adminUser,
+        action: "compliance.trigger_deletion",
+        category: "account",
+        targetTenant: input.tenantId,
+        details: { requestId: result.id, reason: input.reason },
+        outcome: "success",
+      });
+      return result;
+    }),
+
+  complianceCancelDeletion: adminProcedure
+    .input(z.object({ requestId: z.string().min(1).max(128) }))
+    .mutation(async ({ input, ctx }) => {
+      const { getAuditLog, getAccountDeletionStore } = deps();
+      const store = getAccountDeletionStore?.();
+      if (!store)
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Account deletion store not initialized" });
+      const existing = await store.getById(input.requestId);
+      if (!existing || existing.status !== "pending")
+        throw new TRPCError({ code: "NOT_FOUND", message: "Pending deletion request not found" });
+      const adminUser = ctx.user.id;
+      await store.cancel(input.requestId, "Cancelled by admin");
+      getAuditLog().log({
+        adminUser,
+        action: "compliance.cancel_deletion",
+        category: "account",
+        targetTenant: existing.tenantId,
+        details: { requestId: input.requestId },
+        outcome: "success",
+      });
+      return { success: true };
     }),
 });

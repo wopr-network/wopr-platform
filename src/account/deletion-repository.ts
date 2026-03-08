@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { accountDeletionRequests } from "../db/schema/account-deletion-requests.js";
 import type { DeletionRequest } from "./repository-types.js";
@@ -12,6 +12,7 @@ export interface InsertDeletionRequest {
   tenantId: string;
   requestedBy: string;
   graceDays: number;
+  reason?: string | null;
 }
 
 /** Repository interface for account deletion request storage. */
@@ -22,6 +23,11 @@ export interface IDeletionRepository {
   cancel(id: string, reason: string): Promise<void>;
   markCompleted(id: string, summaryJson: string): Promise<void>;
   findExpired(): Promise<DeletionRequest[]>;
+  list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -37,6 +43,7 @@ export class DrizzleDeletionRepository implements IDeletionRepository {
       tenantId: data.tenantId,
       requestedBy: data.requestedBy,
       status: "pending",
+      reason: data.reason ?? null,
       deleteAfter: sql`(now() + make_interval(days => ${data.graceDays}))::text`,
     });
   }
@@ -86,6 +93,28 @@ export class DrizzleDeletionRepository implements IDeletionRepository {
       );
     return rows.map(toRequest);
   }
+
+  async list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }> {
+    const conditions = opts.status ? [eq(accountDeletionRequests.status, opts.status)] : [];
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [rows, countResult] = await Promise.all([
+      this.db
+        .select()
+        .from(accountDeletionRequests)
+        .where(where)
+        .orderBy(desc(accountDeletionRequests.createdAt))
+        .limit(opts.limit)
+        .offset(opts.offset),
+      this.db.select({ count: sql<number>`count(*)::int` }).from(accountDeletionRequests).where(where),
+    ]);
+
+    return { requests: rows.map(toRequest), total: countResult[0]?.count ?? 0 };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +128,7 @@ function toRequest(row: typeof accountDeletionRequests.$inferSelect): DeletionRe
     requestedBy: row.requestedBy,
     status: row.status,
     deleteAfter: row.deleteAfter,
+    reason: row.reason,
     cancelReason: row.cancelReason,
     completedAt: row.completedAt,
     deletionSummary: row.deletionSummary,

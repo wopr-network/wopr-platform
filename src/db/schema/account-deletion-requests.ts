@@ -22,6 +22,8 @@ export const accountDeletionRequests = pgTable(
     status: text("status").notNull().default("pending"),
     /** ISO timestamp after which deletion should execute */
     deleteAfter: text("delete_after").notNull(),
+    /** Reason provided when the deletion was triggered */
+    reason: text("reason"),
     /** Reason for cancellation (if cancelled) */
     cancelReason: text("cancel_reason"),
     /** ISO timestamp when purge completed */

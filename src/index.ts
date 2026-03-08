@@ -722,7 +722,9 @@ if (process.env.NODE_ENV !== "test") {
       // Wire admin tRPC router deps — ban cascade needs Stripe + auto-topup repo (WOP-1064)
       {
         const { detachAllPaymentMethods } = await import("./monetization/stripe/payment-methods.js");
-        const { getTenantStatusRepo, getAutoTopupSettingsRepo, getExportRepo } = await import("./fleet/services.js");
+        const { getTenantStatusRepo, getAutoTopupSettingsRepo, getExportRepo, getDeletionRepo } = await import(
+          "./fleet/services.js"
+        );
         const { AccountExportStore } = await import("./account/export-store.js");
         const { AdminAuditLog } = await import("./admin/audit-log.js");
         const { DrizzleAdminAuditLogRepository } = await import("./admin/admin-audit-log-repository.js");
@@ -734,6 +736,7 @@ if (process.env.NODE_ENV !== "test") {
         const { BulkOperationsStore } = await import("./admin/bulk/bulk-operations-store.js");
         const { DrizzleBulkOperationsRepository } = await import("./admin/bulk/bulk-operations-repository.js");
         const appBaseUrl = process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot";
+        const { AccountDeletionStore } = await import("./account/deletion-store.js");
         setAdminRouterDeps({
           getAuditLog: () => new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
           getCreditLedger: () => getCreditLedger(),
@@ -755,6 +758,7 @@ if (process.env.NODE_ENV !== "test") {
           getGpuAllocationRepo: () => getGpuAllocationRepo(),
           getGpuConfigurationRepo: () => getGpuConfigurationRepo(),
           getExportStore: () => new AccountExportStore(getExportRepo()),
+          getAccountDeletionStore: () => new AccountDeletionStore(getDeletionRepo()),
         });
         logger.info("tRPC admin router initialized");
       }

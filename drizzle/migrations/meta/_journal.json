@@ -113,6 +113,13 @@
       "when": 1772220018000,
       "tag": "0066_account_export_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1772220019000,
+      "tag": "0067_account_deletion_reason",
+      "breakpoints": true
     }
   ]
 }
