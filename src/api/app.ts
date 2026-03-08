@@ -298,19 +298,10 @@ app.route("/api", secretsRoutes);
 // GET /api/secrets/:id/audit returns paginated access events for a credential.
 // Separate from secretsRoutes (bearer-token-scoped) because the dashboard UI
 // calls this with session cookies, not bearer tokens.
-{
-  let _secretAuditRoutes: ReturnType<typeof createSecretAuditRoutes> | undefined;
-  const _secretAuditProxy = new Hono();
-  _secretAuditProxy.all("*", (c) => {
-    if (!_secretAuditRoutes) {
-      _secretAuditRoutes = createSecretAuditRoutes(getSecretAuditRepo, (id: string) =>
-        getCredentialRepo().getSummaryById(id),
-      );
-    }
-    return _secretAuditRoutes.fetch(c.req.raw);
-  });
-  app.route("/api/secrets", _secretAuditProxy);
-}
+app.route(
+  "/api/secrets",
+  createSecretAuditRoutes(getSecretAuditRepo, (id: string) => getCredentialRepo().getSummaryById(id)),
+);
 app.route("/api/instances/:id/snapshots", snapshotRoutes);
 app.route("/api/bots/:id/snapshots", botSnapshotRoutes);
 app.route("/api/instances/:id/friends", friendsRoutes);

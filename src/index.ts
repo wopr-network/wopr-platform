@@ -57,6 +57,7 @@ import {
   getPool,
   getRateLimitRepo,
   getRegistrationTokenStore,
+  getSecretAuditRepo,
   getSetupService,
   getSetupSessionRepo,
   getSystemResourceMonitor,
@@ -320,7 +321,7 @@ if (process.env.NODE_ENV !== "test") {
     // Wire hosted credential injection for plugin install route
     const vaultKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const credentialRepo = new DrizzleCredentialRepository(getDb());
-    const credentialVault = new CredentialVaultStore(credentialRepo, vaultKey);
+    const credentialVault = new CredentialVaultStore(credentialRepo, vaultKey, undefined, getSecretAuditRepo());
     setBotPluginDeps({ credentialVault, meterEmitter: meter, botInstanceRepo: getBotInstanceRepo() });
     setMarketplaceDeps({ credentialVault, meterEmitter: meter });
 
