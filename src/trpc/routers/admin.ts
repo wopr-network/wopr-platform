@@ -414,6 +414,19 @@ export const adminRouter = router({
         },
       });
 
+      // Send email notification if requested
+      if (input.notifyByEmail) {
+        const { getNotificationService, getBulkStore } = deps();
+        const service = getNotificationService?.();
+        if (service && getBulkStore) {
+          const tenants = await getBulkStore().dryRun([input.tenantId]);
+          const tenant = tenants.find((t) => t.tenantId === input.tenantId);
+          if (tenant) {
+            service.notifyAdminSuspended(input.tenantId, tenant.email, input.reason);
+          }
+        }
+      }
+
       return {
         tenantId: input.tenantId,
         status: "suspended" as const,
@@ -464,6 +477,19 @@ export const adminRouter = router({
           notifyByEmail: input.notifyByEmail,
         },
       });
+
+      // Send email notification if requested
+      if (input.notifyByEmail) {
+        const { getNotificationService, getBulkStore } = deps();
+        const service = getNotificationService?.();
+        if (service && getBulkStore) {
+          const tenants = await getBulkStore().dryRun([input.tenantId]);
+          const tenant = tenants.find((t) => t.tenantId === input.tenantId);
+          if (tenant) {
+            service.notifyAdminReactivated(input.tenantId, tenant.email);
+          }
+        }
+      }
 
       return {
         tenantId: input.tenantId,

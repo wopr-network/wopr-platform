@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { NotificationService } from "../../email/notification-service.js";
 import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { AdminAuditLog } from "../audit-log.js";
@@ -92,6 +93,10 @@ export class BulkOperationsStore implements IBulkOperationsStore {
     private readonly creditStore: ICreditLedger,
     private readonly tenantStatusStore: ITenantStatusRepository,
     private readonly auditLog: AdminAuditLog,
+    private readonly notificationService?: Pick<
+      NotificationService,
+      "notifyCreditsGranted" | "notifyAdminSuspended" | "notifyAdminReactivated"
+    >,
   ) {}
 
   // --- Validation ---
@@ -131,6 +136,14 @@ export class BulkOperationsStore implements IBulkOperationsStore {
         succeededIds.push(tenantId);
       } catch (err) {
         errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    if (input.notifyByEmail && this.notificationService && succeededIds.length > 0) {
+      const tenants = await this.repo.lookupTenants(succeededIds);
+      const amountDollars = `$${(input.amountCents / 100).toFixed(2)}`;
+      for (const t of tenants) {
+        this.notificationService.notifyCreditsGranted(t.tenantId, t.email, amountDollars, input.reason);
       }
     }
 
@@ -257,6 +270,16 @@ export class BulkOperationsStore implements IBulkOperationsStore {
         succeeded++;
       } catch (err) {
         errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    if (input.notifyByEmail && this.notificationService) {
+      const suspendedIds = input.tenantIds.filter((id) => !errors.some((e) => e.tenantId === id));
+      if (suspendedIds.length > 0) {
+        const tenants = await this.repo.lookupTenants(suspendedIds);
+        for (const t of tenants) {
+          this.notificationService.notifyAdminSuspended(t.tenantId, t.email, input.reason);
+        }
       }
     }
 

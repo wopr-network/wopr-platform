@@ -727,6 +727,9 @@ if (process.env.NODE_ENV !== "test") {
         const { DrizzleAffiliateFraudAdminRepository } = await import(
           "./monetization/affiliate/affiliate-admin-repository.js"
         );
+        const { BulkOperationsStore } = await import("./admin/bulk/bulk-operations-store.js");
+        const { DrizzleBulkOperationsRepository } = await import("./admin/bulk/bulk-operations-repository.js");
+        const appBaseUrl = process.env.PLATFORM_UI_URL ?? process.env.APP_BASE_URL ?? "https://app.wopr.bot";
         setAdminRouterDeps({
           getAuditLog: () => new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
           getCreditLedger: () => getCreditLedger(),
@@ -736,6 +739,15 @@ if (process.env.NODE_ENV !== "test") {
           getAutoTopupSettingsRepo: () => getAutoTopupSettingsRepo(),
           detachAllPaymentMethods: (tenantId: string) => detachAllPaymentMethods(stripe, tenantRepo, tenantId),
           getAffiliateFraudAdminRepo: () => new DrizzleAffiliateFraudAdminRepository(getDb()),
+          getNotificationService: () => new NotificationService(getNotificationQueueStore(), appBaseUrl),
+          getBulkStore: () =>
+            new BulkOperationsStore(
+              new DrizzleBulkOperationsRepository(getDb()),
+              getCreditLedger(),
+              getTenantStatusRepo(),
+              new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
+              new NotificationService(getNotificationQueueStore(), appBaseUrl),
+            ),
         });
         logger.info("tRPC admin router initialized");
       }

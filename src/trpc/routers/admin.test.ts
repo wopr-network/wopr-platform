@@ -368,3 +368,97 @@ describe("admin router — edge cases", () => {
     expect(auditLog.log).toHaveBeenCalledWith(expect.objectContaining({ action: "credits.grant", outcome: "failure" }));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Email notifications via notifyByEmail
+// ---------------------------------------------------------------------------
+
+describe("admin router — email notifications", () => {
+  function makeMockBulkStore(email: string) {
+    return {
+      dryRun: vi.fn().mockResolvedValue([{ tenantId: "t1", name: "Test", email, status: "active" }]),
+    };
+  }
+
+  it("suspendTenant sends email when notifyByEmail is true", async () => {
+    const tenantStore = makeMockTenantStatusStore();
+    const auditLog = makeMockAuditLog();
+    const notificationService = { notifyAdminSuspended: vi.fn(), notifyAdminReactivated: vi.fn() };
+    const bulkStore = makeMockBulkStore("test@example.com");
+    setAdminRouterDeps({
+      ...mockDeps,
+      getTenantStatusStore: () =>
+        tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
+      getAuditLog: () => auditLog,
+      getNotificationService: () =>
+        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+      getBulkStore: () =>
+        bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
+    });
+    const caller = adminRouter.createCaller(adminCtx());
+    await caller.suspendTenant({ tenantId: "t1", reason: "violation", notifyByEmail: true });
+    expect(notificationService.notifyAdminSuspended).toHaveBeenCalledWith("t1", "test@example.com", "violation");
+  });
+
+  it("suspendTenant does NOT send email when notifyByEmail is false", async () => {
+    const tenantStore = makeMockTenantStatusStore();
+    const auditLog = makeMockAuditLog();
+    const notificationService = { notifyAdminSuspended: vi.fn(), notifyAdminReactivated: vi.fn() };
+    const bulkStore = makeMockBulkStore("test@example.com");
+    setAdminRouterDeps({
+      ...mockDeps,
+      getTenantStatusStore: () =>
+        tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
+      getAuditLog: () => auditLog,
+      getNotificationService: () =>
+        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+      getBulkStore: () =>
+        bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
+    });
+    const caller = adminRouter.createCaller(adminCtx());
+    await caller.suspendTenant({ tenantId: "t1", reason: "violation", notifyByEmail: false });
+    expect(notificationService.notifyAdminSuspended).not.toHaveBeenCalled();
+  });
+
+  it("reactivateTenant sends email when notifyByEmail is true", async () => {
+    const tenantStore = makeMockTenantStatusStore();
+    tenantStore.getStatus.mockResolvedValue("suspended");
+    const auditLog = makeMockAuditLog();
+    const notificationService = { notifyAdminSuspended: vi.fn(), notifyAdminReactivated: vi.fn() };
+    const bulkStore = makeMockBulkStore("test@example.com");
+    setAdminRouterDeps({
+      ...mockDeps,
+      getTenantStatusStore: () =>
+        tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
+      getAuditLog: () => auditLog,
+      getNotificationService: () =>
+        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+      getBulkStore: () =>
+        bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
+    });
+    const caller = adminRouter.createCaller(adminCtx());
+    await caller.reactivateTenant({ tenantId: "t1", notifyByEmail: true });
+    expect(notificationService.notifyAdminReactivated).toHaveBeenCalledWith("t1", "test@example.com");
+  });
+
+  it("reactivateTenant does NOT send email when notifyByEmail is false", async () => {
+    const tenantStore = makeMockTenantStatusStore();
+    tenantStore.getStatus.mockResolvedValue("suspended");
+    const auditLog = makeMockAuditLog();
+    const notificationService = { notifyAdminSuspended: vi.fn(), notifyAdminReactivated: vi.fn() };
+    const bulkStore = makeMockBulkStore("test@example.com");
+    setAdminRouterDeps({
+      ...mockDeps,
+      getTenantStatusStore: () =>
+        tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
+      getAuditLog: () => auditLog,
+      getNotificationService: () =>
+        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+      getBulkStore: () =>
+        bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
+    });
+    const caller = adminRouter.createCaller(adminCtx());
+    await caller.reactivateTenant({ tenantId: "t1", notifyByEmail: false });
+    expect(notificationService.notifyAdminReactivated).not.toHaveBeenCalled();
+  });
+});
