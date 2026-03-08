@@ -13,6 +13,11 @@ export interface IAccountDeletionStore {
   cancel(id: string, reason: string): Promise<void>;
   markCompleted(id: string, summary: Record<string, number>): Promise<void>;
   findExpired(): Promise<DeletionRequest[]>;
+  list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }>;
 }
 
 export class AccountDeletionStore implements IAccountDeletionStore {
@@ -50,5 +55,14 @@ export class AccountDeletionStore implements IAccountDeletionStore {
   /** Find all pending requests whose grace period has expired. */
   async findExpired(): Promise<DeletionRequest[]> {
     return this.repo.findExpired();
+  }
+
+  /** List deletion requests with optional status filter and pagination. */
+  async list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }> {
+    return this.repo.list(opts);
   }
 }

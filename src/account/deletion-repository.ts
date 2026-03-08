@@ -22,6 +22,11 @@ export interface IDeletionRepository {
   cancel(id: string, reason: string): Promise<void>;
   markCompleted(id: string, summaryJson: string): Promise<void>;
   findExpired(): Promise<DeletionRequest[]>;
+  list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +90,28 @@ export class DrizzleDeletionRepository implements IDeletionRepository {
         and(eq(accountDeletionRequests.status, "pending"), lte(accountDeletionRequests.deleteAfter, sql`now()::text`)),
       );
     return rows.map(toRequest);
+  }
+
+  async list(opts: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ requests: DeletionRequest[]; total: number }> {
+    const conditions = opts.status ? [eq(accountDeletionRequests.status, opts.status)] : [];
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [rows, countResult] = await Promise.all([
+      this.db
+        .select()
+        .from(accountDeletionRequests)
+        .where(where)
+        .orderBy(sql`${accountDeletionRequests.createdAt} DESC`)
+        .limit(opts.limit)
+        .offset(opts.offset),
+      this.db.select({ count: sql<number>`count(*)::int` }).from(accountDeletionRequests).where(where),
+    ]);
+
+    return { requests: rows.map(toRequest), total: countResult[0]?.count ?? 0 };
   }
 }
 
