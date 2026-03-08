@@ -351,13 +351,17 @@ export class BulkOperationsStore implements IBulkOperationsStore {
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
     if (enabledKeys.has("transaction_history")) headers.push("transaction_history");
 
-    const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csvEscape = (v: string): string => {
+      if (/^[=+\-@]/.test(v)) v = `'${v}`;
+      return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    };
 
     // Pre-fetch all transaction histories in parallel to avoid N+1 queries.
     const historyByTenant = new Map<string, Awaited<ReturnType<typeof this.creditStore.history>>>();
     if (enabledKeys.has("transaction_history")) {
       await Promise.all(
         rows.map(async (r) => {
+          if (r.tenantId == null) return;
           // limit: 250 is the maximum supported by the credit ledger per single call.
           const txns = await this.creditStore.history(String(r.tenantId), { limit: 250 });
           historyByTenant.set(String(r.tenantId), txns);

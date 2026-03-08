@@ -1189,7 +1189,10 @@ export const adminRouter = router({
       const entries = await getCreditLedger().history(tenantId, { ...filters, limit: 10000 });
 
       const header = "id,tenantId,type,amountCents,description,referenceId,createdAt";
-      const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+      const csvEscape = (v: string): string => {
+        if (/^[=+\-@]/.test(v)) v = `'${v}`;
+        return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+      };
       const lines = entries.map((r) =>
         [
           csvEscape(r.id),
