@@ -1720,15 +1720,39 @@ export const adminRouter = router({
       z.object({
         id: z.string().min(1).max(128),
         gpuNodeId: z.string().min(1).max(128),
-        tenantId: z.string().min(1).max(128),
+        tenantId: tenantIdSchema,
         botInstanceId: z.string().min(1).max(128).nullable(),
         priority: z.enum(["low", "normal", "high"]),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const repo = deps().getGpuAllocationRepo?.();
       if (!repo) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU allocation repo not initialized" });
-      return repo.upsert(input);
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = repo.upsert(input);
+        deps()
+          .getAuditLog()
+          .log({
+            adminUser,
+            action: "gpu.allocation.update",
+            category: "config",
+            details: { ...input },
+            outcome: "success",
+          });
+        return result;
+      } catch (err) {
+        deps()
+          .getAuditLog()
+          .log({
+            adminUser,
+            action: "gpu.allocation.update",
+            category: "config",
+            details: { ...input, error: String(err) },
+            outcome: "failure",
+          });
+        throw err;
+      }
     }),
 
   gpuConfigurations: adminProcedure.query(async () => {
@@ -1748,10 +1772,34 @@ export const adminRouter = router({
         notes: z.string().max(1024).nullable(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       const repo = deps().getGpuConfigurationRepo?.();
       if (!repo)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU configuration repo not initialized" });
-      return repo.upsert(input);
+      const adminUser = ctx.user?.id ?? "unknown";
+      try {
+        const result = repo.upsert(input);
+        deps()
+          .getAuditLog()
+          .log({
+            adminUser,
+            action: "gpu.configuration.update",
+            category: "config",
+            details: { ...input },
+            outcome: "success",
+          });
+        return result;
+      } catch (err) {
+        deps()
+          .getAuditLog()
+          .log({
+            adminUser,
+            action: "gpu.configuration.update",
+            category: "config",
+            details: { ...input, error: String(err) },
+            outcome: "failure",
+          });
+        throw err;
+      }
     }),
 });
