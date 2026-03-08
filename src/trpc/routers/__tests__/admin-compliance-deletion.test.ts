@@ -141,6 +141,15 @@ describe("admin.complianceTriggerDeletion", () => {
       "Platform admin role required",
     );
   });
+
+  it("throws CONFLICT when a pending deletion already exists for the tenant", async () => {
+    (store.getPendingForTenant as ReturnType<typeof vi.fn>).mockResolvedValue(mockDeletionRequest);
+    const caller = adminRouter.createCaller(adminCtx());
+    await expect(caller.complianceTriggerDeletion({ tenantId: "t-1", reason: "GDPR request" })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(store.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("admin.complianceCancelDeletion", () => {

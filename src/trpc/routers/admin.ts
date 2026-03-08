@@ -1877,6 +1877,10 @@ export const adminRouter = router({
       if (!store)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Account deletion store not initialized" });
       const adminUser = ctx.user.id;
+      const existingPending = await store.getPendingForTenant(input.tenantId);
+      if (existingPending) {
+        throw new TRPCError({ code: "CONFLICT", message: "A deletion request is already pending for this tenant" });
+      }
       const result = await store.create(input.tenantId, adminUser);
       getAuditLog().log({
         adminUser,
