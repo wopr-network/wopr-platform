@@ -1822,7 +1822,7 @@ export const adminRouter = router({
   complianceTriggerExport: adminProcedure
     .input(
       z.object({
-        tenantId: z.string().min(1).max(256),
+        tenantId: tenantIdSchema,
         reason: z.string().min(1).max(1000),
       }),
     )
@@ -1834,7 +1834,7 @@ export const adminRouter = router({
       deps()
         .getAuditLog()
         .log({
-          action: "compliance.export.triggered",
+          action: "compliance.triggerExport",
           adminUser: adminUserId,
           category: "support",
           targetTenant: input.tenantId,

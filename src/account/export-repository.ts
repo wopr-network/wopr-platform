@@ -1,14 +1,7 @@
 import { count, desc, eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { accountExportRequests } from "../db/schema/account-export-requests.js";
-import type { ExportRequest } from "./export-repository-types.js";
-
-export interface InsertExportRequest {
-  id: string;
-  tenantId: string;
-  requestedBy: string;
-  format?: string;
-}
+import type { ExportRequest, InsertExportRequest } from "./export-repository-types.js";
 
 export interface IExportRepository {
   insert(data: InsertExportRequest): Promise<void>;
@@ -54,7 +47,7 @@ export class DrizzleExportRepository implements IExportRepository {
 
     return {
       rows: rows.map(toExportRequest),
-      total: countResult[0]?.count ?? 0,
+      total: Number(countResult[0]?.count ?? 0),
     };
   }
 
