@@ -1,13 +1,17 @@
 import { count, desc, eq, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { accountExportRequests } from "../db/schema/account-export-requests.js";
-import type { ExportRequest, InsertExportRequest } from "./export-repository-types.js";
+import type { ExportRequest, ExportStatus, InsertExportRequest } from "./export-repository-types.js";
 
 export interface IExportRepository {
   insert(data: InsertExportRequest): Promise<void>;
   getById(id: string): Promise<ExportRequest | null>;
-  list(filters: { status?: string; limit: number; offset: number }): Promise<{ rows: ExportRequest[]; total: number }>;
-  updateStatus(id: string, status: string, downloadUrl?: string): Promise<void>;
+  list(filters: {
+    status?: ExportStatus;
+    limit: number;
+    offset: number;
+  }): Promise<{ rows: ExportRequest[]; total: number }>;
+  updateStatus(id: string, status: ExportStatus, downloadUrl?: string): Promise<void>;
 }
 
 export class DrizzleExportRepository implements IExportRepository {
@@ -28,7 +32,7 @@ export class DrizzleExportRepository implements IExportRepository {
   }
 
   async list(filters: {
-    status?: string;
+    status?: ExportStatus;
     limit: number;
     offset: number;
   }): Promise<{ rows: ExportRequest[]; total: number }> {
@@ -51,7 +55,7 @@ export class DrizzleExportRepository implements IExportRepository {
     };
   }
 
-  async updateStatus(id: string, status: string, downloadUrl?: string): Promise<void> {
+  async updateStatus(id: string, status: ExportStatus, downloadUrl?: string): Promise<void> {
     await this.db
       .update(accountExportRequests)
       .set({
@@ -68,7 +72,7 @@ function toExportRequest(row: typeof accountExportRequests.$inferSelect): Export
     id: row.id,
     tenantId: row.tenantId,
     requestedBy: row.requestedBy,
-    status: row.status,
+    status: row.status as ExportStatus,
     format: row.format,
     downloadUrl: row.downloadUrl,
     createdAt: row.createdAt,

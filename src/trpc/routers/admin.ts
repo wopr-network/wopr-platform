@@ -1808,7 +1808,7 @@ export const adminRouter = router({
   complianceExportRequests: adminProcedure
     .input(
       z.object({
-        status: z.string().optional(),
+        status: z.enum(["pending", "processing", "completed", "failed"]).optional(),
         limit: z.number().int().min(1).max(100).default(25),
         offset: z.number().int().min(0).default(0),
       }),
@@ -1831,7 +1831,7 @@ export const adminRouter = router({
       if (!store) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Export store not initialized" });
       const adminUserId = ctx.user?.id ?? "unknown";
       const request = await store.create(input.tenantId, adminUserId);
-      deps()
+      void deps()
         .getAuditLog()
         .log({
           action: "compliance.triggerExport",

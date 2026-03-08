@@ -1,18 +1,18 @@
 import crypto from "node:crypto";
 import type { IExportRepository } from "./export-repository.js";
-import type { ExportRequest } from "./export-repository-types.js";
+import type { ExportRequest, ExportStatus } from "./export-repository-types.js";
 
-export type { ExportRequest } from "./export-repository-types.js";
+export type { ExportRequest, ExportStatus } from "./export-repository-types.js";
 
 export interface IAccountExportStore {
   create(tenantId: string, requestedBy: string, format?: string): Promise<ExportRequest>;
   getById(id: string): Promise<ExportRequest | null>;
   list(filters: {
-    status?: string;
+    status?: ExportStatus;
     limit: number;
     offset: number;
   }): Promise<{ requests: ExportRequest[]; total: number }>;
-  updateStatus(id: string, status: string, downloadUrl?: string): Promise<void>;
+  updateStatus(id: string, status: ExportStatus, downloadUrl?: string): Promise<void>;
 }
 
 export class AccountExportStore implements IAccountExportStore {
@@ -31,7 +31,7 @@ export class AccountExportStore implements IAccountExportStore {
   }
 
   async list(filters: {
-    status?: string;
+    status?: ExportStatus;
     limit: number;
     offset: number;
   }): Promise<{ requests: ExportRequest[]; total: number }> {
@@ -39,7 +39,7 @@ export class AccountExportStore implements IAccountExportStore {
     return { requests: result.rows, total: result.total };
   }
 
-  async updateStatus(id: string, status: string, downloadUrl?: string): Promise<void> {
+  async updateStatus(id: string, status: ExportStatus, downloadUrl?: string): Promise<void> {
     return this.repo.updateStatus(id, status, downloadUrl);
   }
 }

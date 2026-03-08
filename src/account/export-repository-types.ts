@@ -1,3 +1,5 @@
+export type ExportStatus = "pending" | "processing" | "completed" | "failed";
+
 export interface InsertExportRequest {
   id: string;
   tenantId: string;
@@ -10,7 +12,7 @@ export interface ExportRequest {
   id: string;
   tenantId: string;
   requestedBy: string;
-  status: string;
+  status: ExportStatus;
   format: string;
   downloadUrl: string | null;
   createdAt: string;
