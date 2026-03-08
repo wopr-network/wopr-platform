@@ -294,6 +294,59 @@ describe("BulkOperationsStore", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // bulkGrant — email notification
+  // ---------------------------------------------------------------------------
+
+  describe("bulkGrant email notifications", () => {
+    it("sends email notification when notifyByEmail is true", async () => {
+      const notificationService = {
+        notifyCreditsGranted: vi.fn(),
+        notifyAdminSuspended: vi.fn(),
+        notifyAdminReactivated: vi.fn(),
+      };
+      const bulkRepo = new DrizzleBulkOperationsRepository(db);
+      const storeWithNotify = new BulkOperationsStore(
+        bulkRepo,
+        creditStore,
+        tenantStatusStore,
+        auditLog,
+        notificationService,
+      );
+      await storeWithNotify.bulkGrant(
+        { tenantIds: ["tenant-1"], amountCents: 500, reason: "Compensation", notifyByEmail: true },
+        "admin",
+      );
+      expect(notificationService.notifyCreditsGranted).toHaveBeenCalledWith(
+        "tenant-1",
+        "alice@test.com",
+        "$5.00",
+        "Compensation",
+      );
+    });
+
+    it("does NOT send email when notifyByEmail is false", async () => {
+      const notificationService = {
+        notifyCreditsGranted: vi.fn(),
+        notifyAdminSuspended: vi.fn(),
+        notifyAdminReactivated: vi.fn(),
+      };
+      const bulkRepo = new DrizzleBulkOperationsRepository(db);
+      const storeWithNotify = new BulkOperationsStore(
+        bulkRepo,
+        creditStore,
+        tenantStatusStore,
+        auditLog,
+        notificationService,
+      );
+      await storeWithNotify.bulkGrant(
+        { tenantIds: ["tenant-1"], amountCents: 500, reason: "test", notifyByEmail: false },
+        "admin",
+      );
+      expect(notificationService.notifyCreditsGranted).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // bulkSuspend
   // ---------------------------------------------------------------------------
 
@@ -349,6 +402,57 @@ describe("BulkOperationsStore", () => {
       );
       expect(result.succeeded).toBe(1);
       expect(result.failed).toBe(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // bulkSuspend — email notification
+  // ---------------------------------------------------------------------------
+
+  describe("bulkSuspend email notifications", () => {
+    it("sends email notification when notifyByEmail is true", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      const notificationService = {
+        notifyCreditsGranted: vi.fn(),
+        notifyAdminSuspended: vi.fn(),
+        notifyAdminReactivated: vi.fn(),
+      };
+      const bulkRepo = new DrizzleBulkOperationsRepository(db);
+      const storeWithNotify = new BulkOperationsStore(
+        bulkRepo,
+        creditStore,
+        tenantStatusStore,
+        auditLog,
+        notificationService,
+      );
+      await storeWithNotify.bulkSuspend(
+        { tenantIds: ["tenant-1"], reason: "Policy violation", notifyByEmail: true },
+        "admin",
+      );
+      expect(notificationService.notifyAdminSuspended).toHaveBeenCalledWith(
+        "tenant-1",
+        "alice@test.com",
+        "Policy violation",
+      );
+    });
+
+    it("does NOT send email when notifyByEmail is false", async () => {
+      await tenantStatusStore.ensureExists("tenant-1");
+      const notificationService = {
+        notifyCreditsGranted: vi.fn(),
+        notifyAdminSuspended: vi.fn(),
+        notifyAdminReactivated: vi.fn(),
+      };
+      const bulkRepo = new DrizzleBulkOperationsRepository(db);
+      const storeWithNotify = new BulkOperationsStore(
+        bulkRepo,
+        creditStore,
+        tenantStatusStore,
+        auditLog,
+        notificationService,
+      );
+      await storeWithNotify.bulkSuspend({ tenantIds: ["tenant-1"], reason: "test", notifyByEmail: false }, "admin");
+      expect(notificationService.notifyAdminSuspended).not.toHaveBeenCalled();
     });
   });
 
