@@ -20,6 +20,7 @@ export const creditTransactions = pgTable(
     attributedUserId: text("attributed_user_id"), // nullable — null for system/bot charges
     createdAt: text("created_at").notNull().default(sql`(now())`),
     expiresAt: text("expires_at"), // nullable — null means never expires
+    stripeFingerprint: text("stripe_fingerprint"),
   },
   (table) => [
     index("idx_credit_tx_tenant").on(table.tenantId),
@@ -28,6 +29,7 @@ export const creditTransactions = pgTable(
     index("idx_credit_tx_created").on(table.createdAt),
     index("idx_credit_tx_tenant_created").on(table.tenantId, table.createdAt),
     index("idx_credit_tx_expires").on(table.expiresAt),
+    index("idx_credit_tx_fingerprint").on(table.stripeFingerprint),
   ],
 );
 
