@@ -357,9 +357,25 @@ fleetRoutes.post(
 
       // Register bot in billing system for lifecycle tracking
       try {
-        getDeps().botBilling.registerBot(profile.id, parsed.data.tenantId, parsed.data.name);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("registerBot timeout")), 5000);
+        });
+        try {
+          await Promise.race([
+            getDeps().botBilling.registerBot(profile.id, parsed.data.tenantId, parsed.data.name),
+            timeout,
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
       } catch (regErr) {
-        logger.warn("Bot billing registration failed (non-fatal)", { botId: profile.id, err: regErr });
+        logger.warn("Bot billing registration failed (non-fatal)", {
+          botId: profile.id,
+          tenantId: parsed.data.tenantId,
+          botName: parsed.data.name,
+          err: regErr,
+        });
       }
 
       return c.json(profile, 201);

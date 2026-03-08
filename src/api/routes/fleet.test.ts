@@ -202,7 +202,7 @@ describe("fleet routes", () => {
     setFleetDeps({
       creditLedger: creditLedgerMock as never,
       botBilling: {
-        registerBot: vi.fn(),
+        registerBot: vi.fn().mockResolvedValue(undefined),
         getActiveBotCount: vi.fn().mockResolvedValue(0),
         suspendBot: vi.fn(),
         suspendAllForTenant: vi.fn().mockResolvedValue([]),
@@ -388,6 +388,43 @@ describe("fleet routes", () => {
       });
 
       expect(res.status).toBe(500);
+    });
+
+    it("returns 201 even when billing registration rejects", async () => {
+      fleetMock.create.mockResolvedValue(mockProfile);
+      const registerBotMock = vi.fn().mockRejectedValueOnce(new Error("billing unavailable"));
+      setFleetDeps({
+        creditLedger: creditLedgerMock as never,
+        botBilling: {
+          registerBot: registerBotMock,
+          getActiveBotCount: vi.fn().mockResolvedValue(0),
+          suspendBot: vi.fn(),
+          suspendAllForTenant: vi.fn().mockResolvedValue([]),
+          reactivateBot: vi.fn(),
+          checkReactivation: vi.fn().mockResolvedValue([]),
+          destroyBot: vi.fn(),
+          destroyExpiredBots: vi.fn().mockResolvedValue([]),
+          getBotBilling: vi.fn().mockResolvedValue(null),
+          listForTenant: vi.fn().mockResolvedValue([]),
+          getStorageTier: vi.fn().mockResolvedValue(null),
+          setStorageTier: vi.fn(),
+          getStorageTierCostsForTenant: vi.fn().mockResolvedValue(0),
+        },
+        emailVerifier: { isVerified: vi.fn().mockResolvedValue(true) },
+      });
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          name: "billing-fail-bot",
+          tenantId: "user-123",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(registerBotMock).toHaveBeenCalledWith(mockProfile.id, "user-123", "billing-fail-bot");
     });
 
     it("returns 402 when tenant has zero credit balance", async () => {
