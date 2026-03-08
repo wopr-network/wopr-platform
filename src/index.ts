@@ -58,7 +58,6 @@ import {
   getSetupSessionRepo,
   getSystemResourceMonitor,
   getTenantAddonRepo,
-  getWoprClient,
   initFleet,
 } from "./fleet/services.js";
 import { DrizzleSpendingCapStore } from "./fleet/spending-cap-repository.js";
@@ -1104,8 +1103,6 @@ if (process.env.NODE_ENV !== "test") {
 
     // Shutdown handlers are registered after server creation (below)
 
-    // Wire chat deps — delegates to live WOPR daemon
-    setChatDeps({ backend: new WoprChatBackend(getWoprClient(), getDaemonManager()) });
     if (onboardingCfg.enabled) {
       getDaemonManager()
         .start()
@@ -1121,8 +1118,11 @@ if (process.env.NODE_ENV !== "test") {
       process.on("SIGTERM", shutdownDaemon);
       process.on("SIGINT", shutdownDaemon);
       logger.info("[onboarding] WOPR daemon startup initiated");
+      // Wire chat deps after daemon startup is initiated so early requests get isReady()=false
+      setChatDeps({ backend: new WoprChatBackend(getOnboardingService(), getDaemonManager()) });
     } else {
       logger.info("[onboarding] WOPR daemon disabled (ONBOARDING_ENABLED=false)");
+      setChatDeps({ backend: new WoprChatBackend(getOnboardingService(), getDaemonManager()) });
     }
   }
 

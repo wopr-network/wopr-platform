@@ -1,16 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IDaemonManager } from "../onboarding/daemon-manager.js";
-import type { IWoprClient } from "../onboarding/wopr-client.js";
+import type { OnboardingService } from "../onboarding/onboarding-service.js";
 import type { ChatEvent } from "./types.js";
 import { WoprChatBackend } from "./wopr-chat-backend.js";
 
-function mockClient(response = "Hello from WOPR"): IWoprClient {
+function mockClient(response = "Hello from WOPR"): Pick<OnboardingService, "inject"> {
   return {
-    createSession: vi.fn().mockResolvedValue(undefined),
-    getSessionHistory: vi.fn().mockResolvedValue([]),
     inject: vi.fn().mockResolvedValue(response),
-    deleteSession: vi.fn().mockResolvedValue(undefined),
-    healthCheck: vi.fn().mockResolvedValue(true),
   };
 }
 
@@ -45,14 +41,14 @@ describe("WoprChatBackend", () => {
     expect(events).toEqual([{ type: "error", message: "WOPR daemon is not ready" }, { type: "done" }]);
   });
 
-  it("emits error when client.inject throws", async () => {
+  it("emits generic error when client.inject throws", async () => {
     const client = mockClient();
     (client.inject as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("connection refused"));
     const backend = new WoprChatBackend(client, mockDaemon());
 
     const events = await collectEvents(backend, "sess-1", "hi");
 
-    expect(events).toEqual([{ type: "error", message: "connection refused" }, { type: "done" }]);
+    expect(events).toEqual([{ type: "error", message: "An error occurred" }, { type: "done" }]);
   });
 
   it("forwards empty message to WOPR instance", async () => {

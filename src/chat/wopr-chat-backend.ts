@@ -1,14 +1,16 @@
+import { logger } from "../config/logger.js";
 import type { IDaemonManager } from "../onboarding/daemon-manager.js";
-import type { IWoprClient } from "../onboarding/wopr-client.js";
+import type { OnboardingService } from "../onboarding/onboarding-service.js";
 import type { IChatBackend } from "./chat-backend.js";
 import type { ChatEvent } from "./types.js";
 
 /**
- * Chat backend that delegates to a live WOPR instance via IWoprClient.inject().
+ * Chat backend that delegates to a live WOPR instance via OnboardingService.inject(),
+ * which enforces session budgets, records usage, and uses the correct WOPR session name.
  */
 export class WoprChatBackend implements IChatBackend {
   constructor(
-    private readonly client: Pick<IWoprClient, "inject">,
+    private readonly onboardingService: Pick<OnboardingService, "inject">,
     private readonly daemon: Pick<IDaemonManager, "isReady">,
   ) {}
 
@@ -20,11 +22,13 @@ export class WoprChatBackend implements IChatBackend {
     }
 
     try {
-      const response = await this.client.inject(sessionId, message, { from: "user" });
-      emit({ type: "text", delta: response });
+      const response = await this.onboardingService.inject(sessionId, message, { from: "user" });
+      emit({ type: "text", delta: String(response) });
     } catch (err) {
-      emit({ type: "error", message: err instanceof Error ? err.message : String(err) });
+      logger.error("[chat] WoprChatBackend inject failed", { err, sessionId });
+      emit({ type: "error", message: "An error occurred" });
+    } finally {
+      emit({ type: "done" });
     }
-    emit({ type: "done" });
   }
 }
