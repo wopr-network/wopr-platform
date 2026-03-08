@@ -4,6 +4,15 @@ import { gpuAllocations } from "../db/schema/index.js";
 
 export type AllocationPriority = "low" | "normal" | "high";
 
+const VALID_PRIORITIES: AllocationPriority[] = ["low", "normal", "high"];
+
+function parseAllocationPriority(value: unknown): AllocationPriority {
+  if (typeof value === "string" && (VALID_PRIORITIES as string[]).includes(value)) {
+    return value as AllocationPriority;
+  }
+  return "normal";
+}
+
 export interface GpuAllocation {
   id: string;
   gpuNodeId: string;
@@ -28,7 +37,7 @@ function toAllocation(row: typeof gpuAllocations.$inferSelect): GpuAllocation {
     gpuNodeId: row.gpuNodeId,
     tenantId: row.tenantId,
     botInstanceId: row.botInstanceId ?? null,
-    priority: (row.priority as AllocationPriority) ?? "normal",
+    priority: parseAllocationPriority(row.priority),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -76,6 +85,7 @@ export class DrizzleGpuAllocationRepository implements IGpuAllocationRepository 
         },
       })
       .returning();
+    if (!rows[0]) throw new Error("GPU allocation upsert returned no rows");
     return toAllocation(rows[0]);
   }
 

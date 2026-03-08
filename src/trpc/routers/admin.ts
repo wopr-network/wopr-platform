@@ -1752,6 +1752,6 @@ export const adminRouter = router({
       const repo = deps().getGpuConfigurationRepo?.();
       if (!repo)
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "GPU configuration repo not initialized" });
-      return repo.upsert({ ...input, updatedAt: 0 });
+      return repo.upsert(input);
     }),
 });

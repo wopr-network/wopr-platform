@@ -7,7 +7,7 @@ describe("IGpuConfigurationRepository", () => {
     return {
       list: vi.fn(async () => [...store.values()]),
       getByNodeId: vi.fn(async (gpuNodeId: string) => store.get(gpuNodeId) ?? null),
-      upsert: vi.fn(async (config: GpuConfiguration) => {
+      upsert: vi.fn(async (config: Omit<GpuConfiguration, "updatedAt">) => {
         const now = Math.floor(Date.now() / 1000);
         const result: GpuConfiguration = { ...config, updatedAt: now };
         store.set(config.gpuNodeId, result);
@@ -24,7 +24,6 @@ describe("IGpuConfigurationRepository", () => {
       modelAssignments: ["whisper-large-v3"],
       maxConcurrency: 2,
       notes: null,
-      updatedAt: 0,
     });
     expect(config.gpuNodeId).toBe("gpu-1");
     const all = await repo.list();
@@ -45,7 +44,6 @@ describe("IGpuConfigurationRepository", () => {
       modelAssignments: ["whisper-large-v3"],
       maxConcurrency: 2,
       notes: null,
-      updatedAt: 0,
     });
     const updated = await repo.upsert({
       gpuNodeId: "gpu-1",
@@ -53,7 +51,6 @@ describe("IGpuConfigurationRepository", () => {
       modelAssignments: ["whisper-large-v3", "piper-en"],
       maxConcurrency: 4,
       notes: "upgraded",
-      updatedAt: 0,
     });
     expect(updated.memoryLimitMib).toBe(16384);
     expect(updated.maxConcurrency).toBe(4);

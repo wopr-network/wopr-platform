@@ -14,14 +14,21 @@ export interface GpuConfiguration {
 export interface IGpuConfigurationRepository {
   list(): Promise<GpuConfiguration[]>;
   getByNodeId(gpuNodeId: string): Promise<GpuConfiguration | null>;
-  upsert(config: GpuConfiguration): Promise<GpuConfiguration>;
+  upsert(config: Omit<GpuConfiguration, "updatedAt">): Promise<GpuConfiguration>;
 }
 
 function toConfiguration(row: typeof gpuConfigurations.$inferSelect): GpuConfiguration {
   return {
     gpuNodeId: row.gpuNodeId,
     memoryLimitMib: row.memoryLimitMib ?? null,
-    modelAssignments: row.modelAssignments ? (JSON.parse(row.modelAssignments) as string[]) : [],
+    modelAssignments: (() => {
+      if (!row.modelAssignments) return [];
+      try {
+        return JSON.parse(row.modelAssignments) as string[];
+      } catch {
+        return [];
+      }
+    })(),
     maxConcurrency: row.maxConcurrency,
     notes: row.notes ?? null,
     updatedAt: row.updatedAt,
@@ -41,7 +48,7 @@ export class DrizzleGpuConfigurationRepository implements IGpuConfigurationRepos
     return rows[0] ? toConfiguration(rows[0]) : null;
   }
 
-  async upsert(config: GpuConfiguration): Promise<GpuConfiguration> {
+  async upsert(config: Omit<GpuConfiguration, "updatedAt">): Promise<GpuConfiguration> {
     const now = Math.floor(Date.now() / 1000);
     const rows = await this.db
       .insert(gpuConfigurations)
@@ -64,6 +71,7 @@ export class DrizzleGpuConfigurationRepository implements IGpuConfigurationRepos
         },
       })
       .returning();
+    if (!rows[0]) throw new Error("GPU configuration upsert returned no rows");
     return toConfiguration(rows[0]);
   }
 }
