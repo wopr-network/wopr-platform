@@ -216,6 +216,10 @@ app.post("/api/auth/reset-password", async (c, next) => {
   return next();
 });
 
+// Login history — must be mounted BEFORE the better-auth catch-all so Hono
+// matches this specific path before the /api/auth/* wildcard (WOP-1974).
+app.route("/api/auth/login-history", loginHistoryRoutes);
+
 // better-auth handler — serves /api/auth/* (signup, login, session, etc.)
 // Lazily initialized to avoid opening DB at import time.
 //
@@ -350,7 +354,6 @@ app.route("/api/channels", channelValidateRoutes);
 app.route("/api/tenant-keys", tenantKeyRoutes);
 app.route("/api/v1/pricing", publicPricingRoutes);
 app.route("/api/activity", activityRoutes);
-app.route("/api/auth/login-history", loginHistoryRoutes);
 app.route("/api/fleet/resources", fleetResourceRoutes);
 app.route("/api/marketplace", marketplaceRoutes);
 app.route("/api/chat/setup", setupRoutes);
