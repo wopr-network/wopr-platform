@@ -55,6 +55,9 @@ jobs:
 
   unit-test:
     runs-on: [self-hosted, Linux, X64]
+    concurrency:
+      group: unit-test
+      cancel-in-progress: false
     permissions:
       contents: read
       checks: write
