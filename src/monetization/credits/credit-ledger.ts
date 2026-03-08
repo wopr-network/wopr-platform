@@ -22,7 +22,7 @@
  */
 
 import crypto from "node:crypto";
-import { and, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
 import { Credit } from "../credit.js";
@@ -371,7 +371,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
       })
       .from(creditTransactions)
-      .where(and(eq(creditTransactions.tenantId, tenantId), lt(creditTransactions.amount, Credit.ZERO)));
+      .where(and(eq(creditTransactions.tenantId, tenantId), sql`${creditTransactions.amount} < 0`));
 
     const raw = BigInt(String(rows[0]?.totalRaw ?? 0));
     if (raw > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -390,7 +390,7 @@ export class DrizzleCreditLedger implements ICreditLedger {
         totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
       })
       .from(creditTransactions)
-      .where(and(inArray(creditTransactions.tenantId, tenantIds), lt(creditTransactions.amount, Credit.ZERO)))
+      .where(and(inArray(creditTransactions.tenantId, tenantIds), sql`${creditTransactions.amount} < 0`))
       .groupBy(creditTransactions.tenantId);
 
     const result = new Map<string, Credit>();
