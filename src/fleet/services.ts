@@ -3,6 +3,8 @@ import type { IDeletionExecutorRepository } from "../account/deletion-executor-r
 import { DrizzleDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
 import type { IDeletionRepository } from "../account/deletion-repository.js";
 import { DrizzleDeletionRepository } from "../account/deletion-repository.js";
+import type { IExportRepository } from "../account/export-repository.js";
+import { DrizzleExportRepository } from "../account/export-repository.js";
 import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { AdminAuditLog } from "../admin/audit-log.js";
 import type { IBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
@@ -774,6 +776,7 @@ export function getVpsRepo(): IVpsRepository {
 let _deletionRepo: IDeletionRepository | null = null;
 let _deletionExecutorRepo: IDeletionExecutorRepository | null = null;
 let _credentialRepo: ICredentialRepository | null = null;
+let _exportRepo: IExportRepository | null = null;
 
 export function getDeletionRepo(): IDeletionRepository {
   if (!_deletionRepo) {
@@ -787,6 +790,13 @@ export function getDeletionExecutorRepo(): IDeletionExecutorRepository {
     _deletionExecutorRepo = new DrizzleDeletionExecutorRepository(getDb(), getPool());
   }
   return _deletionExecutorRepo;
+}
+
+export function getExportRepo(): IExportRepository {
+  if (!_exportRepo) {
+    _exportRepo = new DrizzleExportRepository(getDb());
+  }
+  return _exportRepo;
 }
 
 export function getCredentialRepo(): ICredentialRepository {
@@ -1195,6 +1205,7 @@ export function _resetForTest(): void {
   _deletionRepo = null;
   _deletionExecutorRepo = null;
   _credentialRepo = null;
+  _exportRepo = null;
   _tenantAddonRepo = undefined;
   _systemResourceMonitor = null;
   _backupVerifier = null;

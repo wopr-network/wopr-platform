@@ -8,7 +8,7 @@
  */
 
 import type { AdapterCapability, AdapterResult, ProviderAdapter } from "../adapters/types.js";
-import { Credit } from "../credit.js";
+import type { Credit } from "../credit.js";
 import type { ProviderRegistry } from "./provider-registry.js";
 import type { MarginRecord, ModelProviderEntry, RoutingDecision } from "./types.js";
 import { NoProviderAvailableError } from "./types.js";

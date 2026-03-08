@@ -6,6 +6,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import type { IAccountExportStore } from "../../account/export-store.js";
 import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { IBulkOperationsStore } from "../../admin/bulk/bulk-operations-store.js";
@@ -67,6 +68,7 @@ export interface AdminRouterDeps {
   getAffiliateFraudAdminRepo?: () => IAffiliateFraudAdminRepository;
   getGpuAllocationRepo?: () => IGpuAllocationRepository;
   getGpuConfigurationRepo?: () => IGpuConfigurationRepository;
+  getExportStore?: () => IAccountExportStore;
 }
 
 let _deps: AdminRouterDeps | null = null;
@@ -1801,5 +1803,43 @@ export const adminRouter = router({
           });
         throw err;
       }
+    }),
+
+  complianceExportRequests: adminProcedure
+    .input(
+      z.object({
+        status: z.string().optional(),
+        limit: z.number().int().min(1).max(100).default(25),
+        offset: z.number().int().min(0).default(0),
+      }),
+    )
+    .query(async ({ input }) => {
+      const store = deps().getExportStore?.();
+      if (!store) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Export store not initialized" });
+      return store.list({ status: input.status, limit: input.limit, offset: input.offset });
+    }),
+
+  complianceTriggerExport: adminProcedure
+    .input(
+      z.object({
+        tenantId: z.string().min(1).max(256),
+        reason: z.string().min(1).max(1000),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const store = deps().getExportStore?.();
+      if (!store) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Export store not initialized" });
+      const adminUserId = ctx.user?.id ?? "unknown";
+      const request = await store.create(input.tenantId, adminUserId);
+      deps()
+        .getAuditLog()
+        .log({
+          action: "compliance.export.triggered",
+          adminUser: adminUserId,
+          category: "support",
+          targetTenant: input.tenantId,
+          details: { requestId: request.id, reason: input.reason },
+        });
+      return request;
     }),
 });
