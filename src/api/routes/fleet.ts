@@ -445,6 +445,7 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
     Promise.resolve()
       .then(async () => {
         const repo = getRecoveryOrchestrator();
+        if (!repo) return;
         const events = await repo.listEvents();
         for (const e of events) {
           try {

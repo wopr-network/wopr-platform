@@ -155,15 +155,6 @@ vi.mock("../../monetization/credits/credit-ledger.js", () => {
   };
 });
 
-// Mock services singletons to avoid DB connection at module load time
-vi.mock("../../fleet/services.js", () => {
-  return {
-    getRecoveryOrchestrator: vi.fn(),
-    getCommandBus: vi.fn().mockReturnValue(undefined),
-    getBotInstanceRepo: vi.fn().mockReturnValue(undefined),
-  };
-});
-
 // Mock proxy singleton to avoid real DNS resolution in tests
 vi.mock("../../proxy/singleton.js", () => {
   return {
@@ -180,9 +171,12 @@ vi.mock("../../proxy/singleton.js", () => {
 const mockGetNodeRepo = vi.fn((): INodeRepository => {
   throw new Error("DATABASE_URL environment variable is required");
 });
+// Mock services singletons to avoid DB connection at module load time (merged single vi.mock)
 vi.mock("../../fleet/services.js", () => ({
   getNodeRepo: () => mockGetNodeRepo(),
   getRecoveryOrchestrator: vi.fn().mockReturnValue(null),
+  getCommandBus: vi.fn().mockReturnValue(undefined),
+  getBotInstanceRepo: vi.fn().mockReturnValue(undefined),
 }));
 
 // Import AFTER mocks are set up
