@@ -54,10 +54,7 @@ jobs:
         run: pnpm build
 
   unit-test:
-    runs-on: [self-hosted, Linux, X64]
-    concurrency:
-      group: unit-test
-      cancel-in-progress: false
+    runs-on: [self-hosted, Linux, X64, test-runner]
     permissions:
       contents: read
       checks: write
@@ -142,11 +139,8 @@ jobs:
           if-no-files-found: ignore
 
   e2e-test:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, test-runner]
     needs: [build]
-    concurrency:
-      group: e2e-test
-      cancel-in-progress: false
     permissions:
       contents: read
     steps:
