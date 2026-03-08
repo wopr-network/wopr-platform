@@ -49,6 +49,7 @@ export * from "./rate-limit-entries.js";
 export * from "./rates.js";
 export * from "./recovery-events.js";
 export * from "./restore-log.js";
+export * from "./secret-audit-log.js";
 export * from "./security-settings.js";
 export * from "./session-usage.js";
 export * from "./setup-sessions.js";

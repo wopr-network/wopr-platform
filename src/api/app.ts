@@ -14,12 +14,14 @@ import {
 } from "../auth/index.js";
 import { logger } from "../config/logger.js";
 import {
+  getCredentialRepo,
   getDb,
   getEvidenceCollector,
   getMarketplacePluginRepo,
   getOnboardingScriptRepo,
   getOrgRepo,
   getPluginConfigRepo,
+  getSecretAuditRepo,
 } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
@@ -62,6 +64,7 @@ import { onboardingRoutes } from "./routes/onboarding.js";
 import { createOrgRoutes } from "./routes/orgs.js";
 import { publicPricingRoutes } from "./routes/public-pricing.js";
 import { quotaRoutes } from "./routes/quota.js";
+import { createSecretAuditRoutes } from "./routes/secret-audit.js";
 import { secretsRoutes } from "./routes/secrets.js";
 import { setupRoutes } from "./routes/setup.js";
 import { snapshotRoutes } from "./routes/snapshots.js";
@@ -299,6 +302,14 @@ app.route("/fleet", botPluginRoutes);
 app.route("/api/quota", quotaRoutes);
 app.route("/api/billing", billingRoutes);
 app.route("/api", secretsRoutes);
+// Secret audit routes (WOP-1975) — session-authed for dashboard UI
+// GET /api/secrets/:id/audit returns paginated access events for a credential.
+// Separate from secretsRoutes (bearer-token-scoped) because the dashboard UI
+// calls this with session cookies, not bearer tokens.
+app.route(
+  "/api/secrets",
+  createSecretAuditRoutes(getSecretAuditRepo, (id: string) => getCredentialRepo().getSummaryById(id)),
+);
 app.route("/api/instances/:id/snapshots", snapshotRoutes);
 app.route("/api/bots/:id/snapshots", botSnapshotRoutes);
 app.route("/api/instances/:id/friends", friendsRoutes);
