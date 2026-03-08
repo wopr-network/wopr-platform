@@ -356,17 +356,35 @@ export class BulkOperationsStore implements IBulkOperationsStore {
       return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
     };
 
-    // Pre-fetch all transaction histories in parallel to avoid N+1 queries.
+    // Pre-fetch all transaction histories in batches to avoid unbounded concurrency.
     const historyByTenant = new Map<string, Awaited<ReturnType<typeof this.creditStore.history>>>();
     if (enabledKeys.has("transaction_history")) {
-      await Promise.all(
-        rows.map(async (r) => {
-          if (r.tenantId == null) return;
-          // limit: 250 is the maximum supported by the credit ledger per single call.
-          const txns = await this.creditStore.history(String(r.tenantId), { limit: 250 });
-          historyByTenant.set(String(r.tenantId), txns);
-        }),
-      );
+      // Deduplicate tenant IDs — rows may contain duplicate tenants.
+      const tenantIds = [
+        ...new Set(
+          rows
+            .map((r) => r.tenantId)
+            .filter((id) => id != null)
+            .map(String),
+        ),
+      ];
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < tenantIds.length; i += BATCH_SIZE) {
+        const batch = tenantIds.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (tenantId) => {
+            try {
+              // limit: 250 is the maximum supported by the credit ledger per single call.
+              const txns = await this.creditStore.history(tenantId, { limit: 250 });
+              historyByTenant.set(tenantId, txns);
+            } catch (err) {
+              // Log and use empty history so a single failure doesn't abort the entire export.
+              console.error(`[bulk-export] failed to fetch history for tenant ${tenantId}:`, err);
+              historyByTenant.set(tenantId, []);
+            }
+          }),
+        );
+      }
     }
 
     const lines: string[] = [];
