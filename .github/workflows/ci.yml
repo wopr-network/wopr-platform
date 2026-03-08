@@ -55,6 +55,9 @@ jobs:
 
   unit-test:
     runs-on: [self-hosted, Linux, X64]
+    concurrency:
+      group: unit-test
+      cancel-in-progress: false
     permissions:
       contents: read
       checks: write
@@ -141,6 +144,9 @@ jobs:
   e2e-test:
     runs-on: [self-hosted, Linux, X64]
     needs: [build]
+    concurrency:
+      group: e2e-test
+      cancel-in-progress: false
     permissions:
       contents: read
     steps:
