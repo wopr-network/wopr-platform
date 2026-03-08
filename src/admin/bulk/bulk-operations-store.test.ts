@@ -469,16 +469,18 @@ describe("BulkOperationsStore", () => {
       );
       const lines = result.csv.split("\n");
       expect(lines[0]).toBe("tenant_id,transaction_history");
-      // Data row should contain JSON-serialized transaction array
-      const dataLine = lines[1];
-      expect(dataLine).toContain("tenant-1");
-      // The second field is CSV-escaped JSON
-      const jsonPart = dataLine.split(",").slice(1).join(",").replace(/^"|"$/g, "").replace(/""/g, '"');
-      const parsed = JSON.parse(jsonPart);
-      expect(parsed).toHaveLength(1);
-      expect(parsed[0].type).toBe("signup_grant");
-      expect(parsed[0].amount_cents).toBe(500);
-      expect(parsed[0].created_at).toBe("2026-01-01T00:00:00.000Z");
+      // Data row should contain JSON-serialized transaction array.
+      // Assert on the serialized value directly rather than parsing the CSV field,
+      // to avoid brittle manual quote-stripping that breaks on JSON values with commas.
+      const expectedJson = JSON.stringify([
+        {
+          type: "signup_grant",
+          amount_cents: 500,
+          description: "Welcome grant",
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ]);
+      expect(result.csv).toContain(expectedJson.replace(/"/g, '""'));
     });
 
     it("produces empty JSON array for tenant with no transactions", async () => {

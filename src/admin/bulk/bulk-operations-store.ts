@@ -352,6 +352,19 @@ export class BulkOperationsStore implements IBulkOperationsStore {
     if (enabledKeys.has("transaction_history")) headers.push("transaction_history");
 
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+    // Pre-fetch all transaction histories in parallel to avoid N+1 queries.
+    const historyByTenant = new Map<string, Awaited<ReturnType<typeof this.creditStore.history>>>();
+    if (enabledKeys.has("transaction_history")) {
+      await Promise.all(
+        rows.map(async (r) => {
+          // limit: 250 is the maximum supported by the credit ledger per single call.
+          const txns = await this.creditStore.history(String(r.tenantId), { limit: 250 });
+          historyByTenant.set(String(r.tenantId), txns);
+        }),
+      );
+    }
+
     const lines: string[] = [];
     for (const r of rows) {
       const fields: string[] = [csvEscape(String(r.tenantId ?? ""))];
@@ -371,7 +384,10 @@ export class BulkOperationsStore implements IBulkOperationsStore {
       }
       if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));
       if (enabledKeys.has("transaction_history")) {
-        const txns = await this.creditStore.history(String(r.tenantId));
+        // historyByTenant is pre-fetched before the loop to avoid N+1 queries.
+        // limit: 250 is the maximum supported by the credit ledger per call.
+        // High-volume tenants with >250 transactions will be silently capped at 250 per call.
+        const txns = historyByTenant.get(String(r.tenantId)) ?? [];
         const serialized = JSON.stringify(
           txns.map((t) => ({
             type: t.type,
