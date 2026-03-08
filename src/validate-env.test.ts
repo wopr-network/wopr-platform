@@ -60,6 +60,24 @@ describe("validateRequiredEnvVars", () => {
     expect(() => validateRequiredEnvVars()).toThrow("at least 32 characters");
   });
 
+  it("throws when PLATFORM_ENCRYPTION_SECRET is placeholder REPLACE_ME", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "REPLACE_ME");
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    expect(() => validateRequiredEnvVars()).toThrow("real secret");
+  });
+
+  it("throws when PLATFORM_ENCRYPTION_SECRET is whitespace only", () => {
+    vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
+    vi.stubEnv("PLATFORM_ENCRYPTION_SECRET", "   ");
+    vi.stubEnv("DATABASE_URL", "postgresql://x");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a".repeat(32));
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3100");
+    expect(() => validateRequiredEnvVars()).toThrow("PLATFORM_ENCRYPTION_SECRET");
+  });
+
   it("warns (does not throw) when STRIPE_CREDIT_PRICE_* are missing", () => {
     vi.stubEnv("PLATFORM_SECRET", "a".repeat(32));
     vi.stubEnv("DATABASE_URL", "postgresql://x");
