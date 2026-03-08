@@ -424,7 +424,7 @@ describe("fleet routes", () => {
       });
 
       expect(res.status).toBe(201);
-      expect(registerBotMock).toHaveBeenCalled();
+      expect(registerBotMock).toHaveBeenCalledWith(mockProfile.id, "user-123", "billing-fail-bot");
     });
 
     it("returns 402 when tenant has zero credit balance", async () => {
