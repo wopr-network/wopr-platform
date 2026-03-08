@@ -28,6 +28,7 @@ function makeMockLedger(): ICreditLedger {
     expiredCredits: vi.fn().mockResolvedValue([]),
     memberUsage: vi.fn().mockResolvedValue([]),
     lifetimeSpend: vi.fn().mockResolvedValue(Credit.ZERO),
+    lifetimeSpendBatch: vi.fn().mockResolvedValue(new Map()),
   };
 }
 

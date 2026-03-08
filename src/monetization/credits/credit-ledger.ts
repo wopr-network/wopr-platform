@@ -22,7 +22,7 @@
  */
 
 import crypto from "node:crypto";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
 import { Credit } from "../credit.js";
@@ -124,6 +124,7 @@ export interface ICreditLedger {
   tenantsWithBalance(): Promise<Array<{ tenantId: string; balance: Credit }>>;
   memberUsage(tenantId: string): Promise<MemberUsageSummary[]>;
   lifetimeSpend(tenantId: string): Promise<Credit>;
+  lifetimeSpendBatch(tenantIds: string[]): Promise<Map<string, Credit>>;
 }
 
 /**
@@ -366,12 +367,35 @@ export class DrizzleCreditLedger implements ICreditLedger {
   async lifetimeSpend(tenantId: string): Promise<Credit> {
     const rows = await this.db
       .select({
-        totalRaw: sql<number>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
+        totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
       })
       .from(creditTransactions)
-      .where(and(eq(creditTransactions.tenantId, tenantId), sql`${creditTransactions.amount} < 0`));
+      .where(and(eq(creditTransactions.tenantId, tenantId), lt(creditTransactions.amount, Credit.ZERO)));
 
-    return Credit.fromRaw(Number(rows[0]?.totalRaw ?? 0));
+    return Credit.fromRaw(Number(String(rows[0]?.totalRaw ?? 0)));
+  }
+
+  /** Batch version of lifetimeSpend — single query for multiple tenants. */
+  async lifetimeSpendBatch(tenantIds: string[]): Promise<Map<string, Credit>> {
+    if (tenantIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        tenantId: creditTransactions.tenantId,
+        totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
+      })
+      .from(creditTransactions)
+      .where(and(inArray(creditTransactions.tenantId, tenantIds), lt(creditTransactions.amount, Credit.ZERO)))
+      .groupBy(creditTransactions.tenantId);
+
+    const result = new Map<string, Credit>();
+    for (const row of rows) {
+      result.set(row.tenantId, Credit.fromRaw(Number(String(row.totalRaw))));
+    }
+    // Fill zeros for tenants with no debit transactions
+    for (const id of tenantIds) {
+      if (!result.has(id)) result.set(id, Credit.ZERO);
+    }
+    return result;
   }
 
   /** Return expired credit grant transactions not yet processed by the expiry cron. */

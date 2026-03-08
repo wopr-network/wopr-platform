@@ -69,6 +69,7 @@ function createMocks() {
     memberUsage: vi.fn(),
     expiredCredits: vi.fn(),
     lifetimeSpend: vi.fn(),
+    lifetimeSpendBatch: vi.fn().mockResolvedValue(new Map()),
   };
 
   const replayGuard: IWebhookSeenRepository = {

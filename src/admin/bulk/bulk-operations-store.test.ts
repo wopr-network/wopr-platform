@@ -109,6 +109,9 @@ describe("BulkOperationsStore", () => {
       async lifetimeSpend(_tenantId: string) {
         return Credit.fromCents(0);
       },
+      async lifetimeSpendBatch(tenantIds: string[]) {
+        return new Map(tenantIds.map((id) => [id, Credit.fromCents(0)]));
+      },
     };
 
     tenantStatusStore = new TenantStatusStore(db);
@@ -561,6 +564,7 @@ describe("BulkOperationsStore", () => {
 
     it("lifetime_spend column shows cumulative spend not balance", async () => {
       creditStore.lifetimeSpend = async () => Credit.fromCents(4200);
+      creditStore.lifetimeSpendBatch = async (ids: string[]) => new Map(ids.map((id) => [id, Credit.fromCents(4200)]));
 
       const result = await store.bulkExport(
         {
