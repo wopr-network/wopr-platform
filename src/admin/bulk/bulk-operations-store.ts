@@ -349,6 +349,7 @@ export class BulkOperationsStore implements IBulkOperationsStore {
     if (enabledKeys.has("monthly_products")) headers.push("agent_count");
     if (enabledKeys.has("lifetime_spend")) headers.push("lifetime_spend_cents");
     if (enabledKeys.has("last_seen")) headers.push("last_seen");
+    if (enabledKeys.has("transaction_history")) headers.push("transaction_history");
 
     const csvEscape = (v: string): string => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const lines: string[] = [];
@@ -369,6 +370,18 @@ export class BulkOperationsStore implements IBulkOperationsStore {
         fields.push(String(spend));
       }
       if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));
+      if (enabledKeys.has("transaction_history")) {
+        const txns = await this.creditStore.history(String(r.tenantId));
+        const serialized = JSON.stringify(
+          txns.map((t) => ({
+            type: t.type,
+            amount_cents: t.amount.toCents(),
+            description: t.description,
+            created_at: t.createdAt,
+          })),
+        );
+        fields.push(csvEscape(serialized));
+      }
       lines.push(fields.join(","));
     }
 
