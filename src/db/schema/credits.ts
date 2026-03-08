@@ -29,7 +29,7 @@ export const creditTransactions = pgTable(
     index("idx_credit_tx_created").on(table.createdAt),
     index("idx_credit_tx_tenant_created").on(table.tenantId, table.createdAt),
     index("idx_credit_tx_expires").on(table.expiresAt),
-    index("idx_credit_tx_fingerprint").on(table.stripeFingerprint).where(sql`"stripe_fingerprint" IS NOT NULL`),
+    index("idx_credit_tx_fingerprint").on(table.stripeFingerprint).where(sql`${table.stripeFingerprint} IS NOT NULL`),
   ],
 );
 
