@@ -63,6 +63,7 @@ export default defineConfig({
     "./src/db/schema/rates.ts",
     "./src/db/schema/recovery-events.ts",
     "./src/db/schema/restore-log.ts",
+    "./src/db/schema/secret-audit-log.ts",
     "./src/db/schema/security-settings.ts",
     "./src/db/schema/snapshots.ts",
     "./src/db/schema/spending-limits.ts",

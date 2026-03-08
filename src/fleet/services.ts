@@ -74,6 +74,10 @@ import { SystemResourceMonitor } from "../observability/system-resources.js";
 import type { IOrgRepository } from "../org/drizzle-org-repository.js";
 import { DrizzleOrgRepository } from "../org/drizzle-org-repository.js";
 import { OrgService } from "../org/org-service.js";
+import {
+  DrizzleSecretAuditRepository,
+  type ISecretAuditRepository,
+} from "../security/credential-vault/audit-repository.js";
 import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
 import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
@@ -179,6 +183,9 @@ let _rateLimitRepo: IRateLimitRepository | null = null;
 
 // Circuit breaker repository
 let _circuitBreakerRepo: ICircuitBreakerRepository | null = null;
+
+// Secret audit repository
+let _secretAuditRepo: ISecretAuditRepository | null = null;
 
 // Infrastructure
 let _doClient: DOClient | null = null;
@@ -806,6 +813,13 @@ export function getCredentialRepo(): ICredentialRepository {
   return _credentialRepo;
 }
 
+export function getSecretAuditRepo(): ISecretAuditRepository {
+  if (!_secretAuditRepo) {
+    _secretAuditRepo = new DrizzleSecretAuditRepository(getDb());
+  }
+  return _secretAuditRepo;
+}
+
 // ---------------------------------------------------------------------------
 // Observability / backup singletons (WOP-929)
 // ---------------------------------------------------------------------------
@@ -1205,6 +1219,7 @@ export function _resetForTest(): void {
   _deletionRepo = null;
   _deletionExecutorRepo = null;
   _credentialRepo = null;
+  _secretAuditRepo = null;
   _exportRepo = null;
   _tenantAddonRepo = undefined;
   _systemResourceMonitor = null;

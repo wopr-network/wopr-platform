@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import type { AdminAuditLog } from "../../admin/audit-log.js";
 import { decrypt, encrypt, generateInstanceKey } from "../encryption.js";
 import type { EncryptedPayload } from "../types.js";
+import type { ISecretAuditRepository, SecretAuditEvent } from "./audit-repository.js";
 import type { ICredentialRepository } from "./credential-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -84,11 +85,37 @@ export class CredentialVaultStore implements ICredentialVaultStore {
   private readonly repo: ICredentialRepository;
   private readonly encryptionKey: Buffer;
   private readonly auditLog: AdminAuditLog | null;
+  private readonly secretAuditRepo: ISecretAuditRepository | null;
 
-  constructor(repo: ICredentialRepository, encryptionKey: Buffer, auditLog?: AdminAuditLog) {
+  constructor(
+    repo: ICredentialRepository,
+    encryptionKey: Buffer,
+    auditLog?: AdminAuditLog,
+    secretAuditRepo?: ISecretAuditRepository,
+  ) {
     this.repo = repo;
     this.encryptionKey = encryptionKey;
     this.auditLog = auditLog ?? null;
+    this.secretAuditRepo = secretAuditRepo ?? null;
+  }
+
+  private recordSecretAudit(
+    credentialId: string,
+    accessedBy: string,
+    action: "read" | "write" | "delete",
+    ip?: string | null,
+  ): void {
+    if (!this.secretAuditRepo) return;
+    const event: SecretAuditEvent = {
+      id: randomUUID(),
+      credentialId,
+      accessedAt: Date.now(),
+      accessedBy,
+      action,
+      ip: ip ?? null,
+    };
+    // Fire-and-forget — audit must never break primary operations
+    this.secretAuditRepo.insert(event).catch(() => {});
   }
 
   /** Create a new provider credential. Returns the record ID. */
@@ -112,6 +139,7 @@ export class CredentialVaultStore implements ICredentialVaultStore {
       provider: input.provider,
       keyName: input.keyName,
     });
+    this.recordSecretAudit(id, input.createdBy, "write");
 
     return id;
   }
@@ -186,6 +214,7 @@ export class CredentialVaultStore implements ICredentialVaultStore {
       credentialId: input.id,
       provider: existing.provider,
     });
+    this.recordSecretAudit(input.id, input.rotatedBy, "write");
 
     return true;
   }
@@ -201,6 +230,7 @@ export class CredentialVaultStore implements ICredentialVaultStore {
       credentialId: id,
       provider: existing.provider,
     });
+    this.recordSecretAudit(id, changedBy, "write");
 
     return true;
   }
@@ -222,6 +252,7 @@ export class CredentialVaultStore implements ICredentialVaultStore {
       provider: existing.provider,
       keyName: existing.keyName,
     });
+    this.recordSecretAudit(id, deletedBy, "delete");
 
     return true;
   }
