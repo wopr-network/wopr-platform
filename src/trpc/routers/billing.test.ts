@@ -149,6 +149,12 @@ function makeMockLedger(): ICreditLedger {
     async memberUsage(_tenantId: string) {
       return [];
     },
+    async lifetimeSpend(_tenantId: string) {
+      return Credit.fromCents(0);
+    },
+    async lifetimeSpendBatch(tenantIds: string[]) {
+      return new Map(tenantIds.map((id) => [id, Credit.fromCents(0)]));
+    },
   };
 }
 

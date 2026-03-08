@@ -50,6 +50,7 @@ function makeLedger(overrides: Partial<ICreditLedger> = {}): ICreditLedger {
     tenantsWithBalance: vi.fn().mockResolvedValue([]),
     memberUsage: vi.fn().mockResolvedValue([]),
     expiredCredits: vi.fn().mockResolvedValue([]),
+    lifetimeSpend: vi.fn().mockResolvedValue({ toCents: () => 0 }),
     ...overrides,
   };
 }

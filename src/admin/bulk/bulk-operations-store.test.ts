@@ -106,6 +106,12 @@ describe("BulkOperationsStore", () => {
       async memberUsage(_tenantId: string) {
         return [];
       },
+      async lifetimeSpend(_tenantId: string) {
+        return Credit.fromCents(0);
+      },
+      async lifetimeSpendBatch(tenantIds: string[]) {
+        return new Map(tenantIds.map((id) => [id, Credit.fromCents(0)]));
+      },
     };
 
     tenantStatusStore = new TenantStatusStore(db);
@@ -554,6 +560,30 @@ describe("BulkOperationsStore", () => {
       expect(result.csv).toContain(
         "tenant_id,name,email,status,role,credit_balance_cents,agent_count,lifetime_spend_cents,last_seen",
       );
+    });
+
+    it("lifetime_spend column shows cumulative spend not balance", async () => {
+      creditStore.lifetimeSpend = async () => Credit.fromCents(4200);
+      creditStore.lifetimeSpendBatch = async (ids: string[]) => new Map(ids.map((id) => [id, Credit.fromCents(4200)]));
+
+      const result = await store.bulkExport(
+        {
+          tenantIds: ["tenant-1"],
+          fields: [
+            { key: "account_info", enabled: false },
+            { key: "credit_balance", enabled: false },
+            { key: "monthly_products", enabled: false },
+            { key: "lifetime_spend", enabled: true },
+            { key: "last_seen", enabled: false },
+            { key: "transaction_history", enabled: false },
+          ],
+        },
+        "admin-1",
+      );
+
+      const lines = result.csv.split("\n");
+      expect(lines[0]).toBe("tenant_id,lifetime_spend_cents");
+      expect(lines[1]).toContain("4200");
     });
 
     it("includes transaction_history column when enabled", async () => {

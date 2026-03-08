@@ -49,6 +49,7 @@ function makeApp() {
     history: vi.fn(),
     tenantsWithBalance: vi.fn(),
     memberUsage: vi.fn(),
+    lifetimeSpend: vi.fn(),
   } as unknown as ICreditLedger;
   const app = createVerifyEmailRoutes({ pool, creditLedger });
   return { app, pool, creditLedger: creditLedger as unknown as { credit: ReturnType<typeof vi.fn> } };

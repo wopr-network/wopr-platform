@@ -92,6 +92,9 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
       hasReferenceId() { return Promise.resolve(false); },
       history() { return Promise.resolve([]); },
       tenantsWithBalance() { return Promise.resolve([]); },
+      expiredCredits() { return Promise.resolve([]); },
+      memberUsage() { return Promise.resolve([]); },
+      lifetimeSpend() { return Promise.resolve(Credit.ZERO); },
     };
     const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
     const { DrizzleUsageSummaryRepository } = await import("../../src/monetization/metering/drizzle-usage-summary-repository.js");

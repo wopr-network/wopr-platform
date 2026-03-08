@@ -419,6 +419,10 @@ export class BulkOperationsStore implements IBulkOperationsStore {
       }
     }
 
+    const tenantIdList = rows.map((r) => String(r.tenantId ?? ""));
+    const lifetimeSpendMap = enabledKeys.has("lifetime_spend")
+      ? await this.creditStore.lifetimeSpendBatch(tenantIdList)
+      : new Map<string, Credit>();
     const lines: string[] = [];
     for (const r of rows) {
       const fields: string[] = [csvEscape(String(r.tenantId ?? ""))];
@@ -433,8 +437,8 @@ export class BulkOperationsStore implements IBulkOperationsStore {
       if (enabledKeys.has("credit_balance")) fields.push(String(r.creditBalanceCents ?? 0));
       if (enabledKeys.has("monthly_products")) fields.push(String(r.agentCount ?? 0));
       if (enabledKeys.has("lifetime_spend")) {
-        const spend = await this.creditStore.balance(String(r.tenantId));
-        fields.push(String(spend));
+        const spend = lifetimeSpendMap.get(String(r.tenantId ?? "")) ?? Credit.ZERO;
+        fields.push(String(spend.toCents()));
       }
       if (enabledKeys.has("last_seen")) fields.push(String(r.lastSeen ?? ""));
       if (enabledKeys.has("transaction_history")) {

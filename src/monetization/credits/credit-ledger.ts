@@ -22,7 +22,7 @@
  */
 
 import crypto from "node:crypto";
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
 import { Credit } from "../credit.js";
@@ -123,6 +123,8 @@ export interface ICreditLedger {
   history(tenantId: string, opts?: HistoryOptions): Promise<CreditTransaction[]>;
   tenantsWithBalance(): Promise<Array<{ tenantId: string; balance: Credit }>>;
   memberUsage(tenantId: string): Promise<MemberUsageSummary[]>;
+  lifetimeSpend(tenantId: string): Promise<Credit>;
+  lifetimeSpendBatch(tenantIds: string[]): Promise<Map<string, Credit>>;
 }
 
 /**
@@ -359,6 +361,51 @@ export class DrizzleCreditLedger implements ICreditLedger {
         totalDebit: Credit.fromRaw(Number(r.totalDebitRaw)),
         transactionCount: r.transactionCount,
       }));
+  }
+
+  /** Sum of all debit transactions (absolute value) for a tenant. */
+  async lifetimeSpend(tenantId: string): Promise<Credit> {
+    const rows = await this.db
+      .select({
+        // raw SQL: Drizzle cannot express COALESCE(SUM(ABS(...))) with typed operators
+        totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
+      })
+      .from(creditTransactions)
+      .where(and(eq(creditTransactions.tenantId, tenantId), sql`${creditTransactions.amount} < 0`));
+
+    const raw = BigInt(String(rows[0]?.totalRaw ?? 0));
+    if (raw > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(`lifetimeSpend overflow: ${raw}`);
+    }
+    return Credit.fromRaw(Number(raw));
+  }
+
+  /** Batch version of lifetimeSpend — single query for multiple tenants. */
+  async lifetimeSpendBatch(tenantIds: string[]): Promise<Map<string, Credit>> {
+    if (tenantIds.length === 0) return new Map();
+    const rows = await this.db
+      .select({
+        tenantId: creditTransactions.tenantId,
+        // raw SQL: Drizzle cannot express COALESCE(SUM(ABS(...))) with typed operators
+        totalRaw: sql<string>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)`,
+      })
+      .from(creditTransactions)
+      .where(and(inArray(creditTransactions.tenantId, tenantIds), sql`${creditTransactions.amount} < 0`))
+      .groupBy(creditTransactions.tenantId);
+
+    const result = new Map<string, Credit>();
+    for (const row of rows) {
+      const raw = BigInt(String(row.totalRaw));
+      if (raw > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error(`lifetimeSpend overflow: ${raw}`);
+      }
+      result.set(row.tenantId, Credit.fromRaw(Number(raw)));
+    }
+    // Fill zeros for tenants with no debit transactions
+    for (const id of tenantIds) {
+      if (!result.has(id)) result.set(id, Credit.ZERO);
+    }
+    return result;
   }
 
   /** Return expired credit grant transactions not yet processed by the expiry cron. */
