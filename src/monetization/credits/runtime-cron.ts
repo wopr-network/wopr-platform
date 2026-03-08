@@ -173,6 +173,18 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
           await cfg.onCreditsExhausted(tenantId);
         }
 
+        // Suspend tenant when balance hits zero after full deduction (zero-crossing guard)
+        if (
+          !newBalance.greaterThan(Credit.ZERO) &&
+          balance.greaterThan(Credit.ZERO) &&
+          !result.suspended.includes(tenantId)
+        ) {
+          result.suspended.push(tenantId);
+          if (cfg.onSuspend) {
+            await cfg.onSuspend(tenantId);
+          }
+        }
+
         // Debit storage tier surcharges (if any)
         if (cfg.getStorageTierCosts) {
           const storageCost = await cfg.getStorageTierCosts(tenantId);
@@ -197,8 +209,10 @@ export async function runRuntimeDeductions(cfg: RuntimeCronConfig): Promise<Runt
                   `runtime-storage:${cfg.date}:${tenantId}`,
                 );
               }
-              result.suspended.push(tenantId);
-              if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+              if (!result.suspended.includes(tenantId)) {
+                result.suspended.push(tenantId);
+                if (cfg.onSuspend) await cfg.onSuspend(tenantId);
+              }
             }
           }
         }

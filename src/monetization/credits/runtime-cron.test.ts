@@ -222,6 +222,24 @@ describe("runRuntimeDeductions", () => {
     expect((await ledger.balance("tenant-1")).toCents()).toBe(0);
   });
 
+  it("suspends tenant when full deduction causes balance to drop to exactly 0", async () => {
+    // Balance = exactly 1 bot * DAILY_BOT_COST = 17 cents → full deduction → 0
+    await ledger.credit("tenant-1", Credit.fromCents(17), "purchase", "top-up");
+    const onSuspend = vi.fn();
+    const onCreditsExhausted = vi.fn();
+    const result = await runRuntimeDeductions({
+      ledger,
+      date: TODAY,
+      getActiveBotCount: async () => 1,
+      onSuspend,
+      onCreditsExhausted,
+    });
+    expect(result.suspended).toContain("tenant-1");
+    expect(onSuspend).toHaveBeenCalledWith("tenant-1");
+    expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
+    expect((await ledger.balance("tenant-1")).toCents()).toBe(0);
+  });
+
   it("fires onCreditsExhausted on partial deduction when balance hits 0", async () => {
     await ledger.credit("tenant-1", Credit.fromCents(10), "purchase", "top-up");
     const onCreditsExhausted = vi.fn();
@@ -260,6 +278,25 @@ describe("runRuntimeDeductions", () => {
     expect(result.processed).toBe(1);
     expect((await ledger.balance("tenant-1")).toCents()).toBe(0);
     expect(onCreditsExhausted).toHaveBeenCalledWith("tenant-1");
+  });
+
+  it("storage tier else-branch does not double-suspend when runtime already suspended", async () => {
+    // tenant has exactly 17 cents — runtime deduction (17 cents) brings balance to exactly 0,
+    // triggering the zero-crossing suspend in the runtime block.
+    // Storage cost (5 cents) then tries to suspend again via its else-branch (balance 0 < 5).
+    // The !result.suspended.includes(tenantId) guard must prevent onSuspend being called twice.
+    await ledger.credit("tenant-1", Credit.fromCents(17), "purchase", "top-up");
+    const onSuspend = vi.fn();
+    const result = await runRuntimeDeductions({
+      ledger,
+      date: TODAY,
+      getActiveBotCount: async () => 1,
+      getStorageTierCosts: async () => Credit.fromCents(5),
+      onSuspend,
+    });
+    expect(result.suspended).toContain("tenant-1");
+    expect(result.suspended.filter((id) => id === "tenant-1")).toHaveLength(1);
+    expect(onSuspend).toHaveBeenCalledTimes(1);
   });
 
   it("buildResourceTierCosts: deducts pro tier surcharge via getResourceTierCosts", async () => {
