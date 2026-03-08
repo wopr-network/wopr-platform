@@ -17,6 +17,7 @@ import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
 import { authenticateWebSocketUpgrade } from "./api/routes/ws-auth.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, timingSafeMapLookup } from "./auth/index.js";
+import { EchoChatBackend } from "./chat/chat-backend.js";
 import { WoprChatBackend } from "./chat/wopr-chat-backend.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
@@ -1122,7 +1123,7 @@ if (process.env.NODE_ENV !== "test") {
       setChatDeps({ backend: new WoprChatBackend(getOnboardingService(), getDaemonManager()) });
     } else {
       logger.info("[onboarding] WOPR daemon disabled (ONBOARDING_ENABLED=false)");
-      setChatDeps({ backend: new WoprChatBackend(getOnboardingService(), getDaemonManager()) });
+      setChatDeps({ backend: new EchoChatBackend() });
     }
   }
 
