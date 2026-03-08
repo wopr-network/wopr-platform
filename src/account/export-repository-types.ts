@@ -15,6 +15,6 @@ export interface ExportRequest {
   status: ExportStatus;
   format: string;
   downloadUrl: string | null;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
