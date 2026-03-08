@@ -446,10 +446,11 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
       .then(async () => {
         const repo = getRecoveryOrchestrator();
         const events = await repo.listEvents();
-        const results = await Promise.allSettled(events.map((e) => repo.retryWaiting(e.id)));
-        for (const r of results) {
-          if (r.status === "rejected") {
-            logger.error("Auto-retry after bot removal failed for event", { err: r.reason });
+        for (const e of events) {
+          try {
+            await repo.retryWaiting(e.id);
+          } catch (err) {
+            logger.error("Auto-retry after bot removal failed for event", { eventId: e.id, err });
           }
         }
       })

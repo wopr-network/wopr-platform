@@ -587,7 +587,7 @@ describe("fleet routes", () => {
       expect(fleetMock.remove).toHaveBeenCalledWith(TEST_BOT_ID, true);
     });
 
-    it("retries all waiting recovery events even when some fail (Promise.allSettled)", async () => {
+    it("retries all waiting recovery events even when some fail (sequential loop)", async () => {
       fleetMock.remove.mockResolvedValue(undefined);
 
       const retryWaiting = vi
@@ -609,8 +609,8 @@ describe("fleet routes", () => {
 
       expect(res.status).toBe(204);
 
-      // Allow the fire-and-forget promise to settle
-      await new Promise((r) => setTimeout(r, 50));
+      // Wait until both events have been retried
+      await vi.waitFor(() => expect(retryWaiting).toHaveBeenCalledTimes(2));
 
       // Both events must have been retried despite first one failing
       expect(retryWaiting).toHaveBeenCalledTimes(2);
