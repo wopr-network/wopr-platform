@@ -18,6 +18,7 @@ import { setSetupDeps } from "./api/routes/setup.js";
 import { authenticateWebSocketUpgrade } from "./api/routes/ws-auth.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, timingSafeMapLookup } from "./auth/index.js";
 import { EchoChatBackend } from "./chat/chat-backend.js";
+import { WoprChatBackend } from "./chat/wopr-chat-backend.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { runMigrations } from "./db/migrate.js";
@@ -1103,8 +1104,6 @@ if (process.env.NODE_ENV !== "test") {
 
     // Shutdown handlers are registered after server creation (below)
 
-    // Wire chat deps (echo backend until WOPR instance integration)
-    setChatDeps({ backend: new EchoChatBackend() });
     if (onboardingCfg.enabled) {
       getDaemonManager()
         .start()
@@ -1120,8 +1119,11 @@ if (process.env.NODE_ENV !== "test") {
       process.on("SIGTERM", shutdownDaemon);
       process.on("SIGINT", shutdownDaemon);
       logger.info("[onboarding] WOPR daemon startup initiated");
+      // Wire chat deps after daemon startup is initiated so early requests get isReady()=false
+      setChatDeps({ backend: new WoprChatBackend(getOnboardingService(), getDaemonManager()) });
     } else {
       logger.info("[onboarding] WOPR daemon disabled (ONBOARDING_ENABLED=false)");
+      setChatDeps({ backend: new EchoChatBackend() });
     }
   }
 
