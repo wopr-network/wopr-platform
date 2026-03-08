@@ -53,6 +53,13 @@ export function validateRequiredEnvVars(): void {
     );
   }
 
+  if (!process.env.STRIPE_SECRET_KEY) {
+    warnings.push("STRIPE_SECRET_KEY is not set — Stripe payments will fail at runtime");
+  }
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    warnings.push("STRIPE_WEBHOOK_SECRET is not set — Stripe webhook verification will fail");
+  }
+
   // --- Recommended (URLs will fall back to wopr.bot defaults) ---
 
   if (!process.env.PLATFORM_UI_URL && !process.env.APP_BASE_URL) {
