@@ -39,6 +39,8 @@ import {
   getDb,
   getDividendRepo,
   getFleetEventRepo,
+  getGpuAllocationRepo,
+  getGpuConfigurationRepo,
   getGraduationService,
   getHeartbeatProcessor,
   getHeartbeatWatchdog,
@@ -749,6 +751,8 @@ if (process.env.NODE_ENV !== "test") {
               new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb())),
               new NotificationService(getNotificationQueueStore(), appBaseUrl),
             ),
+          getGpuAllocationRepo: () => getGpuAllocationRepo(),
+          getGpuConfigurationRepo: () => getGpuConfigurationRepo(),
         });
         logger.info("tRPC admin router initialized");
       }

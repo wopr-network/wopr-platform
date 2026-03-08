@@ -86,6 +86,10 @@ import { DrizzleFleetEventRepository } from "./drizzle-fleet-event-repository.js
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
 import type { IFleetEventRepository } from "./fleet-event-repository.js";
+import type { IGpuAllocationRepository } from "./gpu-allocation-repository.js";
+import { DrizzleGpuAllocationRepository } from "./gpu-allocation-repository.js";
+import type { IGpuConfigurationRepository } from "./gpu-configuration-repository.js";
+import { DrizzleGpuConfigurationRepository } from "./gpu-configuration-repository.js";
 import { GpuNodeProvisioner } from "./gpu-node-provisioner.js";
 import type { IGpuNodeRepository } from "./gpu-node-repository.js";
 import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
@@ -135,6 +139,8 @@ let _botProfileRepo: IBotProfileRepository | null = null;
 let _recoveryRepo: IRecoveryRepository | null = null;
 let _spendingCapStore: ISpendingCapStore | null = null;
 let _gpuNodeRepo: IGpuNodeRepository | null = null;
+let _gpuAllocationRepo: IGpuAllocationRepository | null = null;
+let _gpuConfigurationRepo: IGpuConfigurationRepository | null = null;
 
 // Admin repositories
 let _adminNotesRepo: IAdminNotesRepository | null = null;
@@ -285,6 +291,20 @@ export function getGpuNodeRepo(): IGpuNodeRepository {
 
 /** Alias for compatibility with callers that use getGpuNodeRepository() */
 export const getGpuNodeRepository = getGpuNodeRepo;
+
+export function getGpuAllocationRepo(): IGpuAllocationRepository {
+  if (!_gpuAllocationRepo) {
+    _gpuAllocationRepo = new DrizzleGpuAllocationRepository(getDb());
+  }
+  return _gpuAllocationRepo;
+}
+
+export function getGpuConfigurationRepo(): IGpuConfigurationRepository {
+  if (!_gpuConfigurationRepo) {
+    _gpuConfigurationRepo = new DrizzleGpuConfigurationRepository(getDb());
+  }
+  return _gpuConfigurationRepo;
+}
 
 export function getAdminNotesRepo(): IAdminNotesRepository {
   if (!_adminNotesRepo) {
@@ -1128,6 +1148,8 @@ export function _resetForTest(): void {
   _recoveryRepo = null;
   _spendingCapStore = null;
   _gpuNodeRepo = null;
+  _gpuAllocationRepo = null;
+  _gpuConfigurationRepo = null;
   _adminNotesRepo = null;
   _tenantStatusRepo = null;
   _bulkOpsRepo = null;
