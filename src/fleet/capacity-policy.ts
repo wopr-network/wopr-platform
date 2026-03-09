@@ -68,6 +68,33 @@ export class CapacityPolicy {
         provisionedNodeId = result.nodeId;
         this.lastScaleUpAt = now;
         logger.info(`Auto-scale UP: fleet at ${Math.round(fleetUsagePercent)}%, provisioned new node`);
+      } catch (err) {
+        // Set cooldown even on failure to prevent retry storms during outages
+        this.lastScaleUpAt = now;
+        logger.error("Auto-scale UP failed", { error: err instanceof Error ? err.message : String(err) });
+        try {
+          await this.auditLog?.log({
+            adminUser: "system",
+            action: "auto_scale_up",
+            category: "infrastructure",
+            details: {
+              fleetUsagePercent: Math.round(fleetUsagePercent),
+              error: err instanceof Error ? err.message : String(err),
+            },
+            outcome: "failure",
+          });
+        } catch (auditErr) {
+          logger.error("Audit log failed after scale-up failure", {
+            error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+          });
+        }
+        return {
+          action: "none",
+          reason: `scale-up failed: ${err instanceof Error ? err.message : String(err)}`,
+          fleetUsagePercent,
+        };
+      }
+      try {
         await this.auditLog?.log({
           adminUser: "system",
           action: "auto_scale_up",
@@ -75,28 +102,18 @@ export class CapacityPolicy {
           details: { nodeId: provisionedNodeId, fleetUsagePercent: Math.round(fleetUsagePercent) },
           outcome: "success",
         });
-      } catch (err) {
-        // Set cooldown even on failure to prevent retry storms during outages
-        this.lastScaleUpAt = now;
-        logger.error("Auto-scale UP failed", { error: err instanceof Error ? err.message : String(err) });
-        await this.auditLog?.log({
-          adminUser: "system",
-          action: "auto_scale_up",
-          category: "infrastructure",
-          details: {
-            fleetUsagePercent: Math.round(fleetUsagePercent),
-            error: err instanceof Error ? err.message : String(err),
-          },
-          outcome: "failure",
+      } catch (auditErr) {
+        logger.error("Audit log failed after scale-up", {
+          error: auditErr instanceof Error ? auditErr.message : String(auditErr),
         });
-        return {
-          action: "none",
-          reason: `scale-up failed: ${err instanceof Error ? err.message : String(err)}`,
-          fleetUsagePercent,
-        };
       }
-      // Notifier is outside the try/catch so its failure doesn't mask a successful provision
-      await this.notifier.nodeStatusChange(provisionedNodeId, `auto-scale-up at ${Math.round(fleetUsagePercent)}%`);
+      try {
+        await this.notifier.nodeStatusChange(provisionedNodeId, `auto-scale-up at ${Math.round(fleetUsagePercent)}%`);
+      } catch (notifyErr) {
+        logger.error("Notifier failed after scale-up", {
+          error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+        });
+      }
       return {
         action: "scale_up",
         reason: `fleet usage ${Math.round(fleetUsagePercent)}% >= ${this.config.scaleUpThresholdPercent}%`,
@@ -140,6 +157,34 @@ export class CapacityPolicy {
         this.lastScaleDownAt = now;
         this.lowUsageSince = null;
         logger.info(`Auto-scale DOWN: fleet at ${Math.round(fleetUsagePercent)}%, destroyed node ${target.id}`);
+      } catch (err) {
+        logger.error(`Auto-scale DOWN failed for node ${target.id}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        try {
+          await this.auditLog?.log({
+            adminUser: "system",
+            action: "auto_scale_down",
+            category: "infrastructure",
+            details: {
+              nodeId: target.id,
+              fleetUsagePercent: Math.round(fleetUsagePercent),
+              error: err instanceof Error ? err.message : String(err),
+            },
+            outcome: "failure",
+          });
+        } catch (auditErr) {
+          logger.error("Audit log failed after scale-down failure", {
+            error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+          });
+        }
+        return {
+          action: "none",
+          reason: `scale-down failed: ${err instanceof Error ? err.message : String(err)}`,
+          fleetUsagePercent,
+        };
+      }
+      try {
         await this.auditLog?.log({
           adminUser: "system",
           action: "auto_scale_down",
@@ -147,29 +192,18 @@ export class CapacityPolicy {
           details: { nodeId: target.id, fleetUsagePercent: Math.round(fleetUsagePercent) },
           outcome: "success",
         });
-      } catch (err) {
-        logger.error(`Auto-scale DOWN failed for node ${target.id}`, {
-          error: err instanceof Error ? err.message : String(err),
+      } catch (auditErr) {
+        logger.error("Audit log failed after scale-down", {
+          error: auditErr instanceof Error ? auditErr.message : String(auditErr),
         });
-        await this.auditLog?.log({
-          adminUser: "system",
-          action: "auto_scale_down",
-          category: "infrastructure",
-          details: {
-            nodeId: target.id,
-            fleetUsagePercent: Math.round(fleetUsagePercent),
-            error: err instanceof Error ? err.message : String(err),
-          },
-          outcome: "failure",
-        });
-        return {
-          action: "none",
-          reason: `scale-down failed: ${err instanceof Error ? err.message : String(err)}`,
-          fleetUsagePercent,
-        };
       }
-      // Notifier is outside the try/catch so its failure doesn't mask a successful destroy
-      await this.notifier.nodeStatusChange(target.id, `auto-scale-down at ${Math.round(fleetUsagePercent)}%`);
+      try {
+        await this.notifier.nodeStatusChange(target.id, `auto-scale-down at ${Math.round(fleetUsagePercent)}%`);
+      } catch (notifyErr) {
+        logger.error("Notifier failed after scale-down", {
+          error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+        });
+      }
       return {
         action: "scale_down",
         reason: `fleet usage ${Math.round(fleetUsagePercent)}% < ${this.config.scaleDownThresholdPercent}%`,
