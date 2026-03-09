@@ -316,7 +316,7 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        type: z.enum(["grant", "refund", "correction"]).optional(),
+        type: z.enum(["grant", "admin_grant", "refund", "correction"]).optional(),
         from: z.number().int().optional(),
         to: z.number().int().optional(),
         limit: z.number().int().positive().max(1000).optional(),
@@ -1221,7 +1221,7 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        type: z.enum(["grant", "refund", "correction"]).optional(),
+        type: z.enum(["grant", "admin_grant", "refund", "correction"]).optional(),
         from: z.number().int().optional(),
         to: z.number().int().optional(),
       }),

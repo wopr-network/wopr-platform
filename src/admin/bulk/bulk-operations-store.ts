@@ -132,7 +132,15 @@ export class BulkOperationsStore implements IBulkOperationsStore {
 
     for (const tenantId of input.tenantIds) {
       try {
-        await this.creditStore.credit(tenantId, Credit.fromCents(input.amountCents), "admin_grant", input.reason);
+        await this.creditStore.credit(
+          tenantId,
+          Credit.fromCents(input.amountCents),
+          "admin_grant",
+          input.reason,
+          undefined,
+          undefined,
+          adminUser,
+        );
         succeeded++;
         succeededIds.push(tenantId);
       } catch (err) {
