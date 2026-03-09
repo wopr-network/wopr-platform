@@ -111,3 +111,6 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 - **e2e mock reset**: Use `vi.resetAllMocks()` in `beforeEach`, not `vi.clearAllMocks()` — `clearAllMocks` only clears call history while `resetAllMocks` also resets implementations and return values.
 - **e2e env stub cleanup**: Always add `afterAll(() => { vi.unstubAllEnvs(); })` in test files that use `vi.stubEnv()` — otherwise stubbed env vars leak into other test files in the same process.
 - **e2e error message assertions**: Assert the exact formatted error string returned by the handler (e.g., `"Slack error: invalid_code"`), not a substring — loose assertions pass even when error formatting is wrong.
+- **Setup route secrets**: Secret/token fields must ONLY be written to `encryptedFieldsJson`, never to plaintext `configJson` — writing secrets to configJson is a security bug even if they are also encrypted elsewhere.
+- **Concurrent session tests**: Use `Promise.all` to send requests simultaneously — serial `await`s only test the DB-check logic, not the actual race condition or unique-constraint path.
+- **e2e tenant ownership tests**: At least one positive-path e2e test must use a tenant-scoped token (not the operator-level `FLEET_API_TOKEN`) to exercise `validateTenantOwnership()` — operator tokens bypass ownership checks entirely.
