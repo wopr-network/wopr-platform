@@ -29,11 +29,7 @@ const mockProfile = {
 
 const storeMock = { get: vi.fn() };
 
-vi.mock("../../fleet/profile-store.js", () => ({
-  ProfileStore: class {
-    get = storeMock.get;
-  },
-}));
+vi.mock("../../fleet/bot-profile-repository.js", () => ({}));
 
 const proxyMock = vi.fn();
 vi.mock("./friends-proxy.js", () => ({
@@ -50,7 +46,8 @@ const pluginConfigRepoMock = {
 
 const { createBotPluginProxyRoutes } = await import("./bot-plugin-proxy.js");
 
-const routes = createBotPluginProxyRoutes({ pluginConfigRepo: pluginConfigRepoMock });
+const profileRepoMock = { get: storeMock.get, save: vi.fn(), delete: vi.fn(), list: vi.fn() };
+const routes = createBotPluginProxyRoutes({ pluginConfigRepo: pluginConfigRepoMock, profileRepo: profileRepoMock });
 const app = new Hono();
 app.route("/api/bots", routes);
 
@@ -206,6 +203,50 @@ describe("bot-plugin-proxy routes", () => {
       });
 
       expect(res.status).toBe(401);
+    });
+  });
+
+  describe("PUT /api/bots/:botId/plugins/:pluginId/config — tenant isolation", () => {
+    it("returns 404 when user does not own bot (tenant-scoped token)", async () => {
+      storeMock.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+
+      const res = await app.request(`/api/bots/${TEST_BOT_ID}/plugins/my-plugin/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...tenantAuthHeader },
+        body: JSON.stringify({ config: { key: "value" } }),
+      });
+
+      expect(res.status).toBe(404);
+      expect(pluginConfigRepoMock.upsert).not.toHaveBeenCalled();
+      expect(proxyMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /api/bots/:botId/plugins/:pluginId/enable — tenant isolation", () => {
+    it("returns 404 when user does not own bot (tenant-scoped token)", async () => {
+      storeMock.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+
+      const res = await app.request(`/api/bots/${TEST_BOT_ID}/plugins/my-plugin/enable`, {
+        method: "POST",
+        headers: tenantAuthHeader,
+      });
+
+      expect(res.status).toBe(404);
+      expect(proxyMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("POST /api/bots/:botId/plugins/:pluginId/disable — tenant isolation", () => {
+    it("returns 404 when user does not own bot (tenant-scoped token)", async () => {
+      storeMock.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+
+      const res = await app.request(`/api/bots/${TEST_BOT_ID}/plugins/my-plugin/disable`, {
+        method: "POST",
+        headers: tenantAuthHeader,
+      });
+
+      expect(res.status).toBe(404);
+      expect(proxyMock).not.toHaveBeenCalled();
     });
   });
 

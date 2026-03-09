@@ -4,7 +4,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
+import type { IBotProfileRepository } from "../../fleet/bot-profile-repository.js";
 import type { IPluginConfigRepository } from "../../setup/plugin-config-repository.js";
 import { proxyToInstance } from "./friends-proxy.js";
 
@@ -21,11 +21,11 @@ const configBodySchema = z.object({
 
 export interface BotPluginProxyDeps {
   pluginConfigRepo: IPluginConfigRepository;
-  profileStore?: ProfileStore;
+  profileRepo: IBotProfileRepository;
 }
 
 export function createBotPluginProxyRoutes(deps: BotPluginProxyDeps): Hono {
-  const store = deps.profileStore ?? new ProfileStore(process.env.FLEET_DATA_DIR || "/data/fleet");
+  const store = deps.profileRepo;
   const routes = new Hono();
   const tokenMetadataMap = buildTokenMetadataMap();
   const writeAuth = scopedBearerAuthWithTenant(tokenMetadataMap, "write");
