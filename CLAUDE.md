@@ -104,3 +104,4 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 - **WAL append ordering**: Write-ahead log append must happen *before* the in-memory buffer push — fail-closed ordering ensures durability before visibility.
 - **WAL append must be synchronous**: Use `appendFileSync` (POSIX O_APPEND is atomic per-write) — making it async breaks the fail-closed durability guarantee.
 - **Read-filter-rewrite needs a mutex**: Any operation that reads a file, filters lines, then rewrites has a TOCTOU race; guard with a mutex. Append-only operations using O_APPEND do not.
+- **e2e async assertions**: In Playwright e2e tests, always `await` async state changes (e.g. resolution events) before asserting visibility — bare `expect(getByText(...)).toBeVisible()` races against pending UI updates.
