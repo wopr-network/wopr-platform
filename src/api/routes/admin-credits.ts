@@ -177,8 +177,8 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
     const amountCents = body.amount_cents;
     const reason = body.reason;
 
-    if (typeof amountCents !== "number" || !Number.isInteger(amountCents)) {
-      return c.json({ error: "amount_cents must be an integer" }, 400);
+    if (typeof amountCents !== "number" || !Number.isInteger(amountCents) || amountCents === 0) {
+      return c.json({ error: "amount_cents must be a non-zero integer" }, 400);
     }
 
     if (typeof reason !== "string" || !reason.trim()) {
@@ -191,7 +191,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
         if (amountCents >= 0) {
-          result = await ledger.credit(tenant, Credit.fromCents(amountCents || 1), "promo", reason);
+          result = await ledger.credit(tenant, Credit.fromCents(amountCents), "promo", reason);
         } else {
           result = await ledger.debit(tenant, Credit.fromCents(Math.abs(amountCents)), "correction", reason);
         }
