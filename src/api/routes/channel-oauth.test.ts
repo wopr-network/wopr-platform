@@ -366,8 +366,12 @@ describe("GET /poll", () => {
       json: vi.fn().mockResolvedValue({ ok: false, error: "invalid_code" }),
     });
     vi.stubGlobal("fetch", mockFetch);
-    const callbackRes = await app.request(`/callback?code=bad-code&state=${state}`);
-    vi.unstubAllGlobals();
+    let callbackRes: Response;
+    try {
+      callbackRes = await app.request(`/callback?code=bad-code&state=${state}`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
 
     // The callback HTML should contain the Slack error message
     const html = await callbackRes.text();

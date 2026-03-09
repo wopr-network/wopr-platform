@@ -34,7 +34,7 @@ const TEST_USER: AuthUser = { id: "e2e-user-id", roles: ["user"] };
 afterEach(async () => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
-  await Promise.all(activePools.map((p) => p.close()));
+  await Promise.allSettled(activePools.map((p) => p.close()));
   activePools.length = 0;
 });
 
@@ -43,14 +43,21 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe("E2E: channel OAuth — Slack full round-trip", () => {
+  let savedSlackClientId: string | undefined;
+  let savedSlackClientSecret: string | undefined;
+
   beforeEach(() => {
+    savedSlackClientId = process.env.SLACK_CLIENT_ID;
+    savedSlackClientSecret = process.env.SLACK_CLIENT_SECRET;
     process.env.SLACK_CLIENT_ID = "slack-client-id";
     process.env.SLACK_CLIENT_SECRET = "slack-client-secret";
   });
 
   afterEach(() => {
-    delete process.env.SLACK_CLIENT_ID;
-    delete process.env.SLACK_CLIENT_SECRET;
+    if (savedSlackClientId !== undefined) process.env.SLACK_CLIENT_ID = savedSlackClientId;
+    else delete process.env.SLACK_CLIENT_ID;
+    if (savedSlackClientSecret !== undefined) process.env.SLACK_CLIENT_SECRET = savedSlackClientSecret;
+    else delete process.env.SLACK_CLIENT_SECRET;
   });
 
   it("initiate → callback → poll returns token then pending on second poll", async () => {
@@ -128,14 +135,21 @@ describe("E2E: channel OAuth — Slack full round-trip", () => {
 // ---------------------------------------------------------------------------
 
 describe("E2E: channel OAuth — error cases", () => {
+  let savedSlackClientId: string | undefined;
+  let savedSlackClientSecret: string | undefined;
+
   beforeEach(() => {
+    savedSlackClientId = process.env.SLACK_CLIENT_ID;
+    savedSlackClientSecret = process.env.SLACK_CLIENT_SECRET;
     process.env.SLACK_CLIENT_ID = "slack-client-id";
     process.env.SLACK_CLIENT_SECRET = "slack-client-secret";
   });
 
   afterEach(() => {
-    delete process.env.SLACK_CLIENT_ID;
-    delete process.env.SLACK_CLIENT_SECRET;
+    if (savedSlackClientId !== undefined) process.env.SLACK_CLIENT_ID = savedSlackClientId;
+    else delete process.env.SLACK_CLIENT_ID;
+    if (savedSlackClientSecret !== undefined) process.env.SLACK_CLIENT_SECRET = savedSlackClientSecret;
+    else delete process.env.SLACK_CLIENT_SECRET;
   });
 
   it("provider returns error param → callback renders error HTML", async () => {
@@ -256,14 +270,21 @@ describe("E2E: channel OAuth — error cases", () => {
 // ---------------------------------------------------------------------------
 
 describe("E2E: channel OAuth — token storage and isolation", () => {
+  let savedSlackClientId: string | undefined;
+  let savedSlackClientSecret: string | undefined;
+
   beforeEach(() => {
+    savedSlackClientId = process.env.SLACK_CLIENT_ID;
+    savedSlackClientSecret = process.env.SLACK_CLIENT_SECRET;
     process.env.SLACK_CLIENT_ID = "slack-client-id";
     process.env.SLACK_CLIENT_SECRET = "slack-client-secret";
   });
 
   afterEach(() => {
-    delete process.env.SLACK_CLIENT_ID;
-    delete process.env.SLACK_CLIENT_SECRET;
+    if (savedSlackClientId !== undefined) process.env.SLACK_CLIENT_ID = savedSlackClientId;
+    else delete process.env.SLACK_CLIENT_ID;
+    if (savedSlackClientSecret !== undefined) process.env.SLACK_CLIENT_SECRET = savedSlackClientSecret;
+    else delete process.env.SLACK_CLIENT_SECRET;
   });
 
   it("poll before callback completes → pending status", async () => {
