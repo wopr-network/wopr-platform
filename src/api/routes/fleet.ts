@@ -1010,7 +1010,7 @@ fleetRoutes.post("/bots/:id/upgrade-to-vps", writeAuth, async (c) => {
   }
 
   const tenantRepo = getTenantCustomerRepository();
-  const customer = tenantRepo.getByTenant(profile.tenantId);
+  const customer = await tenantRepo.getByTenant(profile.tenantId);
   if (!customer) {
     return c.json(
       {
