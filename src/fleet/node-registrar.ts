@@ -74,7 +74,11 @@ export class NodeRegistrar {
   async registerSelfHosted(data: SelfHostedNodeRegistration): Promise<DrizzleNode> {
     const node = await this.nodeRepo.registerSelfHosted(data);
 
-    this.eventEmitter?.emit({ type: "node.registered", nodeId: node.id, timestamp: new Date().toISOString() });
+    if (node.status === "returning") {
+      this.eventEmitter?.emit({ type: "node.returned", nodeId: node.id, timestamp: new Date().toISOString() });
+    } else {
+      this.eventEmitter?.emit({ type: "node.registered", nodeId: node.id, timestamp: new Date().toISOString() });
+    }
 
     if (this.onRetryWaiting) {
       const openEvents = await this.recoveryRepo.listOpenEvents();

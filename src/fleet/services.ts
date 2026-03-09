@@ -91,6 +91,7 @@ import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js
 import { DrizzleFleetEventRepository } from "./drizzle-fleet-event-repository.js";
 import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
 import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
+import { FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { IFleetEventRepository } from "./fleet-event-repository.js";
 import type { IGpuAllocationRepository } from "./gpu-allocation-repository.js";
 import { DrizzleGpuAllocationRepository } from "./gpu-allocation-repository.js";
@@ -174,6 +175,9 @@ let _nodeDrainer: NodeDrainer | null = null;
 // Watchdog
 let _heartbeatWatchdog: HeartbeatWatchdog | null = null;
 let _inferenceWatchdog: InferenceWatchdog | null = null;
+
+// Fleet event emitter
+let _fleetEventEmitter: FleetEventEmitter | null = null;
 
 // Fleet event repository
 let _fleetEventRepo: IFleetEventRepository | null = null;
@@ -392,23 +396,28 @@ export function getOrphanCleaner(): OrphanCleaner {
 
 export function getNodeRegistrar(): NodeRegistrar {
   if (!_nodeRegistrar) {
-    _nodeRegistrar = new NodeRegistrar(getNodeRepo(), getRecoveryRepo(), {
-      onReturning: (_nodeId: string) => {
-        // Intentional no-op. Container cleanup for returning nodes is handled by
-        // OrphanCleaner on first heartbeat (wired via NodeConnectionManager in
-        // initFleet). Waiting-tenant placement is handled separately by the
-        // onRetryWaiting callback below, which fires for ALL registrations
-        // (active or returning) whenever open recovery events have waiting items.
-        // See WOP-912 for the investigation confirming this path is correct.
+    _nodeRegistrar = new NodeRegistrar(
+      getNodeRepo(),
+      getRecoveryRepo(),
+      {
+        onReturning: (_nodeId: string) => {
+          // Intentional no-op. Container cleanup for returning nodes is handled by
+          // OrphanCleaner on first heartbeat (wired via NodeConnectionManager in
+          // initFleet). Waiting-tenant placement is handled separately by the
+          // onRetryWaiting callback below, which fires for ALL registrations
+          // (active or returning) whenever open recovery events have waiting items.
+          // See WOP-912 for the investigation confirming this path is correct.
+        },
+        onRetryWaiting: (eventId: string) => {
+          getRecoveryOrchestrator()
+            .retryWaiting(eventId)
+            .catch((err) => {
+              logger.error("Auto-retry waiting after node registration failed", { eventId, err });
+            });
+        },
       },
-      onRetryWaiting: (eventId: string) => {
-        getRecoveryOrchestrator()
-          .retryWaiting(eventId)
-          .catch((err) => {
-            logger.error("Auto-retry waiting after node registration failed", { eventId, err });
-          });
-      },
-    });
+      getFleetEventEmitter(),
+    );
   }
   return _nodeRegistrar;
 }
@@ -465,7 +474,13 @@ export function getMigrationOrchestrator(): MigrationOrchestrator {
 
 export function getNodeDrainer(): NodeDrainer {
   if (!_nodeDrainer) {
-    _nodeDrainer = new NodeDrainer(getMigrationOrchestrator(), getNodeRepo(), getBotInstanceRepo(), getAdminNotifier());
+    _nodeDrainer = new NodeDrainer(
+      getMigrationOrchestrator(),
+      getNodeRepo(),
+      getBotInstanceRepo(),
+      getAdminNotifier(),
+      getFleetEventEmitter(),
+    );
   }
   return _nodeDrainer;
 }
@@ -473,6 +488,13 @@ export function getNodeDrainer(): NodeDrainer {
 // ---------------------------------------------------------------------------
 // FleetEventRepository
 // ---------------------------------------------------------------------------
+
+export function getFleetEventEmitter(): FleetEventEmitter {
+  if (!_fleetEventEmitter) {
+    _fleetEventEmitter = new FleetEventEmitter();
+  }
+  return _fleetEventEmitter;
+}
 
 export function getFleetEventRepo(): IFleetEventRepository {
   if (!_fleetEventRepo) {
@@ -516,6 +538,8 @@ export function getHeartbeatWatchdog() {
       (nodeId: string, newStatus: string) => {
         logger.info(`Node ${nodeId} status changed to ${newStatus}`);
       },
+      {},
+      getFleetEventEmitter(),
     );
   }
   return _heartbeatWatchdog;
@@ -556,11 +580,16 @@ export function getNodeProvisioner(): NodeProvisioner {
   if (!_nodeProvisioner) {
     const sshKeyIdStr = process.env.DO_SSH_KEY_ID;
     if (!sshKeyIdStr) throw new Error("DO_SSH_KEY_ID environment variable is required");
-    _nodeProvisioner = new NodeProvisioner(getNodeRepo(), getNodeProvider(), {
-      sshKeyId: Number(sshKeyIdStr),
-      defaultRegion: process.env.DO_DEFAULT_REGION,
-      defaultSize: process.env.DO_DEFAULT_SIZE,
-    });
+    _nodeProvisioner = new NodeProvisioner(
+      getNodeRepo(),
+      getNodeProvider(),
+      {
+        sshKeyId: Number(sshKeyIdStr),
+        defaultRegion: process.env.DO_DEFAULT_REGION,
+        defaultSize: process.env.DO_DEFAULT_SIZE,
+      },
+      getFleetEventEmitter(),
+    );
   }
   return _nodeProvisioner;
 }
