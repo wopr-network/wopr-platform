@@ -1,10 +1,17 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { getAdminAuditLog, getCreditLedger } from "../../fleet/services.js";
 import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { InsufficientBalanceError } from "../../monetization/credits/credit-ledger.js";
+
+const tenantIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9_-]+$/);
 
 function parseIntParam(value: string | undefined): number | undefined {
   if (value == null) return undefined;
@@ -30,7 +37,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** POST /:tenantId/grant */
   routes.post("/:tenantId/grant", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const tenantRaw = c.req.param("tenantId");
+    const tenantParsed = tenantIdSchema.safeParse(tenantRaw);
+    if (!tenantParsed.success) {
+      return c.json({ error: "tenantId must be 1-128 alphanumeric characters, hyphens, or underscores" }, 400);
+    }
+    const tenant = tenantParsed.data;
 
     let body: Record<string, unknown>;
     try {
@@ -100,7 +112,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** POST /:tenantId/refund */
   routes.post("/:tenantId/refund", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const tenantRaw = c.req.param("tenantId");
+    const tenantParsed = tenantIdSchema.safeParse(tenantRaw);
+    if (!tenantParsed.success) {
+      return c.json({ error: "tenantId must be 1-128 alphanumeric characters, hyphens, or underscores" }, 400);
+    }
+    const tenant = tenantParsed.data;
 
     let body: Record<string, unknown>;
     try {
@@ -165,7 +182,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** POST /:tenantId/correction */
   routes.post("/:tenantId/correction", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const tenantRaw = c.req.param("tenantId");
+    const tenantParsed = tenantIdSchema.safeParse(tenantRaw);
+    if (!tenantParsed.success) {
+      return c.json({ error: "tenantId must be 1-128 alphanumeric characters, hyphens, or underscores" }, 400);
+    }
+    const tenant = tenantParsed.data;
 
     let body: Record<string, unknown>;
     try {
@@ -234,7 +256,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** GET /:tenantId/balance */
   routes.get("/:tenantId/balance", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const tenantRaw = c.req.param("tenantId");
+    const tenantParsed = tenantIdSchema.safeParse(tenantRaw);
+    if (!tenantParsed.success) {
+      return c.json({ error: "tenantId must be 1-128 alphanumeric characters, hyphens, or underscores" }, 400);
+    }
+    const tenant = tenantParsed.data;
 
     try {
       const balance = await ledger.balance(tenant);
@@ -247,7 +274,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** GET /:tenantId/transactions */
   routes.get("/:tenantId/transactions", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const tenantRaw = c.req.param("tenantId");
+    const tenantParsed = tenantIdSchema.safeParse(tenantRaw);
+    if (!tenantParsed.success) {
+      return c.json({ error: "tenantId must be 1-128 alphanumeric characters, hyphens, or underscores" }, 400);
+    }
+    const tenant = tenantParsed.data;
     const typeParam = c.req.query("type");
 
     const filters = {
@@ -267,7 +299,12 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** GET /:tenantId/adjustments -- alias for transactions */
   routes.get("/:tenantId/adjustments", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const tenantRaw = c.req.param("tenantId");
+    const tenantParsed = tenantIdSchema.safeParse(tenantRaw);
+    if (!tenantParsed.success) {
+      return c.json({ error: "tenantId must be 1-128 alphanumeric characters, hyphens, or underscores" }, 400);
+    }
+    const tenant = tenantParsed.data;
     const typeParam = c.req.query("type");
 
     const filters = {

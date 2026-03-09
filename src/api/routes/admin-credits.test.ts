@@ -273,4 +273,61 @@ describe("admin-credits routes", () => {
       expect(body).toHaveProperty("total");
     });
   });
+
+  describe("tenantId format validation", () => {
+    it("rejects tenantId exceeding 128 chars on transactions", async () => {
+      const longId = "a".repeat(129);
+      const res = await app.request(`/${longId}/transactions`);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/tenantId/i);
+    });
+
+    it("rejects tenantId exceeding 128 chars on balance", async () => {
+      const longId = "a".repeat(129);
+      const res = await app.request(`/${longId}/balance`);
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects tenantId exceeding 128 chars on adjustments", async () => {
+      const longId = "a".repeat(129);
+      const res = await app.request(`/${longId}/adjustments`);
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects tenantId exceeding 128 chars on grant", async () => {
+      const longId = "a".repeat(129);
+      const res = await app.request(`/${longId}/grant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount_cents: 100, reason: "test" }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects tenantId exceeding 128 chars on refund", async () => {
+      const longId = "a".repeat(129);
+      const res = await app.request(`/${longId}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount_cents: 100, reason: "test" }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects tenantId exceeding 128 chars on correction", async () => {
+      const longId = "a".repeat(129);
+      const res = await app.request(`/${longId}/correction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount_cents: 100, reason: "test" }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("accepts valid tenantId formats", async () => {
+      const res = await app.request("/valid-tenant_123/balance");
+      expect(res.status).toBe(200);
+    });
+  });
 });
