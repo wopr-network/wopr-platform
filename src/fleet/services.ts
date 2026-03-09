@@ -493,7 +493,7 @@ export function getNodeDrainer(): NodeDrainer {
 
 export function getFleetEventEmitter(): FleetEventEmitter {
   if (!_fleetEventEmitter) {
-    _fleetEventEmitter = new FleetEventEmitter();
+    _fleetEventEmitter = new FleetEventEmitter(getFleetEventRepo());
   }
   return _fleetEventEmitter;
 }
@@ -1299,4 +1299,5 @@ export function _resetForTest(): void {
   _rateOverrideRepo = null;
   _rateOverrideCache = null;
   _promotionEngine = null;
+  _fleetEventEmitter = null;
 }

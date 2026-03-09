@@ -1,7 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
-import { fleetEvents } from "../db/schema/index.js";
-import type { IFleetEventRepository } from "./fleet-event-repository.js";
+import { fleetEventHistory, fleetEvents } from "../db/schema/index.js";
+import type {
+  FleetEventHistoryFilter,
+  FleetEventHistoryRow,
+  IFleetEventRepository,
+  NewFleetEventHistoryRow,
+} from "./fleet-event-repository.js";
 
 export class DrizzleFleetEventRepository implements IFleetEventRepository {
   constructor(private readonly db: DrizzleDb) {}
@@ -30,5 +35,33 @@ export class DrizzleFleetEventRepository implements IFleetEventRepository {
   async isFleetStopFired(): Promise<boolean> {
     const rows = await this.db.select().from(fleetEvents).where(eq(fleetEvents.eventType, "unexpected_stop"));
     return rows.length > 0 && rows[0].fired === true;
+  }
+
+  async append(event: NewFleetEventHistoryRow): Promise<void> {
+    await this.db.insert(fleetEventHistory).values({
+      eventType: event.eventType,
+      botId: event.botId,
+      tenantId: event.tenantId,
+      createdAt: event.createdAt,
+    });
+  }
+
+  async list(filter: FleetEventHistoryFilter): Promise<FleetEventHistoryRow[]> {
+    const conditions = [];
+    if (filter.botId) conditions.push(eq(fleetEventHistory.botId, filter.botId));
+    if (filter.tenantId) conditions.push(eq(fleetEventHistory.tenantId, filter.tenantId));
+    if (filter.type) conditions.push(eq(fleetEventHistory.eventType, filter.type));
+    if (filter.since != null) conditions.push(gte(fleetEventHistory.createdAt, filter.since));
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const rawLimit = filter.limit ?? 100;
+    const limit = Math.min(Math.max(rawLimit, 1), 1000);
+
+    return this.db
+      .select()
+      .from(fleetEventHistory)
+      .where(where)
+      .orderBy(desc(fleetEventHistory.createdAt))
+      .limit(limit);
   }
 }

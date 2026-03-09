@@ -1,4 +1,5 @@
 import { logger } from "../config/logger.js";
+import type { IFleetEventRepository } from "./fleet-event-repository.js";
 
 export type BotEventType = "bot.started" | "bot.stopped" | "bot.created" | "bot.removed" | "bot.restarted";
 
@@ -33,6 +34,8 @@ export type FleetEventListener = (event: FleetEvent) => void;
 export class FleetEventEmitter {
   private listeners = new Set<FleetEventListener>();
 
+  constructor(private readonly repo?: IFleetEventRepository) {}
+
   subscribe(listener: FleetEventListener): () => void {
     this.listeners.add(listener);
     return () => {
@@ -41,6 +44,19 @@ export class FleetEventEmitter {
   }
 
   emit(event: FleetEvent): void {
+    if (this.repo && "botId" in event) {
+      this.repo
+        .append({
+          eventType: event.type,
+          botId: event.botId,
+          tenantId: event.tenantId,
+          createdAt: Number.isFinite(Date.parse(event.timestamp)) ? Date.parse(event.timestamp) : Date.now(),
+        })
+        .catch((err) => {
+          logger.error("FleetEventEmitter persist error", { err });
+        });
+    }
+
     for (const listener of this.listeners) {
       try {
         listener(event);

@@ -18,6 +18,7 @@ export * from "./credit-auto-topup-settings.js";
 export * from "./credits.js";
 export * from "./dividend-distributions.js";
 export * from "./email-notifications.js";
+export * from "./fleet-event-history.js";
 export * from "./fleet-events.js";
 export * from "./gateway-metrics.js";
 export * from "./gpu-allocations.js";

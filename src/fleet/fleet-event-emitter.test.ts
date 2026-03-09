@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type FleetEvent, FleetEventEmitter } from "./fleet-event-emitter.js";
+import type { IFleetEventRepository } from "./fleet-event-repository.js";
 
 vi.mock("../config/logger.js", () => ({
   logger: {
@@ -82,5 +83,63 @@ describe("FleetEventEmitter", () => {
     });
     emitter.emit(event);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("persists bot events via repository when provided", () => {
+    const mockRepo = {
+      fireFleetStop: vi.fn(),
+      clearFleetStop: vi.fn(),
+      isFleetStopFired: vi.fn(),
+      append: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn(),
+    } satisfies IFleetEventRepository;
+
+    const persistingEmitter = new FleetEventEmitter(mockRepo);
+    persistingEmitter.emit(event);
+    expect(mockRepo.append).toHaveBeenCalledWith({
+      eventType: event.type,
+      botId: (event as { botId: string }).botId,
+      tenantId: (event as { tenantId: string }).tenantId,
+      createdAt: expect.any(Number),
+    });
+  });
+
+  it("does not persist node events via repository", () => {
+    const mockRepo = {
+      fireFleetStop: vi.fn(),
+      clearFleetStop: vi.fn(),
+      isFleetStopFired: vi.fn(),
+      append: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn(),
+    } satisfies IFleetEventRepository;
+
+    const persistingEmitter = new FleetEventEmitter(mockRepo);
+    const nodeEvent: FleetEvent = {
+      type: "node.provisioned",
+      nodeId: "node-1",
+      timestamp: new Date().toISOString(),
+    };
+    persistingEmitter.emit(nodeEvent);
+    expect(mockRepo.append).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when repository append fails", () => {
+    const mockRepo = {
+      fireFleetStop: vi.fn(),
+      clearFleetStop: vi.fn(),
+      isFleetStopFired: vi.fn(),
+      append: vi.fn().mockRejectedValue(new Error("db down")),
+      list: vi.fn(),
+    } satisfies IFleetEventRepository;
+
+    const persistingEmitter = new FleetEventEmitter(mockRepo);
+    expect(() => persistingEmitter.emit(event)).not.toThrow();
+  });
+
+  it("works without repository (backward compatible)", () => {
+    const listener = vi.fn();
+    emitter.subscribe(listener);
+    emitter.emit(event);
+    expect(listener).toHaveBeenCalledWith(event);
   });
 });
