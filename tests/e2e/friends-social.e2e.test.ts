@@ -18,6 +18,8 @@ vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
 
 // Tenant-scoped token for cross-tenant isolation tests
 const TENANT_ID = "e2e-tenant";
+const TENANT_TOKEN = "e2e-tenant-scoped-token";
+vi.stubEnv(`FLEET_TOKEN_${TENANT_ID}`, `read:${TENANT_TOKEN}`);
 const OTHER_TENANT_ID = "other-tenant";
 const OTHER_TENANT_TOKEN = "e2e-other-tenant-token";
 vi.stubEnv(`FLEET_TOKEN_${OTHER_TENANT_ID}`, `read:${OTHER_TENANT_TOKEN}`);
@@ -79,6 +81,21 @@ describe("E2E: friends/social lifecycle", () => {
         headers: { Authorization: `Bearer ${OTHER_TENANT_TOKEN}` },
       });
       expect([403, 404]).toContain(res.status);
+    });
+
+    it("tenant-scoped token matching instance tenant passes validateTenantOwnership", async () => {
+      // TENANT_TOKEN is scoped to "e2e-tenant" — same as the instance's tenantId.
+      // This exercises the validateTenantOwnership() happy path (not operator bypass).
+      mockProxyToInstance.mockResolvedValue({
+        ok: true,
+        status: 200,
+        data: { friends: [] },
+      });
+
+      const res = await app.request(`/api/instances/${ALICE}/friends`, {
+        headers: { Authorization: `Bearer ${TENANT_TOKEN}` },
+      });
+      expect(res.status).toBe(200);
     });
   });
 
