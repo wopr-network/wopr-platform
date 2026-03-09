@@ -78,11 +78,25 @@ export class RecoveryManager {
 
     logger.info(`Starting recovery for node ${deadNodeId}`, { eventId, trigger });
 
-    // 1. Transition node to "recovering" via state machine (two hops: unhealthy→offline→recovering)
+    // 1. Transition node to "recovering" via state machine
+    //    Guard: check current status to avoid invalid self-transitions (WOP-2006)
     const transitionReason = trigger === "heartbeat_timeout" ? "heartbeat_timeout" : "manual_recovery";
+    const node = await this.nodeRepo.getById(deadNodeId);
+    if (!node) {
+      throw new Error(`Cannot start recovery: node ${deadNodeId} not found`);
+    }
+
     try {
-      await this.nodeRepo.transition(deadNodeId, "offline", transitionReason, "recovery_manager");
-      await this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_manager");
+      if (node.status === "unhealthy") {
+        await this.nodeRepo.transition(deadNodeId, "offline", transitionReason, "recovery_manager");
+        await this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_manager");
+      } else if (node.status === "offline") {
+        await this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_manager");
+      } else if (node.status !== "recovering") {
+        // Node is in an unexpected state (active, provisioning, etc.) — cannot recover
+        throw new InvalidTransitionError(node.status, "recovering");
+      }
+      // If already "recovering", skip transitions entirely (idempotent)
     } catch (err) {
       if (err instanceof InvalidTransitionError) {
         logger.error(`Cannot start recovery for node ${deadNodeId}: illegal state transition`, {
