@@ -41,19 +41,13 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
     const dayStart = getDayStart(now);
     const monthStart = getMonthStart(now);
 
-    // Daily spend from meter_events
-    const dailyEventsRows = await this.db
-      .select({
-        total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
-      })
-      .from(meterEvents)
-      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, dayStart)));
-    const dailyEvents = dailyEventsRows[0];
-
-    // Daily spend from usage_summaries (may overlap — conservative to sum both)
+    // --- Daily spend ---
+    // 1. Sum usage_summaries in today's range, also capture the latest window_end
     const dailySummariesRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+        // raw SQL: Drizzle cannot express COALESCE(MAX(...), 0) natively
+        latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
       })
       .from(usageSummaries)
       .where(
@@ -63,23 +57,30 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
           lte(usageSummaries.windowStart, now),
         ),
       );
-    const dailySummaries = dailySummariesRows[0];
+    const dailySummaryTotal = Number(dailySummariesRows[0]?.total ?? 0);
+    const dailyLatestEnd = Number(dailySummariesRows[0]?.latestEnd ?? 0);
 
-    const dailySpend = Credit.fromRaw(Number(dailyEvents?.total ?? 0) + Number(dailySummaries?.total ?? 0)).toDollars();
-
-    // Monthly spend from meter_events
-    const monthlyEventsRows = await this.db
+    // 2. Only query meter_events newer than the latest summary window end
+    //    (these haven't been rolled up yet). If no summaries, use dayStart.
+    // Assumes contiguous summary windows — gap between windows could under-count spend
+    // (acceptable limitation at current scale; aggregator guarantees gapless windows)
+    const dailyEventsStart = dailyLatestEnd > dayStart ? dailyLatestEnd : dayStart;
+    const dailyEventsRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
       })
       .from(meterEvents)
-      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)));
-    const monthlyEvents = monthlyEventsRows[0];
+      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, dailyEventsStart)));
+    const dailyEventTotal = Number(dailyEventsRows[0]?.total ?? 0);
 
-    // Monthly spend from usage_summaries
+    const dailySpend = Credit.fromRaw(dailySummaryTotal + dailyEventTotal).toDollars();
+
+    // --- Monthly spend ---
     const monthlySummariesRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+        // raw SQL: Drizzle cannot express COALESCE(MAX(...), 0) natively
+        latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
       })
       .from(usageSummaries)
       .where(
@@ -89,11 +90,21 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
           lte(usageSummaries.windowStart, now),
         ),
       );
-    const monthlySummaries = monthlySummariesRows[0];
+    const monthlySummaryTotal = Number(monthlySummariesRows[0]?.total ?? 0);
+    const monthlyLatestEnd = Number(monthlySummariesRows[0]?.latestEnd ?? 0);
 
-    const monthlySpend = Credit.fromRaw(
-      Number(monthlyEvents?.total ?? 0) + Number(monthlySummaries?.total ?? 0),
-    ).toDollars();
+    // Assumes contiguous summary windows — gap between windows could under-count spend
+    // (acceptable limitation at current scale; aggregator guarantees gapless windows)
+    const monthlyEventsStart = monthlyLatestEnd > monthStart ? monthlyLatestEnd : monthStart;
+    const monthlyEventsRows = await this.db
+      .select({
+        total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
+      })
+      .from(meterEvents)
+      .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthlyEventsStart)));
+    const monthlyEventTotal = Number(monthlyEventsRows[0]?.total ?? 0);
+
+    const monthlySpend = Credit.fromRaw(monthlySummaryTotal + monthlyEventTotal).toDollars();
 
     return { dailySpend, monthlySpend };
   }

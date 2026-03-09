@@ -178,19 +178,21 @@ describe("DrizzleSpendingCapStore", () => {
     });
 
     it("sums both meter_events and usage_summaries", async () => {
-      await seedMeterEvent(db, {
-        id: "me-combo",
-        tenant: "t1",
-        charge: Credit.fromDollars(1.0).toRaw(),
-        timestamp: ANCHOR_TS - 3600_000,
-      });
+      // Summary covers [DAY_START, DAY_START + 6h)
       await seedUsageSummary(db, {
         id: "us-combo",
         tenant: "t1",
         totalCharge: Credit.fromDollars(2.0).toRaw(),
         windowStart: DAY_START,
-        windowEnd: ANCHOR_TS,
+        windowEnd: DAY_START + 6 * 60 * 60 * 1000,
         eventCount: 5,
+      });
+      // New event AFTER summary window (at 13:00, after 06:00 window end)
+      await seedMeterEvent(db, {
+        id: "me-combo",
+        tenant: "t1",
+        charge: Credit.fromDollars(1.0).toRaw(),
+        timestamp: ANCHOR_TS - 3600_000, // 13:00, after 06:00 window end
       });
 
       const result = await store.querySpend("t1", ANCHOR_TS);
@@ -218,6 +220,83 @@ describe("DrizzleSpendingCapStore", () => {
       const resultC = await store.querySpend("tenant-c", ANCHOR_TS);
       expect(resultC.dailySpend).toBeCloseTo(0, 6);
       expect(resultC.monthlySpend).toBeCloseTo(0, 6);
+    });
+  });
+
+  describe("double-counting prevention", () => {
+    it("does not double-count meter_events already rolled into usage_summaries", async () => {
+      // Simulate: a meter_event at 10:00 today was rolled up into a usage_summary
+      // covering [09:00, 11:00). The spend should be $5, not $10.
+      const windowStart = DAY_START + 9 * 60 * 60 * 1000; // 09:00
+      const windowEnd = DAY_START + 11 * 60 * 60 * 1000; // 11:00
+      const eventTs = DAY_START + 10 * 60 * 60 * 1000; // 10:00
+
+      // Raw meter_event (not yet deleted — aggregator doesn't delete them)
+      await seedMeterEvent(db, {
+        id: "me-rolled",
+        tenant: "t1",
+        charge: Credit.fromDollars(5.0).toRaw(),
+        timestamp: eventTs,
+      });
+
+      // The usage_summary that already includes this event
+      await seedUsageSummary(db, {
+        id: "us-rolled",
+        tenant: "t1",
+        totalCharge: Credit.fromDollars(5.0).toRaw(),
+        windowStart,
+        windowEnd,
+        eventCount: 1,
+      });
+
+      const result = await store.querySpend("t1", ANCHOR_TS);
+
+      // Should be $5, NOT $10 (the old code would return $10)
+      expect(result.dailySpend).toBeCloseTo(5.0, 6);
+      expect(result.monthlySpend).toBeCloseTo(5.0, 6);
+    });
+
+    it("includes meter_events newer than the latest summary window", async () => {
+      const windowStart = DAY_START + 9 * 60 * 60 * 1000;
+      const windowEnd = DAY_START + 11 * 60 * 60 * 1000;
+
+      // Summary covers [09:00, 11:00)
+      await seedUsageSummary(db, {
+        id: "us-old",
+        tenant: "t1",
+        totalCharge: Credit.fromDollars(3.0).toRaw(),
+        windowStart,
+        windowEnd,
+        eventCount: 2,
+      });
+
+      // New meter_event at 12:00 — NOT yet rolled up
+      await seedMeterEvent(db, {
+        id: "me-new",
+        tenant: "t1",
+        charge: Credit.fromDollars(2.0).toRaw(),
+        timestamp: DAY_START + 12 * 60 * 60 * 1000,
+      });
+
+      const result = await store.querySpend("t1", ANCHOR_TS);
+
+      // $3 from summary + $2 from new event = $5
+      expect(result.dailySpend).toBeCloseTo(5.0, 6);
+      expect(result.monthlySpend).toBeCloseTo(5.0, 6);
+    });
+
+    it("falls back to all meter_events when no summaries exist", async () => {
+      await seedMeterEvent(db, {
+        id: "me-only",
+        tenant: "t1",
+        charge: Credit.fromDollars(4.0).toRaw(),
+        timestamp: ANCHOR_TS - 1000,
+      });
+
+      const result = await store.querySpend("t1", ANCHOR_TS);
+
+      expect(result.dailySpend).toBeCloseTo(4.0, 6);
+      expect(result.monthlySpend).toBeCloseTo(4.0, 6);
     });
   });
 

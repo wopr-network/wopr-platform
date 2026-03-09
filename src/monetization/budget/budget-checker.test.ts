@@ -170,17 +170,9 @@ describe("BudgetChecker", () => {
     it("aggregates spend from both meter_events and usage_summaries", async () => {
       const now = Date.now();
       const oneHourAgo = now - 60 * 60 * 1000;
+      const thirtyMinAgo = now - 30 * 60 * 1000;
 
-      await db.insert(meterEvents).values({
-        id: "evt-1",
-        tenant: "tenant-1",
-        cost: Credit.fromDollars(0.1).toRaw(),
-        charge: Credit.fromDollars(0.2).toRaw(),
-        capability: "chat",
-        provider: "replicate",
-        timestamp: now,
-      });
-
+      // Summary covers [1h ago, 30min ago)
       await db.insert(usageSummaries).values({
         id: "sum-1",
         tenant: "tenant-1",
@@ -191,12 +183,96 @@ describe("BudgetChecker", () => {
         totalCharge: Credit.fromDollars(0.3).toRaw(),
         totalDuration: 0,
         windowStart: oneHourAgo,
-        windowEnd: now,
+        windowEnd: thirtyMinAgo,
+      });
+
+      // New event AFTER summary window
+      await db.insert(meterEvents).values({
+        id: "evt-1",
+        tenant: "tenant-1",
+        cost: Credit.fromDollars(0.1).toRaw(),
+        charge: Credit.fromDollars(0.2).toRaw(),
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
       });
 
       const result = await checker.check("tenant-1", FREE_LIMITS);
-      expect(result.allowed).toBe(false);
+      expect(result.allowed).toBe(false); // $0.50 >= $0.50 hourly limit
       expect(result.currentHourlySpend).toBe(0.5);
+    });
+
+    it("does not double-count meter_events already rolled into usage_summaries", async () => {
+      const now = Date.now();
+      const oneHourAgo = now - 60 * 60 * 1000;
+
+      // A meter_event that was already rolled up into a usage_summary
+      await db.insert(meterEvents).values({
+        id: "evt-rolled",
+        tenant: "tenant-1",
+        cost: Credit.fromDollars(0.15).toRaw(),
+        charge: Credit.fromDollars(0.3).toRaw(),
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now - 30 * 60 * 1000, // 30 min ago
+      });
+
+      // The summary covering that event's window
+      await db.insert(usageSummaries).values({
+        id: "sum-rolled",
+        tenant: "tenant-1",
+        capability: "chat",
+        provider: "replicate",
+        eventCount: 1,
+        totalCost: Credit.fromDollars(0.15).toRaw(),
+        totalCharge: Credit.fromDollars(0.3).toRaw(),
+        totalDuration: 0,
+        windowStart: oneHourAgo,
+        windowEnd: now - 20 * 60 * 1000, // window ended 20 min ago
+      });
+
+      checker.clearCache();
+      const result = await checker.check("tenant-1", FREE_LIMITS);
+
+      // Should be $0.30 (from summary only), NOT $0.60 (double-counted)
+      expect(result.currentHourlySpend).toBe(0.3);
+      expect(result.allowed).toBe(true); // $0.30 < $0.50 hourly limit
+    });
+
+    it("includes unsummarized meter_events after latest summary window", async () => {
+      const now = Date.now();
+      const oneHourAgo = now - 60 * 60 * 1000;
+
+      // Summary covering [1h ago, 30min ago)
+      await db.insert(usageSummaries).values({
+        id: "sum-old",
+        tenant: "tenant-1",
+        capability: "chat",
+        provider: "replicate",
+        eventCount: 1,
+        totalCost: Credit.fromDollars(0.05).toRaw(),
+        totalCharge: Credit.fromDollars(0.1).toRaw(),
+        totalDuration: 0,
+        windowStart: oneHourAgo,
+        windowEnd: now - 30 * 60 * 1000,
+      });
+
+      // New event at 10min ago — not yet rolled up
+      await db.insert(meterEvents).values({
+        id: "evt-new",
+        tenant: "tenant-1",
+        cost: Credit.fromDollars(0.1).toRaw(),
+        charge: Credit.fromDollars(0.2).toRaw(),
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now - 10 * 60 * 1000,
+      });
+
+      checker.clearCache();
+      const result = await checker.check("tenant-1", FREE_LIMITS);
+
+      // $0.10 summary + $0.20 new event = $0.30
+      expect(result.currentHourlySpend).toBe(0.3);
     });
 
     it("handles edge case: spend exactly at limit", async () => {
