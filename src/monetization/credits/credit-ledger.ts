@@ -30,6 +30,7 @@ import { Credit } from "../credit.js";
 /** Transaction types that add credits */
 export type CreditType =
   | "signup_grant"
+  | "admin_grant"
   | "purchase"
   | "bounty"
   | "referral"

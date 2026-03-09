@@ -50,7 +50,7 @@ const mockCreditLedger = {
     id: "txn-1",
     tenantId: "t-1",
     amount: 1000,
-    type: "signup_grant",
+    type: "admin_grant",
     description: "test",
     createdAt: new Date().toISOString(),
   }),
@@ -238,7 +238,7 @@ describe("admin.creditsGrant", () => {
     expect(mockCreditLedger.credit).toHaveBeenCalledWith(
       "t-1",
       expect.any(Credit),
-      "signup_grant",
+      "admin_grant",
       "promo",
       undefined,
       undefined,
