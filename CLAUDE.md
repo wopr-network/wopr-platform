@@ -100,3 +100,7 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 - **Fake time in tests**: Capture `baseNow` before `vi.useFakeTimers()`, then use `baseNow + offsetMs` for all `setSystemTime()` calls to avoid non-deterministic behavior.
 - **Test IDs**: Use `crypto.randomUUID()` instead of `Date.now()` to prevent ID collision failures in parallel test runs.
 - **Cleanup on failure**: Always place watchers/intervals/timers in a `finally` block to guarantee cleanup even if assertions fail.
+- **SSE event filtering**: Never use a single `tenantId` guard for all SSE events. Branch on event type — tenant-scoped events filter by tenantId, system-wide events (e.g. NodeFleetEvents) forward to all authenticated subscribers.
+- **WAL append ordering**: Write-ahead log append must happen *before* the in-memory buffer push — fail-closed ordering ensures durability before visibility.
+- **WAL append must be synchronous**: Use `appendFileSync` (POSIX O_APPEND is atomic per-write) — making it async breaks the fail-closed durability guarantee.
+- **Read-filter-rewrite needs a mutex**: Any operation that reads a file, filters lines, then rewrites has a TOCTOU race; guard with a mutex. Append-only operations using O_APPEND do not.
