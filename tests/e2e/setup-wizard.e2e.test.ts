@@ -107,22 +107,27 @@ describe("E2E: setup wizard — fresh tenant → setup session → configure bot
   it("rejects concurrent setup session for same chat session (409)", async () => {
     const app = createSetupRoutes(makeDeps());
 
-    // First session succeeds
-    const res1 = await app.request("/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: SESSION_ID, pluginId: "discord" }),
-    });
-    expect(res1.status).toBe(200);
+    // Send both requests concurrently — the DB unique constraint ensures exactly
+    // one succeeds (200) and the other is rejected (409)
+    const [res1, res2] = await Promise.all([
+      app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: SESSION_ID, pluginId: "discord" }),
+      }),
+      app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: SESSION_ID, pluginId: "discord" }),
+      }),
+    ]);
 
-    // Second session for same sessionId is rejected
-    const res2 = await app.request("/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: SESSION_ID, pluginId: "discord" }),
-    });
-    expect(res2.status).toBe(409);
-    const body = await res2.json();
+    const statuses = [res1.status, res2.status].sort();
+    // One must succeed (200) and the other must be rejected (409)
+    expect(statuses).toEqual([200, 409]);
+
+    const failedRes = res1.status === 409 ? res1 : res2;
+    const body = await failedRes.json();
     expect(body.error).toContain("already in progress");
   });
 
@@ -165,8 +170,9 @@ describe("E2E: setup wizard — fresh tenant → setup session → configure bot
     // Verify plugin config persisted in DB
     const pluginConfig = await pluginConfigRepo.findByBotAndPlugin(BOT_ID, "discord");
     expect(pluginConfig).not.toBeNull();
+    // configJson must not contain plaintext secrets — only non-secret fields
     const configValues = JSON.parse(pluginConfig!.configJson);
-    expect(configValues.token).toBe("bot-token-secret");
+    expect(configValues.token).toBeUndefined(); // secret field must be absent from configJson
     expect(configValues.guildId).toBe("123456");
 
     // Verify encrypted fields exist for secret field
@@ -179,7 +185,7 @@ describe("E2E: setup wizard — fresh tenant → setup session → configure bot
     const session = await sessionRepo.findById(setupSessionId);
     expect(session!.collected).not.toBeNull();
     const collected = JSON.parse(session!.collected!);
-    expect(collected.token).toBe("bot-token-secret");
+    expect(collected.token).toBeUndefined(); // secret field excluded from collected data
     expect(collected.guildId).toBe("123456");
 
     // Verify error count was reset (recordSuccess called)
@@ -330,6 +336,10 @@ describe("E2E: setup wizard — fresh tenant → setup session → configure bot
     const session = await sessionRepo.findById(setupSessionId);
     expect(session!.status).toBe("rolled_back");
     expect(session!.collected).toBeNull();
+
+    // Verify plugin config was cleaned up by rollback
+    const pluginConfig = await pluginConfigRepo.findByBotAndPlugin(BOT_ID, "discord");
+    expect(pluginConfig).toBeNull();
 
     // After rollback, resume returns false (rolled_back is not in_progress)
     const resumeRes = await app.request(`/resume?sessionId=${SESSION_ID}`);
