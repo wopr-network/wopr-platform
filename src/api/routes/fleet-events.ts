@@ -21,13 +21,13 @@ export function createFleetEventsRoute(emitter: FleetEventEmitter): Hono {
     const writer = writable.getWriter();
 
     const unsub = emitter.subscribe((event) => {
-      if (!("tenantId" in event)) return;
-      if (event.tenantId !== tenantId) return;
-      const payload = JSON.stringify({
-        type: event.type,
-        botId: event.botId,
-        timestamp: event.timestamp,
-      });
+      // BotFleetEvents are tenant-scoped; NodeFleetEvents are forwarded to all authenticated subscribers.
+      if ("tenantId" in event && event.tenantId !== tenantId) return;
+
+      const payload =
+        "tenantId" in event
+          ? JSON.stringify({ type: event.type, botId: event.botId, timestamp: event.timestamp })
+          : JSON.stringify({ type: event.type, nodeId: event.nodeId, timestamp: event.timestamp });
       writer.write(`event: fleet\ndata: ${payload}\n\n`).catch(() => {
         unsub();
         clearInterval(heartbeatTimer);
