@@ -84,6 +84,7 @@ import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
+import { CapacityPolicy, type CapacityPolicyConfig, DEFAULT_CAPACITY_POLICY_CONFIG } from "./capacity-policy.js";
 import { DigitalOceanNodeProvider } from "./digitalocean-node-provider.js";
 import { DOClient } from "./do-client.js";
 import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
@@ -196,6 +197,7 @@ let _doClient: DOClient | null = null;
 let _nodeProvider: INodeProvider | null = null;
 let _nodeProvisioner: NodeProvisioner | null = null;
 let _gpuNodeProvisioner: GpuNodeProvisioner | null = null;
+let _capacityPolicy: CapacityPolicy | null = null;
 let _adminAuditLog: AdminAuditLog | null = null;
 let _restoreLogStore: IRestoreLogStore | null = null;
 let _restoreService: RestoreService | null = null;
@@ -607,6 +609,14 @@ export function getGpuNodeProvisioner(): GpuNodeProvisioner {
     });
   }
   return _gpuNodeProvisioner;
+}
+
+export function getCapacityPolicy(configOverrides?: Partial<CapacityPolicyConfig>): CapacityPolicy {
+  if (!_capacityPolicy) {
+    const config = { ...DEFAULT_CAPACITY_POLICY_CONFIG, ...configOverrides };
+    _capacityPolicy = new CapacityPolicy(getNodeRepo(), getNodeProvisioner(), getAdminNotifier(), config);
+  }
+  return _capacityPolicy;
 }
 
 export function getAdminAuditLog(): AdminAuditLog {
@@ -1225,6 +1235,7 @@ export function _resetForTest(): void {
   _nodeProvider = null;
   _nodeProvisioner = null;
   _gpuNodeProvisioner = null;
+  _capacityPolicy = null;
   _adminAuditLog = null;
   _restoreLogStore = null;
   _restoreService = null;
