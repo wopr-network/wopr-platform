@@ -21,6 +21,7 @@ export function createFleetEventsRoute(emitter: FleetEventEmitter): Hono {
     const writer = writable.getWriter();
 
     const unsub = emitter.subscribe((event) => {
+      if (!("tenantId" in event)) return;
       if (event.tenantId !== tenantId) return;
       const payload = JSON.stringify({
         type: event.type,

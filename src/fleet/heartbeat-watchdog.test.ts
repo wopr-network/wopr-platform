@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FleetEventEmitter } from "./fleet-event-emitter.js";
 import { HeartbeatWatchdog, type WatchdogConfig } from "./heartbeat-watchdog.js";
 import type { INodeRepository } from "./node-repository.js";
 
@@ -122,6 +123,27 @@ describe("HeartbeatWatchdog", () => {
     // Should NOT transition (already unhealthy, not yet at 300s)
     expect(nodeRepo.transition).not.toHaveBeenCalled();
     expect(onStatusChange).not.toHaveBeenCalled();
+  });
+
+  it("emits node.heartbeat_lost when active node transitions to unhealthy", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const nodes = [{ id: "node-1", status: "active", lastHeartbeatAt: now - 100 }];
+    nodeRepo = createMockNodeRepo(nodes);
+    const emitter: FleetEventEmitter = { emit: vi.fn(), subscribe: vi.fn() } as unknown as FleetEventEmitter;
+
+    watchdog = new HeartbeatWatchdog(
+      nodeRepo as unknown as INodeRepository,
+      onRecovery as unknown as (nodeId: string) => void,
+      onStatusChange,
+      config,
+      emitter,
+    );
+    watchdog.start();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(emitter.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "node.heartbeat_lost", nodeId: "node-1" }),
+    );
   });
 
   it("calls nodeRepo.list with ['active', 'unhealthy'] statuses", async () => {

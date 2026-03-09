@@ -1,6 +1,7 @@
 import { logger } from "../config/logger.js";
 import type { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import type { FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { MigrationOrchestrator, MigrationResult } from "./migration-orchestrator.js";
 import type { INodeRepository } from "./node-repository.js";
 
@@ -22,6 +23,7 @@ export class NodeDrainer {
     private readonly nodeRepo: INodeRepository,
     private readonly botInstanceRepo: IBotInstanceRepository,
     private readonly notifier: AdminNotifier,
+    private readonly eventEmitter?: FleetEventEmitter,
   ) {}
 
   async drain(nodeId: string): Promise<DrainResult> {
@@ -29,6 +31,8 @@ export class NodeDrainer {
 
     // 1. Transition node to draining (prevents new placements)
     await this.nodeRepo.transition(nodeId, "draining", "node_drain", "migration_orchestrator");
+
+    this.eventEmitter?.emit({ type: "node.draining", nodeId, timestamp: new Date().toISOString() });
 
     // 2. Get all tenants on this node
     const tenants = await this.botInstanceRepo.listByNode(nodeId);
@@ -50,6 +54,7 @@ export class NodeDrainer {
     // 4. Transition to offline if all succeeded, stay draining if some failed
     if (failed.length === 0) {
       await this.nodeRepo.transition(nodeId, "offline", "drain_complete", "migration_orchestrator");
+      this.eventEmitter?.emit({ type: "node.drained", nodeId, timestamp: new Date().toISOString() });
     }
 
     // 5. Notify admin on failures
