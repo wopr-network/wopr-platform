@@ -158,6 +158,8 @@ export class CapacityPolicy {
         this.lowUsageSince = null;
         logger.info(`Auto-scale DOWN: fleet at ${Math.round(fleetUsagePercent)}%, destroyed node ${target.id}`);
       } catch (err) {
+        // Set cooldown even on failure to prevent retry storms during outages
+        this.lastScaleDownAt = now;
         logger.error(`Auto-scale DOWN failed for node ${target.id}`, {
           error: err instanceof Error ? err.message : String(err),
         });
