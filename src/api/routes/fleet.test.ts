@@ -171,12 +171,25 @@ vi.mock("../../proxy/singleton.js", () => {
 const mockGetNodeRepo = vi.fn((): INodeRepository => {
   throw new Error("DATABASE_URL environment variable is required");
 });
+
+// Controllable VPS repo mock — tests override getByBotId as needed
+const mockVpsRepo = {
+  getByBotId: vi.fn().mockResolvedValue(null),
+};
+
+// Controllable tenant customer repo mock — tests override getByTenant as needed
+const mockTenantCustomerRepo = {
+  getByTenant: vi.fn().mockResolvedValue(null),
+};
+
 // Mock services singletons to avoid DB connection at module load time (merged single vi.mock)
 vi.mock("../../fleet/services.js", () => ({
   getNodeRepo: () => mockGetNodeRepo(),
   getRecoveryOrchestrator: vi.fn().mockReturnValue(null),
   getCommandBus: vi.fn().mockReturnValue(undefined),
   getBotInstanceRepo: vi.fn().mockReturnValue(undefined),
+  getVpsRepo: () => mockVpsRepo,
+  getTenantCustomerRepository: () => mockTenantCustomerRepo,
 }));
 
 // Import AFTER mocks are set up
@@ -1248,6 +1261,47 @@ describe("GET /fleet/bots/:id/logs/stream", () => {
     await resPromise;
     expect(fleetMock.logStream).toHaveBeenCalledWith(TEST_BOT_ID, {
       tail: 10_000,
+    });
+  });
+
+  describe("POST /fleet/bots/:id/upgrade-to-vps — payment gate (WOP-2003)", () => {
+    beforeEach(() => {
+      vi.stubEnv("STRIPE_VPS_PRICE_ID", "price_test_vps");
+      // No active VPS subscription by default
+      mockVpsRepo.getByBotId.mockResolvedValue(null);
+    });
+
+    it("returns 402 when tenant has no payment method on file", async () => {
+      // tenantRepo.getByTenant resolves to null — no payment method
+      mockTenantCustomerRepo.getByTenant.mockResolvedValue(null);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/upgrade-to-vps`, {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).toBe(402);
+      const body = await res.json();
+      expect(body.error).toMatch(/payment method/i);
+    });
+
+    it("does NOT return 402 when tenant has a payment method on file", async () => {
+      // tenantRepo.getByTenant resolves to a customer record — payment method present
+      mockTenantCustomerRepo.getByTenant.mockResolvedValue({
+        tenant: mockProfile.tenantId,
+        processor_customer_id: "cus_test_123",
+      });
+
+      // Stripe/checkout modules are not configured in test env — the handler will
+      // fail after the payment gate, but the important assertion is that status is NOT 402.
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/upgrade-to-vps`, {
+        method: "POST",
+        headers: { ...authHeader, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      expect(res.status).not.toBe(402);
     });
   });
 });
