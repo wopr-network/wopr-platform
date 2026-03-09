@@ -325,6 +325,15 @@ describe("admin-credits routes", () => {
       expect(res.status).toBe(400);
     });
 
+    it("rejects tenantId with invalid characters (space, @, !) with 400", async () => {
+      for (const id of ["bad tenant", "bad@id", "bad!id"]) {
+        const res = await app.request(`/${encodeURIComponent(id)}/balance`);
+        expect(res.status).toBe(400);
+        const body = await res.json();
+        expect(body.error).toMatch(/tenantId/i);
+      }
+    });
+
     it("accepts valid tenantId formats", async () => {
       const res = await app.request("/valid-tenant_123/balance");
       expect(res.status).toBe(200);
