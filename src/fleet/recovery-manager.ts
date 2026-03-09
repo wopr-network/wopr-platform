@@ -94,7 +94,7 @@ export class RecoveryManager {
         await this.nodeRepo.transition(deadNodeId, "recovering", transitionReason, "recovery_manager");
       } else if (node.status !== "recovering") {
         // Node is in an unexpected state (active, provisioning, etc.) — cannot recover
-        throw new InvalidTransitionError(node.status, "recovering" as never);
+        throw new InvalidTransitionError(node.status, "recovering");
       }
       // If already "recovering", skip transitions entirely (idempotent)
     } catch (err) {
