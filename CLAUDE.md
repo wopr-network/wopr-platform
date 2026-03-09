@@ -100,3 +100,17 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 - **Fake time in tests**: Capture `baseNow` before `vi.useFakeTimers()`, then use `baseNow + offsetMs` for all `setSystemTime()` calls to avoid non-deterministic behavior.
 - **Test IDs**: Use `crypto.randomUUID()` instead of `Date.now()` to prevent ID collision failures in parallel test runs.
 - **Cleanup on failure**: Always place watchers/intervals/timers in a `finally` block to guarantee cleanup even if assertions fail.
+- **SSE event filtering**: Never use a single `tenantId` guard for all SSE events. Branch on event type — tenant-scoped events filter by tenantId, system-wide events (e.g. NodeFleetEvents) forward to all authenticated subscribers.
+- **WAL append ordering**: Write-ahead log append must happen *before* the in-memory buffer push — fail-closed ordering ensures durability before visibility.
+- **WAL append must be synchronous**: Use `appendFileSync` (POSIX O_APPEND is atomic per-write) — making it async breaks the fail-closed durability guarantee.
+- **Read-filter-rewrite needs a mutex**: Any operation that reads a file, filters lines, then rewrites has a TOCTOU race; guard with a mutex. Append-only operations using O_APPEND do not.
+- **e2e async assertions**: In Playwright e2e tests, always `await` async state changes (e.g. resolution events) before asserting visibility — bare `expect(getByText(...)).toBeVisible()` races against pending UI updates.
+- **Cooldown timestamps on failure**: In autoscaler (and any rate-limited retry loop), record cooldown timestamps inside `catch` blocks too — if the operation throws, the cooldown must still be set to prevent retry storms.
+- **Isolate audit/notifier from main ops**: Audit log writes and notifier calls must have their own try/catch, separate from the main operation — a logging failure must never mask or prevent the primary error from propagating.
+- **Drizzle migration separators**: Every SQL statement in a migration file must be followed by a `--> statement-breakpoint` comment — PGlite (used in unit tests) runs each segment as a single prepared statement and rejects multiple commands without separators.
+- **e2e mock reset**: Use `vi.resetAllMocks()` in `beforeEach`, not `vi.clearAllMocks()` — `clearAllMocks` only clears call history while `resetAllMocks` also resets implementations and return values.
+- **e2e env stub cleanup**: Always add `afterAll(() => { vi.unstubAllEnvs(); })` in test files that use `vi.stubEnv()` — otherwise stubbed env vars leak into other test files in the same process.
+- **e2e error message assertions**: Assert the exact formatted error string returned by the handler (e.g., `"Slack error: invalid_code"`), not a substring — loose assertions pass even when error formatting is wrong.
+- **Setup route secrets**: Secret/token fields must ONLY be written to `encryptedFieldsJson`, never to plaintext `configJson` — writing secrets to configJson is a security bug even if they are also encrypted elsewhere.
+- **Concurrent session tests**: Use `Promise.all` to send requests simultaneously — serial `await`s only test the DB-check logic, not the actual race condition or unique-constraint path.
+- **e2e tenant ownership tests**: At least one positive-path e2e test must use a tenant-scoped token (not the operator-level `FLEET_API_TOKEN`) to exercise `validateTenantOwnership()` — operator tokens bypass ownership checks entirely.
