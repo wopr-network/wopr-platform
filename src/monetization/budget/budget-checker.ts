@@ -173,6 +173,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
       await this.db
         .select({
           total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+          // raw SQL: Drizzle cannot express COALESCE(MAX(...), 0) natively
           latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
         })
         .from(usageSummaries)
@@ -188,6 +189,8 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     const hourlyLatestEnd = Number(hourlySummaries?.latestEnd ?? 0);
 
     // 2. Only query meter_events newer than the latest summary window end
+    // Assumes contiguous summary windows — gap between windows could under-count spend
+    // (acceptable limitation at current scale; aggregator guarantees gapless windows)
     const hourlyEventsStart = hourlyLatestEnd > oneHourAgo ? hourlyLatestEnd : oneHourAgo;
     const hourlyEvents = (
       await this.db
@@ -206,6 +209,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
       await this.db
         .select({
           total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+          // raw SQL: Drizzle cannot express COALESCE(MAX(...), 0) natively
           latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
         })
         .from(usageSummaries)
@@ -220,6 +224,8 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     const monthlySummaryTotal = Number(monthlySummaries?.total ?? 0);
     const monthlyLatestEnd = Number(monthlySummaries?.latestEnd ?? 0);
 
+    // Assumes contiguous summary windows — gap between windows could under-count spend
+    // (acceptable limitation at current scale; aggregator guarantees gapless windows)
     const monthlyEventsStart = monthlyLatestEnd > monthStart ? monthlyLatestEnd : monthStart;
     const monthlyEvents = (
       await this.db

@@ -46,6 +46,7 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
     const dailySummariesRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+        // raw SQL: Drizzle cannot express COALESCE(MAX(...), 0) natively
         latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
       })
       .from(usageSummaries)
@@ -61,6 +62,8 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
 
     // 2. Only query meter_events newer than the latest summary window end
     //    (these haven't been rolled up yet). If no summaries, use dayStart.
+    // Assumes contiguous summary windows — gap between windows could under-count spend
+    // (acceptable limitation at current scale; aggregator guarantees gapless windows)
     const dailyEventsStart = dailyLatestEnd > dayStart ? dailyLatestEnd : dayStart;
     const dailyEventsRows = await this.db
       .select({
@@ -76,6 +79,7 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
     const monthlySummariesRows = await this.db
       .select({
         total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+        // raw SQL: Drizzle cannot express COALESCE(MAX(...), 0) natively
         latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
       })
       .from(usageSummaries)
@@ -89,6 +93,8 @@ export class DrizzleSpendingCapStore implements ISpendingCapStore {
     const monthlySummaryTotal = Number(monthlySummariesRows[0]?.total ?? 0);
     const monthlyLatestEnd = Number(monthlySummariesRows[0]?.latestEnd ?? 0);
 
+    // Assumes contiguous summary windows — gap between windows could under-count spend
+    // (acceptable limitation at current scale; aggregator guarantees gapless windows)
     const monthlyEventsStart = monthlyLatestEnd > monthStart ? monthlyLatestEnd : monthStart;
     const monthlyEventsRows = await this.db
       .select({
