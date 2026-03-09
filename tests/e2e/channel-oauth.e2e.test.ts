@@ -234,7 +234,7 @@ describe("E2E: channel OAuth — error cases", () => {
     const res = await app.request(`/api/channel-oauth/callback?code=bad-code&state=${state}`);
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("invalid_code");
+    expect(html).toContain("Slack error: invalid_code");
     expect(html).toContain('"error"');
   });
 
