@@ -1,10 +1,25 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import type { AuthEnv } from "../../auth/index.js";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { getAdminAuditLog, getCreditLedger } from "../../fleet/services.js";
 import { Credit } from "../../monetization/credit.js";
 import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { InsufficientBalanceError } from "../../monetization/credits/credit-ledger.js";
+
+const tenantIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[a-zA-Z0-9_-]+$/);
+
+const TENANT_ID_ERROR = "tenantId must be 1-128 alphanumeric characters, hyphens, or underscores";
+
+function parseTenantId(c: { req: { param: (k: string) => string } }): { ok: true; tenant: string } | { ok: false } {
+  const result = tenantIdSchema.safeParse(c.req.param("tenantId"));
+  if (!result.success) return { ok: false };
+  return { ok: true, tenant: result.data };
+}
 
 function parseIntParam(value: string | undefined): number | undefined {
   if (value == null) return undefined;
@@ -30,7 +45,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** POST /:tenantId/grant */
   routes.post("/:tenantId/grant", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const parsed = parseTenantId(c);
+    if (!parsed.ok) return c.json({ error: TENANT_ID_ERROR }, 400);
+    const tenant = parsed.tenant;
 
     let body: Record<string, unknown>;
     try {
@@ -100,7 +117,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** POST /:tenantId/refund */
   routes.post("/:tenantId/refund", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const parsed = parseTenantId(c);
+    if (!parsed.ok) return c.json({ error: TENANT_ID_ERROR }, 400);
+    const tenant = parsed.tenant;
 
     let body: Record<string, unknown>;
     try {
@@ -165,7 +184,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** POST /:tenantId/correction */
   routes.post("/:tenantId/correction", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const parsed = parseTenantId(c);
+    if (!parsed.ok) return c.json({ error: TENANT_ID_ERROR }, 400);
+    const tenant = parsed.tenant;
 
     let body: Record<string, unknown>;
     try {
@@ -234,7 +255,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** GET /:tenantId/balance */
   routes.get("/:tenantId/balance", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const parsed = parseTenantId(c);
+    if (!parsed.ok) return c.json({ error: TENANT_ID_ERROR }, 400);
+    const tenant = parsed.tenant;
 
     try {
       const balance = await ledger.balance(tenant);
@@ -247,7 +270,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** GET /:tenantId/transactions */
   routes.get("/:tenantId/transactions", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const parsed = parseTenantId(c);
+    if (!parsed.ok) return c.json({ error: TENANT_ID_ERROR }, 400);
+    const tenant = parsed.tenant;
     const typeParam = c.req.query("type");
 
     const filters = {
@@ -267,7 +292,9 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
   /** GET /:tenantId/adjustments -- alias for transactions */
   routes.get("/:tenantId/adjustments", async (c) => {
     const ledger = ledgerFactory();
-    const tenant = c.req.param("tenantId");
+    const parsed = parseTenantId(c);
+    if (!parsed.ok) return c.json({ error: TENANT_ID_ERROR }, 400);
+    const tenant = parsed.tenant;
     const typeParam = c.req.query("type");
 
     const filters = {
