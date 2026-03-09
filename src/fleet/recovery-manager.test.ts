@@ -40,7 +40,7 @@ function createMockNotifier(): AdminNotifier {
 function createMockNodeRepo(overrides: Record<string, unknown> = {}): INodeRepository {
   return {
     transition: vi.fn().mockResolvedValue({ id: "node-1", status: "recovering" }),
-    getById: vi.fn(),
+    getById: vi.fn().mockResolvedValue({ id: "node-1", status: "unhealthy" }),
     getBySecret: vi.fn(),
     list: vi.fn(),
     register: vi.fn(),
@@ -226,7 +226,6 @@ describe("RecoveryManager - recoverTenant uses bot profile for image/env", () =>
 describe("RecoveryManager.triggerRecovery — state machine transitions", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let nodeRepo: INodeRepository;
   let nodeConnections: NodeConnectionManager;
   let notifier: AdminNotifier;
 
@@ -244,31 +243,86 @@ describe("RecoveryManager.triggerRecovery — state machine transitions", () => 
     await rollbackTestTransaction(pool);
     notifier = createMockNotifier();
     nodeConnections = createMockNodeConnections();
-    nodeRepo = createMockNodeRepo();
   });
 
   it("transitions node via state machine: offline then recovering then offline", async () => {
-    const manager = makeManager(db, { nodeRepo, nodeConnections, notifier });
+    const getById = vi.fn().mockResolvedValue({ id: "node-1", status: "unhealthy" });
+    const transition = vi.fn().mockResolvedValue({ id: "node-1", status: "recovering" });
+    const localNodeRepo = createMockNodeRepo({ getById, transition });
+    const manager = makeManager(db, { nodeRepo: localNodeRepo, nodeConnections, notifier });
 
     await insertNode(db, { id: "node-1", status: "active" });
 
     await manager.triggerRecovery("node-1", "heartbeat_timeout");
 
-    expect(nodeRepo.transition).toHaveBeenCalledWith("node-1", "offline", "heartbeat_timeout", "recovery_manager");
-    expect(nodeRepo.transition).toHaveBeenCalledWith("node-1", "recovering", "heartbeat_timeout", "recovery_manager");
-    expect(nodeRepo.transition).toHaveBeenCalledWith("node-1", "offline", "recovery_complete", "recovery_manager");
-    expect(nodeRepo.transition).toHaveBeenCalledTimes(3);
+    expect(transition).toHaveBeenCalledWith("node-1", "offline", "heartbeat_timeout", "recovery_manager");
+    expect(transition).toHaveBeenCalledWith("node-1", "recovering", "heartbeat_timeout", "recovery_manager");
+    expect(transition).toHaveBeenCalledWith("node-1", "offline", "recovery_complete", "recovery_manager");
+    expect(transition).toHaveBeenCalledTimes(3);
   });
 
   it("logs and re-throws when transition() rejects with InvalidTransitionError", async () => {
     const err = new InvalidTransitionError("active", "recovering");
-    (nodeRepo.transition as ReturnType<typeof vi.fn>).mockRejectedValueOnce(err);
+    const getById = vi.fn().mockResolvedValue({ id: "node-1", status: "unhealthy" });
+    const transition = vi.fn().mockRejectedValueOnce(err);
+    const localNodeRepo = createMockNodeRepo({ getById, transition });
 
-    const manager = makeManager(db, { nodeRepo, nodeConnections, notifier });
+    const manager = makeManager(db, { nodeRepo: localNodeRepo, nodeConnections, notifier });
 
     await insertNode(db, { id: "node-1", status: "active" });
 
     await expect(manager.triggerRecovery("node-1", "manual")).rejects.toThrow(InvalidTransitionError);
+  });
+
+  it("skips unhealthy→offline transition when node is already offline", async () => {
+    const getById = vi.fn().mockResolvedValue({ id: "node-1", status: "offline" });
+    const transition = vi.fn().mockResolvedValue({ id: "node-1", status: "recovering" });
+    const localNodeRepo = createMockNodeRepo({ getById, transition });
+    const localNodeConns = createMockNodeConnections();
+    const manager = makeManager(db, { nodeRepo: localNodeRepo, nodeConnections: localNodeConns, notifier });
+
+    await insertNode(db, { id: "node-1", status: "offline" });
+
+    await manager.triggerRecovery("node-1", "heartbeat_timeout");
+
+    // Should NOT call transition to "offline" with transitionReason — node is already offline
+    // (only the final "recovery_complete" offline transition is allowed)
+    const offlineTransitionCalls = transition.mock.calls.filter(
+      (c: unknown[]) => c[1] === "offline" && c[2] !== "recovery_complete",
+    );
+    expect(offlineTransitionCalls).toHaveLength(0);
+    // Should call transition to "recovering"
+    expect(transition).toHaveBeenCalledWith("node-1", "recovering", "heartbeat_timeout", "recovery_manager");
+    // Final transition back to offline after recovery completes
+    expect(transition).toHaveBeenCalledWith("node-1", "offline", "recovery_complete", "recovery_manager");
+  });
+
+  it("skips both initial transitions when node is already recovering", async () => {
+    const getById = vi.fn().mockResolvedValue({ id: "node-1", status: "recovering" });
+    const transition = vi.fn().mockResolvedValue({ id: "node-1", status: "recovering" });
+    const localNodeRepo = createMockNodeRepo({ getById, transition });
+    const localNodeConns = createMockNodeConnections();
+    const manager = makeManager(db, { nodeRepo: localNodeRepo, nodeConnections: localNodeConns, notifier });
+
+    await insertNode(db, { id: "node-1", status: "recovering" });
+
+    await manager.triggerRecovery("node-1", "manual");
+
+    // Only the final "offline" transition after recovery completes should exist
+    expect(transition).toHaveBeenCalledTimes(1);
+    expect(transition).toHaveBeenCalledWith("node-1", "offline", "recovery_complete", "recovery_manager");
+  });
+
+  it("throws when node does not exist", async () => {
+    const getById = vi.fn().mockResolvedValue(null);
+    const localNodeRepo = createMockNodeRepo({ getById });
+    const manager = makeManager(db, {
+      nodeRepo: localNodeRepo,
+      nodeConnections: createMockNodeConnections(),
+      notifier,
+    });
+
+    await expect(manager.triggerRecovery("nonexistent", "manual")).rejects.toThrow("not found");
   });
 });
 
