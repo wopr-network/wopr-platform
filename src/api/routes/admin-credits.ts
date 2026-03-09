@@ -55,7 +55,7 @@ function buildRoutes(ledgerFactory: () => ICreditLedger): Hono<AuthEnv> {
       const adminUser = user?.id ?? "unknown";
       let result: Awaited<ReturnType<typeof ledger.credit>>;
       try {
-        result = await ledger.credit(tenant, Credit.fromCents(amountCents), "signup_grant", reason);
+        result = await ledger.credit(tenant, Credit.fromCents(amountCents), "admin_grant", reason);
       } catch (err) {
         try {
           getAdminAuditLog().log({

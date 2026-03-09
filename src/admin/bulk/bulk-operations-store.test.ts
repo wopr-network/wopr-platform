@@ -45,7 +45,7 @@ describe("BulkOperationsStore", () => {
           tenantId,
           amount,
           balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
-          type: "signup_grant" as const,
+          type: "admin_grant" as const,
           description: null,
           referenceId: null,
           fundingSource: null,
@@ -85,7 +85,7 @@ describe("BulkOperationsStore", () => {
               tenantId: "tenant-1",
               amount: Credit.fromCents(500),
               balanceAfter: Credit.fromCents(500),
-              type: "signup_grant" as const,
+              type: "admin_grant" as const,
               description: "Welcome grant",
               referenceId: null,
               fundingSource: null,
@@ -608,7 +608,7 @@ describe("BulkOperationsStore", () => {
       // to avoid brittle manual quote-stripping that breaks on JSON values with commas.
       const expectedJson = JSON.stringify([
         {
-          type: "signup_grant",
+          type: "admin_grant",
           amount_cents: 500,
           description: "Welcome grant",
           created_at: "2026-01-01T00:00:00.000Z",

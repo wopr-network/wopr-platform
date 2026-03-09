@@ -192,7 +192,7 @@ export const adminRouter = router({
         const result = await getCreditLedger().credit(
           input.tenantId,
           Credit.fromCents(input.amount_cents),
-          "signup_grant",
+          "admin_grant",
           input.reason,
           undefined,
           undefined,
