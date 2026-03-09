@@ -38,33 +38,33 @@ describe("MeterWAL", () => {
     }
   });
 
-  it("appends events to the WAL", () => {
+  it("appends events to the WAL", async () => {
     const event = makeEvent();
-    const result = wal.append(event);
+    const result = await wal.append(event);
 
     expect(result.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(result.tenant).toBe("tenant-1");
     expect(wal.count()).toBe(1);
   });
 
-  it("preserves event ID if provided", () => {
+  it("preserves event ID if provided", async () => {
     const event = { ...makeEvent(), id: "custom-id-123" };
-    const result = wal.append(event);
+    const result = await wal.append(event);
 
     expect(result.id).toBe("custom-id-123");
   });
 
-  it("generates UUID if ID not provided", () => {
+  it("generates UUID if ID not provided", async () => {
     const event = makeEvent();
-    const result = wal.append(event);
+    const result = await wal.append(event);
 
     expect(result.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
   });
 
-  it("readAll returns events in order", () => {
-    wal.append(makeEvent({ tenant: "t-1" }));
-    wal.append(makeEvent({ tenant: "t-2" }));
-    wal.append(makeEvent({ tenant: "t-3" }));
+  it("readAll returns events in order", async () => {
+    await wal.append(makeEvent({ tenant: "t-1" }));
+    await wal.append(makeEvent({ tenant: "t-2" }));
+    await wal.append(makeEvent({ tenant: "t-3" }));
 
     const events = wal.readAll();
     expect(events).toHaveLength(3);
@@ -78,12 +78,12 @@ describe("MeterWAL", () => {
     expect(events).toEqual([]);
   });
 
-  it("remove deletes specific events", () => {
-    const e1 = wal.append(makeEvent({ tenant: "t-1" }));
-    const e2 = wal.append(makeEvent({ tenant: "t-2" }));
-    const e3 = wal.append(makeEvent({ tenant: "t-3" }));
+  it("remove deletes specific events", async () => {
+    const e1 = await wal.append(makeEvent({ tenant: "t-1" }));
+    const e2 = await wal.append(makeEvent({ tenant: "t-2" }));
+    const e3 = await wal.append(makeEvent({ tenant: "t-3" }));
 
-    wal.remove(new Set([e2.id]));
+    await wal.remove(new Set([e2.id]));
 
     const events = wal.readAll();
     expect(events).toHaveLength(2);
@@ -91,28 +91,28 @@ describe("MeterWAL", () => {
     expect(events[1].id).toBe(e3.id);
   });
 
-  it("remove with empty set does nothing", () => {
-    wal.append(makeEvent());
-    wal.remove(new Set());
+  it("remove with empty set does nothing", async () => {
+    await wal.append(makeEvent());
+    await wal.remove(new Set());
 
     expect(wal.count()).toBe(1);
   });
 
-  it("remove all events clears the WAL file", () => {
-    const e1 = wal.append(makeEvent());
-    const e2 = wal.append(makeEvent());
+  it("remove all events clears the WAL file", async () => {
+    const e1 = await wal.append(makeEvent());
+    const e2 = await wal.append(makeEvent());
 
-    wal.remove(new Set([e1.id, e2.id]));
+    await wal.remove(new Set([e1.id, e2.id]));
 
     expect(wal.isEmpty()).toBe(true);
     expect(existsSync(TEST_WAL_PATH)).toBe(false);
   });
 
-  it("clear removes the WAL file", () => {
-    wal.append(makeEvent());
+  it("clear removes the WAL file", async () => {
+    await wal.append(makeEvent());
     expect(existsSync(TEST_WAL_PATH)).toBe(true);
 
-    wal.clear();
+    await wal.clear();
 
     expect(existsSync(TEST_WAL_PATH)).toBe(false);
     expect(wal.isEmpty()).toBe(true);
@@ -122,8 +122,8 @@ describe("MeterWAL", () => {
     expect(wal.isEmpty()).toBe(true);
   });
 
-  it("isEmpty returns false after append", () => {
-    wal.append(makeEvent());
+  it("isEmpty returns false after append", async () => {
+    await wal.append(makeEvent());
     expect(wal.isEmpty()).toBe(false);
   });
 
@@ -131,12 +131,35 @@ describe("MeterWAL", () => {
     expect(wal.count()).toBe(0);
   });
 
-  it("handles multiple appends without data loss", () => {
+  it("handles multiple appends without data loss", async () => {
     for (let i = 0; i < 100; i++) {
-      wal.append(makeEvent({ tenant: `t-${i}` }));
+      await wal.append(makeEvent({ tenant: `t-${i}` }));
     }
 
     expect(wal.count()).toBe(100);
+  });
+
+  it("concurrent append during remove does not lose events", async () => {
+    // Seed 3 events
+    const e1 = await wal.append(makeEvent({ tenant: "t-1" }));
+    const e2 = await wal.append(makeEvent({ tenant: "t-2" }));
+    await wal.append(makeEvent({ tenant: "t-3" }));
+
+    // Remove e1 and e2, while concurrently appending e4
+    const removePromise = wal.remove(new Set([e1.id, e2.id]));
+    const appendPromise = wal.append(makeEvent({ tenant: "t-4" }));
+
+    await Promise.all([removePromise, appendPromise]);
+
+    const events = wal.readAll();
+    const tenants = events.map((e) => e.tenant);
+
+    // e3 must survive the remove, e4 must not be lost
+    expect(tenants).toContain("t-3");
+    expect(tenants).toContain("t-4");
+    expect(tenants).not.toContain("t-1");
+    expect(tenants).not.toContain("t-2");
+    expect(events).toHaveLength(2);
   });
 });
 
