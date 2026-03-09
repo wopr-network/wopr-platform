@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { DrizzlePluginConfigRepository } from "../../src/setup/plugin-config-repository.js";
 import { createTestDb } from "../../src/test/db.js";
@@ -80,7 +80,7 @@ describe("E2E: bot plugin proxy — full HTTP lifecycle", () => {
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
-    vi.clearAllMocks();
+    vi.resetAllMocks();
 
     const configRepo = new DrizzlePluginConfigRepository(db);
     const routes = createBotPluginProxyRoutes({ pluginConfigRepo: configRepo, profileRepo: storeMock });
@@ -97,7 +97,11 @@ describe("E2E: bot plugin proxy — full HTTP lifecycle", () => {
   });
 
   afterEach(async () => {
-    await pool.close();
+    await pool?.close();
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
   });
 
   // =========================================================================
