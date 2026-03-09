@@ -118,7 +118,7 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
 
     // Remove already-persisted events from WAL (idempotent cleanup).
     if (existingIds.size > 0) {
-      this.wal.remove(existingIds);
+      await this.wal.remove(existingIds);
     }
   }
 
@@ -127,6 +127,8 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
     if (this.closed) return;
 
     // FAIL-CLOSED: Write to WAL first, then buffer.
+    // append() is synchronous (appendFileSync), so the WAL write completes
+    // before buffer.push() — crash safety is guaranteed.
     const eventWithId = this.wal.append(event);
     this.buffer.push(eventWithId);
 
@@ -161,7 +163,7 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
 
       // Success: remove from WAL and reset retry counters.
       const flushedIds = new Set(batch.map((e) => e.id));
-      this.wal.remove(flushedIds);
+      await this.wal.remove(flushedIds);
       for (const id of flushedIds) {
         this.retryCount.delete(id);
       }
@@ -190,7 +192,7 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
       // Remove DLQ events from WAL (they're now in DLQ).
       if (toDLQ.length > 0) {
         const dlqIds = new Set(toDLQ.map((e) => e.id));
-        this.wal.remove(dlqIds);
+        await this.wal.remove(dlqIds);
       }
 
       // Re-add retry events to buffer.

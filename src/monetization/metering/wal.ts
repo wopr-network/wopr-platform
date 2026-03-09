@@ -11,6 +11,21 @@ import type { MeterEvent } from "./types.js";
  */
 export class MeterWAL {
   private readonly walPath: string;
+  private lock: Promise<void> = Promise.resolve();
+
+  private async withLock<T>(fn: () => T | Promise<T>): Promise<T> {
+    const prev = this.lock;
+    let resolve!: () => void;
+    this.lock = new Promise<void>((r) => {
+      resolve = r;
+    });
+    try {
+      await prev;
+      return await fn();
+    } finally {
+      resolve();
+    }
+  }
 
   constructor(walPath: string) {
     this.walPath = walPath;
@@ -25,8 +40,8 @@ export class MeterWAL {
   }
 
   /**
-   * Append an event to the WAL. Synchronous write for durability.
-   * Returns the event with a generated ID if not already present.
+   * Append an event to the WAL. appendFileSync is atomic on POSIX (O_APPEND),
+   * so no mutex is needed here. Returns the event with a generated ID.
    */
   append(event: MeterEvent & { id?: string }): MeterEvent & { id: string } {
     const eventWithId = {
@@ -67,33 +82,41 @@ export class MeterWAL {
 
   /**
    * Remove specific event IDs from the WAL. This is done by rewriting
-   * the entire file without the specified events.
+   * the entire file without the specified events. Mutex-guarded.
    */
-  remove(eventIds: Set<string>): void {
-    if (!existsSync(this.walPath) || eventIds.size === 0) {
-      return;
-    }
+  async remove(eventIds: Set<string>): Promise<void> {
+    return this.withLock(() => {
+      if (!existsSync(this.walPath) || eventIds.size === 0) {
+        return;
+      }
 
-    const events = this.readAll();
-    const filtered = events.filter((e) => !eventIds.has(e.id));
+      const events = this.readAll();
+      const filtered = events.filter((e) => !eventIds.has(e.id));
 
-    if (filtered.length === 0) {
-      // All events removed — delete the WAL file.
-      this.clear();
-    } else {
-      // Rewrite the WAL with remaining events.
-      const content = `${filtered.map((e) => JSON.stringify(e)).join("\n")}\n`;
-      writeFileSync(this.walPath, content, { encoding: "utf8" });
+      if (filtered.length === 0) {
+        // All events removed — delete the WAL file.
+        this._clear();
+      } else {
+        // Rewrite the WAL with remaining events.
+        const content = `${filtered.map((e) => JSON.stringify(e)).join("\n")}\n`;
+        writeFileSync(this.walPath, content, { encoding: "utf8" });
+      }
+    });
+  }
+
+  private _clear(): void {
+    if (existsSync(this.walPath)) {
+      unlinkSync(this.walPath);
     }
   }
 
   /**
-   * Clear the entire WAL (typically after successful flush).
+   * Clear the entire WAL (typically after successful flush). Mutex-guarded.
    */
-  clear(): void {
-    if (existsSync(this.walPath)) {
-      unlinkSync(this.walPath);
-    }
+  async clear(): Promise<void> {
+    return this.withLock(() => {
+      this._clear();
+    });
   }
 
   /**
