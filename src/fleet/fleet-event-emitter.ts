@@ -50,7 +50,7 @@ export class FleetEventEmitter {
           eventType: event.type,
           botId: event.botId,
           tenantId: event.tenantId,
-          createdAt: Date.parse(event.timestamp),
+          createdAt: Number.isFinite(Date.parse(event.timestamp)) ? Date.parse(event.timestamp) : Date.now(),
         })
         .catch((err) => {
           logger.error("FleetEventEmitter persist error", { err });
