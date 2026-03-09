@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
@@ -42,6 +42,10 @@ describe("BudgetChecker", () => {
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
     checker = new BudgetChecker(db, { cacheTtlMs: 1000 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe("check()", () => {
@@ -96,6 +100,33 @@ describe("BudgetChecker", () => {
       expect(result.allowed).toBe(true);
       expect(result.maxSpendPerHour).toBeNull();
       expect(result.maxSpendPerMonth).toBeNull();
+    });
+
+    it("reflects upgraded limits immediately without cache invalidation", async () => {
+      const now = Date.now();
+      // Insert spend that exceeds FREE but is under PRO
+      await db.insert(meterEvents).values({
+        id: crypto.randomUUID(),
+        tenant: "tenant-upgrade",
+        cost: Credit.fromDollars(0.5).toRaw(),
+        charge: Credit.fromDollars(1.0).toRaw(),
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
+
+      // First check with FREE limits — should be blocked (1.0 >= 0.5)
+      const result1 = await checker.check("tenant-upgrade", FREE_LIMITS);
+      expect(result1.allowed).toBe(false);
+      expect(result1.maxSpendPerHour).toBe(0.5);
+
+      // Second check with PRO limits — should be allowed (1.0 < 10)
+      // WITHOUT calling invalidate() or clearCache()
+      const result2 = await checker.check("tenant-upgrade", PRO_LIMITS);
+      expect(result2.allowed).toBe(true);
+      expect(result2.maxSpendPerHour).toBe(10);
+      expect(result2.maxSpendPerMonth).toBe(200);
+      expect(result2.currentHourlySpend).toBe(1.0);
     });
 
     it("uses custom per-tenant limits when provided", async () => {
@@ -202,6 +233,35 @@ describe("BudgetChecker", () => {
       expect(result.currentHourlySpend).toBe(0.49);
     });
 
+    it("does not serve stale spend data across an hour boundary", async () => {
+      // Freeze time at a known point and populate cache
+      const baseNow = new Date("2026-02-15T11:59:00.000Z").getTime();
+      vi.useFakeTimers();
+      vi.setSystemTime(baseNow);
+
+      const result1 = await checker.check("tenant-boundary", FREE_LIMITS);
+      expect(result1.allowed).toBe(true);
+      expect(result1.currentHourlySpend).toBe(0);
+
+      // Advance past the hour boundary — new bucket, cache should miss
+      vi.setSystemTime(baseNow + 2 * 60 * 1000); // +2 minutes → into next hour
+
+      await db.insert(meterEvents).values({
+        id: crypto.randomUUID(),
+        tenant: "tenant-boundary",
+        cost: Credit.fromDollars(0.3).toRaw(),
+        charge: Credit.fromDollars(0.6).toRaw(),
+        capability: "chat",
+        provider: "replicate",
+        timestamp: baseNow + 2 * 60 * 1000,
+      });
+
+      // Fresh DB query because the hour bucket changed
+      const result2 = await checker.check("tenant-boundary", FREE_LIMITS);
+      expect(result2.allowed).toBe(false);
+      expect(result2.currentHourlySpend).toBe(0.6);
+    });
+
     it("ignores events outside the hourly time window", async () => {
       // Freeze mid-month so twoHoursAgo never crosses a month boundary
       vi.useFakeTimers();
@@ -222,7 +282,6 @@ describe("BudgetChecker", () => {
       checker.clearCache();
 
       const result = await checker.check("tenant-1", FREE_LIMITS);
-      vi.useRealTimers();
       expect(result.allowed).toBe(false);
       expect(result.currentHourlySpend).toBe(0);
       expect(result.currentMonthlySpend).toBe(20);
