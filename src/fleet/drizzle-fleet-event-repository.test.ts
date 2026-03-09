@@ -52,4 +52,76 @@ describe("DrizzleFleetEventRepository", () => {
     await expect(repo.clearFleetStop()).resolves.not.toThrow();
     expect(await repo.isFleetStopFired()).toBe(false);
   });
+
+  it("append persists a fleet event", async () => {
+    await repo.append({
+      eventType: "bot.started",
+      botId: "bot-1",
+      tenantId: "tenant-1",
+      createdAt: Date.now(),
+    });
+    const rows = await repo.list({});
+    expect(rows).toHaveLength(1);
+    expect(rows[0].eventType).toBe("bot.started");
+    expect(rows[0].botId).toBe("bot-1");
+    expect(rows[0].tenantId).toBe("tenant-1");
+  });
+
+  it("list filters by botId", async () => {
+    const now = Date.now();
+    await repo.append({ eventType: "bot.started", botId: "bot-1", tenantId: "t1", createdAt: now });
+    await repo.append({ eventType: "bot.stopped", botId: "bot-2", tenantId: "t1", createdAt: now });
+    const rows = await repo.list({ botId: "bot-1" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].botId).toBe("bot-1");
+  });
+
+  it("list filters by tenantId", async () => {
+    const now = Date.now();
+    await repo.append({ eventType: "bot.started", botId: "bot-1", tenantId: "t1", createdAt: now });
+    await repo.append({ eventType: "bot.started", botId: "bot-2", tenantId: "t2", createdAt: now });
+    const rows = await repo.list({ tenantId: "t1" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tenantId).toBe("t1");
+  });
+
+  it("list filters by type", async () => {
+    const now = Date.now();
+    await repo.append({ eventType: "bot.started", botId: "bot-1", tenantId: "t1", createdAt: now });
+    await repo.append({ eventType: "bot.stopped", botId: "bot-1", tenantId: "t1", createdAt: now });
+    const rows = await repo.list({ type: "bot.started" });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].eventType).toBe("bot.started");
+  });
+
+  it("list filters by since", async () => {
+    const now = Date.now();
+    await repo.append({ eventType: "bot.started", botId: "bot-1", tenantId: "t1", createdAt: now - 10000 });
+    await repo.append({ eventType: "bot.stopped", botId: "bot-1", tenantId: "t1", createdAt: now });
+    const rows = await repo.list({ since: now - 5000 });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].eventType).toBe("bot.stopped");
+  });
+
+  it("list respects limit", async () => {
+    const now = Date.now();
+    for (let i = 0; i < 5; i++) {
+      await repo.append({ eventType: "bot.started", botId: `bot-${i}`, tenantId: "t1", createdAt: now + i });
+    }
+    const rows = await repo.list({ limit: 2 });
+    expect(rows).toHaveLength(2);
+  });
+
+  it("list returns newest first", async () => {
+    const now = Date.now();
+    await repo.append({ eventType: "bot.started", botId: "bot-1", tenantId: "t1", createdAt: now });
+    await repo.append({ eventType: "bot.stopped", botId: "bot-2", tenantId: "t1", createdAt: now + 1000 });
+    const rows = await repo.list({});
+    expect(rows[0].createdAt).toBeGreaterThan(rows[1].createdAt);
+  });
+
+  it("list with no results returns empty array", async () => {
+    const rows = await repo.list({ botId: "nonexistent" });
+    expect(rows).toEqual([]);
+  });
 });
