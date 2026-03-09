@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
+import type { FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { MigrationOrchestrator, MigrationResult } from "./migration-orchestrator.js";
 import { NodeDrainer } from "./node-drainer.js";
 import type { INodeRepository } from "./node-repository.js";
@@ -227,6 +228,44 @@ describe("NodeDrainer", () => {
 
       expect(result.migrated).toHaveLength(0);
       expect(result.failed).toHaveLength(2);
+    });
+  });
+
+  describe("node lifecycle events", () => {
+    function makeEventEmitter(): FleetEventEmitter {
+      return { emit: vi.fn(), subscribe: vi.fn() } as unknown as FleetEventEmitter;
+    }
+
+    it("emits node.draining at start and node.drained on full success", async () => {
+      const migrationOrch = makeMigrationOrchestrator({
+        migrate: vi.fn().mockResolvedValue(successResult(BOT_1)),
+      });
+      const nodeRepo = makeNodeRepo();
+      const botInstanceRepo = makeBotInstanceRepo([defaultInstance1]);
+      const notifier = makeNotifier();
+      const emitter = makeEventEmitter();
+
+      const drainer = new NodeDrainer(migrationOrch, nodeRepo, botInstanceRepo, notifier, emitter);
+      await drainer.drain(NODE_ID);
+
+      expect(emitter.emit).toHaveBeenCalledWith(expect.objectContaining({ type: "node.draining", nodeId: NODE_ID }));
+      expect(emitter.emit).toHaveBeenCalledWith(expect.objectContaining({ type: "node.drained", nodeId: NODE_ID }));
+    });
+
+    it("emits node.draining but NOT node.drained on partial failure", async () => {
+      const migrationOrch = makeMigrationOrchestrator({
+        migrate: vi.fn().mockResolvedValue(failureResult(BOT_1)),
+      });
+      const nodeRepo = makeNodeRepo();
+      const botInstanceRepo = makeBotInstanceRepo([defaultInstance1]);
+      const notifier = makeNotifier();
+      const emitter = makeEventEmitter();
+
+      const drainer = new NodeDrainer(migrationOrch, nodeRepo, botInstanceRepo, notifier, emitter);
+      await drainer.drain(NODE_ID);
+
+      expect(emitter.emit).toHaveBeenCalledWith(expect.objectContaining({ type: "node.draining", nodeId: NODE_ID }));
+      expect(emitter.emit).not.toHaveBeenCalledWith(expect.objectContaining({ type: "node.drained" }));
     });
   });
 

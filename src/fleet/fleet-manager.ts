@@ -9,7 +9,7 @@ import type { ContainerResourceLimits } from "../monetization/quotas/resource-li
 import type { NetworkPolicy } from "../network/network-policy.js";
 import type { ProxyManagerInterface } from "../proxy/types.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
-import type { FleetEvent, FleetEventEmitter } from "./fleet-event-emitter.js";
+import type { BotEventType, FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { INodeCommandBus } from "./node-command-bus.js";
 import type { IProfileStore } from "./profile-store.js";
 import { getSharedVolumeConfig } from "./shared-volume-config.js";
@@ -68,7 +68,7 @@ export class FleetManager {
     this.eventEmitter = eventEmitter;
   }
 
-  private emitEvent(type: FleetEvent["type"], botId: string, tenantId?: string): void {
+  private emitEvent(type: BotEventType, botId: string, tenantId?: string): void {
     if (!this.eventEmitter) return;
     if (!tenantId) return; // skip — event with no tenant would be invisible to all subscribers
     this.eventEmitter.emit({ type, botId, tenantId, timestamp: new Date().toISOString() });

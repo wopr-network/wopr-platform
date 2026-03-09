@@ -1,13 +1,32 @@
 import { logger } from "../config/logger.js";
 
-export type FleetEventType = "bot.started" | "bot.stopped" | "bot.created" | "bot.removed" | "bot.restarted";
+export type BotEventType = "bot.started" | "bot.stopped" | "bot.created" | "bot.removed" | "bot.restarted";
 
-export interface FleetEvent {
-  type: FleetEventType;
+export type NodeEventType =
+  | "node.provisioned"
+  | "node.registered"
+  | "node.draining"
+  | "node.drained"
+  | "node.deprovisioned"
+  | "node.heartbeat_lost"
+  | "node.returned";
+
+export type FleetEventType = BotEventType | NodeEventType;
+
+export interface BotFleetEvent {
+  type: BotEventType;
   botId: string;
   tenantId: string;
   timestamp: string;
 }
+
+export interface NodeFleetEvent {
+  type: NodeEventType;
+  nodeId: string;
+  timestamp: string;
+}
+
+export type FleetEvent = BotFleetEvent | NodeFleetEvent;
 
 export type FleetEventListener = (event: FleetEvent) => void;
 

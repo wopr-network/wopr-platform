@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { INodeProvider, ProviderNode } from "./node-provider.js";
 import { NodeProvisioner, NodeProvisioningError } from "./node-provisioner.js";
 import type { INodeRepository } from "./node-repository.js";
@@ -275,6 +276,49 @@ describe("NodeProvisioner", () => {
             botImage: "image; rm -rf /",
           }),
       ).toThrow("Invalid botImage");
+    });
+  });
+
+  describe("node lifecycle events", () => {
+    function makeEventEmitter(): FleetEventEmitter {
+      return { emit: vi.fn(), subscribe: vi.fn() } as unknown as FleetEventEmitter;
+    }
+
+    it("emits node.provisioned on successful provision", async () => {
+      const nodeRepo = makeNodeRepo();
+      const emitter = makeEventEmitter();
+      const provisioner = new NodeProvisioner(nodeRepo, provider, { sshKeyId: 123 }, emitter);
+
+      const result = await provisioner.provision({ region: "nyc1", size: "s-4vcpu-8gb" });
+
+      expect(emitter.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "node.provisioned", nodeId: result.nodeId }),
+      );
+    });
+
+    it("does not emit node.provisioned on failure", async () => {
+      const failingProvider = makeNodeProvider({
+        createNode: vi.fn().mockRejectedValue(new Error("fail")),
+      });
+      const nodeRepo = makeNodeRepo();
+      const emitter = makeEventEmitter();
+      const provisioner = new NodeProvisioner(nodeRepo, failingProvider, { sshKeyId: 123 }, emitter);
+
+      await expect(provisioner.provision()).rejects.toThrow();
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+
+    it("emits node.deprovisioned on successful destroy", async () => {
+      const drained = { id: NODE_ID, drainStatus: "drained", usedMb: 0, dropletId: EXTERNAL_ID };
+      const nodeRepo = makeNodeRepo(drained);
+      const emitter = makeEventEmitter();
+      const provisioner = new NodeProvisioner(nodeRepo, provider, { sshKeyId: 123 }, emitter);
+
+      await provisioner.destroy(NODE_ID);
+
+      expect(emitter.emit).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "node.deprovisioned", nodeId: NODE_ID }),
+      );
     });
   });
 

@@ -63,6 +63,18 @@ describe("FleetEventEmitter", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("emits node lifecycle events", () => {
+    const listener = vi.fn();
+    emitter.subscribe(listener);
+    const nodeEvent: FleetEvent = {
+      type: "node.provisioned",
+      nodeId: "node-1",
+      timestamp: new Date().toISOString(),
+    };
+    emitter.emit(nodeEvent);
+    expect(listener).toHaveBeenCalledWith(nodeEvent);
+  });
+
   it("does not use console.error", () => {
     const spy = vi.spyOn(console, "error");
     emitter.subscribe(() => {

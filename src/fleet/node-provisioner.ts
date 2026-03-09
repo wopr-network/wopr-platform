@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { logger } from "../config/logger.js";
 import { generateCloudInit, validateBotImage } from "./cloud-init.js";
+import type { FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { INodeProvider, ProviderRegion, ProviderSize } from "./node-provider.js";
 import type { INodeRepository } from "./node-repository.js";
 
@@ -37,6 +38,7 @@ export class NodeProvisioner {
   private readonly defaultRegion: string;
   private readonly defaultSize: string;
   private readonly botImage: string;
+  private readonly eventEmitter?: FleetEventEmitter;
 
   constructor(
     nodeRepo: INodeRepository,
@@ -47,6 +49,7 @@ export class NodeProvisioner {
       defaultSize?: string;
       botImage?: string;
     },
+    eventEmitter?: FleetEventEmitter,
   ) {
     this.nodeRepo = nodeRepo;
     this.provider = provider;
@@ -54,7 +57,12 @@ export class NodeProvisioner {
     this.defaultRegion = options.defaultRegion ?? "nyc1";
     this.defaultSize = options.defaultSize ?? "s-4vcpu-8gb";
     this.botImage = options.botImage ?? "ghcr.io/wopr-network/wopr:latest";
+    this.eventEmitter = eventEmitter;
     validateBotImage(this.botImage);
+  }
+
+  private emitNodeEvent(type: "node.provisioned" | "node.deprovisioned", nodeId: string): void {
+    this.eventEmitter?.emit({ type, nodeId, timestamp: new Date().toISOString() });
   }
 
   /**
@@ -128,6 +136,8 @@ export class NodeProvisioner {
         size,
       });
 
+      this.emitNodeEvent("node.provisioned", nodeId);
+
       return {
         nodeId,
         host: activeNode.publicIp,
@@ -168,6 +178,8 @@ export class NodeProvisioner {
     if (node.dropletId) {
       await this.provider.deleteNode(node.dropletId);
     }
+
+    this.emitNodeEvent("node.deprovisioned", nodeId);
 
     await this.nodeRepo.delete(nodeId);
 

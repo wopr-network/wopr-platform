@@ -1,4 +1,5 @@
 import { logger } from "../config/logger.js";
+import type { FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { INodeRepository } from "./node-repository.js";
 
 /** Heartbeat watchdog configuration */
@@ -22,6 +23,7 @@ export class HeartbeatWatchdog {
   private readonly nodeRepo: INodeRepository;
   private readonly onRecovery: (nodeId: string) => void;
   private readonly onNodeStatusChange: (nodeId: string, newStatus: string) => void;
+  private readonly eventEmitter?: FleetEventEmitter;
 
   private readonly UNHEALTHY_THRESHOLD_S: number;
   private readonly OFFLINE_THRESHOLD_S: number;
@@ -34,10 +36,12 @@ export class HeartbeatWatchdog {
     onRecovery: (nodeId: string) => void,
     onNodeStatusChange: (nodeId: string, newStatus: string) => void,
     config: WatchdogConfig = {},
+    eventEmitter?: FleetEventEmitter,
   ) {
     this.nodeRepo = nodeRepo;
     this.onRecovery = onRecovery;
     this.onNodeStatusChange = onNodeStatusChange;
+    this.eventEmitter = eventEmitter;
 
     this.UNHEALTHY_THRESHOLD_S = config.unhealthyThresholdS ?? 90;
     this.OFFLINE_THRESHOLD_S = config.offlineThresholdS ?? 300;
@@ -117,6 +121,8 @@ export class HeartbeatWatchdog {
         await this.nodeRepo.transition(node.id, "unhealthy", "heartbeat_timeout", "heartbeat_watchdog");
 
         this.onNodeStatusChange(node.id, "unhealthy");
+
+        this.eventEmitter?.emit({ type: "node.heartbeat_lost", nodeId: node.id, timestamp: new Date().toISOString() });
       }
     }
   }

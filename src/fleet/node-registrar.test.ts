@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { FleetEventEmitter } from "./fleet-event-emitter.js";
 import type { NodeRegistrarNodeRepo, NodeRegistrarRecoveryRepo } from "./node-registrar.js";
 import { NodeRegistrar } from "./node-registrar.js";
 import type { Node, NodeRegistration, RecoveryEvent } from "./repository-types.js";
@@ -55,6 +56,10 @@ function makeRecoveryEvent(overrides: Partial<RecoveryEvent> = {}): RecoveryEven
     reportJson: null,
     ...overrides,
   };
+}
+
+function makeEventEmitter(): FleetEventEmitter {
+  return { emit: vi.fn(), subscribe: vi.fn() } as unknown as FleetEventEmitter;
 }
 
 describe("NodeRegistrar", () => {
@@ -127,6 +132,42 @@ describe("NodeRegistrar", () => {
     expect(recoveryRepo.listOpenEvents).toHaveBeenCalled();
     expect(recoveryRepo.getWaitingItems).toHaveBeenCalledWith("evt-1");
     expect(onRetryWaiting).toHaveBeenCalledWith("evt-1");
+  });
+
+  it("emits node.registered on register when status is active", async () => {
+    const node = makeNode({ id: "node-1", status: "active" });
+    const nodeRepo: NodeRegistrarNodeRepo = {
+      register: vi.fn().mockResolvedValue(node),
+      registerSelfHosted: vi.fn().mockResolvedValue(node),
+    };
+    const recoveryRepo: NodeRegistrarRecoveryRepo = {
+      listOpenEvents: vi.fn().mockResolvedValue([]),
+      getWaitingItems: vi.fn(),
+    };
+    const emitter = makeEventEmitter();
+
+    const registrar = new NodeRegistrar(nodeRepo, recoveryRepo, {}, emitter);
+    await registrar.register(makeRegistration({ nodeId: "node-1" }));
+
+    expect(emitter.emit).toHaveBeenCalledWith(expect.objectContaining({ type: "node.registered", nodeId: "node-1" }));
+  });
+
+  it("emits node.returned on register when status is returning", async () => {
+    const node = makeNode({ id: "node-1", status: "returning" });
+    const nodeRepo: NodeRegistrarNodeRepo = {
+      register: vi.fn().mockResolvedValue(node),
+      registerSelfHosted: vi.fn().mockResolvedValue(node),
+    };
+    const recoveryRepo: NodeRegistrarRecoveryRepo = {
+      listOpenEvents: vi.fn().mockResolvedValue([]),
+      getWaitingItems: vi.fn(),
+    };
+    const emitter = makeEventEmitter();
+
+    const registrar = new NodeRegistrar(nodeRepo, recoveryRepo, { onReturning: vi.fn() }, emitter);
+    await registrar.register(makeRegistration({ nodeId: "node-1" }));
+
+    expect(emitter.emit).toHaveBeenCalledWith(expect.objectContaining({ type: "node.returned", nodeId: "node-1" }));
   });
 
   it("triggers onRetryWaiting for waiting tenants even when onReturning is a no-op (returning node)", async () => {
