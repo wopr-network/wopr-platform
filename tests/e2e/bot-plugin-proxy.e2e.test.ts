@@ -27,15 +27,10 @@ vi.mock("../../src/api/routes/friends-proxy.js", () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// ProfileStore mock — bot profiles without a real fleet data dir
+// IBotProfileRepository stub — bot profiles without a real DB
 // ---------------------------------------------------------------------------
 
 const storeMock = { get: vi.fn() };
-vi.mock("../../src/fleet/profile-store.js", () => ({
-  ProfileStore: class {
-    get = storeMock.get;
-  },
-}));
 
 vi.mock("../../src/config/logger.js", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -88,7 +83,7 @@ describe("E2E: bot plugin proxy — full HTTP lifecycle", () => {
     vi.clearAllMocks();
 
     const configRepo = new DrizzlePluginConfigRepository(db);
-    const routes = createBotPluginProxyRoutes({ pluginConfigRepo: configRepo });
+    const routes = createBotPluginProxyRoutes({ pluginConfigRepo: configRepo, profileRepo: storeMock });
     app = new Hono();
     app.route("/api/bots", routes);
 
