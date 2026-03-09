@@ -40,21 +40,19 @@ export class MeterWAL {
   }
 
   /**
-   * Append an event to the WAL. Mutex-guarded for TOCTOU safety.
-   * Returns the event with a generated ID if not already present.
+   * Append an event to the WAL. appendFileSync is atomic on POSIX (O_APPEND),
+   * so no mutex is needed here. Returns the event with a generated ID.
    */
-  async append(event: MeterEvent & { id?: string }): Promise<MeterEvent & { id: string }> {
-    return this.withLock(() => {
-      const eventWithId = {
-        ...event,
-        id: event.id ?? crypto.randomUUID(),
-      };
+  append(event: MeterEvent & { id?: string }): MeterEvent & { id: string } {
+    const eventWithId = {
+      ...event,
+      id: event.id ?? crypto.randomUUID(),
+    };
 
-      const line = `${JSON.stringify(eventWithId)}\n`;
-      appendFileSync(this.walPath, line, { encoding: "utf8", flag: "a" });
+    const line = `${JSON.stringify(eventWithId)}\n`;
+    appendFileSync(this.walPath, line, { encoding: "utf8", flag: "a" });
 
-      return eventWithId;
-    });
+    return eventWithId;
   }
 
   /**

@@ -127,13 +127,9 @@ export class DrizzleMeterEmitter implements IMeterEmitter {
     if (this.closed) return;
 
     // FAIL-CLOSED: Write to WAL first, then buffer.
-    // append() is now async (mutex-guarded) — assign a stable ID immediately
-    // and buffer synchronously; the WAL write completes before any remove() can race.
-    const eventWithId = {
-      ...event,
-      id: crypto.randomUUID(),
-    };
-    void this.wal.append(eventWithId);
+    // append() is synchronous (appendFileSync), so the WAL write completes
+    // before buffer.push() — crash safety is guaranteed.
+    const eventWithId = this.wal.append(event);
     this.buffer.push(eventWithId);
 
     if (this.buffer.length >= this.batchSize) {
