@@ -9,6 +9,10 @@ import { createChannelOAuthRoutes } from "./channel-oauth.js";
 // Track all PGlite pools created during tests so we can close them
 const activePools: PGlite[] = [];
 
+// Capture original SLACK env var values so afterEach can restore them
+const savedSlackClientId = process.env.SLACK_CLIENT_ID;
+const savedSlackClientSecret = process.env.SLACK_CLIENT_SECRET;
+
 // ---------------------------------------------------------------------------
 // Test app — wraps createChannelOAuthRoutes with controllable session injection
 // ---------------------------------------------------------------------------
@@ -64,8 +68,19 @@ const unauthedApp = () => createTestApp();
 
 afterEach(async () => {
   vi.clearAllMocks();
-  await Promise.all(activePools.map((p) => p.close()));
+  await Promise.allSettled(activePools.map((p) => p.close()));
   activePools.length = 0;
+  // Restore SLACK env vars to their original state so later tests aren't affected
+  if (savedSlackClientId === undefined) {
+    delete process.env.SLACK_CLIENT_ID;
+  } else {
+    process.env.SLACK_CLIENT_ID = savedSlackClientId;
+  }
+  if (savedSlackClientSecret === undefined) {
+    delete process.env.SLACK_CLIENT_SECRET;
+  } else {
+    process.env.SLACK_CLIENT_SECRET = savedSlackClientSecret;
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -228,6 +243,7 @@ describe("GET /callback", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: "slack" }),
     });
+    expect(initiateRes.status).toBe(200);
     const { state } = (await initiateRes.json()) as { state: string; authorizeUrl: string };
 
     // Mock the Slack token exchange
@@ -295,6 +311,7 @@ describe("GET /poll", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider: "slack" }),
     });
+    expect(initiateRes.status).toBe(200);
     const { state } = (await initiateRes.json()) as { state: string; authorizeUrl: string };
 
     // Simulate the callback completing the token exchange
@@ -326,6 +343,46 @@ describe("GET /poll", () => {
     delete process.env.SLACK_CLIENT_ID;
     delete process.env.SLACK_CLIENT_SECRET;
   });
+
+  it("returns pending after a failed OAuth callback (state row consumed by failed callback)", async () => {
+    process.env.SLACK_CLIENT_ID = "test-client-id";
+    process.env.SLACK_CLIENT_SECRET = "test-client-secret";
+
+    const app = await createSharedApp({ id: "test-user-id", roles: ["user"] });
+
+    // Create pending state
+    const initiateRes = await app.request("/initiate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "slack" }),
+    });
+    expect(initiateRes.status).toBe(200);
+    const { state } = (await initiateRes.json()) as { state: string; authorizeUrl: string };
+
+    // Simulate Slack returning invalid_code — callback consumes the pending row but does NOT call completeWithToken
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: vi.fn().mockResolvedValue(""),
+      json: vi.fn().mockResolvedValue({ ok: false, error: "invalid_code" }),
+    });
+    vi.stubGlobal("fetch", mockFetch);
+    const callbackRes = await app.request(`/callback?code=bad-code&state=${state}`);
+    vi.unstubAllGlobals();
+
+    // The callback HTML should contain the Slack error message
+    const html = await callbackRes.text();
+    expect(html).toContain("Slack error: invalid_code");
+
+    // Poll after a failed callback — state row was consumed (deleted) by consumePending,
+    // so no completed token exists; poll returns pending indefinitely
+    const pollRes = await app.request(`/poll?state=${state}`);
+    expect(pollRes.status).toBe(200);
+    const body = await pollRes.json();
+    expect(body).toMatchObject({ status: "pending" });
+
+    delete process.env.SLACK_CLIENT_ID;
+    delete process.env.SLACK_CLIENT_SECRET;
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -348,6 +405,7 @@ describe("state isolation", () => {
     // app2 has a fresh DB — polling for any state returns pending
     const app2 = await createSharedApp({ id: "test-user-id", roles: ["user"] });
     const res = await app2.request("/poll?state=00000000-0000-0000-0000-000000000000");
+    expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({ status: "pending" });
 
