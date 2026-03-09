@@ -293,9 +293,13 @@ export function createSetupRoutes(deps: SetupRouteDeps): Hono {
     for (const field of manifest.configSchema) {
       const val = values[field.key];
       if (val === undefined) continue;
-      configValues[field.key] = val;
-      if (field.secret && typeof val === "string") {
-        encryptedFields[field.key] = encrypt(val, key);
+      if (field.secret) {
+        // Secret fields are stored encrypted only — never in plaintext configJson
+        if (typeof val === "string") {
+          encryptedFields[field.key] = encrypt(val, key);
+        }
+      } else {
+        configValues[field.key] = val;
       }
     }
 
