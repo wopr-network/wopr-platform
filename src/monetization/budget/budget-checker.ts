@@ -97,7 +97,10 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     const label = limits.label ?? "current";
 
     // Try to get cached data
-    const cacheKey = tenant;
+    // Include time buckets in the key so cached spend never leaks across billing periods.
+    const hourlyBucket = Math.floor(Date.now() / 3600_000);
+    const monthlyBucket = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const cacheKey = `${tenant}:${hourlyBucket}:${monthlyBucket}`;
     let cached = this.cache.get(cacheKey);
 
     if (!cached) {
@@ -114,8 +117,8 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
           httpStatus: 503,
           currentHourlySpend: 0,
           currentMonthlySpend: 0,
-          maxSpendPerHour: null,
-          maxSpendPerMonth: null,
+          maxSpendPerHour: limits.maxSpendPerHour,
+          maxSpendPerMonth: limits.maxSpendPerMonth,
         };
       }
     }
@@ -240,7 +243,12 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
    * Invalidate cache for a specific tenant (useful after spend updates).
    */
   invalidate(tenant: string): void {
-    this.cache.delete(tenant);
+    const prefix = `${tenant}:`;
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
+    }
   }
 
   /**
