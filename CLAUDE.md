@@ -105,3 +105,6 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 - **WAL append must be synchronous**: Use `appendFileSync` (POSIX O_APPEND is atomic per-write) — making it async breaks the fail-closed durability guarantee.
 - **Read-filter-rewrite needs a mutex**: Any operation that reads a file, filters lines, then rewrites has a TOCTOU race; guard with a mutex. Append-only operations using O_APPEND do not.
 - **e2e async assertions**: In Playwright e2e tests, always `await` async state changes (e.g. resolution events) before asserting visibility — bare `expect(getByText(...)).toBeVisible()` races against pending UI updates.
+- **Cooldown timestamps on failure**: In autoscaler (and any rate-limited retry loop), record cooldown timestamps inside `catch` blocks too — if the operation throws, the cooldown must still be set to prevent retry storms.
+- **Isolate audit/notifier from main ops**: Audit log writes and notifier calls must have their own try/catch, separate from the main operation — a logging failure must never mask or prevent the primary error from propagating.
+- **Drizzle migration separators**: Every SQL statement in a migration file must be followed by a `--> statement-breakpoint` comment — PGlite (used in unit tests) runs each segment as a single prepared statement and rejects multiple commands without separators.
