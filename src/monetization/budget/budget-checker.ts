@@ -49,8 +49,6 @@ export interface BudgetCheckerConfig {
 interface CachedBudgetData {
   hourlySpend: number;
   monthlySpend: number;
-  maxPerHour: number | null;
-  maxPerMonth: number | null;
 }
 
 export interface IBudgetChecker {
@@ -105,7 +103,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     if (!cached) {
       // Cache miss -- query DB
       try {
-        cached = await this.queryBudgetData(tenant, limits);
+        cached = await this.queryBudgetData(tenant);
         this.cache.set(cacheKey, cached);
       } catch (err) {
         logger.error("Budget check query failed", { tenant, error: err });
@@ -123,28 +121,28 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     }
 
     // Check hourly limit first (more urgent)
-    if (cached.maxPerHour !== null && cached.hourlySpend >= cached.maxPerHour) {
+    if (limits.maxSpendPerHour !== null && cached.hourlySpend >= limits.maxSpendPerHour) {
       return {
         allowed: false,
-        reason: `Hourly spending limit exceeded: $${cached.hourlySpend.toFixed(2)}/$${cached.maxPerHour.toFixed(2)} (${label} tier). Upgrade your plan for higher limits.`,
+        reason: `Hourly spending limit exceeded: $${cached.hourlySpend.toFixed(2)}/$${limits.maxSpendPerHour.toFixed(2)} (${label} tier). Upgrade your plan for higher limits.`,
         httpStatus: 429,
         currentHourlySpend: cached.hourlySpend,
         currentMonthlySpend: cached.monthlySpend,
-        maxSpendPerHour: cached.maxPerHour,
-        maxSpendPerMonth: cached.maxPerMonth,
+        maxSpendPerHour: limits.maxSpendPerHour,
+        maxSpendPerMonth: limits.maxSpendPerMonth,
       };
     }
 
     // Check monthly limit
-    if (cached.maxPerMonth !== null && cached.monthlySpend >= cached.maxPerMonth) {
+    if (limits.maxSpendPerMonth !== null && cached.monthlySpend >= limits.maxSpendPerMonth) {
       return {
         allowed: false,
-        reason: `Monthly spending limit exceeded: $${cached.monthlySpend.toFixed(2)}/$${cached.maxPerMonth.toFixed(2)} (${label} tier). Upgrade your plan for higher limits.`,
+        reason: `Monthly spending limit exceeded: $${cached.monthlySpend.toFixed(2)}/$${limits.maxSpendPerMonth.toFixed(2)} (${label} tier). Upgrade your plan for higher limits.`,
         httpStatus: 429,
         currentHourlySpend: cached.hourlySpend,
         currentMonthlySpend: cached.monthlySpend,
-        maxSpendPerHour: cached.maxPerHour,
-        maxSpendPerMonth: cached.maxPerMonth,
+        maxSpendPerHour: limits.maxSpendPerHour,
+        maxSpendPerMonth: limits.maxSpendPerMonth,
       };
     }
 
@@ -152,8 +150,8 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
       allowed: true,
       currentHourlySpend: cached.hourlySpend,
       currentMonthlySpend: cached.monthlySpend,
-      maxSpendPerHour: cached.maxPerHour,
-      maxSpendPerMonth: cached.maxPerMonth,
+      maxSpendPerHour: limits.maxSpendPerHour,
+      maxSpendPerMonth: limits.maxSpendPerMonth,
     };
   }
 
@@ -161,7 +159,7 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
    * Query current budget data from the DB.
    * Combines data from meter_events buffer + usage_summaries.
    */
-  private async queryBudgetData(tenant: string, limits: SpendLimits): Promise<CachedBudgetData> {
+  private async queryBudgetData(tenant: string): Promise<CachedBudgetData> {
     const now = Date.now();
     const oneHourAgo = now - 60 * 60 * 1000;
     const monthStart = this.getMonthStart(now);
@@ -227,8 +225,6 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     return {
       hourlySpend,
       monthlySpend,
-      maxPerHour: limits.maxSpendPerHour,
-      maxPerMonth: limits.maxSpendPerMonth,
     };
   }
 

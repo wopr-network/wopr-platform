@@ -98,6 +98,33 @@ describe("BudgetChecker", () => {
       expect(result.maxSpendPerMonth).toBeNull();
     });
 
+    it("reflects upgraded limits immediately without cache invalidation", async () => {
+      const now = Date.now();
+      // Insert spend that exceeds FREE but is under PRO
+      await db.insert(meterEvents).values({
+        id: crypto.randomUUID(),
+        tenant: "tenant-upgrade",
+        cost: Credit.fromDollars(0.5).toRaw(),
+        charge: Credit.fromDollars(1.0).toRaw(),
+        capability: "chat",
+        provider: "replicate",
+        timestamp: now,
+      });
+
+      // First check with FREE limits — should be blocked (1.0 >= 0.5)
+      const result1 = await checker.check("tenant-upgrade", FREE_LIMITS);
+      expect(result1.allowed).toBe(false);
+      expect(result1.maxSpendPerHour).toBe(0.5);
+
+      // Second check with PRO limits — should be allowed (1.0 < 10)
+      // WITHOUT calling invalidate() or clearCache()
+      const result2 = await checker.check("tenant-upgrade", PRO_LIMITS);
+      expect(result2.allowed).toBe(true);
+      expect(result2.maxSpendPerHour).toBe(10);
+      expect(result2.maxSpendPerMonth).toBe(200);
+      expect(result2.currentHourlySpend).toBe(1.0);
+    });
+
     it("uses custom per-tenant limits when provided", async () => {
       const customLimits: SpendLimits = {
         maxSpendPerHour: 1.0,
