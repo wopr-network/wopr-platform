@@ -179,9 +179,9 @@ export class NodeProvisioner {
       await this.provider.deleteNode(node.dropletId);
     }
 
-    await this.nodeRepo.delete(nodeId);
-
     this.emitNodeEvent("node.deprovisioned", nodeId);
+
+    await this.nodeRepo.delete(nodeId);
 
     logger.info(`Node ${nodeId} destroyed`);
   }
