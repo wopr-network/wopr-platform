@@ -14,6 +14,7 @@ import {
 } from "../auth/index.js";
 import { logger } from "../config/logger.js";
 import {
+  getBotProfileRepo,
   getCredentialRepo,
   getDb,
   getEvidenceCollector,
@@ -293,7 +294,10 @@ app.route("/fleet", botPluginRoutes);
   const _botPluginProxy = new Hono();
   _botPluginProxy.all("*", (c) => {
     if (!_botPluginProxyRoutes) {
-      _botPluginProxyRoutes = createBotPluginProxyRoutes({ pluginConfigRepo: getPluginConfigRepo() });
+      _botPluginProxyRoutes = createBotPluginProxyRoutes({
+        pluginConfigRepo: getPluginConfigRepo(),
+        profileRepo: getBotProfileRepo(),
+      });
     }
     return _botPluginProxyRoutes.fetch(c.req.raw);
   });
