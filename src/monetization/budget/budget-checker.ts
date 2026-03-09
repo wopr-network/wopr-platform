@@ -167,20 +167,13 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
     const oneHourAgo = now - 60 * 60 * 1000;
     const monthStart = this.getMonthStart(now);
 
-    // Query hourly spend from both meter_events (unbuffered) and usage_summaries (aggregated)
-    const hourlyEvents = (
-      await this.db
-        .select({
-          total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
-        })
-        .from(meterEvents)
-        .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, oneHourAgo)))
-    )[0];
-
+    // --- Hourly spend ---
+    // 1. Sum usage_summaries + find latest window_end
     const hourlySummaries = (
       await this.db
         .select({
           total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+          latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
         })
         .from(usageSummaries)
         .where(
@@ -191,25 +184,29 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
           ),
         )
     )[0];
+    const hourlySummaryTotal = Number(hourlySummaries?.total ?? 0);
+    const hourlyLatestEnd = Number(hourlySummaries?.latestEnd ?? 0);
 
-    const hourlySpend = Credit.fromRaw(
-      Number(hourlyEvents?.total ?? 0) + Number(hourlySummaries?.total ?? 0),
-    ).toDollars();
-
-    // Query monthly spend
-    const monthlyEvents = (
+    // 2. Only query meter_events newer than the latest summary window end
+    const hourlyEventsStart = hourlyLatestEnd > oneHourAgo ? hourlyLatestEnd : oneHourAgo;
+    const hourlyEvents = (
       await this.db
         .select({
           total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
         })
         .from(meterEvents)
-        .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthStart)))
+        .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, hourlyEventsStart)))
     )[0];
+    const hourlyEventTotal = Number(hourlyEvents?.total ?? 0);
 
+    const hourlySpend = Credit.fromRaw(hourlySummaryTotal + hourlyEventTotal).toDollars();
+
+    // --- Monthly spend ---
     const monthlySummaries = (
       await this.db
         .select({
           total: sql<number>`COALESCE(SUM(${usageSummaries.totalCharge}), 0)`,
+          latestEnd: sql<number>`COALESCE(MAX(${usageSummaries.windowEnd}), 0)`,
         })
         .from(usageSummaries)
         .where(
@@ -220,10 +217,21 @@ export class DrizzleBudgetChecker implements IBudgetChecker {
           ),
         )
     )[0];
+    const monthlySummaryTotal = Number(monthlySummaries?.total ?? 0);
+    const monthlyLatestEnd = Number(monthlySummaries?.latestEnd ?? 0);
 
-    const monthlySpend = Credit.fromRaw(
-      Number(monthlyEvents?.total ?? 0) + Number(monthlySummaries?.total ?? 0),
-    ).toDollars();
+    const monthlyEventsStart = monthlyLatestEnd > monthStart ? monthlyLatestEnd : monthStart;
+    const monthlyEvents = (
+      await this.db
+        .select({
+          total: sql<number>`COALESCE(SUM(${meterEvents.charge}), 0)`,
+        })
+        .from(meterEvents)
+        .where(and(eq(meterEvents.tenant, tenant), gte(meterEvents.timestamp, monthlyEventsStart)))
+    )[0];
+    const monthlyEventTotal = Number(monthlyEvents?.total ?? 0);
+
+    const monthlySpend = Credit.fromRaw(monthlySummaryTotal + monthlyEventTotal).toDollars();
 
     return {
       hourlySpend,
