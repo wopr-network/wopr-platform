@@ -191,6 +191,15 @@ describe("admin-credits routes", () => {
       expect(res.status).toBe(400);
     });
 
+    it("rejects zero amount_cents with 400", async () => {
+      const res = await app.request("/tenant-c/correction", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount_cents: 0, reason: "test" }),
+      });
+      expect(res.status).toBe(400);
+    });
+
     it("rejects missing reason with 400", async () => {
       const res = await app.request("/tenant-c/correction", {
         method: "POST",
