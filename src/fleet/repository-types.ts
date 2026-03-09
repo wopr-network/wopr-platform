@@ -242,6 +242,33 @@ export interface FleetEvent {
 }
 
 // ---------------------------------------------------------------------------
+// FleetEventHistory
+// ---------------------------------------------------------------------------
+
+export interface FleetEventHistoryFilter {
+  botId?: string;
+  tenantId?: string;
+  type?: string;
+  since?: number;
+  limit?: number;
+}
+
+export interface FleetEventHistoryRow {
+  id: number;
+  eventType: string;
+  botId: string;
+  tenantId: string;
+  createdAt: number;
+}
+
+export interface NewFleetEventHistoryRow {
+  eventType: string;
+  botId: string;
+  tenantId: string;
+  createdAt: number;
+}
+
+// ---------------------------------------------------------------------------
 // VPS Subscription
 // ---------------------------------------------------------------------------
 

@@ -1278,4 +1278,5 @@ export function _resetForTest(): void {
   _rateOverrideRepo = null;
   _rateOverrideCache = null;
   _promotionEngine = null;
+  _fleetEventEmitter = null;
 }

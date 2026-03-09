@@ -1,25 +1,10 @@
-export interface FleetEventHistoryFilter {
-  botId?: string;
-  tenantId?: string;
-  type?: string;
-  since?: number;
-  limit?: number;
-}
+import type { FleetEventHistoryFilter, FleetEventHistoryRow, NewFleetEventHistoryRow } from "./repository-types.js";
 
-export interface FleetEventHistoryRow {
-  id: number;
-  eventType: string;
-  botId: string;
-  tenantId: string;
-  createdAt: number;
-}
-
-export interface NewFleetEventHistoryRow {
-  eventType: string;
-  botId: string;
-  tenantId: string;
-  createdAt: number;
-}
+export type {
+  FleetEventHistoryFilter,
+  FleetEventHistoryRow,
+  NewFleetEventHistoryRow,
+} from "./repository-types.js";
 
 export interface IFleetEventRepository {
   fireFleetStop(): Promise<void>;

@@ -51,10 +51,11 @@ export class DrizzleFleetEventRepository implements IFleetEventRepository {
     if (filter.botId) conditions.push(eq(fleetEventHistory.botId, filter.botId));
     if (filter.tenantId) conditions.push(eq(fleetEventHistory.tenantId, filter.tenantId));
     if (filter.type) conditions.push(eq(fleetEventHistory.eventType, filter.type));
-    if (filter.since) conditions.push(gte(fleetEventHistory.createdAt, filter.since));
+    if (filter.since != null) conditions.push(gte(fleetEventHistory.createdAt, filter.since));
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
-    const limit = filter.limit ?? 100;
+    const rawLimit = filter.limit ?? 100;
+    const limit = Math.min(Math.max(rawLimit, 1), 1000);
 
     return this.db
       .select()
