@@ -1,3 +1,4 @@
+import type { AdminAuditLog } from "../admin/audit-log.js";
 import { logger } from "../config/logger.js";
 import type { AdminNotifier } from "./admin-notifier.js";
 import type { NodeProvisioner } from "./node-provisioner.js";
@@ -38,6 +39,7 @@ export class CapacityPolicy {
     private readonly provisioner: NodeProvisioner,
     private readonly notifier: AdminNotifier,
     private readonly config: CapacityPolicyConfig = DEFAULT_CAPACITY_POLICY_CONFIG,
+    private readonly auditLog?: AdminAuditLog,
   ) {}
 
   async evaluate(): Promise<PolicyEvaluation> {
@@ -60,24 +62,46 @@ export class CapacityPolicy {
       if (now - this.lastScaleUpAt < this.config.scaleUpCooldownMs) {
         return { action: "none", reason: "scale-up cooldown active", fleetUsagePercent };
       }
+      let provisionedNodeId: string | undefined;
       try {
-        await this.provisioner.provision();
+        const result = await this.provisioner.provision();
+        provisionedNodeId = result.nodeId;
         this.lastScaleUpAt = now;
         logger.info(`Auto-scale UP: fleet at ${Math.round(fleetUsagePercent)}%, provisioned new node`);
-        await this.notifier.nodeStatusChange("fleet", `auto-scale-up at ${Math.round(fleetUsagePercent)}%`);
-        return {
-          action: "scale_up",
-          reason: `fleet usage ${Math.round(fleetUsagePercent)}% >= ${this.config.scaleUpThresholdPercent}%`,
-          fleetUsagePercent,
-        };
+        await this.auditLog?.log({
+          adminUser: "system",
+          action: "auto_scale_up",
+          category: "infrastructure",
+          details: { nodeId: provisionedNodeId, fleetUsagePercent: Math.round(fleetUsagePercent) },
+          outcome: "success",
+        });
       } catch (err) {
+        // Set cooldown even on failure to prevent retry storms during outages
+        this.lastScaleUpAt = now;
         logger.error("Auto-scale UP failed", { error: err instanceof Error ? err.message : String(err) });
+        await this.auditLog?.log({
+          adminUser: "system",
+          action: "auto_scale_up",
+          category: "infrastructure",
+          details: {
+            fleetUsagePercent: Math.round(fleetUsagePercent),
+            error: err instanceof Error ? err.message : String(err),
+          },
+          outcome: "failure",
+        });
         return {
           action: "none",
           reason: `scale-up failed: ${err instanceof Error ? err.message : String(err)}`,
           fleetUsagePercent,
         };
       }
+      // Notifier is outside the try/catch so its failure doesn't mask a successful provision
+      await this.notifier.nodeStatusChange(provisionedNodeId, `auto-scale-up at ${Math.round(fleetUsagePercent)}%`);
+      return {
+        action: "scale_up",
+        reason: `fleet usage ${Math.round(fleetUsagePercent)}% >= ${this.config.scaleUpThresholdPercent}%`,
+        fleetUsagePercent,
+      };
     }
 
     // --- Scale down ---
@@ -116,16 +140,27 @@ export class CapacityPolicy {
         this.lastScaleDownAt = now;
         this.lowUsageSince = null;
         logger.info(`Auto-scale DOWN: fleet at ${Math.round(fleetUsagePercent)}%, destroyed node ${target.id}`);
-        await this.notifier.nodeStatusChange(target.id, `auto-scale-down at ${Math.round(fleetUsagePercent)}%`);
-        return {
-          action: "scale_down",
-          reason: `fleet usage ${Math.round(fleetUsagePercent)}% < ${this.config.scaleDownThresholdPercent}%`,
-          fleetUsagePercent,
-          targetNodeId: target.id,
-        };
+        await this.auditLog?.log({
+          adminUser: "system",
+          action: "auto_scale_down",
+          category: "infrastructure",
+          details: { nodeId: target.id, fleetUsagePercent: Math.round(fleetUsagePercent) },
+          outcome: "success",
+        });
       } catch (err) {
         logger.error(`Auto-scale DOWN failed for node ${target.id}`, {
           error: err instanceof Error ? err.message : String(err),
+        });
+        await this.auditLog?.log({
+          adminUser: "system",
+          action: "auto_scale_down",
+          category: "infrastructure",
+          details: {
+            nodeId: target.id,
+            fleetUsagePercent: Math.round(fleetUsagePercent),
+            error: err instanceof Error ? err.message : String(err),
+          },
+          outcome: "failure",
         });
         return {
           action: "none",
@@ -133,6 +168,14 @@ export class CapacityPolicy {
           fleetUsagePercent,
         };
       }
+      // Notifier is outside the try/catch so its failure doesn't mask a successful destroy
+      await this.notifier.nodeStatusChange(target.id, `auto-scale-down at ${Math.round(fleetUsagePercent)}%`);
+      return {
+        action: "scale_down",
+        reason: `fleet usage ${Math.round(fleetUsagePercent)}% < ${this.config.scaleDownThresholdPercent}%`,
+        fleetUsagePercent,
+        targetNodeId: target.id,
+      };
     }
 
     this.lowUsageSince = null;

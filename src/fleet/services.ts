@@ -614,7 +614,17 @@ export function getGpuNodeProvisioner(): GpuNodeProvisioner {
 export function getCapacityPolicy(configOverrides?: Partial<CapacityPolicyConfig>): CapacityPolicy {
   if (!_capacityPolicy) {
     const config = { ...DEFAULT_CAPACITY_POLICY_CONFIG, ...configOverrides };
-    _capacityPolicy = new CapacityPolicy(getNodeRepo(), getNodeProvisioner(), getAdminNotifier(), config);
+    _capacityPolicy = new CapacityPolicy(
+      getNodeRepo(),
+      getNodeProvisioner(),
+      getAdminNotifier(),
+      config,
+      getAdminAuditLog(),
+    );
+  } else if (configOverrides && Object.keys(configOverrides).length > 0) {
+    // Singleton already initialized — overrides from this call will be silently ignored.
+    // Callers that need custom config must set it before the first call to getCapacityPolicy().
+    logger.warn("getCapacityPolicy: configOverrides ignored — singleton already initialized", { configOverrides });
   }
   return _capacityPolicy;
 }

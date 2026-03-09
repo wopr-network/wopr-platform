@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { IAdminAuditLogRepository } from "./admin-audit-log-repository.js";
 
-export type AuditCategory = "account" | "credits" | "roles" | "config" | "support" | "bulk";
+export type AuditCategory = "account" | "credits" | "roles" | "config" | "support" | "bulk" | "infrastructure";
 
 export interface AuditEntry {
   adminUser: string;
