@@ -110,3 +110,4 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 - **Drizzle migration separators**: Every SQL statement in a migration file must be followed by a `--> statement-breakpoint` comment — PGlite (used in unit tests) runs each segment as a single prepared statement and rejects multiple commands without separators.
 - **e2e mock reset**: Use `vi.resetAllMocks()` in `beforeEach`, not `vi.clearAllMocks()` — `clearAllMocks` only clears call history while `resetAllMocks` also resets implementations and return values.
 - **e2e env stub cleanup**: Always add `afterAll(() => { vi.unstubAllEnvs(); })` in test files that use `vi.stubEnv()` — otherwise stubbed env vars leak into other test files in the same process.
+- **e2e error message assertions**: Assert the exact formatted error string returned by the handler (e.g., `"Slack error: invalid_code"`), not a substring — loose assertions pass even when error formatting is wrong.
