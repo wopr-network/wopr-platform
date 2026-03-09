@@ -7,7 +7,7 @@
  * tests/e2e/tenant-isolation.e2e.test.ts.
  */
 import { Hono } from "hono";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Env stubs MUST be set before any route module imports
@@ -15,6 +15,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const TEST_TOKEN = "e2e-friends-test-token";
 vi.stubEnv("FLEET_API_TOKEN", TEST_TOKEN);
+
+// Tenant-scoped token for cross-tenant isolation tests
+const TENANT_ID = "e2e-tenant";
+const OTHER_TENANT_ID = "other-tenant";
+const OTHER_TENANT_TOKEN = "e2e-other-tenant-token";
+vi.stubEnv(`FLEET_TOKEN_${OTHER_TENANT_ID}`, `read:${OTHER_TENANT_TOKEN}`);
 
 vi.mock("../../src/config/logger.js", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
@@ -49,8 +55,31 @@ const BOB = "bot-bob";
 // ---------------------------------------------------------------------------
 
 describe("E2E: friends/social lifecycle", () => {
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  // -------------------------------------------------------------------------
+  // Auth checks
+  // -------------------------------------------------------------------------
+
+  describe("auth checks", () => {
+    it("unauthenticated request returns 401", async () => {
+      const res = await app.request(`/api/instances/${ALICE}/friends`, {});
+      expect(res.status).toBe(401);
+    });
+
+    it("cross-tenant access returns 403 or 404", async () => {
+      // OTHER_TENANT_TOKEN belongs to "other-tenant"; instances belong to "e2e-tenant"
+      const res = await app.request(`/api/instances/${ALICE}/friends`, {
+        headers: { Authorization: `Bearer ${OTHER_TENANT_TOKEN}` },
+      });
+      expect([403, 404]).toContain(res.status);
+    });
   });
 
   // -------------------------------------------------------------------------
