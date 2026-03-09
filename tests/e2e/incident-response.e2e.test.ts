@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlertChecker, buildAlerts } from "../../src/observability/alerts.js";
 import { buildCriticalAlerts } from "../../src/observability/critical-alerts.js";
 import { DrizzleMetricsRepository } from "../../src/observability/drizzle-metrics-repository.js";
@@ -375,6 +375,7 @@ describe("E2E: incident response — creation, escalation, assignment, resolutio
   it("6. alert resolves after metrics return to normal (onResolve fires)", async () => {
     // Use a separate fresh db for this test to control metric window precisely
     const { db: freshDb, pool: freshPool } = await createTestDb();
+    const baseNow = Date.now();
     try {
       const freshRepo = new DrizzleMetricsRepository(freshDb);
       const freshMetrics = new MetricsCollector(freshRepo);
@@ -388,19 +389,23 @@ describe("E2E: incident response — creation, escalation, assignment, resolutio
       });
 
       // Spike credit failures -> alert fires
+      vi.useFakeTimers();
+      vi.setSystemTime(baseNow);
       for (let i = 0; i < 11; i++) {
         await freshRepo.recordCreditDeductionFailure();
       }
       await checker.checkAll();
       expect(fired).toContain("credit-deduction-spike");
 
-      // Without more failures and with a fresh repo window, the spike stays
-      // but getStatus() should reflect current fired state
-      const status = checker.getStatus();
-      const creditStatus = status.find((s) => s.name === "credit-deduction-spike");
-      expect(creditStatus).toBeDefined();
-      expect(creditStatus!.firing).toBe(true);
+      // Advance time past the 5-minute window so failures are no longer counted
+      vi.setSystemTime(baseNow + 6 * 60_000);
+      const results = await checker.checkAll();
+      const creditResult = results.find((r) => r.name === "credit-deduction-spike");
+      expect(creditResult).toBeDefined();
+      expect(creditResult!.firing).toBe(false);
+      expect(resolved).toContain("credit-deduction-spike");
     } finally {
+      vi.useRealTimers();
       await freshPool.close();
     }
   });
