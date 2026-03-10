@@ -163,7 +163,7 @@ describe("resolveApiKeyWithOrgFallback", () => {
     await insertTenantKey(pool, "m1", "anthropic", encrypt("personal-anthropic", memberKey));
     await insertTenantKey(pool, "org-1", "openai", encrypt("org-openai", orgKey));
 
-    const lookupKey = (tid: string, prov: Provider, encKey: Buffer) =>
+    const lookupKey = (tid: string, prov: string, encKey: Buffer) =>
       resolveApiKey(new DrizzleKeyResolutionRepository(db), tid, prov, encKey, new Map()).then((r) => r?.key ?? null);
 
     // anthropic: personal wins
