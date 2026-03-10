@@ -1,20 +1,7 @@
 import { Pool } from "pg";
 import type { IDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
 import { DrizzleDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
-import type { IDeletionRepository } from "../account/deletion-repository.js";
-import { DrizzleDeletionRepository } from "../account/deletion-repository.js";
-import type { IExportRepository } from "../account/export-repository.js";
-import { DrizzleExportRepository } from "../account/export-repository.js";
 import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
-import { AdminAuditLog } from "../admin/audit-log.js";
-import type { IBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
-import { DrizzleBulkOperationsRepository } from "../admin/bulk/bulk-operations-repository.js";
-import type { IAdminNotesRepository } from "../admin/notes/admin-notes-repository.js";
-import { AdminNotesStore } from "../admin/notes/store.js";
-import type { ITenantStatusRepository } from "../admin/tenant-status/tenant-status-repository.js";
-import { TenantStatusStore } from "../admin/tenant-status/tenant-status-store.js";
-import { DrizzleRateLimitRepository } from "../api/drizzle-rate-limit-repository.js";
-import type { IRateLimitRepository } from "../api/rate-limit-repository.js";
 import { DrizzleAuditLogRepository } from "../audit/audit-log-repository.js";
 import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
 import { BackupStatusStore, type IBackupStatusStore } from "../backup/backup-status-store.js";
@@ -28,59 +15,97 @@ import { SpacesClient } from "../backup/spaces-client.js";
 import { EvidenceCollector } from "../compliance/evidence-collector.js";
 import { logger } from "../config/logger.js";
 import { createDb, type DrizzleDb } from "../db/index.js";
-import { DrizzleNotificationPreferencesStore } from "../email/notification-preferences-store.js";
-import { DrizzleNotificationQueueStore } from "../email/notification-queue-store.js";
-import type {
-  INotificationPreferencesRepository,
-  INotificationQueueRepository,
-} from "../email/notification-repository-types.js";
-import type { ICircuitBreakerRepository } from "../gateway/circuit-breaker-repository.js";
-import { DrizzleCircuitBreakerRepository } from "../gateway/drizzle-circuit-breaker-repository.js";
 import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
 import { DrizzleMarketplacePluginRepository } from "../marketplace/drizzle-marketplace-plugin-repository.js";
 import type { IMarketplacePluginRepository } from "../marketplace/marketplace-plugin-repository.js";
-import type { ITenantAddonRepository } from "../monetization/addons/addon-repository.js";
-import { DrizzleTenantAddonRepository } from "../monetization/addons/addon-repository.js";
 import type { IAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
 import { DrizzleAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
 import type { IAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
 import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
-import type { IBudgetChecker } from "../monetization/budget/budget-checker.js";
-import { DrizzleBudgetChecker } from "../monetization/budget/budget-checker.js";
-import type { IAutoTopupEventLogRepository } from "../monetization/credits/auto-topup-event-log-repository.js";
-import { DrizzleAutoTopupEventLogRepository } from "../monetization/credits/auto-topup-event-log-repository.js";
-import type { IAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
-import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
 import type { IBotBilling } from "../monetization/credits/bot-billing.js";
 import { DrizzleBotBilling } from "../monetization/credits/bot-billing.js";
-import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
-import { DrizzleCreditLedger } from "../monetization/credits/credit-ledger.js";
-import type { ICreditTransactionRepository } from "../monetization/credits/credit-transaction-repository.js";
-import { DrizzleCreditTransactionRepository } from "../monetization/credits/credit-transaction-repository.js";
-import type { IDividendRepository } from "../monetization/credits/dividend-repository.js";
-import { DrizzleDividendRepository } from "../monetization/credits/dividend-repository.js";
 import type { IPhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
 import { DrizzlePhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
-import { DrizzleTenantCustomerRepository, type ITenantCustomerRepository } from "../monetization/index.js";
-import type { IMeterAggregator } from "../monetization/metering/aggregator.js";
-import { DrizzleMeterAggregator } from "../monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../monetization/metering/drizzle-usage-summary-repository.js";
-import type { IMeterEmitter } from "../monetization/metering/emitter.js";
-import { DrizzleMeterEmitter } from "../monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "../monetization/metering/meter-event-repository.js";
-import type { IPayRamChargeRepository } from "../monetization/payram/charge-store.js";
-import { DrizzlePayRamChargeRepository } from "../monetization/payram/charge-store.js";
 import { SystemResourceMonitor } from "../observability/system-resources.js";
-import type { IOrgRepository } from "../org/drizzle-org-repository.js";
-import { DrizzleOrgRepository } from "../org/drizzle-org-repository.js";
-import { OrgService } from "../org/org-service.js";
+// Platform singletons — delegated to platform-services.ts
 import {
-  DrizzleSecretAuditRepository,
-  type ISecretAuditRepository,
-} from "../security/credential-vault/audit-repository.js";
-import type { ICredentialRepository } from "../security/credential-vault/credential-repository.js";
-import { DrizzleCredentialRepository } from "../security/credential-vault/credential-repository.js";
+  _initPlatformServices,
+  _resetPlatformForTest,
+  getAdminAuditLog,
+  getAdminNotesRepo,
+  getAutoTopupEventLogRepo,
+  getAutoTopupSettingsRepo,
+  getBudgetChecker,
+  getBulkOpsRepo,
+  getCircuitBreakerRepo,
+  getCouponRepository,
+  getCredentialRepo,
+  getCreditLedger,
+  getCreditTransactionRepo,
+  getDeletionRepo,
+  getDividendRepo,
+  getExportRepo,
+  getMeterAggregator,
+  getMeterEmitter,
+  getNotificationPrefsStore,
+  getNotificationQueueStore,
+  getOrgMemberRepo,
+  getOrgMembershipRepo,
+  getOrgRepo,
+  getOrgService,
+  getPayRamChargeRepository,
+  getPromotionEngine,
+  getPromotionRepository,
+  getRateLimitRepo,
+  getRateOverrideCache,
+  getRateOverrideRepository,
+  getRedemptionRepository,
+  getSecretAuditRepo,
+  getTenantAddonRepo,
+  getTenantCustomerRepository,
+  getTenantStatusRepo,
+  getUserRoleRepo,
+} from "../platform-services.js";
 import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
+
+// Re-export all platform singletons so existing consumers keep working
+export {
+  getAdminAuditLog,
+  getAdminNotesRepo,
+  getAutoTopupEventLogRepo,
+  getAutoTopupSettingsRepo,
+  getBudgetChecker,
+  getBulkOpsRepo,
+  getCircuitBreakerRepo,
+  getCouponRepository,
+  getCredentialRepo,
+  getCreditLedger,
+  getCreditTransactionRepo,
+  getDeletionRepo,
+  getDividendRepo,
+  getExportRepo,
+  getMeterAggregator,
+  getMeterEmitter,
+  getNotificationPrefsStore,
+  getNotificationQueueStore,
+  getOrgMemberRepo,
+  getOrgMembershipRepo,
+  getOrgRepo,
+  getOrgService,
+  getPayRamChargeRepository,
+  getPromotionEngine,
+  getPromotionRepository,
+  getRateOverrideCache,
+  getRateOverrideRepository,
+  getRateLimitRepo,
+  getRedemptionRepository,
+  getSecretAuditRepo,
+  getTenantAddonRepo,
+  getTenantCustomerRepository,
+  getTenantStatusRepo,
+  getUserRoleRepo,
+};
+
 import { AdminNotifier } from "./admin-notifier.js";
 import type { IBotInstanceRepository } from "./bot-instance-repository.js";
 import type { IBotProfileRepository } from "./bot-profile-repository.js";
@@ -112,10 +137,6 @@ import type { INodeProvider } from "./node-provider.js";
 import { NodeProvisioner } from "./node-provisioner.js";
 import { NodeRegistrar } from "./node-registrar.js";
 import type { INodeRepository } from "./node-repository.js";
-import type { IOrgMemberRepository } from "./org-member-repository.js";
-import { DrizzleOrgMemberRepository } from "./org-member-repository.js";
-import type { IOrgMembershipRepository } from "./org-membership-repository.js";
-import { DrizzleOrgMembershipRepository } from "./org-membership-repository.js";
 import { OrphanCleaner } from "./orphan-cleaner.js";
 import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
 import type { IRecoveryRepository } from "./recovery-repository.js";
@@ -150,15 +171,6 @@ let _gpuNodeRepo: IGpuNodeRepository | null = null;
 let _gpuAllocationRepo: IGpuAllocationRepository | null = null;
 let _gpuConfigurationRepo: IGpuConfigurationRepository | null = null;
 
-// Admin repositories
-let _adminNotesRepo: IAdminNotesRepository | null = null;
-let _tenantStatusRepo: ITenantStatusRepository | null = null;
-let _bulkOpsRepo: IBulkOperationsRepository | null = null;
-
-// Notification repositories
-let _notificationQueueStore: INotificationQueueRepository | null = null;
-let _notificationPrefsStore: INotificationPreferencesRepository | null = null;
-
 // WebSocket layer
 let _connectionRegistry: NodeConnectionRegistry | null = null;
 let _commandBus: NodeCommandBus | null = null;
@@ -183,22 +195,12 @@ let _fleetEventEmitter: FleetEventEmitter | null = null;
 // Fleet event repository
 let _fleetEventRepo: IFleetEventRepository | null = null;
 
-// Rate limit repository
-let _rateLimitRepo: IRateLimitRepository | null = null;
-
-// Circuit breaker repository
-let _circuitBreakerRepo: ICircuitBreakerRepository | null = null;
-
-// Secret audit repository
-let _secretAuditRepo: ISecretAuditRepository | null = null;
-
 // Infrastructure
 let _doClient: DOClient | null = null;
 let _nodeProvider: INodeProvider | null = null;
 let _nodeProvisioner: NodeProvisioner | null = null;
 let _gpuNodeProvisioner: GpuNodeProvisioner | null = null;
 let _capacityPolicy: CapacityPolicy | null = null;
-let _adminAuditLog: AdminAuditLog | null = null;
 let _restoreLogStore: IRestoreLogStore | null = null;
 let _restoreService: RestoreService | null = null;
 let _backupStatusStore: IBackupStatusStore | null = null;
@@ -230,6 +232,7 @@ export function getPool(): Pool {
 export function getDb(): DrizzleDb {
   if (!_db) {
     _db = createDb(getPool());
+    _initPlatformServices(getDb);
   }
   return _db;
 }
@@ -319,45 +322,6 @@ export function getGpuConfigurationRepo(): IGpuConfigurationRepository {
     _gpuConfigurationRepo = new DrizzleGpuConfigurationRepository(getDb());
   }
   return _gpuConfigurationRepo;
-}
-
-export function getAdminNotesRepo(): IAdminNotesRepository {
-  if (!_adminNotesRepo) {
-    _adminNotesRepo = new AdminNotesStore(getDb());
-  }
-  return _adminNotesRepo;
-}
-
-export function getTenantStatusRepo(): ITenantStatusRepository {
-  if (!_tenantStatusRepo) {
-    _tenantStatusRepo = new TenantStatusStore(getDb());
-  }
-  return _tenantStatusRepo;
-}
-
-export function getBulkOpsRepo(): IBulkOperationsRepository {
-  if (!_bulkOpsRepo) {
-    _bulkOpsRepo = new DrizzleBulkOperationsRepository(getDb());
-  }
-  return _bulkOpsRepo;
-}
-
-// ---------------------------------------------------------------------------
-// Notification Repositories
-// ---------------------------------------------------------------------------
-
-export function getNotificationQueueStore(): INotificationQueueRepository {
-  if (!_notificationQueueStore) {
-    _notificationQueueStore = new DrizzleNotificationQueueStore(getDb());
-  }
-  return _notificationQueueStore;
-}
-
-export function getNotificationPrefsStore(): INotificationPreferencesRepository {
-  if (!_notificationPrefsStore) {
-    _notificationPrefsStore = new DrizzleNotificationPreferencesStore(getDb());
-  }
-  return _notificationPrefsStore;
 }
 
 // ---------------------------------------------------------------------------
@@ -505,20 +469,6 @@ export function getFleetEventRepo(): IFleetEventRepository {
   return _fleetEventRepo;
 }
 
-export function getRateLimitRepo(): IRateLimitRepository {
-  if (!_rateLimitRepo) {
-    _rateLimitRepo = new DrizzleRateLimitRepository(getDb());
-  }
-  return _rateLimitRepo;
-}
-
-export function getCircuitBreakerRepo(): ICircuitBreakerRepository {
-  if (!_circuitBreakerRepo) {
-    _circuitBreakerRepo = new DrizzleCircuitBreakerRepository(getDb());
-  }
-  return _circuitBreakerRepo;
-}
-
 // ---------------------------------------------------------------------------
 // HeartbeatWatchdog
 // ---------------------------------------------------------------------------
@@ -629,13 +579,6 @@ export function getCapacityPolicy(configOverrides?: Partial<CapacityPolicyConfig
   return _capacityPolicy;
 }
 
-export function getAdminAuditLog(): AdminAuditLog {
-  if (!_adminAuditLog) {
-    _adminAuditLog = new AdminAuditLog(new DrizzleAdminAuditLogRepository(getDb()));
-  }
-  return _adminAuditLog;
-}
-
 export function getRestoreLogStore(): IRestoreLogStore {
   if (!_restoreLogStore) {
     const repo = new DrizzleRestoreLogRepository(getDb());
@@ -718,88 +661,22 @@ export function initFleet(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Monetization singletons (WOP-899)
+// Monetization singletons (WOPR-specific)
 // ---------------------------------------------------------------------------
 
-let _creditLedger: ICreditLedger | null = null;
-let _creditTransactionRepo: ICreditTransactionRepository | null = null;
 let _botBilling: IBotBilling | null = null;
-let _meterEmitter: IMeterEmitter | null = null;
-let _meterAggregator: IMeterAggregator | null = null;
-let _budgetChecker: IBudgetChecker | null = null;
-let _tenantCustomerRepo: ITenantCustomerRepository | null = null;
-let _payramChargeRepo: IPayRamChargeRepository | null = null;
-let _dividendRepo: IDividendRepository | null = null;
-let _autoTopupSettingsRepo: IAutoTopupSettingsRepository | null = null;
-let _autoTopupEventLogRepo: IAutoTopupEventLogRepository | null = null;
 let _phoneNumberRepo: IPhoneNumberRepository | null = null;
 let _affiliateRepo: IAffiliateRepository | null = null;
 let _affiliateFraudRepo: IAffiliateFraudRepository | null = null;
-
-export function getCreditLedger(): ICreditLedger {
-  if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(getDb());
-  return _creditLedger;
-}
-
-export function getCreditTransactionRepo(): ICreditTransactionRepository {
-  if (!_creditTransactionRepo) _creditTransactionRepo = new DrizzleCreditTransactionRepository(getDb());
-  return _creditTransactionRepo;
-}
 
 export function getBotBilling(): IBotBilling {
   if (!_botBilling) _botBilling = new DrizzleBotBilling(getBotInstanceRepo(), getCommandBus());
   return _botBilling;
 }
 
-export function getMeterEmitter(): IMeterEmitter {
-  if (!_meterEmitter) _meterEmitter = new DrizzleMeterEmitter(new DrizzleMeterEventRepository(getDb()));
-  return _meterEmitter;
-}
-
-export function getMeterAggregator(): IMeterAggregator {
-  if (!_meterAggregator) _meterAggregator = new DrizzleMeterAggregator(new DrizzleUsageSummaryRepository(getDb()));
-  return _meterAggregator;
-}
-
-export function getBudgetChecker(): IBudgetChecker {
-  if (!_budgetChecker) _budgetChecker = new DrizzleBudgetChecker(getDb());
-  return _budgetChecker;
-}
-
-export function getTenantCustomerRepository(): ITenantCustomerRepository {
-  if (!_tenantCustomerRepo) _tenantCustomerRepo = new DrizzleTenantCustomerRepository(getDb());
-  return _tenantCustomerRepo;
-}
-
-export function getPayRamChargeRepository(): IPayRamChargeRepository {
-  if (!_payramChargeRepo) _payramChargeRepo = new DrizzlePayRamChargeRepository(getDb());
-  return _payramChargeRepo;
-}
-
-export function getDividendRepo(): IDividendRepository {
-  if (!_dividendRepo) _dividendRepo = new DrizzleDividendRepository(getDb());
-  return _dividendRepo;
-}
-
-export function getAutoTopupSettingsRepo(): IAutoTopupSettingsRepository {
-  if (!_autoTopupSettingsRepo) _autoTopupSettingsRepo = new DrizzleAutoTopupSettingsRepository(getDb());
-  return _autoTopupSettingsRepo;
-}
-
-export function getAutoTopupEventLogRepo(): IAutoTopupEventLogRepository {
-  if (!_autoTopupEventLogRepo) _autoTopupEventLogRepo = new DrizzleAutoTopupEventLogRepository(getDb());
-  return _autoTopupEventLogRepo;
-}
-
 export function getPhoneNumberRepo(): IPhoneNumberRepository {
   if (!_phoneNumberRepo) _phoneNumberRepo = new DrizzlePhoneNumberRepository(getDb());
   return _phoneNumberRepo;
-}
-
-let _tenantAddonRepo: ITenantAddonRepository | undefined;
-export function getTenantAddonRepo(): ITenantAddonRepository {
-  if (!_tenantAddonRepo) _tenantAddonRepo = new DrizzleTenantAddonRepository(getDb());
-  return _tenantAddonRepo;
 }
 
 export function getAffiliateRepo(): IAffiliateRepository {
@@ -829,44 +706,13 @@ export function getVpsRepo(): IVpsRepository {
 // Account / Security repository singletons (WOP-904)
 // ---------------------------------------------------------------------------
 
-let _deletionRepo: IDeletionRepository | null = null;
 let _deletionExecutorRepo: IDeletionExecutorRepository | null = null;
-let _credentialRepo: ICredentialRepository | null = null;
-let _exportRepo: IExportRepository | null = null;
-
-export function getDeletionRepo(): IDeletionRepository {
-  if (!_deletionRepo) {
-    _deletionRepo = new DrizzleDeletionRepository(getDb());
-  }
-  return _deletionRepo;
-}
 
 export function getDeletionExecutorRepo(): IDeletionExecutorRepository {
   if (!_deletionExecutorRepo) {
     _deletionExecutorRepo = new DrizzleDeletionExecutorRepository(getDb(), getPool());
   }
   return _deletionExecutorRepo;
-}
-
-export function getExportRepo(): IExportRepository {
-  if (!_exportRepo) {
-    _exportRepo = new DrizzleExportRepository(getDb());
-  }
-  return _exportRepo;
-}
-
-export function getCredentialRepo(): ICredentialRepository {
-  if (!_credentialRepo) {
-    _credentialRepo = new DrizzleCredentialRepository(getDb());
-  }
-  return _credentialRepo;
-}
-
-export function getSecretAuditRepo(): ISecretAuditRepository {
-  if (!_secretAuditRepo) {
-    _secretAuditRepo = new DrizzleSecretAuditRepository(getDb());
-  }
-  return _secretAuditRepo;
 }
 
 // ---------------------------------------------------------------------------
@@ -888,46 +734,6 @@ export function getBackupVerifier(): BackupVerifier {
     _backupVerifier = new BackupVerifier({ spaces: new SpacesClient(S3_BUCKET) });
   }
   return _backupVerifier;
-}
-
-// ---------------------------------------------------------------------------
-// Org repository singleton (WOP-1000)
-// ---------------------------------------------------------------------------
-
-let _orgRepo: IOrgRepository | null = null;
-
-export function getOrgRepo(): IOrgRepository {
-  if (!_orgRepo) {
-    _orgRepo = new DrizzleOrgRepository(getDb());
-  }
-  return _orgRepo;
-}
-
-let _orgMemberRepo: IOrgMemberRepository | null = null;
-let _orgService: OrgService | null = null;
-
-export function getOrgMemberRepo(): IOrgMemberRepository {
-  if (!_orgMemberRepo) {
-    const repo = new DrizzleOrgMemberRepository(getDb());
-    _orgMemberRepo = repo;
-  }
-  return _orgMemberRepo;
-}
-
-export function getOrgService(): OrgService {
-  if (!_orgService) {
-    _orgService = new OrgService(getOrgRepo(), getOrgMemberRepo(), getDb());
-  }
-  return _orgService;
-}
-
-let _orgMembershipRepo: IOrgMembershipRepository | null = null;
-
-export function getOrgMembershipRepo(): IOrgMembershipRepository {
-  if (!_orgMembershipRepo) {
-    _orgMembershipRepo = new DrizzleOrgMembershipRepository(getDb());
-  }
-  return _orgMembershipRepo;
 }
 
 // ---------------------------------------------------------------------------
@@ -963,8 +769,6 @@ export function getMarketplaceContentRepo(): IMarketplaceContentRepository {
 // Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
 
-import type { IUserRoleRepository } from "../auth/user-role-repository.js";
-import { DrizzleUserRoleRepository } from "../auth/user-role-repository.js";
 import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
 import { DrizzleSessionUsageRepository } from "../inference/session-usage-repository.js";
 import { loadOnboardingConfig } from "../onboarding/config.js";
@@ -984,14 +788,6 @@ let _daemonManager: IDaemonManager | null = null;
 let _onboardingService: OnboardingService | null = null;
 let _sessionUsageRepo: ISessionUsageRepository | null = null; // NOSONAR
 let _graduationService: GraduationService | null = null;
-let _userRoleRepo: IUserRoleRepository | null = null;
-
-export function getUserRoleRepo(): IUserRoleRepository {
-  if (!_userRoleRepo) {
-    _userRoleRepo = new DrizzleUserRoleRepository(getDb());
-  }
-  return _userRoleRepo;
-}
 
 export function getGraduationService(): GraduationService {
   if (!_graduationService) {
@@ -1126,23 +922,6 @@ export function getSetupService(): SetupService {
 import type { IPluginConfigRepository } from "../setup/plugin-config-repository.js";
 import { DrizzlePluginConfigRepository } from "../setup/plugin-config-repository.js";
 
-// ---------------------------------------------------------------------------
-// Promotions singletons
-// ---------------------------------------------------------------------------
-
-import type { IAdapterRateOverrideRepository } from "../monetization/adapters/rate-override-repository.js";
-import {
-  AdapterRateOverrideCache,
-  DrizzleAdapterRateOverrideRepository,
-} from "../monetization/adapters/rate-override-repository.js";
-import type { ICouponRepository } from "../monetization/promotions/coupon-repository.js";
-import { DrizzleCouponRepository } from "../monetization/promotions/coupon-repository.js";
-import { PromotionEngine } from "../monetization/promotions/engine.js";
-import type { IPromotionRepository } from "../monetization/promotions/promotion-repository.js";
-import { DrizzlePromotionRepository } from "../monetization/promotions/promotion-repository.js";
-import type { IRedemptionRepository } from "../monetization/promotions/redemption-repository.js";
-import { DrizzleRedemptionRepository } from "../monetization/promotions/redemption-repository.js";
-
 let _pluginConfigRepo: IPluginConfigRepository | null = null;
 
 export function getPluginConfigRepo(): IPluginConfigRepository {
@@ -1153,64 +932,18 @@ export function getPluginConfigRepo(): IPluginConfigRepository {
 }
 
 // ---------------------------------------------------------------------------
-// Promotions singletons
-// ---------------------------------------------------------------------------
-
-let _promotionRepo: IPromotionRepository | null = null;
-let _couponRepo: ICouponRepository | null = null;
-let _redemptionRepo: IRedemptionRepository | null = null;
-let _rateOverrideRepo: IAdapterRateOverrideRepository | null = null;
-let _rateOverrideCache: AdapterRateOverrideCache | null = null;
-let _promotionEngine: PromotionEngine | null = null;
-
-export function getPromotionRepository(): IPromotionRepository {
-  if (!_promotionRepo) _promotionRepo = new DrizzlePromotionRepository(getDb());
-  return _promotionRepo;
-}
-
-export function getCouponRepository(): ICouponRepository {
-  if (!_couponRepo) _couponRepo = new DrizzleCouponRepository(getDb());
-  return _couponRepo;
-}
-
-export function getRedemptionRepository(): IRedemptionRepository {
-  if (!_redemptionRepo) _redemptionRepo = new DrizzleRedemptionRepository(getDb());
-  return _redemptionRepo;
-}
-
-export function getRateOverrideRepository(): IAdapterRateOverrideRepository {
-  if (!_rateOverrideRepo) _rateOverrideRepo = new DrizzleAdapterRateOverrideRepository(getDb());
-  return _rateOverrideRepo;
-}
-
-export function getRateOverrideCache(): AdapterRateOverrideCache {
-  if (!_rateOverrideCache) _rateOverrideCache = new AdapterRateOverrideCache(getRateOverrideRepository());
-  return _rateOverrideCache;
-}
-
-export function getPromotionEngine(): PromotionEngine {
-  if (!_promotionEngine) {
-    _promotionEngine = new PromotionEngine({
-      promotionRepo: getPromotionRepository(),
-      couponRepo: getCouponRepository(),
-      redemptionRepo: getRedemptionRepository(),
-      ledger: getCreditLedger(),
-    });
-  }
-  return _promotionEngine;
-}
-
-// ---------------------------------------------------------------------------
 // Test helpers — NOT for production use
 // ---------------------------------------------------------------------------
 
 /** @internal Inject a test database. Call before any getter. */
 export function _setDbForTest(db: DrizzleDb): void {
   _db = db;
+  _initPlatformServices(() => db);
 }
 
 /** @internal Reset all singletons. Call in afterAll to prevent cross-test leakage. */
 export function _resetForTest(): void {
+  _resetPlatformForTest();
   _pool = null;
   _db = null;
   _registrationTokenStore = null;
@@ -1223,11 +956,6 @@ export function _resetForTest(): void {
   _gpuNodeRepo = null;
   _gpuAllocationRepo = null;
   _gpuConfigurationRepo = null;
-  _adminNotesRepo = null;
-  _tenantStatusRepo = null;
-  _bulkOpsRepo = null;
-  _notificationQueueStore = null;
-  _notificationPrefsStore = null;
   _connectionRegistry = null;
   _commandBus = null;
   _heartbeatProcessor = null;
@@ -1239,48 +967,26 @@ export function _resetForTest(): void {
   _heartbeatWatchdog = null;
   _inferenceWatchdog = null;
   _fleetEventRepo = null;
-  _rateLimitRepo = null;
-  _circuitBreakerRepo = null;
+  _fleetEventEmitter = null;
   _doClient = null;
   _nodeProvider = null;
   _nodeProvisioner = null;
   _gpuNodeProvisioner = null;
   _capacityPolicy = null;
-  _adminAuditLog = null;
   _restoreLogStore = null;
   _restoreService = null;
   _backupStatusStore = null;
   _snapshotManager = null;
-  _creditLedger = null;
-  _creditTransactionRepo = null;
   _botBilling = null;
-  _meterEmitter = null;
-  _meterAggregator = null;
-  _budgetChecker = null;
-  _tenantCustomerRepo = null;
-  _payramChargeRepo = null;
-  _dividendRepo = null;
-  _autoTopupSettingsRepo = null;
-  _autoTopupEventLogRepo = null;
   _phoneNumberRepo = null;
   _affiliateRepo = null;
   _affiliateFraudRepo = null;
   _vpsRepo = null;
-  _deletionRepo = null;
   _deletionExecutorRepo = null;
-  _credentialRepo = null;
-  _secretAuditRepo = null;
-  _exportRepo = null;
-  _tenantAddonRepo = undefined;
   _systemResourceMonitor = null;
   _backupVerifier = null;
-  _orgRepo = null;
-  _orgMemberRepo = null;
-  _orgService = null;
-  _orgMembershipRepo = null;
   _marketplacePluginRepo = null;
   _marketplaceContentRepo = null;
-  _userRoleRepo = null;
   _graduationService = null;
   _onboardingSessionRepo = null;
   _onboardingScriptRepo = null;
@@ -1293,11 +999,4 @@ export function _resetForTest(): void {
   _evidenceCollector = null;
   _setupService = null;
   _pluginConfigRepo = null;
-  _promotionRepo = null;
-  _couponRepo = null;
-  _redemptionRepo = null;
-  _rateOverrideRepo = null;
-  _rateOverrideCache = null;
-  _promotionEngine = null;
-  _fleetEventEmitter = null;
 }
