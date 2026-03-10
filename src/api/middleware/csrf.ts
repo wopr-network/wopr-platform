@@ -12,6 +12,7 @@ export { validateCsrfOrigin };
  * - /auth/* — email verification redirects (public, GET-only in practice)
  */
 const WOPR_EXEMPT_PATHS = [
+  "/api/auth",
   "/api/auth/*",
   "/api/billing/webhook",
   "/api/billing/crypto/*",
