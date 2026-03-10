@@ -417,6 +417,7 @@ export function getTenantAddonRepo(): ITenantAddonRepository {
 
 /** @internal Reset all platform singletons. Call in afterAll to prevent cross-test leakage. */
 export function _resetPlatformForTest(): void {
+  _getDb = null;
   _creditLedger = null;
   _creditTransactionRepo = null;
   _autoTopupSettingsRepo = null;
