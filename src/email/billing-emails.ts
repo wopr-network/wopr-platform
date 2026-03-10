@@ -5,16 +5,16 @@
  * per tenant per day. All queries use Drizzle — zero raw SQL.
  */
 
-import { logger } from "../config/logger.js";
-import type { EmailClient } from "./client.js";
-import type { IBillingEmailRepository } from "./drizzle-billing-email-repository.js";
+import type { IBillingEmailRepository } from "@wopr-network/platform-core/email";
 import {
   botDestructionTemplate,
   botSuspendedTemplate,
   creditPurchaseTemplate,
   dataDeletedTemplate,
   lowBalanceTemplate,
-} from "./templates.js";
+} from "@wopr-network/platform-core/email";
+import { logger } from "../config/logger.js";
+import type { EmailClient } from "./client.js";
 
 export type BillingEmailType =
   | "credit-purchase"

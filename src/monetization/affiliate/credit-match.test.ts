@@ -1,9 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleAffiliateFraudRepository } from "./affiliate-fraud-repository.js";
 import { processAffiliateCreditMatch } from "./credit-match.js";
 import { DrizzleAffiliateRepository } from "./drizzle-affiliate-repository.js";

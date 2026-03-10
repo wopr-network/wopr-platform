@@ -1,8 +1,8 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import { logger } from "../../config/logger.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { buildAddonCosts } from "../addons/addon-cron.js";
 import type { ITenantAddonRepository } from "../addons/addon-repository.js";
-import type { ICreditLedger } from "./credit-ledger.js";
 import { buildResourceTierCosts, runRuntimeDeductions } from "./runtime-cron.js";
 
 export interface RuntimeSchedulerDeps {

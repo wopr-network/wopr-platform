@@ -9,10 +9,10 @@
  * 5. Meters usage from the response usage block
  */
 
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { logger } from "../../config/logger.js";
-import { Credit } from "../../monetization/credit.js";
 import { llmBodyLimit } from "../body-limit.js";
 import { capabilityRateLimit } from "../capability-rate-limit.js";
 import { circuitBreaker, DEFAULT_CIRCUIT_BREAKER_CONFIG } from "../circuit-breaker.js";

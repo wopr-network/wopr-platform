@@ -1,5 +1,5 @@
+import { CREDIT_PRICE_POINTS, getCreditAmountForPurchase } from "@wopr-network/platform-core/billing";
 import { describe, expect, it } from "vitest";
-import { CREDIT_PRICE_POINTS, getCreditAmountForPurchase } from "./credit-prices.js";
 
 /**
  * Regression tests for the cents/credits boundary (WOP-1058).

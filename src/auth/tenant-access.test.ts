@@ -1,6 +1,6 @@
+import { validateTenantAccess } from "@wopr-network/platform-core/auth";
 import { describe, expect, it, vi } from "vitest";
 import type { IOrgMemberRepository } from "../fleet/org-member-repository.js";
-import { validateTenantAccess } from "./index.js";
 
 function mockOrgMemberRepo(overrides: Partial<IOrgMemberRepository> = {}): IOrgMemberRepository {
   return {

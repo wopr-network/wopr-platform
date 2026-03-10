@@ -1,5 +1,5 @@
-import { Credit } from "../credit.js";
-import type { ICreditLedger } from "../credits/credit-ledger.js";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { ICouponRepository } from "./coupon-repository.js";
 import type { IPromotionRepository, Promotion } from "./promotion-repository.js";
 import type { IRedemptionRepository } from "./redemption-repository.js";

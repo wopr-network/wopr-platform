@@ -3,8 +3,8 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import { protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps

@@ -1,6 +1,6 @@
+import type { CreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { Context, Next } from "hono";
-import { Credit } from "./credit.js";
-import type { CreditLedger } from "./credits/credit-ledger.js";
 import { DAILY_BOT_COST } from "./credits/runtime-cron.js";
 
 /**

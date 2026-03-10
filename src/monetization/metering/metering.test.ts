@@ -1,16 +1,18 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
+import {
+  DrizzleMeterEventRepository,
+  DrizzleUsageSummaryRepository,
+  MeterAggregator,
+  MeterEmitter,
+} from "@wopr-network/platform-core/metering";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { MeterAggregator } from "./aggregator.js";
-import { DrizzleUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
-import { MeterEmitter } from "./emitter.js";
-import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
-import type { MeterEvent } from "./types.js";
 
 function makeEmitter(db: DrizzleDb, opts: ConstructorParameters<typeof MeterEmitter>[1] = {}): MeterEmitter {
   return new MeterEmitter(new DrizzleMeterEventRepository(db), opts);

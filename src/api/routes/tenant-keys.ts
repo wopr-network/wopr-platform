@@ -1,10 +1,10 @@
 import { createHmac } from "node:crypto";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import type { ITenantKeyRepository } from "@wopr-network/platform-core/security";
+import { encrypt } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { encrypt } from "../../security/encryption.js";
-import type { ITenantKeyRepository } from "../../security/tenant-keys/tenant-key-repository.js";
 import { providerSchema } from "../../security/types.js";
 
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;

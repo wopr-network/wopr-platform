@@ -5,13 +5,13 @@
  * Do NOT put the interval inside this class.
  */
 
-import { logger } from "../config/logger.js";
-import type { EmailClient } from "./client.js";
 import type {
   INotificationPreferencesRepository,
   INotificationQueueRepository,
-} from "./notification-repository-types.js";
-import { renderNotificationTemplate, type TemplateName } from "./notification-templates.js";
+} from "@wopr-network/platform-core/email";
+import { type NotificationTemplateName, renderNotificationTemplate } from "@wopr-network/platform-core/email";
+import { logger } from "../config/logger.js";
+import type { EmailClient } from "./client.js";
 
 export interface NotificationWorkerConfig {
   queue: INotificationQueueRepository;
@@ -97,7 +97,7 @@ export class NotificationWorker {
         }
 
         // Render the template
-        const rendered = renderNotificationTemplate(notif.template as TemplateName, data);
+        const rendered = renderNotificationTemplate(notif.template as NotificationTemplateName, data);
 
         // Send via email client
         await this.emailClient.send({

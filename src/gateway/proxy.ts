@@ -10,6 +10,9 @@
  * 5. Return response to bot
  */
 
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEmitter } from "@wopr-network/platform-core/metering";
 import type { Context } from "hono";
 import { z } from "zod";
 import { logger } from "../config/logger.js";
@@ -17,10 +20,7 @@ import type { TTSOutput } from "../monetization/adapters/types.js";
 import { withMargin } from "../monetization/adapters/types.js";
 import { NoProviderAvailableError } from "../monetization/arbitrage/types.js";
 import type { BudgetChecker } from "../monetization/budget/budget-checker.js";
-import { Credit } from "../monetization/credit.js";
-import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { PHONE_NUMBER_MONTHLY_COST } from "../monetization/credits/phone-billing.js";
-import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import { creditBalanceCheck, debitCredits } from "./credit-gate.js";
 import { mapBudgetError, mapProviderError } from "./error-mapping.js";
 import type { SellRateLookupFn } from "./rate-lookup.js";

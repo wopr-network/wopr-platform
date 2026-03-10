@@ -1,5 +1,5 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it, vi } from "vitest";
-import { Credit } from "../credit.js";
 import type { FetchFn, OpenRouterAdapterConfig } from "./openrouter.js";
 import { createOpenRouterAdapter } from "./openrouter.js";
 import { withMargin } from "./types.js";

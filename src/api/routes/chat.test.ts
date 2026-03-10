@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AuthEnv } from "../../auth/index.js";
 import type { IChatBackend } from "../../chat/chat-backend.js";
 import type { ChatEvent } from "../../chat/types.js";
 import { chatRoutes, createChatRoutes, setChatDeps } from "./chat.js";

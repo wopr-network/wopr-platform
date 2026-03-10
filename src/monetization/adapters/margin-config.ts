@@ -9,8 +9,8 @@
  * variable. See .env.example for the expected shape.
  */
 
+import type { Credit } from "@wopr-network/platform-core/credits";
 import { getRateOverrideCache } from "../../fleet/services.js";
-import type { Credit } from "../credit.js";
 import { withMargin } from "./types.js";
 
 /** A single margin rule: provider + model pattern -> margin multiplier */

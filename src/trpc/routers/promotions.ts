@@ -5,6 +5,7 @@
 
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
+import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type {
   AdapterRateOverrideCache,
@@ -13,7 +14,6 @@ import type {
 import type { ICouponRepository } from "../../monetization/promotions/coupon-repository.js";
 import type { IPromotionRepository } from "../../monetization/promotions/promotion-repository.js";
 import type { IRedemptionRepository } from "../../monetization/promotions/redemption-repository.js";
-import { adminProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps

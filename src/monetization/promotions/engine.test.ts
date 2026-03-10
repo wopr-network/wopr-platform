@@ -1,6 +1,6 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Credit } from "../credit.js";
-import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { ICouponRepository } from "./coupon-repository.js";
 import { PromotionEngine } from "./engine.js";
 import type { IPromotionRepository, Promotion } from "./promotion-repository.js";

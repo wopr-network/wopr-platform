@@ -1,7 +1,7 @@
+import { DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
 import { Pool } from "pg";
 import type { IDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
 import { DrizzleDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
-import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { DrizzleAuditLogRepository } from "../audit/audit-log-repository.js";
 import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
 import { BackupStatusStore, type IBackupStatusStore } from "../backup/backup-status-store.js";

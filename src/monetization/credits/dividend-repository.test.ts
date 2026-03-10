@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { CreditLedger } from "./credit-ledger.js";
 import { DrizzleDividendRepository } from "./dividend-repository.js";
 
 let pool: PGlite;

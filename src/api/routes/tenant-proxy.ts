@@ -1,7 +1,7 @@
+import { validateTenantAccess } from "@wopr-network/platform-core/auth";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { getAuth } from "../../auth/better-auth.js";
-import { validateTenantAccess } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { getBotProfileRepo, getOrgMemberRepo } from "../../fleet/services.js";
 

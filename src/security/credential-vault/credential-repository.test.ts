@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { InsertCredentialRow } from "@wopr-network/platform-core/security";
+import { DrizzleCredentialRepository } from "@wopr-network/platform-core/security";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import type { InsertCredentialRow } from "./credential-repository.js";
-import { DrizzleCredentialRepository } from "./credential-repository.js";
 
 function makeRow(overrides: Partial<InsertCredentialRow> = {}): InsertCredentialRow {
   return {

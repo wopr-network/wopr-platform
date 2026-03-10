@@ -1,6 +1,5 @@
+import type { Credit, ICreditLedger } from "@wopr-network/platform-core/credits";
 import { config } from "../../config/index.js";
-import type { Credit } from "../credit.js";
-import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IAffiliateFraudRepository } from "./affiliate-fraud-repository.js";
 import type { IAffiliateRepository } from "./drizzle-affiliate-repository.js";
 import { checkSelfReferral } from "./self-referral-detector.js";

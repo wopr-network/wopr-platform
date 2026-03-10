@@ -1,5 +1,5 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it } from "vitest";
-import { Credit } from "../credit.js";
 import type {
   AdapterCapability,
   AdapterResult,

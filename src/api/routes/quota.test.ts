@@ -1,8 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { Credit } from "../../monetization/credit.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 
 // Set env var BEFORE importing quota routes so bearer auth uses this token

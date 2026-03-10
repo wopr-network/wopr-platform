@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
+import { validateNodeHost } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logger } from "../../config/logger.js";
 import type { NodeRegistration } from "../../fleet/repository-types.js";
 import { getNodeRegistrar, getNodeRepo, getRegistrationTokenStore } from "../../fleet/services.js";
-import { validateNodeHost } from "../../security/host-validation.js";
 
 const RegisterNodeSchema = z.object({
   node_id: z

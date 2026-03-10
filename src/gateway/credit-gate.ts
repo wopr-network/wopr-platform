@@ -6,12 +6,11 @@
  * gateway endpoints.
  */
 
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit, InsufficientBalanceError } from "@wopr-network/platform-core/credits";
 import type { Context } from "hono";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
-import { Credit } from "../monetization/credit.js";
-import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
-import { InsufficientBalanceError } from "../monetization/credits/credit-ledger.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";
 
 export interface CreditGateDeps {

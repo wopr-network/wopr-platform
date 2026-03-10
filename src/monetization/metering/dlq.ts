@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { MeterEvent } from "./types.js";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
 
 /**
  * Dead-Letter Queue for meter events that failed to flush after max retries.

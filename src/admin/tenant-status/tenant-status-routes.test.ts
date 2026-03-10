@@ -1,4 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
+
 /**
  * Tests for tRPC admin tenant status routes (WOP-412).
  *
@@ -9,25 +10,23 @@ import type { PGlite } from "@electric-sql/pglite";
  * - tenantStatus: query current status
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
-import { AdminAuditLog } from "../../admin/audit-log.js";
-import { AdminUserStore } from "../../admin/users/user-store.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
-import { Credit } from "../../monetization/credit.js";
-import { DrizzleAutoTopupSettingsRepository } from "../../monetization/credits/auto-topup-settings-repository.js";
-import { BotBilling } from "../../monetization/credits/bot-billing.js";
+import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
 import type {
   CreditTransaction,
   CreditType,
   DebitType,
   HistoryOptions,
   ICreditLedger,
-} from "../../monetization/credits/credit-ledger.js";
+} from "@wopr-network/platform-core/credits";
+import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { AdminUserStore } from "../../admin/users/user-store.js";
+import type { DrizzleDb } from "../../db/index.js";
+import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
+import { BotBilling } from "../../monetization/credits/bot-billing.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { appRouter } from "../../trpc/index.js";
-import type { TRPCContext } from "../../trpc/init.js";
 import { setAdminRouterDeps } from "../../trpc/routers/admin.js";
 import { TenantStatusStore } from "./tenant-status-store.js";
 

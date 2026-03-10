@@ -1,10 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { CreditLedger } from "./credit-ledger.js";
 import { DrizzleCreditTransactionRepository } from "./credit-transaction-repository.js";
 import { type DividendCronConfig, runDividendCron } from "./dividend-cron.js";
 

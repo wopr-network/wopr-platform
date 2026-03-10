@@ -1,6 +1,7 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import type { TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import { Hono } from "hono";
-import type { AuthEnv } from "../../auth/index.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import {
   InsufficientCreditsError,
   type OnDemandSnapshotService,
@@ -8,7 +9,6 @@ import {
 } from "../../backup/on-demand-snapshot-service.js";
 import { createOnDemandSnapshotSchema, tierSchema } from "../../backup/types.js";
 import { logger } from "../../config/logger.js";
-import type { TenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 
 /** Only allow safe characters in IDs used for filesystem paths. */
 const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;

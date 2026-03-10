@@ -1,4 +1,3 @@
-import { describe, expect, it } from "vitest";
 import {
   botDestructionTemplate,
   botSuspendedTemplate,
@@ -8,7 +7,8 @@ import {
   passwordResetEmailTemplate,
   verifyEmailTemplate,
   welcomeTemplate,
-} from "./templates.js";
+} from "@wopr-network/platform-core/email";
+import { describe, expect, it } from "vitest";
 
 describe("verifyEmailTemplate", () => {
   it("should generate HTML and text with verify URL", () => {

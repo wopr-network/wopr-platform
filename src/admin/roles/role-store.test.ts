@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { isValidRole, RoleStore } from "@wopr-network/platform-core/admin";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { userRoles } from "../../db/schema/user-roles.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { isValidRole, RoleStore } from "./role-store.js";
 
 let db: DrizzleDb;
 let pool: PGlite;

@@ -6,7 +6,7 @@
  * metering, and billing — adapters never touch those concerns.
  */
 
-import type { Credit } from "../credit.js";
+import type { Credit } from "@wopr-network/platform-core/credits";
 
 /** The result every adapter returns: the provider's output + wholesale cost */
 export interface AdapterResult<T = unknown> {

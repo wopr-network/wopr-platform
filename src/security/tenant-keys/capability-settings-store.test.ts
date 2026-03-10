@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { CapabilitySettingsStore } from "@wopr-network/platform-core/security";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { CapabilitySettingsStore } from "./capability-settings-store.js";
 
 describe("CapabilitySettingsStore", () => {
   let db: DrizzleDb;

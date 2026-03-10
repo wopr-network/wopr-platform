@@ -1,7 +1,7 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AuthEnv } from "../../auth/index.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { checkCapacityAlerts } from "../../fleet/capacity-alerts.js";
 import type { RecoveryEvent } from "../../fleet/repository-types.js";

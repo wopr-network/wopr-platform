@@ -1,7 +1,7 @@
+import type { CreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import { Credit } from "./credit.js";
-import type { CreditLedger } from "./credits/credit-ledger.js";
 import { DAILY_BOT_COST } from "./credits/runtime-cron.js";
 import { createCreditGate, createFeatureGate, type GetUserBalance } from "./feature-gate.js";
 

@@ -9,7 +9,7 @@
  * configured wholesale rate, with margin applied via withMargin().
  */
 
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { AdapterResult, ProviderAdapter, TTSInput, TTSOutput } from "./types.js";
 import { withMargin } from "./types.js";
 

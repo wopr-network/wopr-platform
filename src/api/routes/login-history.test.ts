@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AuthEnv } from "../../auth/index.js";
 import type { ILoginHistoryRepository, LoginHistoryEntry } from "../../auth/login-history-repository.js";
 import { loginHistoryRoutes, setLoginHistoryRepo } from "./login-history.js";
 

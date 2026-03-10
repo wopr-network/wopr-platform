@@ -4,7 +4,7 @@
  * WOP-463: Provider arbitrage router for multi-provider routing with maximum margin.
  */
 
-import type { Credit } from "../credit.js";
+import type { Credit } from "@wopr-network/platform-core/credits";
 
 /** A provider entry in the routing registry. Maps to provider_costs DB rows. */
 export interface ModelProviderEntry {

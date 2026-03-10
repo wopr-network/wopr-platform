@@ -1,7 +1,7 @@
+import type { ITenantCustomerRepository, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
+import { createCreditCheckoutSession, createVpsCheckoutSession } from "@wopr-network/platform-core/billing";
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
-import { createCreditCheckoutSession, createVpsCheckoutSession } from "./checkout.js";
-import type { ITenantCustomerRepository, TenantCustomerRepository } from "./tenant-store.js";
 
 describe("createCreditCheckoutSession", () => {
   function mockStripe(sessionCreateResult: unknown = { id: "cs_test", url: "https://checkout.stripe.com/cs_test" }) {

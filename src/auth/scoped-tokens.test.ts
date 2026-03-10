@@ -1,6 +1,12 @@
+import {
+  buildTokenMap,
+  parseTokenScope,
+  scopedBearerAuth,
+  scopeSatisfies,
+  type TokenScope,
+} from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { buildTokenMap, parseTokenScope, scopedBearerAuth, scopeSatisfies, type TokenScope } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // parseTokenScope

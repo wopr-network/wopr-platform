@@ -1,9 +1,8 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit, InsufficientBalanceError } from "@wopr-network/platform-core/credits";
+import type { IMeterEmitter } from "@wopr-network/platform-core/metering";
 import { logger } from "../../config/logger.js";
 import { withMargin } from "../adapters/types.js";
-import { Credit } from "../credit.js";
-import type { IMeterEmitter } from "../metering/emitter.js";
-import type { ICreditLedger } from "./credit-ledger.js";
-import { InsufficientBalanceError } from "./credit-ledger.js";
 import type { IPhoneNumberRepository } from "./drizzle-phone-number-repository.js";
 
 export type { IPhoneNumberRepository } from "./drizzle-phone-number-repository.js";

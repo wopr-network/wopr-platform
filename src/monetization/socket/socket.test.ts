@@ -1,4 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEmitter, MeterEvent } from "@wopr-network/platform-core/metering";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
@@ -12,9 +14,6 @@ import type {
   TTSOutput,
 } from "../adapters/types.js";
 import { BudgetChecker, type SpendLimits } from "../budget/budget-checker.js";
-import { Credit } from "../credit.js";
-import type { MeterEmitter } from "../metering/emitter.js";
-import type { MeterEvent } from "../metering/types.js";
 import { AdapterSocket, type SocketConfig } from "./socket.js";
 
 // ---------------------------------------------------------------------------

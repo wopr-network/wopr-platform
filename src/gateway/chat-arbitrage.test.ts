@@ -1,7 +1,7 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import type { ArbitrageRouter } from "../monetization/arbitrage/router.js";
-import { Credit } from "../monetization/credit.js";
 import type { ProxyDeps } from "./proxy.js";
 import { chatCompletions } from "./proxy.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";

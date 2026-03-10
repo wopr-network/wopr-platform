@@ -1,6 +1,12 @@
+import {
+  type AuthEnv,
+  type AuthUser,
+  extractBearerToken,
+  requireRole,
+  timingSafeMapLookup,
+} from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
-import { type AuthEnv, type AuthUser, extractBearerToken, requireRole, timingSafeMapLookup } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // extractBearerToken

@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
+import type { AdminAuditLog } from "@wopr-network/platform-core/admin";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { NotificationService } from "@wopr-network/platform-core/email";
 import { logger } from "../../config/logger.js";
-import type { NotificationService } from "../../email/notification-service.js";
-import { Credit } from "../../monetization/credit.js";
-import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
-import type { AdminAuditLog } from "../audit-log.js";
 import type { ITenantStatusRepository } from "../tenant-status/tenant-status-repository.js";
 import type { IBulkOperationsRepository } from "./bulk-operations-repository.js";
 

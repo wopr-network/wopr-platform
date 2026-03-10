@@ -6,9 +6,9 @@
  * after completion.
  */
 
+import { Credit } from "@wopr-network/platform-core/credits";
 import { logger } from "../config/logger.js";
 import { withMargin } from "../monetization/adapters/types.js";
-import { Credit } from "../monetization/credit.js";
 import type { ProxyDeps } from "./proxy.js";
 import type { SellRateLookupFn } from "./rate-lookup.js";
 import { DEFAULT_TOKEN_RATES, resolveTokenRates } from "./rate-lookup.js";

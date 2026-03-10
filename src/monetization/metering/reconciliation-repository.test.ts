@@ -1,10 +1,9 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, seedUsageSummary, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { CreditLedger } from "../credits/credit-ledger.js";
 import { DrizzleAdapterUsageRepository, DrizzleUsageSummaryRepository } from "./reconciliation-repository.js";
 
 let pool: PGlite;

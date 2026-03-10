@@ -1,5 +1,5 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { customType } from "drizzle-orm/pg-core";
-import { Credit } from "../monetization/credit.js";
 
 export const creditColumn = customType<{
   data: Credit;

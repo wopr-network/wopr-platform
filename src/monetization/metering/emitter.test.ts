@@ -2,14 +2,13 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
+import { DrizzleMeterEmitter, DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
-import { DrizzleMeterEmitter } from "./emitter.js";
-import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
-import type { MeterEvent } from "./types.js";
 
 function makeTempDir(): string {
   const dir = join(tmpdir(), `emitter-test-${crypto.randomUUID()}`);

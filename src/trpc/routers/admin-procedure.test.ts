@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
+import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { describe, expect, it } from "vitest";
-import { adminProcedure, router } from "../init.js";
 
 describe("adminProcedure", () => {
   const testRouter = router({

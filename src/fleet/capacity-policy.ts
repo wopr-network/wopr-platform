@@ -1,4 +1,4 @@
-import type { AdminAuditLog } from "../admin/audit-log.js";
+import type { AdminAuditLog } from "@wopr-network/platform-core/admin";
 import { logger } from "../config/logger.js";
 import type { AdminNotifier } from "./admin-notifier.js";
 import type { NodeProvisioner } from "./node-provisioner.js";

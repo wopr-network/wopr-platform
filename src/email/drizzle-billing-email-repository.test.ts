@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleBillingEmailRepository } from "@wopr-network/platform-core/email";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { createTestDb } from "../test/db.js";
-import { DrizzleBillingEmailRepository } from "./drizzle-billing-email-repository.js";
 
 describe("DrizzleBillingEmailRepository", () => {
   let db: DrizzleDb;

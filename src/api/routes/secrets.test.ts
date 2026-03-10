@@ -1,6 +1,6 @@
+import { encrypt } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { encrypt } from "../../security/encryption.js";
 
 const TEST_TOKEN = "test-api-token";
 const TEST_PLATFORM_SECRET = "test-platform-secret-32bytes!!ok";
@@ -15,17 +15,18 @@ const authHeader = { Authorization: `Bearer ${TEST_TOKEN}` };
 const mockWriteEncryptedSeed = vi.fn();
 const mockForwardSecretsToInstance = vi.fn();
 
-vi.mock("../../security/key-injection.js", () => ({
-  writeEncryptedSeed: (...args: unknown[]) => mockWriteEncryptedSeed(...args),
-  forwardSecretsToInstance: (...args: unknown[]) => mockForwardSecretsToInstance(...args),
-}));
+vi.mock("@wopr-network/platform-core/security", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@wopr-network/platform-core/security")>();
+  return {
+    ...actual,
+    writeEncryptedSeed: (...args: unknown[]) => mockWriteEncryptedSeed(...args),
+    forwardSecretsToInstance: (...args: unknown[]) => mockForwardSecretsToInstance(...args),
+    validateProviderKey: (...args: unknown[]) => mockValidateProviderKey(...args),
+  };
+});
 
 // Mock key-validation module
 const mockValidateProviderKey = vi.fn();
-
-vi.mock("../../security/key-validation.js", () => ({
-  validateProviderKey: (...args: unknown[]) => mockValidateProviderKey(...args),
-}));
 
 const { secretsRoutes } = await import("./secrets.js");
 
@@ -145,7 +146,7 @@ describe("secrets routes", () => {
       mockValidateProviderKey.mockResolvedValue({ valid: true });
 
       // Encrypt a test key using the instance-derived key
-      const { deriveInstanceKey } = await import("../../security/encryption.js");
+      const { deriveInstanceKey } = await import("@wopr-network/platform-core/security");
       const instanceKey = deriveInstanceKey("inst-1", TEST_PLATFORM_SECRET);
       const encryptedPayload = encrypt("sk-ant-valid-key", instanceKey);
 
@@ -167,7 +168,7 @@ describe("secrets routes", () => {
     it("returns invalid for bad key", async () => {
       mockValidateProviderKey.mockResolvedValue({ valid: false, error: "Invalid API key" });
 
-      const { deriveInstanceKey } = await import("../../security/encryption.js");
+      const { deriveInstanceKey } = await import("@wopr-network/platform-core/security");
       const instanceKey = deriveInstanceKey("inst-1", TEST_PLATFORM_SECRET);
       const encryptedPayload = encrypt("sk-ant-bad-key", instanceKey);
 
@@ -187,7 +188,7 @@ describe("secrets routes", () => {
     });
 
     it("rejects missing instanceId query param", async () => {
-      const { deriveInstanceKey } = await import("../../security/encryption.js");
+      const { deriveInstanceKey } = await import("@wopr-network/platform-core/security");
       const instanceKey = deriveInstanceKey("inst-1", TEST_PLATFORM_SECRET);
       const encryptedPayload = encrypt("test", instanceKey);
 

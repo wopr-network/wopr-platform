@@ -1,15 +1,14 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { ITenantCustomerRepository } from "@wopr-network/platform-core/billing";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import Stripe from "stripe";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import type { ITenantCustomerRepository } from "../stripe/tenant-store.js";
 import { type AutoTopupChargeDeps, chargeAutoTopup, MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
 import { DrizzleAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
-import { CreditLedger } from "./credit-ledger.js";
 
 function mockStripe(overrides?: {
   paymentIntentId?: string;

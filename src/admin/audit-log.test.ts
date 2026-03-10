@@ -1,13 +1,12 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { AuditEntry } from "@wopr-network/platform-core/admin";
+import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
 import { createAdminAuditApiRoutes } from "../api/routes/admin-audit.js";
 import type { DrizzleDb } from "../db/index.js";
 import { adminAuditLog } from "../db/schema/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import type { AuditEntry } from "./audit-log.js";
-import { AdminAuditLog } from "./audit-log.js";
 
 function makeEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {
   return {

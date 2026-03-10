@@ -1,9 +1,8 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit, InsufficientBalanceError } from "@wopr-network/platform-core/credits";
 import { logger } from "../../config/logger.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { RESOURCE_TIERS } from "../../fleet/resource-tiers.js";
-import { Credit } from "../credit.js";
-import type { ICreditLedger } from "./credit-ledger.js";
-import { InsufficientBalanceError } from "./credit-ledger.js";
 
 /**
  * Bot runtime cost: $5/bot/month prorated daily.

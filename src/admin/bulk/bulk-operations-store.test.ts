@@ -1,12 +1,11 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
-import { Credit } from "../../monetization/credit.js";
-import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { AdminAuditLog } from "../audit-log.js";
 import { TenantStatusStore } from "../tenant-status/tenant-status-store.js";
 import { DrizzleBulkOperationsRepository, type IBulkOperationsRepository } from "./bulk-operations-repository.js";
 import { BulkOperationsStore, MAX_BULK_SIZE, UNDO_WINDOW_MS } from "./bulk-operations-store.js";

@@ -1,5 +1,5 @@
+import { validateNodeHost } from "@wopr-network/platform-core/security";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { validateNodeHost } from "./host-validation.js";
 
 describe("validateNodeHost", () => {
   afterEach(() => {

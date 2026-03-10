@@ -2,9 +2,9 @@
  * Unit tests for DrizzleSpendingCapStore (WOP-1116).
  */
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { Credit } from "../monetization/credit.js";
 import {
   beginTestTransaction,
   createTestDb,

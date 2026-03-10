@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { Credit } from "../credit.js";
 import { BudgetChecker, type SpendLimits } from "./budget-checker.js";
 
 const FREE_LIMITS: SpendLimits = {

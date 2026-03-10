@@ -1,9 +1,12 @@
-import { Credit } from "../credit.js";
+import type {
+  IWebhookSeenRepository,
+  PayRamChargeRepository,
+  PayRamWebhookPayload,
+  PayRamWebhookResult,
+} from "@wopr-network/platform-core/billing";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { BotBilling } from "../credits/bot-billing.js";
-import type { ICreditLedger } from "../credits/credit-ledger.js";
-import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
-import type { PayRamChargeRepository } from "./charge-store.js";
-import type { PayRamWebhookPayload, PayRamWebhookResult } from "./types.js";
 
 export interface PayRamWebhookDeps {
   chargeStore: PayRamChargeRepository;

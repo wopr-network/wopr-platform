@@ -1,5 +1,5 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it, vi } from "vitest";
-import { Credit } from "../credit.js";
 import type { DeepgramAdapterConfig, FetchFn } from "./deepgram.js";
 import { createDeepgramAdapter } from "./deepgram.js";
 import { withMargin } from "./types.js";

@@ -9,7 +9,7 @@
  * falling back to token-based calculation when the header is absent.
  */
 
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type {
   AdapterResult,
   EmbeddingsInput,

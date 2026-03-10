@@ -1,14 +1,16 @@
 import { unlinkSync } from "node:fs";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
+import {
+  DrizzleMeterEventRepository,
+  DrizzleUsageSummaryRepository,
+  MeterAggregator,
+  MeterEmitter,
+} from "@wopr-network/platform-core/metering";
 import { afterEach, beforeEach, bench, describe } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { MeterAggregator } from "./aggregator.js";
-import { DrizzleUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
-import { MeterEmitter } from "./emitter.js";
-import { DrizzleMeterEventRepository } from "./meter-event-repository.js";
-import type { MeterEvent } from "./types.js";
 
 function makeEvent(i: number): MeterEvent {
   return {

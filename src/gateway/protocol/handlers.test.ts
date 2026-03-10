@@ -1,8 +1,8 @@
+import type { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BudgetCheckResult, SpendLimits } from "../../monetization/budget/budget-checker.js";
-import type { Credit } from "../../monetization/credit.js";
-import type { MeterEvent } from "../../monetization/metering/types.js";
 import type { GatewayTenant } from "../types.js";
 import { createAnthropicRoutes } from "./anthropic.js";
 import type { ProtocolDeps } from "./deps.js";

@@ -1,4 +1,4 @@
-import type { Role } from "../admin/roles/role-store.js";
+import type { Role } from "@wopr-network/platform-core/admin";
 
 /**
  * Check if a user with the given role can manage (control/update/destroy) a bot.

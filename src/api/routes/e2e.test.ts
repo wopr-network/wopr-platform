@@ -1,17 +1,14 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import { noOpReplayGuard, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
+import { DrizzleUsageSummaryRepository, MeterAggregator } from "@wopr-network/platform-core/metering";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import { Credit } from "../../monetization/credit.js";
-import { CreditLedger } from "../../monetization/credits/credit-ledger.js";
-import { MeterAggregator } from "../../monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../../monetization/metering/drizzle-usage-summary-repository.js";
-import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
-import { TenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
-import { noOpReplayGuard } from "../../monetization/webhook-seen-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 

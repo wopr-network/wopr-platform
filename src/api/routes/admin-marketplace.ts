@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AuthEnv } from "../../auth/index.js";
 import { getAdminAuditLog } from "../../fleet/services.js";
 import type { IMarketplacePluginRepository } from "../../marketplace/marketplace-plugin-repository.js";
 

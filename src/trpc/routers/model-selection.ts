@@ -3,9 +3,9 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import { router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { ITenantModelSelectionRepository } from "../../db/tenant-model-selection-repository.js";
-import { router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps

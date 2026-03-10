@@ -1,5 +1,5 @@
+import type { RoleStore } from "@wopr-network/platform-core/admin";
 import { describe, expect, it, vi } from "vitest";
-import type { RoleStore } from "../admin/roles/role-store.js";
 import { createUserCreator } from "./user-creator.js";
 
 // Minimal mock RoleStore

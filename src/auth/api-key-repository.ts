@@ -1,7 +1,7 @@
+import type { AuthUser } from "@wopr-network/platform-core/auth";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { platformApiKeys } from "../db/schema/platform-api-keys.js";
-import type { AuthUser } from "./index.js";
 
 export interface IApiKeyRepository {
   /** Look up an API key by its SHA-256 hash. Returns null if not found, revoked, or expired. */

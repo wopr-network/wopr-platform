@@ -1,5 +1,5 @@
+import { createStripeClient, loadStripeConfig } from "@wopr-network/platform-core/billing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createStripeClient, loadStripeConfig } from "./client.js";
 
 describe("loadStripeConfig", () => {
   let origSecretKey: string | undefined;

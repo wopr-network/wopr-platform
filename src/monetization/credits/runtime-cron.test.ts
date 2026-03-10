@@ -1,9 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger, InsufficientBalanceError } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RESOURCE_TIERS } from "../../fleet/resource-tiers.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 import { buildResourceTierCosts, DAILY_BOT_COST, runRuntimeDeductions } from "./runtime-cron.js";
 
 describe("runRuntimeDeductions", () => {

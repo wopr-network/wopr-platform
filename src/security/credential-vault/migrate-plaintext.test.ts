@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
+import type { ICredentialMigrationAccess, IMigrationTenantKeyAccess } from "@wopr-network/platform-core/security";
+import { decrypt, encrypt, migratePlaintextCredentials } from "@wopr-network/platform-core/security";
 import { describe, expect, it } from "vitest";
-import { decrypt, encrypt } from "../encryption.js";
-import type { ICredentialMigrationAccess, IMigrationTenantKeyAccess } from "./credential-repository.js";
-import { migratePlaintextCredentials } from "./migrate-plaintext.js";
 
 // ---------------------------------------------------------------------------
 // Mock helpers

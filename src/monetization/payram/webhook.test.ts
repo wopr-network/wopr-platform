@@ -6,14 +6,17 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
+import type { PayRamWebhookPayload } from "@wopr-network/platform-core/billing";
+import {
+  DrizzleWebhookSeenRepository,
+  noOpReplayGuard,
+  PayRamChargeRepository,
+} from "@wopr-network/platform-core/billing";
+import { CreditLedger } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { CreditLedger } from "../credits/credit-ledger.js";
-import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
-import { noOpReplayGuard } from "../webhook-seen-repository.js";
-import { PayRamChargeRepository } from "./charge-store.js";
-import type { PayRamWebhookDeps, PayRamWebhookPayload } from "./index.js";
+import type { PayRamWebhookDeps } from "./webhook.js";
 import { handlePayRamWebhook } from "./webhook.js";
 
 function makePayload(overrides: Partial<PayRamWebhookPayload> = {}): PayRamWebhookPayload {

@@ -1,4 +1,4 @@
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { ADDON_CATALOG, type AddonKey } from "./addon-catalog.js";
 import type { ITenantAddonRepository } from "./addon-repository.js";
 

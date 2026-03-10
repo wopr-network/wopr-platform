@@ -1,9 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { CreditLedger, grantSignupCredits, SIGNUP_GRANT } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { CreditLedger } from "./credit-ledger.js";
-import { grantSignupCredits, SIGNUP_GRANT } from "./signup-grant.js";
 
 describe("grantSignupCredits", () => {
   let pool: PGlite;

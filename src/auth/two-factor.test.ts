@@ -6,13 +6,13 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "../trpc/index.js";
-import type { TRPCContext } from "../trpc/init.js";
-import { setTrpcOrgMemberRepo } from "../trpc/init.js";
 import { setTwoFactorRouterDeps } from "../trpc/routers/two-factor.js";
 
 // ---------------------------------------------------------------------------

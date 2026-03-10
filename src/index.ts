@@ -1,5 +1,21 @@
 import { createHmac } from "node:crypto";
 import { serve } from "@hono/node-server";
+import {
+  buildTokenMetadataMap,
+  scopedBearerAuthWithTenant,
+  timingSafeMapLookup,
+} from "@wopr-network/platform-core/auth";
+import { DrizzleWebhookSeenRepository } from "@wopr-network/platform-core/billing";
+import { Credit, runCreditExpiryCron } from "@wopr-network/platform-core/credits";
+import { NotificationService } from "@wopr-network/platform-core/email";
+import { DrizzleMeterEventRepository, MeterEmitter, runReconciliation } from "@wopr-network/platform-core/metering";
+import {
+  CredentialVaultStore,
+  DrizzleCredentialRepository,
+  encrypt,
+  getVaultEncryptionKey,
+  TenantKeyRepository,
+} from "@wopr-network/platform-core/security";
 import { eq, gte, sql } from "drizzle-orm";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
@@ -16,14 +32,12 @@ import { setMarketplaceDeps } from "./api/routes/marketplace.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
 import { authenticateWebSocketUpgrade } from "./api/routes/ws-auth.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant, timingSafeMapLookup } from "./auth/index.js";
 import { EchoChatBackend } from "./chat/chat-backend.js";
 import { WoprChatBackend } from "./chat/wopr-chat-backend.js";
 import { config } from "./config/index.js";
 import { logger } from "./config/logger.js";
 import { runMigrations } from "./db/migrate.js";
 import * as schema from "./db/schema/index.js";
-import { NotificationService } from "./email/notification-service.js";
 import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
   getAffiliateRepo,
@@ -69,15 +83,9 @@ import { mountGateway } from "./gateway/index.js";
 import { createCachedRateLookup } from "./gateway/rate-lookup.js";
 import type { GatewayTenant } from "./gateway/types.js";
 import { BudgetChecker } from "./monetization/budget/budget-checker.js";
-import { Credit } from "./monetization/credit.js";
-import { runCreditExpiryCron } from "./monetization/credits/credit-expiry-cron.js";
 import { runDividendCron } from "./monetization/credits/dividend-cron.js";
 import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cron.js";
 import { startRuntimeScheduler } from "./monetization/credits/runtime-scheduler.js";
-import { DrizzleWebhookSeenRepository } from "./monetization/drizzle-webhook-seen-repository.js";
-import { MeterEmitter } from "./monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "./monetization/metering/meter-event-repository.js";
-import { runReconciliation } from "./monetization/metering/reconciliation-cron.js";
 import {
   DrizzleAdapterUsageRepository,
   DrizzleUsageSummaryRepository,
@@ -97,10 +105,6 @@ import {
 import { DrizzleTenantKeyLookup } from "./onboarding/drizzle-tenant-key-repository.js";
 import { checkProviderConfigured } from "./onboarding/provider-check.js";
 import { hydrateProxyRoutes } from "./proxy/singleton.js";
-import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
-import { CredentialVaultStore, getVaultEncryptionKey } from "./security/credential-vault/store.js";
-import { encrypt } from "./security/encryption.js";
-import { TenantKeyRepository } from "./security/tenant-keys/tenant-key-repository.js";
 import {
   setAddonRouterDeps,
   setAdminRouterDeps,
@@ -416,7 +420,7 @@ if (process.env.NODE_ENV !== "test") {
               "./monetization/drizzle-spending-limits-repository.js"
             );
             const { DrizzleSpendingCapStore } = await import("./fleet/spending-cap-repository.js");
-            const { DrizzleBillingEmailRepository } = await import("./email/drizzle-billing-email-repository.js");
+            const { DrizzleBillingEmailRepository } = await import("@wopr-network/platform-core/email");
 
             const notificationService = new NotificationService(
               getNotificationQueueStore(),
@@ -531,9 +535,9 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire settings tRPC router deps
   {
-    const { resolveApiKey, buildPooledKeysMap } = await import("./security/tenant-keys/key-resolution.js");
-    const { DrizzleKeyResolutionRepository } = await import("./security/tenant-keys/key-resolution-repository.js");
-    const { validateProviderKey, PROVIDER_ENDPOINTS } = await import("./security/key-validation.js");
+    const { resolveApiKey, buildPooledKeysMap } = await import("@wopr-network/platform-core/security");
+    const { DrizzleKeyResolutionRepository } = await import("@wopr-network/platform-core/security");
+    const { validateProviderKey, PROVIDER_ENDPOINTS } = await import("@wopr-network/platform-core/security");
     const vaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const pooledKeys = buildPooledKeysMap();
 
@@ -575,18 +579,18 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire org-keys tRPC router deps (WOP-1003: org-scoped BYOK key resolution)
   {
-    const { resolveApiKeyWithOrgFallback } = await import("./security/tenant-keys/org-key-resolution.js");
-    const { RoleStore } = await import("./admin/roles/role-store.js");
+    const { resolveApiKeyWithOrgFallback } = await import("@wopr-network/platform-core/security");
+    const { RoleStore } = await import("@wopr-network/platform-core/admin");
     const orgKeysTenantKeyRepository = new TenantKeyRepository(getDb());
     const roleStore = new RoleStore(getDb());
     const orgVaultEncKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
     const deriveTenantKey2 = (tenantId: string, platformSecret: string) =>
       createHmac("sha256", platformSecret).update(`tenant:${tenantId}`).digest();
     const { buildPooledKeysMap: buildPooledKeysMap2, resolveApiKey: resolveApiKey2 } = await import(
-      "./security/tenant-keys/key-resolution.js"
+      "@wopr-network/platform-core/security"
     );
     const { DrizzleKeyResolutionRepository: DrizzleKeyResolutionRepository2 } = await import(
-      "./security/tenant-keys/key-resolution-repository.js"
+      "@wopr-network/platform-core/security"
     );
     const pooledKeys2 = buildPooledKeysMap2();
 
@@ -607,7 +611,7 @@ if (process.env.NODE_ENV !== "test") {
     // Override settings testProvider to use org-aware key resolution
     // This ensures org keys are checked when testing provider connectivity
     const { validateProviderKey: validateProviderKey2, PROVIDER_ENDPOINTS: PROVIDER_ENDPOINTS2 } = await import(
-      "./security/key-validation.js"
+      "@wopr-network/platform-core/security"
     );
     setSettingsRouterDeps({
       getNotificationPrefsStore,
@@ -654,20 +658,16 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire billing tRPC router deps
   {
-    const { MeterAggregator } = await import("./monetization/metering/aggregator.js");
-    const { loadCreditPriceMap } = await import("./monetization/stripe/credit-prices.js");
-    const { DrizzleTenantCustomerRepository } = await import("./monetization/stripe/tenant-store.js");
+    const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
+    const { loadCreditPriceMap } = await import("@wopr-network/platform-core/billing");
+    const { DrizzleTenantCustomerRepository } = await import("@wopr-network/platform-core/billing");
     const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
-    const { DrizzleAutoTopupSettingsRepository } = await import(
-      "./monetization/credits/auto-topup-settings-repository.js"
-    );
+    const { DrizzleAutoTopupSettingsRepository } = await import("@wopr-network/platform-core/credits");
     const { StripePaymentProcessor } = await import("./monetization/stripe/stripe-payment-processor.js");
-    const { DrizzlePayRamChargeRepository } = await import("./monetization/payram/charge-store.js");
+    const { DrizzlePayRamChargeRepository } = await import("@wopr-network/platform-core/billing");
 
     const tenantRepo = new DrizzleTenantCustomerRepository(getDb());
-    const { DrizzleUsageSummaryRepository } = await import(
-      "./monetization/metering/drizzle-usage-summary-repository.js"
-    );
+    const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
     const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(getDb()));
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
@@ -691,7 +691,7 @@ if (process.env.NODE_ENV !== "test") {
       const payramChargeRepo = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeRepository(getDb()) : undefined;
       let payramClient: import("payram").Payram | undefined;
       if (process.env.PAYRAM_API_KEY) {
-        const { createPayRamClient, loadPayRamConfig } = await import("./monetization/payram/client.js");
+        const { createPayRamClient, loadPayRamConfig } = await import("@wopr-network/platform-core/billing");
         const payramConfig = loadPayRamConfig();
         if (payramConfig) {
           payramClient = createPayRamClient(payramConfig);
@@ -722,13 +722,13 @@ if (process.env.NODE_ENV !== "test") {
 
       // Wire admin tRPC router deps — ban cascade needs Stripe + auto-topup repo (WOP-1064)
       {
-        const { detachAllPaymentMethods } = await import("./monetization/stripe/payment-methods.js");
+        const { detachAllPaymentMethods } = await import("@wopr-network/platform-core/billing");
         const { getTenantStatusRepo, getAutoTopupSettingsRepo, getExportRepo, getDeletionRepo } = await import(
           "./fleet/services.js"
         );
         const { AccountExportStore } = await import("./account/export-store.js");
-        const { AdminAuditLog } = await import("./admin/audit-log.js");
-        const { DrizzleAdminAuditLogRepository } = await import("./admin/admin-audit-log-repository.js");
+        const { AdminAuditLog } = await import("@wopr-network/platform-core/admin");
+        const { DrizzleAdminAuditLogRepository } = await import("@wopr-network/platform-core/admin");
         const { AdminUserStore } = await import("./admin/users/user-store.js");
         const { BotBilling } = await import("./monetization/credits/bot-billing.js");
         const { DrizzleAffiliateFraudAdminRepository } = await import(

@@ -5,34 +5,31 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { AdminAuditLog, RoleStore } from "@wopr-network/platform-core/admin";
+import type { IAutoTopupSettingsRepository, ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { INotificationQueueRepository, NotificationService } from "@wopr-network/platform-core/email";
+import type { MeterAggregator } from "@wopr-network/platform-core/metering";
+import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { IAccountDeletionStore } from "../../account/deletion-store.js";
 import type { IAccountExportStore } from "../../account/export-store.js";
 import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
-import type { AdminAuditLog } from "../../admin/audit-log.js";
 import type { IBulkOperationsStore } from "../../admin/bulk/bulk-operations-store.js";
 import type { IAdminNotesRepository } from "../../admin/notes/admin-notes-repository.js";
 import type { RateStore } from "../../admin/rates/rate-store.js";
-import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { ITenantStatusRepository } from "../../admin/tenant-status/tenant-status-repository.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
 import { logger } from "../../config/logger.js";
-import type { INotificationQueueRepository } from "../../email/notification-repository-types.js";
-import type { NotificationService } from "../../email/notification-service.js";
 import type { IGpuAllocationRepository } from "../../fleet/gpu-allocation-repository.js";
 import type { IGpuConfigurationRepository } from "../../fleet/gpu-configuration-repository.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import type { IAffiliateFraudAdminRepository } from "../../monetization/affiliate/affiliate-admin-repository.js";
-import { Credit } from "../../monetization/credit.js";
-import type { IAutoTopupSettingsRepository } from "../../monetization/credits/auto-topup-settings-repository.js";
 import type { BotBilling } from "../../monetization/credits/bot-billing.js";
-import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { PaymentHealthStatus } from "../../monetization/incident/health-probe.js";
-import type { MeterAggregator } from "../../monetization/metering/aggregator.js";
 import type { AlertChecker } from "../../observability/alerts.js";
 import type { MetricsCollector } from "../../observability/metrics.js";
 import type { SystemResourceMonitor, SystemResourceSnapshot } from "../../observability/system-resources.js";
-import { adminProcedure, router } from "../init.js";
 import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
 
 // ---------------------------------------------------------------------------

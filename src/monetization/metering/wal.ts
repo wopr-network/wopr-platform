@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { MeterEvent } from "./types.js";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
 
 /**
  * Write-Ahead Log for meter events.

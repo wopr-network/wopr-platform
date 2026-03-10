@@ -1,14 +1,17 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
+import {
+  CredentialVaultStore,
+  DrizzleCredentialRepository,
+  encrypt,
+  generateInstanceKey,
+  getVaultEncryptionKey,
+} from "@wopr-network/platform-core/security";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DrizzleAdminAuditLogRepository } from "../../admin/admin-audit-log-repository.js";
-import { AdminAuditLog } from "../../admin/audit-log.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { encrypt, generateInstanceKey } from "../encryption.js";
-import { DrizzleCredentialRepository } from "./credential-repository.js";
-import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

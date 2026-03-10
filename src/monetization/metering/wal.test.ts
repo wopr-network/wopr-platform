@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Credit } from "../credit.js";
 import { MeterDLQ } from "./dlq.js";
-import type { MeterEvent } from "./types.js";
 import { MeterWAL } from "./wal.js";
 
 const TEST_DIR = "/tmp/wopr-wal-test";

@@ -5,14 +5,14 @@
  * billing data belonging to tenant-bravo by manipulating the x-tenant-id header.
  */
 import type { PGlite } from "@electric-sql/pglite";
+import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
-import { Credit } from "../../monetization/credit.js";
-import type { CreditTransaction, ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
-import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { setTrpcOrgMemberRepo } from "../init.js";
 import { type BillingRouterDeps, billingRouter, setBillingRouterDeps } from "./billing.js";
 
 // ---------------------------------------------------------------------------
@@ -157,14 +157,9 @@ describe("billing tenant isolation (WOP-1406)", () => {
   beforeEach(async () => {
     await rollbackTestTransaction(pool);
 
-    const { MeterAggregator } = await import("../../monetization/metering/aggregator.js");
-    const { DrizzleUsageSummaryRepository } = await import(
-      "../../monetization/metering/drizzle-usage-summary-repository.js"
-    );
+    const { MeterAggregator, DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
     const { TenantCustomerRepository } = await import("../../monetization/index.js");
-    const { DrizzleAutoTopupSettingsRepository } = await import(
-      "../../monetization/credits/auto-topup-settings-repository.js"
-    );
+    const { DrizzleAutoTopupSettingsRepository } = await import("@wopr-network/platform-core/credits");
     const { DrizzleSpendingLimitsRepository } = await import(
       "../../monetization/drizzle-spending-limits-repository.js"
     );

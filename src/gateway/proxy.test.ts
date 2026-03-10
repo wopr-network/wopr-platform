@@ -1,6 +1,6 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import { Credit } from "../monetization/credit.js";
 import type { ProxyDeps } from "./proxy.js";
 import {
   audioSpeech,

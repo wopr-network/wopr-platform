@@ -1,6 +1,6 @@
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
 import { setProfileRouterDeps } from "./profile.js";
 
 function authedContext(overrides: Partial<TRPCContext> = {}): TRPCContext {

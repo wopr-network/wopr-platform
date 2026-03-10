@@ -1,8 +1,7 @@
+import type { Credit, IAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
 import { logger } from "../../config/logger.js";
-import type { Credit } from "../credit.js";
 import type { AutoTopupChargeResult } from "./auto-topup-charge.js";
 import { MAX_CONSECUTIVE_FAILURES } from "./auto-topup-charge.js";
-import type { IAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 
 export interface ScheduleTopupDeps {
   settingsRepo: IAutoTopupSettingsRepository;

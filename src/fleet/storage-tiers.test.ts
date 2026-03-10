@@ -1,5 +1,5 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it } from "vitest";
-import { Credit } from "../monetization/credit.js";
 import { DEFAULT_STORAGE_TIER, STORAGE_TIER_KEYS, STORAGE_TIERS } from "./storage-tiers.js";
 
 describe("storage-tiers", () => {

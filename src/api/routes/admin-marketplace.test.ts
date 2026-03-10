@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { AuthEnv } from "../../auth/index.js";
 import type { IMarketplacePluginRepository } from "../../marketplace/marketplace-plugin-repository.js";
 import type { MarketplacePlugin } from "../../marketplace/marketplace-repository-types.js";
 import { createAdminMarketplaceRoutes } from "./admin-marketplace.js";

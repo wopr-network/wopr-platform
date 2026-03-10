@@ -12,7 +12,7 @@ vi.mock("../../fleet/services.js", () => ({
   getCommandBus: vi.fn(),
 }));
 
-vi.mock("../../auth/index.js", () => ({
+vi.mock("@wopr-network/platform-core/auth", () => ({
   buildTokenMetadataMap: vi.fn().mockReturnValue(new Map()),
   // biome-ignore lint/suspicious/noExplicitAny: vi.fn() mock context
   scopedBearerAuthWithTenant: vi.fn().mockReturnValue(async (c: any, next: () => Promise<void>) => {
@@ -21,7 +21,7 @@ vi.mock("../../auth/index.js", () => ({
   }),
 }));
 
-import type { AdminAuditLog } from "../../admin/audit-log.js";
+import type { AdminAuditLog } from "@wopr-network/platform-core/admin";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import type { NodeDrainer } from "../../fleet/node-drainer.js";
 import type { INodeRepository } from "../../fleet/node-repository.js";

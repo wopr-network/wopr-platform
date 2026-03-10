@@ -1,7 +1,7 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { creditTransactions } from "../../db/schema/credits.js";
-import { Credit } from "../credit.js";
 
 export interface ICreditTransactionRepository {
   /** Check if any transaction exists with a referenceId matching a LIKE pattern. */

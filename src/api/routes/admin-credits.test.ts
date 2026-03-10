@@ -6,7 +6,7 @@ vi.mock("../../fleet/services.js", () => ({
   getCreditLedger: vi.fn(),
 }));
 
-import { DrizzleCreditLedger } from "../../monetization/credits/credit-ledger.js";
+import { DrizzleCreditLedger } from "@wopr-network/platform-core/credits";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { createAdminCreditApiRoutes } from "./admin-credits.js";
 

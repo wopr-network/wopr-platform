@@ -1,6 +1,6 @@
+import type { AuthEnv, AuthUser } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { AuthEnv, AuthUser } from "../../auth/index.js";
 import type { OnboardingSession } from "../../onboarding/drizzle-onboarding-session-repository.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
 import { onboardingRoutes, setOnboardingDeps } from "./onboarding.js";

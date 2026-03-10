@@ -1,6 +1,6 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it, vi } from "vitest";
 import { withMargin } from "../monetization/adapters/types.js";
-import { Credit } from "../monetization/credit.js";
 import type { ProxyDeps } from "./proxy.js";
 import { DEFAULT_TOKEN_RATES } from "./rate-lookup.js";
 import { proxySSEStream } from "./streaming.js";

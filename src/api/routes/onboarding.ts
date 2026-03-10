@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import type { AuthEnv } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { IOnboardingSessionRepository } from "../../onboarding/drizzle-onboarding-session-repository.js";
 import { GraduationError, type GraduationService } from "../../onboarding/graduation-service.js";

@@ -1,6 +1,6 @@
+import type { CreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it, vi } from "vitest";
-import { Credit } from "../monetization/credit.js";
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import {
   InsufficientCreditsError,
   OnDemandSnapshotService,

@@ -1,12 +1,14 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EmailClient } from "../../email/client.js";
-import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 
-// Mock verifyToken before importing the route
-vi.mock("../../email/verification.js", () => ({
-  verifyToken: vi.fn(),
-}));
+// Mock verifyToken before importing the route — use importOriginal to preserve
+// other exports (welcomeTemplate, etc.) that the route handler uses at runtime.
+vi.mock("@wopr-network/platform-core/email", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@wopr-network/platform-core/email")>();
+  return { ...actual, verifyToken: vi.fn() };
+});
 
 // Mock getEmailClient before importing the route
 vi.mock("../../email/client.js", () => ({
@@ -15,8 +17,8 @@ vi.mock("../../email/client.js", () => ({
   })),
 }));
 
+import { verifyToken } from "@wopr-network/platform-core/email";
 import { getEmailClient } from "../../email/client.js";
-import { verifyToken } from "../../email/verification.js";
 import { createVerifyEmailRoutes } from "./verify-email.js";
 
 const mockedVerifyToken = vi.mocked(verifyToken);

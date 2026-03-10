@@ -13,7 +13,7 @@
  *   Charge = amortized_cost * margin (e.g., 1.2 = 20% margin vs 50% for third-party)
  */
 
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { FetchFn, SelfHostedAdapterConfig } from "./self-hosted-base.js";
 import type { AdapterResult, ProviderAdapter, TTSInput, TTSOutput } from "./types.js";
 import { withMargin } from "./types.js";

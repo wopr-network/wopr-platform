@@ -6,8 +6,8 @@ vi.mock("../../fleet/services.js", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
 }));
 
-import { RoleStore } from "../../admin/roles/role-store.js";
-import type { AuthEnv } from "../../auth/index.js";
+import { RoleStore } from "@wopr-network/platform-core/admin";
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "./admin-roles.js";

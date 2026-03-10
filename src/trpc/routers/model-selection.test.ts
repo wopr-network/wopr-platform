@@ -1,8 +1,8 @@
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { ITenantModelSelectionRepository } from "../../db/tenant-model-selection-repository.js";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
-import { setTrpcOrgMemberRepo } from "../init.js";
 import { setModelSelectionRouterDeps } from "./model-selection.js";
 
 function tenantContext(overrides: Partial<TRPCContext> = {}): TRPCContext {

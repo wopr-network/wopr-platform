@@ -1,11 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
 import {
   CREDIT_PRICE_POINTS,
   getConfiguredPriceIds,
   getCreditAmountForPurchase,
   loadCreditPriceMap,
   lookupCreditPrice,
-} from "./credit-prices.js";
+} from "@wopr-network/platform-core/billing";
+import { describe, expect, it, vi } from "vitest";
 
 describe("CREDIT_PRICE_POINTS", () => {
   it("has 5 tiers", () => {

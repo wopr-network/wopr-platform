@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EmailClient } from "./client.js";
 import type {
   INotificationPreferencesRepository,
   INotificationQueueRepository,
   QueuedNotification,
-} from "./notification-repository-types.js";
+} from "@wopr-network/platform-core/email";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { EmailClient } from "./client.js";
 import { NotificationWorker } from "./notification-worker.js";
 
 vi.mock("../config/logger.js", () => ({

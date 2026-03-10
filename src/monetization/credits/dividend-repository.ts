@@ -1,9 +1,9 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import { creditTransactions } from "../../db/schema/credits.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
-import { Credit } from "../credit.js";
 import type { DividendHistoryEntry, DividendStats } from "../repository-types.js";
 
 export type { DividendHistoryEntry, DividendStats };

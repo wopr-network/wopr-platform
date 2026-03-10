@@ -9,10 +9,10 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { NotificationService } from "@wopr-network/platform-core/email";
+import { router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { IAccountDeletionStore } from "../../account/deletion-store.js";
-import type { NotificationService } from "../../email/notification-service.js";
-import { router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps

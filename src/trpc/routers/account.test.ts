@@ -5,13 +5,13 @@
  * Deps are injected via setAccountRouterDeps / setTrpcOrgMemberRepo.
  */
 
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountDeletionStore } from "../../account/deletion-store.js";
 import type { DeletionRequest } from "../../account/repository-types.js";
 import type { IOrgMemberRepository } from "../../fleet/org-member-repository.js";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
-import { setTrpcOrgMemberRepo } from "../init.js";
 import type { AccountRouterDeps } from "./account.js";
 import { setAccountRouterDeps } from "./account.js";
 

@@ -39,7 +39,7 @@ function makeMockAuditLog() {
     query: vi.fn().mockReturnValue({ entries: [], total: 0 }),
     exportCsv: vi.fn().mockReturnValue("csv-data"),
     log: vi.fn(),
-  } as unknown as import("../../../admin/audit-log.js").AdminAuditLog;
+  } as unknown as import("@wopr-network/platform-core/admin").AdminAuditLog;
 }
 
 function makeDeps(store: ReturnType<typeof makeMockDeletionStore>): AdminRouterDeps {
@@ -55,7 +55,7 @@ function makeDeps(store: ReturnType<typeof makeMockDeletionStore>): AdminRouterD
         tenantsWithBalance: vi.fn(),
         expiredCredits: vi.fn(),
         memberUsage: vi.fn(),
-      }) as unknown as import("../../../monetization/credits/credit-ledger.js").ICreditLedger,
+      }) as unknown as import("@wopr-network/platform-core/credits").ICreditLedger,
     getUserStore: () =>
       ({
         list: vi.fn(),

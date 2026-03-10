@@ -1,6 +1,6 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { config } from "../../config/index.js";
-import { Credit } from "../credit.js";
-import type { ICreditLedger } from "../credits/credit-ledger.js";
 import type { IAffiliateRepository } from "./drizzle-affiliate-repository.js";
 
 /** Default bonus rate: 20% of purchase amount. Override with AFFILIATE_NEW_USER_BONUS_RATE env var. */

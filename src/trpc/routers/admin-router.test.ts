@@ -7,10 +7,10 @@
  * All AdminRouterDeps are mocked via setAdminRouterDeps(). No PGlite.
  */
 
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { Credit } from "../../monetization/credit.js";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
 import type { AdminRouterDeps } from "./admin.js";
 import { setAdminRouterDeps } from "./admin.js";
 

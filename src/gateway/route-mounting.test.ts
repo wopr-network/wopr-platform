@@ -5,11 +5,11 @@
  * is correctly applied, and route ordering is correct.
  */
 
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BudgetCheckResult, IBudgetChecker } from "../monetization/budget/budget-checker.js";
-import { Credit } from "../monetization/credit.js";
-import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { createGatewayRoutes } from "./routes.js";
 import type { GatewayConfig, GatewayTenant } from "./types.js";
 
@@ -64,7 +64,7 @@ function buildTestConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig 
   );
 
   return {
-    meter: meter as unknown as import("../monetization/metering/emitter.js").MeterEmitter,
+    meter: meter as unknown as import("@wopr-network/platform-core/metering").MeterEmitter,
     budgetChecker: budgetChecker as unknown as import("../monetization/budget/budget-checker.js").BudgetChecker,
     creditLedger,
     providers: { openrouter: { apiKey: "or-test-key" } },

@@ -1,9 +1,13 @@
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import {
+  decrypt,
+  forwardSecretsToInstance,
+  generateInstanceKey,
+  writeEncryptedSeed,
+} from "@wopr-network/platform-core/security";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decrypt, generateInstanceKey } from "./encryption.js";
-import { forwardSecretsToInstance, writeEncryptedSeed } from "./key-injection.js";
 
 describe("key-injection", () => {
   describe("writeEncryptedSeed", () => {

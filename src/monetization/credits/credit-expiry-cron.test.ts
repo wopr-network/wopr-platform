@@ -1,9 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, DrizzleCreditLedger, runCreditExpiryCron } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { runCreditExpiryCron } from "./credit-expiry-cron.js";
-import { DrizzleCreditLedger } from "./credit-ledger.js";
 
 describe("runCreditExpiryCron", () => {
   let pool: PGlite;

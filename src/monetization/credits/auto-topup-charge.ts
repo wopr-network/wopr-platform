@@ -1,9 +1,8 @@
+import type { ITenantCustomerRepository } from "@wopr-network/platform-core/billing";
+import type { Credit, ICreditLedger } from "@wopr-network/platform-core/credits";
 import Stripe from "stripe";
 import { logger } from "../../config/logger.js";
-import type { Credit } from "../credit.js";
-import type { ITenantCustomerRepository } from "../stripe/tenant-store.js";
 import type { IAutoTopupEventLogRepository } from "./auto-topup-event-log-repository.js";
-import type { ICreditLedger } from "./credit-ledger.js";
 
 /** After this many consecutive Stripe failures, the auto-topup mode is disabled. */
 export const MAX_CONSECUTIVE_FAILURES = 3;

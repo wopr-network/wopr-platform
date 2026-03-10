@@ -5,16 +5,17 @@
  * bonus tier application, edge cases, and unknown events.
  */
 import type { PGlite } from "@electric-sql/pglite";
+import {
+  CREDIT_PRICE_POINTS,
+  DrizzleWebhookSeenRepository,
+  noOpReplayGuard,
+  TenantCustomerRepository,
+} from "@wopr-network/platform-core/billing";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import type Stripe from "stripe";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { DrizzleAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
-import { Credit } from "../credit.js";
-import { CreditLedger } from "../credits/credit-ledger.js";
-import { DrizzleWebhookSeenRepository } from "../drizzle-webhook-seen-repository.js";
-import { noOpReplayGuard } from "../webhook-seen-repository.js";
-import { CREDIT_PRICE_POINTS } from "./credit-prices.js";
-import { TenantCustomerRepository } from "./tenant-store.js";
 import type { WebhookDeps } from "./webhook.js";
 import { handleWebhookEvent } from "./webhook.js";
 
@@ -674,7 +675,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const notifyFn = vi.fn();
       const notificationService = {
         notifyAutoTopUpFailed: notifyFn,
-      } as unknown as import("../../email/notification-service.js").NotificationService;
+      } as unknown as import("@wopr-network/platform-core/email").NotificationService;
       const getEmailForTenant = vi.fn(() => "user@example.com");
 
       await handleWebhookEvent(
@@ -1218,7 +1219,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const notifyFn = vi.fn();
       const notificationService = {
         notifyDisputeCreated: notifyFn,
-      } as unknown as import("../../email/notification-service.js").NotificationService;
+      } as unknown as import("@wopr-network/platform-core/email").NotificationService;
       const getEmailForTenant = vi.fn(() => "admin@example.com");
 
       await handleWebhookEvent(
@@ -1368,7 +1369,7 @@ describe("handleWebhookEvent (credit model)", () => {
       const notifyFn = vi.fn();
       const notificationService = {
         notifyDisputeWon: notifyFn,
-      } as unknown as import("../../email/notification-service.js").NotificationService;
+      } as unknown as import("@wopr-network/platform-core/email").NotificationService;
       const getEmailForTenant = vi.fn(() => "admin@example.com");
 
       await handleWebhookEvent(

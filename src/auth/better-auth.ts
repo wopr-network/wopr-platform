@@ -8,15 +8,20 @@
  * at module import time (which breaks tests).
  */
 
+import { RoleStore } from "@wopr-network/platform-core/admin";
+import {
+  generateVerificationToken,
+  initVerificationSchema,
+  PgEmailVerifier,
+  passwordResetEmailTemplate,
+  verifyEmailTemplate,
+} from "@wopr-network/platform-core/email";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
 import type { Pool } from "pg";
-import { RoleStore } from "../admin/roles/role-store.js";
 import { logger } from "../config/logger.js";
 import { initTwoFactorSchema } from "../db/auth-user-repository.js";
 import { getEmailClient } from "../email/client.js";
-import { passwordResetEmailTemplate, verifyEmailTemplate } from "../email/templates.js";
-import { generateVerificationToken, initVerificationSchema, PgEmailVerifier } from "../email/verification.js";
 import { getDb, getPool } from "../fleet/services.js";
 import { createUserCreator, type IUserCreator } from "./user-creator.js";
 

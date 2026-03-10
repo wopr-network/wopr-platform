@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { TenantCustomerRepository } from "./tenant-store.js";
 
 describe("TenantCustomerRepository", () => {
   let pool: PGlite;

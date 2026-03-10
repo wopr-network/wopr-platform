@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { and, count, eq, isNotNull, isNull, sql, sum } from "drizzle-orm";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateCodes, affiliateReferrals } from "../../db/schema/affiliate.js";
-import { Credit } from "../credit.js";
 
 const AFFILIATE_BASE_URL = process.env.AFFILIATE_BASE_URL ?? "https://wopr.network/join?ref=";
 const CODE_LENGTH = 6;

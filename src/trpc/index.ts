@@ -32,7 +32,7 @@
  *   const client = createTRPCClient<AppRouter>({ ... });
  */
 
-import { router } from "./init.js";
+import { router } from "@wopr-network/platform-core/trpc";
 import { accountRouter } from "./routers/account.js";
 import { addonRouter } from "./routers/addons.js";
 import { adminRouter } from "./routers/admin.js";
@@ -72,8 +72,8 @@ export const appRouter = router({
 export type AppRouter = typeof appRouter;
 
 // Re-export context type for adapter usage
-export type { TRPCContext } from "./init.js";
-export { setTrpcOrgMemberRepo } from "./init.js";
+export type { TRPCContext } from "@wopr-network/platform-core/trpc";
+export { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 export { setAccountRouterDeps } from "./routers/account.js";
 export { setAddonRouterDeps } from "./routers/addons.js";
 export { setAdminRouterDeps } from "./routers/admin.js";
