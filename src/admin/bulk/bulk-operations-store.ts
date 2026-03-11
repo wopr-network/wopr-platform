@@ -419,7 +419,7 @@ export class BulkOperationsStore implements IBulkOperationsStore {
               historyByTenant.set(tenantId, txns);
             } catch (err) {
               // Log and use empty history so a single failure doesn't abort the entire export.
-              console.error(`[bulk-export] failed to fetch history for tenant ${tenantId}:`, err);
+              logger.error("failed to fetch history for tenant during bulk export", { tenantId, err });
               historyByTenant.set(tenantId, []);
             }
           }),
