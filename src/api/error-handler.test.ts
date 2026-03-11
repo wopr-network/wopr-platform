@@ -1,10 +1,18 @@
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../config/index.js";
 import { logger } from "../config/logger.js";
 import { app, errorHandler } from "./app.js";
 
 describe("Global error handler", () => {
+  let _savedNodeEnv: string | undefined;
+
+  afterEach(() => {
+    if (_savedNodeEnv !== undefined) {
+      Object.defineProperty(config, "nodeEnv", { value: _savedNodeEnv, writable: true, configurable: true });
+      _savedNodeEnv = undefined;
+    }
+  });
   it("catches errors thrown in route handlers and returns 500", async () => {
     // Create a minimal app that uses the REAL error handler from app.ts
     const testApp = new Hono();
@@ -94,12 +102,12 @@ describe("Global error handler", () => {
     expect(res.status).toBe(404);
   });
 
-  it("logs stack at debug level in production", async () => {
-    const originalNodeEnv = config.nodeEnv;
+  it("logs stack at warn level in production", async () => {
+    _savedNodeEnv = config.nodeEnv;
     Object.defineProperty(config, "nodeEnv", { value: "production", writable: true, configurable: true });
 
     const errorSpy = vi.spyOn(logger, "error");
-    const debugSpy = vi.spyOn(logger, "debug");
+    const warnSpy = vi.spyOn(logger, "warn");
 
     const testApp = new Hono();
     testApp.get("/test-prod-stack", () => {
@@ -123,26 +131,26 @@ describe("Global error handler", () => {
       expect.not.objectContaining({ stack: expect.anything() }),
     );
 
-    // stack should be logged at debug level
-    expect(debugSpy).toHaveBeenCalledWith(
-      "Error stack trace",
+    // stack should be logged at warn level with method field
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Error stack trace (debug)",
       expect.objectContaining({
         stack: expect.any(String),
         path: "/test-prod-stack",
+        method: "GET",
       }),
     );
 
-    Object.defineProperty(config, "nodeEnv", { value: originalNodeEnv, writable: true, configurable: true });
     errorSpy.mockRestore();
-    debugSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 
   it("logs stack at error level in development", async () => {
-    const originalNodeEnv = config.nodeEnv;
+    _savedNodeEnv = config.nodeEnv;
     Object.defineProperty(config, "nodeEnv", { value: "development", writable: true, configurable: true });
 
     const errorSpy = vi.spyOn(logger, "error");
-    const debugSpy = vi.spyOn(logger, "debug");
+    const warnSpy = vi.spyOn(logger, "warn");
 
     const testApp = new Hono();
     testApp.get("/test-dev-stack", () => {
@@ -163,11 +171,10 @@ describe("Global error handler", () => {
       }),
     );
 
-    // debug should NOT be called for stack in dev
-    expect(debugSpy).not.toHaveBeenCalled();
+    // warn should NOT be called for stack in dev
+    expect(warnSpy).not.toHaveBeenCalled();
 
-    Object.defineProperty(config, "nodeEnv", { value: originalNodeEnv, writable: true, configurable: true });
     errorSpy.mockRestore();
-    debugSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });

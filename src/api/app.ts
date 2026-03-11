@@ -479,9 +479,10 @@ export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
   });
 
   if (isProduction) {
-    logger.debug("Error stack trace", {
+    logger.warn("Error stack trace (debug)", {
       stack: err.stack,
       path: c.req.path,
+      method: c.req.method,
     });
   }
 
