@@ -17,8 +17,7 @@ const { CreditLedger } = await import("@wopr-network/platform-core");
 const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
 const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
-const { DrizzlePayRamChargeRepository } = await import("../../src/monetization/payram/charge-store.js");
-const { noOpReplayGuard } = await import("@wopr-network/platform-core/billing");
+const { DrizzlePayRamChargeRepository, noOpReplayGuard } = await import("@wopr-network/platform-core/billing");
 
 function createMockProcessor(): import("../../src/monetization/payment-processor.js").IPaymentProcessor {
   return {
