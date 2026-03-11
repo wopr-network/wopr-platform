@@ -118,8 +118,7 @@ export class DrizzleAffiliateFraudAdminRepository implements IAffiliateFraudAdmi
   }
 
   async listFingerprintClusters(): Promise<FingerprintCluster[]> {
-    // raw SQL: Drizzle cannot express HAVING COUNT(DISTINCT ...) with array_agg on a column
-    // that may not yet exist in the typed schema (stripe_fingerprint added by WOP-1061 migration)
+    // raw SQL: Drizzle cannot express HAVING COUNT(DISTINCT ...) with array_agg in a single query
     type ClusterRow = { stripe_fingerprint: string; tenant_ids: string[] };
     const rows = (await this.db.execute(sql`
       SELECT stripe_fingerprint, array_agg(DISTINCT tenant_id ORDER BY tenant_id) AS tenant_ids
@@ -137,7 +136,7 @@ export class DrizzleAffiliateFraudAdminRepository implements IAffiliateFraudAdmi
   }
 
   async blockFingerprint(fingerprint: string, adminUserId: string): Promise<void> {
-    // raw SQL: Drizzle cannot express DISTINCT on a column not yet in the typed schema
+    // raw SQL: uses credit_transactions table directly rather than importing creditTransactions schema
     type TenantRow = { tenant_id: string };
     const tenantRows = (await this.db.execute(sql`
       SELECT DISTINCT tenant_id FROM credit_transactions
