@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import type { IApiKeyRepository } from "./api-key-repository.js";
 import type { Auth } from "./better-auth.js";
-import { dualAuth, type SessionAuthEnv, sessionAuth } from "./middleware.js";
+import { dualAuth, MIN_API_KEY_LENGTH, type SessionAuthEnv, sessionAuth } from "./middleware.js";
 
 function sha256(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -272,6 +272,39 @@ describe("dualAuth middleware", () => {
     const res = await app.request("/test", {
       headers: { Authorization: "Bearer abc" },
     });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("Authentication required");
+  });
+
+  it("rejects token at boundary length MIN_API_KEY_LENGTH - 1 (21 chars)", async () => {
+    const auth = mockAuth(null);
+
+    const app = new Hono<SessionAuthEnv>();
+    app.use("/*", dualAuth(auth, apiKeyRepo));
+    app.get("/test", (c) => c.json({ ok: true }));
+
+    const token = "a".repeat(MIN_API_KEY_LENGTH - 1); // 21 chars
+    const res = await app.request("/test", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("Authentication required");
+  });
+
+  it("allows token at boundary length MIN_API_KEY_LENGTH (22 chars) to proceed to DB lookup", async () => {
+    const auth = mockAuth(null);
+
+    const app = new Hono<SessionAuthEnv>();
+    app.use("/*", dualAuth(auth, apiKeyRepo));
+    app.get("/test", (c) => c.json({ ok: true }));
+
+    const token = "a".repeat(MIN_API_KEY_LENGTH); // 22 chars — unknown token, but passes length check
+    const res = await app.request("/test", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    // Unknown token → 401 from DB miss, not from length guard
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe("Authentication required");
