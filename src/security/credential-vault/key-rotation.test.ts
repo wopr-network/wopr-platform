@@ -1,13 +1,17 @@
 import { createHmac } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { EncryptedPayload } from "@wopr-network/platform-core/security";
+import {
+  DrizzleCredentialRepository,
+  DrizzleMigrationTenantKeyAccess,
+  decrypt,
+  encrypt,
+  getVaultEncryptionKey,
+  reEncryptAllCredentials,
+} from "@wopr-network/platform-core/security";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { decrypt, encrypt } from "../encryption.js";
-import type { EncryptedPayload } from "../types.js";
-import { DrizzleCredentialRepository, DrizzleMigrationTenantKeyAccess } from "./credential-repository.js";
-import { reEncryptAllCredentials } from "./key-rotation.js";
-import { getVaultEncryptionKey } from "./store.js";
 
 const OLD_SECRET = "old-platform-secret-for-test";
 const NEW_SECRET = "new-platform-secret-for-test";

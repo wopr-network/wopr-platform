@@ -1,9 +1,17 @@
+import {
+  buildTokenMetadataMap,
+  scopedBearerAuthWithTenant,
+  validateTenantOwnership,
+} from "@wopr-network/platform-core/auth";
+import {
+  decrypt,
+  deriveInstanceKey,
+  forwardSecretsToInstance,
+  validateProviderKey,
+  writeEncryptedSeed,
+} from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
-import { decrypt, deriveInstanceKey } from "../../security/encryption.js";
-import { forwardSecretsToInstance, writeEncryptedSeed } from "../../security/key-injection.js";
-import { validateProviderKey } from "../../security/key-validation.js";
 import { validateKeyRequestSchema, writeSecretsRequestSchema } from "../../security/types.js";
 
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;

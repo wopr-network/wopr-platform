@@ -5,8 +5,11 @@
  * the router directly via appRouter.createCaller(ctx).
  */
 
+import type { RoleStore } from "@wopr-network/platform-core/admin";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
@@ -14,11 +17,8 @@ import type { INodeRepository } from "../../fleet/node-repository.js";
 import * as placement from "../../fleet/placement.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import type { BotInstance } from "../../fleet/repository-types.js";
-import { Credit } from "../../monetization/credit.js";
 import { DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
-import { setTrpcOrgMemberRepo } from "../init.js";
 import { setFleetRouterDeps } from "./fleet.js";
 
 // ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { createTestDb } from "../../src/test/db.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
 import { DrizzleMeterAggregator as MeterAggregator } from "../../src/monetization/metering/aggregator.js";

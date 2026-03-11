@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
-import type { AuthEnv } from "../../auth/index.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import type { IBackupStatusStore } from "../../backup/backup-status-store.js";
 import { SpacesClient } from "../../backup/spaces-client.js";
 import { logger } from "../../config/logger.js";

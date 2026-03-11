@@ -1,4 +1,3 @@
-import { describe, expectTypeOf, it } from "vitest";
 import type {
   ChargeOpts,
   ChargeResult,
@@ -9,7 +8,8 @@ import type {
   SavedPaymentMethod,
   SetupResult,
   WebhookResult,
-} from "./payment-processor.js";
+} from "@wopr-network/platform-core/billing";
+import { describe, expectTypeOf, it } from "vitest";
 
 describe("IPaymentProcessor types", () => {
   it("CheckoutOpts has required fields", () => {

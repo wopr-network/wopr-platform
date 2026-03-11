@@ -1,7 +1,7 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AuthEnv } from "../../auth/index.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { getAdminAuditLog, getMigrationOrchestrator } from "../../fleet/services.js";
 

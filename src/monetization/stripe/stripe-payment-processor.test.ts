@@ -1,13 +1,15 @@
+import type {
+  CreditPriceMap,
+  ITenantCustomerRepository,
+  IWebhookSeenRepository,
+} from "@wopr-network/platform-core/billing";
+import { PaymentMethodOwnershipError } from "@wopr-network/platform-core/billing";
+import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Credit } from "../credit.js";
 import type { IAutoTopupEventLogRepository } from "../credits/auto-topup-event-log-repository.js";
-import type { CreditTransaction, ICreditLedger } from "../credits/credit-ledger.js";
-import { PaymentMethodOwnershipError } from "../payment-processor.js";
-import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
-import type { CreditPriceMap } from "./credit-prices.js";
 import { StripePaymentProcessor } from "./stripe-payment-processor.js";
-import type { ITenantCustomerRepository } from "./tenant-store.js";
 
 function makeTenantRow(
   overrides: Partial<{

@@ -5,10 +5,10 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import { orgMemberProcedure, protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { IAuthUserRepository } from "../../db/auth-user-repository.js";
 import type { OrgService } from "../../org/org-service.js";
-import { orgMemberProcedure, protectedProcedure, router } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps

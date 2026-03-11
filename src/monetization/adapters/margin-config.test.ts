@@ -1,5 +1,5 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it, vi } from "vitest";
-import { Credit } from "../credit.js";
 import { getMargin, loadMarginConfig, type MarginConfig, withMarginConfig } from "./margin-config.js";
 
 describe("getMargin", () => {

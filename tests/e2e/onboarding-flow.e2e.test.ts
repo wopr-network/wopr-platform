@@ -6,7 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { CreditLedger } from "@wopr-network/platform-core";
 import { grantSignupCredits, SIGNUP_GRANT } from "../../src/monetization/credits/signup-grant.js";
 import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
 import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";

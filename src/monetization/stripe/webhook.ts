@@ -1,17 +1,19 @@
+import type {
+  CreditPriceMap,
+  IWebhookSeenRepository,
+  TenantCustomerRepository,
+} from "@wopr-network/platform-core/billing";
+import type { CreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { NotificationService } from "@wopr-network/platform-core/email";
 import type Stripe from "stripe";
 import { logger } from "../../config/logger.js";
-import type { NotificationService } from "../../email/notification-service.js";
 import type { IVpsRepository } from "../../fleet/vps-repository.js";
 import { processAffiliateCreditMatch } from "../affiliate/credit-match.js";
 import type { IAffiliateRepository } from "../affiliate/drizzle-affiliate-repository.js";
 import { grantNewUserBonus } from "../affiliate/new-user-bonus.js";
-import { Credit } from "../credit.js";
 import type { BotBilling } from "../credits/bot-billing.js";
-import type { CreditLedger } from "../credits/credit-ledger.js";
 import type { PromotionEngine } from "../promotions/engine.js";
-import type { IWebhookSeenRepository } from "../webhook-seen-repository.js";
-import type { CreditPriceMap } from "./credit-prices.js";
-import type { TenantCustomerRepository } from "./tenant-store.js";
 
 /**
  * Result of processing a Stripe webhook event.

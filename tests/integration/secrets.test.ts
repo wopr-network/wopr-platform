@@ -139,7 +139,7 @@ describe("integration: secrets routes", () => {
     it("validates a key and returns result", async () => {
       mockValidateProviderKey.mockResolvedValue({ valid: true });
 
-      const { deriveInstanceKey, encrypt } = await import("../../src/security/encryption.js");
+      const { deriveInstanceKey, encrypt } = await import("@wopr-network/platform-core/security");
       const instanceKey = deriveInstanceKey("inst-1", TEST_PLATFORM_SECRET);
       const encryptedPayload = encrypt("sk-ant-valid-key", instanceKey);
 
@@ -159,7 +159,7 @@ describe("integration: secrets routes", () => {
     });
 
     it("rejects missing instanceId query parameter", async () => {
-      const { deriveInstanceKey, encrypt } = await import("../../src/security/encryption.js");
+      const { deriveInstanceKey, encrypt } = await import("@wopr-network/platform-core/security");
       const instanceKey = deriveInstanceKey("inst-1", TEST_PLATFORM_SECRET);
       const encryptedPayload = encrypt("test", instanceKey);
 

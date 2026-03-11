@@ -4,14 +4,14 @@
 
 import type { PGlite } from "@electric-sql/pglite";
 import { TRPCError } from "@trpc/server";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { ADDON_KEYS } from "../../monetization/addons/addon-catalog.js";
 import { DrizzleTenantAddonRepository } from "../../monetization/addons/addon-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
-import { setTrpcOrgMemberRepo } from "../init.js";
 import { setAddonRouterDeps } from "./addons.js";
 
 let pool: PGlite;

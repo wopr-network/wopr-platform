@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
-import type { AuthEnv } from "../../auth/index.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import { getSessionUsageRepo } from "../../fleet/services.js";
 import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 

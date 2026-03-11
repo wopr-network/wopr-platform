@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
+import { router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { EncryptedPayload } from "../../security/types.js";
 import { providerSchema } from "../../security/types.js";
-import { router, tenantProcedure } from "../init.js";
 
 export interface OrgKeysRouterDeps {
   getTenantKeyRepository: () => {

@@ -1,7 +1,7 @@
+import type { ITenantCustomerRepository } from "@wopr-network/platform-core/billing";
+import { detachAllPaymentMethods } from "@wopr-network/platform-core/billing";
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
-import { detachAllPaymentMethods } from "./payment-methods.js";
-import type { ITenantCustomerRepository } from "./tenant-store.js";
 
 function mockStripe(paymentMethods: Array<{ id: string }> = []) {
   return {

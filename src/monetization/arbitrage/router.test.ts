@@ -1,6 +1,6 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it, vi } from "vitest";
 import type { AdapterCapability, AdapterResult, ProviderAdapter, TTSOutput } from "../adapters/types.js";
-import { Credit } from "../credit.js";
 import type { ProviderRegistry } from "./provider-registry.js";
 import { ArbitrageRouter } from "./router.js";
 import type { ModelProviderEntry } from "./types.js";

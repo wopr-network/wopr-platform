@@ -13,7 +13,7 @@ import { ArbitrageRouter } from "../../src/monetization/arbitrage/router.js";
 import { ProviderRegistry } from "../../src/monetization/arbitrage/provider-registry.js";
 import { NoProviderAvailableError } from "../../src/monetization/arbitrage/types.js";
 import type { MarginRecord } from "../../src/monetization/arbitrage/types.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { DrizzleProviderHealthRepository } from "../../src/monetization/drizzle-provider-health-repository.js";
 import type { IProviderHealthRepository } from "../../src/monetization/provider-health-repository.js";
 import {

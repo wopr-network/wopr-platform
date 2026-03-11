@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleNotificationQueueStore } from "@wopr-network/platform-core/email";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { notificationQueue } from "../db/schema/notification-queue.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { DrizzleNotificationQueueStore } from "./notification-queue-store.js";
 
 describe("DrizzleNotificationQueueStore", () => {
   let db: DrizzleDb;

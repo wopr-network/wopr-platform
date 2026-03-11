@@ -1,4 +1,4 @@
-import { Credit } from "../monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { ContainerResourceLimits } from "../monetization/quotas/resource-limits.js";
 
 export const RESOURCE_TIERS = {

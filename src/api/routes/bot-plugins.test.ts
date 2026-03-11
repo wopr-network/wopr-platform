@@ -1,6 +1,6 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Credit } from "../../monetization/credit.js";
 
 // Set env var BEFORE importing bot-plugin routes so bearer auth uses this token
 const TEST_TOKEN = "test-plugin-token";

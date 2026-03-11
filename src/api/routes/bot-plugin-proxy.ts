@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
+import {
+  buildTokenMetadataMap,
+  scopedBearerAuthWithTenant,
+  validateTenantOwnership,
+} from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { IBotProfileRepository } from "../../fleet/bot-profile-repository.js";
 import type { IPluginConfigRepository } from "../../setup/plugin-config-repository.js";

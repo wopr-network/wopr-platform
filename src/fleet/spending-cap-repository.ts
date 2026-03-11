@@ -6,11 +6,11 @@
  * defined in src/gateway/spending-cap-store.ts.
  */
 
+import { Credit } from "@wopr-network/platform-core/credits";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { DrizzleDb } from "../db/index.js";
 import { meterEvents, usageSummaries } from "../db/schema/meter-events.js";
 import type { ISpendingCapStore, SpendingCapRecord } from "../gateway/spending-cap-store.js";
-import { Credit } from "../monetization/credit.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

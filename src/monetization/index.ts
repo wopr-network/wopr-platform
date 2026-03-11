@@ -15,6 +15,20 @@
  * - stripe/    -- Stripe credit purchases (WOP-406)
  */
 
+// Payment processor interface (WOP-977)
+export type {
+  ChargeOpts,
+  ChargeResult,
+  CheckoutOpts,
+  CheckoutSession,
+  IPaymentProcessor,
+  PortalOpts,
+  SavedPaymentMethod,
+  SetupResult,
+  WebhookResult as ProcessorWebhookResult,
+} from "@wopr-network/platform-core/billing";
+// Credit value object (WOP-983)
+export { Credit } from "@wopr-network/platform-core/credits";
 // Adapters (WOP-301, WOP-353, WOP-377, WOP-386, WOP-387, WOP-497)
 export { type ChatterboxTTSAdapterConfig, createChatterboxTTSAdapter } from "./adapters/chatterbox-tts.js";
 export { createDeepgramAdapter, type DeepgramAdapterConfig } from "./adapters/deepgram.js";
@@ -73,8 +87,6 @@ export {
 } from "./arbitrage/index.js";
 export type { BudgetCheckerConfig, BudgetCheckResult, SpendLimits } from "./budget/index.js";
 export { BudgetChecker, DrizzleBudgetChecker } from "./budget/index.js";
-// Credit value object (WOP-983)
-export { Credit } from "./credit.js";
 // Credit ledger (WOP-384)
 export type {
   BillingState,
@@ -124,18 +136,6 @@ export {
   MeterAggregator,
   MeterEmitter,
 } from "./metering/index.js";
-// Payment processor interface (WOP-977)
-export type {
-  ChargeOpts,
-  ChargeResult,
-  CheckoutOpts,
-  CheckoutSession,
-  IPaymentProcessor,
-  PortalOpts,
-  SavedPaymentMethod,
-  SetupResult,
-  WebhookResult as ProcessorWebhookResult,
-} from "./payment-processor.js";
 // PayRam crypto payments (WOP-407)
 export type {
   PayRamBillingConfig,

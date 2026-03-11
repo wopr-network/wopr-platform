@@ -1,6 +1,6 @@
+import { PROVIDER_ENDPOINTS, validateProviderKey } from "@wopr-network/platform-core/security";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDER_API_URLS } from "../config/provider-endpoints.js";
-import { PROVIDER_ENDPOINTS, validateProviderKey } from "./key-validation.js";
 
 describe("key-validation", () => {
   describe("PROVIDER_API_URLS", () => {

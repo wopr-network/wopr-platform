@@ -13,10 +13,10 @@
  */
 
 import { createHash } from "node:crypto";
+import type { AuthUser } from "@wopr-network/platform-core/auth";
 import type { Context, Next } from "hono";
 import type { IApiKeyRepository } from "./api-key-repository.js";
 import type { Auth } from "./better-auth.js";
-import type { AuthUser } from "./index.js";
 
 export interface SessionAuthEnv {
   Variables: {

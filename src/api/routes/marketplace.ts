@@ -1,4 +1,8 @@
 // src/api/routes/marketplace.ts
+
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
+import type { DecryptedCredential } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuditEnv } from "../../audit/types.js";
@@ -7,9 +11,6 @@ import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
 import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "../../fleet/services.js";
-import { Credit } from "../../monetization/credit.js";
-import type { MeterEvent } from "../../monetization/metering/types.js";
-import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
 import type { PluginCategory, PluginManifest } from "./marketplace-registry.js";
 

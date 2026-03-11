@@ -1,10 +1,14 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import {
+  DrizzleMeterEventRepository,
+  DrizzleUsageSummaryRepository,
+  type MeterEventInsert,
+  type UsageSummaryInsert,
+} from "@wopr-network/platform-core/metering";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb } from "../../test/db.js";
-import { DrizzleUsageSummaryRepository, type UsageSummaryInsert } from "./drizzle-usage-summary-repository.js";
-import { DrizzleMeterEventRepository, type MeterEventInsert } from "./meter-event-repository.js";
 
 let pool: PGlite;
 let db: DrizzleDb;

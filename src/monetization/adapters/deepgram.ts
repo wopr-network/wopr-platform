@@ -8,7 +8,7 @@
  * Wholesale rate for Nova-2 is ~$0.0043/min.
  */
 
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { AdapterResult, ProviderAdapter, TranscriptionInput, TranscriptionOutput } from "./types.js";
 import { withMargin } from "./types.js";
 

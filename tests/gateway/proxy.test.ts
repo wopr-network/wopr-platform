@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { DrizzleSigPenaltyRepository } from "../../src/api/drizzle-sig-penalty-repository.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 import { createGatewayRoutes } from "../../src/gateway/routes.js";

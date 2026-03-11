@@ -3,10 +3,9 @@ import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { Credit } from "../../src/monetization/credit.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { DrizzleWebhookSeenRepository } from "../../src/monetization/drizzle-webhook-seen-repository.js";
-import { TenantCustomerRepository } from "../../src/monetization/stripe/tenant-store.js";
+import { Credit } from "@wopr-network/platform-core";
+import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleWebhookSeenRepository, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import { handleWebhookEvent, type WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { createTestDb } from "../../src/test/db.js";
 

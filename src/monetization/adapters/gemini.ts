@@ -8,7 +8,7 @@
  * (promptTokenCount + candidatesTokenCount) using configured per-model rates.
  */
 
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { AdapterResult, ProviderAdapter, TextGenerationInput, TextGenerationOutput } from "./types.js";
 import { withMargin } from "./types.js";
 

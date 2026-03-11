@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
+import { orgMemberProcedure, router, setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { IOrgMemberRepository, OrgMemberRow } from "../../fleet/org-member-repository.js";
-import { orgMemberProcedure, router, setTrpcOrgMemberRepo } from "../init.js";
 
 function makeMockOrgMemberRepo(members: OrgMemberRow[] = []): IOrgMemberRepository {
   return {

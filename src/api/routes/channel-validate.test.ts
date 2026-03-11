@@ -1,6 +1,6 @@
+import type { AuthEnv, AuthUser } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AuthEnv, AuthUser } from "../../auth/index.js";
 import { channelValidateRoutes } from "./channel-validate.js";
 
 function createTestApp(user?: AuthUser) {

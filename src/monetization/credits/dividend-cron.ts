@@ -1,6 +1,6 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { logger } from "../../config/logger.js";
-import { Credit } from "../credit.js";
-import type { ICreditLedger } from "./credit-ledger.js";
 import type { ICreditTransactionRepository } from "./credit-transaction-repository.js";
 
 export interface DividendCronConfig {

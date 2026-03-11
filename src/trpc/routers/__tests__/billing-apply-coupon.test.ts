@@ -3,10 +3,10 @@
  * Uses a mock PromotionEngine (no PGlite needed).
  */
 
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PromotionEngine } from "../../../monetization/promotions/engine.js";
 import { appRouter } from "../../index.js";
-import { setTrpcOrgMemberRepo } from "../../init.js";
 import { type BillingRouterDeps, setBillingRouterDeps } from "../billing.js";
 
 // ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ describe("billing.applyCoupon — happy path", () => {
   });
 
   it("returns creditsGranted when promotion engine grants credits", async () => {
-    const { Credit } = await import("../../../monetization/credit.js");
+    const { Credit } = await import("@wopr-network/platform-core/credits");
     vi.mocked(engine.evaluateAndGrant).mockResolvedValue([
       {
         promotionId: "promo-1",
@@ -157,7 +157,7 @@ describe("billing.applyCoupon — happy path", () => {
   });
 
   it("normalizes coupon code to uppercase before calling engine", async () => {
-    const { Credit } = await import("../../../monetization/credit.js");
+    const { Credit } = await import("@wopr-network/platform-core/credits");
     vi.mocked(engine.evaluateAndGrant).mockResolvedValue([
       {
         promotionId: "promo-1",
@@ -180,7 +180,7 @@ describe("billing.applyCoupon — happy path", () => {
   });
 
   it("trims whitespace from coupon code before calling engine", async () => {
-    const { Credit } = await import("../../../monetization/credit.js");
+    const { Credit } = await import("@wopr-network/platform-core/credits");
     vi.mocked(engine.evaluateAndGrant).mockResolvedValue([
       {
         promotionId: "promo-1",
@@ -197,7 +197,7 @@ describe("billing.applyCoupon — happy path", () => {
   });
 
   it("sums credits across multiple granted promotions", async () => {
-    const { Credit } = await import("../../../monetization/credit.js");
+    const { Credit } = await import("@wopr-network/platform-core/credits");
     vi.mocked(engine.evaluateAndGrant).mockResolvedValue([
       {
         promotionId: "promo-1",

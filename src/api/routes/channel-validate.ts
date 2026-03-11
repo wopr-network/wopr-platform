@@ -1,6 +1,6 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AuthEnv } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 
 const channelValidateSchema = z.object({

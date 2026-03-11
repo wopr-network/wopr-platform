@@ -1,4 +1,5 @@
 import path from "node:path";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { INodeRepository } from "../../fleet/node-repository.js";
@@ -6,7 +7,6 @@ import type { ProfileTemplate } from "../../fleet/profile-schema.js";
 import type { RecoveryOrchestrator } from "../../fleet/recovery-orchestrator.js";
 import { getRecoveryOrchestrator } from "../../fleet/services.js";
 import type { BotProfile, BotStatus } from "../../fleet/types.js";
-import { Credit } from "../../monetization/credit.js";
 
 // Set env var BEFORE importing fleet routes so bearer auth uses this token
 const TEST_TOKEN = "test-api-token";

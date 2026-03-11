@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
+import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { Credit } from "../../monetization/credit.js";
-import type { CreditTransaction, ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { AdminRouterDeps } from "./admin.js";
 import { adminRouter, setAdminRouterDeps } from "./admin.js";
 
@@ -14,7 +14,7 @@ function makeMockAuditLog() {
     query: vi.fn().mockReturnValue({ entries: [], total: 0 }),
     exportCsv: vi.fn().mockReturnValue("csv-data"),
     log: vi.fn(),
-  } as unknown as import("../../admin/audit-log.js").AdminAuditLog;
+  } as unknown as import("@wopr-network/platform-core/admin").AdminAuditLog;
 }
 
 function makeMockLedger(): ICreditLedger {
@@ -393,7 +393,7 @@ describe("admin router — email notifications", () => {
         tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
       getAuditLog: () => auditLog,
       getNotificationService: () =>
-        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+        notificationService as unknown as import("@wopr-network/platform-core/email").NotificationService,
       getBulkStore: () =>
         bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
     });
@@ -413,7 +413,7 @@ describe("admin router — email notifications", () => {
         tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
       getAuditLog: () => auditLog,
       getNotificationService: () =>
-        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+        notificationService as unknown as import("@wopr-network/platform-core/email").NotificationService,
       getBulkStore: () =>
         bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
     });
@@ -434,7 +434,7 @@ describe("admin router — email notifications", () => {
         tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
       getAuditLog: () => auditLog,
       getNotificationService: () =>
-        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+        notificationService as unknown as import("@wopr-network/platform-core/email").NotificationService,
       getBulkStore: () =>
         bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
     });
@@ -455,7 +455,7 @@ describe("admin router — email notifications", () => {
         tenantStore as unknown as import("../../admin/tenant-status/tenant-status-repository.js").ITenantStatusRepository,
       getAuditLog: () => auditLog,
       getNotificationService: () =>
-        notificationService as unknown as import("../../email/notification-service.js").NotificationService,
+        notificationService as unknown as import("@wopr-network/platform-core/email").NotificationService,
       getBulkStore: () =>
         bulkStore as unknown as import("../../admin/bulk/bulk-operations-store.js").IBulkOperationsStore,
     });

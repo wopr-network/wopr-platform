@@ -1,11 +1,11 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { NotificationService } from "@wopr-network/platform-core/email";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { adminUsers } from "../../db/schema/admin-users.js";
 import { dividendDistributions } from "../../db/schema/dividend-distributions.js";
-import type { NotificationService } from "../../email/notification-service.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { Credit } from "../credit.js";
 import { type DividendDigestConfig, runDividendDigestCron } from "./dividend-digest-cron.js";
 import { DrizzleDividendRepository } from "./dividend-repository.js";
 

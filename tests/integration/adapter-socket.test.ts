@@ -6,10 +6,10 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { Credit } from "../../src/monetization/credit.js";
-import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
+import { CreditLedger } from "@wopr-network/platform-core";
+import { Credit } from "@wopr-network/platform-core";
+import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/metering";
+import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
 import { AdapterSocket } from "../../src/monetization/socket/socket.js";
 import type {
   AdapterResult,

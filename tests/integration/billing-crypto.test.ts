@@ -13,12 +13,11 @@ import type { DrizzleDb } from "../../src/db/index.js";
 
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
-const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
-const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
-const { DrizzleUsageSummaryRepository } = await import("../../src/monetization/metering/drizzle-usage-summary-repository.js");
+const { CreditLedger } = await import("@wopr-network/platform-core");
+const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
+const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
-const { DrizzlePayRamChargeRepository } = await import("../../src/monetization/payram/charge-store.js");
-const { noOpReplayGuard } = await import("../../src/monetization/webhook-seen-repository.js");
+const { DrizzlePayRamChargeRepository, noOpReplayGuard } = await import("@wopr-network/platform-core/billing");
 
 function createMockProcessor(): import("../../src/monetization/payment-processor.js").IPaymentProcessor {
   return {

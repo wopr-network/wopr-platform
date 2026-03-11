@@ -1,4 +1,4 @@
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 
 export const ADDON_KEYS = ["gpu_acceleration", "priority_queue", "extra_storage", "custom_domain"] as const;
 

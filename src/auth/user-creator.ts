@@ -1,4 +1,4 @@
-import type { RoleStore } from "../admin/roles/role-store.js";
+import type { RoleStore } from "@wopr-network/platform-core/admin";
 import { logger } from "../config/logger.js";
 
 export interface IUserCreator {

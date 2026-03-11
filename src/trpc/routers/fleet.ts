@@ -9,8 +9,13 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { RoleStore } from "@wopr-network/platform-core/admin";
+import { createStripeClient, createVpsCheckoutSession, loadStripeConfig } from "@wopr-network/platform-core/billing";
+import type { ICreditLedger as CreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
+import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
+import { protectedProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { RoleStore } from "../../admin/roles/role-store.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
@@ -22,15 +27,9 @@ import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../.
 import { getTenantCustomerRepository, getVpsRepo } from "../../fleet/services.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
-import { Credit } from "../../monetization/credit.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
-import type { ICreditLedger as CreditLedger } from "../../monetization/credits/credit-ledger.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
-import { createVpsCheckoutSession } from "../../monetization/stripe/checkout.js";
-import { createStripeClient, loadStripeConfig } from "../../monetization/stripe/client.js";
-import { assertSafeRedirectUrl } from "../../security/redirect-allowlist.js";
-import { protectedProcedure, router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas

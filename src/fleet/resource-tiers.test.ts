@@ -1,5 +1,5 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { describe, expect, it } from "vitest";
-import { Credit } from "../monetization/credit.js";
 import { DEFAULT_RESOURCE_TIER, RESOURCE_TIER_KEYS, RESOURCE_TIERS, tierToResourceLimits } from "./resource-tiers.js";
 
 describe("resource-tiers", () => {

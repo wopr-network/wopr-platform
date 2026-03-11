@@ -7,7 +7,7 @@ import {
   initVerificationSchema,
   isEmailVerified,
   verifyToken,
-} from "../../src/email/verification.js";
+} from "@wopr-network/platform-core";
 import {
   requireEmailVerified,
   type IEmailVerifier,

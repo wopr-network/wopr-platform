@@ -4,11 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../../src/db/index.js";
 import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
 import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { buildAddonCosts } from "../../src/monetization/addons/addon-cron.js";
 import { ADDON_CATALOG } from "../../src/monetization/addons/addon-catalog.js";
 import { DrizzleTenantAddonRepository } from "../../src/monetization/addons/addon-repository.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { CreditLedger } from "@wopr-network/platform-core";
 import { DAILY_BOT_COST, runRuntimeDeductions } from "../../src/monetization/credits/runtime-cron.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js";
 

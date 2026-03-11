@@ -6,11 +6,11 @@
  * Adapters never touch metering or billing — that's the socket's job.
  */
 
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEmitter } from "@wopr-network/platform-core/metering";
 import type { AdapterCapability, AdapterResult, ProviderAdapter } from "../adapters/types.js";
 import { withMargin } from "../adapters/types.js";
 import type { BudgetChecker, SpendLimits } from "../budget/budget-checker.js";
-import { Credit } from "../credit.js";
-import type { MeterEmitter } from "../metering/emitter.js";
 
 export interface SocketConfig {
   /** MeterEmitter instance for usage tracking */

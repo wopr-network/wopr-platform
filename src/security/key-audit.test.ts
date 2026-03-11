@@ -1,5 +1,5 @@
+import { scanForKeyLeaks } from "@wopr-network/platform-core/security";
 import { describe, expect, it } from "vitest";
-import { scanForKeyLeaks } from "./key-audit.js";
 
 describe("key-audit", () => {
   describe("scanForKeyLeaks", () => {

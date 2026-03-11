@@ -1,10 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
+import {
+  detachAllPaymentMethods,
+  detachPaymentMethod,
+  TenantCustomerRepository,
+} from "@wopr-network/platform-core/billing";
 import type Stripe from "stripe";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { detachAllPaymentMethods, detachPaymentMethod } from "./payment-methods.js";
-import { TenantCustomerRepository } from "./tenant-store.js";
 
 function mockStripe(
   overrides: { paymentMethodRetrieve?: ReturnType<typeof vi.fn>; paymentMethodDetach?: ReturnType<typeof vi.fn> } = {},

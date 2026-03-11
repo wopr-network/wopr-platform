@@ -1,7 +1,7 @@
+import { isValidRole, RoleStore } from "@wopr-network/platform-core/admin";
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { requirePlatformAdmin, requireTenantAdmin } from "../../admin/roles/require-role.js";
-import { isValidRole, RoleStore } from "../../admin/roles/role-store.js";
-import type { AuthEnv } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { getAdminAuditLog } from "../../fleet/services.js";
 

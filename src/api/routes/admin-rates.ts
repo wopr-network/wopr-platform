@@ -1,8 +1,8 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import type { ProviderCostInput, SellRateInput } from "../../admin/rates/rate-store.js";
 import { RateStore } from "../../admin/rates/rate-store.js";
-import type { AuthEnv } from "../../auth/index.js";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { getAdminAuditLog, getDb } from "../../fleet/services.js";
 

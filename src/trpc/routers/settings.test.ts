@@ -5,15 +5,12 @@
  * Deps are injected via setSettingsRouterDeps / setTrpcOrgMemberRepo.
  */
 
+import type { INotificationPreferencesRepository, NotificationPrefs } from "@wopr-network/platform-core/email";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  INotificationPreferencesRepository,
-  NotificationPrefs,
-} from "../../email/notification-repository-types.js";
 import type { IOrgMemberRepository } from "../../fleet/org-member-repository.js";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
-import { setTrpcOrgMemberRepo } from "../init.js";
 import { setSettingsRouterDeps } from "./settings.js";
 
 // ---------------------------------------------------------------------------

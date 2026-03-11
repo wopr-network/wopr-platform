@@ -5,11 +5,10 @@
  * budget checking, metering, provider configs, fetch, and service key resolution.
  */
 
+import type { Credit, ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { MeterEmitter } from "@wopr-network/platform-core/metering";
 import type { IRateLimitRepository } from "../../api/rate-limit-repository.js";
 import type { BudgetChecker } from "../../monetization/budget/budget-checker.js";
-import type { Credit } from "../../monetization/credit.js";
-import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
-import type { MeterEmitter } from "../../monetization/metering/emitter.js";
 import type { CapabilityRateLimitConfig } from "../capability-rate-limit.js";
 import type { CircuitBreakerConfig } from "../circuit-breaker.js";
 import type { ICircuitBreakerRepository } from "../circuit-breaker-repository.js";

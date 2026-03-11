@@ -3,11 +3,10 @@
  * memberUsage() tests live in member-usage.test.ts.
  */
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger, InsufficientBalanceError } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { CreditLedger, InsufficientBalanceError } from "./credit-ledger.js";
 
 let pool: PGlite;
 let db: DrizzleDb;

@@ -1,16 +1,22 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { EncryptedPayload } from "@wopr-network/platform-core/security";
+import {
+  auditCredentialEncryption,
+  CredentialVaultStore,
+  DrizzleCredentialRepository,
+  DrizzleMigrationTenantKeyAccess,
+  decrypt,
+  encrypt,
+  generateInstanceKey,
+  getVaultEncryptionKey,
+  migratePlaintextCredentials,
+  reEncryptAllCredentials,
+} from "@wopr-network/platform-core/security";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { decrypt, encrypt, generateInstanceKey } from "../encryption.js";
-import type { EncryptedPayload } from "../types.js";
-import { DrizzleCredentialRepository, DrizzleMigrationTenantKeyAccess } from "./credential-repository.js";
-import { reEncryptAllCredentials } from "./key-rotation.js";
-import { migratePlaintextCredentials } from "./migrate-plaintext.js";
-import { auditCredentialEncryption } from "./migration-check.js";
-import { CredentialVaultStore, getVaultEncryptionKey } from "./store.js";
 
 // TOP OF FILE - shared across ALL describes
 let pool: PGlite;

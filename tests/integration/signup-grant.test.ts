@@ -3,8 +3,8 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { createTestDb } from "../../src/test/db.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { grantSignupCredits, SIGNUP_GRANT } from "../../src/monetization/credits/signup-grant.js";
+import { CreditLedger } from "@wopr-network/platform-core";
+import { grantSignupCredits, SIGNUP_GRANT } from "@wopr-network/platform-core/credits";
 
 describe("integration: signup grant", () => {
   let db: DrizzleDb;

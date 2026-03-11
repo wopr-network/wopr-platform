@@ -1,11 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 import { maybeTriggerUsageTopup, type UsageTopupDeps } from "./auto-topup-usage.js";
-import { CreditLedger } from "./credit-ledger.js";
 
 describe("maybeTriggerUsageTopup", () => {
   let pool: PGlite;

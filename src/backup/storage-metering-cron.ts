@@ -1,6 +1,6 @@
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEmitter } from "@wopr-network/platform-core/metering";
 import { logger } from "../config/logger.js";
-import { Credit } from "../monetization/credit.js";
-import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { SnapshotManager } from "./snapshot-manager.js";
 import { STORAGE_CHARGE_PER_GB_MONTH, STORAGE_COST_PER_GB_MONTH } from "./types.js";
 

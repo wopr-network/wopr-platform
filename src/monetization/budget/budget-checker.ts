@@ -1,9 +1,9 @@
+import { Credit } from "@wopr-network/platform-core/credits";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { LRUCache } from "lru-cache";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
-import { Credit } from "../credit.js";
 
 /**
  * Spend limits passed by callers (replaces dead TierStore/SpendOverrideStore).

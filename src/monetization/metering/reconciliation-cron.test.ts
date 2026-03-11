@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
+import { runReconciliation } from "@wopr-network/platform-core/metering";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { usageSummaries } from "../../db/schema/meter-events.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { CreditLedger } from "../credits/credit-ledger.js";
-import { runReconciliation } from "./reconciliation-cron.js";
 import { DrizzleAdapterUsageRepository, DrizzleUsageSummaryRepository } from "./reconciliation-repository.js";
 
 /** Today's date as YYYY-MM-DD (UTC). We use "today" as targetDate since the

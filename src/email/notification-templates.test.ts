@@ -1,5 +1,5 @@
+import { renderNotificationTemplate } from "@wopr-network/platform-core/email";
 import { describe, expect, it } from "vitest";
-import { renderNotificationTemplate } from "./notification-templates.js";
 
 describe("renderNotificationTemplate", () => {
   describe("credits-depleted", () => {

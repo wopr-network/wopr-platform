@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { AuthEnv } from "../../auth/index.js";
 import { EchoChatBackend } from "../../chat/chat-backend.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { type BudgetTier, checkSessionBudget } from "../../inference/budget-guard.js";

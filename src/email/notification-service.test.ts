@@ -1,6 +1,6 @@
+import type { INotificationQueueRepository } from "@wopr-network/platform-core/email";
+import { NotificationService } from "@wopr-network/platform-core/email";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { INotificationQueueRepository } from "./notification-repository-types.js";
-import { NotificationService } from "./notification-service.js";
 
 function makeQueueStore(): INotificationQueueRepository {
   return {

@@ -17,6 +17,6 @@ describe("platform scaffold", () => {
     // These are comment-only placeholders but should be valid TS modules
     await expect(import("./observability/index.js")).resolves.toBeDefined();
     await expect(import("./monetization/index.js")).resolves.toBeDefined();
-    await expect(import("./auth/index.js")).resolves.toBeDefined();
+    await expect(import("@wopr-network/platform-core/auth")).resolves.toBeDefined();
   });
 });

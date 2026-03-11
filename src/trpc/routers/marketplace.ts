@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
+import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { IMarketplacePluginRepository } from "../../marketplace/marketplace-plugin-repository.js";
 import { rollbackPluginOnVolume, upgradePluginOnVolume } from "../../marketplace/volume-installer.js";
-import { adminProcedure, router } from "../init.js";
 
 export interface MarketplaceRouterDeps {
   getMarketplacePluginRepo: () => IMarketplacePluginRepository;

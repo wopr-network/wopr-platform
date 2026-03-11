@@ -1,5 +1,5 @@
+import type { ITenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import { describe, expect, it, vi } from "vitest";
-import type { ITenantCustomerRepository } from "../../monetization/stripe/tenant-store.js";
 
 /**
  * Regression test for WOP-2003:

@@ -1,4 +1,4 @@
-import type { CreditLedger } from "../monetization/credits/credit-ledger.js";
+import type { CreditLedger } from "@wopr-network/platform-core/credits";
 import type { SnapshotManager } from "./snapshot-manager.js";
 import type { Snapshot, Tier } from "./types.js";
 import { SNAPSHOT_TIER_POLICIES, STORAGE_CHARGE_PER_GB_MONTH, STORAGE_COST_PER_GB_MONTH } from "./types.js";

@@ -3,6 +3,7 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CacheStats,
@@ -11,7 +12,6 @@ import type {
   PageCostAggregate,
   SessionCostSummary,
 } from "../../inference/session-usage-repository.js";
-import type { TRPCContext } from "../init.js";
 import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
 
 function authedCtx(userId = "admin-1") {

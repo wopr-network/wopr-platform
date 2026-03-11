@@ -10,7 +10,7 @@
  * inline in the response candidates.
  */
 
-import { Credit } from "../credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 import type { AdapterResult, ImageGenerationInput, ImageGenerationOutput, ProviderAdapter } from "./types.js";
 import { withMargin } from "./types.js";
 

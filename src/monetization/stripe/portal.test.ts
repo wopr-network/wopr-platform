@@ -1,7 +1,7 @@
+import type { TenantCustomerRepository } from "@wopr-network/platform-core/billing";
+import { createPortalSession } from "@wopr-network/platform-core/billing";
 import type Stripe from "stripe";
 import { describe, expect, it, vi } from "vitest";
-import { createPortalSession } from "./portal.js";
-import type { TenantCustomerRepository } from "./tenant-store.js";
 
 describe("createPortalSession", () => {
   function mockStripe(portalResult: unknown = { url: "https://billing.stripe.com/session_xyz" }) {

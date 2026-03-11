@@ -2,10 +2,10 @@
  * Unit tests for PayRamChargeRepository (WOP-407).
  */
 import type { PGlite } from "@electric-sql/pglite";
+import { PayRamChargeRepository } from "@wopr-network/platform-core/billing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { PayRamChargeRepository } from "./charge-store.js";
 
 describe("PayRamChargeRepository", () => {
   let pool: PGlite;

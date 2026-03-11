@@ -1,6 +1,6 @@
+import { createPayRamClient, loadPayRamConfig } from "@wopr-network/platform-core/billing";
 import { Payram } from "payram";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPayRamClient, loadPayRamConfig } from "./client.js";
 
 describe("createPayRamClient", () => {
   it("returns a Payram instance", () => {

@@ -1,10 +1,10 @@
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAuthUserRepository, LinkedAccount } from "../../db/auth-user-repository.js";
 import type { IOrgMemberRepository, OrgMemberRow } from "../../fleet/org-member-repository.js";
 import type { OrgService } from "../../org/org-service.js";
 import { appRouter } from "../index.js";
-import type { TRPCContext } from "../init.js";
-import { setTrpcOrgMemberRepo } from "../init.js";
 import { setOrgRouterDeps } from "./org.js";
 
 // ---------------------------------------------------------------------------

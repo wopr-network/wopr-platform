@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { AdminAuditLogRow } from "@wopr-network/platform-core/admin";
+import { DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { DrizzleAdminAuditLogRepository } from "./admin-audit-log-repository.js";
-import type { AdminAuditLogRow } from "./audit-log.js";
 
 let pool: PGlite;
 let db: DrizzleDb;

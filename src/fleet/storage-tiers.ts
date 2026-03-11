@@ -1,4 +1,4 @@
-import { Credit } from "../monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core/credits";
 
 export const STORAGE_TIERS = {
   standard: {

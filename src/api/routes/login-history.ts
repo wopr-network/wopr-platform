@@ -1,5 +1,5 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
-import type { AuthEnv } from "../../auth/index.js";
 import type { ILoginHistoryRepository } from "../../auth/login-history-repository.js";
 
 let _repoOverride: ILoginHistoryRepository | null = null;

@@ -1,12 +1,11 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
+import { DrizzleMeterAggregator, DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/metering";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents, usageSummaries } from "../../db/schema/meter-events.js";
 import { createTestDb } from "../../test/db.js";
-import { Credit } from "../credit.js";
-import { DrizzleMeterAggregator } from "./aggregator.js";
-import { DrizzleUsageSummaryRepository } from "./drizzle-usage-summary-repository.js";
 
 const WINDOW_MS = 60_000; // 1-minute windows
 

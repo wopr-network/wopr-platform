@@ -1,17 +1,18 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import type { MiddlewareHandler } from "hono";
-import { Hono } from "hono";
-import { cors } from "hono/cors";
-import { secureHeaders } from "hono/secure-headers";
-import { RoleStore } from "../admin/roles/role-store.js";
-import type { AuthUser } from "../auth/index.js";
+import { RoleStore } from "@wopr-network/platform-core/admin";
+import type { AuthUser } from "@wopr-network/platform-core/auth";
 import {
   buildTokenMetadataMap,
   extractBearerToken,
   resolveSessionUser,
   scopedBearerAuthWithTenant,
   timingSafeMapLookup,
-} from "../auth/index.js";
+} from "@wopr-network/platform-core/auth";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import type { MiddlewareHandler } from "hono";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
 import { logger } from "../config/logger.js";
 import {
   getBotProfileRepo,
@@ -26,7 +27,6 @@ import {
 } from "../fleet/services.js";
 import { checkAllCerts } from "../monitoring/cert-expiry.js";
 import { appRouter } from "../trpc/index.js";
-import type { TRPCContext } from "../trpc/init.js";
 import { csrfProtection } from "./middleware/csrf.js";
 import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { activityRoutes } from "./routes/activity.js";

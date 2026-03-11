@@ -5,30 +5,29 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { IPaymentProcessor, PayRamChargeRepository } from "@wopr-network/platform-core/billing";
+import { createPayRamCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import {
+  ALLOWED_SCHEDULE_INTERVALS,
+  ALLOWED_THRESHOLDS,
+  ALLOWED_TOPUP_AMOUNTS,
+  Credit,
+  computeNextScheduleAt,
+  type IAutoTopupSettingsRepository,
+} from "@wopr-network/platform-core/credits";
+import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
+import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
+import { protectedProcedure, publicProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import type { Payram } from "payram";
 import { z } from "zod";
 import type { AuditLogger } from "../../audit/logger.js";
 import { logger } from "../../config/logger.js";
 import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import { Credit } from "../../monetization/credit.js";
-import {
-  ALLOWED_SCHEDULE_INTERVALS,
-  ALLOWED_THRESHOLDS,
-  ALLOWED_TOPUP_AMOUNTS,
-  computeNextScheduleAt,
-  type IAutoTopupSettingsRepository,
-} from "../../monetization/credits/auto-topup-settings-repository.js";
-import type { ICreditLedger } from "../../monetization/credits/credit-ledger.js";
 import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
 import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
 import type { CreditPriceMap, ITenantCustomerRepository } from "../../monetization/index.js";
-import type { IMeterAggregator } from "../../monetization/metering/aggregator.js";
-import type { IPaymentProcessor } from "../../monetization/payment-processor.js";
-import type { PayRamChargeRepository } from "../../monetization/payram/charge-store.js";
-import { createPayRamCheckout, MIN_PAYMENT_USD } from "../../monetization/payram/checkout.js";
 import type { PromotionEngine } from "../../monetization/promotions/engine.js";
-import { assertSafeRedirectUrl } from "../../security/redirect-allowlist.js";
-import { protectedProcedure, publicProcedure, router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Schedule interval → hours mapping
@@ -607,7 +606,7 @@ export const billingRouter = router({
     const tenant = ctx.tenantId;
     const { processor, creditLedger, tenantRepo } = deps();
 
-    const { PaymentMethodOwnershipError } = await import("../../monetization/payment-processor.js");
+    const { PaymentMethodOwnershipError } = await import("@wopr-network/platform-core/billing");
 
     // Guard: prevent removing the last payment method when there's an active
     // billing hold or an outstanding balance (negative credit balance).

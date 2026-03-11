@@ -6,9 +6,9 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { INotificationPreferencesRepository } from "@wopr-network/platform-core/email";
+import { publicProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { INotificationPreferencesRepository } from "../../email/notification-repository-types.js";
-import { publicProcedure, router, tenantProcedure } from "../init.js";
 
 // ---------------------------------------------------------------------------
 // Deps

@@ -3,12 +3,12 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
 import { meterEvents } from "../db/schema/meter-events.js";
 import { DrizzleSpendingCapStore } from "../fleet/spending-cap-repository.js";
-import { Credit } from "../monetization/credit.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { type SpendingCaps, spendingCapCheck } from "./spending-cap.js";
 import type { GatewayTenant } from "./types.js";

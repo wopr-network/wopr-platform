@@ -19,11 +19,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
-import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { Credit } from "../../src/monetization/credit.js";
+import type { ICreditLedger } from "@wopr-network/platform-core";
+import { Credit } from "@wopr-network/platform-core";
 import { appRouter } from "../../src/trpc/index.js";
-import type { TRPCContext } from "../../src/trpc/init.js";
-import { setTrpcOrgMemberRepo } from "../../src/trpc/init.js";
+import type { TRPCContext } from "../../src/trpc/index.js";
+import { setTrpcOrgMemberRepo } from "../../src/trpc/index.js";
 import { setBillingRouterDeps } from "../../src/trpc/routers/billing.js";
 import { setSettingsRouterDeps } from "../../src/trpc/routers/settings.js";
 
@@ -96,10 +96,9 @@ describe("tRPC tenant isolation — billing router (WOP-822)", () => {
       memberUsage() { return Promise.resolve([]); },
       lifetimeSpend() { return Promise.resolve(Credit.ZERO); },
     };
-    const { MeterAggregator } = await import("../../src/monetization/metering/aggregator.js");
-    const { DrizzleUsageSummaryRepository } = await import("../../src/monetization/metering/drizzle-usage-summary-repository.js");
+    const { MeterAggregator, DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
     const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
-    const { TenantCustomerRepository } = await import("../../src/monetization/stripe/tenant-store.js");
+    const { TenantCustomerRepository } = await import("@wopr-network/platform-core/billing");
     const tenantRepo = new TenantCustomerRepository(db);
     setBillingRouterDeps({
       stripe: {
@@ -239,9 +238,7 @@ describe("tRPC tenant isolation — settings router (WOP-822)", () => {
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     await beginTestTransaction(pool);
-    const { DrizzleNotificationPreferencesStore } = await import(
-      "../../src/email/notification-preferences-store.js"
-    );
+    const { DrizzleNotificationPreferencesStore } = await import("@wopr-network/platform-core/email");
     const notifStore = new DrizzleNotificationPreferencesStore(db);
 
     setSettingsRouterDeps({ getNotificationPrefsStore: () => notifStore });

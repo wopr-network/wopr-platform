@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { EncryptedPayload, Provider } from "@wopr-network/platform-core/security";
+import {
+  DrizzleKeyResolutionRepository,
+  encrypt,
+  generateInstanceKey,
+  resolveApiKey,
+  resolveApiKeyWithOrgFallback,
+} from "@wopr-network/platform-core/security";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleOrgMembershipRepository } from "../../fleet/org-membership-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { encrypt, generateInstanceKey } from "../encryption.js";
-import type { EncryptedPayload, Provider } from "../types.js";
-import { resolveApiKey } from "./key-resolution.js";
-import { DrizzleKeyResolutionRepository } from "./key-resolution-repository.js";
-import { resolveApiKeyWithOrgFallback } from "./org-key-resolution.js";
 
 async function insertTenantKey(
   pool: PGlite,

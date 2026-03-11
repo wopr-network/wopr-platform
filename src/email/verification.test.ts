@@ -1,12 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   generateVerificationToken,
   getUserEmail,
   initVerificationSchema,
   isEmailVerified,
   verifyToken,
-} from "./verification.js";
+} from "@wopr-network/platform-core/email";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 /** Minimal Pool-like wrapper around PGlite for testing. */
 // biome-ignore lint/suspicious/noExplicitAny: test helper wrapping PGlite as Pool

@@ -1,6 +1,6 @@
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { NotificationService } from "@wopr-network/platform-core/email";
 import { logger } from "../../config/logger.js";
-import type { NotificationService } from "../../email/notification-service.js";
-import { Credit } from "../credit.js";
 import type { IDividendRepository } from "./dividend-repository.js";
 
 export interface DividendDigestConfig {

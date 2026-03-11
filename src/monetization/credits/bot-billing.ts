@@ -1,9 +1,9 @@
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { logger } from "../../config/logger.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import type { INodeCommandBus } from "../../fleet/node-command-bus.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
-import { Credit } from "../credit.js";
-import type { ICreditLedger } from "./credit-ledger.js";
 
 /** Billing state literals */
 export type BillingState = "active" | "suspended" | "destroyed";

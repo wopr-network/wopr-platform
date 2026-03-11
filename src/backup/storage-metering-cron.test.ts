@@ -1,5 +1,5 @@
+import type { MeterEmitter } from "@wopr-network/platform-core/metering";
 import { describe, expect, it, vi } from "vitest";
-import type { MeterEmitter } from "../monetization/metering/emitter.js";
 import type { SnapshotManager } from "./snapshot-manager.js";
 import { runStorageMeteringCron } from "./storage-metering-cron.js";
 import type { Snapshot } from "./types.js";

@@ -1,22 +1,20 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
+import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
+import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/metering";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { DrizzleAdminAuditLogRepository } from "../admin/admin-audit-log-repository.js";
-import { AdminAuditLog } from "../admin/audit-log.js";
 import { AdminUserStore } from "../admin/users/user-store.js";
 import type { DrizzleDb } from "../db/index.js";
 import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
-import { Credit } from "../monetization/credit.js";
-import { DrizzleAutoTopupSettingsRepository } from "../monetization/credits/auto-topup-settings-repository.js";
-import type { ICreditLedger } from "../monetization/credits/credit-ledger.js";
 import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import type { DrizzleTenantCustomerRepository } from "../monetization/index.js";
-import { DrizzleUsageSummaryRepository } from "../monetization/metering/drizzle-usage-summary-repository.js";
-import type { IPaymentProcessor } from "../monetization/payment-processor.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "./index.js";
-import type { TRPCContext } from "./init.js";
-import { setTrpcOrgMemberRepo } from "./init.js";
 import { setAdminRouterDeps } from "./routers/admin.js";
 import { setBillingRouterDeps } from "./routers/billing.js";
 
@@ -67,12 +65,12 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
 
 function makeMockLedger(): ICreditLedger {
   const balances = new Map<string, number>();
-  const txns: import("../monetization/credits/credit-ledger.js").CreditTransaction[] = [];
+  const txns: import("@wopr-network/platform-core/credits").CreditTransaction[] = [];
   return {
     async credit(tenantId, amount, type, description) {
       const cents = amount.toCents();
       balances.set(tenantId, (balances.get(tenantId) ?? 0) + cents);
-      const tx: import("../monetization/credits/credit-ledger.js").CreditTransaction = {
+      const tx: import("@wopr-network/platform-core/credits").CreditTransaction = {
         id: crypto.randomUUID(),
         tenantId,
         amount,
@@ -91,7 +89,7 @@ function makeMockLedger(): ICreditLedger {
     async debit(tenantId, amount, type, description) {
       const cents = amount.toCents();
       balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
-      const tx: import("../monetization/credits/credit-ledger.js").CreditTransaction = {
+      const tx: import("@wopr-network/platform-core/credits").CreditTransaction = {
         id: crypto.randomUUID(),
         tenantId,
         amount: amount.multiply(-1),
@@ -312,7 +310,7 @@ describe("tRPC appRouter", () => {
 
     beforeEach(async () => {
       const creditLedger = makeMockLedger();
-      const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+      const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       tenantRepo = new TenantCustomerRepository(db);
@@ -648,12 +646,10 @@ describe("tRPC appRouter", () => {
 
       it("returns card last4 when payment method exists", async () => {
         const caller = createCaller(authedContext());
-        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
-          "../monetization/credits/auto-topup-settings-repository.js"
-        );
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import("@wopr-network/platform-core/credits");
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
-        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
         const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
@@ -710,12 +706,10 @@ describe("tRPC appRouter", () => {
 
       it("persists usage-based settings when payment method exists", async () => {
         const caller = createCaller(authedContext());
-        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
-          "../monetization/credits/auto-topup-settings-repository.js"
-        );
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import("@wopr-network/platform-core/credits");
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
-        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
         const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
@@ -760,12 +754,10 @@ describe("tRPC appRouter", () => {
 
       it("computes schedule_next_at when enabling schedule", async () => {
         const caller = createCaller(authedContext());
-        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
-          "../monetization/credits/auto-topup-settings-repository.js"
-        );
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import("@wopr-network/platform-core/credits");
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
-        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
         const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
@@ -811,12 +803,10 @@ describe("tRPC appRouter", () => {
       });
 
       it("persists scheduleIntervalHours and returns it on read-back", async () => {
-        const { DrizzleAutoTopupSettingsRepository: Store } = await import(
-          "../monetization/credits/auto-topup-settings-repository.js"
-        );
+        const { DrizzleAutoTopupSettingsRepository: Store } = await import("@wopr-network/platform-core/credits");
         const autoTopupSettingsStore = new Store(db);
         const creditLedger = makeMockLedger();
-        const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+        const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
         const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
         setBillingRouterDeps({
           processor: createMockProcessor({
@@ -883,9 +873,9 @@ describe("tRPC appRouter", () => {
       vi.stubEnv("STRIPE_CREDIT_PRICE_50", "price_test_50");
       vi.stubEnv("STRIPE_CREDIT_PRICE_100", "price_test_100");
 
-      const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
+      const { loadCreditPriceMap } = await import("@wopr-network/platform-core/billing");
       const creditLedger = makeMockLedger();
-      const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+      const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       const tenantRepo = new TenantCustomerRepository(db);
@@ -953,9 +943,9 @@ describe("tRPC appRouter", () => {
       vi.stubEnv("STRIPE_CREDIT_PRICE_50", "");
       vi.stubEnv("STRIPE_CREDIT_PRICE_100", "");
 
-      const { loadCreditPriceMap } = await import("../monetization/stripe/credit-prices.js");
+      const { loadCreditPriceMap } = await import("@wopr-network/platform-core/billing");
       const creditLedger = makeMockLedger();
-      const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+      const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       const tenantRepo = new TenantCustomerRepository(db);
@@ -996,7 +986,7 @@ describe("tRPC appRouter", () => {
 
     it("returns empty array when priceMap is undefined", async () => {
       const creditLedger = makeMockLedger();
-      const { MeterAggregator } = await import("../monetization/metering/aggregator.js");
+      const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
       const { TenantCustomerRepository } = await import("../monetization/index.js");
       const tenantRepo = new TenantCustomerRepository(db);

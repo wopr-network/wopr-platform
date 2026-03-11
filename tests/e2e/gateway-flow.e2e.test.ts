@@ -15,8 +15,8 @@ import type {
 } from "../../src/monetization/adapters/types.js";
 import { withMargin } from "../../src/monetization/adapters/types.js";
 import { BudgetChecker } from "../../src/monetization/budget/budget-checker.js";
-import { Credit } from "../../src/monetization/credit.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { Credit } from "@wopr-network/platform-core";
+import { CreditLedger } from "@wopr-network/platform-core";
 import { grantSignupCredits, SIGNUP_GRANT } from "../../src/monetization/credits/signup-grant.js";
 import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";

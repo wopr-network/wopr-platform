@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { DrizzleBillingEmailRepository } from "@wopr-network/platform-core/email";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +8,6 @@ import { emailNotifications } from "../db/schema/email-notifications.js";
 import * as schema from "../db/schema/index.js";
 import { BillingEmailService } from "./billing-emails.js";
 import { EmailClient } from "./client.js";
-import { DrizzleBillingEmailRepository } from "./drizzle-billing-email-repository.js";
 
 vi.mock("resend", () => ({
   Resend: class MockResend {

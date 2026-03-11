@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { decrypt, deriveInstanceKey, encrypt, generateInstanceKey } from "@wopr-network/platform-core/security";
 import { describe, expect, it } from "vitest";
-import { decrypt, deriveInstanceKey, encrypt, generateInstanceKey } from "./encryption.js";
 
 describe("encryption", () => {
   describe("generateInstanceKey", () => {

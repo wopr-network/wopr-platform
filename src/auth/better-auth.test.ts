@@ -26,7 +26,6 @@ function pgliteAsPool(pg: PGlite): any {
   };
 }
 
-import { type Auth, getAuth, resetAuth, setAuth } from "./better-auth.js";
 import {
   type AuthEnv,
   requireSessionOrToken,
@@ -34,7 +33,8 @@ import {
   scopedBearerAuthWithTenant,
   type TokenMetadata,
   validateTenantOwnership,
-} from "./index.js";
+} from "@wopr-network/platform-core/auth";
+import { type Auth, getAuth, resetAuth, setAuth } from "./better-auth.js";
 
 describe("getAuth singleton", () => {
   afterEach(() => {

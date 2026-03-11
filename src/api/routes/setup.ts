@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { deriveInstanceKey, encrypt } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AuthEnv } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import { applyDependencyConfigs, type DependencyConfigResult } from "../../fleet/apply-dependency-configs.js";
 import type { OnboardingService } from "../../onboarding/onboarding-service.js";
 import type { ProviderStatus } from "../../onboarding/provider-check.js";
-import { deriveInstanceKey, encrypt } from "../../security/encryption.js";
 import type { IPluginConfigRepository } from "../../setup/plugin-config-repository.js";
 import type { SetupService } from "../../setup/setup-service.js";
 import type { ISetupSessionRepository } from "../../setup/setup-session-repository.js";

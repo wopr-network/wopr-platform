@@ -1,7 +1,14 @@
+import {
+  buildTokenMetadataMap,
+  scopedBearerAuthWithTenant,
+  validateTenantOwnership,
+} from "@wopr-network/platform-core/auth";
+import { Credit } from "@wopr-network/platform-core/credits";
+import type { MeterEvent } from "@wopr-network/platform-core/metering";
+import type { DecryptedCredential } from "@wopr-network/platform-core/security";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
-import { buildTokenMetadataMap, scopedBearerAuthWithTenant, validateTenantOwnership } from "../../auth/index.js";
 import { logger } from "../../config/logger.js";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { detectCapabilityConflicts } from "../../fleet/capability-conflict.js";
@@ -10,9 +17,6 @@ import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
 import { ProfileStore } from "../../fleet/profile-store.js";
 import { getMarketplacePluginRepo } from "../../fleet/services.js";
-import { Credit } from "../../monetization/credit.js";
-import type { MeterEvent } from "../../monetization/metering/types.js";
-import type { DecryptedCredential } from "../../security/credential-vault/store.js";
 import { fleet } from "./fleet.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";

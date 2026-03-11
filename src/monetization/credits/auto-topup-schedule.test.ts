@@ -1,10 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { Credit } from "../credit.js";
 import { runScheduledTopups, type ScheduleTopupDeps } from "./auto-topup-schedule.js";
-import { DrizzleAutoTopupSettingsRepository } from "./auto-topup-settings-repository.js";
 
 describe("runScheduledTopups", () => {
   let pool: PGlite;

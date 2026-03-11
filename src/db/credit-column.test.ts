@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit } from "@wopr-network/platform-core/credits";
 import { eq } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { Credit } from "../monetization/credit.js";
 import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
 import { creditColumn } from "./credit-column.js";
 import type { DrizzleDb } from "./index.js";

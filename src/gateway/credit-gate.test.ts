@@ -3,11 +3,10 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../db/index.js";
-import { Credit } from "../monetization/credit.js";
-import { CreditLedger } from "../monetization/credits/credit-ledger.js";
 import { createTestDb, truncateAllTables } from "../test/db.js";
 import { type CreditGateDeps, creditBalanceCheck, debitCredits } from "./credit-gate.js";
 import type { GatewayAuthEnv } from "./service-key-auth.js";

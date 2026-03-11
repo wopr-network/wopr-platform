@@ -1,4 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
@@ -7,9 +8,7 @@ import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository
 import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
 import type { INodeCommandBus } from "../../fleet/node-command-bus.js";
 import { createTestDb, truncateAllTables } from "../../test/db.js";
-import { Credit } from "../credit.js";
 import { BotBilling, SUSPENSION_GRACE_DAYS } from "./bot-billing.js";
-import { CreditLedger } from "./credit-ledger.js";
 
 function createMockDeps(nodeId: string | null = "node-1") {
   const commandBus: INodeCommandBus = {

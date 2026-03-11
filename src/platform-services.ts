@@ -28,8 +28,8 @@ function db(): DrizzleDb {
 // Credits
 // ---------------------------------------------------------------------------
 
-import type { ICreditLedger } from "./monetization/credits/credit-ledger.js";
-import { DrizzleCreditLedger } from "./monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import { DrizzleCreditLedger } from "@wopr-network/platform-core/credits";
 
 let _creditLedger: ICreditLedger | null = null;
 
@@ -48,8 +48,8 @@ export function getCreditTransactionRepo(): ICreditTransactionRepository {
   return _creditTransactionRepo;
 }
 
-import type { IAutoTopupSettingsRepository } from "./monetization/credits/auto-topup-settings-repository.js";
-import { DrizzleAutoTopupSettingsRepository } from "./monetization/credits/auto-topup-settings-repository.js";
+import type { IAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
+import { DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
 
 let _autoTopupSettingsRepo: IAutoTopupSettingsRepository | null = null;
 
@@ -82,9 +82,8 @@ export function getDividendRepo(): IDividendRepository {
 // Metering
 // ---------------------------------------------------------------------------
 
-import type { IMeterEmitter } from "./monetization/metering/emitter.js";
-import { DrizzleMeterEmitter } from "./monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "./monetization/metering/meter-event-repository.js";
+import type { IMeterEmitter } from "@wopr-network/platform-core/metering";
+import { DrizzleMeterEmitter, DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
 
 let _meterEmitter: IMeterEmitter | null = null;
 
@@ -93,9 +92,8 @@ export function getMeterEmitter(): IMeterEmitter {
   return _meterEmitter;
 }
 
-import type { IMeterAggregator } from "./monetization/metering/aggregator.js";
-import { DrizzleMeterAggregator } from "./monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "./monetization/metering/drizzle-usage-summary-repository.js";
+import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
+import { DrizzleMeterAggregator, DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/metering";
 
 let _meterAggregator: IMeterAggregator | null = null;
 
@@ -117,8 +115,8 @@ export function getTenantCustomerRepository(): ITenantCustomerRepository {
   return _tenantCustomerRepo;
 }
 
-import type { IPayRamChargeRepository } from "./monetization/payram/charge-store.js";
-import { DrizzlePayRamChargeRepository } from "./monetization/payram/charge-store.js";
+import type { IPayRamChargeRepository } from "@wopr-network/platform-core/billing";
+import { DrizzlePayRamChargeRepository } from "@wopr-network/platform-core/billing";
 
 let _payramChargeRepo: IPayRamChargeRepository | null = null;
 
@@ -141,12 +139,12 @@ export function getBudgetChecker(): IBudgetChecker {
 // Notifications / Email
 // ---------------------------------------------------------------------------
 
-import { DrizzleNotificationPreferencesStore } from "./email/notification-preferences-store.js";
-import { DrizzleNotificationQueueStore } from "./email/notification-queue-store.js";
-import type {
-  INotificationPreferencesRepository,
-  INotificationQueueRepository,
-} from "./email/notification-repository-types.js";
+import {
+  DrizzleNotificationPreferencesStore,
+  DrizzleNotificationQueueStore,
+  type INotificationPreferencesRepository,
+  type INotificationQueueRepository,
+} from "@wopr-network/platform-core/email";
 
 let _notificationQueueStore: INotificationQueueRepository | null = null;
 let _notificationPrefsStore: INotificationPreferencesRepository | null = null;
@@ -165,8 +163,8 @@ export function getNotificationPrefsStore(): INotificationPreferencesRepository 
 // Security
 // ---------------------------------------------------------------------------
 
-import type { ICredentialRepository } from "./security/credential-vault/credential-repository.js";
-import { DrizzleCredentialRepository } from "./security/credential-vault/credential-repository.js";
+import type { ICredentialRepository } from "@wopr-network/platform-core/security";
+import { DrizzleCredentialRepository } from "@wopr-network/platform-core/security";
 
 let _credentialRepo: ICredentialRepository | null = null;
 
@@ -175,10 +173,7 @@ export function getCredentialRepo(): ICredentialRepository {
   return _credentialRepo;
 }
 
-import {
-  DrizzleSecretAuditRepository,
-  type ISecretAuditRepository,
-} from "./security/credential-vault/audit-repository.js";
+import { DrizzleSecretAuditRepository, type ISecretAuditRepository } from "@wopr-network/platform-core/security";
 
 let _secretAuditRepo: ISecretAuditRepository | null = null;
 
@@ -215,8 +210,7 @@ export function getCircuitBreakerRepo(): ICircuitBreakerRepository {
 // Admin
 // ---------------------------------------------------------------------------
 
-import { DrizzleAdminAuditLogRepository } from "./admin/admin-audit-log-repository.js";
-import { AdminAuditLog } from "./admin/audit-log.js";
+import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
 
 let _adminAuditLog: AdminAuditLog | null = null;
 

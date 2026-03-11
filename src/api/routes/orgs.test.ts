@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { RoleStore } from "@wopr-network/platform-core/admin";
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { RoleStore } from "../../admin/roles/role-store.js";
-import type { AuthEnv } from "../../auth/index.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { DrizzleOrgRepository } from "../../org/drizzle-org-repository.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";

@@ -1,5 +1,18 @@
-export type { IAdminAuditLogRepository } from "./admin-audit-log-repository.js";
-export { DrizzleAdminAuditLogRepository } from "./admin-audit-log-repository.js";
+export type {
+  AdminAuditLogRow,
+  AuditCategory,
+  AuditEntry,
+  AuditFilters,
+  IAdminAuditLogRepository,
+  Role,
+  UserRoleRow,
+} from "@wopr-network/platform-core/admin";
+export {
+  AdminAuditLog,
+  DrizzleAdminAuditLogRepository,
+  isValidRole,
+  RoleStore,
+} from "@wopr-network/platform-core/admin";
 export type {
   DateRange,
   FloatMetrics,
@@ -12,8 +25,6 @@ export type {
   TimeSeriesPoint,
 } from "./analytics/index.js";
 export { AnalyticsStore, DrizzleAnalyticsRepository } from "./analytics/index.js";
-export type { AdminAuditLogRow, AuditCategory, AuditEntry, AuditFilters } from "./audit-log.js";
-export { AdminAuditLog } from "./audit-log.js";
 export type { IBulkOperationsRepository } from "./bulk/bulk-operations-repository.js";
 export { DrizzleBulkOperationsRepository } from "./bulk/bulk-operations-repository.js";
 export type {
@@ -49,8 +60,6 @@ export type {
 } from "./rates/rate-store.js";
 export { RateStore } from "./rates/rate-store.js";
 export { requirePlatformAdmin, requireTenantAdmin } from "./roles/require-role.js";
-export type { Role, UserRoleRow } from "./roles/role-store.js";
-export { isValidRole, RoleStore } from "./roles/role-store.js";
 export type { ITenantStatusRepository } from "./tenant-status/tenant-status-repository.js";
 export type { AdminUserFilters, AdminUserListResponse, AdminUserSummary } from "./users/user-store.js";
 export { AdminUserStore } from "./users/user-store.js";

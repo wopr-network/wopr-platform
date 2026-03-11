@@ -1,6 +1,6 @@
+import type { RoleStore } from "@wopr-network/platform-core/admin";
+import type { AuthEnv, AuthUser } from "@wopr-network/platform-core/auth";
 import type { Context, Next } from "hono";
-import type { AuthEnv, AuthUser } from "../../auth/index.js";
-import type { RoleStore } from "./role-store.js";
 
 function resolveRoleStore(storeOrFactory: RoleStore | (() => RoleStore)): RoleStore {
   return typeof storeOrFactory === "function" ? storeOrFactory() : storeOrFactory;

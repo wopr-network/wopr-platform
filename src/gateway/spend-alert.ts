@@ -3,8 +3,8 @@
  * when a tenant's monthly spend crosses their configured alertAt value.
  */
 
+import type { IBillingEmailRepository } from "@wopr-network/platform-core/email";
 import { logger } from "../config/logger.js";
-import type { IBillingEmailRepository } from "../email/drizzle-billing-email-repository.js";
 import type { ISpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
 import type { ISpendingCapStore } from "./spending-cap-store.js";
 

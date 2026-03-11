@@ -1,10 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { createSetupIntent, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import type Stripe from "stripe";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { createSetupIntent } from "./setup-intent.js";
-import { TenantCustomerRepository } from "./tenant-store.js";
 
 function mockStripe(overrides: { setupIntentCreate?: ReturnType<typeof vi.fn> } = {}) {
   return {

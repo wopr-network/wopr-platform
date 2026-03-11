@@ -1,7 +1,7 @@
+import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { requireEmailVerified } from "@wopr-network/platform-core/email";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AuthEnv } from "../auth/index.js";
-import { requireEmailVerified } from "./require-verified.js";
 
 describe("requireEmailVerified middleware", () => {
   let verifiedUsers: Set<string>;
