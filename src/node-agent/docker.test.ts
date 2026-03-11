@@ -45,7 +45,7 @@ describe("DockerManager", () => {
   let manager: DockerManager;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     const mocks = createMockDocker();
     docker = mocks.docker;
     mockContainer = mocks.mockContainer;
