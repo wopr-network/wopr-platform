@@ -22,8 +22,8 @@ import type { DrizzleDb } from "../../src/db/index.js";
 import type { ICreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
 import { appRouter } from "../../src/trpc/index.js";
-import type { TRPCContext } from "../../src/trpc/init.js";
-import { setTrpcOrgMemberRepo } from "../../src/trpc/init.js";
+import type { TRPCContext } from "../../src/trpc/index.js";
+import { setTrpcOrgMemberRepo } from "../../src/trpc/index.js";
 import { setBillingRouterDeps } from "../../src/trpc/routers/billing.js";
 import { setSettingsRouterDeps } from "../../src/trpc/routers/settings.js";
 

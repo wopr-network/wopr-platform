@@ -4,8 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { DrizzleDb } from "../../src/db/index.js";
 import type { NewVpsSubscription, VpsStatus } from "../../src/fleet/repository-types.js";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { DrizzleWebhookSeenRepository } from "../../src/monetization/drizzle-webhook-seen-repository.js";
-import { TenantCustomerRepository } from "../../src/monetization/stripe/tenant-store.js";
+import { DrizzleWebhookSeenRepository, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js";

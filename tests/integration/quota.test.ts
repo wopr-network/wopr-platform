@@ -13,7 +13,7 @@ import { Credit } from "@wopr-network/platform-core";
 
 const { app } = await import("../../src/api/app.js");
 const { setLedger } = await import("../../src/api/routes/quota.js");
-const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
+const { CreditLedger } = await import("@wopr-network/platform-core");
 
 describe("integration: quota routes", () => {
   let pool: PGlite;

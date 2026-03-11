@@ -5,7 +5,7 @@ import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTra
 import { DrizzleDividendRepository } from "../../../src/monetization/credits/dividend-repository.js";
 import { appRouter } from "../../../src/trpc/index.js";
 import { setBillingRouterDeps } from "../../../src/trpc/routers/billing.js";
-import { setTrpcOrgMemberRepo } from "../../../src/trpc/init.js";
+import { setTrpcOrgMemberRepo } from "../../../src/trpc/index.js";
 
 describe("billing.dividend* tRPC procedures", () => {
   let pool: PGlite;

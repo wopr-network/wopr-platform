@@ -12,7 +12,7 @@ import { Credit } from "@wopr-network/platform-core";
 import { createFeatureGate } from "../../src/monetization/feature-gate.js";
 import { createTestDb } from "../../src/test/db.js";
 
-const { CreditLedger } = await import("../../src/monetization/credits/credit-ledger.js");
+const { CreditLedger } = await import("@wopr-network/platform-core");
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper type for flexible Hono vars
 type AnyEnv = { Variables: Record<string, any> };

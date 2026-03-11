@@ -14,10 +14,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { TenantCustomerRepository } from "../../src/monetization/stripe/tenant-store.js";
+import { TenantCustomerRepository, noOpReplayGuard } from "@wopr-network/platform-core/billing";
 import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
 import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
-import { noOpReplayGuard } from "../../src/monetization/webhook-seen-repository.js";
 
 describe("integration: auth → billing → credit flow", () => {
   let pool: PGlite;

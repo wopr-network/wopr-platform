@@ -7,7 +7,7 @@ vi.mock("../../fleet/services.js", () => ({
   getDOClient: vi.fn(),
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
 }));
-vi.mock("../../auth/index.js", () => ({
+vi.mock("@wopr-network/platform-core/auth", () => ({
   buildTokenMetadataMap: vi.fn().mockReturnValue(new Map()),
   // biome-ignore lint/suspicious/noExplicitAny: vi.fn() mock context
   scopedBearerAuthWithTenant: vi.fn().mockReturnValue(async (c: any, next: () => Promise<void>) => {
