@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import {
@@ -8,7 +9,7 @@ import {
 import { CreditLedger } from "@wopr-network/platform-core/credits";
 import { DrizzleUsageSummaryRepository, MeterAggregator } from "@wopr-network/platform-core/metering";
 import { Hono } from "hono";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
@@ -96,6 +97,7 @@ describe("billing routes", () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await pool.close();
   });
 
@@ -1195,6 +1197,244 @@ describe("billing routes", () => {
       vi.unstubAllEnvs();
 
       expect(res.status).toBe(401);
+    });
+
+    describe("HMAC signature verification", () => {
+      const WEBHOOK_SECRET = "test-hmac-secret-hex";
+      const VALID_API_KEY = "correct-key-value";
+
+      function sign(body: string, secret: string): string {
+        return crypto.createHmac("sha256", secret).update(body).digest("hex");
+      }
+
+      beforeEach(() => {
+        vi.stubEnv("PAYRAM_WEBHOOK_SECRET", WEBHOOK_SECRET);
+        vi.stubEnv("PAYRAM_API_KEY", VALID_API_KEY);
+        vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new CreditLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          payramReplayGuard: noOpReplayGuard,
+          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+        });
+      });
+
+      afterEach(() => {
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new CreditLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          payramReplayGuard: noOpReplayGuard,
+        });
+      });
+
+      it("accepts request with valid HMAC signature", async () => {
+        const body = JSON.stringify({
+          reference_id: "ref-hmac-1",
+          status: "OPEN",
+          amount: "100",
+          currency: "USDT",
+          filled_amount: "0",
+        });
+        const sig = sign(body, WEBHOOK_SECRET);
+
+        const res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-PayRam-Signature": sig,
+          },
+          body,
+        });
+        // Should not be 401/403 — either 200 or 400 (if charge not found) is fine
+        expect(res.status).not.toBe(401);
+        expect(res.status).not.toBe(403);
+      });
+
+      it("rejects request with invalid HMAC signature", async () => {
+        const body = JSON.stringify({
+          reference_id: "ref-hmac-2",
+          status: "OPEN",
+          amount: "100",
+          currency: "USDT",
+          filled_amount: "0",
+        });
+
+        const res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-PayRam-Signature": "deadbeef",
+          },
+          body,
+        });
+        expect(res.status).toBe(401);
+      });
+
+      it("falls back to API-Key when PAYRAM_WEBHOOK_SECRET is not set", async () => {
+        vi.stubEnv("PAYRAM_WEBHOOK_SECRET", "");
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new CreditLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          payramReplayGuard: noOpReplayGuard,
+          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+        });
+
+        const body = JSON.stringify({
+          reference_id: "ref-fallback",
+          status: "OPEN",
+          amount: "100",
+          currency: "USDT",
+          filled_amount: "0",
+        });
+
+        const res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "API-Key": VALID_API_KEY,
+          },
+          body,
+        });
+        expect(res.status).not.toBe(401);
+      });
+
+      it("rejects request with no signature headers at all", async () => {
+        const body = JSON.stringify({
+          reference_id: "ref-none",
+          status: "OPEN",
+          amount: "100",
+          currency: "USDT",
+          filled_amount: "0",
+        });
+
+        const res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+        expect(res.status).toBe(401);
+      });
+    });
+
+    describe("IP allowlist", () => {
+      beforeEach(() => {
+        vi.stubEnv("PAYRAM_WEBHOOK_ALLOWED_IPS", "203.0.113.5,203.0.113.6");
+        vi.stubEnv("PAYRAM_API_KEY", "correct-key-value");
+        vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new CreditLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          payramReplayGuard: noOpReplayGuard,
+          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+        });
+      });
+
+      afterEach(() => {
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new CreditLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          payramReplayGuard: noOpReplayGuard,
+        });
+      });
+
+      it("rejects request from non-allowlisted IP", async () => {
+        const body = JSON.stringify({
+          reference_id: "ref-ip",
+          status: "OPEN",
+          amount: "100",
+          currency: "USDT",
+          filled_amount: "0",
+        });
+
+        const res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "API-Key": "correct-key-value",
+          },
+          body,
+        });
+        expect(res.status).toBe(403);
+      });
+    });
+
+    describe("sig-penalty backoff", () => {
+      afterEach(() => {
+        vi.unstubAllEnvs();
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new CreditLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: createTestSigPenaltyRepo(db),
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          payramReplayGuard: noOpReplayGuard,
+        });
+      });
+
+      it("returns 429 when IP is in penalty backoff", async () => {
+        vi.stubEnv("PAYRAM_API_KEY", "correct-key-value");
+        vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
+
+        // Use a real penalty repo but pre-seed a blocked entry
+        const penaltyRepo = createTestSigPenaltyRepo(db);
+        // recordFailure 5 times to trigger block.
+        // In test requests (Hono .request()), there is no real socket and no
+        // x-forwarded-for header, so getClientIpFromContext returns "unknown".
+        for (let i = 0; i < 5; i++) {
+          await penaltyRepo.recordFailure("unknown", "payram");
+        }
+
+        setBillingDeps({
+          processor: createMockProcessor(),
+          creditLedger: new CreditLedger(db),
+          meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
+          sigPenaltyRepo: penaltyRepo,
+          affiliateRepo: new DrizzleAffiliateRepository(db),
+          replayGuard: noOpReplayGuard,
+          payramReplayGuard: noOpReplayGuard,
+          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+        });
+
+        const res = await billingRoutes.request("/crypto/webhook", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "API-Key": "wrong-key",
+          },
+          body: JSON.stringify({
+            reference_id: "x",
+            status: "OPEN",
+            amount: "1",
+            currency: "BTC",
+            filled_amount: "0",
+          }),
+        });
+        expect(res.status).toBe(429);
+        expect(res.headers.get("Retry-After")).toBeTruthy();
+      });
     });
   });
 

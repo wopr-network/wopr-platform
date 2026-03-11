@@ -430,39 +430,120 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
 /**
  * POST /billing/crypto/webhook
  *
- * PayRam webhook endpoint. Verifies the API key and processes payment events.
- * Note: No bearer auth — webhook uses PayRam API key verification.
+ * PayRam webhook endpoint. Verifies authenticity via HMAC-SHA256 over the
+ * request body (preferred) or API-Key header (deprecated fallback).
+ * Also supports IP allowlisting and sig-penalty exponential backoff.
+ * Note: No bearer auth — webhook uses PayRam signature verification.
  */
 billingRoutes.post("/crypto/webhook", async (c) => {
   if (!payramClient) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
 
-  // Verify the webhook is from our PayRam instance via API-Key header.
+  const ip = getClientIpFromContext(c);
+  const now = Date.now();
+
+  // ── Sig-penalty backoff (mirrors Stripe handler, WOP-477) ──
+  const { sigPenaltyRepo } = getDeps();
+  const penalty = await sigPenaltyRepo.get(ip, "payram");
+  if (penalty && now < penalty.blockedUntil) {
+    const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
+    c.header("Retry-After", String(retryAfterSec));
+    return c.json({ error: "Too many failed webhook signature attempts" }, 429);
+  }
+
+  // ── IP allowlist (optional) ──
+  const allowedIps = process.env.PAYRAM_WEBHOOK_ALLOWED_IPS;
+  if (allowedIps) {
+    const allowed = allowedIps
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (allowed.length === 0) {
+      // Env var was set but produced no valid IPs — treat as misconfiguration
+      logger.error("PayRam webhook rejected: PAYRAM_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    // Normalize IPv6-mapped IPv4 (e.g. ::ffff:1.2.3.4 → 1.2.3.4)
+    const normalizedIp = ip.replace(/^::ffff:/, "");
+    if (!allowed.includes(normalizedIp)) {
+      logger.error("PayRam webhook rejected: IP not in allowlist", { ip });
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  }
+
+  // ── Read raw body (must happen before JSON parse) ──
+  const rawBody = await c.req.text();
+
+  // ── Authentication: HMAC-SHA256 preferred, API-Key fallback ──
+  const webhookSecret = process.env.PAYRAM_WEBHOOK_SECRET;
   const payramApiKey = process.env.PAYRAM_API_KEY;
-  if (!payramApiKey) {
+
+  if (!webhookSecret && !payramApiKey) {
     return c.json({ error: "PayRam not configured" }, 503);
   }
 
-  const incomingKey = c.req.header("API-Key");
-  if (!incomingKey) {
-    logger.error("PayRam webhook API key verification failed");
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-  try {
-    if (!crypto.timingSafeEqual(Buffer.from(incomingKey), Buffer.from(payramApiKey))) {
-      logger.error("PayRam webhook API key verification failed");
+  let authenticated = false;
+
+  if (webhookSecret) {
+    // Prefer HMAC-SHA256 signature verification
+    const incomingSig = c.req.header("X-PayRam-Signature");
+    if (!incomingSig) {
+      // Secret configured but no signature header — reject immediately, do not fall through
+      try {
+        await sigPenaltyRepo.recordFailure(ip, "payram");
+      } catch (err) {
+        logger.warn("Failed to record sig penalty", { ip, err });
+      }
+      logger.error("PayRam webhook rejected: HMAC configured but X-PayRam-Signature header absent", { ip });
       return c.json({ error: "Unauthorized" }, 401);
     }
-  } catch {
-    // timingSafeEqual throws on length mismatch — treat as auth failure
-    logger.error("PayRam webhook API key verification failed");
+    try {
+      const expectedBuf = crypto.createHmac("sha256", webhookSecret).update(rawBody).digest();
+      const incomingBuf = Buffer.from(incomingSig, "hex");
+      if (incomingBuf.length === expectedBuf.length) {
+        authenticated = crypto.timingSafeEqual(incomingBuf, expectedBuf);
+      }
+      // if lengths differ, authenticated stays false (avoids timingSafeEqual throwing)
+    } catch {
+      authenticated = false;
+    }
+  } else if (payramApiKey) {
+    // Fallback: legacy API-Key header (deprecation path) — only when HMAC not configured
+    const incomingKey = c.req.header("API-Key");
+    if (incomingKey) {
+      try {
+        authenticated = crypto.timingSafeEqual(Buffer.from(incomingKey), Buffer.from(payramApiKey));
+      } catch {
+        authenticated = false;
+      }
+      if (authenticated) {
+        logger.warn("PayRam webhook authenticated via deprecated API-Key header — migrate to HMAC signature");
+      }
+    }
+  }
+
+  if (!authenticated) {
+    try {
+      await sigPenaltyRepo.recordFailure(ip, "payram");
+    } catch (err) {
+      logger.warn("Failed to record sig penalty", { ip, err });
+    }
+    logger.error("PayRam webhook signature verification failed", { ip });
     return c.json({ error: "Unauthorized" }, 401);
   }
 
+  // Clear stale penalties on successful auth
+  try {
+    await sigPenaltyRepo.clear(ip, "payram");
+  } catch (err) {
+    logger.warn("Failed to clear sig penalty", { ip, err });
+  }
+
+  // ── Parse and validate payload ──
   let body: Record<string, unknown>;
   try {
-    body = (await c.req.json()) as Record<string, unknown>;
+    body = JSON.parse(rawBody) as Record<string, unknown>;
   } catch {
     return c.json({ received: false }, 400);
   }
