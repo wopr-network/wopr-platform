@@ -114,3 +114,13 @@ All database access MUST go through repository interfaces. Direct Drizzle ORM or
 - **Setup route secrets**: Secret/token fields must ONLY be written to `encryptedFieldsJson`, never to plaintext `configJson` — writing secrets to configJson is a security bug even if they are also encrypted elsewhere.
 - **Concurrent session tests**: Use `Promise.all` to send requests simultaneously — serial `await`s only test the DB-check logic, not the actual race condition or unique-constraint path.
 - **e2e tenant ownership tests**: At least one positive-path e2e test must use a tenant-scoped token (not the operator-level `FLEET_API_TOKEN`) to exercise `validateTenantOwnership()` — operator tokens bypass ownership checks entirely.
+## Version Control: Prefer jj
+
+Use `jj` (Jujutsu) for all VCS operations instead of `git`:
+- `jj status`, `jj diff`, `jj log` for inspection
+- `jj new` to start a change, `jj describe` to set the message
+- `jj commit` to commit, `jj push` to push
+- `jj squash`, `jj rebase`, `jj edit` for history manipulation
+
+Fall back to `git` only for operations not yet supported by `jj`.
+
