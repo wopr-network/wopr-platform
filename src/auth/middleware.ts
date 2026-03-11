@@ -18,6 +18,16 @@ import type { Context, Next } from "hono";
 import type { IApiKeyRepository } from "./api-key-repository.js";
 import type { Auth } from "./better-auth.js";
 
+/**
+ * Minimum token length to ensure sufficient entropy before SHA-256 lookup.
+ * wopr_ prefixed tokens have an 11-char structural prefix; a 22-char total
+ * length yields ~88 bits of entropy from the random suffix (11 random chars
+ * × 8 bits each in base256, or ~95 bits if base62 charset).
+ * Reject anything shorter as a defence-in-depth guard against future format
+ * changes that might produce low-entropy tokens.
+ */
+export const MIN_API_KEY_LENGTH = 22;
+
 export interface SessionAuthEnv {
   Variables: {
     user: AuthUser;
@@ -97,6 +107,15 @@ export function dualAuth(auth: Auth, apiKeyRepo?: IApiKeyRepository) {
       if (trimmed.toLowerCase().startsWith("bearer ")) {
         const token = trimmed.slice(7).trim();
         if (token) {
+          // SECURITY: SHA-256 is a fast hash — safe here ONLY because API keys
+          // are full-entropy secrets (UUIDs = 122 bits, wopr_ format tokens
+          // have ~95 bits of effective entropy from the random suffix after
+          // the 11-char structural prefix). If the token format ever changes
+          // to shorter or lower-entropy values, this MUST be replaced with
+          // bcrypt/argon2/scrypt.
+          if (token.length < MIN_API_KEY_LENGTH) {
+            return c.json({ error: "Authentication required" }, 401);
+          }
           const keyHash = createHash("sha256").update(token).digest("hex");
           try {
             const apiUser = await apiKeyRepo.findByHash(keyHash);
