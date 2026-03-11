@@ -629,7 +629,7 @@ if (process.env.NODE_ENV !== "test") {
           orgVaultEncKey,
           pooledKeys2,
           (tid) =>
-            createHmac("sha256", process.env.PLATFORM_SECRET ?? "")
+            createHmac("sha256", process.env.PLATFORM_SECRET as string)
               .update(`tenant:${tid}`)
               .digest(),
           getOrgMembershipRepo(),
@@ -673,7 +673,8 @@ if (process.env.NODE_ENV !== "test") {
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
 
     const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (stripeKey) {
+    const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (stripeKey && stripeWebhookSecret) {
       const Stripe = (await import("stripe")).default;
       const stripe = new Stripe(stripeKey);
       const priceMap = loadCreditPriceMap();
@@ -681,7 +682,7 @@ if (process.env.NODE_ENV !== "test") {
       const processor = new StripePaymentProcessor({
         stripe,
         tenantRepo,
-        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+        webhookSecret: stripeWebhookSecret,
         priceMap,
         creditLedger: getCreditLedger(),
         replayGuard: new DrizzleWebhookSeenRepository(getDb()),
@@ -1099,7 +1100,7 @@ if (process.env.NODE_ENV !== "test") {
       dispatchPluginInstall: (botId, npmPackage) => dispatchPluginInstallFn(botId, npmPackage),
       dispatchPluginConfig: (botId, pluginId, config) => dispatchPluginConfigFn(botId, pluginId, config),
       fetchPluginDependencies: (botId, pluginName) => fetchPluginDependenciesFn(botId, pluginName),
-      platformEncryptionSecret: process.env.PLATFORM_ENCRYPTION_SECRET ?? "",
+      platformEncryptionSecret: process.env.PLATFORM_ENCRYPTION_SECRET as string,
     });
 
     // Setup session cleanup — rolls back sessions stale >30 minutes (WOP-1037)
