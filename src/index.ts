@@ -672,55 +672,18 @@ if (process.env.NODE_ENV !== "test") {
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
     const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(getDb());
 
+    // setAddonRouterDeps has no Stripe dependency — always wire it.
+    setAddonRouterDeps({ addonRepo: getTenantAddonRepo() });
+
     const stripeKey = process.env.STRIPE_SECRET_KEY;
+    const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (stripeKey) {
       const Stripe = (await import("stripe")).default;
       const stripe = new Stripe(stripeKey);
       const priceMap = loadCreditPriceMap();
 
-      const processor = new StripePaymentProcessor({
-        stripe,
-        tenantRepo,
-        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
-        priceMap,
-        creditLedger: getCreditLedger(),
-        replayGuard: new DrizzleWebhookSeenRepository(getDb()),
-      });
-
-      // Create PayRam deps before tRPC router so both REST and tRPC can share them.
-      const payramChargeRepo = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeRepository(getDb()) : undefined;
-      let payramClient: import("payram").Payram | undefined;
-      if (process.env.PAYRAM_API_KEY) {
-        const { createPayRamClient, loadPayRamConfig } = await import("@wopr-network/platform-core/billing");
-        const payramConfig = loadPayRamConfig();
-        if (payramConfig) {
-          payramClient = createPayRamClient(payramConfig);
-        }
-      }
-
-      const { AuditLogger } = await import("./audit/logger.js");
-      const { DrizzleAuditLogRepository } = await import("./audit/audit-log-repository.js");
-      const billingAuditLogger = new AuditLogger(new DrizzleAuditLogRepository(getDb()));
-
-      setAddonRouterDeps({ addonRepo: getTenantAddonRepo() });
-
-      setBillingRouterDeps({
-        processor,
-        tenantRepo,
-        creditLedger: getCreditLedger(),
-        meterAggregator,
-        priceMap,
-        dividendRepo: getDividendRepo(),
-        spendingLimitsRepo,
-        autoTopupSettingsStore,
-        affiliateRepo: getAffiliateRepo(),
-        payramClient,
-        payramChargeRepo,
-        auditLogger: billingAuditLogger,
-      });
-      logger.info("tRPC billing router initialized");
-
-      // Wire admin tRPC router deps — ban cascade needs Stripe + auto-topup repo (WOP-1064)
+      // Wire admin tRPC router deps — ban cascade needs Stripe + auto-topup repo (WOP-1064).
+      // detachAllPaymentMethods requires Stripe but not the webhook secret.
       {
         const { detachAllPaymentMethods } = await import("@wopr-network/platform-core/billing");
         const { getTenantStatusRepo, getAutoTopupSettingsRepo, getExportRepo, getDeletionRepo } = await import(
@@ -830,22 +793,65 @@ if (process.env.NODE_ENV !== "test") {
         logger.info("Usage-based auto top-up wired into gateway (WOP-1084)");
       }
 
-      // Wire REST billing routes (Stripe webhooks, checkout, portal).
-      // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).
+      if (stripeWebhookSecret) {
+        // Create PayRam deps before tRPC router so both REST and tRPC can share them.
+        const payramChargeRepo = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeRepository(getDb()) : undefined;
+        let payramClient: import("payram").Payram | undefined;
+        if (process.env.PAYRAM_API_KEY) {
+          const { createPayRamClient, loadPayRamConfig } = await import("@wopr-network/platform-core/billing");
+          const payramConfig = loadPayRamConfig();
+          if (payramConfig) {
+            payramClient = createPayRamClient(payramConfig);
+          }
+        }
 
-      setBillingDeps({
-        processor,
-        creditLedger: getCreditLedger(),
-        meterAggregator,
-        sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
-        replayGuard: new DrizzleWebhookSeenRepository(getDb()),
-        payramReplayGuard: new DrizzleWebhookSeenRepository(getDb()),
-        affiliateRepo: getAffiliateRepo(),
-        payramChargeRepo,
-      });
-      logger.info("REST billing routes initialized");
+        const { AuditLogger } = await import("./audit/logger.js");
+        const { DrizzleAuditLogRepository } = await import("./audit/audit-log-repository.js");
+        const billingAuditLogger = new AuditLogger(new DrizzleAuditLogRepository(getDb()));
+
+        const processor = new StripePaymentProcessor({
+          stripe,
+          tenantRepo,
+          webhookSecret: stripeWebhookSecret,
+          priceMap,
+          creditLedger: getCreditLedger(),
+          replayGuard: new DrizzleWebhookSeenRepository(getDb()),
+        });
+
+        setBillingRouterDeps({
+          processor,
+          tenantRepo,
+          creditLedger: getCreditLedger(),
+          meterAggregator,
+          priceMap,
+          dividendRepo: getDividendRepo(),
+          spendingLimitsRepo,
+          autoTopupSettingsStore,
+          affiliateRepo: getAffiliateRepo(),
+          payramClient,
+          payramChargeRepo,
+          auditLogger: billingAuditLogger,
+        });
+        logger.info("tRPC billing router initialized");
+
+        // Wire REST billing routes (Stripe webhooks, checkout, portal).
+        // sigPenaltyRepo uses the platform DB (webhook_sig_penalties is in platform migrations).
+        setBillingDeps({
+          processor,
+          creditLedger: getCreditLedger(),
+          meterAggregator,
+          sigPenaltyRepo: new DrizzleSigPenaltyRepository(getDb()),
+          replayGuard: new DrizzleWebhookSeenRepository(getDb()),
+          payramReplayGuard: new DrizzleWebhookSeenRepository(getDb()),
+          affiliateRepo: getAffiliateRepo(),
+          payramChargeRepo,
+        });
+        logger.info("REST billing routes initialized");
+      } else {
+        logger.warn("STRIPE_WEBHOOK_SECRET not set — tRPC billing router and REST billing routes not initialized");
+      }
     } else {
-      logger.warn("STRIPE_SECRET_KEY not set — tRPC billing router not initialized");
+      logger.warn("STRIPE_SECRET_KEY not set — Stripe integration disabled");
     }
   }
 
