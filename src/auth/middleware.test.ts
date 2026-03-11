@@ -115,8 +115,8 @@ describe("sessionAuth middleware", () => {
 describe("dualAuth middleware", () => {
   const apiKeyRepo = mockApiKeyRepo(
     new Map<string, AuthUser>([
-      ["api-key-admin", { id: "admin-1", roles: ["admin"] }],
-      ["api-key-reader", { id: "reader-1", roles: ["user"] }],
+      ["wopr_admin_a1b2c3d4e5f6g7h8", { id: "admin-1", roles: ["admin"] }],
+      ["wopr_read_x9y8z7w6v5u4t3s2r1", { id: "reader-1", roles: ["user"] }],
     ]),
   );
 
@@ -150,7 +150,7 @@ describe("dualAuth middleware", () => {
     });
 
     const res = await app.request("/test", {
-      headers: { Authorization: "Bearer api-key-admin" },
+      headers: { Authorization: "Bearer wopr_admin_a1b2c3d4e5f6g7h8" },
     });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -179,7 +179,7 @@ describe("dualAuth middleware", () => {
     app.get("/test", (c) => c.json({ ok: true }));
 
     const res = await app.request("/test", {
-      headers: { Authorization: "Bearer bad-token" },
+      headers: { Authorization: "Bearer wopr_unknown_tokenxyz123456" },
     });
     expect(res.status).toBe(401);
   });
@@ -220,7 +220,7 @@ describe("dualAuth middleware", () => {
     app.get("/test", (c) => c.json({ ok: true }));
 
     const res = await app.request("/test", {
-      headers: { Authorization: "Bearer api-key-admin" },
+      headers: { Authorization: "Bearer wopr_admin_a1b2c3d4e5f6g7h8" },
     });
     expect(res.status).toBe(503);
     const body = await res.json();
@@ -238,7 +238,7 @@ describe("dualAuth middleware", () => {
     app.get("/test", (c) => c.json({ ok: true }));
 
     const res = await app.request("/test", {
-      headers: { Authorization: "Bearer some-token" },
+      headers: { Authorization: "Bearer wopr_some_token_xyz123456789" },
     });
     expect(res.status).toBe(503);
     const body = await res.json();
@@ -256,9 +256,24 @@ describe("dualAuth middleware", () => {
     });
 
     const res = await app.request("/test", {
-      headers: { Authorization: "Bearer api-key-reader" },
+      headers: { Authorization: "Bearer wopr_read_x9y8z7w6v5u4t3s2r1" },
     });
     const body = await res.json();
     expect(body.roles).toEqual(["user"]);
+  });
+
+  it("returns 401 when bearer token is shorter than minimum entropy threshold", async () => {
+    const auth = mockAuth(null);
+
+    const app = new Hono<SessionAuthEnv>();
+    app.use("/*", dualAuth(auth, apiKeyRepo));
+    app.get("/test", (c) => c.json({ ok: true }));
+
+    const res = await app.request("/test", {
+      headers: { Authorization: "Bearer abc" },
+    });
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe("Authentication required");
   });
 });

@@ -97,6 +97,15 @@ export function dualAuth(auth: Auth, apiKeyRepo?: IApiKeyRepository) {
       if (trimmed.toLowerCase().startsWith("bearer ")) {
         const token = trimmed.slice(7).trim();
         if (token) {
+          // SECURITY: SHA-256 is a fast hash — safe here ONLY because API keys
+          // are full-entropy secrets (UUIDs = 122 bits, wopr_ format tokens are
+          // longer). If the token format ever changes to shorter or lower-entropy
+          // values, this MUST be replaced with bcrypt/argon2/scrypt.
+          // Minimum 22 chars ≈ 128 bits in base62. Reject anything shorter as a
+          // defence-in-depth guard against future format changes.
+          if (token.length < 22) {
+            return c.json({ error: "Authentication required" }, 401);
+          }
           const keyHash = createHash("sha256").update(token).digest("hex");
           try {
             const apiUser = await apiKeyRepo.findByHash(keyHash);
