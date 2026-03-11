@@ -518,20 +518,14 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
       return c.json({ error: "Forbidden" }, 403);
     }
   } else if (isOperator) {
-    // Operator token: allowed to query any tenant, log for audit trail
-    if (requestedTenant) {
-      logger.info("Operator cross-tenant access", {
-        endpoint: "GET /billing/usage",
-        requestedTenant,
-      });
-    }
+    // Operator token: allowed to query any tenant, audit log emitted after validation below
   } else {
     // Token has no tenant scope and is not an operator — reject
     return c.json({ error: "Forbidden" }, 403);
   }
 
   const params = {
-    tenant: c.req.query("tenant"),
+    tenant: tokenTenantId ?? c.req.query("tenant"),
     capability: c.req.query("capability"),
     provider: c.req.query("provider"),
     startDate: c.req.query("startDate"),
@@ -543,6 +537,16 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
 
   if (!parsed.success) {
     return c.json({ error: "Invalid query parameters", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  if (isOperator && parsed.data.tenant) {
+    const authHeader = c.req.header("Authorization") ?? "";
+    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    logger.info("Operator cross-tenant access", {
+      endpoint: "GET /billing/usage",
+      tenant: parsed.data.tenant,
+      operatorTokenHint: tokenHint,
+    });
   }
 
   const { tenant, startDate, endDate, limit } = parsed.data;
@@ -588,18 +592,13 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
       return c.json({ error: "Forbidden" }, 403);
     }
   } else if (isOperator) {
-    if (requestedTenant) {
-      logger.info("Operator cross-tenant access", {
-        endpoint: "GET /billing/usage/summary",
-        requestedTenant,
-      });
-    }
+    // Operator token: allowed to query any tenant, audit log emitted after validation below
   } else {
     return c.json({ error: "Forbidden" }, 403);
   }
 
   const params = {
-    tenant: c.req.query("tenant"),
+    tenant: tokenTenantId ?? c.req.query("tenant"),
     startDate: c.req.query("startDate"),
   };
 
@@ -607,6 +606,16 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
 
   if (!parsed.success) {
     return c.json({ error: "Invalid query parameters", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  if (isOperator && parsed.data.tenant) {
+    const authHeader = c.req.header("Authorization") ?? "";
+    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    logger.info("Operator cross-tenant access", {
+      endpoint: "GET /billing/usage/summary",
+      tenant: parsed.data.tenant,
+      operatorTokenHint: tokenHint,
+    });
   }
 
   const { tenant, startDate } = parsed.data;
@@ -654,14 +663,8 @@ billingRoutes.get("/affiliate", adminAuth, async (c) => {
     // Tenant-scoped token: always use the token's tenant (ignore query param)
     tenant = tokenTenantId;
   } else if (isOperator) {
-    // Operator token: read from query param, log for audit
+    // Operator token: read from query param, validate and audit log below
     tenant = c.req.query("tenant");
-    if (tenant) {
-      logger.info("Operator cross-tenant access", {
-        endpoint: "GET /billing/affiliate",
-        requestedTenant: tenant,
-      });
-    }
   } else {
     // Token has no tenant scope and is not an operator — reject
     return c.json({ error: "Forbidden" }, 403);
@@ -674,6 +677,16 @@ billingRoutes.get("/affiliate", adminAuth, async (c) => {
   const parsedTenant = tenantIdSchema.safeParse(tenant);
   if (!parsedTenant.success) {
     return c.json({ error: "Invalid tenant" }, 400);
+  }
+
+  if (isOperator) {
+    const authHeader = c.req.header("Authorization") ?? "";
+    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    logger.info("Operator cross-tenant access", {
+      endpoint: "GET /billing/affiliate",
+      tenant: parsedTenant.data,
+      operatorTokenHint: tokenHint,
+    });
   }
 
   try {
