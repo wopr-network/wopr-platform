@@ -49,6 +49,8 @@ export interface FingerprintCluster {
   tenantIds: string[];
 }
 
+export const ADMIN_BLOCK_SENTINEL = "ADMIN_BLOCK" as const;
+
 export interface IAffiliateFraudAdminRepository {
   listSuppressions(limit: number, offset: number): Promise<{ events: SuppressionEvent[]; total: number }>;
   listVelocityReferrers(capReferrals: number, capCredits: number): Promise<VelocityReferrer[]>;
@@ -152,7 +154,7 @@ export class DrizzleAffiliateFraudAdminRepository implements IAffiliateFraudAdmi
           id,
           referralId: `admin_block:${fingerprint}:${tenantId}`,
           referrerTenantId: tenantId,
-          referredTenantId: "ADMIN_BLOCK",
+          referredTenantId: ADMIN_BLOCK_SENTINEL,
           verdict: "blocked",
           signals: JSON.stringify(["admin_fingerprint_block"]),
           signalDetails: JSON.stringify({

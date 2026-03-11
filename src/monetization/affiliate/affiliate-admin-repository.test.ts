@@ -5,7 +5,7 @@ import type { DrizzleDb } from "../../db/index.js";
 import { affiliateReferrals } from "../../db/schema/affiliate.js";
 import { affiliateFraudEvents } from "../../db/schema/affiliate-fraud.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { DrizzleAffiliateFraudAdminRepository } from "./affiliate-admin-repository.js";
+import { ADMIN_BLOCK_SENTINEL, DrizzleAffiliateFraudAdminRepository } from "./affiliate-admin-repository.js";
 
 describe("DrizzleAffiliateFraudAdminRepository", () => {
   let pool: PGlite;
@@ -174,7 +174,7 @@ describe("DrizzleAffiliateFraudAdminRepository", () => {
       expect(result.events).toHaveLength(2);
 
       for (const event of result.events) {
-        expect(event.referredTenantId).toBe("ADMIN_BLOCK");
+        expect(event.referredTenantId).toBe(ADMIN_BLOCK_SENTINEL);
         expect(event.verdict).toBe("blocked");
         expect(event.phase).toBe("admin");
         expect(event.signals).toEqual(["admin_fingerprint_block"]);
@@ -195,7 +195,11 @@ describe("DrizzleAffiliateFraudAdminRepository", () => {
 
       const result = await repo.listSuppressions(50, 0);
       expect(result.events).toHaveLength(2);
-      const referralIds = result.events.map((e) => e.id);
+      const eventIds = result.events.map((e) => e.id);
+      expect(new Set(eventIds).size).toBe(2);
+
+      const fraudEvents = await db.select({ referralId: affiliateFraudEvents.referralId }).from(affiliateFraudEvents);
+      const referralIds = fraudEvents.map((e) => e.referralId);
       expect(new Set(referralIds).size).toBe(2);
     });
 
