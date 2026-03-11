@@ -517,4 +517,89 @@ describe("setup route outer wrapper authentication", () => {
     // Should not be 401 (may be 200 or another status based on handler logic)
     expect(res.status).not.toBe(401);
   });
+
+  it("strips attacker-supplied x-authenticated-tenant-id before forwarding to inner handler", async () => {
+    const profileGetMock = vi.fn().mockResolvedValue({
+      id: TEST_BOT_ID,
+      tenantId: "real-tenant",
+      env: {},
+    });
+    setSetupDeps(
+      makeDeps({
+        profileStore: {
+          get: profileGetMock,
+          save: vi.fn().mockResolvedValue(undefined),
+        } as never,
+      }),
+    );
+    // Mount setupRoutes with auth middleware — use short path matching chat.test.ts pattern
+    const authedSetupRoutes = new Hono<{ Variables: { user: { id: string }; tokenTenantId?: string } }>();
+    authedSetupRoutes.use("/*", async (c, next) => {
+      c.set("user", { id: "user-1" });
+      c.set("tokenTenantId", "real-tenant");
+      return next();
+    });
+    authedSetupRoutes.route("/", setupRoutes);
+
+    // Attacker injects x-authenticated-tenant-id header with a victim's tenant ID.
+    // The outer handler must strip it and replace with the server-derived value.
+    const res = await authedSetupRoutes.request("/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-authenticated-tenant-id": "victim-tenant",
+        "x-authenticated-user-id": "victim-user",
+      },
+      body: JSON.stringify({
+        setupSessionId: "setup-1",
+        botId: TEST_BOT_ID,
+        values: {},
+      }),
+    });
+
+    // If stripping works: header = "real-tenant" (from tokenTenantId), profile = "real-tenant" → 200.
+    // If stripping fails: header = "victim-tenant" (attacker-injected), profile = "real-tenant" → 403.
+    expect(res.status).toBe(200);
+  });
+
+  it("uses server-derived tenant ID, not client-supplied header, for ownership check", async () => {
+    const profileGetMock = vi.fn().mockResolvedValue({
+      id: TEST_BOT_ID,
+      tenantId: "server-tenant",
+      env: {},
+    });
+    setSetupDeps(
+      makeDeps({
+        profileStore: {
+          get: profileGetMock,
+          save: vi.fn().mockResolvedValue(undefined),
+        } as never,
+      }),
+    );
+    const authedSetupRoutes = new Hono<{ Variables: { user: { id: string }; tokenTenantId?: string } }>();
+    authedSetupRoutes.use("/*", async (c, next) => {
+      c.set("user", { id: "user-1" });
+      c.set("tokenTenantId", "server-tenant");
+      return next();
+    });
+    authedSetupRoutes.route("/", setupRoutes);
+
+    // Client sends a mismatched x-authenticated-tenant-id header.
+    // WITHOUT stripping: the route uses "wrong-tenant" for ownership check → bot lookup returns "server-tenant" → 403.
+    // WITH stripping: the route replaces the header with tokenTenantId ("server-tenant") → ownership check passes → 200.
+    const res = await authedSetupRoutes.request("/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-authenticated-tenant-id": "wrong-tenant",
+      },
+      body: JSON.stringify({
+        setupSessionId: "setup-1",
+        botId: TEST_BOT_ID,
+        values: {},
+      }),
+    });
+
+    expect(res.status).toBe(200);
+  });
 });

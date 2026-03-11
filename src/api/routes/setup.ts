@@ -450,6 +450,8 @@ _lazySetupRoutes.all("/*", async (c) => {
   // Forward authenticated identity to inner routes via headers.
   // inner.fetch() creates a fresh Hono context that loses c.get("user").
   const headers = new Headers(c.req.raw.headers);
+  headers.delete("x-authenticated-tenant-id");
+  headers.delete("x-authenticated-user-id");
   headers.set("x-authenticated-user-id", user.id);
   // tenantId: from tokenTenantId (API key auth) or user.id (session = personal tenant)
   const tenantId = c.get("tokenTenantId") ?? user.id;
