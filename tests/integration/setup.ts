@@ -130,17 +130,18 @@ vi.mock("../../src/api/routes/friends-proxy.js", () => ({
 export const mockWriteEncryptedSeed = vi.fn();
 export const mockForwardSecretsToInstance = vi.fn();
 
-vi.mock("../../src/security/key-injection.js", () => ({
-  writeEncryptedSeed: (...args: unknown[]) => mockWriteEncryptedSeed(...args),
-  forwardSecretsToInstance: (...args: unknown[]) => mockForwardSecretsToInstance(...args),
-}));
-
 // Key validation mock
 export const mockValidateProviderKey = vi.fn();
 
-vi.mock("../../src/security/key-validation.js", () => ({
-  validateProviderKey: (...args: unknown[]) => mockValidateProviderKey(...args),
-}));
+vi.mock("@wopr-network/platform-core/security", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@wopr-network/platform-core/security")>();
+  return {
+    ...actual,
+    writeEncryptedSeed: (...args: unknown[]) => mockWriteEncryptedSeed(...args),
+    forwardSecretsToInstance: (...args: unknown[]) => mockForwardSecretsToInstance(...args),
+    validateProviderKey: (...args: unknown[]) => mockValidateProviderKey(...args),
+  };
+});
 
 // Snapshot mocks
 export const snapshotManagerMock = {

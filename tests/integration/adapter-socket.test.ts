@@ -9,7 +9,7 @@ import type { DrizzleDb } from "../../src/db/index.js";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
 import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/metering";
-import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
+import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
 import { AdapterSocket } from "../../src/monetization/socket/socket.js";
 import type {
   AdapterResult,

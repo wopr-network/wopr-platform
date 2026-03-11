@@ -15,7 +15,7 @@ const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { DrizzleSigPenaltyRepository } = await import("../../src/api/drizzle-sig-penalty-repository.js");
 const { CreditLedger } = await import("@wopr-network/platform-core");
 const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
-const { DrizzleUsageSummaryRepository } = await import("../../src/monetization/metering/drizzle-usage-summary-repository.js");
+const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
 const { TenantCustomerRepository } = await import("../../src/monetization/index.js");
 import type { IPaymentProcessor } from "../../src/monetization/payment-processor.js";
 const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
