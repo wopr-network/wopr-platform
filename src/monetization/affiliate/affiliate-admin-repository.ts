@@ -150,9 +150,9 @@ export class DrizzleAffiliateFraudAdminRepository implements IAffiliateFraudAdmi
         .insert(affiliateFraudEvents)
         .values({
           id,
-          referralId: `admin_block:${fingerprint}`,
+          referralId: `admin_block:${fingerprint}:${tenantId}`,
           referrerTenantId: tenantId,
-          referredTenantId: tenantId,
+          referredTenantId: "ADMIN_BLOCK",
           verdict: "blocked",
           signals: JSON.stringify(["admin_fingerprint_block"]),
           signalDetails: JSON.stringify({
