@@ -14,7 +14,7 @@ import { createStripeClient, createVpsCheckoutSession, loadStripeConfig } from "
 import type { ICreditLedger as CreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
-import { protectedProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
+import { adminProcedure, protectedProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
@@ -1010,8 +1010,10 @@ export const fleetRouter = router({
     }
   }),
 
-  /** Seed bots from profile templates (creates missing, skips existing). */
-  seed: protectedProcedure.mutation(async () => {
+  /** Dry-run seed preview: lists which bots WOULD be created or skipped based on profile templates.
+   *  Does NOT call fleet.create() — no bots are actually created.
+   *  Restricted to platform admins (adminProcedure). */
+  seed: adminProcedure.mutation(async () => {
     const templates = deps().getTemplates();
     if (templates.length === 0) {
       throw new TRPCError({ code: "NOT_FOUND", message: "No templates found" });
