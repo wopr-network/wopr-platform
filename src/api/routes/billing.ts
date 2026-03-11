@@ -542,11 +542,15 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
   if (isOperator && parsed.data.tenant) {
     const authHeader = c.req.header("Authorization") ?? "";
     const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
-    logger.info("Operator cross-tenant access", {
-      endpoint: "GET /billing/usage",
-      tenant: parsed.data.tenant,
-      operatorTokenHint: tokenHint,
-    });
+    try {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/usage",
+        tenant: parsed.data.tenant,
+        operatorTokenHint: tokenHint,
+      });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
   }
 
   const { tenant, startDate, endDate, limit } = parsed.data;
@@ -611,11 +615,15 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
   if (isOperator && parsed.data.tenant) {
     const authHeader = c.req.header("Authorization") ?? "";
     const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
-    logger.info("Operator cross-tenant access", {
-      endpoint: "GET /billing/usage/summary",
-      tenant: parsed.data.tenant,
-      operatorTokenHint: tokenHint,
-    });
+    try {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/usage/summary",
+        tenant: parsed.data.tenant,
+        operatorTokenHint: tokenHint,
+      });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
   }
 
   const { tenant, startDate } = parsed.data;
@@ -682,11 +690,15 @@ billingRoutes.get("/affiliate", adminAuth, async (c) => {
   if (isOperator) {
     const authHeader = c.req.header("Authorization") ?? "";
     const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
-    logger.info("Operator cross-tenant access", {
-      endpoint: "GET /billing/affiliate",
-      tenant: parsedTenant.data,
-      operatorTokenHint: tokenHint,
-    });
+    try {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/affiliate",
+        tenant: parsedTenant.data,
+        operatorTokenHint: tokenHint,
+      });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
   }
 
   try {
