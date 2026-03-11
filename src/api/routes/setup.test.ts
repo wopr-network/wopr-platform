@@ -584,14 +584,14 @@ describe("setup route outer wrapper authentication", () => {
     });
     authedSetupRoutes.route("/", setupRoutes);
 
-    // Client sends x-authenticated-tenant-id that matches the bot's tenant.
-    // The server also derives the same tenant from tokenTenantId.
-    // Both paths should yield 200 — this confirms server-derived value is used.
+    // Client sends a mismatched x-authenticated-tenant-id header.
+    // WITHOUT stripping: the route uses "wrong-tenant" for ownership check → bot lookup returns "server-tenant" → 403.
+    // WITH stripping: the route replaces the header with tokenTenantId ("server-tenant") → ownership check passes → 200.
     const res = await authedSetupRoutes.request("/save", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-authenticated-tenant-id": "server-tenant",
+        "x-authenticated-tenant-id": "wrong-tenant",
       },
       body: JSON.stringify({
         setupSessionId: "setup-1",
