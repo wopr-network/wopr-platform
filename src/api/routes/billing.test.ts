@@ -9,6 +9,7 @@ import { CreditLedger } from "@wopr-network/platform-core/credits";
 import { DrizzleUsageSummaryRepository, MeterAggregator } from "@wopr-network/platform-core/metering";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { meterEvents } from "../../db/schema/meter-events.js";
 import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
@@ -891,6 +892,63 @@ describe("billing routes", () => {
       expect(body.tenant).toBe("t-no-usage");
       expect(body.usage).toEqual([]);
     });
+
+    it("rejects tenant-scoped token accessing a different tenant's usage", async () => {
+      const res = await billingRoutes.request("/usage?tenant=t-other", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe("Forbidden");
+    });
+
+    it("allows tenant-scoped token to read own tenant's usage", async () => {
+      const res = await billingRoutes.request("/usage?tenant=t-1", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("allows operator token to read any tenant's usage", async () => {
+      const res = await billingRoutes.request("/usage?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("tenant-scoped token without ?tenant= param uses token tenant (finding 1)", async () => {
+      // A tenant-scoped token omitting ?tenant= should succeed using the token's tenant,
+      // not return 400 "Invalid query parameters"
+      const res = await billingRoutes.request("/usage", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.tenant).toBe("t-1");
+    });
+
+    it("operator token audit log includes operatorTokenHint after validation (findings 2+3)", async () => {
+      const logSpy = vi.spyOn(logger, "info");
+      const res = await billingRoutes.request("/usage?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+      const allCalls = logSpy.mock.calls as unknown as [string, Record<string, unknown>][];
+      const auditCall = allCalls.find(([msg]) => msg === "Operator cross-tenant access");
+      expect(auditCall).toBeDefined();
+      const logData = auditCall?.[1];
+      // Should log validated tenant, not raw query param key name
+      expect(logData?.tenant).toBe("t-1");
+      // Should include operator identity
+      expect(logData?.operatorTokenHint).toBeTypeOf("string");
+      expect(logData?.operatorTokenHint).toMatch(/\*\*\*$/);
+      logSpy.mockRestore();
+    });
   });
 
   // -- GET /billing/usage/summary -------------------------------------------
@@ -974,6 +1032,42 @@ describe("billing routes", () => {
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error).toBe("Invalid query parameters");
+    });
+
+    it("rejects tenant-scoped token accessing a different tenant's summary", async () => {
+      const res = await billingRoutes.request("/usage/summary?tenant=t-other", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe("Forbidden");
+    });
+
+    it("allows tenant-scoped token to read own tenant's summary", async () => {
+      const res = await billingRoutes.request("/usage/summary?tenant=t-1", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("allows operator token to read any tenant's summary", async () => {
+      const res = await billingRoutes.request("/usage/summary?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("tenant-scoped token without ?tenant= param uses token tenant (finding 1)", async () => {
+      const res = await billingRoutes.request("/usage/summary", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.tenant).toBe("t-1");
     });
   });
 
@@ -1342,6 +1436,33 @@ describe("billing routes", () => {
     });
 
     it("returns 400 for missing tenant", async () => {
+      const res = await billingRoutes.request("/affiliate", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("tenant-scoped token always uses its own tenant (ignores query param)", async () => {
+      // Token scoped to t-1, query says t-other — tokenTenantId wins, returns t-1 data
+      const res = await billingRoutes.request("/affiliate?tenant=t-other", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.code).toMatch(/^[a-z0-9]{6}$/);
+    });
+
+    it("allows operator token to query any tenant's affiliate data", async () => {
+      const res = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 400 when operator token omits tenant query param", async () => {
       const res = await billingRoutes.request("/affiliate", {
         method: "GET",
         headers: authHeader,

@@ -510,12 +510,22 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
 
   const requestedTenant = c.req.query("tenant");
   const tokenTenantId = c.get("tokenTenantId");
-  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
+  const isOperator = c.get("isOperatorToken");
+
+  if (tokenTenantId) {
+    // Tenant-scoped token: must match the requested tenant
+    if (requestedTenant && requestedTenant !== tokenTenantId) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  } else if (isOperator) {
+    // Operator token: allowed to query any tenant, audit log emitted after validation below
+  } else {
+    // Token has no tenant scope and is not an operator — reject
     return c.json({ error: "Forbidden" }, 403);
   }
 
   const params = {
-    tenant: c.req.query("tenant"),
+    tenant: tokenTenantId ?? c.req.query("tenant"),
     capability: c.req.query("capability"),
     provider: c.req.query("provider"),
     startDate: c.req.query("startDate"),
@@ -527,6 +537,20 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
 
   if (!parsed.success) {
     return c.json({ error: "Invalid query parameters", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  if (isOperator && parsed.data.tenant) {
+    const authHeader = c.req.header("Authorization") ?? "";
+    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    try {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/usage",
+        tenant: parsed.data.tenant,
+        operatorTokenHint: tokenHint,
+      });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
   }
 
   const { tenant, startDate, endDate, limit } = parsed.data;
@@ -565,12 +589,20 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
 
   const requestedTenant = c.req.query("tenant");
   const tokenTenantId = c.get("tokenTenantId");
-  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
+  const isOperator = c.get("isOperatorToken");
+
+  if (tokenTenantId) {
+    if (requestedTenant && requestedTenant !== tokenTenantId) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  } else if (isOperator) {
+    // Operator token: allowed to query any tenant, audit log emitted after validation below
+  } else {
     return c.json({ error: "Forbidden" }, 403);
   }
 
   const params = {
-    tenant: c.req.query("tenant"),
+    tenant: tokenTenantId ?? c.req.query("tenant"),
     startDate: c.req.query("startDate"),
   };
 
@@ -578,6 +610,20 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
 
   if (!parsed.success) {
     return c.json({ error: "Invalid query parameters", details: parsed.error.flatten().fieldErrors }, 400);
+  }
+
+  if (isOperator && parsed.data.tenant) {
+    const authHeader = c.req.header("Authorization") ?? "";
+    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    try {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/usage/summary",
+        tenant: parsed.data.tenant,
+        operatorTokenHint: tokenHint,
+      });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
   }
 
   const { tenant, startDate } = parsed.data;
@@ -618,7 +664,19 @@ const recordReferralBodySchema = z.object({
  */
 billingRoutes.get("/affiliate", adminAuth, async (c) => {
   const tokenTenantId = c.get("tokenTenantId");
-  const tenant = tokenTenantId ?? c.req.query("tenant");
+  const isOperator = c.get("isOperatorToken");
+
+  let tenant: string | undefined;
+  if (tokenTenantId) {
+    // Tenant-scoped token: always use the token's tenant (ignore query param)
+    tenant = tokenTenantId;
+  } else if (isOperator) {
+    // Operator token: read from query param, validate and audit log below
+    tenant = c.req.query("tenant");
+  } else {
+    // Token has no tenant scope and is not an operator — reject
+    return c.json({ error: "Forbidden" }, 403);
+  }
 
   if (!tenant) {
     return c.json({ error: "Missing tenant" }, 400);
@@ -627,6 +685,20 @@ billingRoutes.get("/affiliate", adminAuth, async (c) => {
   const parsedTenant = tenantIdSchema.safeParse(tenant);
   if (!parsedTenant.success) {
     return c.json({ error: "Invalid tenant" }, 400);
+  }
+
+  if (isOperator) {
+    const authHeader = c.req.header("Authorization") ?? "";
+    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    try {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/affiliate",
+        tenant: parsedTenant.data,
+        operatorTokenHint: tokenHint,
+      });
+    } catch {
+      // audit log failure must not mask primary operation
+    }
   }
 
   try {
