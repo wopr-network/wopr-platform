@@ -490,7 +490,11 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     const incomingSig = c.req.header("X-PayRam-Signature");
     if (!incomingSig) {
       // Secret configured but no signature header — reject immediately, do not fall through
-      await sigPenaltyRepo.recordFailure(ip, "payram");
+      try {
+        await sigPenaltyRepo.recordFailure(ip, "payram");
+      } catch (err) {
+        logger.warn("Failed to record sig penalty", { ip, err });
+      }
       logger.error("PayRam webhook rejected: HMAC configured but X-PayRam-Signature header absent", { ip });
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -520,13 +524,21 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   }
 
   if (!authenticated) {
-    await sigPenaltyRepo.recordFailure(ip, "payram");
+    try {
+      await sigPenaltyRepo.recordFailure(ip, "payram");
+    } catch (err) {
+      logger.warn("Failed to record sig penalty", { ip, err });
+    }
     logger.error("PayRam webhook signature verification failed", { ip });
     return c.json({ error: "Unauthorized" }, 401);
   }
 
   // Clear stale penalties on successful auth
-  await sigPenaltyRepo.clear(ip, "payram");
+  try {
+    await sigPenaltyRepo.clear(ip, "payram");
+  } catch (err) {
+    logger.warn("Failed to clear sig penalty", { ip, err });
+  }
 
   // ── Parse and validate payload ──
   let body: Record<string, unknown>;
