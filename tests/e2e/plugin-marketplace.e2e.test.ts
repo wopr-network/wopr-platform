@@ -16,7 +16,7 @@ import type { EncryptedPayload } from "../../src/security/types.js";
 import { AdapterSocket } from "../../src/monetization/socket/socket.js";
 import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
 import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import type {
   AdapterResult,
   ProviderAdapter,

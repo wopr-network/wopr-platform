@@ -10,8 +10,8 @@ import { EvidenceCollector } from "../../src/compliance/evidence-collector.js";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { adminAuditLog, adminUsers } from "../../src/db/schema/index.js";
 import { DrizzleMarketplacePluginRepository } from "../../src/marketplace/drizzle-marketplace-plugin-repository.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { CreditLedger } from "@wopr-network/platform-core";
+import { Credit } from "@wopr-network/platform-core";
 import {
   beginTestTransaction,
   createTestDb,

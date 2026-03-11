@@ -8,7 +8,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { createFeatureGate } from "../../src/monetization/feature-gate.js";
 import { createTestDb } from "../../src/test/db.js";
 

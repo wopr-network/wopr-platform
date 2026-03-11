@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { createTestDb } from "../../src/test/db.js";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { meterEvents } from "../../src/db/schema/meter-events.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { DrizzleSpendingLimitsRepository } from "../../src/monetization/drizzle-spending-limits-repository.js";
 import { DrizzleSpendingCapStore } from "../../src/fleet/spending-cap-repository.js";
 import { spendingCapCheck, type SpendingCaps } from "../../src/gateway/spending-cap.js";

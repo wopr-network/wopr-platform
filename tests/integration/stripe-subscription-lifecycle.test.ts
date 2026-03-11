@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../src/db/index.js";
 import type { NewVpsSubscription, VpsStatus } from "../../src/fleet/repository-types.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { CreditLedger } from "@wopr-network/platform-core";
 import { DrizzleWebhookSeenRepository } from "../../src/monetization/drizzle-webhook-seen-repository.js";
 import { TenantCustomerRepository } from "../../src/monetization/stripe/tenant-store.js";
 import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";

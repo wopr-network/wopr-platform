@@ -17,7 +17,7 @@ import {
   endTestTransaction,
   rollbackTestTransaction,
 } from "../../src/test/db.js";
-import { TenantKeyRepository } from "../../src/security/tenant-keys/tenant-key-repository.js";
+import { TenantKeyRepository } from "@wopr-network/platform-core";
 import { decrypt } from "../../src/security/encryption.js";
 import type { EncryptedPayload } from "../../src/security/types.js";
 

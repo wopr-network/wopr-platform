@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 
 const { app } = await import("../../src/api/app.js");
 const { setLedger } = await import("../../src/api/routes/quota.js");

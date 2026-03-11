@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createOpenAIRoutes } from "../../src/gateway/protocol/openai.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import type { GatewayTenant } from "../../src/gateway/types.js";
 import type { ProtocolDeps } from "../../src/gateway/protocol/deps.js";
 

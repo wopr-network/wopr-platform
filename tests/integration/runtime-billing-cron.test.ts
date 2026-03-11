@@ -4,9 +4,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../../src/db/index.js";
 import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
 import { RESOURCE_TIERS } from "../../src/fleet/resource-tiers.js";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { CreditLedger } from "@wopr-network/platform-core";
 import {
   DAILY_BOT_COST,
   LOW_BALANCE_THRESHOLD,

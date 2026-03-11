@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Credit } from "../../src/monetization/credit.js";
-import { DrizzleCreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { Credit } from "@wopr-network/platform-core";
+import { DrizzleCreditLedger } from "@wopr-network/platform-core";
 import { runCreditExpiryCron } from "../../src/monetization/credits/credit-expiry-cron.js";
 import { createTestDb } from "../../src/test/db.js";
 

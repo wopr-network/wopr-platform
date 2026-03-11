@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { creditBalanceCheck, debitCredits, type CreditGateDeps } from "../../src/gateway/credit-gate.js";
-import type { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { Credit } from "../../src/monetization/credit.js";
+import type { CreditLedger } from "@wopr-network/platform-core";
+import { Credit } from "@wopr-network/platform-core";
 import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
 import type { GatewayTenant } from "../../src/gateway/types.js";
 

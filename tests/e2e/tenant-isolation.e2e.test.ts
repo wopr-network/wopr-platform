@@ -15,7 +15,7 @@ import {
   endTestTransaction,
   rollbackTestTransaction,
 } from "../../src/test/db.js";
-import { TenantKeyRepository } from "../../src/security/tenant-keys/tenant-key-repository.js";
+import { TenantKeyRepository } from "@wopr-network/platform-core";
 import { Hono } from "hono";
 import type { BotProfile, BotStatus } from "../../src/fleet/types.js";
 

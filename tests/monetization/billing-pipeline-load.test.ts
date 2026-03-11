@@ -1,9 +1,9 @@
 import { unlinkSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
-import { Credit } from "../../src/monetization/credit.js";
+import { Credit } from "@wopr-network/platform-core";
 import { DrizzleBudgetChecker, type SpendLimits } from "../../src/monetization/budget/budget-checker.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { CreditLedger } from "@wopr-network/platform-core";
 import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
 import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
 import { MeterEmitter } from "../../src/monetization/metering/emitter.js";

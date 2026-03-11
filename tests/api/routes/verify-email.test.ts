@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createVerifyEmailRoutes } from "../../../src/api/routes/verify-email.js";
-import type { ICreditLedger } from "../../../src/monetization/credits/credit-ledger.js";
+import type { ICreditLedger } from "@wopr-network/platform-core";
 import type { Pool } from "pg";
 
 // Mock the email verification module
@@ -24,7 +24,7 @@ vi.mock("../../../src/email/templates.js", () => ({
   })),
 }));
 
-import { verifyToken } from "../../../src/email/verification.js";
+import { verifyToken } from "@wopr-network/platform-core";
 
 const mockVerifyToken = vi.mocked(verifyToken);
 

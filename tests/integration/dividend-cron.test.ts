@@ -4,8 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { DrizzleDb } from "../../src/db/index.js";
 import { creditBalances, creditTransactions } from "../../src/db/schema/credits.js";
 import { createTestDb, truncateAllTables } from "../../src/test/db.js";
-import { Credit } from "../../src/monetization/credit.js";
-import { CreditLedger } from "../../src/monetization/credits/credit-ledger.js";
+import { Credit } from "@wopr-network/platform-core";
+import { CreditLedger } from "@wopr-network/platform-core";
 import { DrizzleCreditTransactionRepository } from "../../src/monetization/credits/credit-transaction-repository.js";
 import { type DividendCronConfig, runDividendCron } from "../../src/monetization/credits/dividend-cron.js";
 

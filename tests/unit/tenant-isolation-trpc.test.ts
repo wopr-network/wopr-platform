@@ -19,8 +19,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js"
 import type { DrizzleDb } from "../../src/db/index.js";
-import type { ICreditLedger } from "../../src/monetization/credits/credit-ledger.js";
-import { Credit } from "../../src/monetization/credit.js";
+import type { ICreditLedger } from "@wopr-network/platform-core";
+import { Credit } from "@wopr-network/platform-core";
 import { appRouter } from "../../src/trpc/index.js";
 import type { TRPCContext } from "../../src/trpc/init.js";
 import { setTrpcOrgMemberRepo } from "../../src/trpc/init.js";

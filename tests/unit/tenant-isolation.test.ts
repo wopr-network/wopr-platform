@@ -55,7 +55,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { BotProfile, BotStatus } from "../../src/fleet/types.js";
 import type { DrizzleDb } from "../../src/db/index.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js";
-import { TenantKeyRepository } from "../../src/security/tenant-keys/tenant-key-repository.js";
+import { TenantKeyRepository } from "@wopr-network/platform-core";
 
 // ---------------------------------------------------------------------------
 // Two tenant-scoped tokens — MUST be set before any module import
