@@ -20,6 +20,7 @@ import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository
 import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
 import type { FleetManager } from "../../fleet/fleet-manager.js";
 import { BotNotFoundError } from "../../fleet/fleet-manager.js";
+import type { ImagePoller } from "../../fleet/image-poller.js";
 import type { INodeRepository } from "../../fleet/node-repository.js";
 import { findPlacement } from "../../fleet/placement.js";
 import type { ProfileTemplate } from "../../fleet/profile-schema.js";
@@ -27,6 +28,7 @@ import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../.
 import { getTenantCustomerRepository, getVpsRepo } from "../../fleet/services.js";
 import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
 import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
+import type { ContainerUpdater } from "../../fleet/updater.js";
 import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
 import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
 import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
@@ -53,6 +55,8 @@ export interface FleetRouterDeps {
   getBotInstanceRepo?: () => IBotInstanceRepository | null;
   getRoleStore?: () => RoleStore | null;
   getNodeRepo?: () => INodeRepository | null;
+  getImagePoller?: () => ImagePoller | null;
+  getUpdater?: () => ContainerUpdater | null;
 }
 
 let _deps: FleetRouterDeps | null = null;
@@ -969,5 +973,65 @@ export const fleetRouter = router({
       diskSizeGb: sub.diskSizeGb,
       createdAt: sub.createdAt,
     };
+  }),
+
+  /** Get image update status for a bot (current vs available digest). */
+  getImageStatus: tenantProcedure.input(z.object({ id: uuidSchema })).query(async ({ input, ctx }) => {
+    const fleet = deps().getFleetManager();
+    const profile = await fleet.profiles.get(input.id);
+    if (!profile || profile.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+    }
+    const poller = deps().getImagePoller?.();
+    if (!poller) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Image poller not available" });
+    }
+    return poller.getImageStatus(input.id, profile);
+  }),
+
+  /** Trigger an image update for a bot (pull latest image and restart). */
+  triggerImageUpdate: tenantProcedure.input(z.object({ id: uuidSchema })).mutation(async ({ input, ctx }) => {
+    const fleet = deps().getFleetManager();
+    const profile = await fleet.profiles.get(input.id);
+    if (!profile || profile.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Bot not found" });
+    }
+    const updater = deps().getUpdater?.();
+    if (!updater) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Updater not available" });
+    }
+    try {
+      return await updater.updateBot(input.id);
+    } catch (err) {
+      if (err instanceof BotNotFoundError) {
+        throw new TRPCError({ code: "NOT_FOUND", message: (err as Error).message });
+      }
+      throw err;
+    }
+  }),
+
+  /** Seed bots from profile templates (creates missing, skips existing). */
+  seed: protectedProcedure.mutation(async () => {
+    const templates = deps().getTemplates();
+    if (templates.length === 0) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "No templates found" });
+    }
+
+    const fleet = deps().getFleetManager();
+    const profiles = await fleet.profiles.list();
+    const existingNames = new Set(profiles.map((p) => p.name));
+
+    const created: string[] = [];
+    const skipped: string[] = [];
+    for (const template of templates) {
+      if (existingNames.has(template.name)) {
+        skipped.push(template.name);
+      } else {
+        existingNames.add(template.name);
+        created.push(template.name);
+      }
+    }
+
+    return { created, skipped };
   }),
 });

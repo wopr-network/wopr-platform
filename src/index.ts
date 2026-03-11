@@ -27,7 +27,7 @@ import { setBillingDeps } from "./api/routes/billing.js";
 import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
 import { setChatDeps } from "./api/routes/chat.js";
-import { setFleetDeps } from "./api/routes/fleet.js";
+import { imagePoller, setFleetDeps, updater } from "./api/routes/fleet.js";
 import { setMarketplaceDeps } from "./api/routes/marketplace.js";
 import { setOnboardingDeps } from "./api/routes/onboarding.js";
 import { setSetupDeps } from "./api/routes/setup.js";
@@ -897,6 +897,8 @@ if (process.env.NODE_ENV !== "test") {
       getCreditLedger: () => getCreditLedger(),
       getBotBilling: () => getBotBilling(),
       getNodeRepo: () => getNodeRepo(),
+      getImagePoller: () => imagePoller,
+      getUpdater: () => updater,
     });
     logger.info("tRPC fleet router initialized");
 
