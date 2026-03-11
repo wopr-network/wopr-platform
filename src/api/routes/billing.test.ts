@@ -891,6 +891,32 @@ describe("billing routes", () => {
       expect(body.tenant).toBe("t-no-usage");
       expect(body.usage).toEqual([]);
     });
+
+    it("rejects tenant-scoped token accessing a different tenant's usage", async () => {
+      const res = await billingRoutes.request("/usage?tenant=t-other", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe("Forbidden");
+    });
+
+    it("allows tenant-scoped token to read own tenant's usage", async () => {
+      const res = await billingRoutes.request("/usage?tenant=t-1", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("allows operator token to read any tenant's usage", async () => {
+      const res = await billingRoutes.request("/usage?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+    });
   });
 
   // -- GET /billing/usage/summary -------------------------------------------
@@ -974,6 +1000,32 @@ describe("billing routes", () => {
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error).toBe("Invalid query parameters");
+    });
+
+    it("rejects tenant-scoped token accessing a different tenant's summary", async () => {
+      const res = await billingRoutes.request("/usage/summary?tenant=t-other", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe("Forbidden");
+    });
+
+    it("allows tenant-scoped token to read own tenant's summary", async () => {
+      const res = await billingRoutes.request("/usage/summary?tenant=t-1", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("allows operator token to read any tenant's summary", async () => {
+      const res = await billingRoutes.request("/usage/summary?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
     });
   });
 
@@ -1342,6 +1394,33 @@ describe("billing routes", () => {
     });
 
     it("returns 400 for missing tenant", async () => {
+      const res = await billingRoutes.request("/affiliate", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("tenant-scoped token always uses its own tenant (ignores query param)", async () => {
+      // Token scoped to t-1, query says t-other — tokenTenantId wins, returns t-1 data
+      const res = await billingRoutes.request("/affiliate?tenant=t-other", {
+        method: "GET",
+        headers: tenantT1AuthHeader,
+      });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.code).toMatch(/^[a-z0-9]{6}$/);
+    });
+
+    it("allows operator token to query any tenant's affiliate data", async () => {
+      const res = await billingRoutes.request("/affiliate?tenant=t-1", {
+        method: "GET",
+        headers: authHeader,
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 400 when operator token omits tenant query param", async () => {
       const res = await billingRoutes.request("/affiliate", {
         method: "GET",
         headers: authHeader,

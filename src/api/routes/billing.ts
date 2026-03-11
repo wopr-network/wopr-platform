@@ -510,7 +510,23 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
 
   const requestedTenant = c.req.query("tenant");
   const tokenTenantId = c.get("tokenTenantId");
-  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
+  const isOperator = c.get("isOperatorToken");
+
+  if (tokenTenantId) {
+    // Tenant-scoped token: must match the requested tenant
+    if (requestedTenant && requestedTenant !== tokenTenantId) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  } else if (isOperator) {
+    // Operator token: allowed to query any tenant, log for audit trail
+    if (requestedTenant) {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/usage",
+        requestedTenant,
+      });
+    }
+  } else {
+    // Token has no tenant scope and is not an operator — reject
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -565,7 +581,20 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
 
   const requestedTenant = c.req.query("tenant");
   const tokenTenantId = c.get("tokenTenantId");
-  if (tokenTenantId && requestedTenant && requestedTenant !== tokenTenantId) {
+  const isOperator = c.get("isOperatorToken");
+
+  if (tokenTenantId) {
+    if (requestedTenant && requestedTenant !== tokenTenantId) {
+      return c.json({ error: "Forbidden" }, 403);
+    }
+  } else if (isOperator) {
+    if (requestedTenant) {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/usage/summary",
+        requestedTenant,
+      });
+    }
+  } else {
     return c.json({ error: "Forbidden" }, 403);
   }
 
@@ -618,7 +647,25 @@ const recordReferralBodySchema = z.object({
  */
 billingRoutes.get("/affiliate", adminAuth, async (c) => {
   const tokenTenantId = c.get("tokenTenantId");
-  const tenant = tokenTenantId ?? c.req.query("tenant");
+  const isOperator = c.get("isOperatorToken");
+
+  let tenant: string | undefined;
+  if (tokenTenantId) {
+    // Tenant-scoped token: always use the token's tenant (ignore query param)
+    tenant = tokenTenantId;
+  } else if (isOperator) {
+    // Operator token: read from query param, log for audit
+    tenant = c.req.query("tenant");
+    if (tenant) {
+      logger.info("Operator cross-tenant access", {
+        endpoint: "GET /billing/affiliate",
+        requestedTenant: tenant,
+      });
+    }
+  } else {
+    // Token has no tenant scope and is not an operator — reject
+    return c.json({ error: "Forbidden" }, 403);
+  }
 
   if (!tenant) {
     return c.json({ error: "Missing tenant" }, 400);
