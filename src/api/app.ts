@@ -13,6 +13,7 @@ import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
+import { config } from "../config/index.js";
 import { logger } from "../config/logger.js";
 import {
   getBotProfileRepo,
@@ -468,12 +469,21 @@ app.all("/trpc/*", async (c) => {
 // Global error handler — catches all errors from routes and middleware.
 // This prevents unhandled errors from crashing the process.
 export const errorHandler: Parameters<typeof app.onError>[0] = (err, c) => {
+  const isProduction = config.nodeEnv === "production";
+
   logger.error("Unhandled error in request", {
     error: err.message,
-    stack: err.stack,
+    ...(isProduction ? {} : { stack: err.stack }),
     path: c.req.path,
     method: c.req.method,
   });
+
+  if (isProduction) {
+    logger.debug("Error stack trace", {
+      stack: err.stack,
+      path: c.req.path,
+    });
+  }
 
   // Return a safe error response to the client
   return c.json(
