@@ -97,6 +97,7 @@ describe("billing routes", () => {
   });
 
   afterAll(async () => {
+    vi.unstubAllEnvs();
     await pool.close();
   });
 

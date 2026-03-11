@@ -459,7 +459,14 @@ billingRoutes.post("/crypto/webhook", async (c) => {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    if (allowed.length > 0 && !allowed.includes(ip)) {
+    if (allowed.length === 0) {
+      // Env var was set but produced no valid IPs — treat as misconfiguration
+      logger.error("PayRam webhook rejected: PAYRAM_WEBHOOK_ALLOWED_IPS is set but contains no valid entries");
+      return c.json({ error: "Forbidden" }, 403);
+    }
+    // Normalize IPv6-mapped IPv4 (e.g. ::ffff:1.2.3.4 → 1.2.3.4)
+    const normalizedIp = ip.replace(/^::ffff:/, "");
+    if (!allowed.includes(normalizedIp)) {
       logger.error("PayRam webhook rejected: IP not in allowlist", { ip });
       return c.json({ error: "Forbidden" }, 403);
     }
@@ -481,19 +488,24 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   if (webhookSecret) {
     // Prefer HMAC-SHA256 signature verification
     const incomingSig = c.req.header("X-PayRam-Signature");
-    if (incomingSig) {
-      try {
-        const expected = crypto.createHmac("sha256", webhookSecret).update(rawBody).digest("hex");
-        authenticated = crypto.timingSafeEqual(Buffer.from(incomingSig), Buffer.from(expected));
-      } catch {
-        // length mismatch in timingSafeEqual — not authenticated
-        authenticated = false;
-      }
+    if (!incomingSig) {
+      // Secret configured but no signature header — reject immediately, do not fall through
+      await sigPenaltyRepo.recordFailure(ip, "payram");
+      logger.error("PayRam webhook rejected: HMAC configured but X-PayRam-Signature header absent", { ip });
+      return c.json({ error: "Unauthorized" }, 401);
     }
-  }
-
-  if (!authenticated && payramApiKey) {
-    // Fallback: legacy API-Key header (deprecation path)
+    try {
+      const expectedBuf = crypto.createHmac("sha256", webhookSecret).update(rawBody).digest();
+      const incomingBuf = Buffer.from(incomingSig, "hex");
+      if (incomingBuf.length === expectedBuf.length) {
+        authenticated = crypto.timingSafeEqual(incomingBuf, expectedBuf);
+      }
+      // if lengths differ, authenticated stays false (avoids timingSafeEqual throwing)
+    } catch {
+      authenticated = false;
+    }
+  } else if (payramApiKey) {
+    // Fallback: legacy API-Key header (deprecation path) — only when HMAC not configured
     const incomingKey = c.req.header("API-Key");
     if (incomingKey) {
       try {
