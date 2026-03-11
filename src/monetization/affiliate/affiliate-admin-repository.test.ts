@@ -1,10 +1,11 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateReferrals } from "../../db/schema/affiliate.js";
 import { affiliateFraudEvents } from "../../db/schema/affiliate-fraud.js";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { DrizzleAffiliateFraudAdminRepository } from "./affiliate-admin-repository.js";
+import { ADMIN_BLOCK_SENTINEL, DrizzleAffiliateFraudAdminRepository } from "./affiliate-admin-repository.js";
 
 describe("DrizzleAffiliateFraudAdminRepository", () => {
   let pool: PGlite;
@@ -156,6 +157,64 @@ describe("DrizzleAffiliateFraudAdminRepository", () => {
 
       const result = await repo.listVelocityReferrers(20, 20000);
       expect(result).toHaveLength(0);
+    });
+  });
+
+  describe("blockFingerprint", () => {
+    it("should insert fraud events with ADMIN_BLOCK as referredTenantId", async () => {
+      await db.execute(
+        sql`INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at, stripe_fingerprint)
+            VALUES ('ct-1', 't-alice', 0, 0, 'purchase', now(), 'fp_abc123'),
+                   ('ct-2', 't-bob', 0, 0, 'purchase', now(), 'fp_abc123')`,
+      );
+
+      await repo.blockFingerprint("fp_abc123", "admin-user-1");
+
+      const result = await repo.listSuppressions(50, 0);
+      expect(result.events).toHaveLength(2);
+
+      for (const event of result.events) {
+        expect(event.referredTenantId).toBe(ADMIN_BLOCK_SENTINEL);
+        expect(event.verdict).toBe("blocked");
+        expect(event.phase).toBe("admin");
+        expect(event.signals).toEqual(["admin_fingerprint_block"]);
+      }
+
+      const tenantIds = result.events.map((e) => e.referrerTenantId).sort();
+      expect(tenantIds).toEqual(["t-alice", "t-bob"]);
+    });
+
+    it("should use unique referralId per tenant to avoid unique constraint conflicts", async () => {
+      await db.execute(
+        sql`INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at, stripe_fingerprint)
+            VALUES ('ct-3', 't-carol', 0, 0, 'purchase', now(), 'fp_def456'),
+                   ('ct-4', 't-dave', 0, 0, 'purchase', now(), 'fp_def456')`,
+      );
+
+      await repo.blockFingerprint("fp_def456", "admin-user-2");
+
+      const result = await repo.listSuppressions(50, 0);
+      expect(result.events).toHaveLength(2);
+      const eventIds = result.events.map((e) => e.id);
+      expect(new Set(eventIds).size).toBe(2);
+
+      const fraudEvents = await db.select({ referralId: affiliateFraudEvents.referralId }).from(affiliateFraudEvents);
+      const referralIds = fraudEvents.map((e) => e.referralId);
+      expect(new Set(referralIds).size).toBe(2);
+    });
+
+    it("should be idempotent via onConflictDoNothing", async () => {
+      await db.execute(
+        sql`INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at, stripe_fingerprint)
+            VALUES ('ct-5', 't-eve', 0, 0, 'purchase', now(), 'fp_ghi789')`,
+      );
+
+      await repo.blockFingerprint("fp_ghi789", "admin-user-3");
+      await repo.blockFingerprint("fp_ghi789", "admin-user-3");
+
+      const result = await repo.listSuppressions(50, 0);
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].referredTenantId).toBe("ADMIN_BLOCK");
     });
   });
 });
