@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
-import { and, count, desc, gte, isNotNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { logger } from "../../config/logger.js";
 import type { DrizzleDb } from "../../db/index.js";
 import { affiliateReferrals } from "../../db/schema/affiliate.js";
 import { affiliateFraudEvents } from "../../db/schema/affiliate-fraud.js";
+import { creditTransactions } from "../../db/schema/credits.js";
 
 function parseSignals(raw: string): string[] {
   try {
@@ -118,8 +119,7 @@ export class DrizzleAffiliateFraudAdminRepository implements IAffiliateFraudAdmi
   }
 
   async listFingerprintClusters(): Promise<FingerprintCluster[]> {
-    // raw SQL: Drizzle cannot express HAVING COUNT(DISTINCT ...) with array_agg on a column
-    // that may not yet exist in the typed schema (stripe_fingerprint added by WOP-1061 migration)
+    // raw SQL: Drizzle cannot express HAVING COUNT(DISTINCT ...) with array_agg in a single query
     type ClusterRow = { stripe_fingerprint: string; tenant_ids: string[] };
     const rows = (await this.db.execute(sql`
       SELECT stripe_fingerprint, array_agg(DISTINCT tenant_id ORDER BY tenant_id) AS tenant_ids
@@ -137,13 +137,11 @@ export class DrizzleAffiliateFraudAdminRepository implements IAffiliateFraudAdmi
   }
 
   async blockFingerprint(fingerprint: string, adminUserId: string): Promise<void> {
-    // raw SQL: Drizzle cannot express DISTINCT on a column not yet in the typed schema
-    type TenantRow = { tenant_id: string };
-    const tenantRows = (await this.db.execute(sql`
-      SELECT DISTINCT tenant_id FROM credit_transactions
-      WHERE stripe_fingerprint = ${fingerprint}
-    `)) as unknown as { rows: TenantRow[] };
-    const tenantIds = tenantRows.rows.map((r) => r.tenant_id);
+    const rows = await this.db
+      .selectDistinct({ tenantId: creditTransactions.tenantId })
+      .from(creditTransactions)
+      .where(eq(creditTransactions.stripeFingerprint, fingerprint));
+    const tenantIds = rows.map((r) => r.tenantId);
 
     const now = new Date().toISOString();
     for (const tenantId of tenantIds) {
