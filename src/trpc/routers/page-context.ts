@@ -6,9 +6,9 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { IPageContextRepository } from "@wopr-network/platform-core/fleet/page-context-repository";
 import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { IPageContextRepository } from "../../fleet/page-context-repository.js";
 
 // ---------------------------------------------------------------------------
 // Deps

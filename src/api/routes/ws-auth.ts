@@ -1,4 +1,4 @@
-import { getNodeRepo } from "../../fleet/services.js";
+import { getNodeRepo } from "@wopr-network/platform-core/fleet/services";
 
 export interface WsAuthRequest {
   nodeId: string;

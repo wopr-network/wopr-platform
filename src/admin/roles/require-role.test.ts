@@ -1,11 +1,16 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { RoleStore } from "@wopr-network/platform-core/admin";
 import type { AuthEnv, AuthUser } from "@wopr-network/platform-core/auth";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "../../api/routes/admin-roles.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { requirePlatformAdmin, requireTenantAdmin } from "./require-role.js";
 
 /** Helper to create a Hono app with a fake user injected. */

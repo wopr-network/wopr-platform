@@ -28,11 +28,10 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.3.15",
     "@hono/node-server": "^1.19.10",
     "@sentry/node": "^10.42.0",
     "@trpc/server": "^11.11.0",
-    "@wopr-network/platform-core": "^1.0.2",
+    "@wopr-network/platform-core": "^1.12.2",
     "better-auth": "^1.5.4",
     "dockerode": "^4.0.9",
     "drizzle-orm": "^0.45.1",
@@ -50,10 +49,11 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",
+    "@electric-sql/pglite": "^0.3.16",
     "@types/dockerode": "^4.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.4.0",
-    "@types/pg": "^8.16.0",
+    "@types/pg": "^8.18.0",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",
@@ -63,7 +63,10 @@
   },
   "pnpm": {
     "overrides": {
-      "esbuild": ">=0.25.0"
+      "esbuild": ">=0.25.0",
+      "hono": "$hono",
+      "drizzle-orm": "$drizzle-orm",
+      "@types/pg": "$@types/pg"
     }
   }
 }

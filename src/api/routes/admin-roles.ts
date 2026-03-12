@@ -1,9 +1,9 @@
 import { isValidRole, RoleStore } from "@wopr-network/platform-core/admin";
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { Hono } from "hono";
 import { requirePlatformAdmin, requireTenantAdmin } from "../../admin/roles/require-role.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { getAdminAuditLog } from "../../fleet/services.js";
+import { getAdminAuditLog } from "../../platform-services.js";
 
 export interface AdminRolesRouteDeps {
   db: DrizzleDb;

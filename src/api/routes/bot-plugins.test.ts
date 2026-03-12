@@ -44,7 +44,7 @@ const meterMock = {
   emit: vi.fn(),
 };
 
-vi.mock("../../fleet/profile-store.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => {
   return {
     ProfileStore: class {
       get = storeMock.get;
@@ -80,7 +80,7 @@ const mockNodeConnections = {
   isConnected: vi.fn(),
 };
 
-import { FIRST_PARTY_PLUGINS } from "../../marketplace/first-party-plugins.js";
+import { FIRST_PARTY_PLUGINS } from "@wopr-network/platform-core/marketplace/first-party-plugins";
 
 // Build a minimal DB-row shape for each first-party plugin so the route's
 // capability-conflict detection and isChannelPlugin() helper work correctly.
@@ -101,7 +101,13 @@ const MOCK_MARKETPLACE_PLUGINS = FIRST_PARTY_PLUGINS.map((manifest) => ({
   manifest,
 }));
 
-vi.mock("../../fleet/services.js", () => ({
+const mockDispatchEnvUpdate = vi.fn().mockResolvedValue({ dispatched: true });
+
+vi.mock("@wopr-network/platform-core/fleet/dispatch-env-update", () => ({
+  dispatchEnvUpdate: (...args: unknown[]) => mockDispatchEnvUpdate(...args),
+}));
+
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getDb: () => mockDb,
   getCommandBus: () => mockNodeConnections,
   getMarketplacePluginRepo: () => ({
@@ -153,6 +159,7 @@ app.route("/fleet", botPluginRoutes);
 describe("bot-plugin routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDispatchEnvUpdate.mockResolvedValue({ dispatched: true });
     storeMock.get.mockImplementation((id: string) => {
       if (id === TEST_BOT_ID) return Promise.resolve({ ...mockProfile });
       return Promise.resolve(null);
@@ -442,6 +449,7 @@ describe("bot-plugin routes", () => {
 
     it("returns dispatched: false with dispatchError when bot is not deployed", async () => {
       mockBotInstanceRepo.getById.mockResolvedValueOnce(null);
+      mockDispatchEnvUpdate.mockResolvedValueOnce({ dispatched: false, dispatchError: "bot_not_deployed" });
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/plugins/my-plugin`, {
         method: "POST",
@@ -991,9 +999,11 @@ describe("bot-plugin routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.dispatched).toBe(true);
-      expect(mockNodeConnections.send).toHaveBeenCalledWith(
-        TEST_NODE_ID,
-        expect.objectContaining({ type: "bot.update" }),
+      expect(mockDispatchEnvUpdate).toHaveBeenCalledWith(
+        TEST_BOT_ID,
+        expect.any(String),
+        expect.objectContaining({ WOPR_PLUGINS: expect.any(String) }),
+        expect.anything(),
       );
     });
   });

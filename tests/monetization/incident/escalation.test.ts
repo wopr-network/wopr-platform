@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getEscalationMatrix } from "../../../src/monetization/incident/escalation.js";
+import { getEscalationMatrix } from "@wopr-network/platform-core/monetization/incident/escalation";
 
 describe("getEscalationMatrix", () => {
   it("returns contacts ordered starting at 1", () => {

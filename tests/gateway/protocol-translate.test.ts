@@ -7,7 +7,7 @@ import {
   estimateOpenAICost,
   type AnthropicRequest,
   type OpenAIResponse,
-} from "../../src/gateway/protocol/translate.js";
+} from "@wopr-network/platform-core/gateway/protocol/translate";
 
 describe("anthropicToOpenAI", () => {
   it("converts a basic text request", () => {

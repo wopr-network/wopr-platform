@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { DrizzlePluginConfigRepository } from "../../src/setup/plugin-config-repository.js";
-import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzlePluginConfigRepository } from "@wopr-network/platform-core/setup/plugin-config-repository";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
 // ---------------------------------------------------------------------------
 // Auth tokens — set before importing route modules
@@ -32,7 +32,7 @@ vi.mock("../../src/api/routes/friends-proxy.js", () => ({
 
 const storeMock = { get: vi.fn() };
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

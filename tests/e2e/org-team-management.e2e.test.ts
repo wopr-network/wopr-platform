@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { botInstances } from "../../src/db/schema/index.js";
-import { DrizzleOrgMemberRepository } from "../../src/fleet/org-member-repository.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { botInstances } from "@wopr-network/platform-core/db/schema/index";
+import { DrizzleOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
 import { DrizzleOrgRepository } from "../../src/org/drizzle-org-repository.js";
 import { OrgService } from "../../src/org/org-service.js";
-import { createTestDb } from "../../src/test/db.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
 describe("E2E: org/team management — create org → invite → assign role → transfer bot → remove member", () => {
   let db: DrizzleDb;

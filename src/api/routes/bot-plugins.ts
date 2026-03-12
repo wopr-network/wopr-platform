@@ -3,20 +3,20 @@ import {
   scopedBearerAuthWithTenant,
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { Credit } from "@wopr-network/platform-core/credits";
+import type { IBotInstanceRepository } from "@wopr-network/platform-core/fleet/bot-instance-repository";
+import { detectCapabilityConflicts } from "@wopr-network/platform-core/fleet/capability-conflict";
+import { lookupCapabilityEnv } from "@wopr-network/platform-core/fleet/capability-env-map";
+import { dispatchEnvUpdate } from "@wopr-network/platform-core/fleet/dispatch-env-update";
+import { BotNotFoundError } from "@wopr-network/platform-core/fleet/fleet-manager";
+import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import { getMarketplacePluginRepo } from "@wopr-network/platform-core/fleet/services";
 import type { MeterEvent } from "@wopr-network/platform-core/metering";
 import type { DecryptedCredential } from "@wopr-network/platform-core/security";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
-import { logger } from "../../config/logger.js";
-import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
-import { detectCapabilityConflicts } from "../../fleet/capability-conflict.js";
-import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
-import { dispatchEnvUpdate } from "../../fleet/dispatch-env-update.js";
-import { BotNotFoundError } from "../../fleet/fleet-manager.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
-import { getMarketplacePluginRepo } from "../../fleet/services.js";
 import { fleet } from "./fleet.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";

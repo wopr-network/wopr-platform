@@ -2,29 +2,29 @@ import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../src/test/db.js";
-import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { CreditLedger, InsufficientBalanceError } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
-import { CREDIT_PRICE_POINTS, getCreditAmountForPurchase } from "../../src/monetization/stripe/credit-prices.js";
-import { RateStore } from "../../src/admin/rates/rate-store.js";
-import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
-import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
-import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
-import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
-import { AdapterSocket } from "../../src/monetization/socket/socket.js";
-import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../src/monetization/quotas/quota-check.js";
-import type { InstanceLimits } from "../../src/monetization/quotas/quota-check.js";
+import { CREDIT_PRICE_POINTS, getCreditAmountForPurchase } from "@wopr-network/platform-core/monetization/stripe/credit-prices";
+import { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+import { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
+import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/monetization/metering/emitter";
+import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/monetization/metering/meter-event-repository";
+import { MeterAggregator } from "@wopr-network/platform-core/monetization/metering/aggregator";
+import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/monetization/metering/drizzle-usage-summary-repository";
+import { AdapterSocket } from "@wopr-network/platform-core/monetization/socket/socket";
+import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "@wopr-network/platform-core/monetization/quotas/quota-check";
+import type { InstanceLimits } from "@wopr-network/platform-core/monetization/quotas/quota-check";
 import type {
   AdapterResult,
   ImageGenerationInput,
   ImageGenerationOutput,
   ProviderAdapter,
-} from "../../src/monetization/adapters/types.js";
+} from "@wopr-network/platform-core/monetization/adapters/types";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

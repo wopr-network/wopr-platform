@@ -6,9 +6,9 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { ITwoFactorRepository } from "@wopr-network/platform-core/security/two-factor-repository";
 import { router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { ITwoFactorRepository } from "../../security/two-factor-repository.js";
 
 // ---------------------------------------------------------------------------
 // Deps

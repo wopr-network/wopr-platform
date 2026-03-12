@@ -10,8 +10,8 @@
  * better-auth manages its own session cookies and CSRF protection.
  */
 
+import type { Auth } from "@wopr-network/platform-core/auth/better-auth";
 import { Hono } from "hono";
-import type { Auth } from "../../auth/better-auth.js";
 
 /**
  * Create auth routes that delegate to better-auth's handler.

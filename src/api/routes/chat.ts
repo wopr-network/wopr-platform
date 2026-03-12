@@ -1,9 +1,9 @@
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { IChatBackend } from "../../chat/chat-backend.js";
 import { ChatStreamRegistry, type SSEWriter } from "../../chat/chat-stream-registry.js";
 import type { ChatEvent } from "../../chat/types.js";
-import { logger } from "../../config/logger.js";
 
 const chatRequestSchema = z.object({
   sessionId: z.string().uuid(),

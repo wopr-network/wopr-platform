@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 // Mock auth to REJECT — separate file so module isolation is clean
-vi.mock("../../auth/index.js", () => ({
+vi.mock("@wopr-network/platform-core/auth/index", () => ({
   buildTokenMetadataMap: vi.fn().mockReturnValue(new Map()),
   // biome-ignore lint/suspicious/noExplicitAny: vi.fn() mock context
   scopedBearerAuthWithTenant: vi.fn().mockReturnValue(async (c: any) => {

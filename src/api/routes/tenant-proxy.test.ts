@@ -4,7 +4,7 @@ import { buildUpstreamHeaders, extractTenantSubdomain, tenantProxyMiddleware } f
 
 // Mock logger (use vi.hoisted so the factory can reference the mock before hoisting)
 const mockLogger = vi.hoisted(() => ({ warn: vi.fn(), debug: vi.fn(), error: vi.fn(), info: vi.fn() }));
-vi.mock("../../config/logger.js", () => ({ logger: mockLogger }));
+vi.mock("@wopr-network/platform-core/config/logger", () => ({ logger: mockLogger }));
 
 // ---------------------------------------------------------------------------
 // Unit tests: extractTenantSubdomain
@@ -90,15 +90,34 @@ describe("buildUpstreamHeaders", () => {
 // Middleware tests: tenantProxyMiddleware
 // ---------------------------------------------------------------------------
 
+// Mock platform-services — prevent "not initialized" error
+vi.mock("../../platform-services.js", () => ({
+  getOrgMemberRepo: vi.fn(() => ({
+    findMember: (...args: unknown[]) => mockFindMember(...args),
+    listMembers: vi.fn().mockResolvedValue([]),
+    addMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    removeMember: vi.fn(),
+    countAdminsAndOwners: vi.fn().mockResolvedValue(0),
+    listInvites: vi.fn().mockResolvedValue([]),
+    createInvite: vi.fn(),
+    findInviteById: vi.fn().mockResolvedValue(null),
+    findInviteByToken: vi.fn().mockResolvedValue(null),
+    deleteInvite: vi.fn(),
+    deleteAllMembers: vi.fn(),
+    deleteAllInvites: vi.fn(),
+  })),
+}));
+
 // Mock the proxy singleton
-vi.mock("../../proxy/singleton.js", () => ({
+vi.mock("@wopr-network/platform-core/proxy/singleton", () => ({
   getProxyManager: () => mockProxyManager,
   hydrateProxyRoutes: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock better-auth — default: no session (unauthenticated)
 const mockGetSession = vi.hoisted(() => vi.fn().mockResolvedValue(null));
-vi.mock("../../auth/better-auth.js", () => ({
+vi.mock("@wopr-network/platform-core/auth/better-auth", () => ({
   getAuth: vi.fn(() => ({
     api: { getSession: mockGetSession },
   })),
@@ -109,7 +128,7 @@ const mockProfileStoreGet = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 
 // Mock org member repo for tenant access validation
 const mockFindMember = vi.hoisted(() => vi.fn().mockResolvedValue(null));
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getBotProfileRepo: vi.fn(() => ({
     get: (...args: unknown[]) => mockProfileStoreGet(...args),
     save: vi.fn(),

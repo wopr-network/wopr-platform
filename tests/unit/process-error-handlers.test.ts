@@ -41,13 +41,13 @@ describe("Process-level error handlers", () => {
 
   it("unhandledRejection handler logs but does not exit", async () => {
     // Import logger to spy on it
-    const { logger } = await import("../../src/config/logger.js");
+    const { logger } = await import("@wopr-network/platform-core/config/logger");
     const loggerSpy = vi.spyOn(logger, "error");
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit called");
     });
 
-    // Import the REAL handler from index.ts
+    // Import the REAL handler from index.ts (wopr-platform, not platform-core)
     const { unhandledRejectionHandler } = await import("../../src/index.js");
 
     const testError = new Error("Test unhandled rejection");
@@ -75,7 +75,7 @@ describe("Process-level error handlers", () => {
 
   it("uncaughtException handler logs and exits immediately", async () => {
     // Import logger module and spy on it FIRST
-    const { logger } = await import("../../src/config/logger.js");
+    const { logger } = await import("@wopr-network/platform-core/config/logger");
     const loggerSpy = vi.spyOn(logger, "error");
 
     // Mock process.exit
@@ -87,7 +87,7 @@ describe("Process-level error handlers", () => {
       return undefined as never;
     });
 
-    // Import the REAL handler from index.ts
+    // Import the REAL handler from index.ts (wopr-platform, not platform-core)
     const { uncaughtExceptionHandler } = await import("../../src/index.js");
 
     const testError = new Error("Test uncaught exception");

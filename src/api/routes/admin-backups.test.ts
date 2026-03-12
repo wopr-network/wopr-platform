@@ -1,8 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleBackupStatusRepository } from "@wopr-network/platform-core/backup/backup-status-repository";
+import { BackupStatusStore } from "@wopr-network/platform-core/backup/backup-status-store";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DrizzleBackupStatusRepository } from "../../backup/backup-status-repository.js";
-import { BackupStatusStore } from "../../backup/backup-status-store.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminBackupRoutes, isRemotePathOwnedBy } from "./admin-backups.js";
 
 describe("admin-backups routes", () => {

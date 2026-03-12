@@ -8,8 +8,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Mock fleet/services to prevent DB initialization at import time.
 // Uses importOriginal spread so we don't need to enumerate all 85+ exports —
 // only override functions that would trigger real DB connections.
-vi.mock("../../fleet/services.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../fleet/services.js")>();
+vi.mock("@wopr-network/platform-core/fleet/services", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@wopr-network/platform-core/fleet/services")>();
   return {
     ...actual,
     getPool: vi.fn(),
@@ -70,7 +70,7 @@ vi.mock("../../db/rate-limit-repository.js", () => ({
 // Control getAuth to return our mock handler
 const mockHandler = vi.fn<(req: Request) => Promise<Response>>();
 
-vi.mock("../../auth/better-auth.js", () => ({
+vi.mock("@wopr-network/platform-core/auth/better-auth", () => ({
   getAuth: vi.fn(() => ({
     handler: mockHandler,
     api: {

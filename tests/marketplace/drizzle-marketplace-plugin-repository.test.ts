@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { marketplacePlugins } from "../../src/db/schema/index.js";
-import { DrizzleMarketplacePluginRepository } from "../../src/marketplace/drizzle-marketplace-plugin-repository.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { marketplacePlugins } from "@wopr-network/platform-core/db/schema/index";
+import { DrizzleMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/drizzle-marketplace-plugin-repository";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db";
 
 describe("DrizzleMarketplacePluginRepository", () => {
   let repo: DrizzleMarketplacePluginRepository;

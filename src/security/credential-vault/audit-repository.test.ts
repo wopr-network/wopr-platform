@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { DrizzleSecretAuditRepository } from "@wopr-network/platform-core/security";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb } from "../../test/db.js";
 
 let db: DrizzleDb;
 let pool: PGlite;

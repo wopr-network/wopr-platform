@@ -1,15 +1,15 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { Hono } from "hono";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createAdminUsersApiRoutes } from "../../api/routes/admin-users.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { adminUsers } from "../../db/schema/admin-users.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { adminUsers } from "@wopr-network/platform-core/db/schema/admin-users";
 import {
   beginTestTransaction,
   createTestDb as createMigratedTestDb,
   endTestTransaction,
   rollbackTestTransaction,
-} from "../../test/db.js";
+} from "@wopr-network/platform-core/test/db";
+import { Hono } from "hono";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createAdminUsersApiRoutes } from "../../api/routes/admin-users.js";
 import { AdminUserStore } from "./user-store.js";
 
 // ---------------------------------------------------------------------------

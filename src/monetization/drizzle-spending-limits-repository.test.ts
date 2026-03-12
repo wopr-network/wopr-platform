@@ -1,7 +1,12 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleSpendingLimitsRepository } from "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { DrizzleSpendingLimitsRepository } from "./drizzle-spending-limits-repository.js";
 
 describe("DrizzleSpendingLimitsRepository", () => {
   let pool: PGlite;

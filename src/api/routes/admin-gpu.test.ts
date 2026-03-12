@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock services before importing route
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getGpuNodeRepository: vi.fn(),
   getGpuNodeProvisioner: vi.fn(),
   getDOClient: vi.fn(),
+  getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
+}));
+vi.mock("../../platform-services.js", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
 }));
 vi.mock("@wopr-network/platform-core/auth", () => ({
@@ -16,8 +19,9 @@ vi.mock("@wopr-network/platform-core/auth", () => ({
   }),
 }));
 
-import type { GpuNode } from "../../fleet/repository-types.js";
-import { getAdminAuditLog, getDOClient, getGpuNodeProvisioner, getGpuNodeRepository } from "../../fleet/services.js";
+import type { GpuNode } from "@wopr-network/platform-core/fleet/repository-types";
+import { getDOClient, getGpuNodeProvisioner, getGpuNodeRepository } from "@wopr-network/platform-core/fleet/services";
+import { getAdminAuditLog } from "../../platform-services.js";
 import { adminGpuRoutes } from "./admin-gpu.js";
 
 function makeGpuNode(overrides: Partial<GpuNode> = {}): GpuNode {

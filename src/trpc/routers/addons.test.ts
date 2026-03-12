@@ -3,14 +3,18 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
-import { TRPCError } from "@trpc/server";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { ADDON_KEYS } from "@wopr-network/platform-core/monetization/addons/addon-catalog";
+import { DrizzleTenantAddonRepository } from "@wopr-network/platform-core/monetization/addons/addon-repository";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { ADDON_KEYS } from "../../monetization/addons/addon-catalog.js";
-import { DrizzleTenantAddonRepository } from "../../monetization/addons/addon-repository.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { appRouter } from "../index.js";
 import { setAddonRouterDeps } from "./addons.js";
 
@@ -157,14 +161,14 @@ describe("addons router", () => {
   describe("auth guard", () => {
     it("rejects unauthenticated calls with UNAUTHORIZED", async () => {
       const caller = appRouter.createCaller(unauthCtx());
-      await expect(caller.addons.catalog()).rejects.toThrow(TRPCError);
+      await expect(caller.addons.catalog()).rejects.toThrow();
       await expect(caller.addons.catalog()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     });
 
     it("rejects calls without tenant context with BAD_REQUEST", async () => {
       const ctx = { user: { id: "user-no-tenant", roles: ["user"] }, tenantId: undefined };
       const caller = appRouter.createCaller(ctx as TRPCContext);
-      await expect(caller.addons.list()).rejects.toThrow(TRPCError);
+      await expect(caller.addons.list()).rejects.toThrow();
       await expect(caller.addons.list()).rejects.toMatchObject({ code: "BAD_REQUEST" });
     });
 
@@ -188,7 +192,7 @@ describe("addons router", () => {
 
       const ctx = { user: { id: "attacker", roles: ["user"] }, tenantId: "victim-tenant" };
       const caller = appRouter.createCaller(ctx);
-      await expect(caller.addons.list()).rejects.toThrow(TRPCError);
+      await expect(caller.addons.list()).rejects.toThrow();
       await expect(caller.addons.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
 
       // Restore the permissive stub for subsequent tests

@@ -34,7 +34,7 @@ import {
   type TokenMetadata,
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
-import { type Auth, getAuth, resetAuth, setAuth } from "./better-auth.js";
+import { type Auth, getAuth, resetAuth, setAuth } from "@wopr-network/platform-core/auth/better-auth";
 
 describe("getAuth singleton", () => {
   afterEach(() => {

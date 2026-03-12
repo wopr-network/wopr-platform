@@ -1,11 +1,12 @@
 // src/api/routes/fleet-resources.ts
+
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
+import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
+import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import { NetworkPolicy } from "@wopr-network/platform-core/network/network-policy";
 import Docker from "dockerode";
 import { Hono } from "hono";
-import type { AuditEnv } from "../../audit/types.js";
 import { config } from "../../config/index.js";
-import { FleetManager } from "../../fleet/fleet-manager.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
-import { NetworkPolicy } from "../../network/network-policy.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 

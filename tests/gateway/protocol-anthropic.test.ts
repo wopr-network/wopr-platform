@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createAnthropicRoutes } from "../../src/gateway/protocol/anthropic.js";
+import { createAnthropicRoutes } from "@wopr-network/platform-core/gateway/protocol/anthropic";
 import { Credit } from "@wopr-network/platform-core";
-import type { GatewayTenant } from "../../src/gateway/types.js";
-import type { ProtocolDeps } from "../../src/gateway/protocol/deps.js";
+import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
+import type { ProtocolDeps } from "@wopr-network/platform-core/gateway/protocol/deps";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

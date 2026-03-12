@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import { getGpuNodeRepo } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { logger } from "../../config/logger.js";
-import { getGpuNodeRepo } from "../../fleet/services.js";
 
 const VALID_STAGES = [
   "installing_drivers",

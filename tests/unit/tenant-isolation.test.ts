@@ -52,9 +52,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BotProfile, BotStatus } from "../../src/fleet/types.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js";
+import type { BotProfile, BotStatus } from "@wopr-network/platform-core/fleet/types";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db";
 import { TenantKeyRepository } from "@wopr-network/platform-core";
 
 // ---------------------------------------------------------------------------
@@ -119,10 +119,10 @@ class MockBotNotFoundError extends Error {
 // ---------------------------------------------------------------------------
 
 vi.mock("dockerode", () => ({ default: class MockDocker {} }));
-vi.mock("../../src/fleet/profile-store.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => ({
   ProfileStore: class MockProfileStore {},
 }));
-vi.mock("../../src/fleet/fleet-manager.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => ({
   FleetManager: class {
     create = fleetMock.create;
     start = fleetMock.start;
@@ -138,18 +138,18 @@ vi.mock("../../src/fleet/fleet-manager.js", () => ({
   },
   BotNotFoundError: MockBotNotFoundError,
 }));
-vi.mock("../../src/fleet/image-poller.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/image-poller", () => ({
   ImagePoller: class {
     getImageStatus = vi.fn();
     onUpdateAvailable = null;
   },
 }));
-vi.mock("../../src/fleet/updater.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/updater", () => ({
   ContainerUpdater: class {
     updateBot = vi.fn();
   },
 }));
-vi.mock("../../src/network/network-policy.js", () => ({
+vi.mock("@wopr-network/platform-core/network/network-policy", () => ({
   NetworkPolicy: class {
     prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
     cleanupAfterRemoval = vi.fn().mockResolvedValue(undefined);
@@ -160,7 +160,7 @@ vi.mock("../../src/monetization/credits/credit-ledger.js", () => ({
     balance = creditLedgerMock.balance;
   },
 }));
-vi.mock("../../src/proxy/singleton.js", () => ({
+vi.mock("@wopr-network/platform-core/proxy/singleton", () => ({
   getProxyManager: () => ({
     addRoute: vi.fn().mockResolvedValue(undefined),
     removeRoute: vi.fn(),

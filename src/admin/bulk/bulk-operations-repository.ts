@@ -1,6 +1,6 @@
-import { and, desc, eq, gt, inArray, like, lt, or, type SQL } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { adminUsers, bulkUndoGrants } from "../../db/schema/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { and, desc, eq, gt, inArray, like, lt, or, type SQL } from "@wopr-network/platform-core/db/index";
+import { adminUsers, bulkUndoGrants } from "@wopr-network/platform-core/db/schema/index";
 import type { AdminUserRow, UndoableGrant } from "../admin-repository-types.js";
 
 export type { AdminUserRow, UndoableGrant };

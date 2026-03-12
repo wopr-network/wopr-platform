@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Credit } from "@wopr-network/platform-core/credits";
+import { MeterDLQ } from "@wopr-network/platform-core/monetization/metering/dlq";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MeterDLQ } from "./dlq.js";
 
 describe("MeterDLQ", () => {
   let tmpDir: string;

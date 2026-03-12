@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { IExportRepository } from "./export-repository.js";
+import type { IExportRepository } from "@wopr-network/platform-core/account/export-repository";
 import type { ExportRequest, ExportStatus } from "./export-repository-types.js";
 
 export type { ExportRequest, ExportStatus } from "./export-repository-types.js";

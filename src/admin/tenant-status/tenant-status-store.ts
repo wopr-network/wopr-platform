@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { tenantStatus } from "../../db/schema/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq, sql } from "@wopr-network/platform-core/db/index";
+import { tenantStatus } from "@wopr-network/platform-core/db/schema/index";
 import {
   BAN_DELETE_DAYS,
   GRACE_PERIOD_DAYS,

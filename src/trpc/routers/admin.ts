@@ -6,10 +6,24 @@
 
 import { TRPCError } from "@trpc/server";
 import type { AdminAuditLog, RoleStore } from "@wopr-network/platform-core/admin";
+import type { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { IAutoTopupSettingsRepository, ICreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { INotificationQueueRepository, NotificationService } from "@wopr-network/platform-core/email";
+import type { IGpuAllocationRepository } from "@wopr-network/platform-core/fleet/gpu-allocation-repository";
+import type { IGpuConfigurationRepository } from "@wopr-network/platform-core/fleet/gpu-configuration-repository";
+import type { ISessionUsageRepository } from "@wopr-network/platform-core/inference/session-usage-repository";
 import type { MeterAggregator } from "@wopr-network/platform-core/metering";
+import type { IAffiliateFraudAdminRepository } from "@wopr-network/platform-core/monetization/affiliate/affiliate-admin-repository";
+import type { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import type { PaymentHealthStatus } from "@wopr-network/platform-core/monetization/incident/health-probe";
+import type { AlertChecker } from "@wopr-network/platform-core/observability/alerts";
+import type { MetricsCollector } from "@wopr-network/platform-core/observability/metrics";
+import type {
+  SystemResourceMonitor,
+  SystemResourceSnapshot,
+} from "@wopr-network/platform-core/observability/system-resources";
 import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import type { IAccountDeletionStore } from "../../account/deletion-store.js";
@@ -17,19 +31,8 @@ import type { IAccountExportStore } from "../../account/export-store.js";
 import type { AnalyticsStore } from "../../admin/analytics/analytics-store.js";
 import type { IBulkOperationsStore } from "../../admin/bulk/bulk-operations-store.js";
 import type { IAdminNotesRepository } from "../../admin/notes/admin-notes-repository.js";
-import type { RateStore } from "../../admin/rates/rate-store.js";
 import type { ITenantStatusRepository } from "../../admin/tenant-status/tenant-status-repository.js";
 import type { AdminUserStore } from "../../admin/users/user-store.js";
-import { logger } from "../../config/logger.js";
-import type { IGpuAllocationRepository } from "../../fleet/gpu-allocation-repository.js";
-import type { IGpuConfigurationRepository } from "../../fleet/gpu-configuration-repository.js";
-import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
-import type { IAffiliateFraudAdminRepository } from "../../monetization/affiliate/affiliate-admin-repository.js";
-import type { BotBilling } from "../../monetization/credits/bot-billing.js";
-import type { PaymentHealthStatus } from "../../monetization/incident/health-probe.js";
-import type { AlertChecker } from "../../observability/alerts.js";
-import type { MetricsCollector } from "../../observability/metrics.js";
-import type { SystemResourceMonitor, SystemResourceSnapshot } from "../../observability/system-resources.js";
 import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
 
 // ---------------------------------------------------------------------------
@@ -48,8 +51,8 @@ export interface AdminRouterDeps {
   getMeterAggregator?: () => MeterAggregator;
   getRoleStore?: () => RoleStore;
   getBulkStore?: () => IBulkOperationsStore;
-  getRestoreService?: () => import("../../backup/restore-service.js").RestoreService;
-  getRestoreLogStore?: () => import("../../backup/restore-log-store.js").IRestoreLogStore;
+  getRestoreService?: () => import("@wopr-network/platform-core/backup/restore-service").RestoreService;
+  getRestoreLogStore?: () => import("@wopr-network/platform-core/backup/restore-log-store").IRestoreLogStore;
   getNotificationService?: () => NotificationService;
   getNotificationQueueStore?: () => INotificationQueueRepository;
   getSessionUsageRepo?: () => ISessionUsageRepository;

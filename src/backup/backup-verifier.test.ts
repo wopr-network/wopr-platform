@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
+import { BackupVerifier } from "@wopr-network/platform-core/backup/backup-verifier";
+import type { SpacesClient } from "@wopr-network/platform-core/backup/spaces-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BackupVerifier } from "./backup-verifier.js";
-import type { SpacesClient } from "./spaces-client.js";
 
-vi.mock("../config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 

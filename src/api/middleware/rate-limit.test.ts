@@ -1,10 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { type Context, Hono } from "hono";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { DrizzleRateLimitRepository } from "../drizzle-rate-limit-repository.js";
-import type { IRateLimitRepository } from "../rate-limit-repository.js";
+import { DrizzleRateLimitRepository } from "@wopr-network/platform-core/api/drizzle-rate-limit-repository";
 import {
   getClientIp,
   parseTrustedProxies,
@@ -14,7 +9,17 @@ import {
   type RateLimitRule,
   rateLimit,
   rateLimitByRoute,
-} from "./rate-limit.js";
+} from "@wopr-network/platform-core/api/middleware/rate-limit";
+import type { IRateLimitRepository } from "@wopr-network/platform-core/api/rate-limit-repository";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
+import { type Context, Hono } from "hono";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -691,11 +696,11 @@ describe("trusted proxy validation (WOP-656)", () => {
     expect(ip).toBe("evil-direct-client");
   });
 
-  it("uses last XFF value (rightmost) when proxy is trusted", () => {
+  it("uses first XFF value (leftmost / original client) when proxy is trusted", () => {
     const trusted = parseTrustedProxies("172.18.0.5");
 
     const ip = getClientIp("fake, real-client", "172.18.0.5", trusted);
-    expect(ip).toBe("real-client");
+    expect(ip).toBe("fake");
   });
 
   it("returns 'unknown' when no socket address and no trusted proxy", () => {

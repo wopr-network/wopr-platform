@@ -59,7 +59,7 @@ class MockSnapshotQuotaExceededError extends Error {
   }
 }
 
-vi.mock("../../backup/on-demand-snapshot-service.js", () => {
+vi.mock("@wopr-network/platform-core/backup/on-demand-snapshot-service", () => {
   return {
     OnDemandSnapshotService: class {
       create = serviceMock.create;

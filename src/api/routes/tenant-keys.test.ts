@@ -1,9 +1,14 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { TenantKeyRepository } from "@wopr-network/platform-core/security";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 const TEST_TENANT = "ACME";
 const TEST_TOKEN = `write:wopr_write_test123`;
@@ -103,16 +108,14 @@ describe("tenant-keys routes", () => {
       expect(record?.label).toBe("Updated");
     });
 
-    it("rejects invalid provider", async () => {
-      const res = await app.request("/api/tenant-keys/invalid-provider", {
+    it("accepts any non-empty provider string (providerSchema is z.string().min(1))", async () => {
+      const res = await app.request("/api/tenant-keys/custom-provider", {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ provider: "invalid-provider", apiKey: "key" }),
+        body: JSON.stringify({ provider: "custom-provider", apiKey: "key" }),
       });
 
-      expect(res.status).toBe(400);
-      const body = await res.json();
-      expect(body.error).toContain("Invalid provider");
+      expect(res.status).toBe(200);
     });
 
     it("rejects mismatched provider in body vs URL", async () => {
@@ -212,13 +215,13 @@ describe("tenant-keys routes", () => {
       expect(body).not.toHaveProperty("encrypted_key");
     });
 
-    it("rejects invalid provider", async () => {
+    it("returns 404 for unknown provider (providerSchema is z.string().min(1))", async () => {
       const res = await app.request("/api/tenant-keys/bad-provider", {
         method: "GET",
         headers: authHeader,
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -254,13 +257,13 @@ describe("tenant-keys routes", () => {
       expect(await store.get(TEST_TENANT, "anthropic")).toBeUndefined();
     });
 
-    it("rejects invalid provider", async () => {
+    it("returns 404 for unknown provider (providerSchema is z.string().min(1))", async () => {
       const res = await app.request("/api/tenant-keys/bad-provider", {
         method: "DELETE",
         headers: authHeader,
       });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
     });
   });
 });

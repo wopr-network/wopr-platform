@@ -4,22 +4,22 @@ import { join } from "node:path";
 import { unlink } from "node:fs/promises";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../src/test/db.js";
-import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
 import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/metering";
 import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
-import { AdapterSocket } from "../../src/monetization/socket/socket.js";
+import { AdapterSocket } from "@wopr-network/platform-core/monetization/socket/socket";
 import type {
   AdapterResult,
   ImageGenerationOutput,
   ProviderAdapter,
   TTSOutput,
   TranscriptionOutput,
-} from "../../src/monetization/adapters/types.js";
+} from "@wopr-network/platform-core/monetization/adapters/types";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
@@ -49,6 +49,8 @@ describe("E2E: adapter socket — meters capability usage and charges credits co
       walPath,
       dlqPath,
     });
+
+    await meter.ready;
 
     socket = new AdapterSocket({
       meter,

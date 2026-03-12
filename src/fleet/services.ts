@@ -1,32 +1,33 @@
+import type { IDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
+import { DrizzleDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
 import { DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
+import { DrizzleAuditLogRepository } from "@wopr-network/platform-core/audit/audit-log-repository";
+import { DrizzleBackupStatusRepository } from "@wopr-network/platform-core/backup/backup-status-repository";
+import { BackupStatusStore, type IBackupStatusStore } from "@wopr-network/platform-core/backup/backup-status-store";
+import { BackupVerifier } from "@wopr-network/platform-core/backup/backup-verifier";
+import { DrizzleRestoreLogRepository } from "@wopr-network/platform-core/backup/restore-log-repository";
+import { type IRestoreLogStore, RestoreLogStore } from "@wopr-network/platform-core/backup/restore-log-store";
+import { RestoreService } from "@wopr-network/platform-core/backup/restore-service";
+import { SnapshotManager } from "@wopr-network/platform-core/backup/snapshot-manager";
+import { DrizzleSnapshotRepository } from "@wopr-network/platform-core/backup/snapshot-repository";
+import { SpacesClient } from "@wopr-network/platform-core/backup/spaces-client";
+import { EvidenceCollector } from "@wopr-network/platform-core/compliance/evidence-collector";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import { createDb, type DrizzleDb } from "@wopr-network/platform-core/db/index";
+import type { ISpendingCapStore } from "@wopr-network/platform-core/gateway/spending-cap-store";
+import { DrizzleMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/drizzle-marketplace-plugin-repository";
+import type { IMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/marketplace-plugin-repository";
+import type { IAffiliateFraudRepository } from "@wopr-network/platform-core/monetization/affiliate/affiliate-fraud-repository";
+import { DrizzleAffiliateFraudRepository } from "@wopr-network/platform-core/monetization/affiliate/affiliate-fraud-repository";
+import type { IAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import { DrizzleAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import type { IBotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import { DrizzleBotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import type { IPhoneNumberRepository } from "@wopr-network/platform-core/monetization/credits/drizzle-phone-number-repository";
+import { DrizzlePhoneNumberRepository } from "@wopr-network/platform-core/monetization/credits/drizzle-phone-number-repository";
+import { SystemResourceMonitor } from "@wopr-network/platform-core/observability/system-resources";
+import { DrizzleTwoFactorRepository } from "@wopr-network/platform-core/security/two-factor-repository";
 import { Pool } from "pg";
-import type { IDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
-import { DrizzleDeletionExecutorRepository } from "../account/deletion-executor-repository.js";
-import { DrizzleAuditLogRepository } from "../audit/audit-log-repository.js";
-import { DrizzleBackupStatusRepository } from "../backup/backup-status-repository.js";
-import { BackupStatusStore, type IBackupStatusStore } from "../backup/backup-status-store.js";
-import { BackupVerifier } from "../backup/backup-verifier.js";
-import { DrizzleRestoreLogRepository } from "../backup/restore-log-repository.js";
-import { type IRestoreLogStore, RestoreLogStore } from "../backup/restore-log-store.js";
-import { RestoreService } from "../backup/restore-service.js";
-import { SnapshotManager } from "../backup/snapshot-manager.js";
-import { DrizzleSnapshotRepository } from "../backup/snapshot-repository.js";
-import { SpacesClient } from "../backup/spaces-client.js";
-import { EvidenceCollector } from "../compliance/evidence-collector.js";
-import { logger } from "../config/logger.js";
-import { createDb, type DrizzleDb } from "../db/index.js";
-import type { ISpendingCapStore } from "../gateway/spending-cap-store.js";
-import { DrizzleMarketplacePluginRepository } from "../marketplace/drizzle-marketplace-plugin-repository.js";
-import type { IMarketplacePluginRepository } from "../marketplace/marketplace-plugin-repository.js";
-import type { IAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
-import { DrizzleAffiliateFraudRepository } from "../monetization/affiliate/affiliate-fraud-repository.js";
-import type { IAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
-import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
-import type { IBotBilling } from "../monetization/credits/bot-billing.js";
-import { DrizzleBotBilling } from "../monetization/credits/bot-billing.js";
-import type { IPhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
-import { DrizzlePhoneNumberRepository } from "../monetization/credits/drizzle-phone-number-repository.js";
-import { SystemResourceMonitor } from "../observability/system-resources.js";
 // Platform singletons — delegated to platform-services.ts
 import {
   _initPlatformServices,
@@ -66,7 +67,6 @@ import {
   getTenantStatusRepo,
   getUserRoleRepo,
 } from "../platform-services.js";
-import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
 
 // Re-export all platform singletons so existing consumers keep working
 export {
@@ -106,45 +106,49 @@ export {
   getUserRoleRepo,
 };
 
-import { AdminNotifier } from "./admin-notifier.js";
-import type { IBotInstanceRepository } from "./bot-instance-repository.js";
-import type { IBotProfileRepository } from "./bot-profile-repository.js";
-import { CapacityPolicy, type CapacityPolicyConfig, DEFAULT_CAPACITY_POLICY_CONFIG } from "./capacity-policy.js";
-import { DigitalOceanNodeProvider } from "./digitalocean-node-provider.js";
-import { DOClient } from "./do-client.js";
-import { DrizzleBotInstanceRepository } from "./drizzle-bot-instance-repository.js";
-import { DrizzleBotProfileRepository } from "./drizzle-bot-profile-repository.js";
-import { DrizzleFleetEventRepository } from "./drizzle-fleet-event-repository.js";
-import { DrizzleNodeRepository } from "./drizzle-node-repository.js";
-import { DrizzleRecoveryRepository } from "./drizzle-recovery-repository.js";
-import { FleetEventEmitter } from "./fleet-event-emitter.js";
-import type { IFleetEventRepository } from "./fleet-event-repository.js";
-import type { IGpuAllocationRepository } from "./gpu-allocation-repository.js";
-import { DrizzleGpuAllocationRepository } from "./gpu-allocation-repository.js";
-import type { IGpuConfigurationRepository } from "./gpu-configuration-repository.js";
-import { DrizzleGpuConfigurationRepository } from "./gpu-configuration-repository.js";
-import { GpuNodeProvisioner } from "./gpu-node-provisioner.js";
-import type { IGpuNodeRepository } from "./gpu-node-repository.js";
-import { DrizzleGpuNodeRepository } from "./gpu-node-repository.js";
-import { HeartbeatProcessor } from "./heartbeat-processor.js";
-import { HeartbeatWatchdog } from "./heartbeat-watchdog.js";
-import { InferenceWatchdog } from "./inference-watchdog.js";
-import { MigrationOrchestrator } from "./migration-orchestrator.js";
-import { NodeCommandBus } from "./node-command-bus.js";
-import { NodeConnectionRegistry } from "./node-connection-registry.js";
-import { NodeDrainer } from "./node-drainer.js";
-import type { INodeProvider } from "./node-provider.js";
-import { NodeProvisioner } from "./node-provisioner.js";
-import { NodeRegistrar } from "./node-registrar.js";
-import type { INodeRepository } from "./node-repository.js";
-import { OrphanCleaner } from "./orphan-cleaner.js";
-import { RecoveryOrchestrator } from "./recovery-orchestrator.js";
-import type { IRecoveryRepository } from "./recovery-repository.js";
-import type { IRegistrationTokenRepository } from "./registration-token-store.js";
-import { DrizzleRegistrationTokenRepository } from "./registration-token-store.js";
-import { DrizzleSpendingCapStore } from "./spending-cap-repository.js";
-import type { IVpsRepository } from "./vps-repository.js";
-import { DrizzleVpsRepository } from "./vps-repository.js";
+import { AdminNotifier } from "@wopr-network/platform-core/fleet/admin-notifier";
+import type { IBotInstanceRepository } from "@wopr-network/platform-core/fleet/bot-instance-repository";
+import type { IBotProfileRepository } from "@wopr-network/platform-core/fleet/bot-profile-repository";
+import {
+  CapacityPolicy,
+  type CapacityPolicyConfig,
+  DEFAULT_CAPACITY_POLICY_CONFIG,
+} from "@wopr-network/platform-core/fleet/capacity-policy";
+import { DigitalOceanNodeProvider } from "@wopr-network/platform-core/fleet/digitalocean-node-provider";
+import { DOClient } from "@wopr-network/platform-core/fleet/do-client";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
+import { DrizzleBotProfileRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-profile-repository";
+import { DrizzleFleetEventRepository } from "@wopr-network/platform-core/fleet/drizzle-fleet-event-repository";
+import { DrizzleNodeRepository } from "@wopr-network/platform-core/fleet/drizzle-node-repository";
+import { DrizzleRecoveryRepository } from "@wopr-network/platform-core/fleet/drizzle-recovery-repository";
+import { FleetEventEmitter } from "@wopr-network/platform-core/fleet/fleet-event-emitter";
+import type { IFleetEventRepository } from "@wopr-network/platform-core/fleet/fleet-event-repository";
+import type { IGpuAllocationRepository } from "@wopr-network/platform-core/fleet/gpu-allocation-repository";
+import { DrizzleGpuAllocationRepository } from "@wopr-network/platform-core/fleet/gpu-allocation-repository";
+import type { IGpuConfigurationRepository } from "@wopr-network/platform-core/fleet/gpu-configuration-repository";
+import { DrizzleGpuConfigurationRepository } from "@wopr-network/platform-core/fleet/gpu-configuration-repository";
+import { GpuNodeProvisioner } from "@wopr-network/platform-core/fleet/gpu-node-provisioner";
+import type { IGpuNodeRepository } from "@wopr-network/platform-core/fleet/gpu-node-repository";
+import { DrizzleGpuNodeRepository } from "@wopr-network/platform-core/fleet/gpu-node-repository";
+import { HeartbeatProcessor } from "@wopr-network/platform-core/fleet/heartbeat-processor";
+import { HeartbeatWatchdog } from "@wopr-network/platform-core/fleet/heartbeat-watchdog";
+import { InferenceWatchdog } from "@wopr-network/platform-core/fleet/inference-watchdog";
+import { MigrationOrchestrator } from "@wopr-network/platform-core/fleet/migration-orchestrator";
+import { NodeCommandBus } from "@wopr-network/platform-core/fleet/node-command-bus";
+import { NodeConnectionRegistry } from "@wopr-network/platform-core/fleet/node-connection-registry";
+import { NodeDrainer } from "@wopr-network/platform-core/fleet/node-drainer";
+import type { INodeProvider } from "@wopr-network/platform-core/fleet/node-provider";
+import { NodeProvisioner } from "@wopr-network/platform-core/fleet/node-provisioner";
+import { NodeRegistrar } from "@wopr-network/platform-core/fleet/node-registrar";
+import type { INodeRepository } from "@wopr-network/platform-core/fleet/node-repository";
+import { OrphanCleaner } from "@wopr-network/platform-core/fleet/orphan-cleaner";
+import { RecoveryOrchestrator } from "@wopr-network/platform-core/fleet/recovery-orchestrator";
+import type { IRecoveryRepository } from "@wopr-network/platform-core/fleet/recovery-repository";
+import type { IRegistrationTokenRepository } from "@wopr-network/platform-core/fleet/registration-token-store";
+import { DrizzleRegistrationTokenRepository } from "@wopr-network/platform-core/fleet/registration-token-store";
+import { DrizzleSpendingCapStore } from "@wopr-network/platform-core/fleet/spending-cap-repository";
+import type { IVpsRepository } from "@wopr-network/platform-core/fleet/vps-repository";
+import { DrizzleVpsRepository } from "@wopr-network/platform-core/fleet/vps-repository";
 
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 
@@ -753,8 +757,8 @@ export function getMarketplacePluginRepo(): IMarketplacePluginRepository {
 // Marketplace Content Repository (WOP-1174)
 // ---------------------------------------------------------------------------
 
-import type { IMarketplaceContentRepository } from "../api/marketplace-content-repository.js";
-import { DrizzleMarketplaceContentRepository } from "../api/marketplace-content-repository.js";
+import type { IMarketplaceContentRepository } from "@wopr-network/platform-core/api/marketplace-content-repository";
+import { DrizzleMarketplaceContentRepository } from "@wopr-network/platform-core/api/marketplace-content-repository";
 
 let _marketplaceContentRepo: IMarketplaceContentRepository | null = null;
 
@@ -769,17 +773,17 @@ export function getMarketplaceContentRepo(): IMarketplaceContentRepository {
 // Onboarding singletons (WOP-1020)
 // ---------------------------------------------------------------------------
 
-import type { ISessionUsageRepository } from "../inference/session-usage-repository.js";
-import { DrizzleSessionUsageRepository } from "../inference/session-usage-repository.js";
-import { loadOnboardingConfig } from "../onboarding/config.js";
-import { DaemonManager, type IDaemonManager } from "../onboarding/daemon-manager.js";
-import type { IOnboardingScriptRepository } from "../onboarding/drizzle-onboarding-script-repository.js";
-import { DrizzleOnboardingScriptRepository } from "../onboarding/drizzle-onboarding-script-repository.js";
-import type { IOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
-import { DrizzleOnboardingSessionRepository } from "../onboarding/drizzle-onboarding-session-repository.js";
-import { GraduationService } from "../onboarding/graduation-service.js";
-import { OnboardingService } from "../onboarding/onboarding-service.js";
-import { WoprClient } from "../onboarding/wopr-client.js";
+import type { ISessionUsageRepository } from "@wopr-network/platform-core/inference/session-usage-repository";
+import { DrizzleSessionUsageRepository } from "@wopr-network/platform-core/inference/session-usage-repository";
+import { loadOnboardingConfig } from "@wopr-network/platform-core/onboarding/config";
+import { DaemonManager, type IDaemonManager } from "@wopr-network/platform-core/onboarding/daemon-manager";
+import type { IOnboardingScriptRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-script-repository";
+import { DrizzleOnboardingScriptRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-script-repository";
+import type { IOnboardingSessionRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-session-repository";
+import { DrizzleOnboardingSessionRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-session-repository";
+import { GraduationService } from "@wopr-network/platform-core/onboarding/graduation-service";
+import { OnboardingService } from "@wopr-network/platform-core/onboarding/onboarding-service";
+import { WoprClient } from "@wopr-network/platform-core/onboarding/wopr-client";
 
 let _onboardingSessionRepo: IOnboardingSessionRepository | null = null;
 let _onboardingScriptRepo: IOnboardingScriptRepository | null = null;
@@ -854,8 +858,8 @@ export function getOnboardingService(): OnboardingService {
 // Setup Session Repository (WOP-1034)
 // ---------------------------------------------------------------------------
 
-import type { ISetupSessionRepository } from "../setup/setup-session-repository.js";
-import { DrizzleSetupSessionRepository } from "../setup/setup-session-repository.js";
+import type { ISetupSessionRepository } from "@wopr-network/platform-core/setup/setup-session-repository";
+import { DrizzleSetupSessionRepository } from "@wopr-network/platform-core/setup/setup-session-repository";
 
 let _setupSessionRepo: ISetupSessionRepository | null = null;
 
@@ -870,8 +874,8 @@ export function getSetupSessionRepo(): ISetupSessionRepository {
 // Page Context Repository (WOP-1517)
 // ---------------------------------------------------------------------------
 
-import type { IPageContextRepository } from "./page-context-repository.js";
-import { DrizzlePageContextRepository } from "./page-context-repository.js";
+import type { IPageContextRepository } from "@wopr-network/platform-core/fleet/page-context-repository";
+import { DrizzlePageContextRepository } from "@wopr-network/platform-core/fleet/page-context-repository";
 
 let _pageContextRepo: IPageContextRepository | null = null;
 
@@ -904,7 +908,7 @@ export function getEvidenceCollector(): EvidenceCollector {
 // Setup Service (WOP-1037)
 // ---------------------------------------------------------------------------
 
-import { SetupService } from "../setup/setup-service.js";
+import { SetupService } from "@wopr-network/platform-core/setup/setup-service";
 
 let _setupService: SetupService | null = null;
 
@@ -919,8 +923,8 @@ export function getSetupService(): SetupService {
 // Plugin Config Repository (WOP-1055)
 // ---------------------------------------------------------------------------
 
-import type { IPluginConfigRepository } from "../setup/plugin-config-repository.js";
-import { DrizzlePluginConfigRepository } from "../setup/plugin-config-repository.js";
+import type { IPluginConfigRepository } from "@wopr-network/platform-core/setup/plugin-config-repository";
+import { DrizzlePluginConfigRepository } from "@wopr-network/platform-core/setup/plugin-config-repository";
 
 let _pluginConfigRepo: IPluginConfigRepository | null = null;
 

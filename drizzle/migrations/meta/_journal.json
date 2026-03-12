@@ -141,6 +141,13 @@
       "when": 1772220022000,
       "tag": "0070_fleet_event_history_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1773301093888,
+      "tag": "0071_funny_chat",
+      "breakpoints": true
     }
   ]
 }

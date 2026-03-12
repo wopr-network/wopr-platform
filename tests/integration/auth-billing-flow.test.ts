@@ -11,12 +11,12 @@ import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createTestDb } from "../../src/test/db.js";
-import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { TenantCustomerRepository, noOpReplayGuard } from "@wopr-network/platform-core/billing";
-import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
-import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
+import type { WebhookDeps } from "@wopr-network/platform-core/monetization/stripe/webhook";
+import { handleWebhookEvent } from "@wopr-network/platform-core/monetization/stripe/webhook";
 
 describe("integration: auth → billing → credit flow", () => {
   let pool: PGlite;

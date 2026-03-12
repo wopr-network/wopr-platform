@@ -7,17 +7,23 @@
 
 import type { RoleStore } from "@wopr-network/platform-core/admin";
 import { Credit } from "@wopr-network/platform-core/credits";
+import type { IBotInstanceRepository } from "@wopr-network/platform-core/fleet/bot-instance-repository";
+import type { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
+import { BotNotFoundError } from "@wopr-network/platform-core/fleet/fleet-manager";
+import type { INodeRepository } from "@wopr-network/platform-core/fleet/node-repository";
+import * as placement from "@wopr-network/platform-core/fleet/placement";
+import type { ProfileTemplate } from "@wopr-network/platform-core/fleet/profile-schema";
+import type { BotInstance } from "@wopr-network/platform-core/fleet/repository-types";
+import { DEFAULT_RESOURCE_CONFIG } from "@wopr-network/platform-core/monetization/quotas/resource-limits";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
-import type { FleetManager } from "../../fleet/fleet-manager.js";
-import { BotNotFoundError } from "../../fleet/fleet-manager.js";
-import type { INodeRepository } from "../../fleet/node-repository.js";
-import * as placement from "../../fleet/placement.js";
-import type { ProfileTemplate } from "../../fleet/profile-schema.js";
-import type { BotInstance } from "../../fleet/repository-types.js";
-import { DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
+
+vi.mock("@wopr-network/platform-core/fleet/placement", async (importOriginal) => {
+  const actual = await importOriginal<typeof placement>();
+  return { ...actual, findPlacement: vi.fn(actual.findPlacement) };
+});
+
 import { appRouter } from "../index.js";
 import { setFleetRouterDeps } from "./fleet.js";
 
@@ -322,7 +328,7 @@ describe("fleet.createInstance", () => {
   });
 
   it("passes requiredMb from buildResourceLimits to findPlacement (not the 100MB default)", async () => {
-    const findPlacementSpy = vi.spyOn(placement, "findPlacement");
+    const findPlacementSpy = vi.mocked(placement.findPlacement);
     const mockNodeRepo: Partial<INodeRepository> = {
       list: vi
         .fn()
@@ -343,7 +349,6 @@ describe("fleet.createInstance", () => {
     // Should pass the actual memory limit in MB (DEFAULT_RESOURCE_CONFIG.memoryLimitMb = 2048),
     // not the 100MB hardcoded default.
     expect(findPlacementSpy).toHaveBeenCalledWith(expect.anything(), DEFAULT_RESOURCE_CONFIG.memoryLimitMb);
-    findPlacementSpy.mockRestore();
   });
 
   it("throws UNAVAILABLE when no node has sufficient capacity", async () => {

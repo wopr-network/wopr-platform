@@ -11,7 +11,7 @@ import {
 import {
   requireEmailVerified,
   type IEmailVerifier,
-} from "../../src/email/require-verified.js";
+} from "@wopr-network/platform-core/email/require-verified";
 import { Hono } from "hono";
 import { initBetterAuthSchema, pgliteAsPool } from "../../src/test/pglite-helpers.js";
 

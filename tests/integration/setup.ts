@@ -61,11 +61,11 @@ vi.mock("dockerode", () => ({
   default: class MockDocker {},
 }));
 
-vi.mock("../../src/fleet/profile-store.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => ({
   ProfileStore: class MockProfileStore {},
 }));
 
-vi.mock("../../src/fleet/fleet-manager.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
   class BotNotFoundError extends Error {
     constructor(id: string) {
       super(`Bot not found: ${id}`);
@@ -89,20 +89,20 @@ vi.mock("../../src/fleet/fleet-manager.js", () => {
   };
 });
 
-vi.mock("../../src/fleet/image-poller.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/image-poller", () => ({
   ImagePoller: class {
     getImageStatus = pollerMock.getImageStatus;
     onUpdateAvailable = pollerMock.onUpdateAvailable;
   },
 }));
 
-vi.mock("../../src/fleet/updater.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/updater", () => ({
   ContainerUpdater: class {
     updateBot = updaterMock.updateBot;
   },
 }));
 
-vi.mock("../../src/network/network-policy.js", () => ({
+vi.mock("@wopr-network/platform-core/network/network-policy", () => ({
   NetworkPolicy: class {
     prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
     cleanupAfterRemoval = vi.fn().mockResolvedValue(undefined);
@@ -110,7 +110,7 @@ vi.mock("../../src/network/network-policy.js", () => ({
 }));
 
 // Proxy singleton mock — prevents real DNS resolution in tests
-vi.mock("../../src/proxy/singleton.js", () => ({
+vi.mock("@wopr-network/platform-core/proxy/singleton", () => ({
   getProxyManager: () => ({
     addRoute: vi.fn().mockResolvedValue(undefined),
     removeRoute: vi.fn(),
@@ -154,7 +154,7 @@ export const snapshotManagerMock = {
   getOldest: vi.fn(),
 };
 
-vi.mock("../../src/backup/snapshot-manager.js", () => {
+vi.mock("@wopr-network/platform-core/backup/snapshot-manager", () => {
   class SnapshotNotFoundError extends Error {
     constructor(id: string) {
       super(`Snapshot not found: ${id}`);
@@ -175,7 +175,7 @@ vi.mock("../../src/backup/snapshot-manager.js", () => {
   };
 });
 
-vi.mock("../../src/backup/retention.js", () => ({
+vi.mock("@wopr-network/platform-core/backup/retention", () => ({
   enforceRetention: vi.fn().mockResolvedValue(0),
 }));
 

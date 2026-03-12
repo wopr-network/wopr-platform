@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { EncryptedPayload } from "@wopr-network/platform-core/security";
 import {
   DrizzleCredentialRepository,
@@ -9,9 +10,13 @@ import {
   getVaultEncryptionKey,
   reEncryptAllCredentials,
 } from "@wopr-network/platform-core/security";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 const OLD_SECRET = "old-platform-secret-for-test";
 const NEW_SECRET = "new-platform-secret-for-test";

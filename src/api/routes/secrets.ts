@@ -3,6 +3,7 @@ import {
   scopedBearerAuthWithTenant,
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import {
   decrypt,
   deriveInstanceKey,
@@ -10,9 +11,8 @@ import {
   validateProviderKey,
   writeEncryptedSeed,
 } from "@wopr-network/platform-core/security";
+import { validateKeyRequestSchema, writeSecretsRequestSchema } from "@wopr-network/platform-core/security/types";
 import { Hono } from "hono";
-import { logger } from "../../config/logger.js";
-import { validateKeyRequestSchema, writeSecretsRequestSchema } from "../../security/types.js";
 
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;
 const INSTANCE_DATA_DIR = process.env.INSTANCE_DATA_DIR || "/data/instances";
@@ -28,7 +28,7 @@ function isValidInstanceId(id: string): boolean {
 /** Helper to get instance tenantId from bot profile */
 async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
   try {
-    const { ProfileStore } = await import("../../fleet/profile-store.js");
+    const { ProfileStore } = await import("@wopr-network/platform-core/fleet/profile-store");
     const store = new ProfileStore(FLEET_DATA_DIR);
     const profile = await store.get(instanceId);
     return profile?.tenantId;

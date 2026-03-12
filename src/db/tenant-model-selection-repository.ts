@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
-import type { DrizzleDb } from "./index.js";
-import { tenantModelSelection } from "./schema/tenant-model-selection.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq } from "@wopr-network/platform-core/db/index";
+import { tenantModelSelection } from "@wopr-network/platform-core/db/schema/tenant-model-selection";
 
 export interface ITenantModelSelectionRepository {
   getDefaultModel(tenantId: string): Promise<string>;

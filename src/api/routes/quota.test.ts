@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
 
 // Set env var BEFORE importing quota routes so bearer auth uses this token
 const TEST_TOKEN = "test-quota-token";

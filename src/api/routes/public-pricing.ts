@@ -1,6 +1,6 @@
+import { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+import { getDb } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { RateStore } from "../../admin/rates/rate-store.js";
-import { getDb } from "../../fleet/services.js";
 
 let _store: RateStore | null = null;
 function getStore(): RateStore {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../fleet/services.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/services", () => {
   const mockGpuNodeRepo = {
     getById: vi.fn(),
     updateStage: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock("../../fleet/services.js", () => {
   };
 });
 
-import { getGpuNodeRepo } from "../../fleet/services.js";
+import { getGpuNodeRepo } from "@wopr-network/platform-core/fleet/services";
 import { internalGpuRoutes } from "./internal-gpu.js";
 
 const gpuRepo = getGpuNodeRepo() as ReturnType<typeof getGpuNodeRepo> & {

@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { grantSignupCredits, SIGNUP_GRANT } from "@wopr-network/platform-core/credits";
 

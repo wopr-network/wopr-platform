@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 import { AccountDeletionStore } from "../../src/account/deletion-store.js";
-import { DrizzleDeletionRepository } from "../../src/account/deletion-repository.js";
-import { DrizzleDeletionExecutorRepository } from "../../src/account/deletion-executor-repository.js";
+import { DrizzleDeletionRepository } from "@wopr-network/platform-core/account/deletion-repository";
+import { DrizzleDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
 import { runDeletionCron } from "../../src/account/deletion-cron.js";
 import type { DeletionExecutorDeps } from "../../src/account/deletion-executor.js";
 

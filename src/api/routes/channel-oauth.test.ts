@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import type { AuthEnv, AuthUser } from "@wopr-network/platform-core/auth";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../test/db.js";
 import { DrizzleOAuthStateRepository } from "../drizzle-oauth-state-repository.js";
 import { createChannelOAuthRoutes } from "./channel-oauth.js";
 

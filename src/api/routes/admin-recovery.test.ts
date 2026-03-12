@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock services before importing routes
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
   getBotInstanceRepo: vi.fn(),
   getNodeDrainer: vi.fn(),
@@ -12,6 +12,9 @@ vi.mock("../../fleet/services.js", () => ({
   getCommandBus: vi.fn(),
 }));
 
+vi.mock("../../platform-services.js", () => ({
+  getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
+}));
 vi.mock("@wopr-network/platform-core/auth", () => ({
   buildTokenMetadataMap: vi.fn().mockReturnValue(new Map()),
   // biome-ignore lint/suspicious/noExplicitAny: vi.fn() mock context
@@ -22,19 +25,19 @@ vi.mock("@wopr-network/platform-core/auth", () => ({
 }));
 
 import type { AdminAuditLog } from "@wopr-network/platform-core/admin";
-import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
-import type { NodeDrainer } from "../../fleet/node-drainer.js";
-import type { INodeRepository } from "../../fleet/node-repository.js";
-import type { RecoveryOrchestrator } from "../../fleet/recovery-orchestrator.js";
-import type { IRecoveryRepository } from "../../fleet/recovery-repository.js";
+import type { IBotInstanceRepository } from "@wopr-network/platform-core/fleet/bot-instance-repository";
+import type { NodeDrainer } from "@wopr-network/platform-core/fleet/node-drainer";
+import type { INodeRepository } from "@wopr-network/platform-core/fleet/node-repository";
+import type { RecoveryOrchestrator } from "@wopr-network/platform-core/fleet/recovery-orchestrator";
+import type { IRecoveryRepository } from "@wopr-network/platform-core/fleet/recovery-repository";
 import {
-  getAdminAuditLog,
   getBotInstanceRepo,
   getNodeDrainer,
   getNodeRepo,
   getRecoveryOrchestrator,
   getRecoveryRepo,
-} from "../../fleet/services.js";
+} from "@wopr-network/platform-core/fleet/services";
+import { getAdminAuditLog } from "../../platform-services.js";
 import { adminNodeRoutes, adminRecoveryRoutes } from "./admin-recovery.js";
 
 beforeEach(() => {

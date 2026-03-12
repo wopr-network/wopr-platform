@@ -1,11 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Credit } from "@wopr-network/platform-core/credits";
-import { eq } from "drizzle-orm";
-import { pgTable, text } from "drizzle-orm/pg-core";
+import { creditColumn } from "@wopr-network/platform-core/db/credit-column";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq, pgTable, text } from "@wopr-network/platform-core/db/index";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
-import { creditColumn } from "./credit-column.js";
-import type { DrizzleDb } from "./index.js";
 
 const testTable = pgTable("test_credits", {
   id: text("id").primaryKey(),

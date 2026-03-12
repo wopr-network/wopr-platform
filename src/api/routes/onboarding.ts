@@ -1,10 +1,10 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import type { IOnboardingSessionRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-session-repository";
+import { GraduationError, type GraduationService } from "@wopr-network/platform-core/onboarding/graduation-service";
+import type { OnboardingService } from "@wopr-network/platform-core/onboarding/onboarding-service";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { logger } from "../../config/logger.js";
-import type { IOnboardingSessionRepository } from "../../onboarding/drizzle-onboarding-session-repository.js";
-import { GraduationError, type GraduationService } from "../../onboarding/graduation-service.js";
-import type { OnboardingService } from "../../onboarding/onboarding-service.js";
 
 const ANON_SESSION_COOKIE = "wopr_anon_session";
 const ANON_SESSION_MAX_AGE = 24 * 60 * 60; // 24 hours in seconds

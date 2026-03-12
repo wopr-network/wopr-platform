@@ -1,6 +1,6 @@
+import { logger } from "@wopr-network/platform-core/config/logger";
+import type { FleetEventEmitter } from "@wopr-network/platform-core/fleet/fleet-event-emitter";
 import { Hono } from "hono";
-import { logger } from "../../config/logger.js";
-import type { FleetEventEmitter } from "../../fleet/fleet-event-emitter.js";
 
 export function createFleetEventsRoute(emitter: FleetEventEmitter): Hono {
   const routes = new Hono();

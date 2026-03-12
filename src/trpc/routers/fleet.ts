@@ -13,25 +13,33 @@ import type { RoleStore } from "@wopr-network/platform-core/admin";
 import { createStripeClient, createVpsCheckoutSession, loadStripeConfig } from "@wopr-network/platform-core/billing";
 import type { ICreditLedger as CreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
+import type { IBotInstanceRepository } from "@wopr-network/platform-core/fleet/bot-instance-repository";
+import { CAPABILITY_ENV_MAP } from "@wopr-network/platform-core/fleet/capability-env-map";
+import type { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
+import { BotNotFoundError } from "@wopr-network/platform-core/fleet/fleet-manager";
+import type { ImagePoller } from "@wopr-network/platform-core/fleet/image-poller";
+import type { INodeRepository } from "@wopr-network/platform-core/fleet/node-repository";
+import { findPlacement } from "@wopr-network/platform-core/fleet/placement";
+import type { ProfileTemplate } from "@wopr-network/platform-core/fleet/profile-schema";
+import {
+  RESOURCE_TIERS,
+  type ResourceTierKey,
+  tierToResourceLimits,
+} from "@wopr-network/platform-core/fleet/resource-tiers";
+import { getVpsRepo } from "@wopr-network/platform-core/fleet/services";
+import { STORAGE_TIERS, type StorageTierKey } from "@wopr-network/platform-core/fleet/storage-tiers";
+import { createBotSchema, updateBotSchema } from "@wopr-network/platform-core/fleet/types";
+import type { ContainerUpdater } from "@wopr-network/platform-core/fleet/updater";
+import type { IBotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import {
+  checkInstanceQuota,
+  DEFAULT_INSTANCE_LIMITS,
+} from "@wopr-network/platform-core/monetization/quotas/quota-check";
+import { buildResourceLimits } from "@wopr-network/platform-core/monetization/quotas/resource-limits";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { adminProcedure, protectedProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
-import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
-import type { FleetManager } from "../../fleet/fleet-manager.js";
-import { BotNotFoundError } from "../../fleet/fleet-manager.js";
-import type { ImagePoller } from "../../fleet/image-poller.js";
-import type { INodeRepository } from "../../fleet/node-repository.js";
-import { findPlacement } from "../../fleet/placement.js";
-import type { ProfileTemplate } from "../../fleet/profile-schema.js";
-import { RESOURCE_TIERS, type ResourceTierKey, tierToResourceLimits } from "../../fleet/resource-tiers.js";
-import { getTenantCustomerRepository, getVpsRepo } from "../../fleet/services.js";
-import { STORAGE_TIERS, type StorageTierKey } from "../../fleet/storage-tiers.js";
-import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
-import type { ContainerUpdater } from "../../fleet/updater.js";
-import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
-import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
-import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
+import { getTenantCustomerRepository } from "../../platform-services.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas
@@ -599,7 +607,7 @@ export const fleetRouter = router({
             if (wasRunning) await fleet.start(restoredProfile.id);
           } catch (recreateErr) {
             // Re-create with old tier also failed — log critical so ops can manually recover
-            const { logger } = await import("../../config/logger.js");
+            const { logger } = await import("@wopr-network/platform-core/config/logger");
             logger.error(
               `CRITICAL: container lost after tier change — manual recovery required. botId=${input.id} newTier=${input.tier} previousTier=${previousTier} createErr=${String(createErr)} recreateErr=${String(recreateErr)}`,
             );

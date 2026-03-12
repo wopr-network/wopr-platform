@@ -1,8 +1,8 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import type { IMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/marketplace-plugin-repository";
 import { Hono } from "hono";
 import { z } from "zod";
-import { getAdminAuditLog } from "../../fleet/services.js";
-import type { IMarketplacePluginRepository } from "../../marketplace/marketplace-plugin-repository.js";
+import { getAdminAuditLog } from "../../platform-services.js";
 
 const addPluginSchema = z.object({
   npmPackage: z.string().min(1),
@@ -74,7 +74,7 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
 
     // Fire-and-forget: install into shared volume
     const volumePath = process.env.PLUGIN_VOLUME_PATH ?? "/data/plugins";
-    import("../../marketplace/volume-installer.js")
+    import("@wopr-network/platform-core/marketplace/volume-installer")
       .then(({ installPluginToVolume }) => {
         installPluginToVolume({
           pluginId: npmPackage,
@@ -83,7 +83,7 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
           volumePath,
           repo: repo(),
         }).catch((err: unknown) => {
-          import("../../config/logger.js")
+          import("@wopr-network/platform-core/config/logger")
             .then(({ logger }) => {
               logger.error("Volume install trigger failed", { pluginId: npmPackage, err });
             })
@@ -122,7 +122,9 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
 
     const updated = await repo().update(
       id,
-      patch as Partial<import("../../marketplace/marketplace-repository-types.js").MarketplacePlugin>,
+      patch as Partial<
+        import("@wopr-network/platform-core/marketplace/marketplace-repository-types").MarketplacePlugin
+      >,
     );
     try {
       const user = c.get("user") as { id: string } | undefined;
@@ -182,8 +184,8 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
 
   // POST /discover — trigger manual discovery run
   routes.post("/discover", async (c) => {
-    const { discoverNpmPlugins } = await import("../../marketplace/npm-discovery.js");
-    const { logger } = await import("../../config/logger.js");
+    const { discoverNpmPlugins } = await import("@wopr-network/platform-core/marketplace/npm-discovery");
+    const { logger } = await import("@wopr-network/platform-core/config/logger");
     const result = await discoverNpmPlugins({
       repo: repo(),
       notify: (msg: string) => {

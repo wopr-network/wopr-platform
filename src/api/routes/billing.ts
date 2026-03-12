@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { getClientIpFromContext } from "@wopr-network/platform-core/api/middleware/get-client-ip";
+import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-penalty-repository";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import type {
   DrizzlePayRamChargeRepository,
@@ -13,16 +15,14 @@ import {
   MIN_PAYMENT_USD,
   PaymentMethodOwnershipError,
 } from "@wopr-network/platform-core/billing";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
+import type { IAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import { handlePayRamWebhook } from "@wopr-network/platform-core/monetization/payram/webhook";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
-import { logger } from "../../config/logger.js";
-import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import { handlePayRamWebhook } from "../../monetization/payram/webhook.js";
-import { getClientIpFromContext } from "../middleware/get-client-ip.js";
-import type { ISigPenaltyRepository } from "../sig-penalty-repository.js";
 
 export interface BillingRouteDeps {
   processor: IPaymentProcessor;
@@ -622,7 +622,7 @@ billingRoutes.get("/usage", adminAuth, async (c) => {
 
   if (isOperator && parsed.data.tenant) {
     const authHeader = c.req.header("Authorization") ?? "";
-    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    const tokenHint = authHeader.startsWith("Bearer ") ? `${authHeader.slice(7, 15)}***` : "***";
     try {
       logger.info("Operator cross-tenant access", {
         endpoint: "GET /billing/usage",
@@ -695,7 +695,7 @@ billingRoutes.get("/usage/summary", adminAuth, async (c) => {
 
   if (isOperator && parsed.data.tenant) {
     const authHeader = c.req.header("Authorization") ?? "";
-    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    const tokenHint = authHeader.startsWith("Bearer ") ? `${authHeader.slice(7, 15)}***` : "***";
     try {
       logger.info("Operator cross-tenant access", {
         endpoint: "GET /billing/usage/summary",
@@ -770,7 +770,7 @@ billingRoutes.get("/affiliate", adminAuth, async (c) => {
 
   if (isOperator) {
     const authHeader = c.req.header("Authorization") ?? "";
-    const tokenHint = authHeader.startsWith("Bearer ") ? authHeader.slice(7, 15) + "***" : "***";
+    const tokenHint = authHeader.startsWith("Bearer ") ? `${authHeader.slice(7, 15)}***` : "***";
     try {
       logger.info("Operator cross-tenant access", {
         endpoint: "GET /billing/affiliate",

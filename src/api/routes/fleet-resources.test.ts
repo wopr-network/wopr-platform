@@ -1,6 +1,6 @@
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuditEnv } from "../../audit/types.js";
 import { fleetResourceRoutes, setFleetManager } from "./fleet-resources.js";
 
 // Build a test app with session user already injected
@@ -25,7 +25,7 @@ function makeMockFleet(
 }
 
 beforeEach(() => {
-  setFleetManager(null as unknown as import("../../fleet/fleet-manager.js").FleetManager);
+  setFleetManager(null as unknown as import("@wopr-network/platform-core/fleet/fleet-manager").FleetManager);
 });
 
 describe("GET /api/fleet/resources", () => {
@@ -36,7 +36,9 @@ describe("GET /api/fleet/resources", () => {
   });
 
   it("returns zero stats when no bots are running", async () => {
-    setFleetManager(makeMockFleet([]) as unknown as import("../../fleet/fleet-manager.js").FleetManager);
+    setFleetManager(
+      makeMockFleet([]) as unknown as import("@wopr-network/platform-core/fleet/fleet-manager").FleetManager,
+    );
 
     const app = makeApp();
     const res = await app.request("/api/fleet/resources");
@@ -56,7 +58,7 @@ describe("GET /api/fleet/resources", () => {
       makeMockFleet([
         { stats: { cpuPercent: 10.5, memoryUsageMb: 256, memoryLimitMb: 512, memoryPercent: 50 } },
         { stats: { cpuPercent: 20.3, memoryUsageMb: 128, memoryLimitMb: 256, memoryPercent: 50 } },
-      ]) as unknown as import("../../fleet/fleet-manager.js").FleetManager,
+      ]) as unknown as import("@wopr-network/platform-core/fleet/fleet-manager").FleetManager,
     );
 
     const app = makeApp();
@@ -78,7 +80,7 @@ describe("GET /api/fleet/resources", () => {
         { stats: { cpuPercent: 15, memoryUsageMb: 200, memoryLimitMb: 400, memoryPercent: 50 } },
         { stats: null }, // stopped bot
         { stats: null }, // stopped bot
-      ]) as unknown as import("../../fleet/fleet-manager.js").FleetManager,
+      ]) as unknown as import("@wopr-network/platform-core/fleet/fleet-manager").FleetManager,
     );
 
     const app = makeApp();
@@ -95,7 +97,9 @@ describe("GET /api/fleet/resources", () => {
   });
 
   it("returns response shape matching FleetResources interface", async () => {
-    setFleetManager(makeMockFleet([]) as unknown as import("../../fleet/fleet-manager.js").FleetManager);
+    setFleetManager(
+      makeMockFleet([]) as unknown as import("@wopr-network/platform-core/fleet/fleet-manager").FleetManager,
+    );
 
     const app = makeApp();
     const res = await app.request("/api/fleet/resources");
@@ -110,7 +114,7 @@ describe("GET /api/fleet/resources", () => {
     const mockFleet = makeMockFleet([
       { stats: { cpuPercent: 10, memoryUsageMb: 100, memoryLimitMb: 200, memoryPercent: 50 } },
     ]);
-    setFleetManager(mockFleet as unknown as import("../../fleet/fleet-manager.js").FleetManager);
+    setFleetManager(mockFleet as unknown as import("@wopr-network/platform-core/fleet/fleet-manager").FleetManager);
 
     const app = makeApp({ id: "user-123", roles: ["user"] });
     const res = await app.request("/api/fleet/resources");

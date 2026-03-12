@@ -1,8 +1,7 @@
-import { TRPCError } from "@trpc/server";
+import type { IOrgMemberRepository, OrgMemberRow } from "@wopr-network/platform-core/fleet/org-member-repository";
 import { orgMemberProcedure, router, setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import type { IOrgMemberRepository, OrgMemberRow } from "../../fleet/org-member-repository.js";
 
 function makeMockOrgMemberRepo(members: OrgMemberRow[] = []): IOrgMemberRepository {
   return {
@@ -51,7 +50,7 @@ describe("orgMemberProcedure", () => {
 
   it("rejects non-members with FORBIDDEN", async () => {
     const caller = testRouter.createCaller({ user: { id: "attacker", roles: [] }, tenantId: undefined });
-    await expect(caller.doSomething({ orgId: "org-1", value: "test" })).rejects.toThrow(TRPCError);
+    await expect(caller.doSomething({ orgId: "org-1", value: "test" })).rejects.toThrow();
     await expect(caller.doSomething({ orgId: "org-1", value: "test" })).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
@@ -59,7 +58,7 @@ describe("orgMemberProcedure", () => {
 
   it("rejects unauthenticated users with UNAUTHORIZED", async () => {
     const caller = testRouter.createCaller({ user: undefined, tenantId: undefined });
-    await expect(caller.doSomething({ orgId: "org-1", value: "test" })).rejects.toThrow(TRPCError);
+    await expect(caller.doSomething({ orgId: "org-1", value: "test" })).rejects.toThrow();
     await expect(caller.doSomething({ orgId: "org-1", value: "test" })).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });

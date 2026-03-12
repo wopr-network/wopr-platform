@@ -24,7 +24,7 @@ const OTHER_TENANT_ID = "other-tenant";
 const OTHER_TENANT_TOKEN = "e2e-other-tenant-token";
 vi.stubEnv(`FLEET_TOKEN_${OTHER_TENANT_ID}`, `read:${OTHER_TENANT_TOKEN}`);
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
@@ -34,7 +34,7 @@ vi.mock("../../src/api/routes/friends-proxy.js", () => ({
   proxyToInstance: (...args: unknown[]) => mockProxyToInstance(...args),
 }));
 
-vi.mock("../../src/fleet/profile-store.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => ({
   ProfileStore: class MockProfileStore {
     get = vi.fn().mockResolvedValue({ tenantId: "e2e-tenant" });
   },

@@ -4,13 +4,14 @@ import {
   scopedBearerAuthWithTenant,
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
+import { enforceRetention } from "@wopr-network/platform-core/backup/retention";
+import { type SnapshotManager, SnapshotNotFoundError } from "@wopr-network/platform-core/backup/snapshot-manager";
+import { createSnapshotSchema, tierSchema } from "@wopr-network/platform-core/backup/types";
 import type { ITenantCustomerRepository } from "@wopr-network/platform-core/billing";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import { getSnapshotManager } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import { enforceRetention } from "../../backup/retention.js";
-import { type SnapshotManager, SnapshotNotFoundError } from "../../backup/snapshot-manager.js";
-import { createSnapshotSchema, tierSchema } from "../../backup/types.js";
-import { logger } from "../../config/logger.js";
-import { getSnapshotManager, getTenantCustomerRepository } from "../../fleet/services.js";
+import { getTenantCustomerRepository } from "../../platform-services.js";
 
 const WOPR_HOME_BASE = process.env.WOPR_HOME_BASE || "/data/instances";
 const FLEET_DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
@@ -65,7 +66,7 @@ const writeAuth = scopedBearerAuthWithTenant(tokenMetadataMap, "write");
 /** Helper to get instance tenantId from bot profile */
 async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
   try {
-    const { ProfileStore } = await import("../../fleet/profile-store.js");
+    const { ProfileStore } = await import("@wopr-network/platform-core/fleet/profile-store");
     const store = new ProfileStore(FLEET_DATA_DIR);
     const profile = await store.get(instanceId);
     return profile?.tenantId;

@@ -1,20 +1,25 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { IAuditLogRepository } from "@wopr-network/platform-core/audit/audit-log-repository";
+import { AuditLogger } from "@wopr-network/platform-core/audit/logger";
+import type { AuditEntry } from "@wopr-network/platform-core/audit/schema";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
 import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/metering";
+import { DrizzleAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import type { IDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
+import { DrizzleSpendingLimitsRepository } from "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IAuditLogRepository } from "../../audit/audit-log-repository.js";
-import { AuditLogger } from "../../audit/logger.js";
-import type { AuditEntry } from "../../audit/schema.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
-import { DrizzleSpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { type BillingRouterDeps, billingRouter, setBillingRouterDeps } from "./billing.js";
 
 // ---------------------------------------------------------------------------
@@ -215,7 +220,7 @@ describe("billingRouter", () => {
   let MeterAggregatorClass: typeof import("@wopr-network/platform-core/metering")["MeterAggregator"];
   let TenantCustomerRepositoryClass: new (
     db: DrizzleDb,
-  ) => InstanceType<typeof import("../../monetization/index.js")["TenantCustomerRepository"]>;
+  ) => InstanceType<typeof import("@wopr-network/platform-core/monetization/index")["TenantCustomerRepository"]>;
 
   beforeAll(async () => {
     const testDb = await createTestDb();
@@ -224,7 +229,7 @@ describe("billingRouter", () => {
     db = testDb.db;
     const agg = await import("@wopr-network/platform-core/metering");
     MeterAggregatorClass = agg.MeterAggregator as typeof MeterAggregatorClass;
-    const tcs = await import("../../monetization/index.js");
+    const tcs = await import("@wopr-network/platform-core/monetization/index");
     TenantCustomerRepositoryClass = tcs.TenantCustomerRepository as typeof TenantCustomerRepositoryClass;
   }, 30000);
 

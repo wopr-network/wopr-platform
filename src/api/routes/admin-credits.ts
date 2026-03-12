@@ -4,7 +4,7 @@ import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit, InsufficientBalanceError } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { z } from "zod";
-import { getAdminAuditLog, getCreditLedger } from "../../fleet/services.js";
+import { getAdminAuditLog, getCreditLedger } from "../../platform-services.js";
 
 const tenantIdSchema = z
   .string()

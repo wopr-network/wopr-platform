@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DOClient, DODroplet, DORegion, DOSize } from "../../src/fleet/do-client.js";
-import type { IGpuNodeRepository } from "../../src/fleet/gpu-node-repository.js";
+import type { DOClient, DODroplet, DORegion, DOSize } from "@wopr-network/platform-core/fleet/do-client";
+import type { IGpuNodeRepository } from "@wopr-network/platform-core/fleet/gpu-node-repository";
 import {
   GpuNodeProvisioner,
   GpuProvisioningError,
   type GpuProvisionResult,
-} from "../../src/fleet/gpu-node-provisioner.js";
-import type { GpuNode } from "../../src/fleet/repository-types.js";
+} from "@wopr-network/platform-core/fleet/gpu-node-provisioner";
+import type { GpuNode } from "@wopr-network/platform-core/fleet/repository-types";
 
 function makeDroplet(overrides: Partial<DODroplet> = {}): DODroplet {
   return {

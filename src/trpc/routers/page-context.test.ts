@@ -1,5 +1,5 @@
+import type { IPageContextRepository, PageContext } from "@wopr-network/platform-core/fleet/page-context-repository";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { IPageContextRepository, PageContext } from "../../fleet/page-context-repository.js";
 import { pageContextRouter, setPageContextRouterDeps } from "./page-context.js";
 
 function makeMockRepo(): IPageContextRepository & { store: Map<string, PageContext> } {

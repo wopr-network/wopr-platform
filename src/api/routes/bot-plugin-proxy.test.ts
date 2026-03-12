@@ -29,7 +29,7 @@ const mockProfile = {
 
 const storeMock = { get: vi.fn() };
 
-vi.mock("../../fleet/bot-profile-repository.js", () => ({}));
+vi.mock("@wopr-network/platform-core/fleet/bot-profile-repository", () => ({}));
 
 const proxyMock = vi.fn();
 vi.mock("./friends-proxy.js", () => ({

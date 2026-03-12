@@ -1,13 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
   getCreditLedger: vi.fn(),
 }));
 
 import { DrizzleCreditLedger } from "@wopr-network/platform-core/credits";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { createAdminCreditApiRoutes } from "./admin-credits.js";
 
 describe("admin-credits routes", () => {

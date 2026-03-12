@@ -1,6 +1,6 @@
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuditEnv } from "../../audit/types.js";
 import { activityRoutes, setActivityDb } from "./activity.js";
 
 // Build a test app with session user already injected
@@ -46,7 +46,7 @@ describe("GET /api/activity", () => {
 
   it("returns empty array when no audit entries", async () => {
     const mockDb = makeMockDb([]);
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     const res = await app.request("/api/activity");
@@ -71,7 +71,7 @@ describe("GET /api/activity", () => {
         userAgent: null,
       },
     ]);
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     const res = await app.request("/api/activity");
@@ -109,7 +109,7 @@ describe("GET /api/activity", () => {
         }),
       }),
     };
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     await app.request("/api/activity?limit=5");
@@ -131,7 +131,7 @@ describe("GET /api/activity", () => {
         }),
       }),
     };
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     await app.request("/api/activity?limit=999");
@@ -153,7 +153,7 @@ describe("GET /api/activity", () => {
         }),
       }),
     };
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     await app.request("/api/activity");
@@ -178,7 +178,7 @@ describe("formatAction helper", () => {
         userAgent: null,
       },
     ]);
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     const res = await app.request("/api/activity");
@@ -202,7 +202,7 @@ describe("formatAction helper", () => {
         userAgent: null,
       },
     ]);
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     const res = await app.request("/api/activity");
@@ -228,7 +228,7 @@ describe("buildTargetHref helper", () => {
         userAgent: null,
       },
     ]);
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     const res = await app.request("/api/activity");
@@ -252,7 +252,7 @@ describe("buildTargetHref helper", () => {
         userAgent: null,
       },
     ]);
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     const res = await app.request("/api/activity");
@@ -276,7 +276,7 @@ describe("buildTargetHref helper", () => {
         userAgent: null,
       },
     ]);
-    setActivityDb(mockDb as unknown as ReturnType<typeof import("../../db/index.js").createDb>);
+    setActivityDb(mockDb as unknown as ReturnType<typeof import("@wopr-network/platform-core/db/index").createDb>);
 
     const app = makeApp();
     const res = await app.request("/api/activity");

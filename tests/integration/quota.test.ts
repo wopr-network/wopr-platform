@@ -7,8 +7,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js"
-import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db"
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { Credit } from "@wopr-network/platform-core";
 
 const { app } = await import("../../src/api/app.js");

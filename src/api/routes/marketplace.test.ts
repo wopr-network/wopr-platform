@@ -1,11 +1,11 @@
+import type { PluginManifest } from "@wopr-network/platform-core/api/routes/marketplace-registry";
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
+import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "@wopr-network/platform-core/fleet/services";
+import { FIRST_PARTY_PLUGINS } from "@wopr-network/platform-core/marketplace/first-party-plugins";
+import type { MarketplacePlugin } from "@wopr-network/platform-core/marketplace/marketplace-repository-types";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuditEnv } from "../../audit/types.js";
-import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "../../fleet/services.js";
-import { FIRST_PARTY_PLUGINS } from "../../marketplace/first-party-plugins.js";
-import type { MarketplacePlugin } from "../../marketplace/marketplace-repository-types.js";
 import { marketplaceRoutes, setMarketplaceDeps } from "./marketplace.js";
-import type { PluginManifest } from "./marketplace-registry.js";
 
 const BOT_ID = "00000000-0000-4000-8000-000000000001";
 const OWNER_ID = "test-user";
@@ -37,7 +37,7 @@ function makeDbPlugin(manifest: PluginManifest): MarketplacePlugin {
 
 const MOCK_DB_PLUGINS = FIRST_PARTY_PLUGINS.map(makeDbPlugin);
 
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getMarketplacePluginRepo: vi.fn(() => ({
     findEnabled: vi.fn(async () => MOCK_DB_PLUGINS),
     findById: vi.fn(async (id: string) => MOCK_DB_PLUGINS.find((p) => p.pluginId === id)),
@@ -55,7 +55,7 @@ vi.mock("./fleet.js", () => ({
   },
 }));
 
-vi.mock("../../fleet/profile-store.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => ({
   // biome-ignore lint/complexity/useArrowFunction: constructor mock requires function keyword
   ProfileStore: vi.fn().mockImplementation(function () {
     return {

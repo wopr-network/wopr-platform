@@ -5,9 +5,9 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { IAuthUserRepository } from "@wopr-network/platform-core/db/auth-user-repository";
 import { orgMemberProcedure, protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { IAuthUserRepository } from "../../db/auth-user-repository.js";
 import type { OrgService } from "../../org/org-service.js";
 
 // ---------------------------------------------------------------------------

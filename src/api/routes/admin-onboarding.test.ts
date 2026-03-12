@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleOnboardingScriptRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-script-repository";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { DrizzleOnboardingScriptRepository } from "../../onboarding/drizzle-onboarding-script-repository.js";
-import { beginTestTransaction, createTestDb, endTestTransaction } from "../../test/db.js";
 import { createAdminOnboardingRoutes } from "./admin-onboarding.js";
 
 describe("admin-onboarding routes", () => {

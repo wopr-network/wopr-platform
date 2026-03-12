@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
+import type { ISessionUsageRepository } from "@wopr-network/platform-core/inference/session-usage-repository";
 import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 
 export interface InferenceAdminDeps {
   getSessionUsageRepo: () => ISessionUsageRepository;

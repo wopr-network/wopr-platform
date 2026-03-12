@@ -1,8 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/drizzle-sig-penalty-repository";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { DrizzleSigPenaltyRepository } from "./drizzle-sig-penalty-repository.js";
 
 describe("DrizzleSigPenaltyRepository", () => {
   let db: DrizzleDb;

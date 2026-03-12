@@ -1,16 +1,21 @@
 import type { PGlite } from "@electric-sql/pglite";
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
-import { Hono } from "hono";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { EchoChatBackend } from "../../chat/chat-backend.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { type BudgetTier, checkSessionBudget } from "../../inference/budget-guard.js";
-import { computeInferenceCost } from "../../inference/inference-cost.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { type BudgetTier, checkSessionBudget } from "@wopr-network/platform-core/inference/budget-guard";
+import { computeInferenceCost } from "@wopr-network/platform-core/inference/inference-cost";
 import {
   DrizzleSessionUsageRepository,
   type ISessionUsageRepository,
-} from "../../inference/session-usage-repository.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
+} from "@wopr-network/platform-core/inference/session-usage-repository";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
+import { Hono } from "hono";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { EchoChatBackend } from "../../chat/chat-backend.js";
 import { createChatRoutes } from "./chat.js";
 
 // ---------------------------------------------------------------------------

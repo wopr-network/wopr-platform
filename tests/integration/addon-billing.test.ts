@@ -1,18 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
-import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
 import { Credit } from "@wopr-network/platform-core";
-import { buildAddonCosts } from "../../src/monetization/addons/addon-cron.js";
-import { ADDON_CATALOG } from "../../src/monetization/addons/addon-catalog.js";
-import { DrizzleTenantAddonRepository } from "../../src/monetization/addons/addon-repository.js";
+import { buildAddonCosts } from "@wopr-network/platform-core/monetization/addons/addon-cron";
+import { ADDON_CATALOG } from "@wopr-network/platform-core/monetization/addons/addon-catalog";
+import { DrizzleTenantAddonRepository } from "@wopr-network/platform-core/monetization/addons/addon-repository";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { DAILY_BOT_COST, runRuntimeDeductions } from "../../src/monetization/credits/runtime-cron.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js";
+import { DAILY_BOT_COST, runRuntimeDeductions } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

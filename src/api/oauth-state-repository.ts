@@ -1,4 +1,4 @@
-import type { OAuthState } from "./repository-types.js";
+import type { OAuthState } from "@wopr-network/platform-core/api/repository-types";
 
 export interface IOAuthStateRepository {
   create(data: Omit<OAuthState, "token" | "status">): Promise<OAuthState>;

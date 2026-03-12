@@ -1,9 +1,10 @@
 import { validateTenantAccess } from "@wopr-network/platform-core/auth";
+import { getAuth } from "@wopr-network/platform-core/auth/better-auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import { getBotProfileRepo } from "@wopr-network/platform-core/fleet/services";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
-import { getAuth } from "../../auth/better-auth.js";
-import { logger } from "../../config/logger.js";
-import { getBotProfileRepo, getOrgMemberRepo } from "../../fleet/services.js";
+import { getOrgMemberRepo } from "../../platform-services.js";
 
 /**
  * Domain config, read once at startup.
@@ -135,7 +136,7 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
   const subdomain = extractTenantSubdomain(host);
   if (!subdomain) return next();
 
-  const { getProxyManager } = await import("../../proxy/singleton.js");
+  const { getProxyManager } = await import("@wopr-network/platform-core/proxy/singleton");
   const pm = getProxyManager();
   const route = pm.getRoutes().find((r) => r.subdomain === subdomain);
 

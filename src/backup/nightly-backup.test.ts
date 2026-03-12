@@ -1,7 +1,7 @@
 import os from "node:os";
 import path from "node:path";
+import { formatDate, NightlyBackup } from "@wopr-network/platform-core/backup/nightly-backup";
 import { describe, expect, it, vi } from "vitest";
-import { formatDate, NightlyBackup } from "./nightly-backup.js";
 
 describe("formatDate", () => {
   it("formats a date as YYYYMMDD", () => {

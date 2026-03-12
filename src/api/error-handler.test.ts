@@ -1,7 +1,7 @@
+import { config } from "@wopr-network/platform-core/config/index";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { config } from "../config/index.js";
-import { logger } from "../config/logger.js";
 import { app, errorHandler } from "./app.js";
 
 describe("Global error handler", () => {

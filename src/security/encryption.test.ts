@@ -25,14 +25,14 @@ describe("encryption", () => {
     });
 
     it("is deterministic for the same inputs", () => {
-      const a = deriveInstanceKey("instance-123", "secret");
-      const b = deriveInstanceKey("instance-123", "secret");
+      const a = deriveInstanceKey("instance-123", "test-platform-secret-key-32chars!");
+      const b = deriveInstanceKey("instance-123", "test-platform-secret-key-32chars!");
       expect(a.equals(b)).toBe(true);
     });
 
     it("differs for different instance IDs", () => {
-      const a = deriveInstanceKey("instance-1", "secret");
-      const b = deriveInstanceKey("instance-2", "secret");
+      const a = deriveInstanceKey("instance-1", "test-platform-secret-key-32chars!");
+      const b = deriveInstanceKey("instance-2", "test-platform-secret-key-32chars!");
       expect(a.equals(b)).toBe(false);
     });
 

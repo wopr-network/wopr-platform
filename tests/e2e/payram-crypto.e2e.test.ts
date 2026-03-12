@@ -11,17 +11,17 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import type { Payram } from "payram";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { Credit } from "@wopr-network/platform-core";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { DrizzleWebhookSeenRepository } from "../../src/monetization/drizzle-webhook-seen-repository.js";
-import { DrizzlePayRamChargeRepository } from "../../src/monetization/payram/charge-store.js";
-import { createPayRamCheckout } from "../../src/monetization/payram/checkout.js";
-import type { PayRamWebhookPayload } from "../../src/monetization/payram/types.js";
-import { handlePayRamWebhook } from "../../src/monetization/payram/webhook.js";
-import { createTestDb } from "../../src/test/db.js";
+import { DrizzleWebhookSeenRepository } from "@wopr-network/platform-core/monetization/drizzle-webhook-seen-repository";
+import { DrizzlePayRamChargeRepository } from "@wopr-network/platform-core/monetization/payram/charge-store";
+import { createPayRamCheckout } from "@wopr-network/platform-core/monetization/payram/checkout";
+import type { PayRamWebhookPayload } from "@wopr-network/platform-core/monetization/payram/types";
+import { handlePayRamWebhook } from "@wopr-network/platform-core/monetization/payram/webhook";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

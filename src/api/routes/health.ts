@@ -1,6 +1,6 @@
+import type { IBackupStatusStore } from "@wopr-network/platform-core/backup/backup-status-store";
+import { getBackupStatusStore } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
-import type { IBackupStatusStore } from "../../backup/backup-status-store.js";
-import { getBackupStatusStore } from "../../fleet/services.js";
 
 function getHealthStore(): IBackupStatusStore | null {
   try {

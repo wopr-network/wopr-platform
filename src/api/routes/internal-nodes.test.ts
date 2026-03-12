@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock fleet services before importing routes
-vi.mock("../../fleet/services.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/services", () => {
   const mockRegistrar = {
     register: vi.fn(),
     registerSelfHosted: vi.fn(),
@@ -23,7 +23,7 @@ vi.mock("../../fleet/services.js", () => {
   };
 });
 
-import { getNodeRegistrar, getNodeRepo, getRegistrationTokenStore } from "../../fleet/services.js";
+import { getNodeRegistrar, getNodeRepo, getRegistrationTokenStore } from "@wopr-network/platform-core/fleet/services";
 import { internalNodeRoutes } from "./internal-nodes.js";
 
 describe("POST /register", () => {

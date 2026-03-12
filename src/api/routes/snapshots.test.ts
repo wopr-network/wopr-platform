@@ -54,7 +54,7 @@ class MockSnapshotNotFoundError extends Error {
   }
 }
 
-vi.mock("../../backup/snapshot-manager.js", () => {
+vi.mock("@wopr-network/platform-core/backup/snapshot-manager", () => {
   return {
     SnapshotManager: class {
       create = managerMock.create;
@@ -69,7 +69,7 @@ vi.mock("../../backup/snapshot-manager.js", () => {
   };
 });
 
-vi.mock("../../fleet/profile-store.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => {
   return {
     ProfileStore: class {
       get(_id: string) {
@@ -83,13 +83,13 @@ vi.mock("../../backup/schema.js", () => {
   return { initSnapshotSchema: vi.fn() };
 });
 
-vi.mock("../../backup/retention.js", () => {
+vi.mock("@wopr-network/platform-core/backup/retention", () => {
   return { enforceRetention: vi.fn().mockResolvedValue(0) };
 });
 
 // Import AFTER mocks
 const { snapshotRoutes, setSnapshotManagerForTest, setTenantRepoForTest } = await import("./snapshots.js");
-const { SnapshotManager } = await import("../../backup/snapshot-manager.js");
+const { SnapshotManager } = await import("@wopr-network/platform-core/backup/snapshot-manager");
 
 // Mount under the same path pattern as app.ts
 const app = new Hono();

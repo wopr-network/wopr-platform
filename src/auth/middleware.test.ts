@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
 import type { AuthUser } from "@wopr-network/platform-core/auth";
+import type { IApiKeyRepository } from "@wopr-network/platform-core/auth/api-key-repository";
+import type { Auth } from "@wopr-network/platform-core/auth/better-auth";
+import {
+  dualAuth,
+  MIN_API_KEY_LENGTH,
+  type SessionAuthEnv,
+  sessionAuth,
+} from "@wopr-network/platform-core/auth/middleware";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { IApiKeyRepository } from "./api-key-repository.js";
-import type { Auth } from "./better-auth.js";
-import { dualAuth, MIN_API_KEY_LENGTH, type SessionAuthEnv, sessionAuth } from "./middleware.js";
 
 function sha256(token: string): string {
   return createHash("sha256").update(token).digest("hex");

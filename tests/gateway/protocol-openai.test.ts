@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createOpenAIRoutes } from "../../src/gateway/protocol/openai.js";
+import { createOpenAIRoutes } from "@wopr-network/platform-core/gateway/protocol/openai";
 import { Credit } from "@wopr-network/platform-core";
-import type { GatewayTenant } from "../../src/gateway/types.js";
-import type { ProtocolDeps } from "../../src/gateway/protocol/deps.js";
+import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
+import type { ProtocolDeps } from "@wopr-network/platform-core/gateway/protocol/deps";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

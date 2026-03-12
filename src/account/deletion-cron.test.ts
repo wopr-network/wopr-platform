@@ -1,11 +1,11 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
+import { DrizzleDeletionRepository } from "@wopr-network/platform-core/account/deletion-repository";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
 import { runDeletionCron } from "./deletion-cron.js";
 import type { DeletionExecutorDeps } from "./deletion-executor.js";
-import { DrizzleDeletionExecutorRepository } from "./deletion-executor-repository.js";
-import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore } from "./deletion-store.js";
 
 let db: DrizzleDb;

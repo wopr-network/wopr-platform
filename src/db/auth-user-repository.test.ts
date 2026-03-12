@@ -1,8 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
+import {
+  type AuthUser,
+  BetterAuthUserRepository,
+  initTwoFactorSchema,
+} from "@wopr-network/platform-core/db/auth-user-repository";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { initBetterAuthSchema, pgliteAsPool } from "../test/pglite-helpers.js";
-import { type AuthUser, BetterAuthUserRepository, initTwoFactorSchema } from "./auth-user-repository.js";
 
 function createMockPool() {
   return {

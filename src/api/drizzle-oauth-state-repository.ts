@@ -1,8 +1,8 @@
-import { and, eq, lt } from "drizzle-orm";
-import type { DrizzleDb } from "../db/index.js";
-import { oauthStates } from "../db/schema/index.js";
+import type { OAuthState } from "@wopr-network/platform-core/api/repository-types";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { and, eq, lt } from "@wopr-network/platform-core/db/index";
+import { oauthStates } from "@wopr-network/platform-core/db/schema/index";
 import type { IOAuthStateRepository } from "./oauth-state-repository.js";
-import type { OAuthState } from "./repository-types.js";
 
 export class DrizzleOAuthStateRepository implements IOAuthStateRepository {
   constructor(private readonly db: DrizzleDb) {}

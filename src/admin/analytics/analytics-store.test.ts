@@ -1,14 +1,14 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Credit } from "@wopr-network/platform-core/credits";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import {
   beginTestTransaction,
   createTestDb,
   endTestTransaction,
   rollbackTestTransaction,
   seedMeterEvent,
-} from "../../test/db.js";
+} from "@wopr-network/platform-core/test/db";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleAnalyticsRepository } from "./analytics-repository.js";
 import { AnalyticsStore, type DateRange } from "./analytics-store.js";
 

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IDaemonManager } from "../../src/onboarding/daemon-manager.js";
-import type { OnboardingConfig } from "../../src/onboarding/config.js";
-import type { IWoprClient } from "../../src/onboarding/wopr-client.js";
-import type { IOnboardingSessionRepository, OnboardingSession } from "../../src/onboarding/drizzle-onboarding-session-repository.js";
-import type { ISessionUsageRepository } from "../../src/inference/session-usage-repository.js";
-import { OnboardingService } from "../../src/onboarding/onboarding-service.js";
+import type { IDaemonManager } from "@wopr-network/platform-core/onboarding/daemon-manager";
+import type { OnboardingConfig } from "@wopr-network/platform-core/onboarding/config";
+import type { IWoprClient } from "@wopr-network/platform-core/onboarding/wopr-client";
+import type { IOnboardingSessionRepository, OnboardingSession } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-session-repository";
+import type { ISessionUsageRepository } from "@wopr-network/platform-core/inference/session-usage-repository";
+import { OnboardingService } from "@wopr-network/platform-core/onboarding/onboarding-service";
 
 function makeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSession {
   return {

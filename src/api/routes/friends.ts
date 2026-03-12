@@ -3,9 +3,9 @@ import {
   scopedBearerAuthWithTenant,
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { logger } from "../../config/logger.js";
 import { proxyToInstance } from "./friends-proxy.js";
 import { autoAcceptRuleSchema, sendFriendRequestSchema, updateCapabilitiesSchema } from "./friends-types.js";
 
@@ -18,7 +18,7 @@ const friendsTokenMetadataMap = buildTokenMetadataMap();
 /** Helper to get instance tenantId from bot profile */
 async function getInstanceTenantId(instanceId: string): Promise<string | undefined> {
   try {
-    const { ProfileStore } = await import("../../fleet/profile-store.js");
+    const { ProfileStore } = await import("@wopr-network/platform-core/fleet/profile-store");
     const store = new ProfileStore(FLEET_DATA_DIR);
     const profile = await store.get(instanceId);
     return profile?.tenantId;

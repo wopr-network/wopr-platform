@@ -1,6 +1,6 @@
+import { FleetEventEmitter } from "@wopr-network/platform-core/fleet/fleet-event-emitter";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { FleetEventEmitter } from "../../fleet/fleet-event-emitter.js";
 import { createFleetEventsRoute } from "./fleet-events.js";
 
 function makeApp(userId: string, emitter: FleetEventEmitter): Hono {

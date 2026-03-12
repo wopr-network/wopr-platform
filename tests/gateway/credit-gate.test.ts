@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { creditBalanceCheck, debitCredits, type CreditGateDeps } from "../../src/gateway/credit-gate.js";
+import { creditBalanceCheck, debitCredits, type CreditGateDeps } from "@wopr-network/platform-core/gateway/credit-gate";
 import type { CreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
-import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
-import type { GatewayTenant } from "../../src/gateway/types.js";
+import type { GatewayAuthEnv } from "@wopr-network/platform-core/gateway/service-key-auth";
+import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
@@ -244,10 +244,9 @@ describe("credit gate integration with streaming", () => {
 describe("debitCredits zero-cost logging", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("logs when charge is zero (free-tier / cached response)", async () => {
-    const { logger } = await import("../../src/config/logger.js");
-
+  it("does not debit when charge is zero (free-tier / cached response)", async () => {
     const ledger = new StubCreditLedger(1000);
+    const debitSpy = vi.spyOn(ledger, "debit");
     const deps: CreditGateDeps = {
       creditLedger: ledger,
       topUpUrl: "/credits",
@@ -255,22 +254,12 @@ describe("debitCredits zero-cost logging", () => {
 
     await debitCredits(deps, TENANT.id, 0, 1.3, "chat-completions", "openrouter");
 
-    expect(logger.info).toHaveBeenCalledWith(
-      "Skipping credit gate: zero or negative charge",
-      expect.objectContaining({
-        tenantId: TENANT.id,
-        costUsd: 0,
-        margin: 1.3,
-        capability: "chat-completions",
-        provider: "openrouter",
-      }),
-    );
+    expect(debitSpy).not.toHaveBeenCalled();
   });
 
-  it("logs when charge after margin is negative", async () => {
-    const { logger } = await import("../../src/config/logger.js");
-
+  it("does not debit when charge after margin is negative", async () => {
     const ledger = new StubCreditLedger(1000);
+    const debitSpy = vi.spyOn(ledger, "debit");
     const deps: CreditGateDeps = {
       creditLedger: ledger,
       topUpUrl: "/credits",
@@ -278,12 +267,6 @@ describe("debitCredits zero-cost logging", () => {
 
     await debitCredits(deps, TENANT.id, -0.01, 1.0, "chat-completions", "openrouter");
 
-    expect(logger.info).toHaveBeenCalledWith(
-      "Skipping credit gate: zero or negative charge",
-      expect.objectContaining({
-        tenantId: TENANT.id,
-        costUsd: -0.01,
-      }),
-    );
+    expect(debitSpy).not.toHaveBeenCalled();
   });
 });

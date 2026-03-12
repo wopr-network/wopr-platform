@@ -1,15 +1,15 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { auditLog } from "@wopr-network/platform-core/db/schema/audit";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuditEnv } from "../../audit/types.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { auditLog } from "../../db/schema/audit.js";
-import { createTestDb } from "../../test/db.js";
 import { createAuditRoutes } from "./audit.js";
 
 const purgeForUserSpy = vi.fn().mockResolvedValue(0);
-vi.mock("../../audit/retention.js", () => ({
+vi.mock("@wopr-network/platform-core/audit/retention", () => ({
   purgeExpiredEntriesForUser: (...args: unknown[]) => purgeForUserSpy(...args),
 }));
 

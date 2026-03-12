@@ -11,7 +11,7 @@ vi.mock("@wopr-network/platform-core/email", async (importOriginal) => {
 });
 
 // Mock the email client (route still imports getEmailClient from local client.js)
-vi.mock("../../../src/email/client.js", () => ({
+vi.mock("@wopr-network/platform-core/email/client", () => ({
   getEmailClient: vi.fn(() => ({
     send: vi.fn().mockResolvedValue(undefined),
   })),

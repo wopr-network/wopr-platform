@@ -1,18 +1,18 @@
 // src/api/routes/marketplace.ts
 
+import type { PluginCategory, PluginManifest } from "@wopr-network/platform-core/api/routes/marketplace-registry";
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { Credit } from "@wopr-network/platform-core/credits";
+import { lookupCapabilityEnv } from "@wopr-network/platform-core/fleet/capability-env-map";
+import { BotNotFoundError } from "@wopr-network/platform-core/fleet/fleet-manager";
+import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "@wopr-network/platform-core/fleet/services";
 import type { MeterEvent } from "@wopr-network/platform-core/metering";
 import type { DecryptedCredential } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { z } from "zod";
-import type { AuditEnv } from "../../audit/types.js";
-import { logger } from "../../config/logger.js";
-import { lookupCapabilityEnv } from "../../fleet/capability-env-map.js";
-import { BotNotFoundError } from "../../fleet/fleet-manager.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
-import { getMarketplaceContentRepo, getMarketplacePluginRepo } from "../../fleet/services.js";
 import { fleet } from "./fleet.js";
-import type { PluginCategory, PluginManifest } from "./marketplace-registry.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 const store = new ProfileStore(DATA_DIR);
@@ -46,7 +46,9 @@ function dbPluginToManifest(
   npmPackage: string,
   version: string,
   category: string | null,
-  manifest: import("../../marketplace/marketplace-repository-types.js").MarketplacePluginManifest | null,
+  manifest:
+    | import("@wopr-network/platform-core/marketplace/marketplace-repository-types").MarketplacePluginManifest
+    | null,
 ): PluginManifest {
   if (manifest) {
     return {

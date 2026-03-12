@@ -4,12 +4,12 @@ import {
   scopedBearerAuthWithTenant,
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import type { IBotProfileRepository } from "@wopr-network/platform-core/fleet/bot-profile-repository";
+import type { IPluginConfigRepository } from "@wopr-network/platform-core/setup/plugin-config-repository";
 import { Hono } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { z } from "zod";
-import { logger } from "../../config/logger.js";
-import type { IBotProfileRepository } from "../../fleet/bot-profile-repository.js";
-import type { IPluginConfigRepository } from "../../setup/plugin-config-repository.js";
 import { proxyToInstance } from "./friends-proxy.js";
 
 const UUID_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;

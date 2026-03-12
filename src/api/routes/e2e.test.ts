@@ -1,16 +1,21 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/drizzle-sig-penalty-repository";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import { noOpReplayGuard, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import type { BotProfile, BotStatus } from "@wopr-network/platform-core/fleet/types";
 import { DrizzleUsageSummaryRepository, MeterAggregator } from "@wopr-network/platform-core/metering";
+import { DrizzleAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import { handleWebhookEvent } from "@wopr-network/platform-core/monetization/stripe/webhook";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { Hono } from "hono";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import type { BotProfile, BotStatus } from "../../fleet/types.js";
-import { DrizzleAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import { handleWebhookEvent } from "../../monetization/stripe/webhook.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
-import { DrizzleSigPenaltyRepository } from "../drizzle-sig-penalty-repository.js";
 
 // ---------------------------------------------------------------------------
 // Shared test token and auth header
@@ -177,11 +182,11 @@ vi.mock("dockerode", () => {
   return { default: class MockDocker {} };
 });
 
-vi.mock("../../fleet/profile-store.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => {
   return { ProfileStore: class MockProfileStore {} };
 });
 
-vi.mock("../../fleet/fleet-manager.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
   return {
     FleetManager: class {
       create = fleetMock.create;
@@ -199,7 +204,7 @@ vi.mock("../../fleet/fleet-manager.js", () => {
   };
 });
 
-vi.mock("../../fleet/image-poller.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/image-poller", () => {
   return {
     ImagePoller: class {
       getImageStatus = pollerMock.getImageStatus;
@@ -208,7 +213,7 @@ vi.mock("../../fleet/image-poller.js", () => {
   };
 });
 
-vi.mock("../../fleet/updater.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/updater", () => {
   return {
     ContainerUpdater: class {
       updateBot = updaterMock.updateBot;
@@ -216,7 +221,7 @@ vi.mock("../../fleet/updater.js", () => {
   };
 });
 
-vi.mock("../../network/network-policy.js", () => {
+vi.mock("@wopr-network/platform-core/network/network-policy", () => {
   return {
     NetworkPolicy: class {
       prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
@@ -226,7 +231,7 @@ vi.mock("../../network/network-policy.js", () => {
 });
 
 // Mock proxy singleton to avoid real DNS resolution in tests
-vi.mock("../../proxy/singleton.js", () => {
+vi.mock("@wopr-network/platform-core/proxy/singleton", () => {
   return {
     getProxyManager: () => ({
       addRoute: vi.fn().mockResolvedValue(undefined),

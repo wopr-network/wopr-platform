@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createTestDb } from "../../src/test/db.js";
-import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
-import { DrizzlePromotionRepository } from "../../src/monetization/promotions/promotion-repository.js";
-import { DrizzleCouponRepository } from "../../src/monetization/promotions/coupon-repository.js";
-import { DrizzleRedemptionRepository } from "../../src/monetization/promotions/redemption-repository.js";
-import { PromotionEngine } from "../../src/monetization/promotions/engine.js";
+import { DrizzlePromotionRepository } from "@wopr-network/platform-core/monetization/promotions/promotion-repository";
+import { DrizzleCouponRepository } from "@wopr-network/platform-core/monetization/promotions/coupon-repository";
+import { DrizzleRedemptionRepository } from "@wopr-network/platform-core/monetization/promotions/redemption-repository";
+import { PromotionEngine } from "@wopr-network/platform-core/monetization/promotions/engine";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

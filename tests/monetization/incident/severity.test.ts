@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifySeverity, type SeveritySignals } from "../../../src/monetization/incident/severity.js";
+import { classifySeverity, type SeveritySignals } from "@wopr-network/platform-core/monetization/incident/severity";
 
 const healthy: SeveritySignals = {
   stripeReachable: true,

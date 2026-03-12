@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { tenantApiKeys } from "@wopr-network/platform-core/db/schema/tenant-api-keys";
 import type { Provider } from "@wopr-network/platform-core/security";
 import { DrizzleKeyResolutionRepository } from "@wopr-network/platform-core/security";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { tenantApiKeys } from "../../db/schema/tenant-api-keys.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 let db: DrizzleDb;
 let pool: PGlite;

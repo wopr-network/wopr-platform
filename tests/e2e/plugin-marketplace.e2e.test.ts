@@ -2,27 +2,27 @@ import { randomUUID } from "node:crypto";
 import { unlink } from "node:fs/promises";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../../src/test/db.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { FIRST_PARTY_PLUGINS } from "../../src/marketplace/first-party-plugins.js";
-import { DrizzleMarketplacePluginRepository } from "../../src/marketplace/drizzle-marketplace-plugin-repository.js";
-import type { MarketplacePlugin } from "../../src/marketplace/marketplace-repository-types.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { FIRST_PARTY_PLUGINS } from "@wopr-network/platform-core/marketplace/first-party-plugins";
+import { DrizzleMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/drizzle-marketplace-plugin-repository";
+import type { MarketplacePlugin } from "@wopr-network/platform-core/marketplace/marketplace-repository-types";
 import {
   DrizzlePluginConfigRepository,
   type IPluginConfigRepository,
-} from "../../src/setup/plugin-config-repository.js";
-import { encrypt, decrypt, generateInstanceKey } from "../../src/security/encryption.js";
-import type { EncryptedPayload } from "../../src/security/types.js";
-import { AdapterSocket } from "../../src/monetization/socket/socket.js";
-import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
+} from "@wopr-network/platform-core/setup/plugin-config-repository";
+import { encrypt, decrypt, generateInstanceKey } from "@wopr-network/platform-core/security/encryption";
+import type { EncryptedPayload } from "@wopr-network/platform-core/security/types";
+import { AdapterSocket } from "@wopr-network/platform-core/monetization/socket/socket";
+import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/monetization/metering/emitter";
+import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/monetization/metering/meter-event-repository";
 import { Credit } from "@wopr-network/platform-core";
 import type {
   AdapterResult,
   ProviderAdapter,
   TextGenerationOutput,
-} from "../../src/monetization/adapters/types.js";
-import type { ConfigSchemaField } from "../../src/api/routes/marketplace-registry.js";
+} from "@wopr-network/platform-core/monetization/adapters/types";
+import type { ConfigSchemaField } from "@wopr-network/platform-core/api/routes/marketplace-registry";
 
 // ---------------------------------------------------------------------------
 // Helpers

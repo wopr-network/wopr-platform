@@ -3,7 +3,7 @@ import {
   getCustomerTemplate,
   getInternalTemplate,
   type IncidentContext,
-} from "../../../src/monetization/incident/communication-templates.js";
+} from "@wopr-network/platform-core/monetization/incident/communication-templates";
 
 const ctx: IncidentContext = {
   incidentId: "INC-001",

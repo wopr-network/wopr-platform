@@ -1,4 +1,4 @@
-import type { IDeletionExecutorRepository } from "./deletion-executor-repository.js";
+import type { IDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
 
 export interface DeletionExecutorDeps {
   repo: IDeletionExecutorRepository;

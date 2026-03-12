@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { PGlite } from "@electric-sql/pglite";
 import { Credit } from "@wopr-network/platform-core/credits";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq, sql } from "@wopr-network/platform-core/db/index";
+import { meterEvents } from "@wopr-network/platform-core/db/schema/meter-events";
 import type { MeterEvent } from "@wopr-network/platform-core/metering";
 import {
   DrizzleMeterEventRepository,
@@ -8,11 +11,8 @@ import {
   MeterAggregator,
   MeterEmitter,
 } from "@wopr-network/platform-core/metering";
-import { eq, sql } from "drizzle-orm";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { meterEvents } from "../../db/schema/meter-events.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
 
 function makeEmitter(db: DrizzleDb, opts: ConstructorParameters<typeof MeterEmitter>[1] = {}): MeterEmitter {
   return new MeterEmitter(new DrizzleMeterEventRepository(db), opts);
@@ -126,10 +126,12 @@ describe("MeterEmitter", () => {
       walPath: TEST_WAL_PATH,
       dlqPath: TEST_DLQ_PATH,
     });
+    await emitter.ready;
   });
 
   afterEach(async () => {
-    await emitter.close();
+    await emitter.flush();
+    emitter.close();
 
     // Clean up test files.
     try {
@@ -145,7 +147,7 @@ describe("MeterEmitter", () => {
   });
 
   it("buffers events without writing until flush", async () => {
-    emitter.emit(makeEvent());
+    await emitter.emit(makeEvent());
     expect(emitter.pending).toBe(1);
 
     const rows = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
@@ -153,8 +155,8 @@ describe("MeterEmitter", () => {
   });
 
   it("flush writes buffered events to the database", async () => {
-    emitter.emit(makeEvent());
-    emitter.emit(makeEvent({ tenant: "tenant-2" }));
+    await emitter.emit(makeEvent());
+    await emitter.emit(makeEvent({ tenant: "tenant-2" }));
 
     const flushed = await emitter.flush();
     expect(flushed).toBe(2);
@@ -176,7 +178,7 @@ describe("MeterEmitter", () => {
       duration: 5000,
     });
 
-    emitter.emit(event);
+    await emitter.emit(event);
     await emitter.flush();
 
     const rows = await emitter.queryEvents("t-abc");
@@ -192,7 +194,7 @@ describe("MeterEmitter", () => {
   });
 
   it("handles null optional fields", async () => {
-    emitter.emit(makeEvent({ sessionId: undefined, duration: undefined }));
+    await emitter.emit(makeEvent({ sessionId: undefined, duration: undefined }));
     await emitter.flush();
 
     const rows = await emitter.queryEvents("tenant-1");
@@ -201,8 +203,8 @@ describe("MeterEmitter", () => {
   });
 
   it("generates unique IDs for each event", async () => {
-    emitter.emit(makeEvent());
-    emitter.emit(makeEvent());
+    await emitter.emit(makeEvent());
+    await emitter.emit(makeEvent());
     await emitter.flush();
 
     const rows = await emitter.queryEvents("tenant-1");
@@ -211,11 +213,19 @@ describe("MeterEmitter", () => {
   });
 
   it("auto-flushes when batch size is reached", async () => {
-    const smallBatch = makeEmitter(db, { flushIntervalMs: 60_000, batchSize: 3 });
-    smallBatch.emit(makeEvent());
-    smallBatch.emit(makeEvent());
-    // Third event triggers auto-flush.
-    smallBatch.emit(makeEvent());
+    const smallBatch = makeEmitter(db, {
+      flushIntervalMs: 60_000,
+      batchSize: 3,
+      walPath: TEST_WAL_PATH,
+      dlqPath: TEST_DLQ_PATH,
+    });
+    await smallBatch.ready;
+    await smallBatch.emit(makeEvent());
+    await smallBatch.emit(makeEvent());
+    // Third event triggers auto-flush (fire-and-forget).
+    await smallBatch.emit(makeEvent());
+    // Wait a tick for the fire-and-forget flush to complete.
+    await new Promise((r) => setTimeout(r, 50));
 
     const rows = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(rows?.cnt).toBe(3);
@@ -224,8 +234,10 @@ describe("MeterEmitter", () => {
   });
 
   it("close flushes remaining events", async () => {
-    emitter.emit(makeEvent());
-    emitter.emit(makeEvent());
+    await emitter.emit(makeEvent());
+    await emitter.emit(makeEvent());
+    // close() fires flush as fire-and-forget; await flush first for deterministic test
+    await emitter.flush();
     emitter.close();
 
     const rows = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
@@ -233,8 +245,9 @@ describe("MeterEmitter", () => {
   });
 
   it("ignores events after close", async () => {
+    await emitter.flush();
     emitter.close();
-    emitter.emit(makeEvent());
+    await emitter.emit(makeEvent());
     expect(emitter.pending).toBe(0);
   });
 
@@ -247,9 +260,10 @@ describe("MeterEmitter", () => {
       walPath: TEST_WAL_PATH,
       dlqPath: TEST_DLQ_PATH,
     });
+    await localEmitter.ready;
 
-    localEmitter.emit(makeEvent());
-    localEmitter.emit(makeEvent());
+    await localEmitter.emit(makeEvent());
+    await localEmitter.emit(makeEvent());
     expect(localEmitter.pending).toBe(2);
 
     await localPool.close();
@@ -263,9 +277,9 @@ describe("MeterEmitter", () => {
   });
 
   it("queryEvents returns events for a specific tenant", async () => {
-    emitter.emit(makeEvent({ tenant: "t-1" }));
-    emitter.emit(makeEvent({ tenant: "t-2" }));
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-2" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
     await emitter.flush();
 
     const t1Events = await emitter.queryEvents("t-1");
@@ -299,18 +313,20 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
+    await emitter.ready;
   });
 
   afterEach(async () => {
-    await emitter.close();
+    await emitter.flush();
+    emitter.close();
   });
 
   it("groups multiple providers under one sessionId", async () => {
     const sessionId = "voice-session-1";
 
-    emitter.emit(makeEvent({ capability: "stt", provider: "deepgram", sessionId }));
-    emitter.emit(makeEvent({ capability: "chat", provider: "openai", sessionId }));
-    emitter.emit(makeEvent({ capability: "tts", provider: "elevenlabs", sessionId }));
+    await emitter.emit(makeEvent({ capability: "stt", provider: "deepgram", sessionId }));
+    await emitter.emit(makeEvent({ capability: "chat", provider: "openai", sessionId }));
+    await emitter.emit(makeEvent({ capability: "tts", provider: "elevenlabs", sessionId }));
     await emitter.flush();
 
     const rows = await db.select().from(meterEvents).where(eq(meterEvents.sessionId, sessionId));
@@ -323,9 +339,9 @@ describe("MeterEmitter - concurrent multi-provider sessions", () => {
   });
 
   it("handles events from different sessions simultaneously", async () => {
-    emitter.emit(makeEvent({ sessionId: "sess-a", capability: "stt" }));
-    emitter.emit(makeEvent({ sessionId: "sess-b", capability: "stt" }));
-    emitter.emit(makeEvent({ sessionId: "sess-a", capability: "tts" }));
+    await emitter.emit(makeEvent({ sessionId: "sess-a", capability: "stt" }));
+    await emitter.emit(makeEvent({ sessionId: "sess-b", capability: "stt" }));
+    await emitter.emit(makeEvent({ sessionId: "sess-a", capability: "tts" }));
     await emitter.flush();
 
     const sessA = (
@@ -362,19 +378,21 @@ describe("MeterAggregator", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
+    await emitter.ready;
     aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
   });
 
   afterEach(async () => {
     aggregator.stop();
-    await emitter.close();
+    await emitter.flush();
+    emitter.close();
   });
 
   it("aggregates events from completed windows", async () => {
     // Insert events in a past window.
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.01),
@@ -382,7 +400,7 @@ describe("MeterAggregator", () => {
         timestamp: pastWindow + 100,
       }),
     );
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.03),
@@ -405,11 +423,13 @@ describe("MeterAggregator", () => {
   it("groups by tenant, capability, and provider", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({ tenant: "t-1", capability: "embeddings", provider: "openai", timestamp: pastWindow + 10 }),
     );
-    emitter.emit(makeEvent({ tenant: "t-1", capability: "voice", provider: "deepgram", timestamp: pastWindow + 20 }));
-    emitter.emit(
+    await emitter.emit(
+      makeEvent({ tenant: "t-1", capability: "voice", provider: "deepgram", timestamp: pastWindow + 20 }),
+    );
+    await emitter.emit(
       makeEvent({ tenant: "t-2", capability: "embeddings", provider: "openai", timestamp: pastWindow + 30 }),
     );
     await emitter.flush();
@@ -426,7 +446,7 @@ describe("MeterAggregator", () => {
 
   it("does not aggregate the current (incomplete) window", async () => {
     // Insert an event in the *current* window.
-    emitter.emit(makeEvent({ timestamp: Date.now() }));
+    await emitter.emit(makeEvent({ timestamp: Date.now() }));
     await emitter.flush();
 
     const count = await aggregator.aggregate();
@@ -440,7 +460,7 @@ describe("MeterAggregator", () => {
   it("is idempotent - does not double-aggregate", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.01),
@@ -461,7 +481,7 @@ describe("MeterAggregator", () => {
   it("aggregates duration for session-based capabilities", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         capability: "voice",
@@ -469,7 +489,7 @@ describe("MeterAggregator", () => {
         timestamp: pastWindow + 10,
       }),
     );
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         capability: "voice",
@@ -495,7 +515,7 @@ describe("MeterAggregator", () => {
   it("getTenantTotal returns aggregate totals", async () => {
     const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.01),
@@ -503,7 +523,7 @@ describe("MeterAggregator", () => {
         timestamp: pastWindow + 10,
       }),
     );
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.05),
@@ -534,8 +554,8 @@ describe("MeterAggregator", () => {
     const twoWindowsAgo = Math.floor(now / WINDOW) * WINDOW - 2 * WINDOW;
     const oneWindowAgo = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(makeEvent({ tenant: "t-1", timestamp: twoWindowsAgo + 10 }));
-    emitter.emit(makeEvent({ tenant: "t-1", timestamp: oneWindowAgo + 10 }));
+    await emitter.emit(makeEvent({ tenant: "t-1", timestamp: twoWindowsAgo + 10 }));
+    await emitter.emit(makeEvent({ tenant: "t-1", timestamp: oneWindowAgo + 10 }));
     await emitter.flush();
 
     // Aggregate both windows.
@@ -575,12 +595,14 @@ describe("MeterAggregator - edge cases", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
+    await emitter.ready;
     aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
   });
 
   afterEach(async () => {
     aggregator.stop();
-    await emitter.close();
+    await emitter.flush();
+    emitter.close();
   });
 
   it("inserts sentinel for empty windows between events", async () => {
@@ -588,7 +610,7 @@ describe("MeterAggregator - edge cases", () => {
     const threeWindowsAgo = Math.floor(now / WINDOW) * WINDOW - 3 * WINDOW;
 
     // Place one event 3 windows ago; windows 2-ago and 1-ago are empty.
-    emitter.emit(makeEvent({ tenant: "t-1", timestamp: threeWindowsAgo + 10 }));
+    await emitter.emit(makeEvent({ tenant: "t-1", timestamp: threeWindowsAgo + 10 }));
     await emitter.flush();
 
     await aggregator.aggregate(now);
@@ -615,7 +637,7 @@ describe("MeterAggregator - edge cases", () => {
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.123),
@@ -640,7 +662,7 @@ describe("MeterAggregator - edge cases", () => {
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
     // Event at the exact start of the window (timestamp === windowStart).
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.01),
@@ -665,7 +687,7 @@ describe("MeterAggregator - edge cases", () => {
     const oneWindowAgo = twoWindowsAgo + WINDOW;
 
     // Event at the exact boundary (end of window 2-ago = start of window 1-ago).
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.01),
@@ -689,7 +711,7 @@ describe("MeterAggregator - edge cases", () => {
 
     const tenants = ["alpha", "beta", "gamma"];
     for (const t of tenants) {
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           tenant: t,
           cost: Credit.fromDollars(0.01),
@@ -698,7 +720,7 @@ describe("MeterAggregator - edge cases", () => {
           timestamp: pastWindow + 10,
         }),
       );
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           tenant: t,
           cost: Credit.fromDollars(0.03),
@@ -728,7 +750,7 @@ describe("MeterAggregator - edge cases", () => {
     const twoWindowsAgo = threeWindowsAgo + WINDOW;
     const oneWindowAgo = twoWindowsAgo + WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.01),
@@ -736,7 +758,7 @@ describe("MeterAggregator - edge cases", () => {
         timestamp: threeWindowsAgo + 100,
       }),
     );
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.03),
@@ -744,7 +766,7 @@ describe("MeterAggregator - edge cases", () => {
         timestamp: twoWindowsAgo + 100,
       }),
     );
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.05),
@@ -797,6 +819,7 @@ describe("MeterAggregator - billing accuracy", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
+    await emitter.ready;
     aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: 60_000 });
   });
 
@@ -847,7 +870,7 @@ describe("MeterAggregator - billing accuracy", () => {
     const expectedCostRaw = events.reduce((s, e) => s + e.cost.toRaw(), 0);
     const expectedChargeRaw = events.reduce((s, e) => s + e.charge.toRaw(), 0);
 
-    for (const e of events) emitter.emit(e);
+    for (const e of events) await emitter.emit(e);
     await emitter.flush();
     await aggregator.aggregate(now);
 
@@ -862,7 +885,7 @@ describe("MeterAggregator - billing accuracy", () => {
     const now = Date.now();
     const pastWindow = Math.floor(now / WINDOW) * WINDOW - WINDOW;
 
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.1),
@@ -871,7 +894,7 @@ describe("MeterAggregator - billing accuracy", () => {
         timestamp: pastWindow + 10,
       }),
     );
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.05),
@@ -880,7 +903,7 @@ describe("MeterAggregator - billing accuracy", () => {
         timestamp: pastWindow + 20,
       }),
     );
-    emitter.emit(
+    await emitter.emit(
       makeEvent({
         tenant: "t-1",
         cost: Credit.fromDollars(0.15),
@@ -921,17 +944,19 @@ describe("MeterEmitter - edge cases", () => {
     // Clear any existing meter_events data from previous tests to ensure isolation
     await db.delete(meterEvents);
     emitter = makeEmitter(db, { flushIntervalMs: 60_000, batchSize: 100 });
+    await emitter.ready;
   });
 
   afterEach(async () => {
-    await emitter.close();
+    await emitter.flush();
+    emitter.close();
     await pool.close();
     cleanDefaultWalFiles();
   });
 
   it("handles large batch of events", async () => {
     for (let i = 0; i < 200; i++) {
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           tenant: "bulk-tenant",
           cost: Credit.fromDollars(0.001),
@@ -949,7 +974,7 @@ describe("MeterEmitter - edge cases", () => {
   });
 
   it("handles zero-cost events", async () => {
-    emitter.emit(makeEvent({ tenant: "free-tier", cost: Credit.ZERO, charge: Credit.ZERO }));
+    await emitter.emit(makeEvent({ tenant: "free-tier", cost: Credit.ZERO, charge: Credit.ZERO }));
     await emitter.flush();
 
     const rows = await emitter.queryEvents("free-tier");
@@ -960,9 +985,9 @@ describe("MeterEmitter - edge cases", () => {
 
   it("preserves event ordering within a tenant", async () => {
     const base = 1700000000000;
-    emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 300 }));
-    emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 100 }));
-    emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 200 }));
+    await emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 300 }));
+    await emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 100 }));
+    await emitter.emit(makeEvent({ tenant: "t-1", timestamp: base + 200 }));
     await emitter.flush();
 
     // queryEvents orders by timestamp DESC.
@@ -974,11 +999,11 @@ describe("MeterEmitter - edge cases", () => {
   });
 
   it("handles multiple flushes without losing events", async () => {
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
     await emitter.flush();
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
     await emitter.flush();
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
     await emitter.flush();
 
     const rows = (
@@ -994,8 +1019,9 @@ describe("append-only guarantee", () => {
   it("meter_events table has no UPDATE or DELETE operations in emitter", async () => {
     const { db, pool } = await createTestDb();
     const emitter = makeEmitter(db, { flushIntervalMs: 60_000 });
+    await emitter.ready;
 
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
     await emitter.flush();
 
     // Verify the event exists.
@@ -1003,13 +1029,14 @@ describe("append-only guarantee", () => {
     expect(before?.cnt).toBe(1);
 
     // Emit more -- never replaces.
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
     await emitter.flush();
 
     const after = (await db.select({ cnt: sql<number>`COUNT(*)` }).from(meterEvents))[0];
     expect(after?.cnt).toBe(2);
 
-    await emitter.close();
+    await emitter.flush();
+    emitter.close();
     await pool.close();
   });
 });
@@ -1046,10 +1073,12 @@ describe("MeterEmitter - fail-closed policy", () => {
       dlqPath: TEST_DLQ_PATH,
       maxRetries: 3,
     });
+    await emitter.ready;
   });
 
   afterEach(async () => {
-    await emitter.close();
+    await emitter.flush();
+    emitter.close();
     await pool.close();
 
     // Clean up test files after each test.
@@ -1066,7 +1095,7 @@ describe("MeterEmitter - fail-closed policy", () => {
   });
 
   it("writes events to WAL before buffering", async () => {
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
 
     // WAL should exist immediately.
     expect(existsSync(TEST_WAL_PATH)).toBe(true);
@@ -1081,7 +1110,7 @@ describe("MeterEmitter - fail-closed policy", () => {
   });
 
   it("clears WAL after successful flush", async () => {
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
     expect(existsSync(TEST_WAL_PATH)).toBe(true);
 
     await emitter.flush();
@@ -1091,7 +1120,7 @@ describe("MeterEmitter - fail-closed policy", () => {
   });
 
   it("moves events to DLQ after max retries", async () => {
-    emitter.emit(makeEvent({ tenant: "t-1" }));
+    await emitter.emit(makeEvent({ tenant: "t-1" }));
 
     // Close the database to force flush failures.
     pool.close();
@@ -1181,7 +1210,7 @@ describe("MeterEmitter - fail-closed policy", () => {
 
   describe("generic usage fields (WOP-512)", () => {
     it("persists usage, tier, and metadata fields", async () => {
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           tenant: "t-1",
           capability: "tts",
@@ -1200,7 +1229,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     });
 
     it("handles null usage/tier/metadata (backwards compatibility)", async () => {
-      emitter.emit(makeEvent({ tenant: "t-1" }));
+      await emitter.emit(makeEvent({ tenant: "t-1" }));
       await emitter.flush();
       const rows = await emitter.queryEvents("t-1");
       expect(rows[0].usage_units).toBeNull();
@@ -1210,7 +1239,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     });
 
     it("works with multiple capability types in the same flush", async () => {
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           capability: "tts",
           provider: "elevenlabs",
@@ -1218,7 +1247,7 @@ describe("MeterEmitter - fail-closed policy", () => {
           tier: "branded",
         }),
       );
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           capability: "chat-completions",
           provider: "openrouter",
@@ -1226,7 +1255,7 @@ describe("MeterEmitter - fail-closed policy", () => {
           tier: "branded",
         }),
       );
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           capability: "transcription",
           provider: "self-hosted-whisper",
@@ -1234,7 +1263,7 @@ describe("MeterEmitter - fail-closed policy", () => {
           tier: "wopr",
         }),
       );
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           capability: "image-generation",
           provider: "replicate",
@@ -1251,7 +1280,7 @@ describe("MeterEmitter - fail-closed policy", () => {
     });
 
     it("BYOK tier records zero cost/charge with tier='byok'", async () => {
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           cost: Credit.ZERO,
           charge: Credit.ZERO,
@@ -1273,7 +1302,7 @@ describe("MeterEmitter - fail-closed policy", () => {
       const WINDOW = 60_000; // 1 minute
       const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
       const pastWindow = Math.floor(Date.now() / WINDOW) * WINDOW - WINDOW;
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           tenant: "t-1",
           cost: Credit.fromDollars(0.01),
@@ -1283,7 +1312,7 @@ describe("MeterEmitter - fail-closed policy", () => {
           tier: "branded",
         }),
       );
-      emitter.emit(
+      await emitter.emit(
         makeEvent({
           tenant: "t-1",
           cost: Credit.fromDollars(0.03),
@@ -1307,7 +1336,7 @@ describe("MeterEmitter - fail-closed policy", () => {
         tier: "wopr",
         metadata: { foo: "bar" },
       });
-      emitter.emit(event);
+      await emitter.emit(event);
       // WAL should persist new fields
       const walContent = readFileSync(TEST_WAL_PATH, "utf8");
       const walEvent = JSON.parse(walContent.trim());

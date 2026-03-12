@@ -5,14 +5,13 @@
  * Called by scripts/seed-marketplace-plugins.ts.
  */
 
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { createDb, eq } from "@wopr-network/platform-core/db/index";
+import { marketplacePlugins } from "@wopr-network/platform-core/db/schema/marketplace-plugins";
+import { FIRST_PARTY_PLUGINS } from "@wopr-network/platform-core/marketplace/first-party-plugins";
 import type { Pool } from "pg";
-import { FIRST_PARTY_PLUGINS } from "../marketplace/first-party-plugins.js";
-import { marketplacePlugins } from "./schema/marketplace-plugins.js";
 
 export async function seedMarketplacePlugins(pool: Pool): Promise<void> {
-  const db = drizzle(pool);
+  const db = createDb(pool);
   const now = Date.now();
 
   console.info(`Seeding ${FIRST_PARTY_PLUGINS.length} first-party plugins...`);

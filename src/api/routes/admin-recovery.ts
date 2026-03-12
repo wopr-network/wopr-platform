@@ -1,19 +1,19 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
-import { Hono } from "hono";
-import { z } from "zod";
-import { logger } from "../../config/logger.js";
-import { checkCapacityAlerts } from "../../fleet/capacity-alerts.js";
-import type { RecoveryEvent } from "../../fleet/repository-types.js";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import { checkCapacityAlerts } from "@wopr-network/platform-core/fleet/capacity-alerts";
+import type { RecoveryEvent } from "@wopr-network/platform-core/fleet/repository-types";
 import {
-  getAdminAuditLog,
   getBotInstanceRepo,
   getNodeDrainer,
   getNodeProvisioner,
   getNodeRepo,
   getRecoveryOrchestrator,
   getRecoveryRepo,
-} from "../../fleet/services.js";
+} from "@wopr-network/platform-core/fleet/services";
+import { Hono } from "hono";
+import { z } from "zod";
+import { getAdminAuditLog } from "../../platform-services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
@@ -217,7 +217,7 @@ adminNodeRoutes.post("/migrate", adminAuth, async (c) => {
     }
 
     // Use the migration orchestrator directly for single-bot migrations
-    const { getMigrationOrchestrator } = await import("../../fleet/services.js");
+    const { getMigrationOrchestrator } = await import("@wopr-network/platform-core/fleet/services");
     const result = await getMigrationOrchestrator().migrate(parsed.botId, parsed.targetNodeId);
 
     if (!result.success) {
@@ -397,7 +397,7 @@ adminNodeRoutes.get("/:nodeId/stats", adminAuth, async (c) => {
   const nodeId = c.req.param("nodeId") as string;
 
   try {
-    const { getCommandBus } = await import("../../fleet/services.js");
+    const { getCommandBus } = await import("@wopr-network/platform-core/fleet/services");
     const result = await getCommandBus().send(nodeId, { type: "stats.get", payload: {} });
 
     return c.json({ success: true, stats: result.data });

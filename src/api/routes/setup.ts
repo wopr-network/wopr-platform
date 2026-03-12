@@ -1,16 +1,19 @@
 import { randomUUID } from "node:crypto";
+import type { PluginManifest } from "@wopr-network/platform-core/api/routes/marketplace-registry";
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import {
+  applyDependencyConfigs,
+  type DependencyConfigResult,
+} from "@wopr-network/platform-core/fleet/apply-dependency-configs";
+import type { OnboardingService } from "@wopr-network/platform-core/onboarding/onboarding-service";
+import type { ProviderStatus } from "@wopr-network/platform-core/onboarding/provider-check";
 import { deriveInstanceKey, encrypt } from "@wopr-network/platform-core/security";
+import type { IPluginConfigRepository } from "@wopr-network/platform-core/setup/plugin-config-repository";
+import type { SetupService } from "@wopr-network/platform-core/setup/setup-service";
+import type { ISetupSessionRepository } from "@wopr-network/platform-core/setup/setup-session-repository";
 import { Hono } from "hono";
 import { z } from "zod";
-import { logger } from "../../config/logger.js";
-import { applyDependencyConfigs, type DependencyConfigResult } from "../../fleet/apply-dependency-configs.js";
-import type { OnboardingService } from "../../onboarding/onboarding-service.js";
-import type { ProviderStatus } from "../../onboarding/provider-check.js";
-import type { IPluginConfigRepository } from "../../setup/plugin-config-repository.js";
-import type { SetupService } from "../../setup/setup-service.js";
-import type { ISetupSessionRepository } from "../../setup/setup-session-repository.js";
-import type { PluginManifest } from "./marketplace-registry.js";
 
 /** Extract authenticated user from context, or null if not set. */
 function getUser(c: { get(key: string): unknown }): { id: string } | null {

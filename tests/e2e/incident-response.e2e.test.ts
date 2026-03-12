@@ -1,16 +1,16 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { AlertChecker, buildAlerts } from "../../src/observability/alerts.js";
-import { buildCriticalAlerts } from "../../src/observability/critical-alerts.js";
-import { DrizzleMetricsRepository } from "../../src/observability/drizzle-metrics-repository.js";
-import { MetricsCollector } from "../../src/observability/metrics.js";
-import type { DrizzleDb } from "../../src/db/index.js";
+import { AlertChecker, buildAlerts } from "@wopr-network/platform-core/observability/alerts";
+import { buildCriticalAlerts } from "@wopr-network/platform-core/observability/critical-alerts";
+import { DrizzleMetricsRepository } from "@wopr-network/platform-core/observability/drizzle-metrics-repository";
+import { MetricsCollector } from "@wopr-network/platform-core/observability/metrics";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import {
   beginTestTransaction,
   createTestDb,
   endTestTransaction,
   rollbackTestTransaction,
-} from "../../src/test/db.js";
+} from "@wopr-network/platform-core/test/db";
 import {
   classifySeverity,
   getEscalationMatrix,
@@ -18,8 +18,8 @@ import {
   generatePostMortemTemplate,
   getCustomerTemplate,
   getInternalTemplate,
-} from "../../src/monetization/incident/index.js";
-import type { IncidentSummary } from "../../src/monetization/incident/index.js";
+} from "@wopr-network/platform-core/monetization/incident/index";
+import type { IncidentSummary } from "@wopr-network/platform-core/monetization/incident/index";
 
 // ---------------------------------------------------------------------------
 // Shared state

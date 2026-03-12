@@ -3,10 +3,10 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Credit } from "@wopr-network/platform-core";
 import { DrizzleCreditLedger } from "@wopr-network/platform-core";
-import { runCreditExpiryCron } from "../../src/monetization/credits/credit-expiry-cron.js";
-import { createTestDb } from "../../src/test/db.js";
+import { runCreditExpiryCron } from "@wopr-network/platform-core/monetization/credits/credit-expiry-cron";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

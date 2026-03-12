@@ -3,11 +3,11 @@ import type {
   INotificationQueueRepository,
   QueuedNotification,
 } from "@wopr-network/platform-core/email";
+import type { EmailClient } from "@wopr-network/platform-core/email/client";
+import { NotificationWorker } from "@wopr-network/platform-core/email/notification-worker";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EmailClient } from "./client.js";
-import { NotificationWorker } from "./notification-worker.js";
 
-vi.mock("../config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: {
     info: vi.fn(),
     error: vi.fn(),

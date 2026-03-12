@@ -1,4 +1,4 @@
-import { logger } from "./config/logger.js";
+import { logger } from "@wopr-network/platform-core/config/logger";
 
 /**
  * Startup environment variable validation.

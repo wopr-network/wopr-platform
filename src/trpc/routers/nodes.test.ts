@@ -1,10 +1,10 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
+import { DrizzleNodeRepository } from "@wopr-network/platform-core/fleet/drizzle-node-repository";
+import { NodeConnectionRegistry } from "@wopr-network/platform-core/fleet/node-connection-registry";
+import { DrizzleRegistrationTokenRepository } from "@wopr-network/platform-core/fleet/registration-token-store";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
-import { DrizzleNodeRepository } from "../../fleet/drizzle-node-repository.js";
-import { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
-import { DrizzleRegistrationTokenRepository } from "../../fleet/registration-token-store.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
 import { nodesRouter, setNodesRouterDeps } from "./nodes.js";
 
 function makeCtx(userId: string, roles: string[] = []) {

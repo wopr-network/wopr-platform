@@ -1,12 +1,17 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
   getDb: vi.fn(),
 }));
 
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { createAdminNotesApiRoutes } from "./admin-notes.js";
 
 describe("admin-notes routes", () => {

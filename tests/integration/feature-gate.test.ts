@@ -7,10 +7,10 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { Credit } from "@wopr-network/platform-core";
-import { createFeatureGate } from "../../src/monetization/feature-gate.js";
-import { createTestDb } from "../../src/test/db.js";
+import { createFeatureGate } from "@wopr-network/platform-core/monetization/feature-gate";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
 const { CreditLedger } = await import("@wopr-network/platform-core");
 

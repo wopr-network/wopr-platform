@@ -13,14 +13,15 @@
  * Redirects to UI with error status (invalid/expired token).
  */
 
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import { grantSignupCredits } from "@wopr-network/platform-core/credits";
 import { verifyToken, welcomeTemplate } from "@wopr-network/platform-core/email";
+import { getEmailClient } from "@wopr-network/platform-core/email/client";
+import { getPool } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
 import type { Pool } from "pg";
-import { logger } from "../../config/logger.js";
-import { getEmailClient } from "../../email/client.js";
-import { getCreditLedger, getPool } from "../../fleet/services.js";
+import { getCreditLedger } from "../../platform-services.js";
 
 const UI_ORIGIN = process.env.UI_ORIGIN || "http://localhost:3001";
 
