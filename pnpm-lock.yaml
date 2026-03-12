@@ -24,8 +24,8 @@ importers:
         specifier: ^11.11.0
         version: 11.11.0(typescript@5.9.3)
       '@wopr-network/platform-core':
-        specifier: ^1.12.2
-        version: 1.12.2(@trpc/server@11.11.0(typescript@5.9.3))(better-auth@1.5.4(d124c87f80810a879a2af41e0cfee582))(dockerode@4.0.9)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(mysql2@3.15.3)(pg@8.19.0)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)))(hono@4.12.7)(payram@1.0.1)(pg@8.19.0)(resend@6.9.3)(stripe@20.4.0(@types/node@25.4.0))(ws@8.19.0)(zod@4.3.6)
+        specifier: ^1.13.2
+        version: 1.13.2(@trpc/server@11.11.0(typescript@5.9.3))(better-auth@1.5.4(d124c87f80810a879a2af41e0cfee582))(dockerode@4.0.9)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(mysql2@3.15.3)(pg@8.19.0)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)))(hono@4.12.7)(payram@1.0.1)(pg@8.19.0)(resend@6.9.3)(stripe@20.4.0(@types/node@25.4.0))(ws@8.19.0)(zod@4.3.6)
       better-auth:
         specifier: ^1.5.4
         version: 1.5.4(d124c87f80810a879a2af41e0cfee582)
@@ -1259,8 +1259,8 @@ packages:
   '@vitest/utils@4.0.18':
     resolution: {integrity: sha512-msMRKLMVLWygpK3u2Hybgi4MNjcYJvwTb0Ru09+fOyCXIgT5raYP041DRRdiJiI3k/2U6SEbAETB3YtBrUkCFA==}
 
-  '@wopr-network/platform-core@1.12.2':
-    resolution: {integrity: sha512-4lA6FBvqhYQHOmHSQbHBngwcY5D9ImZy+4xyMLucYmmgUh6HlVHXDEEH/enVXRdyl9mN1hCo3q7cUDFcYbgMVg==}
+  '@wopr-network/platform-core@1.13.2':
+    resolution: {integrity: sha512-NYwPIyKH4GbpFqBJhjI2IwEgqmicLxCMsjW1B609EsyM/iCXDBdS6DaRr3DwMVNj1TWECKX2qEC00B2xq/dvBQ==}
     peerDependencies:
       '@trpc/server': '>=11'
       better-auth: '>=1.5'
@@ -3522,7 +3522,7 @@ snapshots:
       '@vitest/pretty-format': 4.0.18
       tinyrainbow: 3.0.3
 
-  '@wopr-network/platform-core@1.12.2(@trpc/server@11.11.0(typescript@5.9.3))(better-auth@1.5.4(d124c87f80810a879a2af41e0cfee582))(dockerode@4.0.9)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(mysql2@3.15.3)(pg@8.19.0)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)))(hono@4.12.7)(payram@1.0.1)(pg@8.19.0)(resend@6.9.3)(stripe@20.4.0(@types/node@25.4.0))(ws@8.19.0)(zod@4.3.6)':
+  '@wopr-network/platform-core@1.13.2(@trpc/server@11.11.0(typescript@5.9.3))(better-auth@1.5.4(d124c87f80810a879a2af41e0cfee582))(dockerode@4.0.9)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(mysql2@3.15.3)(pg@8.19.0)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)))(hono@4.12.7)(payram@1.0.1)(pg@8.19.0)(resend@6.9.3)(stripe@20.4.0(@types/node@25.4.0))(ws@8.19.0)(zod@4.3.6)':
     dependencies:
       '@trpc/server': 11.11.0(typescript@5.9.3)
       better-auth: 1.5.4(d124c87f80810a879a2af41e0cfee582)
