@@ -30,6 +30,7 @@ import { getVpsRepo } from "@wopr-network/platform-core/fleet/services";
 import { STORAGE_TIERS, type StorageTierKey } from "@wopr-network/platform-core/fleet/storage-tiers";
 import { createBotSchema, updateBotSchema } from "@wopr-network/platform-core/fleet/types";
 import type { ContainerUpdater } from "@wopr-network/platform-core/fleet/updater";
+import type { IServiceKeyRepository } from "@wopr-network/platform-core/gateway/index";
 import type { IBotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
 import {
   checkInstanceQuota,
@@ -65,6 +66,7 @@ export interface FleetRouterDeps {
   getNodeRepo?: () => INodeRepository | null;
   getImagePoller?: () => ImagePoller | null;
   getUpdater?: () => ContainerUpdater | null;
+  getServiceKeyRepo?: () => IServiceKeyRepository | null;
 }
 
 let _deps: FleetRouterDeps | null = null;
@@ -202,7 +204,15 @@ export const fleetRouter = router({
 
     try {
       const profile = await fleet.create({ ...input, tenantId: ctx.tenantId, nodeId });
-      return profile;
+
+      // Generate a per-instance gateway service key for metered inference
+      let gatewayKey: string | undefined;
+      const keyRepo = deps().getServiceKeyRepo?.();
+      if (keyRepo) {
+        gatewayKey = await keyRepo.generate(ctx.tenantId, profile.id);
+      }
+
+      return { ...profile, gatewayKey };
     } catch (err) {
       if (err instanceof TRPCError) throw err;
       throw new TRPCError({
@@ -804,6 +814,12 @@ export const fleetRouter = router({
         }
       }
       try {
+        // Revoke per-instance gateway keys before destroying
+        const keyRepo = deps().getServiceKeyRepo?.();
+        if (keyRepo) {
+          await keyRepo.revokeByInstance(input.id);
+        }
+
         await fleet.remove(input.id, input.removeVolumes);
         return { ok: true };
       } catch (err) {
