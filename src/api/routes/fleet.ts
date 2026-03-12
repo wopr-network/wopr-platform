@@ -200,23 +200,17 @@ function parseLogLines(
 
 // BOUNDARY(WOP-805): REST fleet routes have a tRPC mirror at src/trpc/routers/fleet.ts.
 // The tRPC fleet router covers: listInstances, getInstance, createInstance,
-// controlInstance, getInstanceHealth, getInstanceLogs, getInstanceMetrics, listTemplates.
+// controlInstance, getInstanceHealth, getInstanceLogs, getInstanceMetrics, listTemplates,
+// getImageStatus (WOP-2104), triggerImageUpdate (WOP-2104), seed (WOP-2104).
 //
 // REST fleet routes have additional functionality NOT in tRPC:
 //   - PATCH /fleet/bots/:id (update) — tRPC fleet router does NOT have update
 //   - DELETE /fleet/bots/:id (remove) — tRPC fleet router does NOT have remove
-//   - POST /fleet/bots/:id/update (image update) — tRPC fleet router does NOT have this
-//   - GET /fleet/bots/:id/image-status — tRPC fleet router does NOT have this
-//   - POST /fleet/seed — tRPC fleet router does NOT have seed
 //   - Proxy registration side effects are now centralized in FleetManager (WOP-917)
 //
 // Keep REST fleet routes for:
 //   1. CLI/SDK consumers that use bearer token auth (not session cookies)
-//   2. The additional operations not yet in tRPC (update, remove, image-update, seed)
-//
-// UI migration: once wopr-platform-ui switches from fleetFetch() to tRPC fleet.*,
-// REST fleet routes become SDK-only. The missing tRPC procedures (update, remove,
-// image-update) should be added to the tRPC fleet router at that time.
+//   2. The additional operations not yet in tRPC (update, remove)
 export const fleetRoutes = new Hono();
 
 // Build scoped token metadata map from environment

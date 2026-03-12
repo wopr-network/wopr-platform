@@ -944,6 +944,159 @@ describe("fleet.restartInstance", () => {
 });
 
 // ---------------------------------------------------------------------------
+// getImageStatus
+// ---------------------------------------------------------------------------
+
+describe("fleet.getImageStatus", () => {
+  const mockImageStatus = {
+    botId: TEST_BOT_ID,
+    currentDigest: "sha256:abc123",
+    availableDigest: "sha256:def456",
+    updateAvailable: true,
+    releaseChannel: "stable" as const,
+    updatePolicy: "manual" as const,
+    lastCheckedAt: TEST_TIMESTAMP,
+  };
+
+  it("returns image status from poller", async () => {
+    const mockPoller = { getImageStatus: vi.fn().mockReturnValue(mockImageStatus) };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotInstanceRepo: () => mockBotInstanceRepo,
+      getRoleStore: () => mockRoleStore,
+      getImagePoller: () => mockPoller as never,
+    });
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.getImageStatus({ id: TEST_BOT_ID });
+    expect(result).toEqual(mockImageStatus);
+    expect(mockPoller.getImageStatus).toHaveBeenCalledWith(TEST_BOT_ID, mockProfile);
+  });
+
+  it("throws NOT_FOUND when bot does not exist", async () => {
+    fleetMock.profiles.get.mockResolvedValue(null);
+    const mockPoller = { getImageStatus: vi.fn() };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getImagePoller: () => mockPoller as never,
+    });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.getImageStatus({ id: TEST_BOT_ID })).rejects.toMatchObject({
+      message: "Bot not found",
+    });
+  });
+
+  it("throws INTERNAL_SERVER_ERROR when image poller is not available", async () => {
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getImagePoller: () => null,
+    });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.getImageStatus({ id: TEST_BOT_ID })).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// triggerImageUpdate
+// ---------------------------------------------------------------------------
+
+describe("fleet.triggerImageUpdate", () => {
+  const mockUpdateResult = { updated: true, previousDigest: "sha256:abc123", newDigest: "sha256:def456" };
+
+  it("triggers update and returns result", async () => {
+    const mockUpdater = { updateBot: vi.fn().mockResolvedValue(mockUpdateResult) };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getBotInstanceRepo: () => mockBotInstanceRepo,
+      getRoleStore: () => mockRoleStore,
+      getUpdater: () => mockUpdater as never,
+    });
+    const caller = createCaller(authedContext());
+    const result = await caller.fleet.triggerImageUpdate({ id: TEST_BOT_ID });
+    expect(result).toEqual(mockUpdateResult);
+    expect(mockUpdater.updateBot).toHaveBeenCalledWith(TEST_BOT_ID);
+  });
+
+  it("throws NOT_FOUND when bot does not belong to tenant", async () => {
+    fleetMock.profiles.get.mockResolvedValue({ ...mockProfile, tenantId: "other-tenant" });
+    const mockUpdater = { updateBot: vi.fn() };
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getUpdater: () => mockUpdater as never,
+    });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.triggerImageUpdate({ id: TEST_BOT_ID })).rejects.toMatchObject({
+      message: "Bot not found",
+    });
+  });
+
+  it("throws INTERNAL_SERVER_ERROR when updater is not available", async () => {
+    setFleetRouterDeps({
+      getFleetManager: () => fleetMock as unknown as FleetManager,
+      getTemplates: () => mockTemplates,
+      getCreditLedger: () => null,
+      getUpdater: () => null,
+    });
+    const caller = createCaller(authedContext());
+    await expect(caller.fleet.triggerImageUpdate({ id: TEST_BOT_ID })).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// seed
+// ---------------------------------------------------------------------------
+
+describe("fleet.seed", () => {
+  it("non-admin gets FORBIDDEN", async () => {
+    const caller = createCaller({
+      user: { id: "regular-user", roles: ["member"] },
+      tenantId: "test-tenant",
+    });
+    await expect(caller.fleet.seed()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("unauthenticated gets UNAUTHORIZED", async () => {
+    const caller = createCaller(unauthContext());
+    await expect(caller.fleet.seed()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("admin gets preview results without creating bots", async () => {
+    // profiles.list returns one existing bot named "default" (matching the template name)
+    fleetMock.profiles.list.mockResolvedValue([{ ...mockProfile, name: "default" }]);
+    const adminCtx = { user: { id: "admin-user", roles: ["platform_admin"] }, tenantId: "test-tenant" };
+    const caller = createCaller(adminCtx);
+    const result = await caller.fleet.seed();
+    expect(result.skipped).toContain("default");
+    expect(result.created).toHaveLength(0);
+    // fleet.create should NOT have been called (it's a dry-run)
+    expect(fleetMock.create).not.toHaveBeenCalled();
+  });
+
+  it("admin sees new templates in created list when no existing bots match", async () => {
+    fleetMock.profiles.list.mockResolvedValue([]);
+    const adminCtx = { user: { id: "admin-user", roles: ["platform_admin"] }, tenantId: "test-tenant" };
+    const caller = createCaller(adminCtx);
+    const result = await caller.fleet.seed();
+    expect(result.created).toContain("default");
+    expect(result.skipped).toHaveLength(0);
+    expect(fleetMock.create).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // org-scoped bot ownership (WOP-1002)
 // ---------------------------------------------------------------------------
 
