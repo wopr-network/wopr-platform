@@ -205,14 +205,19 @@ export const fleetRouter = router({
     try {
       const profile = await fleet.create({ ...input, tenantId: ctx.tenantId, nodeId });
 
-      // Generate a per-instance gateway service key for metered inference
+      // Generate a per-instance gateway service key for metered inference.
+      // Failures must not block instance creation — the key can be regenerated later.
       let gatewayKey: string | undefined;
-      const keyRepo = deps().getServiceKeyRepo?.();
-      if (keyRepo) {
-        gatewayKey = await keyRepo.generate(ctx.tenantId, profile.id);
+      try {
+        const keyRepo = deps().getServiceKeyRepo?.();
+        if (keyRepo) {
+          gatewayKey = await keyRepo.generate(ctx.tenantId, profile.id);
+        }
+      } catch {
+        // Key generation failed — instance is still usable, just without gateway access
       }
 
-      return { ...profile, gatewayKey };
+      return { ...profile, ...(gatewayKey ? { gatewayKey } : {}) };
     } catch (err) {
       if (err instanceof TRPCError) throw err;
       throw new TRPCError({
@@ -275,9 +280,12 @@ export const fleetRouter = router({
           case "restart":
             await fleet.restart(input.id);
             break;
-          case "destroy":
+          case "destroy": {
+            const keyRepo = deps().getServiceKeyRepo?.();
+            if (keyRepo) await keyRepo.revokeByInstance(input.id);
             await fleet.remove(input.id);
             break;
+          }
         }
         return { ok: true };
       } catch (err) {

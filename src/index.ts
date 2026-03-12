@@ -11,7 +11,7 @@ import * as schema from "@wopr-network/platform-core/db/schema/index";
 import { NotificationService } from "@wopr-network/platform-core/email";
 import type { CommandResult } from "@wopr-network/platform-core/fleet/node-command-bus";
 import { DrizzleSpendingCapStore } from "@wopr-network/platform-core/fleet/spending-cap-repository";
-import { DrizzleServiceKeyRepository, mountGateway } from "@wopr-network/platform-core/gateway/index";
+import { mountGateway } from "@wopr-network/platform-core/gateway/index";
 import { createCachedRateLookup } from "@wopr-network/platform-core/gateway/rate-lookup";
 import { DrizzleMeterEventRepository, MeterEmitter, runReconciliation } from "@wopr-network/platform-core/metering";
 import { BudgetChecker } from "@wopr-network/platform-core/monetization/budget/budget-checker";
@@ -93,6 +93,7 @@ import {
   getRateLimitRepo,
   getRegistrationTokenStore,
   getSecretAuditRepo,
+  getServiceKeyRepo,
   getSetupService,
   getSetupSessionRepo,
   getSystemResourceMonitor,
@@ -247,7 +248,7 @@ if (process.env.NODE_ENV !== "test") {
   let usageTopupCallback: ((tenantId: string) => void) | undefined;
 
   // Per-instance gateway service keys — shared across gateway + fleet router
-  const serviceKeyRepo = new DrizzleServiceKeyRepository(getDb());
+  const serviceKeyRepo = getServiceKeyRepo();
 
   {
     // All tables live in platform.db (drizzle-kit migrations target).
@@ -902,7 +903,7 @@ if (process.env.NODE_ENV !== "test") {
       getNodeRepo: () => getNodeRepo(),
       getImagePoller: () => imagePoller,
       getUpdater: () => updater,
-      getServiceKeyRepo: () => serviceKeyRepo,
+      getServiceKeyRepo: () => getServiceKeyRepo(),
     });
     logger.info("tRPC fleet router initialized");
 
