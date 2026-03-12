@@ -37,7 +37,21 @@ export default defineConfig({
         "src/email/index.ts",
         // tRPC router files — thin wiring layer that delegates to tested stores/services.
         // Branch coverage here reflects optional dep initialization paths, not business logic.
-        "src/trpc/routers/*.ts",
+        // marketplace.ts and promotions.ts are excluded from this list — they have non-trivial logic and dedicated tests.
+        "src/trpc/routers/account.ts",
+        "src/trpc/routers/addons.ts",
+        "src/trpc/routers/admin.ts",
+        "src/trpc/routers/billing.ts",
+        "src/trpc/routers/fleet.ts",
+        "src/trpc/routers/inference-admin.ts",
+        "src/trpc/routers/model-selection.ts",
+        "src/trpc/routers/nodes.ts",
+        "src/trpc/routers/org-keys.ts",
+        "src/trpc/routers/org.ts",
+        "src/trpc/routers/page-context.ts",
+        "src/trpc/routers/profile.ts",
+        "src/trpc/routers/settings.ts",
+        "src/trpc/routers/two-factor.ts",
       ],
     },
     reporters: ["default", "junit"],
