@@ -320,7 +320,10 @@ describe("admin audit API routes", () => {
     await auditLogInstance.log(makeEntry({ adminUser: "admin-2" }));
 
     const app = new Hono();
-    app.route("/admin/audit", createAdminAuditApiRoutes(db));
+    app.route(
+      "/admin/audit",
+      createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db))),
+    );
 
     const res = await app.request("/admin/audit");
     expect(res.status).toBe(200);
@@ -334,7 +337,10 @@ describe("admin audit API routes", () => {
     await auditLogInstance.log(makeEntry({ adminUser: "admin-2" }));
 
     const app = new Hono();
-    app.route("/admin/audit", createAdminAuditApiRoutes(db));
+    app.route(
+      "/admin/audit",
+      createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db))),
+    );
 
     const res = await app.request("/admin/audit?admin=admin-1");
     const body = await res.json();
@@ -347,7 +353,10 @@ describe("admin audit API routes", () => {
     await auditLogInstance.log(makeEntry({ category: "credits", action: "credits.add" }));
 
     const app = new Hono();
-    app.route("/admin/audit", createAdminAuditApiRoutes(db));
+    app.route(
+      "/admin/audit",
+      createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db))),
+    );
 
     const res = await app.request("/admin/audit?category=credits");
     const body = await res.json();
@@ -361,7 +370,10 @@ describe("admin audit API routes", () => {
     }
 
     const app = new Hono();
-    app.route("/admin/audit", createAdminAuditApiRoutes(db));
+    app.route(
+      "/admin/audit",
+      createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db))),
+    );
 
     const res = await app.request("/admin/audit?limit=2&offset=1");
     const body = await res.json();
@@ -373,7 +385,10 @@ describe("admin audit API routes", () => {
     await auditLogInstance.log(makeEntry());
 
     const app = new Hono();
-    app.route("/admin/audit", createAdminAuditApiRoutes(db));
+    app.route(
+      "/admin/audit",
+      createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db))),
+    );
 
     const res = await app.request("/admin/audit/export");
     expect(res.status).toBe(200);
@@ -391,7 +406,10 @@ describe("admin audit API routes", () => {
     await auditLogInstance.log(makeEntry({ adminUser: "admin-2" }));
 
     const app = new Hono();
-    app.route("/admin/audit", createAdminAuditApiRoutes(db));
+    app.route(
+      "/admin/audit",
+      createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db))),
+    );
 
     const res = await app.request("/admin/audit/export?admin=admin-1");
     const text = await res.text();

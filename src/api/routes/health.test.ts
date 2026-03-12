@@ -24,7 +24,7 @@ describe("health routes", () => {
   });
 
   it("returns ok when no backup store is available", async () => {
-    const routes = createHealthRoutes(() => null);
+    const routes = createHealthRoutes({ serviceName: "wopr-platform" });
     const res = await routes.request("/");
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -35,7 +35,7 @@ describe("health routes", () => {
 
   it("returns ok with backup info when all backups fresh", async () => {
     const store = createMockStore(0, 5);
-    const routes = createHealthRoutes(() => store);
+    const routes = createHealthRoutes({ serviceName: "wopr-platform", storeFactory: () => store });
     const res = await routes.request("/");
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -45,7 +45,7 @@ describe("health routes", () => {
 
   it("returns degraded when stale backups exist", async () => {
     const store = createMockStore(2, 5);
-    const routes = createHealthRoutes(() => store);
+    const routes = createHealthRoutes({ serviceName: "wopr-platform", storeFactory: () => store });
     const res = await routes.request("/");
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -60,7 +60,7 @@ describe("health routes", () => {
       }),
       count: vi.fn().mockReturnValue(0),
     } as unknown as BackupStatusStore;
-    const routes = createHealthRoutes(() => store);
+    const routes = createHealthRoutes({ serviceName: "wopr-platform", storeFactory: () => store });
     const res = await routes.request("/");
     expect(res.status).toBe(200);
     const body = await res.json();

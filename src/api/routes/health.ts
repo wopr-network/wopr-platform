@@ -1,53 +1,19 @@
-import type { IBackupStatusStore } from "@wopr-network/platform-core/backup/backup-status-store";
+import { createHealthRoutes } from "@wopr-network/platform-core/api/routes/health";
 import { getBackupStatusStore } from "@wopr-network/platform-core/fleet/services";
-import { Hono } from "hono";
 
-function getHealthStore(): IBackupStatusStore | null {
+function getHealthStore() {
   try {
     return getBackupStatusStore();
   } catch {
-    // Backup DB not initialized yet — that's fine for fresh deployments
     return null;
   }
 }
 
-// BOUNDARY(WOP-805): REST is the correct layer for health checks.
-// Public, unauthenticated, used by load balancers and monitoring.
-// Note: tRPC settings.health also exists as a tRPC-level health check
-// for the tRPC adapter itself — both are intentional.
-export function createHealthRoutes(storeFactory?: () => IBackupStatusStore | null): Hono {
-  const routes = new Hono();
-  const resolveStore = storeFactory ?? getHealthStore;
+/** Pre-built health routes for wopr-platform. */
+export const healthRoutes = createHealthRoutes({
+  serviceName: "wopr-platform",
+  storeFactory: getHealthStore,
+});
 
-  routes.get("/", async (c) => {
-    const health: {
-      status: string;
-      service: string;
-      backups?: { staleCount: number; totalTracked: number };
-    } = {
-      status: "ok",
-      service: "wopr-platform",
-    };
-
-    const store = resolveStore();
-    if (store) {
-      try {
-        const stale = await store.listStale();
-        const total = await store.count();
-        health.backups = { staleCount: stale.length, totalTracked: total };
-        if (stale.length > 0) {
-          health.status = "degraded";
-        }
-      } catch {
-        // Backup DB query failed — don't crash the health endpoint
-      }
-    }
-
-    return c.json(health);
-  });
-
-  return routes;
-}
-
-/** Pre-built health routes with lazy backup store initialization. */
-export const healthRoutes = createHealthRoutes();
+// Re-export factory for tests
+export { createHealthRoutes } from "@wopr-network/platform-core/api/routes/health";
