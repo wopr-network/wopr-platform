@@ -1,9 +1,18 @@
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { config } from "../config/index.js";
 import { logger } from "../config/logger.js";
 import { app, errorHandler } from "./app.js";
 
 describe("Global error handler", () => {
+  let _savedNodeEnv: string | undefined;
+
+  afterEach(() => {
+    if (_savedNodeEnv !== undefined) {
+      Object.defineProperty(config, "nodeEnv", { value: _savedNodeEnv, writable: true, configurable: true });
+      _savedNodeEnv = undefined;
+    }
+  });
   it("catches errors thrown in route handlers and returns 500", async () => {
     // Create a minimal app that uses the REAL error handler from app.ts
     const testApp = new Hono();
@@ -91,5 +100,81 @@ describe("Global error handler", () => {
     // Hit a route that doesn't exist — the real app's notFound handler should respond
     const res = await app.request("/this-route-does-not-exist-12345");
     expect(res.status).toBe(404);
+  });
+
+  it("logs stack at warn level in production", async () => {
+    _savedNodeEnv = config.nodeEnv;
+    Object.defineProperty(config, "nodeEnv", { value: "production", writable: true, configurable: true });
+
+    const errorSpy = vi.spyOn(logger, "error");
+    const warnSpy = vi.spyOn(logger, "warn");
+
+    const testApp = new Hono();
+    testApp.get("/test-prod-stack", () => {
+      throw new Error("Production error");
+    });
+    testApp.onError(errorHandler);
+
+    await testApp.request("/test-prod-stack");
+
+    // error-level log should NOT contain stack
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Unhandled error in request",
+      expect.objectContaining({
+        error: "Production error",
+        path: "/test-prod-stack",
+        method: "GET",
+      }),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Unhandled error in request",
+      expect.not.objectContaining({ stack: expect.anything() }),
+    );
+
+    // stack should be logged at warn level with method field
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Error stack trace (debug)",
+      expect.objectContaining({
+        stack: expect.any(String),
+        path: "/test-prod-stack",
+        method: "GET",
+      }),
+    );
+
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it("logs stack at error level in development", async () => {
+    _savedNodeEnv = config.nodeEnv;
+    Object.defineProperty(config, "nodeEnv", { value: "development", writable: true, configurable: true });
+
+    const errorSpy = vi.spyOn(logger, "error");
+    const warnSpy = vi.spyOn(logger, "warn");
+
+    const testApp = new Hono();
+    testApp.get("/test-dev-stack", () => {
+      throw new Error("Dev error");
+    });
+    testApp.onError(errorHandler);
+
+    await testApp.request("/test-dev-stack");
+
+    // error-level log SHOULD contain stack in dev
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Unhandled error in request",
+      expect.objectContaining({
+        error: "Dev error",
+        stack: expect.any(String),
+        path: "/test-dev-stack",
+        method: "GET",
+      }),
+    );
+
+    // warn should NOT be called for stack in dev
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });
