@@ -6,7 +6,6 @@ settings:
 
 overrides:
   esbuild: '>=0.25.0'
-  '@wopr-network/platform-core': link:../platform-core
   hono: ^4.12.7
   drizzle-orm: ^0.45.1
   '@types/pg': ^8.18.0
@@ -25,8 +24,8 @@ importers:
         specifier: ^11.11.0
         version: 11.11.0(typescript@5.9.3)
       '@wopr-network/platform-core':
-        specifier: link:../platform-core
-        version: link:../platform-core
+        specifier: ^1.12.1
+        version: 1.12.1(@trpc/server@11.11.0(typescript@5.9.3))(better-auth@1.5.4(8e462b6e7e731054151219d51ab2d58b))(dockerode@4.0.9)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(mysql2@3.15.3)(pg@8.19.0)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)))(hono@4.12.7)(payram@1.0.1)(pg@8.19.0)(resend@6.9.3)(stripe@20.4.0(@types/node@25.3.2))(ws@8.19.0)(zod@4.3.6)
       better-auth:
         specifier: ^1.5.4
         version: 1.5.4(8e462b6e7e731054151219d51ab2d58b)
@@ -1265,6 +1264,21 @@ packages:
 
   '@vitest/utils@4.0.18':
     resolution: {integrity: sha512-msMRKLMVLWygpK3u2Hybgi4MNjcYJvwTb0Ru09+fOyCXIgT5raYP041DRRdiJiI3k/2U6SEbAETB3YtBrUkCFA==}
+
+  '@wopr-network/platform-core@1.12.1':
+    resolution: {integrity: sha512-K1z3cPZC3BHiIrapj0IgbvCrumLV8NRDRoEqQbxPOkvS47UNf/2oIyio3dOJN0/px44Voqcktj+kXrytMQb+iQ==}
+    peerDependencies:
+      '@trpc/server': '>=11'
+      better-auth: '>=1.5'
+      dockerode: '>=4'
+      drizzle-orm: ^0.45.1
+      hono: ^4.12.7
+      payram: '>=1'
+      pg: '>=8'
+      resend: '>=4'
+      stripe: '>=17'
+      ws: '>=8'
+      zod: '>=3'
 
   acorn-import-attributes@1.9.5:
     resolution: {integrity: sha512-n02Vykv5uA3eHGM/Z2dQrcD56kL8TyDb2p1+0P83PClMnC/nc+anbQRhIOWnSq4Ke/KvDPrY3C9hDtC/A3eHnQ==}
@@ -3521,6 +3535,22 @@ snapshots:
     dependencies:
       '@vitest/pretty-format': 4.0.18
       tinyrainbow: 3.0.3
+
+  '@wopr-network/platform-core@1.12.1(@trpc/server@11.11.0(typescript@5.9.3))(better-auth@1.5.4(8e462b6e7e731054151219d51ab2d58b))(dockerode@4.0.9)(drizzle-orm@0.45.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(mysql2@3.15.3)(pg@8.19.0)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)))(hono@4.12.7)(payram@1.0.1)(pg@8.19.0)(resend@6.9.3)(stripe@20.4.0(@types/node@25.3.2))(ws@8.19.0)(zod@4.3.6)':
+    dependencies:
+      '@trpc/server': 11.11.0(typescript@5.9.3)
+      better-auth: 1.5.4(8e462b6e7e731054151219d51ab2d58b)
+      dockerode: 4.0.9
+      drizzle-orm: 0.45.1(@electric-sql/pglite@0.3.16)(@opentelemetry/api@1.9.0)(@prisma/client@7.4.2(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.18.0)(better-sqlite3@12.6.2)(kysely@0.28.11)(mysql2@3.15.3)(pg@8.19.0)(postgres@3.4.7)(prisma@7.4.2(@types/react@19.2.14)(better-sqlite3@12.6.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))
+      hono: 4.12.7
+      js-yaml: 4.1.1
+      payram: 1.0.1
+      pg: 8.19.0
+      resend: 6.9.3
+      stripe: 20.4.0(@types/node@25.3.2)
+      ws: 8.19.0
+      yaml: 2.8.2
+      zod: 4.3.6
 
   acorn-import-attributes@1.9.5(acorn@8.16.0):
     dependencies:

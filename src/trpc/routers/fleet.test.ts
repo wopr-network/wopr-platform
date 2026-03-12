@@ -18,6 +18,12 @@ import { DEFAULT_RESOURCE_CONFIG } from "@wopr-network/platform-core/monetizatio
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@wopr-network/platform-core/fleet/placement", async (importOriginal) => {
+  const actual = await importOriginal<typeof placement>();
+  return { ...actual, findPlacement: vi.fn(actual.findPlacement) };
+});
+
 import { appRouter } from "../index.js";
 import { setFleetRouterDeps } from "./fleet.js";
 
@@ -322,7 +328,7 @@ describe("fleet.createInstance", () => {
   });
 
   it("passes requiredMb from buildResourceLimits to findPlacement (not the 100MB default)", async () => {
-    const findPlacementSpy = vi.spyOn(placement, "findPlacement");
+    const findPlacementSpy = vi.mocked(placement.findPlacement);
     const mockNodeRepo: Partial<INodeRepository> = {
       list: vi
         .fn()
@@ -343,7 +349,6 @@ describe("fleet.createInstance", () => {
     // Should pass the actual memory limit in MB (DEFAULT_RESOURCE_CONFIG.memoryLimitMb = 2048),
     // not the 100MB hardcoded default.
     expect(findPlacementSpy).toHaveBeenCalledWith(expect.anything(), DEFAULT_RESOURCE_CONFIG.memoryLimitMb);
-    findPlacementSpy.mockRestore();
   });
 
   it("throws UNAVAILABLE when no node has sufficient capacity", async () => {

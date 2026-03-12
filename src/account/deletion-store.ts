@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { IDeletionRepository } from "@wopr-network/platform-core/account/deletion-repository";
-import type { DeletionRequestRow } from "@wopr-network/platform-core/account/repository-types";
+import type { DeletionRequestRow, DeletionStatus } from "@wopr-network/platform-core/account/repository-types";
 
 export type { DeletionRequestRow } from "@wopr-network/platform-core/account/repository-types";
 
@@ -59,7 +59,7 @@ export class AccountDeletionStore implements IAccountDeletionStore {
 
   /** List deletion requests with optional status filter and pagination. */
   async list(opts: {
-    status?: string;
+    status?: DeletionStatus;
     limit: number;
     offset: number;
   }): Promise<{ requests: DeletionRequestRow[]; total: number }> {
