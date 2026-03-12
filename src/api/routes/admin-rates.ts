@@ -10,7 +10,7 @@ import { getAdminAuditLog } from "../../platform-services.js";
 /** Backward-compatible factory: takes a DrizzleDb and creates a RateStore internally. */
 export function createAdminRateApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const store = new RateStore(db);
-  return _create(() => store);
+  return _create(() => store, getAdminAuditLog);
 }
 
 let _store: RateStore | null = null;

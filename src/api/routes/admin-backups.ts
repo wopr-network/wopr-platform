@@ -19,6 +19,7 @@ export function createAdminBackupRoutes(
   return _create(
     () => store,
     () => spacesClient,
+    getAdminAuditLog,
   );
 }
 

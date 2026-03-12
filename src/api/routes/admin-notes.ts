@@ -29,7 +29,7 @@ function getNotesStore(): IAdminNotesRepository {
 /** Backward-compatible factory: takes a DrizzleDb and creates a store internally. */
 export function createAdminNotesApiRoutes(db: DrizzleDb): Hono<AuthEnv> {
   const store = new AdminNotesStore(db);
-  return _create(() => store);
+  return _create(() => store, getAdminAuditLog);
 }
 
 const metadataMap = buildTokenMetadataMap();

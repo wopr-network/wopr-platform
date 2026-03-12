@@ -1,3 +1,7 @@
+import type {
+  NpmPluginDiscoverer,
+  PluginVolumeInstaller,
+} from "@wopr-network/platform-core/api/routes/admin-marketplace";
 import { createAdminMarketplaceRoutes as _create } from "@wopr-network/platform-core/api/routes/admin-marketplace";
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import type { IMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/marketplace-plugin-repository";
@@ -9,22 +13,18 @@ export function createAdminMarketplaceRoutes(repoFactory: () => IMarketplacePlug
   return _create({
     repoFactory,
     auditLogger: getAdminAuditLog,
-    volumeInstaller: () => {
-      // Dynamic import for fire-and-forget volume installation
-      const mod = require("@wopr-network/platform-core/marketplace/volume-installer") as {
-        installPluginToVolume: (opts: unknown) => Promise<void>;
-      };
-      return { installPluginToVolume: mod.installPluginToVolume };
-    },
+    volumeInstaller: (): PluginVolumeInstaller => ({
+      async installPluginToVolume(opts) {
+        const { installPluginToVolume } = await import("@wopr-network/platform-core/marketplace/volume-installer");
+        return installPluginToVolume(opts);
+      },
+    }),
     pluginVolumePath: process.env.PLUGIN_VOLUME_PATH ?? "/data/plugins",
-    discoverer: () => {
-      const mod = require("@wopr-network/platform-core/marketplace/npm-discovery") as {
-        discoverNpmPlugins: (opts: {
-          repo: IMarketplacePluginRepository;
-          notify: (msg: string) => void;
-        }) => Promise<{ discovered: number; skipped: number }>;
-      };
-      return { discoverNpmPlugins: mod.discoverNpmPlugins };
-    },
+    discoverer: (): NpmPluginDiscoverer => ({
+      async discoverNpmPlugins(opts) {
+        const { discoverNpmPlugins } = await import("@wopr-network/platform-core/marketplace/npm-discovery");
+        return discoverNpmPlugins(opts);
+      },
+    }),
   });
 }

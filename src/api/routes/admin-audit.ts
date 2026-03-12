@@ -22,12 +22,16 @@ export function setAdminAuditDeps(deps: AdminAuditRouteDeps): void {
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");
 
+let _inner: Hono<AuthEnv> | null = null;
+
 /** Pre-built admin audit routes with auth and lazy initialization. */
 export const adminAuditApiRoutes = new Hono<AuthEnv>();
 adminAuditApiRoutes.use("*", adminAuth);
 adminAuditApiRoutes.all("/*", (c) => {
   if (!_db) throw new Error("Admin audit routes not initialized -- call setAdminAuditDeps() first");
-  const db = _db;
-  const inner = _createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db)));
-  return inner.fetch(c.req.raw);
+  if (!_inner) {
+    const db = _db;
+    _inner = _createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db)));
+  }
+  return _inner.fetch(c.req.raw);
 });
