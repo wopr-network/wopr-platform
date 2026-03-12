@@ -282,7 +282,13 @@ export const fleetRouter = router({
             break;
           case "destroy": {
             const keyRepo = deps().getServiceKeyRepo?.();
-            if (keyRepo) await keyRepo.revokeByInstance(input.id);
+            if (keyRepo) {
+              try {
+                await keyRepo.revokeByInstance(input.id);
+              } catch {
+                // Key revocation failed — proceed with instance destruction
+              }
+            }
             await fleet.remove(input.id);
             break;
           }
@@ -825,7 +831,11 @@ export const fleetRouter = router({
         // Revoke per-instance gateway keys before destroying
         const keyRepo = deps().getServiceKeyRepo?.();
         if (keyRepo) {
-          await keyRepo.revokeByInstance(input.id);
+          try {
+            await keyRepo.revokeByInstance(input.id);
+          } catch {
+            // Key revocation failed — proceed with instance removal
+          }
         }
 
         await fleet.remove(input.id, input.removeVolumes);
