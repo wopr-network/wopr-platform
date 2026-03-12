@@ -124,7 +124,7 @@ describe("admin-backups routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          remotePath: "nightly/node-1/tenant_abc/tenant_abc_20260214.tar.gz",
+          remotePath: "tenant_abc/node-1/tenant_abc_20260214.tar.gz",
           targetNodeId: "node-2",
         }),
       });
@@ -157,16 +157,20 @@ describe("admin-backups routes", () => {
   });
 
   describe("isRemotePathOwnedBy", () => {
-    it("accepts valid paths containing the container as a segment", () => {
-      expect(isRemotePathOwnedBy("nightly/node-1/tenant_abc/backup.tar.gz", "tenant_abc")).toBe(true);
+    it("accepts paths where container is the first segment", () => {
+      expect(isRemotePathOwnedBy("tenant_abc/node-1/backup.tar.gz", "tenant_abc")).toBe(true);
+    });
+
+    it("rejects paths where container is not the first segment", () => {
+      expect(isRemotePathOwnedBy("nightly/node-1/tenant_abc/backup.tar.gz", "tenant_abc")).toBe(false);
     });
 
     it("rejects paths where container appears only as substring of a segment", () => {
-      expect(isRemotePathOwnedBy("nightly/node-1/tenant_abc_fake/backup.tar.gz", "tenant_abc")).toBe(false);
+      expect(isRemotePathOwnedBy("tenant_abc_fake/backup.tar.gz", "tenant_abc")).toBe(false);
     });
 
     it("rejects path traversal attempts", () => {
-      expect(isRemotePathOwnedBy("nightly/../../tenant_abc/../other/backup.tar.gz", "tenant_abc")).toBe(true);
+      expect(isRemotePathOwnedBy("tenant_abc/../other/backup.tar.gz", "tenant_abc")).toBe(false);
       expect(isRemotePathOwnedBy("nightly/../../other_tenant/backup.tar.gz", "tenant_abc")).toBe(false);
     });
   });
