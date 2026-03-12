@@ -3,18 +3,18 @@ import type { PGlite } from "@electric-sql/pglite";
 import Stripe from "stripe";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { creditAutoTopup } from "../../src/db/schema/credit-auto-topup.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { creditAutoTopup } from "@wopr-network/platform-core/db/schema/credit-auto-topup";
 import { Credit } from "@wopr-network/platform-core";
-import { type AutoTopupChargeDeps, chargeAutoTopup } from "../../src/monetization/credits/auto-topup-charge.js";
-import { DrizzleAutoTopupEventLogRepository } from "../../src/monetization/credits/auto-topup-event-log-repository.js";
-import { DrizzleAutoTopupSettingsRepository } from "../../src/monetization/credits/auto-topup-settings-repository.js";
+import { type AutoTopupChargeDeps, chargeAutoTopup } from "@wopr-network/platform-core/monetization/credits/auto-topup-charge";
+import { DrizzleAutoTopupEventLogRepository } from "@wopr-network/platform-core/monetization/credits/auto-topup-event-log-repository";
+import { DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/monetization/credits/auto-topup-settings-repository";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { maybeTriggerUsageTopup } from "../../src/monetization/credits/auto-topup-usage.js";
-import type { ITenantCustomerRepository } from "../../src/monetization/stripe/tenant-store.js";
-import { createTestDb } from "../../src/test/db.js";
+import { maybeTriggerUsageTopup } from "@wopr-network/platform-core/monetization/credits/auto-topup-usage";
+import type { ITenantCustomerRepository } from "@wopr-network/platform-core/monetization/stripe/tenant-store";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

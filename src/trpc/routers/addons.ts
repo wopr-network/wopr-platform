@@ -1,8 +1,12 @@
 import { TRPCError } from "@trpc/server";
+import {
+  ADDON_CATALOG,
+  ADDON_KEYS,
+  type AddonKey,
+} from "@wopr-network/platform-core/monetization/addons/addon-catalog";
+import type { ITenantAddonRepository } from "@wopr-network/platform-core/monetization/addons/addon-repository";
 import { protectedProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import { ADDON_CATALOG, ADDON_KEYS, type AddonKey } from "../../monetization/addons/addon-catalog.js";
-import type { ITenantAddonRepository } from "../../monetization/addons/addon-repository.js";
 
 export interface AddonRouterDeps {
   addonRepo: ITenantAddonRepository;

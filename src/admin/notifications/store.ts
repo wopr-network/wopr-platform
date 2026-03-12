@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { and, count, eq, isNull, lte, or } from "@wopr-network/platform-core/db/index";
+import { notificationQueue } from "@wopr-network/platform-core/db/schema/index";
 import type { NotificationInput, NotificationRow } from "@wopr-network/platform-core/email";
-import { and, count, eq, isNull, lte, or } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { notificationQueue } from "../../db/schema/index.js";
 
 // Re-export domain types for backward compat
 export type {

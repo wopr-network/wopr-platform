@@ -1,10 +1,10 @@
 import { TRPCError } from "@trpc/server";
+import type { IBotInstanceRepository } from "@wopr-network/platform-core/fleet/bot-instance-repository";
+import type { NodeConnectionRegistry } from "@wopr-network/platform-core/fleet/node-connection-registry";
+import type { INodeRepository } from "@wopr-network/platform-core/fleet/node-repository";
+import type { IRegistrationTokenRepository } from "@wopr-network/platform-core/fleet/registration-token-store";
 import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
-import type { IBotInstanceRepository } from "../../fleet/bot-instance-repository.js";
-import type { NodeConnectionRegistry } from "../../fleet/node-connection-registry.js";
-import type { INodeRepository } from "../../fleet/node-repository.js";
-import type { IRegistrationTokenRepository } from "../../fleet/registration-token-store.js";
 
 export interface NodesRouterDeps {
   getRegistrationTokenStore: () => IRegistrationTokenRepository;

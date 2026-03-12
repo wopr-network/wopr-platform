@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginManifest } from "../../../src/api/routes/marketplace-registry.js";
+import type { PluginManifest } from "@wopr-network/platform-core/api/routes/marketplace-registry";
 import { createSetupRoutes, type SetupRouteDeps } from "../../../src/api/routes/setup.js";
 
 const discordManifest: PluginManifest = {

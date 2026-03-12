@@ -8,7 +8,7 @@
  * Fleet/WOPR-specific singletons stay in fleet/services.ts.
  */
 
-import type { DrizzleDb } from "./db/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 
 // ---- Re-usable db accessor (injected by fleet/services.ts at startup) ----
 
@@ -38,8 +38,8 @@ export function getCreditLedger(): ICreditLedger {
   return _creditLedger;
 }
 
-import type { ICreditTransactionRepository } from "./monetization/credits/credit-transaction-repository.js";
-import { DrizzleCreditTransactionRepository } from "./monetization/credits/credit-transaction-repository.js";
+import type { ICreditTransactionRepository } from "@wopr-network/platform-core/monetization/credits/credit-transaction-repository";
+import { DrizzleCreditTransactionRepository } from "@wopr-network/platform-core/monetization/credits/credit-transaction-repository";
 
 let _creditTransactionRepo: ICreditTransactionRepository | null = null;
 
@@ -58,8 +58,8 @@ export function getAutoTopupSettingsRepo(): IAutoTopupSettingsRepository {
   return _autoTopupSettingsRepo;
 }
 
-import type { IAutoTopupEventLogRepository } from "./monetization/credits/auto-topup-event-log-repository.js";
-import { DrizzleAutoTopupEventLogRepository } from "./monetization/credits/auto-topup-event-log-repository.js";
+import type { IAutoTopupEventLogRepository } from "@wopr-network/platform-core/monetization/credits/auto-topup-event-log-repository";
+import { DrizzleAutoTopupEventLogRepository } from "@wopr-network/platform-core/monetization/credits/auto-topup-event-log-repository";
 
 let _autoTopupEventLogRepo: IAutoTopupEventLogRepository | null = null;
 
@@ -68,8 +68,8 @@ export function getAutoTopupEventLogRepo(): IAutoTopupEventLogRepository {
   return _autoTopupEventLogRepo;
 }
 
-import type { IDividendRepository } from "./monetization/credits/dividend-repository.js";
-import { DrizzleDividendRepository } from "./monetization/credits/dividend-repository.js";
+import type { IDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
+import { DrizzleDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
 
 let _dividendRepo: IDividendRepository | null = null;
 
@@ -106,7 +106,10 @@ export function getMeterAggregator(): IMeterAggregator {
 // Billing
 // ---------------------------------------------------------------------------
 
-import { DrizzleTenantCustomerRepository, type ITenantCustomerRepository } from "./monetization/index.js";
+import {
+  DrizzleTenantCustomerRepository,
+  type ITenantCustomerRepository,
+} from "@wopr-network/platform-core/monetization/index";
 
 let _tenantCustomerRepo: ITenantCustomerRepository | null = null;
 
@@ -125,8 +128,8 @@ export function getPayRamChargeRepository(): IPayRamChargeRepository {
   return _payramChargeRepo;
 }
 
-import type { IBudgetChecker } from "./monetization/budget/budget-checker.js";
-import { DrizzleBudgetChecker } from "./monetization/budget/budget-checker.js";
+import type { IBudgetChecker } from "@wopr-network/platform-core/monetization/budget/budget-checker";
+import { DrizzleBudgetChecker } from "@wopr-network/platform-core/monetization/budget/budget-checker";
 
 let _budgetChecker: IBudgetChecker | null = null;
 
@@ -186,8 +189,8 @@ export function getSecretAuditRepo(): ISecretAuditRepository {
 // Middleware
 // ---------------------------------------------------------------------------
 
-import { DrizzleRateLimitRepository } from "./api/drizzle-rate-limit-repository.js";
-import type { IRateLimitRepository } from "./api/rate-limit-repository.js";
+import { DrizzleRateLimitRepository } from "@wopr-network/platform-core/api/drizzle-rate-limit-repository";
+import type { IRateLimitRepository } from "@wopr-network/platform-core/api/rate-limit-repository";
 
 let _rateLimitRepo: IRateLimitRepository | null = null;
 
@@ -196,8 +199,8 @@ export function getRateLimitRepo(): IRateLimitRepository {
   return _rateLimitRepo;
 }
 
-import type { ICircuitBreakerRepository } from "./gateway/circuit-breaker-repository.js";
-import { DrizzleCircuitBreakerRepository } from "./gateway/drizzle-circuit-breaker-repository.js";
+import type { ICircuitBreakerRepository } from "@wopr-network/platform-core/gateway/circuit-breaker-repository";
+import { DrizzleCircuitBreakerRepository } from "@wopr-network/platform-core/gateway/drizzle-circuit-breaker-repository";
 
 let _circuitBreakerRepo: ICircuitBreakerRepository | null = null;
 
@@ -253,8 +256,8 @@ export function getBulkOpsRepo(): IBulkOperationsRepository {
 // Account
 // ---------------------------------------------------------------------------
 
-import type { IDeletionRepository } from "./account/deletion-repository.js";
-import { DrizzleDeletionRepository } from "./account/deletion-repository.js";
+import type { IDeletionRepository } from "@wopr-network/platform-core/account/deletion-repository";
+import { DrizzleDeletionRepository } from "@wopr-network/platform-core/account/deletion-repository";
 
 let _deletionRepo: IDeletionRepository | null = null;
 
@@ -263,8 +266,8 @@ export function getDeletionRepo(): IDeletionRepository {
   return _deletionRepo;
 }
 
-import type { IExportRepository } from "./account/export-repository.js";
-import { DrizzleExportRepository } from "./account/export-repository.js";
+import type { IExportRepository } from "@wopr-network/platform-core/account/export-repository";
+import { DrizzleExportRepository } from "@wopr-network/platform-core/account/export-repository";
 
 let _exportRepo: IExportRepository | null = null;
 
@@ -277,10 +280,10 @@ export function getExportRepo(): IExportRepository {
 // Tenancy / Org
 // ---------------------------------------------------------------------------
 
-import type { IOrgMemberRepository } from "./fleet/org-member-repository.js";
-import { DrizzleOrgMemberRepository } from "./fleet/org-member-repository.js";
-import type { IOrgMembershipRepository } from "./fleet/org-membership-repository.js";
-import { DrizzleOrgMembershipRepository } from "./fleet/org-membership-repository.js";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
+import { DrizzleOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
+import type { IOrgMembershipRepository } from "@wopr-network/platform-core/fleet/org-membership-repository";
+import { DrizzleOrgMembershipRepository } from "@wopr-network/platform-core/fleet/org-membership-repository";
 import type { IOrgRepository } from "./org/drizzle-org-repository.js";
 import { DrizzleOrgRepository } from "./org/drizzle-org-repository.js";
 import { OrgService } from "./org/org-service.js";
@@ -314,8 +317,8 @@ export function getOrgMembershipRepo(): IOrgMembershipRepository {
 // Auth
 // ---------------------------------------------------------------------------
 
-import type { IUserRoleRepository } from "./auth/user-role-repository.js";
-import { DrizzleUserRoleRepository } from "./auth/user-role-repository.js";
+import type { IUserRoleRepository } from "@wopr-network/platform-core/auth/user-role-repository";
+import { DrizzleUserRoleRepository } from "@wopr-network/platform-core/auth/user-role-repository";
 
 let _userRoleRepo: IUserRoleRepository | null = null;
 
@@ -328,13 +331,13 @@ export function getUserRoleRepo(): IUserRoleRepository {
 // Promotions
 // ---------------------------------------------------------------------------
 
-import type { ICouponRepository } from "./monetization/promotions/coupon-repository.js";
-import { DrizzleCouponRepository } from "./monetization/promotions/coupon-repository.js";
-import { PromotionEngine } from "./monetization/promotions/engine.js";
-import type { IPromotionRepository } from "./monetization/promotions/promotion-repository.js";
-import { DrizzlePromotionRepository } from "./monetization/promotions/promotion-repository.js";
-import type { IRedemptionRepository } from "./monetization/promotions/redemption-repository.js";
-import { DrizzleRedemptionRepository } from "./monetization/promotions/redemption-repository.js";
+import type { ICouponRepository } from "@wopr-network/platform-core/monetization/promotions/coupon-repository";
+import { DrizzleCouponRepository } from "@wopr-network/platform-core/monetization/promotions/coupon-repository";
+import { PromotionEngine } from "@wopr-network/platform-core/monetization/promotions/engine";
+import type { IPromotionRepository } from "@wopr-network/platform-core/monetization/promotions/promotion-repository";
+import { DrizzlePromotionRepository } from "@wopr-network/platform-core/monetization/promotions/promotion-repository";
+import type { IRedemptionRepository } from "@wopr-network/platform-core/monetization/promotions/redemption-repository";
+import { DrizzleRedemptionRepository } from "@wopr-network/platform-core/monetization/promotions/redemption-repository";
 
 let _promotionRepo: IPromotionRepository | null = null;
 let _couponRepo: ICouponRepository | null = null;
@@ -372,11 +375,11 @@ export function getPromotionEngine(): PromotionEngine {
 // Adapter rate overrides
 // ---------------------------------------------------------------------------
 
-import type { IAdapterRateOverrideRepository } from "./monetization/adapters/rate-override-repository.js";
+import type { IAdapterRateOverrideRepository } from "@wopr-network/platform-core/monetization/adapters/rate-override-repository";
 import {
   AdapterRateOverrideCache,
   DrizzleAdapterRateOverrideRepository,
-} from "./monetization/adapters/rate-override-repository.js";
+} from "@wopr-network/platform-core/monetization/adapters/rate-override-repository";
 
 let _rateOverrideRepo: IAdapterRateOverrideRepository | null = null;
 let _rateOverrideCache: AdapterRateOverrideCache | null = null;
@@ -395,8 +398,8 @@ export function getRateOverrideCache(): AdapterRateOverrideCache {
 // Addons
 // ---------------------------------------------------------------------------
 
-import type { ITenantAddonRepository } from "./monetization/addons/addon-repository.js";
-import { DrizzleTenantAddonRepository } from "./monetization/addons/addon-repository.js";
+import type { ITenantAddonRepository } from "@wopr-network/platform-core/monetization/addons/addon-repository";
+import { DrizzleTenantAddonRepository } from "@wopr-network/platform-core/monetization/addons/addon-repository";
 
 let _tenantAddonRepo: ITenantAddonRepository | undefined;
 

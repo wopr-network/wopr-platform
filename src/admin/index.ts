@@ -14,6 +14,15 @@ export {
   RoleStore,
 } from "@wopr-network/platform-core/admin";
 export type {
+  ProviderCost,
+  ProviderCostFilters,
+  ProviderCostInput,
+  RateFilters,
+  SellRate,
+  SellRateInput,
+} from "@wopr-network/platform-core/admin/rates/rate-store";
+export { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+export type {
   DateRange,
   FloatMetrics,
   IAnalyticsRepository,
@@ -50,15 +59,6 @@ export type {
   NotificationRow,
 } from "./notifications/index.js";
 export { DrizzleAdminNotificationQueueRepository } from "./notifications/index.js";
-export type {
-  ProviderCost,
-  ProviderCostFilters,
-  ProviderCostInput,
-  RateFilters,
-  SellRate,
-  SellRateInput,
-} from "./rates/rate-store.js";
-export { RateStore } from "./rates/rate-store.js";
 export { requirePlatformAdmin, requireTenantAdmin } from "./roles/require-role.js";
 export type { ITenantStatusRepository } from "./tenant-status/tenant-status-repository.js";
 export type { AdminUserFilters, AdminUserListResponse, AdminUserSummary } from "./users/user-store.js";

@@ -3,16 +3,16 @@ import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DrizzleBackupStatusRepository } from "../../src/backup/backup-status-repository.js";
-import { BackupStatusStore } from "../../src/backup/backup-status-store.js";
-import { BackupVerifier } from "../../src/backup/backup-verifier.js";
-import { DrizzleSnapshotRepository } from "../../src/backup/snapshot-repository.js";
-import { SnapshotManager, SnapshotNotFoundError } from "../../src/backup/snapshot-manager.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import type { SpacesClient } from "../../src/backup/spaces-client.js";
-import { createTestDb } from "../../src/test/db.js";
+import { DrizzleBackupStatusRepository } from "@wopr-network/platform-core/backup/backup-status-repository";
+import { BackupStatusStore } from "@wopr-network/platform-core/backup/backup-status-store";
+import { BackupVerifier } from "@wopr-network/platform-core/backup/backup-verifier";
+import { DrizzleSnapshotRepository } from "@wopr-network/platform-core/backup/snapshot-repository";
+import { SnapshotManager, SnapshotNotFoundError } from "@wopr-network/platform-core/backup/snapshot-manager";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import type { SpacesClient } from "@wopr-network/platform-core/backup/spaces-client";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 

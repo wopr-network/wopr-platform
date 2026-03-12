@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { creditBalanceCheck, debitCredits, type CreditGateDeps } from "../../src/gateway/credit-gate.js";
+import { creditBalanceCheck, debitCredits, type CreditGateDeps } from "@wopr-network/platform-core/gateway/credit-gate";
 import type { CreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
-import type { GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
-import type { GatewayTenant } from "../../src/gateway/types.js";
+import type { GatewayAuthEnv } from "@wopr-network/platform-core/gateway/service-key-auth";
+import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
@@ -245,7 +245,7 @@ describe("debitCredits zero-cost logging", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("logs when charge is zero (free-tier / cached response)", async () => {
-    const { logger } = await import("../../src/config/logger.js");
+    const { logger } = await import("@wopr-network/platform-core/config/logger");
 
     const ledger = new StubCreditLedger(1000);
     const deps: CreditGateDeps = {
@@ -268,7 +268,7 @@ describe("debitCredits zero-cost logging", () => {
   });
 
   it("logs when charge after margin is negative", async () => {
-    const { logger } = await import("../../src/config/logger.js");
+    const { logger } = await import("@wopr-network/platform-core/config/logger");
 
     const ledger = new StubCreditLedger(1000);
     const deps: CreditGateDeps = {

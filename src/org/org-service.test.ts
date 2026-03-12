@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { TRPCError } from "@trpc/server";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { DrizzleOrgMemberRepository } from "../fleet/org-member-repository.js";
-import { createTestDb, truncateAllTables } from "../test/db.js";
 import { DrizzleOrgRepository } from "./drizzle-org-repository.js";
 import { OrgService } from "./org-service.js";
 
@@ -246,7 +246,7 @@ describe("OrgService", () => {
     });
 
     it("logs error when compensating delete also fails", async () => {
-      const { logger: loggerModule } = await import("../config/logger.js");
+      const { logger: loggerModule } = await import("@wopr-network/platform-core/config/logger");
       const errorSpy = vi.spyOn(loggerModule, "error");
 
       const { orgRepo, memberRepo } = await setup(db);

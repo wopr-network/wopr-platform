@@ -1,8 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleDeletionRepository } from "@wopr-network/platform-core/account/deletion-repository";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { DrizzleDeletionRepository } from "./deletion-repository.js";
 import { AccountDeletionStore, DELETION_GRACE_DAYS } from "./deletion-store.js";
 
 let db: DrizzleDb;

@@ -1,5 +1,5 @@
+import { nodeTransitions } from "@wopr-network/platform-core/db/schema/node-transitions";
 import { describe, expect, it } from "vitest";
-import { nodeTransitions } from "./node-transitions.js";
 
 describe("node_transitions schema", () => {
   it("has required columns", () => {

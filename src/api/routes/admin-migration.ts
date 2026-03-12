@@ -1,9 +1,10 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import { getMigrationOrchestrator } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
 import { z } from "zod";
-import { logger } from "../../config/logger.js";
-import { getAdminAuditLog, getMigrationOrchestrator } from "../../fleet/services.js";
+import { getAdminAuditLog } from "../../platform-services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");

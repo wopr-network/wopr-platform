@@ -1,7 +1,12 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import type { DrizzleDb } from "./index.js";
 import { DrizzleTenantModelSelectionRepository } from "./tenant-model-selection-repository.js";
 
 describe("DrizzleTenantModelSelectionRepository", () => {

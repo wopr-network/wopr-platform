@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock fleet services before importing routes
-vi.mock("../../fleet/services.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/services", () => {
   const mockNodeRepo = {
     verifyNodeSecret: vi.fn(),
     getBySecret: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock("../../fleet/services.js", () => {
   };
 });
 
-import { getNodeRepo } from "../../fleet/services.js";
+import { getNodeRepo } from "@wopr-network/platform-core/fleet/services";
 import { authenticateWebSocketUpgrade } from "./ws-auth.js";
 
 /**

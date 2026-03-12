@@ -1,6 +1,6 @@
+import type { PluginManifest } from "@wopr-network/platform-core/api/routes/marketplace-registry";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { PluginManifest } from "./marketplace-registry.js";
 import { createSetupRoutes, type SetupRouteDeps, setSetupDeps, setupRoutes } from "./setup.js";
 
 const TEST_BOT_ID = "a1b2c3d4-e5f6-4789-8abc-def012345678";

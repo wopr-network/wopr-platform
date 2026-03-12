@@ -1,5 +1,8 @@
+import type {
+  CacheStats,
+  ISessionUsageRepository,
+} from "@wopr-network/platform-core/inference/session-usage-repository";
 import { describe, expect, it, vi } from "vitest";
-import type { CacheStats, ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 import { createAdminInferenceRoutes } from "./admin-inference.js";
 
 /** Generate a YYYY-MM-DD string for N days ago. */

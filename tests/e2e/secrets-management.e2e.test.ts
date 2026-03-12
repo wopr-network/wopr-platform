@@ -9,17 +9,17 @@ import type { PGlite } from "@electric-sql/pglite";
 import { eq, and } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { tenantApiKeys } from "../../src/db/schema/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { tenantApiKeys } from "@wopr-network/platform-core/db/schema/index";
 import {
   beginTestTransaction,
   createTestDb,
   endTestTransaction,
   rollbackTestTransaction,
-} from "../../src/test/db.js";
+} from "@wopr-network/platform-core/test/db";
 import { TenantKeyRepository } from "@wopr-network/platform-core";
-import { decrypt } from "../../src/security/encryption.js";
-import type { EncryptedPayload } from "../../src/security/types.js";
+import { decrypt } from "@wopr-network/platform-core/security/encryption";
+import type { EncryptedPayload } from "@wopr-network/platform-core/security/types";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -44,8 +44,8 @@ function deriveTenantKey(tenantId: string, platformSecret: string): Buffer {
 // Dynamic imports — populated in beforeAll after env stubs + resetModules
 let tenantKeyRoutes: Awaited<typeof import("../../src/api/routes/tenant-keys.js")>["tenantKeyRoutes"];
 let setRepo: Awaited<typeof import("../../src/api/routes/tenant-keys.js")>["setRepo"];
-let resolveApiKey: Awaited<typeof import("../../src/security/tenant-keys/key-resolution.js")>["resolveApiKey"];
-let DrizzleKeyResolutionRepository: Awaited<typeof import("../../src/security/tenant-keys/key-resolution-repository.js")>["DrizzleKeyResolutionRepository"];
+let resolveApiKey: Awaited<typeof import("@wopr-network/platform-core/security/tenant-keys/key-resolution")>["resolveApiKey"];
+let DrizzleKeyResolutionRepository: Awaited<typeof import("@wopr-network/platform-core/security/tenant-keys/key-resolution-repository")>["DrizzleKeyResolutionRepository"];
 let app: Hono;
 
 // ---------------------------------------------------------------------------
@@ -71,10 +71,10 @@ describe("E2E: secrets management — store → retrieve → rotate → resolve 
     tenantKeyRoutes = routesMod.tenantKeyRoutes;
     setRepo = routesMod.setRepo;
 
-    const keyResMod = await import("../../src/security/tenant-keys/key-resolution.js");
+    const keyResMod = await import("@wopr-network/platform-core/security/tenant-keys/key-resolution");
     resolveApiKey = keyResMod.resolveApiKey;
 
-    const keyResRepoMod = await import("../../src/security/tenant-keys/key-resolution-repository.js");
+    const keyResRepoMod = await import("@wopr-network/platform-core/security/tenant-keys/key-resolution-repository");
     DrizzleKeyResolutionRepository = keyResRepoMod.DrizzleKeyResolutionRepository;
 
     app = new Hono();

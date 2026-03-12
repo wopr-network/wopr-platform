@@ -1,6 +1,26 @@
-import { TRPCError } from "@trpc/server";
-import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
-import { describe, expect, it } from "vitest";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
+import { adminProcedure, router, setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Wire a permissive org member repo so isAuthed doesn't throw INTERNAL_SERVER_ERROR
+// when tenantId is present on non-admin users
+beforeEach(() => {
+  setTrpcOrgMemberRepo({
+    findMember: vi.fn().mockResolvedValue({ id: "m1", orgId: "org-1", userId: "user-1", role: "member", joinedAt: 0 }),
+    listMembers: vi.fn(),
+    addMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    removeMember: vi.fn(),
+    countAdminsAndOwners: vi.fn(),
+    listInvites: vi.fn(),
+    createInvite: vi.fn(),
+    findInviteById: vi.fn(),
+    findInviteByToken: vi.fn(),
+    deleteInvite: vi.fn(),
+    deleteAllMembers: vi.fn(),
+    deleteAllInvites: vi.fn(),
+  } as IOrgMemberRepository);
+});
 
 describe("adminProcedure", () => {
   const testRouter = router({
@@ -9,7 +29,7 @@ describe("adminProcedure", () => {
 
   it("rejects unauthenticated users with UNAUTHORIZED", async () => {
     const caller = testRouter.createCaller({ user: undefined, tenantId: undefined });
-    await expect(caller.adminOnly()).rejects.toThrow(TRPCError);
+    await expect(caller.adminOnly()).rejects.toThrow();
     await expect(caller.adminOnly()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
@@ -18,7 +38,7 @@ describe("adminProcedure", () => {
       user: { id: "user-1", roles: ["member"] },
       tenantId: "t-1",
     });
-    await expect(caller.adminOnly()).rejects.toThrow(TRPCError);
+    await expect(caller.adminOnly()).rejects.toThrow();
     await expect(caller.adminOnly()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
@@ -27,7 +47,7 @@ describe("adminProcedure", () => {
       user: { id: "user-2", roles: [] },
       tenantId: "t-1",
     });
-    await expect(caller.adminOnly()).rejects.toThrow(TRPCError);
+    await expect(caller.adminOnly()).rejects.toThrow();
     await expect(caller.adminOnly()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 

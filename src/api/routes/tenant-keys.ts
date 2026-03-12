@@ -1,11 +1,11 @@
 import { createHmac } from "node:crypto";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ITenantKeyRepository } from "@wopr-network/platform-core/security";
 import { encrypt } from "@wopr-network/platform-core/security";
+import { providerSchema } from "@wopr-network/platform-core/security/types";
 import { Hono } from "hono";
 import { z } from "zod";
-import { logger } from "../../config/logger.js";
-import { providerSchema } from "../../security/types.js";
 
 const PLATFORM_SECRET = process.env.PLATFORM_SECRET;
 
@@ -87,7 +87,7 @@ tenantKeyRoutes.get("/:provider", async (c) => {
   const provider = c.req.param("provider");
   const parsed = providerSchema.safeParse(provider);
   if (!parsed.success) {
-    return c.json({ error: "Invalid provider", validProviders: providerSchema.options }, 400);
+    return c.json({ error: "Invalid provider" }, 400);
   }
 
   const record = await getRepo().get(tenantId, parsed.data);
@@ -124,7 +124,7 @@ tenantKeyRoutes.put("/:provider", async (c) => {
   const provider = c.req.param("provider");
   const providerParsed = providerSchema.safeParse(provider);
   if (!providerParsed.success) {
-    return c.json({ error: "Invalid provider", validProviders: providerSchema.options }, 400);
+    return c.json({ error: "Invalid provider" }, 400);
   }
 
   let body: unknown;
@@ -170,7 +170,7 @@ tenantKeyRoutes.delete("/:provider", async (c) => {
   const provider = c.req.param("provider");
   const parsed = providerSchema.safeParse(provider);
   if (!parsed.success) {
-    return c.json({ error: "Invalid provider", validProviders: providerSchema.options }, 400);
+    return c.json({ error: "Invalid provider" }, 400);
   }
 
   const deleted = await getRepo().delete(tenantId, parsed.data);

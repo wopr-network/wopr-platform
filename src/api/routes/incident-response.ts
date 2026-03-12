@@ -1,12 +1,15 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import {
+  getCustomerTemplate,
+  getInternalTemplate,
+} from "@wopr-network/platform-core/monetization/incident/communication-templates";
+import { getEscalationMatrix } from "@wopr-network/platform-core/monetization/incident/escalation";
+import { generatePostMortemTemplate } from "@wopr-network/platform-core/monetization/incident/postmortem";
+import { getResponseProcedure } from "@wopr-network/platform-core/monetization/incident/response-procedures";
+import { classifySeverity } from "@wopr-network/platform-core/monetization/incident/severity";
 import { Hono } from "hono";
 import { z } from "zod";
-import { getCustomerTemplate, getInternalTemplate } from "../../monetization/incident/communication-templates.js";
-import { getEscalationMatrix } from "../../monetization/incident/escalation.js";
-import { generatePostMortemTemplate } from "../../monetization/incident/postmortem.js";
-import { getResponseProcedure } from "../../monetization/incident/response-procedures.js";
-import { classifySeverity } from "../../monetization/incident/severity.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");

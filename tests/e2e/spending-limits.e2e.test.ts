@@ -2,17 +2,17 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { createTestDb } from "../../src/test/db.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { meterEvents } from "../../src/db/schema/meter-events.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { meterEvents } from "@wopr-network/platform-core/db/schema/meter-events";
 import { Credit } from "@wopr-network/platform-core";
-import { DrizzleSpendingLimitsRepository } from "../../src/monetization/drizzle-spending-limits-repository.js";
-import { DrizzleSpendingCapStore } from "../../src/fleet/spending-cap-repository.js";
-import { spendingCapCheck, type SpendingCaps } from "../../src/gateway/spending-cap.js";
-import { hydrateSpendingCaps } from "../../src/gateway/hydrate-spending-caps.js";
-import type { GatewayTenant } from "../../src/gateway/types.js";
+import { DrizzleSpendingLimitsRepository } from "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository";
+import { DrizzleSpendingCapStore } from "@wopr-network/platform-core/fleet/spending-cap-repository";
+import { spendingCapCheck, type SpendingCaps } from "@wopr-network/platform-core/gateway/spending-cap";
+import { hydrateSpendingCaps } from "@wopr-network/platform-core/gateway/hydrate-spending-caps";
+import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

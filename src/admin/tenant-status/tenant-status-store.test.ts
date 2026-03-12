@@ -1,9 +1,14 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { eq, inArray } from "drizzle-orm";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq, inArray } from "@wopr-network/platform-core/db/index";
+import { tenantStatus } from "@wopr-network/platform-core/db/schema/tenant-status";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { tenantStatus } from "../../db/schema/tenant-status.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { TenantStatusStore } from "./tenant-status-store.js";
 
 describe("TenantStatusStore", () => {

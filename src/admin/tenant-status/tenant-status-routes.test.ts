@@ -19,13 +19,38 @@ import type {
   ICreditLedger,
 } from "@wopr-network/platform-core/credits";
 import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
+import { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Wire org member repo so isAuthed middleware doesn't throw INTERNAL_SERVER_ERROR
+setTrpcOrgMemberRepo({
+  findMember: vi.fn().mockResolvedValue({ id: "m1", orgId: "t-1", userId: "user-1", role: "member", joinedAt: 0 }),
+  listMembers: vi.fn(),
+  addMember: vi.fn(),
+  updateMemberRole: vi.fn(),
+  removeMember: vi.fn(),
+  countAdminsAndOwners: vi.fn(),
+  listInvites: vi.fn(),
+  createInvite: vi.fn(),
+  findInviteById: vi.fn(),
+  findInviteByToken: vi.fn(),
+  deleteInvite: vi.fn(),
+  deleteAllMembers: vi.fn(),
+  deleteAllInvites: vi.fn(),
+} as IOrgMemberRepository);
+
 import { AdminUserStore } from "../../admin/users/user-store.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { DrizzleBotInstanceRepository } from "../../fleet/drizzle-bot-instance-repository.js";
-import { BotBilling } from "../../monetization/credits/bot-billing.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { appRouter } from "../../trpc/index.js";
 import { setAdminRouterDeps } from "../../trpc/routers/admin.js";
 import { TenantStatusStore } from "./tenant-status-store.js";

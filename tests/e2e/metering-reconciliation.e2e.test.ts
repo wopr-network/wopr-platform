@@ -2,18 +2,18 @@ import { randomUUID } from "node:crypto";
 import { unlinkSync } from "node:fs";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { createTestDb } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 import { Credit } from "@wopr-network/platform-core";
-import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
-import { DrizzleMeterAggregator as MeterAggregator } from "../../src/monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
-import { MeterWAL } from "../../src/monetization/metering/wal.js";
-import { MeterDLQ } from "../../src/monetization/metering/dlq.js";
-import type { MeterEvent } from "../../src/monetization/metering/types.js";
+import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/monetization/metering/emitter";
+import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/monetization/metering/meter-event-repository";
+import { DrizzleMeterAggregator as MeterAggregator } from "@wopr-network/platform-core/monetization/metering/aggregator";
+import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/monetization/metering/drizzle-usage-summary-repository";
+import { MeterWAL } from "@wopr-network/platform-core/monetization/metering/wal";
+import { MeterDLQ } from "@wopr-network/platform-core/monetization/metering/dlq";
+import type { MeterEvent } from "@wopr-network/platform-core/monetization/metering/types";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

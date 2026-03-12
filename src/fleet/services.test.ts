@@ -1,7 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { createTestDb } from "../test/db.js";
 import {
   _resetForTest,
   _setDbForTest,

@@ -5,12 +5,12 @@
  * Deps are injected via setAccountRouterDeps / setTrpcOrgMemberRepo.
  */
 
+import type { DeletionRequestRow } from "@wopr-network/platform-core/account/repository-types";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountDeletionStore } from "../../account/deletion-store.js";
-import type { DeletionRequest } from "../../account/repository-types.js";
-import type { IOrgMemberRepository } from "../../fleet/org-member-repository.js";
 import { appRouter } from "../index.js";
 import type { AccountRouterDeps } from "./account.js";
 import { setAccountRouterDeps } from "./account.js";
@@ -50,7 +50,7 @@ const stubOrgMemberRepo: IOrgMemberRepository = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SAMPLE_DELETION_REQUEST: DeletionRequest = {
+const SAMPLE_DELETION_REQUEST: DeletionRequestRow = {
   id: "del-1",
   tenantId: TEST_TENANT_ID,
   requestedBy: TEST_USER_ID,

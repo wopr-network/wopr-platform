@@ -1,8 +1,8 @@
 import type { AuthEnv, AuthUser } from "@wopr-network/platform-core/auth";
+import type { OnboardingSession } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-session-repository";
+import type { OnboardingService } from "@wopr-network/platform-core/onboarding/onboarding-service";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { OnboardingSession } from "../../onboarding/drizzle-onboarding-session-repository.js";
-import type { OnboardingService } from "../../onboarding/onboarding-service.js";
 import { onboardingRoutes, setOnboardingDeps } from "./onboarding.js";
 
 function fakeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSession {

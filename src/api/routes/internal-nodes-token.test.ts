@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleRegistrationTokenRepository } from "@wopr-network/platform-core/fleet/registration-token-store";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { DrizzleRegistrationTokenRepository } from "../../fleet/registration-token-store.js";
-import { createTestDb, truncateAllTables } from "../../test/db.js";
 
 /**
  * Tests for token-based registration in internal-nodes route.

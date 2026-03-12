@@ -1,4 +1,3 @@
-import { TRPCError } from "@trpc/server";
 import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -105,7 +104,7 @@ beforeAll(() => {
 describe("admin router auth gate — unauthenticated", () => {
   it("rejects unauthenticated user from auditLog", async () => {
     const caller = adminRouter.createCaller(unauthCtx());
-    await expect(caller.auditLog({})).rejects.toThrow(TRPCError);
+    await expect(caller.auditLog({})).rejects.toThrow();
     await expect(caller.auditLog({})).rejects.toMatchObject({ message: "Authentication required" });
   });
 

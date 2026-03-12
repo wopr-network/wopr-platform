@@ -1,6 +1,6 @@
-import { and, asc, count, desc, eq, gt, ilike, lt, or } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { adminUsers } from "../../db/schema/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { and, asc, count, desc, eq, gt, ilike, lt, or } from "@wopr-network/platform-core/db/index";
+import { adminUsers } from "@wopr-network/platform-core/db/schema/index";
 
 // ---------------------------------------------------------------------------
 // Types

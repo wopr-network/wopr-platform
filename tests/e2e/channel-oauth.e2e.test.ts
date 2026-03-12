@@ -3,8 +3,8 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DrizzleOAuthStateRepository } from "../../src/api/drizzle-oauth-state-repository.js";
 import { createChannelOAuthRoutes } from "../../src/api/routes/channel-oauth.js";
-import type { AuthEnv, AuthUser } from "../../src/auth/index.js";
-import { createTestDb } from "../../src/test/db.js";
+import type { AuthEnv, AuthUser } from "@wopr-network/platform-core/auth/index";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
 // ---------------------------------------------------------------------------
 // Test helpers

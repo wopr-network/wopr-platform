@@ -3,9 +3,9 @@
  * Uses a mock PromotionEngine (no PGlite needed).
  */
 
+import type { PromotionEngine } from "@wopr-network/platform-core/monetization/promotions/engine";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PromotionEngine } from "../../../monetization/promotions/engine.js";
 import { appRouter } from "../../index.js";
 import { type BillingRouterDeps, setBillingRouterDeps } from "../billing.js";
 

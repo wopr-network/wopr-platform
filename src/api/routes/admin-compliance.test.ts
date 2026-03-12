@@ -1,6 +1,6 @@
+import type { EvidenceCollector } from "@wopr-network/platform-core/compliance/evidence-collector";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import type { EvidenceCollector } from "../../compliance/evidence-collector.js";
 import { createAdminComplianceRoutes } from "./admin-compliance.js";
 
 describe("GET /evidence", () => {

@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock services before importing routes
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
   getMigrationOrchestrator: vi.fn(),
 }));
 
+vi.mock("../../platform-services.js", () => ({
+  getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
+}));
 vi.mock("@wopr-network/platform-core/auth", () => ({
   buildTokenMetadataMap: vi.fn().mockReturnValue(new Map()),
   // biome-ignore lint/suspicious/noExplicitAny: vi.fn() mock context
@@ -16,7 +19,8 @@ vi.mock("@wopr-network/platform-core/auth", () => ({
 }));
 
 import type { AdminAuditLog } from "@wopr-network/platform-core/admin";
-import { getAdminAuditLog, getMigrationOrchestrator } from "../../fleet/services.js";
+import { getMigrationOrchestrator } from "@wopr-network/platform-core/fleet/services";
+import { getAdminAuditLog } from "../../platform-services.js";
 import { adminMigrationRoutes } from "./admin-migration.js";
 
 beforeEach(() => {

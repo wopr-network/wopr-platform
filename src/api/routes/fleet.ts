@@ -3,31 +3,39 @@ import {
   scopedBearerAuthWithTenant,
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import { type IEmailVerifier, requireEmailVerified } from "@wopr-network/platform-core/email";
+import { CAPABILITY_ENV_MAP } from "@wopr-network/platform-core/fleet/capability-env-map";
+import { FleetEventEmitter } from "@wopr-network/platform-core/fleet/fleet-event-emitter";
+import { BotNotFoundError, FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
+import { ImagePoller } from "@wopr-network/platform-core/fleet/image-poller";
+import { findPlacement } from "@wopr-network/platform-core/fleet/placement";
+import { defaultTemplatesDir, loadProfileTemplates } from "@wopr-network/platform-core/fleet/profile-loader";
+import type { ProfileTemplate } from "@wopr-network/platform-core/fleet/profile-schema";
+import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import {
+  getBotInstanceRepo,
+  getCommandBus,
+  getNodeRepo,
+  getRecoveryOrchestrator,
+} from "@wopr-network/platform-core/fleet/services";
+import { createBotSchema, updateBotSchema } from "@wopr-network/platform-core/fleet/types";
+import { ContainerUpdater } from "@wopr-network/platform-core/fleet/updater";
+import type { IBotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import {
+  checkInstanceQuota,
+  DEFAULT_INSTANCE_LIMITS,
+} from "@wopr-network/platform-core/monetization/quotas/quota-check";
+import { buildResourceLimits } from "@wopr-network/platform-core/monetization/quotas/resource-limits";
+import { NetworkPolicy } from "@wopr-network/platform-core/network/network-policy";
+import { getProxyManager } from "@wopr-network/platform-core/proxy/singleton";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import Docker from "dockerode";
 import { Hono } from "hono";
 import { z } from "zod";
 import { config } from "../../config/index.js";
-import { logger } from "../../config/logger.js";
-import { CAPABILITY_ENV_MAP } from "../../fleet/capability-env-map.js";
-import { FleetEventEmitter } from "../../fleet/fleet-event-emitter.js";
-import { BotNotFoundError, FleetManager } from "../../fleet/fleet-manager.js";
-import { ImagePoller } from "../../fleet/image-poller.js";
-import { findPlacement } from "../../fleet/placement.js";
-import { defaultTemplatesDir, loadProfileTemplates } from "../../fleet/profile-loader.js";
-import type { ProfileTemplate } from "../../fleet/profile-schema.js";
-import { ProfileStore } from "../../fleet/profile-store.js";
-import { getBotInstanceRepo, getCommandBus, getNodeRepo, getRecoveryOrchestrator } from "../../fleet/services.js";
-import { createBotSchema, updateBotSchema } from "../../fleet/types.js";
-import { ContainerUpdater } from "../../fleet/updater.js";
-import type { IBotBilling } from "../../monetization/credits/bot-billing.js";
-import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
-import { buildResourceLimits } from "../../monetization/quotas/resource-limits.js";
-import { NetworkPolicy } from "../../network/network-policy.js";
-import { getProxyManager } from "../../proxy/singleton.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
@@ -1073,7 +1081,7 @@ fleetRoutes.get("/bots/:id/vps-info", readAuth, async (c) => {
   if (ownershipError) return ownershipError;
   if (!profile) return c.json({ error: "Bot not found" }, 404);
 
-  const { getVpsRepo } = await import("../../fleet/services.js");
+  const { getVpsRepo } = await import("@wopr-network/platform-core/fleet/services");
   const sub = await getVpsRepo().getByBotId(botId);
   if (!sub) {
     return c.json({ error: "Bot is not on VPS tier" }, 404);

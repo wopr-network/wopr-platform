@@ -1,14 +1,47 @@
 import { createHmac } from "node:crypto";
 import { serve } from "@hono/node-server";
+import { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/drizzle-sig-penalty-repository";
 import {
   buildTokenMetadataMap,
   scopedBearerAuthWithTenant,
   timingSafeMapLookup,
 } from "@wopr-network/platform-core/auth";
 import { DrizzleWebhookSeenRepository } from "@wopr-network/platform-core/billing";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { Credit, runCreditExpiryCron } from "@wopr-network/platform-core/credits";
+import { eq, gte, sql } from "@wopr-network/platform-core/db/index";
+import * as schema from "@wopr-network/platform-core/db/schema/index";
 import { NotificationService } from "@wopr-network/platform-core/email";
+import type { CommandResult } from "@wopr-network/platform-core/fleet/node-command-bus";
+import { DrizzleSpendingCapStore } from "@wopr-network/platform-core/fleet/spending-cap-repository";
+import { mountGateway } from "@wopr-network/platform-core/gateway/index";
+import { createCachedRateLookup } from "@wopr-network/platform-core/gateway/rate-lookup";
+import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
 import { DrizzleMeterEventRepository, MeterEmitter, runReconciliation } from "@wopr-network/platform-core/metering";
+import { BudgetChecker } from "@wopr-network/platform-core/monetization/budget/budget-checker";
+import { runDividendCron } from "@wopr-network/platform-core/monetization/credits/dividend-cron";
+import { runDividendDigestCron } from "@wopr-network/platform-core/monetization/credits/dividend-digest-cron";
+import { startRuntimeScheduler } from "@wopr-network/platform-core/monetization/credits/runtime-scheduler";
+import {
+  DrizzleAdapterUsageRepository,
+  DrizzleUsageSummaryRepository,
+} from "@wopr-network/platform-core/monetization/metering/reconciliation-repository";
+import type { HeartbeatMessage } from "@wopr-network/platform-core/node-agent/types";
+import { DrizzleMetricsRepository } from "@wopr-network/platform-core/observability/drizzle-metrics-repository";
+import {
+  AlertChecker,
+  buildAlerts,
+  buildCriticalAlerts,
+  captureError,
+  createAdminHealthHandler,
+  initSentry,
+  MetricsCollector,
+  PagerDutyNotifier,
+} from "@wopr-network/platform-core/observability/index";
+import { DrizzleTenantKeyLookup } from "@wopr-network/platform-core/onboarding/drizzle-tenant-key-repository";
+import { checkProviderConfigured } from "@wopr-network/platform-core/onboarding/provider-check";
+import { hydrateProxyRoutes } from "@wopr-network/platform-core/proxy/singleton";
 import {
   CredentialVaultStore,
   DrizzleCredentialRepository,
@@ -16,13 +49,10 @@ import {
   getVaultEncryptionKey,
   TenantKeyRepository,
 } from "@wopr-network/platform-core/security";
-import { eq, gte, sql } from "drizzle-orm";
 import type { WebSocket } from "ws";
 import { WebSocketServer } from "ws";
-import { RateStore } from "./admin/rates/rate-store.js";
 import { app } from "./api/app.js";
 import { DrizzleOAuthStateRepository } from "./api/drizzle-oauth-state-repository.js";
-import { DrizzleSigPenaltyRepository } from "./api/drizzle-sig-penalty-repository.js";
 import { setBillingDeps } from "./api/routes/billing.js";
 import { setBotPluginDeps } from "./api/routes/bot-plugins.js";
 import { setChannelOAuthRepo } from "./api/routes/channel-oauth.js";
@@ -35,10 +65,7 @@ import { authenticateWebSocketUpgrade } from "./api/routes/ws-auth.js";
 import { EchoChatBackend } from "./chat/chat-backend.js";
 import { WoprChatBackend } from "./chat/wopr-chat-backend.js";
 import { config } from "./config/index.js";
-import { logger } from "./config/logger.js";
 import { runMigrations } from "./db/migrate.js";
-import * as schema from "./db/schema/index.js";
-import type { CommandResult } from "./fleet/node-command-bus.js";
 import {
   getAffiliateRepo,
   getBackupVerifier,
@@ -78,33 +105,6 @@ import {
   getTenantAddonRepo,
   initFleet,
 } from "./fleet/services.js";
-import { DrizzleSpendingCapStore } from "./fleet/spending-cap-repository.js";
-import { mountGateway } from "./gateway/index.js";
-import { createCachedRateLookup } from "./gateway/rate-lookup.js";
-import type { GatewayTenant } from "./gateway/types.js";
-import { BudgetChecker } from "./monetization/budget/budget-checker.js";
-import { runDividendCron } from "./monetization/credits/dividend-cron.js";
-import { runDividendDigestCron } from "./monetization/credits/dividend-digest-cron.js";
-import { startRuntimeScheduler } from "./monetization/credits/runtime-scheduler.js";
-import {
-  DrizzleAdapterUsageRepository,
-  DrizzleUsageSummaryRepository,
-} from "./monetization/metering/reconciliation-repository.js";
-import type { HeartbeatMessage } from "./node-agent/types.js";
-import { DrizzleMetricsRepository } from "./observability/drizzle-metrics-repository.js";
-import {
-  AlertChecker,
-  buildAlerts,
-  buildCriticalAlerts,
-  captureError,
-  createAdminHealthHandler,
-  initSentry,
-  MetricsCollector,
-  PagerDutyNotifier,
-} from "./observability/index.js";
-import { DrizzleTenantKeyLookup } from "./onboarding/drizzle-tenant-key-repository.js";
-import { checkProviderConfigured } from "./onboarding/provider-check.js";
-import { hydrateProxyRoutes } from "./proxy/singleton.js";
 import {
   setAddonRouterDeps,
   setAdminRouterDeps,
@@ -329,7 +329,9 @@ if (process.env.NODE_ENV !== "test") {
     setBotPluginDeps({ credentialVault, meterEmitter: meter, botInstanceRepo: getBotInstanceRepo() });
     setMarketplaceDeps({ credentialVault, meterEmitter: meter });
 
-    const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
+    const { DrizzleSpendingLimitsRepository } = await import(
+      "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository"
+    );
     const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(getDb());
 
     mountGateway(app, {
@@ -415,11 +417,13 @@ if (process.env.NODE_ENV !== "test") {
         // Fire-and-forget: check if monthly spend has crossed alertAt threshold
         (async () => {
           try {
-            const { checkSpendAlert } = await import("./gateway/spend-alert.js");
+            const { checkSpendAlert } = await import("@wopr-network/platform-core/gateway/spend-alert");
             const { DrizzleSpendingLimitsRepository } = await import(
-              "./monetization/drizzle-spending-limits-repository.js"
+              "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository"
             );
-            const { DrizzleSpendingCapStore } = await import("./fleet/spending-cap-repository.js");
+            const { DrizzleSpendingCapStore } = await import(
+              "@wopr-network/platform-core/fleet/spending-cap-repository"
+            );
             const { DrizzleBillingEmailRepository } = await import("@wopr-network/platform-core/email");
 
             const notificationService = new NotificationService(
@@ -501,20 +505,22 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire login history route repo (WOP-1399)
   {
-    const { BetterAuthLoginHistoryRepository } = await import("./auth/login-history-repository.js");
+    const { BetterAuthLoginHistoryRepository } = await import(
+      "@wopr-network/platform-core/auth/login-history-repository"
+    );
     const { setLoginHistoryRepoFactory } = await import("./api/routes/login-history.js");
     setLoginHistoryRepoFactory(() => new BetterAuthLoginHistoryRepository(getPool()));
   }
 
   // Wire org tRPC router deps
   {
-    const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
+    const { BetterAuthUserRepository } = await import("@wopr-network/platform-core/db/auth-user-repository");
     setOrgRouterDeps({ orgService: getOrgService(), authUserRepo: new BetterAuthUserRepository(getPool()) });
   }
 
   // Wire profile tRPC router deps (reads/writes better-auth user table directly)
   {
-    const { BetterAuthUserRepository } = await import("./db/auth-user-repository.js");
+    const { BetterAuthUserRepository } = await import("@wopr-network/platform-core/db/auth-user-repository");
     const authUserRepo = new BetterAuthUserRepository(getPool());
     setProfileRouterDeps({
       getUser: (userId) => authUserRepo.getUser(userId),
@@ -661,9 +667,13 @@ if (process.env.NODE_ENV !== "test") {
     const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
     const { loadCreditPriceMap } = await import("@wopr-network/platform-core/billing");
     const { DrizzleTenantCustomerRepository } = await import("@wopr-network/platform-core/billing");
-    const { DrizzleSpendingLimitsRepository } = await import("./monetization/drizzle-spending-limits-repository.js");
+    const { DrizzleSpendingLimitsRepository } = await import(
+      "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository"
+    );
     const { DrizzleAutoTopupSettingsRepository } = await import("@wopr-network/platform-core/credits");
-    const { StripePaymentProcessor } = await import("./monetization/stripe/stripe-payment-processor.js");
+    const { StripePaymentProcessor } = await import(
+      "@wopr-network/platform-core/monetization/stripe/stripe-payment-processor"
+    );
     const { DrizzlePayRamChargeRepository } = await import("@wopr-network/platform-core/billing");
 
     const tenantRepo = new DrizzleTenantCustomerRepository(getDb());
@@ -693,9 +703,9 @@ if (process.env.NODE_ENV !== "test") {
         const { AdminAuditLog } = await import("@wopr-network/platform-core/admin");
         const { DrizzleAdminAuditLogRepository } = await import("@wopr-network/platform-core/admin");
         const { AdminUserStore } = await import("./admin/users/user-store.js");
-        const { BotBilling } = await import("./monetization/credits/bot-billing.js");
+        const { BotBilling } = await import("@wopr-network/platform-core/monetization/credits/bot-billing");
         const { DrizzleAffiliateFraudAdminRepository } = await import(
-          "./monetization/affiliate/affiliate-admin-repository.js"
+          "@wopr-network/platform-core/monetization/affiliate/affiliate-admin-repository"
         );
         const { BulkOperationsStore } = await import("./admin/bulk/bulk-operations-store.js");
         const { DrizzleBulkOperationsRepository } = await import("./admin/bulk/bulk-operations-repository.js");
@@ -730,8 +740,10 @@ if (process.env.NODE_ENV !== "test") {
       // Hourly auto-topup schedule cron — charges tenants with schedule-based auto-topup due.
       // checkTenantStatus guard ensures banned/suspended tenants are skipped (WOP-1064).
       {
-        const { runScheduledTopups } = await import("./monetization/credits/auto-topup-schedule.js");
-        const { chargeAutoTopup } = await import("./monetization/credits/auto-topup-charge.js");
+        const { runScheduledTopups } = await import(
+          "@wopr-network/platform-core/monetization/credits/auto-topup-schedule"
+        );
+        const { chargeAutoTopup } = await import("@wopr-network/platform-core/monetization/credits/auto-topup-charge");
         const { getTenantStatusRepo, getAutoTopupEventLogRepo } = await import("./fleet/services.js");
         const { checkTenantStatus } = await import("./admin/tenant-status/tenant-status-middleware.js");
         const HOUR_MS = 60 * 60 * 1000;
@@ -764,23 +776,26 @@ if (process.env.NODE_ENV !== "test") {
       // Wire usage-based auto top-up into gateway debit pipeline (WOP-1084).
       // Assigns usageTopupCallback so the gateway's onDebitComplete fires after every debit.
       {
-        const { maybeTriggerUsageTopup } = await import("./monetization/credits/auto-topup-usage.js");
-        const { chargeAutoTopup } = await import("./monetization/credits/auto-topup-charge.js");
+        const { maybeTriggerUsageTopup } = await import(
+          "@wopr-network/platform-core/monetization/credits/auto-topup-usage"
+        );
+        const { chargeAutoTopup } = await import("@wopr-network/platform-core/monetization/credits/auto-topup-charge");
         const { getTenantStatusRepo, getAutoTopupEventLogRepo } = await import("./fleet/services.js");
         const { checkTenantStatus } = await import("./admin/tenant-status/tenant-status-middleware.js");
 
-        const usageTopupDeps: import("./monetization/credits/auto-topup-usage.js").UsageTopupDeps = {
-          settingsRepo: autoTopupSettingsStore,
-          creditLedger: getCreditLedger(),
-          chargeAutoTopup: (tenantId, amount, source) =>
-            chargeAutoTopup(
-              { stripe, tenantRepo, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
-              tenantId,
-              amount,
-              source,
-            ),
-          checkTenantStatus: (tenantId) => checkTenantStatus(getTenantStatusRepo(), tenantId),
-        };
+        const usageTopupDeps: import("@wopr-network/platform-core/monetization/credits/auto-topup-usage").UsageTopupDeps =
+          {
+            settingsRepo: autoTopupSettingsStore,
+            creditLedger: getCreditLedger(),
+            chargeAutoTopup: (tenantId, amount, source) =>
+              chargeAutoTopup(
+                { stripe, tenantRepo, creditLedger: getCreditLedger(), eventLogRepo: getAutoTopupEventLogRepo() },
+                tenantId,
+                amount,
+                source,
+              ),
+            checkTenantStatus: (tenantId) => checkTenantStatus(getTenantStatusRepo(), tenantId),
+          };
 
         usageTopupCallback = (tenantId) => {
           maybeTriggerUsageTopup(usageTopupDeps, tenantId).catch((err) =>
@@ -805,8 +820,8 @@ if (process.env.NODE_ENV !== "test") {
           }
         }
 
-        const { AuditLogger } = await import("./audit/logger.js");
-        const { DrizzleAuditLogRepository } = await import("./audit/audit-log-repository.js");
+        const { AuditLogger } = await import("@wopr-network/platform-core/audit/logger");
+        const { DrizzleAuditLogRepository } = await import("@wopr-network/platform-core/audit/audit-log-repository");
         const billingAuditLogger = new AuditLogger(new DrizzleAuditLogRepository(getDb()));
 
         const processor = new StripePaymentProcessor({
@@ -870,11 +885,13 @@ if (process.env.NODE_ENV !== "test") {
   {
     const { getBotBilling, getBotInstanceRepo, getCreditLedger, getCommandBus } = await import("./fleet/services.js");
     const DockerLib = (await import("dockerode")).default;
-    const { ProfileStore } = await import("./fleet/profile-store.js");
-    const { FleetManager } = await import("./fleet/fleet-manager.js");
-    const { NetworkPolicy } = await import("./network/network-policy.js");
-    const { getProxyManager } = await import("./proxy/singleton.js");
-    const { loadProfileTemplates, defaultTemplatesDir } = await import("./fleet/profile-loader.js");
+    const { ProfileStore } = await import("@wopr-network/platform-core/fleet/profile-store");
+    const { FleetManager } = await import("@wopr-network/platform-core/fleet/fleet-manager");
+    const { NetworkPolicy } = await import("@wopr-network/platform-core/network/network-policy");
+    const { getProxyManager } = await import("@wopr-network/platform-core/proxy/singleton");
+    const { loadProfileTemplates, defaultTemplatesDir } = await import(
+      "@wopr-network/platform-core/fleet/profile-loader"
+    );
     const tRpcDocker = new DockerLib();
     const tRpcStore = new ProfileStore(process.env.FLEET_DATA_DIR || "/data/fleet");
     const tRpcNetworkPolicy = new NetworkPolicy(tRpcDocker);
@@ -887,7 +904,7 @@ if (process.env.NODE_ENV !== "test") {
       getCommandBus(),
       getBotInstanceRepo(),
     );
-    let _templates: import("./fleet/profile-schema.js").ProfileTemplate[] | null = null;
+    let _templates: import("@wopr-network/platform-core/fleet/profile-schema").ProfileTemplate[] | null = null;
     setFleetRouterDeps({
       getFleetManager: () => tRpcFleet,
       getTemplates: () => {
@@ -903,7 +920,7 @@ if (process.env.NODE_ENV !== "test") {
     logger.info("tRPC fleet router initialized");
 
     // Wire REST fleet routes with the same billing deps
-    const { getEmailVerifier } = await import("./auth/better-auth.js");
+    const { getEmailVerifier } = await import("@wopr-network/platform-core/auth/better-auth");
     setFleetDeps({
       creditLedger: getCreditLedger(),
       botBilling: getBotBilling(),
@@ -924,7 +941,7 @@ if (process.env.NODE_ENV !== "test") {
   // Run better-auth migrations before accepting requests.
   // better-auth does not auto-migrate — runMigrations() must be called explicitly.
   {
-    const { runAuthMigrations } = await import("./auth/better-auth.js");
+    const { runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
     await runAuthMigrations();
     logger.info("better-auth migrations applied");
   }
@@ -1071,19 +1088,25 @@ if (process.env.NODE_ENV !== "test") {
 
   // Wire onboarding deps and start WOPR daemon if enabled (WOP-1020)
   {
-    const { loadOnboardingConfig } = await import("./onboarding/config.js");
+    const { loadOnboardingConfig } = await import("@wopr-network/platform-core/onboarding/config");
     const onboardingCfg = loadOnboardingConfig();
     setOnboardingDeps(getOnboardingService(), getOnboardingSessionRepo(), getGraduationService());
     // Wire setup route deps (WOP-1034, WOP-1035, WOP-1055)
-    const { FIRST_PARTY_PLUGINS: pluginRegistry } = await import("./marketplace/first-party-plugins.js");
+    const { FIRST_PARTY_PLUGINS: pluginRegistry } = await import(
+      "@wopr-network/platform-core/marketplace/first-party-plugins"
+    );
     const onboardingSessionRepoForSetup = getOnboardingSessionRepo();
     const setupSessionRepoForCheck = getSetupSessionRepo();
     const tenantKeyLookup = new DrizzleTenantKeyLookup(getDb());
-    const { ProfileStore: SetupProfileStore } = await import("./fleet/profile-store.js");
-    const { dispatchEnvUpdate: dispatchEnvUpdateFn } = await import("./fleet/dispatch-env-update.js");
+    const { ProfileStore: SetupProfileStore } = await import("@wopr-network/platform-core/fleet/profile-store");
+    const { dispatchEnvUpdate: dispatchEnvUpdateFn } = await import(
+      "@wopr-network/platform-core/fleet/dispatch-env-update"
+    );
     const { dispatchPluginInstall: dispatchPluginInstallFn, fetchPluginDependencies: fetchPluginDependenciesFn } =
-      await import("./fleet/dispatch-plugin-install.js");
-    const { dispatchPluginConfig: dispatchPluginConfigFn } = await import("./fleet/dispatch-plugin-config.js");
+      await import("@wopr-network/platform-core/fleet/dispatch-plugin-install");
+    const { dispatchPluginConfig: dispatchPluginConfigFn } = await import(
+      "@wopr-network/platform-core/fleet/dispatch-plugin-config"
+    );
     const { getPluginConfigRepo } = await import("./fleet/services.js");
     setSetupDeps({
       pluginRegistry,

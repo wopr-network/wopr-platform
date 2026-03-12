@@ -1,9 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as schema from "@wopr-network/platform-core/db/schema/index";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { Pool } from "pg";
-import * as schema from "./schema/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

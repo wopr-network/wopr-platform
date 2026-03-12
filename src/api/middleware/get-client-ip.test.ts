@@ -1,5 +1,5 @@
+import { getClientIp, parseTrustedProxies } from "@wopr-network/platform-core/api/middleware/get-client-ip";
 import { describe, expect, it } from "vitest";
-import { getClientIp, parseTrustedProxies } from "./get-client-ip.js";
 
 describe("parseTrustedProxies", () => {
   it("returns empty set for undefined", () => {
@@ -28,14 +28,14 @@ describe("getClientIp", () => {
     expect(getClientIp("spoofed-ip", "9.9.9.9", trusted)).toBe("9.9.9.9");
   });
 
-  it("trusts XFF rightmost value when socket is a trusted proxy", () => {
+  it("trusts XFF first (leftmost) value when socket is a trusted proxy", () => {
     const trusted = new Set(["10.0.0.1"]);
-    expect(getClientIp("client-ip, 10.0.0.1", "10.0.0.1", trusted)).toBe("10.0.0.1");
+    expect(getClientIp("client-ip, 10.0.0.1", "10.0.0.1", trusted)).toBe("client-ip");
   });
 
-  it("uses rightmost XFF entry (closest to trusted proxy)", () => {
+  it("uses first XFF entry (original client IP)", () => {
     const trusted = new Set(["10.0.0.1"]);
-    expect(getClientIp("spoofed, real-client", "10.0.0.1", trusted)).toBe("real-client");
+    expect(getClientIp("spoofed, real-client", "10.0.0.1", trusted)).toBe("spoofed");
   });
 
   it("handles IPv6-mapped IPv4 socket addresses", () => {

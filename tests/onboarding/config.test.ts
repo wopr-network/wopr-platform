@@ -18,7 +18,7 @@ describe("loadOnboardingConfig", () => {
     delete process.env.ONBOARDING_LLM_PROVIDER;
     delete process.env.ONBOARDING_LLM_MODEL;
     delete process.env.ONBOARDING_ENABLED;
-    const { loadOnboardingConfig } = await import("../../src/onboarding/config.js");
+    const { loadOnboardingConfig } = await import("@wopr-network/platform-core/onboarding/config");
     const config = loadOnboardingConfig();
     expect(config.woprPort).toBe(3847);
     expect(config.llmProvider).toBe("anthropic");
@@ -31,7 +31,7 @@ describe("loadOnboardingConfig", () => {
     process.env.ONBOARDING_LLM_PROVIDER = "openrouter";
     process.env.ONBOARDING_LLM_MODEL = "gpt-4o";
     process.env.ONBOARDING_ENABLED = "false";
-    const { loadOnboardingConfig } = await import("../../src/onboarding/config.js");
+    const { loadOnboardingConfig } = await import("@wopr-network/platform-core/onboarding/config");
     const config = loadOnboardingConfig();
     expect(config.woprPort).toBe(4000);
     expect(config.llmProvider).toBe("openrouter");

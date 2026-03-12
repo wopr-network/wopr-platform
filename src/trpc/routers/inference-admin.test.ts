@@ -2,17 +2,37 @@
  * tRPC inference-admin router tests — WOP-1183
  */
 
-import { TRPCError } from "@trpc/server";
-import type { TRPCContext } from "@wopr-network/platform-core/trpc";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CacheStats,
   DailyCostAggregate,
   ISessionUsageRepository,
   PageCostAggregate,
   SessionCostSummary,
-} from "../../inference/session-usage-repository.js";
+} from "@wopr-network/platform-core/inference/session-usage-repository";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.js";
+
+// Wire org member repo so isAuthed middleware doesn't throw INTERNAL_SERVER_ERROR
+beforeAll(() => {
+  setTrpcOrgMemberRepo({
+    findMember: vi.fn().mockResolvedValue({ id: "m1", orgId: "t-1", userId: "user-1", role: "member", joinedAt: 0 }),
+    listMembers: vi.fn(),
+    addMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    removeMember: vi.fn(),
+    countAdminsAndOwners: vi.fn(),
+    listInvites: vi.fn(),
+    createInvite: vi.fn(),
+    findInviteById: vi.fn(),
+    findInviteByToken: vi.fn(),
+    deleteInvite: vi.fn(),
+    deleteAllMembers: vi.fn(),
+    deleteAllInvites: vi.fn(),
+  } as IOrgMemberRepository);
+});
 
 function authedCtx(userId = "admin-1") {
   return {
@@ -127,7 +147,7 @@ describe("inference-admin router", () => {
   describe("auth guard", () => {
     it("rejects unauthenticated calls with UNAUTHORIZED", async () => {
       const caller = inferenceAdminRouter.createCaller(unauthCtx());
-      await expect(caller.dailyCost({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.dailyCost({ since: 0 })).rejects.toThrow();
       await expect(caller.dailyCost({ since: 0 })).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
@@ -135,7 +155,7 @@ describe("inference-admin router", () => {
 
     it("rejects non-admin users on dailyCost with FORBIDDEN", async () => {
       const caller = inferenceAdminRouter.createCaller(memberCtx());
-      await expect(caller.dailyCost({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.dailyCost({ since: 0 })).rejects.toThrow();
       await expect(caller.dailyCost({ since: 0 })).rejects.toMatchObject({
         code: "FORBIDDEN",
       });
@@ -143,7 +163,7 @@ describe("inference-admin router", () => {
 
     it("rejects non-admin users on pageCost with FORBIDDEN", async () => {
       const caller = inferenceAdminRouter.createCaller(memberCtx());
-      await expect(caller.pageCost({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.pageCost({ since: 0 })).rejects.toThrow();
       await expect(caller.pageCost({ since: 0 })).rejects.toMatchObject({
         code: "FORBIDDEN",
       });
@@ -151,7 +171,7 @@ describe("inference-admin router", () => {
 
     it("rejects non-admin users on cacheHitRate with FORBIDDEN", async () => {
       const caller = inferenceAdminRouter.createCaller(memberCtx());
-      await expect(caller.cacheHitRate({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.cacheHitRate({ since: 0 })).rejects.toThrow();
       await expect(caller.cacheHitRate({ since: 0 })).rejects.toMatchObject({
         code: "FORBIDDEN",
       });
@@ -159,7 +179,7 @@ describe("inference-admin router", () => {
 
     it("rejects non-admin users on sessionCost with FORBIDDEN", async () => {
       const caller = inferenceAdminRouter.createCaller(memberCtx());
-      await expect(caller.sessionCost({ since: 0 })).rejects.toThrow(TRPCError);
+      await expect(caller.sessionCost({ since: 0 })).rejects.toThrow();
       await expect(caller.sessionCost({ since: 0 })).rejects.toMatchObject({
         code: "FORBIDDEN",
       });

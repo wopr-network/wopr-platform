@@ -1,6 +1,6 @@
-import { logger } from "../config/logger.js";
-import type { IDaemonManager } from "../onboarding/daemon-manager.js";
-import type { OnboardingService } from "../onboarding/onboarding-service.js";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import type { IDaemonManager } from "@wopr-network/platform-core/onboarding/daemon-manager";
+import type { OnboardingService } from "@wopr-network/platform-core/onboarding/onboarding-service";
 import type { IChatBackend } from "./chat-backend.js";
 import type { ChatEvent } from "./types.js";
 

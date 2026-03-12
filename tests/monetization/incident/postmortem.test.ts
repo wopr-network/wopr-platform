@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generatePostMortemTemplate, type IncidentSummary } from "../../../src/monetization/incident/postmortem.js";
+import { generatePostMortemTemplate, type IncidentSummary } from "@wopr-network/platform-core/monetization/incident/postmortem";
 
 const incident: IncidentSummary = {
   incidentId: "INC-001",

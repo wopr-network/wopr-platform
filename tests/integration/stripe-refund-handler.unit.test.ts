@@ -2,18 +2,18 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { Credit } from "@wopr-network/platform-core";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { DrizzleWebhookSeenRepository, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
-import { handleWebhookEvent, type WebhookDeps } from "../../src/monetization/stripe/webhook.js";
-import { createTestDb } from "../../src/test/db.js";
+import { handleWebhookEvent, type WebhookDeps } from "@wopr-network/platform-core/monetization/stripe/webhook";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
 // Unit tests for the charge.refunded webhook handler.
 // Uses fabricated Stripe.Event objects to test handler logic in isolation.
 // For real Stripe test-mode integration, see tests/e2e/ (requires STRIPE_SECRET_KEY=sk_test_...).
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

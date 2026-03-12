@@ -1,8 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { DrizzleNotificationPreferencesStore } from "@wopr-network/platform-core/email";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 
 describe("DrizzleNotificationPreferencesStore", () => {
   let db: DrizzleDb;

@@ -4,16 +4,21 @@ import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/pla
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/metering";
+import { DrizzleAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import { DrizzleSpendingLimitsRepository } from "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository";
+import type { DrizzleTenantCustomerRepository } from "@wopr-network/platform-core/monetization/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminUserStore } from "../admin/users/user-store.js";
-import type { DrizzleDb } from "../db/index.js";
-import { DrizzleAffiliateRepository } from "../monetization/affiliate/drizzle-affiliate-repository.js";
-import { DrizzleSpendingLimitsRepository } from "../monetization/drizzle-spending-limits-repository.js";
-import type { DrizzleTenantCustomerRepository } from "../monetization/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "./index.js";
 import { setAdminRouterDeps } from "./routers/admin.js";
 import { setBillingRouterDeps } from "./routers/billing.js";
@@ -312,7 +317,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
-      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      const { TenantCustomerRepository } = await import("@wopr-network/platform-core/monetization/index");
       tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo = new DrizzleSpendingLimitsRepository(db);
       const autoTopupSettingsStore = new DrizzleAutoTopupSettingsRepository(db);
@@ -418,7 +423,7 @@ describe("tRPC appRouter", () => {
     it("portalSession accepts omitted tenant and uses ctx.tenantId", async () => {
       const caller = createCaller(authedContext({ tenantId: "ctx-tenant" }));
       // With IPaymentProcessor mock, portalSession resolves successfully — proving tenant is derived from ctx
-      const result = await caller.billing.portalSession({ returnUrl: "https://example.com/billing" });
+      const result = await caller.billing.portalSession({ returnUrl: "https://app.wopr.bot/billing" });
       expect(result).toHaveProperty("url");
     });
 
@@ -877,7 +882,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
-      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      const { TenantCustomerRepository } = await import("@wopr-network/platform-core/monetization/index");
       const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo1 = new DrizzleSpendingLimitsRepository(db);
 
@@ -947,7 +952,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
-      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      const { TenantCustomerRepository } = await import("@wopr-network/platform-core/monetization/index");
       const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo2 = new DrizzleSpendingLimitsRepository(db);
 
@@ -988,7 +993,7 @@ describe("tRPC appRouter", () => {
       const creditLedger = makeMockLedger();
       const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
       const meterAggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db));
-      const { TenantCustomerRepository } = await import("../monetization/index.js");
+      const { TenantCustomerRepository } = await import("@wopr-network/platform-core/monetization/index");
       const tenantRepo = new TenantCustomerRepository(db);
       const spendingLimitsRepo3 = new DrizzleSpendingLimitsRepository(db);
 

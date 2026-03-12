@@ -1,6 +1,11 @@
 import type { PGlite } from "@electric-sql/pglite";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { createAdminUsersApiRoutes } from "./admin-users.js";
 
 describe("admin-users routes", () => {

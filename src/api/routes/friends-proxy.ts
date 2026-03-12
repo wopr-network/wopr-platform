@@ -1,4 +1,4 @@
-import { logger } from "../../config/logger.js";
+import { logger } from "@wopr-network/platform-core/config/logger";
 
 /**
  * Result from proxying a request to a bot instance's P2P friend API.

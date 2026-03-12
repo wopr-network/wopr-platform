@@ -1,7 +1,10 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import type {
+  ILoginHistoryRepository,
+  LoginHistoryEntry,
+} from "@wopr-network/platform-core/auth/login-history-repository";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ILoginHistoryRepository, LoginHistoryEntry } from "../../auth/login-history-repository.js";
 import { loginHistoryRoutes, setLoginHistoryRepo } from "./login-history.js";
 
 function makeMockRepo(entries: LoginHistoryEntry[]): ILoginHistoryRepository {

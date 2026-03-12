@@ -1,10 +1,10 @@
+import type { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
+import type { ImagePoller } from "@wopr-network/platform-core/fleet/image-poller";
+import type { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import type { BotProfile } from "@wopr-network/platform-core/fleet/types";
+import { ContainerUpdater } from "@wopr-network/platform-core/fleet/updater";
 import type Docker from "dockerode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FleetManager } from "./fleet-manager.js";
-import type { ImagePoller } from "./image-poller.js";
-import type { ProfileStore } from "./profile-store.js";
-import type { BotProfile } from "./types.js";
-import { ContainerUpdater } from "./updater.js";
 
 // --- Mock helpers ---
 
@@ -254,9 +254,9 @@ describe("ContainerUpdater", () => {
       expect(result.success).toBe(false);
       expect(result.rolledBack).toBe(true);
       expect(result.error).toContain("Health check failed");
-      // Rollback calls fleet.update with the previous image
+      // Rollback calls fleet.update with the digest-pinned image reference
       expect(fleet.update).toHaveBeenCalledTimes(2);
-      expect(fleet.update).toHaveBeenLastCalledWith("bot-1", { image: "ghcr.io/wopr-network/wopr:stable" });
+      expect(fleet.update).toHaveBeenLastCalledWith("bot-1", { image: "ghcr.io/wopr-network/wopr@sha256:abc123" });
       // Rollback starts the container since it was running
       expect(fleet.start).toHaveBeenCalledTimes(2);
     });
@@ -315,8 +315,8 @@ describe("ContainerUpdater", () => {
 
       expect(result.success).toBe(false);
       expect(result.rolledBack).toBe(true);
-      // Rollback was attempted via fleet.update with previous image
-      expect(fleet.update).toHaveBeenLastCalledWith("bot-1", { image: "ghcr.io/wopr-network/wopr:stable" });
+      // Rollback was attempted via fleet.update with digest-pinned image
+      expect(fleet.update).toHaveBeenLastCalledWith("bot-1", { image: "ghcr.io/wopr-network/wopr@sha256:abc123" });
     });
 
     it("reports double failure when rollback also fails", async () => {
@@ -366,7 +366,7 @@ describe("ContainerUpdater", () => {
       // fleet.update should NOT have been called for the initial update (pull failed before it)
       // but SHOULD be called for rollback
       expect(fleet.update).toHaveBeenCalledTimes(1);
-      expect(fleet.update).toHaveBeenCalledWith("bot-1", { image: "ghcr.io/wopr-network/wopr:stable" });
+      expect(fleet.update).toHaveBeenCalledWith("bot-1", { image: "ghcr.io/wopr-network/wopr@sha256:abc123" });
     });
 
     it("returns error when pull fails and rollback also fails", async () => {

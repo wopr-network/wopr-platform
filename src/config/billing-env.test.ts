@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 describe("billing env validation", () => {
   it("uses correct defaults when no env vars set", async () => {
     // Dynamic import to test schema defaults
-    const { billingConfigSchema } = await import("./index.js");
+    const { billingConfigSchema } = await import("@wopr-network/platform-core/config/index");
     const result = billingConfigSchema.parse({});
     expect(result).toEqual({
       affiliateMatchRate: 1.0,
@@ -20,7 +20,7 @@ describe("billing env validation", () => {
   });
 
   it("coerces valid string values to numbers", async () => {
-    const { billingConfigSchema } = await import("./index.js");
+    const { billingConfigSchema } = await import("@wopr-network/platform-core/config/index");
     const result = billingConfigSchema.parse({
       affiliateMatchRate: "0.5",
       affiliateMaxReferrals30d: "10",
@@ -38,17 +38,17 @@ describe("billing env validation", () => {
   });
 
   it("rejects non-numeric strings", async () => {
-    const { billingConfigSchema } = await import("./index.js");
+    const { billingConfigSchema } = await import("@wopr-network/platform-core/config/index");
     expect(() => billingConfigSchema.parse({ affiliateMatchRate: "not-a-number" })).toThrow();
   });
 
   it("rejects negative rates", async () => {
-    const { billingConfigSchema } = await import("./index.js");
+    const { billingConfigSchema } = await import("@wopr-network/platform-core/config/index");
     expect(() => billingConfigSchema.parse({ affiliateMatchRate: "-0.5" })).toThrow();
   });
 
   it("rejects non-integer retries", async () => {
-    const { billingConfigSchema } = await import("./index.js");
+    const { billingConfigSchema } = await import("@wopr-network/platform-core/config/index");
     expect(() => billingConfigSchema.parse({ meterMaxRetries: "2.5" })).toThrow();
   });
 });

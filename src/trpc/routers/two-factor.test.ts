@@ -8,11 +8,14 @@
  * unknown fields). The router always uses ctx.tenantId from the bearer token.
  */
 
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
+import type {
+  ITwoFactorRepository,
+  TenantMandateStatus,
+} from "@wopr-network/platform-core/security/two-factor-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IOrgMemberRepository } from "../../fleet/org-member-repository.js";
-import type { ITwoFactorRepository, TenantMandateStatus } from "../../security/two-factor-repository.js";
 import { appRouter } from "../index.js";
 import { setTwoFactorRouterDeps } from "./two-factor.js";
 

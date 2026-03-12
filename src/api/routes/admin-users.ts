@@ -1,9 +1,9 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { Hono } from "hono";
 import type { AdminUserFilters } from "../../admin/users/user-store.js";
 import { AdminUserStore } from "../../admin/users/user-store.js";
-import type { DrizzleDb } from "../../db/index.js";
 
 // ---------------------------------------------------------------------------
 // Deps / lazy init

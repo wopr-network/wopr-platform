@@ -2,21 +2,21 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DrizzleSigPenaltyRepository } from "../../src/api/drizzle-sig-penalty-repository.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
+import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/drizzle-sig-penalty-repository";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
 import { Credit } from "@wopr-network/platform-core";
-import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
+import { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { DrizzleWebhookSeenRepository } from "../../src/monetization/drizzle-webhook-seen-repository.js";
-import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
-import { StripePaymentProcessor } from "../../src/monetization/stripe/stripe-payment-processor.js";
-import { TenantCustomerRepository } from "../../src/monetization/stripe/tenant-store.js";
-import { DrizzleAffiliateRepository } from "../../src/monetization/affiliate/drizzle-affiliate-repository.js";
-import { createTestDb } from "../../src/test/db.js";
+import { DrizzleWebhookSeenRepository } from "@wopr-network/platform-core/monetization/drizzle-webhook-seen-repository";
+import { MeterAggregator } from "@wopr-network/platform-core/monetization/metering/aggregator";
+import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/monetization/metering/drizzle-usage-summary-repository";
+import { StripePaymentProcessor } from "@wopr-network/platform-core/monetization/stripe/stripe-payment-processor";
+import { TenantCustomerRepository } from "@wopr-network/platform-core/monetization/stripe/tenant-store";
+import { DrizzleAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

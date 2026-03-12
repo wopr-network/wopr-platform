@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { Hono } from "hono";
 import { z } from "zod";
-import { logger } from "../../config/logger.js";
 import type { IOAuthStateRepository } from "../oauth-state-repository.js";
 
 // ---------------------------------------------------------------------------

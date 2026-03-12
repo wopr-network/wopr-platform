@@ -2,13 +2,13 @@ import { unlinkSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { Credit } from "@wopr-network/platform-core";
-import { DrizzleBudgetChecker, type SpendLimits } from "../../src/monetization/budget/budget-checker.js";
+import { DrizzleBudgetChecker, type SpendLimits } from "@wopr-network/platform-core/monetization/budget/budget-checker";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { MeterAggregator, MeterEmitter } from "@wopr-network/platform-core/metering";
 import { DrizzleUsageSummaryRepository, DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
-import type { MeterEvent } from "../../src/monetization/metering/types.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js";
+import type { MeterEvent } from "@wopr-network/platform-core/monetization/metering/types";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import {
   type LoadTestResult,
   formatResult,
@@ -98,15 +98,19 @@ describe("Billing pipeline load tests", () => {
       walPath,
       dlqPath,
     });
+    await emitter.ready;
 
     let counter = 0;
     const emitLatencies: number[] = [];
     const emitStart = performance.now();
 
+    const promises: Promise<void>[] = [];
     for (let i = 0; i < 200; i++) {
-      const lat = measureLatencyUs(() => emitter.emit(makeEvent(counter++)));
-      emitLatencies.push(lat);
+      const start = performance.now();
+      promises.push(emitter.emit(makeEvent(counter++)));
+      emitLatencies.push((performance.now() - start) * 1000);
     }
+    await Promise.all(promises);
 
     const emitDuration = performance.now() - emitStart;
     emitLatencies.sort((a, b) => a - b);

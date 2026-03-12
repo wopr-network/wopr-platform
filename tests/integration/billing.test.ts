@@ -7,18 +7,18 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js"
-import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db"
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
-const { DrizzleSigPenaltyRepository } = await import("../../src/api/drizzle-sig-penalty-repository.js");
+const { DrizzleSigPenaltyRepository } = await import("@wopr-network/platform-core/api/drizzle-sig-penalty-repository");
 const { CreditLedger } = await import("@wopr-network/platform-core");
 const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
 const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
-const { TenantCustomerRepository } = await import("../../src/monetization/index.js");
-import type { IPaymentProcessor } from "../../src/monetization/payment-processor.js";
-const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
+const { TenantCustomerRepository } = await import("@wopr-network/platform-core/monetization/index");
+import type { IPaymentProcessor } from "@wopr-network/platform-core/monetization/payment-processor";
+const { DrizzleAffiliateRepository } = await import("@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository");
 
 async function createTestSigPenaltyRepo() {
   const { db } = await createTestDb();
@@ -80,8 +80,8 @@ describe("integration: billing routes", () => {
         body: JSON.stringify({
           tenant: "t-1",
           priceId: "price_abc",
-          successUrl: "https://example.com/s",
-          cancelUrl: "https://example.com/c",
+          successUrl: "https://app.wopr.bot/s",
+          cancelUrl: "https://app.wopr.bot/c",
         }),
       });
       expect(res.status).toBe(401);
@@ -91,7 +91,7 @@ describe("integration: billing routes", () => {
       const res = await app.request("/api/billing/portal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant: "t-1", returnUrl: "https://example.com" }),
+        body: JSON.stringify({ tenant: "t-1", returnUrl: "https://app.wopr.bot" }),
       });
       expect(res.status).toBe(401);
     });
@@ -120,8 +120,8 @@ describe("integration: billing routes", () => {
         body: JSON.stringify({
           tenant: "t-1",
           priceId: "price_abc",
-          successUrl: "https://example.com/success",
-          cancelUrl: "https://example.com/cancel",
+          successUrl: "https://app.wopr.bot/success",
+          cancelUrl: "https://app.wopr.bot/cancel",
         }),
       });
 
@@ -137,8 +137,8 @@ describe("integration: billing routes", () => {
         headers: JSON_HEADERS,
         body: JSON.stringify({
           priceId: "price_abc",
-          successUrl: "https://example.com/s",
-          cancelUrl: "https://example.com/c",
+          successUrl: "https://app.wopr.bot/s",
+          cancelUrl: "https://app.wopr.bot/c",
         }),
       });
       expect(res.status).toBe(400);
@@ -151,8 +151,8 @@ describe("integration: billing routes", () => {
         body: JSON.stringify({
           tenant: "t-1; DROP TABLE",
           priceId: "price_abc",
-          successUrl: "https://example.com/s",
-          cancelUrl: "https://example.com/c",
+          successUrl: "https://app.wopr.bot/s",
+          cancelUrl: "https://app.wopr.bot/c",
         }),
       });
       expect(res.status).toBe(400);
@@ -166,7 +166,7 @@ describe("integration: billing routes", () => {
           tenant: "t-1",
           priceId: "price_abc",
           successUrl: "not-a-url",
-          cancelUrl: "https://example.com/c",
+          cancelUrl: "https://app.wopr.bot/c",
         }),
       });
       expect(res.status).toBe(400);
@@ -200,8 +200,8 @@ describe("integration: billing routes", () => {
         body: JSON.stringify({
           tenant: "t-1",
           priceId: "price_abc",
-          successUrl: "https://example.com/s",
-          cancelUrl: "https://example.com/c",
+          successUrl: "https://app.wopr.bot/s",
+          cancelUrl: "https://app.wopr.bot/c",
         }),
       });
       expect(res.status).toBe(500);
@@ -227,7 +227,7 @@ describe("integration: billing routes", () => {
         headers: JSON_HEADERS,
         body: JSON.stringify({
           tenant: "t-1",
-          returnUrl: "https://example.com/billing",
+          returnUrl: "https://app.wopr.bot/billing",
         }),
       });
 
@@ -252,7 +252,7 @@ describe("integration: billing routes", () => {
         headers: JSON_HEADERS,
         body: JSON.stringify({
           tenant: "unknown-tenant",
-          returnUrl: "https://example.com/billing",
+          returnUrl: "https://app.wopr.bot/billing",
         }),
       });
       expect(res.status).toBe(501);

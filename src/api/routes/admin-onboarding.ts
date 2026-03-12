@@ -1,8 +1,8 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import type { IOnboardingScriptRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-script-repository";
 import { Hono } from "hono";
-import { getAdminAuditLog } from "../../fleet/services.js";
-import type { IOnboardingScriptRepository } from "../../onboarding/drizzle-onboarding-script-repository.js";
+import { getAdminAuditLog } from "../../platform-services.js";
 
 type RepoFactory = () => IOnboardingScriptRepository;
 

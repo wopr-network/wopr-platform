@@ -1,6 +1,6 @@
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
 import type { CredentialSummaryRow, ISecretAuditRepository } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
-import type { AuditEnv } from "../../audit/types.js";
 
 type GetCredentialOwner = (id: string) => Promise<CredentialSummaryRow | null>;
 

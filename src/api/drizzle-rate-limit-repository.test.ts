@@ -2,10 +2,15 @@
  * Unit tests for DrizzleRateLimitRepository (WOP-927).
  */
 import type { PGlite } from "@electric-sql/pglite";
+import { DrizzleRateLimitRepository } from "@wopr-network/platform-core/api/drizzle-rate-limit-repository";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { DrizzleRateLimitRepository } from "./drizzle-rate-limit-repository.js";
 
 describe("DrizzleRateLimitRepository", () => {
   let repo: DrizzleRateLimitRepository;

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
 import type {
   CredentialSummaryRow,
   ISecretAuditRepository,
@@ -6,7 +7,6 @@ import type {
 } from "@wopr-network/platform-core/security";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuditEnv } from "../../audit/types.js";
 import { createSecretAuditRoutes } from "./secret-audit.js";
 
 // In-memory repo for testing

@@ -8,18 +8,18 @@ import type { PGlite } from "@electric-sql/pglite";
 import type { Payram } from "payram";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { AUTH_HEADER, JSON_HEADERS } from "./setup.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js"
-import type { DrizzleDb } from "../../src/db/index.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db"
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { CreditLedger } = await import("@wopr-network/platform-core");
 const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
 const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
-const { DrizzleAffiliateRepository } = await import("../../src/monetization/affiliate/drizzle-affiliate-repository.js");
+const { DrizzleAffiliateRepository } = await import("@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository");
 const { DrizzlePayRamChargeRepository, noOpReplayGuard } = await import("@wopr-network/platform-core/billing");
 
-function createMockProcessor(): import("../../src/monetization/payment-processor.js").IPaymentProcessor {
+function createMockProcessor(): import("@wopr-network/platform-core/monetization/payment-processor").IPaymentProcessor {
   return {
     name: "mock",
     supportsPortal: () => true,

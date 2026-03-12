@@ -1,9 +1,9 @@
-import { and, eq, gte, lte, sql } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { creditAutoTopup } from "../../db/schema/credit-auto-topup.js";
-import { creditBalances, creditTransactions } from "../../db/schema/credits.js";
-import { meterEvents } from "../../db/schema/meter-events.js";
-import { tenantStatus } from "../../db/schema/tenant-status.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { and, eq, gte, lte, sql } from "@wopr-network/platform-core/db/index";
+import { creditAutoTopup } from "@wopr-network/platform-core/db/schema/credit-auto-topup";
+import { creditBalances, creditTransactions } from "@wopr-network/platform-core/db/schema/credits";
+import { meterEvents } from "@wopr-network/platform-core/db/schema/meter-events";
+import { tenantStatus } from "@wopr-network/platform-core/db/schema/tenant-status";
 
 /** Raw row shapes returned by the repository — no business-logic transforms. */
 export interface RawScalarResult {

@@ -1,6 +1,6 @@
-import { count, desc, eq, sql } from "drizzle-orm";
-import type { DrizzleDb } from "../db/index.js";
-import { accountExportRequests } from "../db/schema/account-export-requests.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { count, desc, eq, sql } from "@wopr-network/platform-core/db/index";
+import { accountExportRequests } from "@wopr-network/platform-core/db/schema/account-export-requests";
 import type { ExportRequest, ExportStatus, InsertExportRequest } from "./export-repository-types.js";
 
 export interface IExportRepository {

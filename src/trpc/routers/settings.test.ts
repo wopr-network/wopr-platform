@@ -6,10 +6,10 @@
  */
 
 import type { INotificationPreferencesRepository, NotificationPrefs } from "@wopr-network/platform-core/email";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IOrgMemberRepository } from "../../fleet/org-member-repository.js";
 import { appRouter } from "../index.js";
 import { setSettingsRouterDeps } from "./settings.js";
 

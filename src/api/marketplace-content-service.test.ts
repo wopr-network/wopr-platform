@@ -1,6 +1,6 @@
+import type { IMarketplaceContentRepository } from "@wopr-network/platform-core/api/marketplace-content-repository";
+import { extractPluginContent } from "@wopr-network/platform-core/api/marketplace-content-service";
 import { describe, expect, it, vi } from "vitest";
-import type { IMarketplaceContentRepository } from "./marketplace-content-repository.js";
-import { extractPluginContent } from "./marketplace-content-service.js";
 
 describe("extractPluginContent", () => {
   it("reads SUPERPOWER.md when it exists", async () => {

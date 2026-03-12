@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import { serviceKeyAuth, type GatewayAuthEnv } from "../../src/gateway/service-key-auth.js";
-import type { GatewayTenant } from "../../src/gateway/types.js";
+import { serviceKeyAuth, type GatewayAuthEnv } from "@wopr-network/platform-core/gateway/service-key-auth";
+import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
 
 const VALID_KEY = "wopr_sk_test_abc123";
 const VALID_TENANT: GatewayTenant = {

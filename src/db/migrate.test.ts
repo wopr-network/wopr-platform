@@ -1,6 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { beginTestTransaction, createTestDb, endTestTransaction } from "../test/db.js";
 
 // TOP OF FILE - shared across ALL describes
 let pool: PGlite;

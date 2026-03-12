@@ -1,11 +1,11 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../../src/db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../../src/test/db.js";
-import { DrizzleDividendRepository } from "../../../src/monetization/credits/dividend-repository.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db";
+import { DrizzleDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
 import { appRouter } from "../../../src/trpc/index.js";
 import { setBillingRouterDeps } from "../../../src/trpc/routers/billing.js";
-import { setTrpcOrgMemberRepo } from "../../../src/trpc/index.js";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc/index";
 
 describe("billing.dividend* tRPC procedures", () => {
   let pool: PGlite;

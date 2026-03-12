@@ -1,5 +1,5 @@
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "./config/logger.js";
 import { validateRequiredEnvVars } from "./validate-env.js";
 
 describe("validateRequiredEnvVars", () => {

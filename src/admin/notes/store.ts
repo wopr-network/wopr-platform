@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
-import { count, desc, eq } from "drizzle-orm";
-import type { DrizzleDb } from "../../db/index.js";
-import { adminNotes } from "../../db/schema/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { count, desc, eq } from "@wopr-network/platform-core/db/index";
+import { adminNotes } from "@wopr-network/platform-core/db/schema/index";
 import type { AdminNote, AdminNoteFilters, AdminNoteInput } from "../admin-repository-types.js";
 import type { IAdminNotesRepository } from "./admin-notes-repository.js";
 

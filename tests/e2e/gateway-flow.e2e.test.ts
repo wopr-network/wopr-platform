@@ -3,27 +3,27 @@ import { unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DrizzleRateLimitRepository } from "../../src/api/drizzle-rate-limit-repository.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { DrizzleCircuitBreakerRepository } from "../../src/gateway/drizzle-circuit-breaker-repository.js";
+import { DrizzleRateLimitRepository } from "@wopr-network/platform-core/api/drizzle-rate-limit-repository";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleCircuitBreakerRepository } from "@wopr-network/platform-core/gateway/drizzle-circuit-breaker-repository";
 import type {
   AdapterResult,
   ImageGenerationInput,
   ImageGenerationOutput,
   ProviderAdapter,
   TextGenerationOutput,
-} from "../../src/monetization/adapters/types.js";
-import { withMargin } from "../../src/monetization/adapters/types.js";
-import { BudgetChecker } from "../../src/monetization/budget/budget-checker.js";
+} from "@wopr-network/platform-core/monetization/adapters/types";
+import { withMargin } from "@wopr-network/platform-core/monetization/adapters/types";
+import { BudgetChecker } from "@wopr-network/platform-core/monetization/budget/budget-checker";
 import { Credit } from "@wopr-network/platform-core";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { grantSignupCredits, SIGNUP_GRANT } from "../../src/monetization/credits/signup-grant.js";
-import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
-import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
-import { AdapterSocket } from "../../src/monetization/socket/socket.js";
-import { createTestDb } from "../../src/test/db.js";
+import { grantSignupCredits, SIGNUP_GRANT } from "@wopr-network/platform-core/monetization/credits/signup-grant";
+import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/monetization/metering/emitter";
+import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/monetization/metering/meter-event-repository";
+import { AdapterSocket } from "@wopr-network/platform-core/monetization/socket/socket";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 
@@ -309,7 +309,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
       );
     };
 
-    const { createOpenAIRoutes } = await import("../../src/gateway/protocol/openai.js");
+    const { createOpenAIRoutes } = await import("@wopr-network/platform-core/gateway/protocol/openai");
 
     const app = createOpenAIRoutes({
       meter,
@@ -354,7 +354,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   // =========================================================================
 
   it("OpenAI protocol: invalid bearer token returns 401", async () => {
-    const { createOpenAIRoutes } = await import("../../src/gateway/protocol/openai.js");
+    const { createOpenAIRoutes } = await import("@wopr-network/platform-core/gateway/protocol/openai");
 
     const app = createOpenAIRoutes({
       meter,
@@ -400,7 +400,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
     }]);
     await grantSignupCredits(ledger, budgetTenantId);
 
-    const { createOpenAIRoutes } = await import("../../src/gateway/protocol/openai.js");
+    const { createOpenAIRoutes } = await import("@wopr-network/platform-core/gateway/protocol/openai");
 
     const app = createOpenAIRoutes({
       meter,
@@ -459,7 +459,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
       );
     };
 
-    const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
+    const { createAnthropicRoutes } = await import("@wopr-network/platform-core/gateway/protocol/anthropic");
 
     const app = createAnthropicRoutes({
       meter,
@@ -504,7 +504,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   // =========================================================================
 
   it("Anthropic protocol: invalid x-api-key returns 401 and no meter event emitted", async () => {
-    const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
+    const { createAnthropicRoutes } = await import("@wopr-network/platform-core/gateway/protocol/anthropic");
 
     const app = createAnthropicRoutes({
       meter,
@@ -549,7 +549,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
     }]);
     await grantSignupCredits(ledger, budgetTenantId);
 
-    const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
+    const { createAnthropicRoutes } = await import("@wopr-network/platform-core/gateway/protocol/anthropic");
 
     const app = createAnthropicRoutes({
       meter,
@@ -584,7 +584,7 @@ describe("E2E: gateway flow — plugin request → provider proxy → metered re
   it("Anthropic protocol: upstream error returns 502 and no meter event emitted", async () => {
     await grantSignupCredits(ledger, TENANT_ID);
 
-    const { createAnthropicRoutes } = await import("../../src/gateway/protocol/anthropic.js");
+    const { createAnthropicRoutes } = await import("@wopr-network/platform-core/gateway/protocol/anthropic");
 
     const app = createAnthropicRoutes({
       meter,

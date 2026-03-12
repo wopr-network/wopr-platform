@@ -1,5 +1,27 @@
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Wire org member repo so isAuthed middleware doesn't throw INTERNAL_SERVER_ERROR
+beforeAll(() => {
+  setTrpcOrgMemberRepo({
+    findMember: vi.fn().mockResolvedValue({ id: "m1", orgId: "t-1", userId: "user-1", role: "member", joinedAt: 0 }),
+    listMembers: vi.fn(),
+    addMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    removeMember: vi.fn(),
+    countAdminsAndOwners: vi.fn(),
+    listInvites: vi.fn(),
+    createInvite: vi.fn(),
+    findInviteById: vi.fn(),
+    findInviteByToken: vi.fn(),
+    deleteInvite: vi.fn(),
+    deleteAllMembers: vi.fn(),
+    deleteAllInvites: vi.fn(),
+  } as IOrgMemberRepository);
+});
+
 import { appRouter } from "../index.js";
 import { setProfileRouterDeps } from "./profile.js";
 

@@ -1,12 +1,12 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { createTestDb } from "../../src/test/db.js";
-import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
-import { DrizzleNodeRepository } from "../../src/fleet/drizzle-node-repository.js";
-import { DrizzleRegistrationTokenRepository } from "../../src/fleet/registration-token-store.js";
-import { HeartbeatWatchdog } from "../../src/fleet/heartbeat-watchdog.js";
-import type { INodeRepository } from "../../src/fleet/node-repository.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
+import { DrizzleNodeRepository } from "@wopr-network/platform-core/fleet/drizzle-node-repository";
+import { DrizzleRegistrationTokenRepository } from "@wopr-network/platform-core/fleet/registration-token-store";
+import { HeartbeatWatchdog } from "@wopr-network/platform-core/fleet/heartbeat-watchdog";
+import type { INodeRepository } from "@wopr-network/platform-core/fleet/node-repository";
 
 describe("E2E: node agent registration → heartbeat → fleet bot assignment", () => {
   let db: DrizzleDb;

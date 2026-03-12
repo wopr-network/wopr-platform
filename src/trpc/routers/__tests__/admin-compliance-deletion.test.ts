@@ -1,6 +1,6 @@
+import type { DeletionRequestRow } from "@wopr-network/platform-core/account/repository-types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAccountDeletionStore } from "../../../account/deletion-store.js";
-import type { DeletionRequest } from "../../../account/repository-types.js";
 import type { AdminRouterDeps } from "../admin.js";
 import { adminRouter, setAdminRouterDeps } from "../admin.js";
 
@@ -8,7 +8,7 @@ import { adminRouter, setAdminRouterDeps } from "../admin.js";
 // Mock helpers
 // ---------------------------------------------------------------------------
 
-const mockDeletionRequest: DeletionRequest = {
+const mockDeletionRequest: DeletionRequestRow = {
   id: "del-1",
   tenantId: "t-1",
   requestedBy: "admin-1",

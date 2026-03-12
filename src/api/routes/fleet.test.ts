@@ -1,12 +1,12 @@
 import path from "node:path";
 import { Credit } from "@wopr-network/platform-core/credits";
+import type { INodeRepository } from "@wopr-network/platform-core/fleet/node-repository";
+import type { ProfileTemplate } from "@wopr-network/platform-core/fleet/profile-schema";
+import type { RecoveryOrchestrator } from "@wopr-network/platform-core/fleet/recovery-orchestrator";
+import { getRecoveryOrchestrator } from "@wopr-network/platform-core/fleet/services";
+import type { BotProfile, BotStatus } from "@wopr-network/platform-core/fleet/types";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { INodeRepository } from "../../fleet/node-repository.js";
-import type { ProfileTemplate } from "../../fleet/profile-schema.js";
-import type { RecoveryOrchestrator } from "../../fleet/recovery-orchestrator.js";
-import { getRecoveryOrchestrator } from "../../fleet/services.js";
-import type { BotProfile, BotStatus } from "../../fleet/types.js";
 
 // Set env var BEFORE importing fleet routes so bearer auth uses this token
 const TEST_TOKEN = "test-api-token";
@@ -92,11 +92,11 @@ vi.mock("dockerode", () => {
   return { default: class MockDocker {} };
 });
 
-vi.mock("../../fleet/profile-store.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => {
   return { ProfileStore: class MockProfileStore {} };
 });
 
-vi.mock("../../fleet/fleet-manager.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
   return {
     FleetManager: class {
       create = fleetMock.create;
@@ -116,7 +116,7 @@ vi.mock("../../fleet/fleet-manager.js", () => {
   };
 });
 
-vi.mock("../../fleet/image-poller.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/image-poller", () => {
   return {
     ImagePoller: class {
       getImageStatus = pollerMock.getImageStatus;
@@ -125,7 +125,7 @@ vi.mock("../../fleet/image-poller.js", () => {
   };
 });
 
-vi.mock("../../fleet/updater.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/updater", () => {
   return {
     ContainerUpdater: class {
       updateBot = updaterMock.updateBot;
@@ -133,7 +133,7 @@ vi.mock("../../fleet/updater.js", () => {
   };
 });
 
-vi.mock("../../network/network-policy.js", () => {
+vi.mock("@wopr-network/platform-core/network/network-policy", () => {
   return {
     NetworkPolicy: class {
       prepareForContainer = vi.fn().mockResolvedValue("wopr-tenant-mock");
@@ -156,7 +156,7 @@ vi.mock("../../monetization/credits/credit-ledger.js", () => {
 });
 
 // Mock proxy singleton to avoid real DNS resolution in tests
-vi.mock("../../proxy/singleton.js", () => {
+vi.mock("@wopr-network/platform-core/proxy/singleton", () => {
   return {
     getProxyManager: () => ({
       addRoute: vi.fn().mockResolvedValue(undefined),
@@ -183,11 +183,16 @@ const mockTenantCustomerRepo = {
 };
 
 // Mock services singletons to avoid DB connection at module load time (merged single vi.mock)
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getNodeRepo: () => mockGetNodeRepo(),
   getRecoveryOrchestrator: vi.fn().mockReturnValue(null),
   getCommandBus: vi.fn().mockReturnValue(undefined),
   getBotInstanceRepo: vi.fn().mockReturnValue(undefined),
+  getVpsRepo: () => mockVpsRepo,
+  getTenantCustomerRepository: () => mockTenantCustomerRepo,
+}));
+// Dynamic import in fleet.ts uses the local path for functions not in platform-core
+vi.mock("../../fleet/services.js", () => ({
   getVpsRepo: () => mockVpsRepo,
   getTenantCustomerRepository: () => mockTenantCustomerRepo,
 }));

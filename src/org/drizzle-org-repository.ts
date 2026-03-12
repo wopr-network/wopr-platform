@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
-import type { DrizzleDb } from "../db/index.js";
-import { tenants } from "../db/schema/index.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq } from "@wopr-network/platform-core/db/index";
+import { tenants } from "@wopr-network/platform-core/db/schema/index";
 
 // ---------------------------------------------------------------------------
 // Domain types (no Drizzle imports)

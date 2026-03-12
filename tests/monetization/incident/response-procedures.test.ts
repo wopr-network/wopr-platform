@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getResponseProcedure } from "../../../src/monetization/incident/response-procedures.js";
+import { getResponseProcedure } from "@wopr-network/platform-core/monetization/incident/response-procedures";
 
 describe("getResponseProcedure", () => {
   it("returns SEV1 procedure with 5min ack SLA", () => {

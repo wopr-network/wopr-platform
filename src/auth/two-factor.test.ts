@@ -6,12 +6,17 @@
  */
 
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleTwoFactorRepository } from "@wopr-network/platform-core/security/two-factor-repository";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { DrizzleTwoFactorRepository } from "../security/two-factor-repository.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
 import { appRouter } from "../trpc/index.js";
 import { setTwoFactorRouterDeps } from "../trpc/routers/two-factor.js";
 

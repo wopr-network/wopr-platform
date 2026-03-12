@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import type { OnboardingSession } from "../../../src/onboarding/drizzle-onboarding-session-repository.js";
+import type { OnboardingSession } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-session-repository";
 
 function makeSession(overrides: Partial<OnboardingSession> = {}): OnboardingSession {
   return {

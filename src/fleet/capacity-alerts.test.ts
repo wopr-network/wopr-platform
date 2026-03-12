@@ -1,6 +1,6 @@
+import { checkCapacityAlerts } from "@wopr-network/platform-core/fleet/capacity-alerts";
+import type { NodeInfo } from "@wopr-network/platform-core/fleet/node-connection-manager";
 import { describe, expect, it } from "vitest";
-import { checkCapacityAlerts } from "./capacity-alerts.js";
-import type { NodeInfo } from "./node-connection-manager.js";
 
 function makeNode(overrides: Partial<NodeInfo>): NodeInfo {
   return {

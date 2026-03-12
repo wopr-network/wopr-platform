@@ -1,6 +1,12 @@
+import type {
+  GpuAllocation,
+  IGpuAllocationRepository,
+} from "@wopr-network/platform-core/fleet/gpu-allocation-repository";
+import type {
+  GpuConfiguration,
+  IGpuConfigurationRepository,
+} from "@wopr-network/platform-core/fleet/gpu-configuration-repository";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GpuAllocation, IGpuAllocationRepository } from "../../fleet/gpu-allocation-repository.js";
-import type { GpuConfiguration, IGpuConfigurationRepository } from "../../fleet/gpu-configuration-repository.js";
 import type { AdminRouterDeps } from "./admin.js";
 import { adminRouter, setAdminRouterDeps } from "./admin.js";
 

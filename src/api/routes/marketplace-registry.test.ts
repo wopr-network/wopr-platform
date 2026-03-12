@@ -1,9 +1,10 @@
 // Tests for the marketplace plugin seed data integrity.
 // The seed data lives in scripts/seed-marketplace-plugins.ts and is the
 // single source of truth for first-party plugin manifests.
+
+import type { PluginCategory, PluginManifest } from "@wopr-network/platform-core/api/routes/marketplace-registry";
+import { FIRST_PARTY_PLUGINS } from "@wopr-network/platform-core/marketplace/first-party-plugins";
 import { describe, expect, it } from "vitest";
-import { FIRST_PARTY_PLUGINS } from "../../marketplace/first-party-plugins.js";
-import type { PluginCategory, PluginManifest } from "./marketplace-registry.js";
 
 const VALID_CATEGORIES: PluginCategory[] = [
   "channel",

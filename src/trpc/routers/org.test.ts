@@ -1,8 +1,8 @@
+import type { IAuthUserRepository, LinkedAccount } from "@wopr-network/platform-core/db/auth-user-repository";
+import type { IOrgMemberRepository, OrgMemberRow } from "@wopr-network/platform-core/fleet/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IAuthUserRepository, LinkedAccount } from "../../db/auth-user-repository.js";
-import type { IOrgMemberRepository, OrgMemberRow } from "../../fleet/org-member-repository.js";
 import type { OrgService } from "../../org/org-service.js";
 import { appRouter } from "../index.js";
 import { setOrgRouterDeps } from "./org.js";
@@ -75,9 +75,10 @@ function makeMockOrgService(): OrgService {
 function makeMockOrgMemberRepo(): IOrgMemberRepository {
   return {
     findMember: vi.fn().mockImplementation(async (orgId: string, userId: string) => {
-      // test-user is a member of org-1 only
-      if (orgId === "org-1" && userId === "test-user") {
-        return { id: "m1", orgId: "org-1", userId: "test-user", role: "owner", joinedAt: Date.now() } as OrgMemberRow;
+      // Return a member for known orgs when userId matches — permits tenant access validation
+      // Return null for unknown orgs (e.g. "org-evil") to test cross-org isolation
+      if (userId === "test-user" && orgId !== "org-evil") {
+        return { id: "m1", orgId, userId: "test-user", role: "owner", joinedAt: Date.now() } as OrgMemberRow;
       }
       return null;
     }),

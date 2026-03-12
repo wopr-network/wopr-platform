@@ -1,27 +1,27 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { RateStore } from "../../src/admin/rates/rate-store.js";
-import type { DrizzleDb } from "../../src/db/index.js";
+import { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type {
   AdapterCapability,
   AdapterResult,
   ProviderAdapter,
   TTSInput,
   TTSOutput,
-} from "../../src/monetization/adapters/types.js";
-import { ArbitrageRouter } from "../../src/monetization/arbitrage/router.js";
-import { ProviderRegistry } from "../../src/monetization/arbitrage/provider-registry.js";
-import { NoProviderAvailableError } from "../../src/monetization/arbitrage/types.js";
-import type { MarginRecord } from "../../src/monetization/arbitrage/types.js";
+} from "@wopr-network/platform-core/monetization/adapters/types";
+import { ArbitrageRouter } from "@wopr-network/platform-core/monetization/arbitrage/router";
+import { ProviderRegistry } from "@wopr-network/platform-core/monetization/arbitrage/provider-registry";
+import { NoProviderAvailableError } from "@wopr-network/platform-core/monetization/arbitrage/types";
+import type { MarginRecord } from "@wopr-network/platform-core/monetization/arbitrage/types";
 import { Credit } from "@wopr-network/platform-core";
-import { DrizzleProviderHealthRepository } from "../../src/monetization/drizzle-provider-health-repository.js";
-import type { IProviderHealthRepository } from "../../src/monetization/provider-health-repository.js";
+import { DrizzleProviderHealthRepository } from "@wopr-network/platform-core/monetization/drizzle-provider-health-repository";
+import type { IProviderHealthRepository } from "@wopr-network/platform-core/monetization/provider-health-repository";
 import {
   beginTestTransaction,
   createTestDb,
   endTestTransaction,
   rollbackTestTransaction,
-} from "../../src/test/db.js";
+} from "@wopr-network/platform-core/test/db";
 
 // ── Stub Adapter ──
 

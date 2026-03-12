@@ -1,13 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
 import Stripe from "stripe";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import type { NewVpsSubscription, VpsStatus } from "../../src/fleet/repository-types.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import type { NewVpsSubscription, VpsStatus } from "@wopr-network/platform-core/fleet/repository-types";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { DrizzleWebhookSeenRepository, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
-import type { WebhookDeps } from "../../src/monetization/stripe/webhook.js";
-import { handleWebhookEvent } from "../../src/monetization/stripe/webhook.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js";
+import type { WebhookDeps } from "@wopr-network/platform-core/monetization/stripe/webhook";
+import { handleWebhookEvent } from "@wopr-network/platform-core/monetization/stripe/webhook";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY ?? "";
 const isRealKey = STRIPE_SECRET_KEY.startsWith("sk_test_");

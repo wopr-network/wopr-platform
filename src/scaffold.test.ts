@@ -1,6 +1,6 @@
+import { config } from "@wopr-network/platform-core/config/index";
 import { describe, expect, it } from "vitest";
 import { app } from "./api/app.js";
-import { config } from "./config/index.js";
 
 describe("platform scaffold", () => {
   it("config loads with defaults", () => {
@@ -15,8 +15,8 @@ describe("platform scaffold", () => {
 
   it("directory structure modules are importable", async () => {
     // These are comment-only placeholders but should be valid TS modules
-    await expect(import("./observability/index.js")).resolves.toBeDefined();
-    await expect(import("./monetization/index.js")).resolves.toBeDefined();
+    await expect(import("@wopr-network/platform-core/observability/index")).resolves.toBeDefined();
+    await expect(import("@wopr-network/platform-core/monetization/index")).resolves.toBeDefined();
     await expect(import("@wopr-network/platform-core/auth")).resolves.toBeDefined();
   });
 });

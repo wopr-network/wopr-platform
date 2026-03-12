@@ -1,6 +1,11 @@
+import {
+  calculateSavings,
+  getRatesForCapability,
+  lookupRate,
+  RATE_TABLE,
+} from "@wopr-network/platform-core/monetization/adapters/rate-table";
+import type { AdapterCapability } from "@wopr-network/platform-core/monetization/adapters/types";
 import { describe, expect, it } from "vitest";
-import { calculateSavings, getRatesForCapability, lookupRate, RATE_TABLE } from "./rate-table.js";
-import type { AdapterCapability } from "./types.js";
 
 describe("RATE_TABLE", () => {
   it("contains both standard and premium tiers for TTS", () => {
@@ -40,7 +45,9 @@ describe("RATE_TABLE", () => {
 
     for (const entry of premiumEntries) {
       // Third-party providers are well-known brand names
-      const isThirdParty = ["elevenlabs", "deepgram", "openrouter", "replicate", "gemini"].includes(entry.provider);
+      const isThirdParty = ["elevenlabs", "deepgram", "openrouter", "replicate", "gemini", "nano-banana"].includes(
+        entry.provider,
+      );
       expect(isThirdParty).toBe(true);
     }
   });
@@ -83,7 +90,7 @@ describe("lookupRate", () => {
   });
 
   it("returns undefined for non-existent capability", () => {
-    const rate = lookupRate("image-generation" as unknown as AdapterCapability, "standard");
+    const rate = lookupRate("video-generation" as unknown as AdapterCapability, "standard");
     expect(rate).toBeUndefined();
   });
 
@@ -102,7 +109,7 @@ describe("getRatesForCapability", () => {
   });
 
   it("returns empty array for non-existent capability", () => {
-    const rates = getRatesForCapability("image-generation" as unknown as AdapterCapability);
+    const rates = getRatesForCapability("video-generation" as unknown as AdapterCapability);
     expect(rates).toHaveLength(0);
   });
 
@@ -132,7 +139,7 @@ describe("calculateSavings", () => {
   });
 
   it("returns zero when capability has no standard tier", () => {
-    const savings = calculateSavings("image-generation" as unknown as AdapterCapability, 1000);
+    const savings = calculateSavings("video-generation" as unknown as AdapterCapability, 1000);
     expect(savings).toBe(0);
   });
 

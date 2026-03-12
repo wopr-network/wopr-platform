@@ -1,8 +1,8 @@
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import type { BotProfile } from "@wopr-network/platform-core/fleet/types";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { ProfileStore } from "./profile-store.js";
-import type { BotProfile } from "./types.js";
 
 describe("ProfileStore Path Traversal Protection", () => {
   const testDataDir = join(process.cwd(), "test-data-profile-store");

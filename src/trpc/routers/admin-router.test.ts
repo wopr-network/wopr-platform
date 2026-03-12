@@ -8,7 +8,9 @@
  */
 
 import { Credit } from "@wopr-network/platform-core/credits";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "../index.js";
 import type { AdminRouterDeps } from "./admin.js";
@@ -93,6 +95,21 @@ const mockDeps = {
 
 beforeAll(() => {
   setAdminRouterDeps(mockDeps);
+  setTrpcOrgMemberRepo({
+    findMember: vi.fn().mockResolvedValue({ id: "m1", orgId: "t-1", userId: "user-1", role: "member", joinedAt: 0 }),
+    listMembers: vi.fn(),
+    addMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    removeMember: vi.fn(),
+    countAdminsAndOwners: vi.fn(),
+    listInvites: vi.fn(),
+    createInvite: vi.fn(),
+    findInviteById: vi.fn(),
+    findInviteByToken: vi.fn(),
+    deleteInvite: vi.fn(),
+    deleteAllMembers: vi.fn(),
+    deleteAllInvites: vi.fn(),
+  } as IOrgMemberRepository);
 });
 
 beforeEach(() => {

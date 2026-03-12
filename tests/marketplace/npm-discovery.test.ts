@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IMarketplacePluginRepository } from "../../src/marketplace/marketplace-plugin-repository.js";
-import type { MarketplacePlugin, NewMarketplacePlugin } from "../../src/marketplace/marketplace-repository-types.js";
-import { discoverNpmPlugins } from "../../src/marketplace/npm-discovery.js";
+import type { IMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/marketplace-plugin-repository";
+import type { MarketplacePlugin, NewMarketplacePlugin } from "@wopr-network/platform-core/marketplace/marketplace-repository-types";
+import { discoverNpmPlugins } from "@wopr-network/platform-core/marketplace/npm-discovery";
 
 function makeMockRepo(): IMarketplacePluginRepository {
   const store = new Map<string, MarketplacePlugin>();

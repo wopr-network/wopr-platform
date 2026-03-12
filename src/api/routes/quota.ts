@@ -1,10 +1,16 @@
 import { buildTokenMap, scopedBearerAuth } from "@wopr-network/platform-core/auth";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import {
+  checkInstanceQuota,
+  DEFAULT_INSTANCE_LIMITS,
+} from "@wopr-network/platform-core/monetization/quotas/quota-check";
+import {
+  buildResourceLimits,
+  DEFAULT_RESOURCE_CONFIG,
+} from "@wopr-network/platform-core/monetization/quotas/resource-limits";
 import { Hono } from "hono";
-import { logger } from "../../config/logger.js";
-import { getCreditLedger } from "../../fleet/services.js";
-import { checkInstanceQuota, DEFAULT_INSTANCE_LIMITS } from "../../monetization/quotas/quota-check.js";
-import { buildResourceLimits, DEFAULT_RESOURCE_CONFIG } from "../../monetization/quotas/resource-limits.js";
+import { getCreditLedger } from "../../platform-services.js";
 
 const quotaTokenMap = buildTokenMap();
 

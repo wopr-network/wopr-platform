@@ -6,17 +6,17 @@
 
 import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
-import { logger } from "../config/logger.js";
-import type { DrizzleDb } from "../db/index.js";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq } from "@wopr-network/platform-core/db/index";
 import {
   botInstances,
   organizationInvites,
   organizationMembers,
   tenants,
   vpsSubscriptions,
-} from "../db/schema/index.js";
-import type { IOrgMemberRepository, OrgInviteRow } from "../fleet/org-member-repository.js";
+} from "@wopr-network/platform-core/db/schema/index";
+import type { IOrgMemberRepository, OrgInviteRow } from "@wopr-network/platform-core/fleet/org-member-repository";
 import type { IOrgRepository, Tenant } from "./drizzle-org-repository.js";
 
 // ---------------------------------------------------------------------------

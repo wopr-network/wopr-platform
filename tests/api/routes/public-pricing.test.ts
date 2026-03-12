@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { RateStore } from "../../../src/admin/rates/rate-store.js";
-import type { DrizzleDb } from "../../../src/db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../../src/test/db.js";
+import { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db";
 import { publicPricingRoutes } from "../../../src/api/routes/public-pricing.js";
 
 describe("Public Pricing API Routes", () => {

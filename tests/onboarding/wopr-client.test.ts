@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WoprClient } from "../../src/onboarding/wopr-client.js";
+import { WoprClient } from "@wopr-network/platform-core/onboarding/wopr-client";
 
 describe("WoprClient", () => {
   let client: WoprClient;

@@ -1,6 +1,6 @@
 import type { RoleStore } from "@wopr-network/platform-core/admin";
+import { createUserCreator } from "@wopr-network/platform-core/auth/user-creator";
 import { describe, expect, it, vi } from "vitest";
-import { createUserCreator } from "./user-creator.js";
 
 // Minimal mock RoleStore
 function mockRoleStore(adminCount: number) {

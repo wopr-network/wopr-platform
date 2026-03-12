@@ -1,14 +1,17 @@
+import type { IMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/marketplace-plugin-repository";
+import type { MarketplacePlugin } from "@wopr-network/platform-core/marketplace/marketplace-repository-types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { IMarketplacePluginRepository } from "../../marketplace/marketplace-plugin-repository.js";
-import type { MarketplacePlugin } from "../../marketplace/marketplace-repository-types.js";
 import { marketplaceRouter, setMarketplaceRouterDeps } from "./marketplace.js";
 
-vi.mock("../../marketplace/volume-installer.js", () => ({
+vi.mock("@wopr-network/platform-core/marketplace/volume-installer", () => ({
   upgradePluginOnVolume: vi.fn().mockResolvedValue(undefined),
   rollbackPluginOnVolume: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { rollbackPluginOnVolume, upgradePluginOnVolume } from "../../marketplace/volume-installer.js";
+import {
+  rollbackPluginOnVolume,
+  upgradePluginOnVolume,
+} from "@wopr-network/platform-core/marketplace/volume-installer";
 
 function makePlugin(overrides: Partial<MarketplacePlugin> = {}): MarketplacePlugin {
   return {

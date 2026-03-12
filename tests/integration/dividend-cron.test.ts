@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { creditBalances, creditTransactions } from "../../src/db/schema/credits.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { creditBalances, creditTransactions } from "@wopr-network/platform-core/db/schema/credits";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { Credit } from "@wopr-network/platform-core";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { DrizzleCreditTransactionRepository } from "../../src/monetization/credits/credit-transaction-repository.js";
-import { type DividendCronConfig, runDividendCron } from "../../src/monetization/credits/dividend-cron.js";
+import { DrizzleCreditTransactionRepository } from "@wopr-network/platform-core/monetization/credits/credit-transaction-repository";
+import { type DividendCronConfig, runDividendCron } from "@wopr-network/platform-core/monetization/credits/dividend-cron";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

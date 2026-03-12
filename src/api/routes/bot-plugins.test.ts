@@ -44,7 +44,7 @@ const meterMock = {
   emit: vi.fn(),
 };
 
-vi.mock("../../fleet/profile-store.js", () => {
+vi.mock("@wopr-network/platform-core/fleet/profile-store", () => {
   return {
     ProfileStore: class {
       get = storeMock.get;
@@ -80,7 +80,7 @@ const mockNodeConnections = {
   isConnected: vi.fn(),
 };
 
-import { FIRST_PARTY_PLUGINS } from "../../marketplace/first-party-plugins.js";
+import { FIRST_PARTY_PLUGINS } from "@wopr-network/platform-core/marketplace/first-party-plugins";
 
 // Build a minimal DB-row shape for each first-party plugin so the route's
 // capability-conflict detection and isChannelPlugin() helper work correctly.
@@ -101,7 +101,7 @@ const MOCK_MARKETPLACE_PLUGINS = FIRST_PARTY_PLUGINS.map((manifest) => ({
   manifest,
 }));
 
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getDb: () => mockDb,
   getCommandBus: () => mockNodeConnections,
   getMarketplacePluginRepo: () => ({

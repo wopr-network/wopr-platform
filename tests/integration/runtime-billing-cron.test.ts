@@ -1,21 +1,21 @@
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
-import { RESOURCE_TIERS } from "../../src/fleet/resource-tiers.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
+import { RESOURCE_TIERS } from "@wopr-network/platform-core/fleet/resource-tiers";
 import { Credit } from "@wopr-network/platform-core";
-import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
+import { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
 import { CreditLedger } from "@wopr-network/platform-core";
 import {
   DAILY_BOT_COST,
   LOW_BALANCE_THRESHOLD,
   buildResourceTierCosts,
   runRuntimeDeductions,
-} from "../../src/monetization/credits/runtime-cron.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js";
+} from "@wopr-network/platform-core/monetization/credits/runtime-cron";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 
-vi.mock("../../src/config/logger.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
 }));
 

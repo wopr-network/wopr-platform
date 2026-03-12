@@ -1,13 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { beginTestTransaction, createTestDb, endTestTransaction } from "@wopr-network/platform-core/test/db";
 import { Credit } from "@wopr-network/platform-core";
 import { CreditLedger } from "@wopr-network/platform-core";
-import { DrizzleAffiliateFraudRepository } from "../../src/monetization/affiliate/affiliate-fraud-repository.js";
-import { processAffiliateCreditMatch } from "../../src/monetization/affiliate/credit-match.js";
-import { DrizzleAffiliateRepository } from "../../src/monetization/affiliate/drizzle-affiliate-repository.js";
-import { grantNewUserBonus } from "../../src/monetization/affiliate/new-user-bonus.js";
+import { DrizzleAffiliateFraudRepository } from "@wopr-network/platform-core/monetization/affiliate/affiliate-fraud-repository";
+import { processAffiliateCreditMatch } from "@wopr-network/platform-core/monetization/affiliate/credit-match";
+import { DrizzleAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import { grantNewUserBonus } from "@wopr-network/platform-core/monetization/affiliate/new-user-bonus";
 
 describe("affiliate credit-match e2e", () => {
 	let pool: PGlite;

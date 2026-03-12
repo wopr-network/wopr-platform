@@ -1,4 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { eq } from "@wopr-network/platform-core/db/index";
+import { providerCredentials, tenantApiKeys } from "@wopr-network/platform-core/db/schema/index";
 import type { EncryptedPayload } from "@wopr-network/platform-core/security";
 import {
   auditCredentialEncryption,
@@ -12,11 +15,13 @@ import {
   migratePlaintextCredentials,
   reEncryptAllCredentials,
 } from "@wopr-network/platform-core/security";
-import { eq } from "drizzle-orm";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { providerCredentials, tenantApiKeys } from "../../db/schema/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 // TOP OF FILE - shared across ALL describes
 let pool: PGlite;

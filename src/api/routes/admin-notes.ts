@@ -1,10 +1,11 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { getDb } from "@wopr-network/platform-core/fleet/services";
 import { Hono } from "hono";
 import type { IAdminNotesRepository } from "../../admin/notes/admin-notes-repository.js";
 import { AdminNotesStore } from "../../admin/notes/store.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { getAdminAuditLog, getDb } from "../../fleet/services.js";
+import { getAdminAuditLog } from "../../platform-services.js";
 
 const metadataMap = buildTokenMetadataMap();
 const adminAuth = scopedBearerAuthWithTenant(metadataMap, "admin");

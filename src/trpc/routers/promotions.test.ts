@@ -1,12 +1,15 @@
 import crypto from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AdapterRateOverrideCache,
   IAdapterRateOverrideRepository,
-} from "../../monetization/adapters/rate-override-repository.js";
-import type { ICouponRepository } from "../../monetization/promotions/coupon-repository.js";
-import type { IPromotionRepository, Promotion } from "../../monetization/promotions/promotion-repository.js";
-import type { IRedemptionRepository } from "../../monetization/promotions/redemption-repository.js";
+} from "@wopr-network/platform-core/monetization/adapters/rate-override-repository";
+import type { ICouponRepository } from "@wopr-network/platform-core/monetization/promotions/coupon-repository";
+import type {
+  IPromotionRepository,
+  Promotion,
+} from "@wopr-network/platform-core/monetization/promotions/promotion-repository";
+import type { IRedemptionRepository } from "@wopr-network/platform-core/monetization/promotions/redemption-repository";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { promotionsRouter, rateOverridesRouter, setPromotionsRouterDeps } from "./promotions.js";
 
 const PROMO_ID = "a0000000-0000-4000-8000-000000000001";

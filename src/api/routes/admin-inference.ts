@@ -1,8 +1,8 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
 import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
+import { getSessionUsageRepo } from "@wopr-network/platform-core/fleet/services";
+import type { ISessionUsageRepository } from "@wopr-network/platform-core/inference/session-usage-repository";
 import { Hono } from "hono";
-import { getSessionUsageRepo } from "../../fleet/services.js";
-import type { ISessionUsageRepository } from "../../inference/session-usage-repository.js";
 
 // ---------------------------------------------------------------------------
 // Lazy singleton

@@ -4,7 +4,7 @@ import type {
   ISetupSessionRepository,
   NewSetupSession,
   SetupSession,
-} from "../../src/setup/setup-session-repository.js";
+} from "@wopr-network/platform-core/setup/setup-session-repository";
 
 // Minimal in-memory implementation for interface contract testing
 class InMemorySetupSessionRepository implements ISetupSessionRepository {

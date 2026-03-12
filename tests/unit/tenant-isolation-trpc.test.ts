@@ -17,13 +17,13 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../src/test/db.js"
-import type { DrizzleDb } from "../../src/db/index.js";
+import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db"
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { ICreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc/index";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc/index";
 import { appRouter } from "../../src/trpc/index.js";
-import type { TRPCContext } from "../../src/trpc/index.js";
-import { setTrpcOrgMemberRepo } from "../../src/trpc/index.js";
 import { setBillingRouterDeps } from "../../src/trpc/routers/billing.js";
 import { setSettingsRouterDeps } from "../../src/trpc/routers/settings.js";
 

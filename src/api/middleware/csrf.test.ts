@@ -1,6 +1,6 @@
+import type { SessionAuthEnv } from "@wopr-network/platform-core/auth/middleware";
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
-import type { SessionAuthEnv } from "../../auth/middleware.js";
 import { csrfProtection, validateCsrfOrigin } from "./csrf.js";
 
 // ---------------------------------------------------------------------------

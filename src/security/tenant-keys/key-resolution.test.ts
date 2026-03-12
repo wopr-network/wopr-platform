@@ -1,4 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { EncryptedPayload, Provider } from "@wopr-network/platform-core/security";
 import {
   buildPooledKeysMap,
@@ -7,9 +8,13 @@ import {
   generateInstanceKey,
   resolveApiKey,
 } from "@wopr-network/platform-core/security";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 async function insertTenantKey(
   pool: PGlite,

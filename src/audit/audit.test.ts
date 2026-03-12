@@ -1,17 +1,29 @@
 import type { PGlite } from "@electric-sql/pglite";
+import {
+  DrizzleAuditLogRepository,
+  type IAuditLogRepository,
+} from "@wopr-network/platform-core/audit/audit-log-repository";
+import { AuditLogger } from "@wopr-network/platform-core/audit/logger";
+import { auditLog as auditLogMiddleware, extractResourceType } from "@wopr-network/platform-core/audit/middleware";
+import { countAuditLog, queryAuditLog } from "@wopr-network/platform-core/audit/query";
+import {
+  getRetentionDays,
+  purgeExpiredEntries,
+  purgeExpiredEntriesForUser,
+} from "@wopr-network/platform-core/audit/retention";
+import type { AuditEntryInput } from "@wopr-network/platform-core/audit/schema";
+import type { AuditEnv } from "@wopr-network/platform-core/audit/types";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { auditLog } from "@wopr-network/platform-core/db/schema/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createAdminAuditRoutes, createAuditRoutes } from "../api/routes/audit.js";
-import type { DrizzleDb } from "../db/index.js";
-import { auditLog } from "../db/schema/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../test/db.js";
-import { DrizzleAuditLogRepository, type IAuditLogRepository } from "./audit-log-repository.js";
-import { AuditLogger } from "./logger.js";
-import { auditLog as auditLogMiddleware, extractResourceType } from "./middleware.js";
-import { countAuditLog, queryAuditLog } from "./query.js";
-import { getRetentionDays, purgeExpiredEntries, purgeExpiredEntriesForUser } from "./retention.js";
-import type { AuditEntryInput } from "./schema.js";
-import type { AuditEnv } from "./types.js";
 
 function makeInput(overrides: Partial<AuditEntryInput> = {}): AuditEntryInput {
   return {

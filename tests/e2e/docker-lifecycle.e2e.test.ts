@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Docker from "dockerode";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { FleetManager } from "../../src/fleet/fleet-manager.js";
-import { ProfileStore } from "../../src/fleet/profile-store.js";
-import type { BotProfile } from "../../src/fleet/types.js";
+import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
+import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import type { BotProfile } from "@wopr-network/platform-core/fleet/types";
 
 // ---------------------------------------------------------------------------
 // Docker availability check — skip entire suite when Docker is not reachable

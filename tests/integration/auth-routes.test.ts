@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 // picks up the mock when it first calls getAuth().
 const mockAuthHandler = vi.fn();
 
-vi.mock("../../src/auth/better-auth.js", () => ({
+vi.mock("@wopr-network/platform-core/auth/better-auth", () => ({
   getAuth: () => ({
     handler: mockAuthHandler,
     api: {

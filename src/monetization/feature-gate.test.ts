@@ -1,9 +1,13 @@
 import type { CreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
+import { DAILY_BOT_COST } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
+import {
+  createCreditGate,
+  createFeatureGate,
+  type GetUserBalance,
+} from "@wopr-network/platform-core/monetization/feature-gate";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import { DAILY_BOT_COST } from "./credits/runtime-cron.js";
-import { createCreditGate, createFeatureGate, type GetUserBalance } from "./feature-gate.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper type for flexible Hono vars
 type AnyEnv = { Variables: Record<string, any> };

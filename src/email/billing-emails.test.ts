@@ -1,28 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { emailNotifications } from "@wopr-network/platform-core/db/schema/email-notifications";
+import * as schema from "@wopr-network/platform-core/db/schema/index";
 import { DrizzleBillingEmailRepository } from "@wopr-network/platform-core/email";
+import { BillingEmailService } from "@wopr-network/platform-core/email/billing-emails";
+import { EmailClient } from "@wopr-network/platform-core/email/client";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../db/index.js";
-import { emailNotifications } from "../db/schema/email-notifications.js";
-import * as schema from "../db/schema/index.js";
-import { BillingEmailService } from "./billing-emails.js";
-import { EmailClient } from "./client.js";
-
-vi.mock("resend", () => ({
-  Resend: class MockResend {
-    emails = { send: vi.fn().mockResolvedValue({ data: { id: "email-123" }, error: null }) };
-  },
-}));
-
-vi.mock("../config/logger.js", () => ({
-  logger: {
-    info: vi.fn(),
-    error: vi.fn(),
-    warn: vi.fn(),
-    debug: vi.fn(),
-  },
-}));
 
 describe("BillingEmailService", () => {
   let db: DrizzleDb;
@@ -38,6 +23,8 @@ describe("BillingEmailService", () => {
       apiKey: "test-key",
       from: "noreply@wopr.bot",
     });
+    // Spy on send to avoid hitting Resend API (vi.mock("resend") doesn't intercept cross-package)
+    vi.spyOn(emailClient, "send").mockResolvedValue({ id: "email-123", success: true });
     service = new BillingEmailService({
       billingEmailRepo: new DrizzleBillingEmailRepository(db),
       emailClient,

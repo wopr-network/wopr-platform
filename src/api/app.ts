@@ -1,5 +1,10 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { RoleStore } from "@wopr-network/platform-core/admin";
+import {
+  platformDefaultLimit,
+  platformRateLimitRules,
+  rateLimitByRoute,
+} from "@wopr-network/platform-core/api/middleware/rate-limit";
 import type { AuthUser } from "@wopr-network/platform-core/auth";
 import {
   buildTokenMetadataMap,
@@ -8,28 +13,25 @@ import {
   scopedBearerAuthWithTenant,
   timingSafeMapLookup,
 } from "@wopr-network/platform-core/auth";
+import { config } from "@wopr-network/platform-core/config/index";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import {
+  getBotProfileRepo,
+  getDb,
+  getEvidenceCollector,
+  getMarketplacePluginRepo,
+  getOnboardingScriptRepo,
+  getPluginConfigRepo,
+} from "@wopr-network/platform-core/fleet/services";
+import { checkAllCerts } from "@wopr-network/platform-core/monitoring/cert-expiry";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
-import { config } from "../config/index.js";
-import { logger } from "../config/logger.js";
-import {
-  getBotProfileRepo,
-  getCredentialRepo,
-  getDb,
-  getEvidenceCollector,
-  getMarketplacePluginRepo,
-  getOnboardingScriptRepo,
-  getOrgRepo,
-  getPluginConfigRepo,
-  getSecretAuditRepo,
-} from "../fleet/services.js";
-import { checkAllCerts } from "../monitoring/cert-expiry.js";
+import { getCredentialRepo, getOrgRepo, getSecretAuditRepo } from "../platform-services.js";
 import { appRouter } from "../trpc/index.js";
 import { csrfProtection } from "./middleware/csrf.js";
-import { platformDefaultLimit, platformRateLimitRules, rateLimitByRoute } from "./middleware/rate-limit.js";
 import { activityRoutes } from "./routes/activity.js";
 import { adminBackupRoutes } from "./routes/admin-backups.js";
 import { createAdminComplianceRoutes } from "./routes/admin-compliance.js";
@@ -247,7 +249,7 @@ app.route("/api/auth/login-history", loginHistoryRoutes);
 // c.req.arrayBuffer() reads the unconsumed tee half into memory, then we
 // hand better-auth a brand-new Request with that buffer as its body.
 app.on(["POST", "GET"], "/api/auth/*", async (c) => {
-  const { getAuth } = await import("../auth/better-auth.js");
+  const { getAuth } = await import("@wopr-network/platform-core/auth/better-auth");
   let req: Request;
   if (c.req.method === "POST") {
     const body = await c.req.arrayBuffer();
@@ -435,7 +437,7 @@ async function createTRPCContext(req: Request): Promise<TRPCContext> {
   // 2. Fall back to better-auth session cookie
   if (!user) {
     try {
-      const { getAuth } = await import("../auth/better-auth.js");
+      const { getAuth } = await import("@wopr-network/platform-core/auth/better-auth");
       const auth = getAuth();
       const session = await auth.api.getSession({ headers: req.headers });
       if (session?.user) {

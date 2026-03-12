@@ -2,14 +2,19 @@ import type { PGlite } from "@electric-sql/pglite";
 import { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
 }));
 
 import { RoleStore } from "@wopr-network/platform-core/admin";
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
-import type { DrizzleDb } from "../../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { createAdminRolesRoutes, createPlatformAdminRoutes } from "./admin-roles.js";
 
 /**

@@ -1,8 +1,8 @@
 import { type ChildProcess } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DaemonManager } from "../../src/onboarding/daemon-manager.js";
-import type { OnboardingConfig } from "../../src/onboarding/config.js";
-import type { WoprClient } from "../../src/onboarding/wopr-client.js";
+import { DaemonManager } from "@wopr-network/platform-core/onboarding/daemon-manager";
+import type { OnboardingConfig } from "@wopr-network/platform-core/onboarding/config";
+import type { WoprClient } from "@wopr-network/platform-core/onboarding/wopr-client";
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn(),

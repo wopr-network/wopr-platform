@@ -1,8 +1,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { DrizzleOnboardingSessionRepository } from "../../src/onboarding/drizzle-onboarding-session-repository.js";
-import { createTestDb, truncateAllTables } from "../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzleOnboardingSessionRepository } from "@wopr-network/platform-core/onboarding/drizzle-onboarding-session-repository";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 
 describe("DrizzleOnboardingSessionRepository", () => {
   let repo: DrizzleOnboardingSessionRepository;
@@ -94,7 +94,7 @@ describe("DrizzleOnboardingSessionRepository", () => {
         woprSessionName: "onboarding-s11",
         status: "active"});
       // Backdate createdAt to 25 hours ago via direct db update
-      const { onboardingSessions } = await import("../../src/db/schema/index.js");
+      const { onboardingSessions } = await import("@wopr-network/platform-core/db/schema/index");
       const { eq } = await import("drizzle-orm");
       await (repo as any).db
         .update(onboardingSessions)

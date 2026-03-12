@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { probePaymentHealth, type HealthProbeDeps } from "../../../src/monetization/incident/health-probe.js";
+import { probePaymentHealth, type HealthProbeDeps } from "@wopr-network/platform-core/monetization/incident/health-probe";
 
 function makeDeps(overrides?: Partial<HealthProbeDeps>): HealthProbeDeps {
   return {

@@ -1,8 +1,13 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { RateStore } from "../../admin/rates/rate-store.js";
-import type { DrizzleDb } from "../../db/index.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 
 /**
  * Tests for the public-pricing route logic and RateStore.listPublicRates.

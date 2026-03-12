@@ -1,5 +1,5 @@
+import type { BackupStatusStore } from "@wopr-network/platform-core/backup/backup-status-store";
 import { describe, expect, it, vi } from "vitest";
-import type { BackupStatusStore } from "../../backup/backup-status-store.js";
 import { createHealthRoutes } from "./health.js";
 
 function createMockStore(staleCount: number, totalCount: number): BackupStatusStore {

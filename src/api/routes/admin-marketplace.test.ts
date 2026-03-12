@@ -1,8 +1,8 @@
 import type { AuthEnv } from "@wopr-network/platform-core/auth";
+import type { IMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/marketplace-plugin-repository";
+import type { MarketplacePlugin } from "@wopr-network/platform-core/marketplace/marketplace-repository-types";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import type { IMarketplacePluginRepository } from "../../marketplace/marketplace-plugin-repository.js";
-import type { MarketplacePlugin } from "../../marketplace/marketplace-repository-types.js";
 import { createAdminMarketplaceRoutes } from "./admin-marketplace.js";
 
 function mockRepo(overrides: Partial<IMarketplacePluginRepository> = {}): IMarketplacePluginRepository {

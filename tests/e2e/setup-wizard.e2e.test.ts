@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSetupRoutes, type SetupRouteDeps } from "../../src/api/routes/setup.js";
-import type { PluginManifest } from "../../src/api/routes/marketplace-registry.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { DrizzlePluginConfigRepository } from "../../src/setup/plugin-config-repository.js";
-import { DrizzleSetupSessionRepository } from "../../src/setup/setup-session-repository.js";
-import { SetupService } from "../../src/setup/setup-service.js";
-import { createTestDb } from "../../src/test/db.js";
+import type { PluginManifest } from "@wopr-network/platform-core/api/routes/marketplace-registry";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { DrizzlePluginConfigRepository } from "@wopr-network/platform-core/setup/plugin-config-repository";
+import { DrizzleSetupSessionRepository } from "@wopr-network/platform-core/setup/setup-session-repository";
+import { SetupService } from "@wopr-network/platform-core/setup/setup-service";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
 
 const TEST_PLUGIN: PluginManifest = {
   id: "discord",

@@ -1,15 +1,15 @@
 import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DrizzleAdminAuditLogRepository } from "../../src/admin/admin-audit-log-repository.js";
-import { AdminAuditLog } from "../../src/admin/audit-log.js";
-import type { AuditEntry } from "../../src/admin/audit-log.js";
-import { RoleStore } from "../../src/admin/roles/role-store.js";
+import { DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin/admin-audit-log-repository";
+import { AdminAuditLog } from "@wopr-network/platform-core/admin/audit-log";
+import type { AuditEntry } from "@wopr-network/platform-core/admin/audit-log";
+import { RoleStore } from "@wopr-network/platform-core/admin/roles/role-store";
 import { AdminUserStore } from "../../src/admin/users/user-store.js";
-import { EvidenceCollector } from "../../src/compliance/evidence-collector.js";
-import type { DrizzleDb } from "../../src/db/index.js";
-import { adminAuditLog, adminUsers } from "../../src/db/schema/index.js";
-import { DrizzleMarketplacePluginRepository } from "../../src/marketplace/drizzle-marketplace-plugin-repository.js";
+import { EvidenceCollector } from "@wopr-network/platform-core/compliance/evidence-collector";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { adminAuditLog, adminUsers } from "@wopr-network/platform-core/db/schema/index";
+import { DrizzleMarketplacePluginRepository } from "@wopr-network/platform-core/marketplace/drizzle-marketplace-plugin-repository";
 import { CreditLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
 import {
@@ -17,7 +17,7 @@ import {
   createTestDb,
   endTestTransaction,
   rollbackTestTransaction,
-} from "../../src/test/db.js";
+} from "@wopr-network/platform-core/test/db";
 
 // ---------------------------------------------------------------------------
 // Shared state

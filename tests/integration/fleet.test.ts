@@ -235,7 +235,7 @@ describe("integration: fleet routes", () => {
     });
 
     it("returns 404 for non-existent bot", async () => {
-      const { BotNotFoundError } = await import("../../src/fleet/fleet-manager.js");
+      const { BotNotFoundError } = await import("@wopr-network/platform-core/fleet/fleet-manager");
       fleetMock.status.mockRejectedValue(new BotNotFoundError(MISSING_BOT));
 
       const res = await app.request(`/fleet/bots/${MISSING_BOT}`, { headers: AUTH_HEADER });
@@ -347,7 +347,7 @@ describe("integration: fleet routes", () => {
     });
 
     it("returns 404 when starting non-existent bot", async () => {
-      const { BotNotFoundError } = await import("../../src/fleet/fleet-manager.js");
+      const { BotNotFoundError } = await import("@wopr-network/platform-core/fleet/fleet-manager");
       fleetMock.start.mockRejectedValue(new BotNotFoundError(MISSING_BOT));
 
       const res = await app.request(`/fleet/bots/${MISSING_BOT}/start`, {

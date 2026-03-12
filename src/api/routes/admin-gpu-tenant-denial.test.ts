@@ -16,7 +16,7 @@ vi.stubEnv("PLATFORM_SECRET", "test-platform-secret-32bytes!!ok");
 
 // Mock fleet services so we don't need a real DB — the request should
 // never reach the handler, but mock anyway to be safe.
-vi.mock("../../fleet/services.js", () => ({
+vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getGpuNodeRepository: vi.fn().mockReturnValue({ list: () => [] }),
   getGpuNodeProvisioner: vi.fn().mockReturnValue({
     provision: vi.fn().mockRejectedValue(new Error("should not be called")),

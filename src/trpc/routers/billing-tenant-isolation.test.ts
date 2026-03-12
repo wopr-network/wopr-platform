@@ -8,11 +8,16 @@ import type { PGlite } from "@electric-sql/pglite";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import type { IDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
+import {
+  beginTestTransaction,
+  createTestDb,
+  endTestTransaction,
+  rollbackTestTransaction,
+} from "@wopr-network/platform-core/test/db";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DrizzleDb } from "../../db/index.js";
-import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
-import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "../../test/db.js";
 import { type BillingRouterDeps, billingRouter, setBillingRouterDeps } from "./billing.js";
 
 // ---------------------------------------------------------------------------
@@ -158,12 +163,14 @@ describe("billing tenant isolation (WOP-1406)", () => {
     await rollbackTestTransaction(pool);
 
     const { MeterAggregator, DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
-    const { TenantCustomerRepository } = await import("../../monetization/index.js");
+    const { TenantCustomerRepository } = await import("@wopr-network/platform-core/monetization/index");
     const { DrizzleAutoTopupSettingsRepository } = await import("@wopr-network/platform-core/credits");
     const { DrizzleSpendingLimitsRepository } = await import(
-      "../../monetization/drizzle-spending-limits-repository.js"
+      "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository"
     );
-    const { DrizzleAffiliateRepository } = await import("../../monetization/affiliate/drizzle-affiliate-repository.js");
+    const { DrizzleAffiliateRepository } = await import(
+      "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository"
+    );
 
     const deps: BillingRouterDeps = {
       processor: createMockProcessor(),

@@ -1,21 +1,21 @@
 import { unlink } from "node:fs/promises";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createTestDb } from "../../src/test/db.js";
-import type { DrizzleDb } from "../../src/db/index.js";
+import { createTestDb } from "@wopr-network/platform-core/test/db";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { CreditLedger, InsufficientBalanceError } from "@wopr-network/platform-core";
-import { grantSignupCredits, SIGNUP_GRANT } from "../../src/monetization/credits/signup-grant.js";
-import { BotBilling } from "../../src/monetization/credits/bot-billing.js";
-import { runRuntimeDeductions } from "../../src/monetization/credits/runtime-cron.js";
-import { DrizzleMeterEmitter as MeterEmitter } from "../../src/monetization/metering/emitter.js";
-import { MeterAggregator } from "../../src/monetization/metering/aggregator.js";
-import { DrizzleUsageSummaryRepository } from "../../src/monetization/metering/drizzle-usage-summary-repository.js";
-import { DrizzleMeterEventRepository } from "../../src/monetization/metering/meter-event-repository.js";
-import { AdapterSocket } from "../../src/monetization/socket/socket.js";
+import { grantSignupCredits, SIGNUP_GRANT } from "@wopr-network/platform-core/monetization/credits/signup-grant";
+import { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
+import { runRuntimeDeductions } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
+import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/monetization/metering/emitter";
+import { MeterAggregator } from "@wopr-network/platform-core/monetization/metering/aggregator";
+import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/monetization/metering/drizzle-usage-summary-repository";
+import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/monetization/metering/meter-event-repository";
+import { AdapterSocket } from "@wopr-network/platform-core/monetization/socket/socket";
 import { Credit } from "@wopr-network/platform-core";
-import { DrizzleBotInstanceRepository } from "../../src/fleet/drizzle-bot-instance-repository.js";
-import type { BotInstance } from "../../src/fleet/repository-types.js";
-import type { AdapterResult, ImageGenerationInput, ImageGenerationOutput, ProviderAdapter } from "../../src/monetization/adapters/types.js";
+import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
+import type { BotInstance } from "@wopr-network/platform-core/fleet/repository-types";
+import type { AdapterResult, ImageGenerationInput, ImageGenerationOutput, ProviderAdapter } from "@wopr-network/platform-core/monetization/adapters/types";
 
 // ---------------------------------------------------------------------------
 // Fake image-generation adapter — simulates a hosted provider (e.g., Replicate)

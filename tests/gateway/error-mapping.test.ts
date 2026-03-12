@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapProviderError } from "../../src/gateway/error-mapping.js";
+import { mapProviderError } from "@wopr-network/platform-core/gateway/error-mapping";
 
 describe("mapProviderError", () => {
   it("maps rate limit errors (429) to rate_limit_error", () => {

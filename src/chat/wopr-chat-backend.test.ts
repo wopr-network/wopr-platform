@@ -1,6 +1,6 @@
+import type { IDaemonManager } from "@wopr-network/platform-core/onboarding/daemon-manager";
+import type { OnboardingService } from "@wopr-network/platform-core/onboarding/onboarding-service";
 import { describe, expect, it, vi } from "vitest";
-import type { IDaemonManager } from "../onboarding/daemon-manager.js";
-import type { OnboardingService } from "../onboarding/onboarding-service.js";
 import type { ChatEvent } from "./types.js";
 import { WoprChatBackend } from "./wopr-chat-backend.js";
 

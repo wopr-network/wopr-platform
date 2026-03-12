@@ -5,8 +5,10 @@
  */
 
 import { TRPCError } from "@trpc/server";
+import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
 import type { IPaymentProcessor, PayRamChargeRepository } from "@wopr-network/platform-core/billing";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits";
 import {
   ALLOWED_SCHEDULE_INTERVALS,
@@ -17,17 +19,15 @@ import {
   type IAutoTopupSettingsRepository,
 } from "@wopr-network/platform-core/credits";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
+import type { IAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
+import type { IDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
+import type { ISpendingLimitsRepository } from "@wopr-network/platform-core/monetization/drizzle-spending-limits-repository";
+import type { CreditPriceMap, ITenantCustomerRepository } from "@wopr-network/platform-core/monetization/index";
+import type { PromotionEngine } from "@wopr-network/platform-core/monetization/promotions/engine";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { protectedProcedure, publicProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import type { Payram } from "payram";
 import { z } from "zod";
-import type { AuditLogger } from "../../audit/logger.js";
-import { logger } from "../../config/logger.js";
-import type { IAffiliateRepository } from "../../monetization/affiliate/drizzle-affiliate-repository.js";
-import type { IDividendRepository } from "../../monetization/credits/dividend-repository.js";
-import type { ISpendingLimitsRepository } from "../../monetization/drizzle-spending-limits-repository.js";
-import type { CreditPriceMap, ITenantCustomerRepository } from "../../monetization/index.js";
-import type { PromotionEngine } from "../../monetization/promotions/engine.js";
 
 // ---------------------------------------------------------------------------
 // Schedule interval → hours mapping

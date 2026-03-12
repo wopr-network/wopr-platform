@@ -1,5 +1,5 @@
+import type { EvidenceCollector } from "@wopr-network/platform-core/compliance/evidence-collector";
 import { Hono } from "hono";
-import type { EvidenceCollector } from "../../compliance/evidence-collector.js";
 
 /**
  * Create admin compliance routes.

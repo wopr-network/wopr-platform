@@ -2,8 +2,8 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DrizzleAnalyticsRepository } from "../../../src/admin/analytics/analytics-repository.js";
 import { AnalyticsStore } from "../../../src/admin/analytics/analytics-store.js";
-import type { DrizzleDb } from "../../../src/db/index.js";
-import { createTestDb, truncateAllTables } from "../../../src/test/db.js";
+import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
+import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 
 async function seedAutoTopup(
   pool: PGlite,
