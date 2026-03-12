@@ -23,7 +23,7 @@ describe("admin-audit routes", () => {
     await beginTestTransaction(pool);
     const repo = new DrizzleAdminAuditLogRepository(db);
     auditLog = new AdminAuditLog(repo);
-    app = createAdminAuditApiRoutes(db);
+    app = createAdminAuditApiRoutes(() => new AdminAuditLog(new DrizzleAdminAuditLogRepository(db)));
   });
 
   afterAll(async () => {

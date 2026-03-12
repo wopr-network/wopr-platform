@@ -224,7 +224,7 @@ describe("admin roles API routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("only platform admin can grant platform_admin role", async () => {
+    it("platform_admin role rejected at tenant endpoint (must use platform admin routes)", async () => {
       await store.setRole("ta-1", "tenant-1", "tenant_admin", null);
 
       const app = buildApp("ta-1");
@@ -233,7 +233,7 @@ describe("admin roles API routes", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: "platform_admin" }),
       });
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(400);
     });
 
     it("rejects empty body", async () => {

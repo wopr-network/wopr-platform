@@ -1,37 +1,12 @@
+import { authenticateWebSocketUpgrade as _authenticateWs } from "@wopr-network/platform-core/api/routes/ws-auth";
 import { getNodeRepo } from "@wopr-network/platform-core/fleet/services";
 
-export interface WsAuthRequest {
-  nodeId: string;
-  authHeader: string | undefined;
-}
-
-export interface WsAuthResult {
-  authenticated: boolean;
-  nodeId?: string;
-  reason?: string;
-}
+export type { WsAuthRequest, WsAuthResult } from "@wopr-network/platform-core/api/routes/ws-auth";
 
 /**
  * Authenticate a WebSocket upgrade request for a node agent connection.
- *
- * The bearer token resolves to a specific node via per-node persistent secret;
- * the resolved nodeId must match the URL nodeId.
+ * WOPR-wired: uses lazy getNodeRepo() as the verifier.
  */
-export async function authenticateWebSocketUpgrade(req: WsAuthRequest): Promise<WsAuthResult> {
-  const { nodeId, authHeader } = req;
-  const bearer = authHeader?.replace(/^Bearer\s+/i, "");
-
-  // Per-node persistent secret — timing-safe comparison via verifyNodeSecret
-  if (bearer) {
-    const verified = await getNodeRepo().verifyNodeSecret(nodeId, bearer);
-    if (verified === true) {
-      return { authenticated: true, nodeId };
-    }
-  }
-
-  // No valid auth
-  if (!bearer) {
-    return { authenticated: false, reason: "unauthorized" };
-  }
-  return { authenticated: false, reason: "unauthorized" };
+export async function authenticateWebSocketUpgrade(req: { nodeId: string; authHeader: string | undefined }) {
+  return _authenticateWs(req, getNodeRepo());
 }

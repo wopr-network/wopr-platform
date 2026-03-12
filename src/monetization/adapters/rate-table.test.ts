@@ -35,7 +35,10 @@ describe("RATE_TABLE", () => {
 
     for (const entry of standardEntries) {
       // Self-hosted providers include "self-hosted-" prefix or are known self-hosted names
-      const isSelfHosted = entry.provider.startsWith("self-hosted-") || entry.provider === "chatterbox-tts";
+      const isSelfHosted =
+        entry.provider.startsWith("self-hosted-") ||
+        entry.provider === "chatterbox-tts" ||
+        entry.provider === "ollama-embeddings";
       expect(isSelfHosted).toBe(true);
     }
   });
@@ -144,9 +147,15 @@ describe("calculateSavings", () => {
   });
 
   it("returns zero when capability has no premium tier", () => {
-    // This would happen if a capability only has self-hosted, no third-party
-    const savings = calculateSavings("embeddings" as unknown as AdapterCapability, 1000);
+    // Use a capability that truly has only one tier (or none)
+    const savings = calculateSavings("video-generation" as unknown as AdapterCapability, 1000);
     expect(savings).toBe(0);
+  });
+
+  it("calculates savings for embeddings (both tiers exist)", () => {
+    // Embeddings now has standard (ollama-embeddings) and premium (openrouter)
+    const savings = calculateSavings("embeddings" as unknown as AdapterCapability, 1_000_000);
+    expect(savings).toBeGreaterThan(0);
   });
 
   it("savings scale linearly with units", () => {

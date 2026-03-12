@@ -5,11 +5,18 @@ vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getAdminAuditLog: vi.fn().mockReturnValue({ log: vi.fn() }),
   getBotInstanceRepo: vi.fn(),
   getNodeDrainer: vi.fn(),
+  getNodeProvisioner: vi.fn(),
   getNodeRepo: vi.fn(),
   getRecoveryOrchestrator: vi.fn(),
   getRecoveryRepo: vi.fn(),
   getMigrationOrchestrator: vi.fn(),
   getCommandBus: vi.fn(),
+}));
+vi.mock("@wopr-network/platform-core/fleet/capacity-alerts", () => ({
+  checkCapacityAlerts: vi.fn().mockReturnValue([]),
+}));
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
+  logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
 
 vi.mock("../../platform-services.js", () => ({

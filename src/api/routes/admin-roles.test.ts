@@ -124,7 +124,7 @@ describe("admin-roles routes", () => {
       expect(body.error).toMatch(/invalid role/i);
     });
 
-    it("returns 403 when non-platform-admin tries to grant platform_admin role", async () => {
+    it("rejects platform_admin via tenant endpoint (must use platform admin routes)", async () => {
       await roleStore.setRole("admin-user", "tenant-a", "tenant_admin", "system");
       const app = makeRolesApp(db, "admin-user");
 
@@ -133,19 +133,9 @@ describe("admin-roles routes", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: "platform_admin" }),
       });
-      expect(res.status).toBe(403);
-    });
-
-    it("platform_admin can grant platform_admin role", async () => {
-      await roleStore.setRole("platform-admin", RoleStore.PLATFORM_TENANT, "platform_admin", "system");
-      const app = makeRolesApp(db, "platform-admin");
-
-      const res = await app.request("/tenant-a/new-admin", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "platform_admin" }),
-      });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/platform admin routes/i);
     });
   });
 
