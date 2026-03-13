@@ -1,4 +1,4 @@
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import type { EmailClient } from "@wopr-network/platform-core/email/client";
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,7 +52,7 @@ function makeApp() {
     tenantsWithBalance: vi.fn(),
     memberUsage: vi.fn(),
     lifetimeSpend: vi.fn(),
-  } as unknown as ICreditLedger;
+  } as unknown as ILedger;
   const app = createVerifyEmailRoutes({ pool, creditLedger });
   return { app, pool, creditLedger: creditLedger as unknown as { credit: ReturnType<typeof vi.fn> } };
 }

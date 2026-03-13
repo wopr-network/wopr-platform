@@ -55,7 +55,7 @@ function makeDeps(store: ReturnType<typeof makeMockDeletionStore>): AdminRouterD
         tenantsWithBalance: vi.fn(),
         expiredCredits: vi.fn(),
         memberUsage: vi.fn(),
-      }) as unknown as import("@wopr-network/platform-core/credits").ICreditLedger,
+      }) as unknown as import("@wopr-network/platform-core/credits").ILedger,
     getUserStore: () =>
       ({
         list: vi.fn(),

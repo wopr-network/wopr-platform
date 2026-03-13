@@ -1,5 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit, DrizzleLedger } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +17,7 @@ const { quotaRoutes, setLedger } = await import("./quota.js");
 describe("quota routes", () => {
   let pool: PGlite;
   let db: DrizzleDb;
-  let ledger: CreditLedger;
+  let ledger: DrizzleLedger;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
@@ -29,7 +29,7 @@ describe("quota routes", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    ledger = new CreditLedger(db);
+    ledger = new DrizzleLedger(db);
     setLedger(ledger);
   });
 
@@ -61,7 +61,7 @@ describe("quota routes", () => {
     });
 
     it("returns balance for tenant with credits", async () => {
-      await ledger.credit("t-1", Credit.fromCents(5000), "purchase", "test");
+      await ledger.credit("t-1", Credit.fromCents(5000), "purchase", { description: "test" });
       const res = await quotaRoutes.request("/?tenant=t-1&activeInstances=2", {
         headers: authHeader,
       });
@@ -98,7 +98,7 @@ describe("quota routes", () => {
     });
 
     it("allows when tenant has positive balance", async () => {
-      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", "test");
+      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", { description: "test" });
       const res = await quotaRoutes.request("/check", {
         method: "POST",
         headers: jsonAuth,
@@ -138,7 +138,7 @@ describe("quota routes", () => {
     });
 
     it("returns current balance for tenant with credits", async () => {
-      await ledger.credit("t-1", Credit.fromCents(2500), "purchase", "test purchase");
+      await ledger.credit("t-1", Credit.fromCents(2500), "purchase", { description: "test purchase" });
       const res = await quotaRoutes.request("/balance/t-1", { headers: authHeader });
       expect(res.status).toBe(200);
       const body = await res.json();
@@ -155,8 +155,8 @@ describe("quota routes", () => {
     });
 
     it("returns transaction history", async () => {
-      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", "first purchase");
-      await ledger.credit("t-1", Credit.fromCents(500), "signup_grant", "welcome bonus");
+      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", { description: "first purchase" });
+      await ledger.credit("t-1", Credit.fromCents(500), "signup_grant", { description: "welcome bonus" });
 
       const res = await quotaRoutes.request("/history/t-1", { headers: authHeader });
       expect(res.status).toBe(200);
@@ -165,8 +165,8 @@ describe("quota routes", () => {
     });
 
     it("supports type filter", async () => {
-      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", "purchase");
-      await ledger.credit("t-1", Credit.fromCents(500), "signup_grant", "grant");
+      await ledger.credit("t-1", Credit.fromCents(1000), "purchase", { description: "purchase" });
+      await ledger.credit("t-1", Credit.fromCents(500), "signup_grant", { description: "grant" });
 
       const res = await quotaRoutes.request("/history/t-1?type=purchase", {
         headers: authHeader,

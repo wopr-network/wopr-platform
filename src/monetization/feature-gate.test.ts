@@ -1,4 +1,4 @@
-import type { CreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import { DAILY_BOT_COST } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
 import {
@@ -158,7 +158,7 @@ describe("requireBalance middleware", () => {
 // ---------------------------------------------------------------------------
 
 function createCreditApp(balanceCents: number, min?: Credit) {
-  const mockLedger = { balance: vi.fn().mockResolvedValue(Credit.fromCents(balanceCents)) } as unknown as CreditLedger;
+  const mockLedger = { balance: vi.fn().mockResolvedValue(Credit.fromCents(balanceCents)) } as unknown as ILedger;
   const { requireCredits } = createCreditGate({
     ledger: mockLedger,
     resolveTenantId: (c) => c.req.header("x-tenant-id"),

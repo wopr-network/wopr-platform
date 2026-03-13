@@ -28,13 +28,13 @@ function db(): DrizzleDb {
 // Credits
 // ---------------------------------------------------------------------------
 
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
-import { DrizzleCreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
+import { DrizzleLedger } from "@wopr-network/platform-core/credits";
 
-let _creditLedger: ICreditLedger | null = null;
+let _creditLedger: ILedger | null = null;
 
-export function getCreditLedger(): ICreditLedger {
-  if (!_creditLedger) _creditLedger = new DrizzleCreditLedger(db());
+export function getCreditLedger(): ILedger {
+  if (!_creditLedger) _creditLedger = new DrizzleLedger(db());
   return _creditLedger;
 }
 

@@ -63,7 +63,7 @@ function makeDeps(): AdminRouterDeps {
         tenantsWithBalance: vi.fn(),
         expiredCredits: vi.fn(),
         memberUsage: vi.fn(),
-      }) as unknown as import("@wopr-network/platform-core/credits").ICreditLedger,
+      }) as unknown as import("@wopr-network/platform-core/credits").ILedger,
     getUserStore: () =>
       ({ list: vi.fn(), getById: vi.fn() }) as unknown as import("../../admin/users/user-store.js").AdminUserStore,
     getTenantStatusStore: () =>

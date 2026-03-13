@@ -11,13 +11,7 @@ import type { PGlite } from "@electric-sql/pglite";
  */
 
 import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
-import type {
-  CreditTransaction,
-  CreditType,
-  DebitType,
-  HistoryOptions,
-  ICreditLedger,
-} from "@wopr-network/platform-core/credits";
+import type { ILedger, JournalEntry } from "@wopr-network/platform-core/credits";
 import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/drizzle-bot-instance-repository";
@@ -77,80 +71,73 @@ function createCaller(ctx: TRPCContext) {
   return appRouter.createCaller(ctx);
 }
 
-function makeMockLedger(): ICreditLedger {
+function makeMockLedger(): ILedger {
   const balances = new Map<string, number>();
+  function makeEntry(tenantId: string, amount: Credit, entryType: string): JournalEntry {
+    return {
+      id: crypto.randomUUID(),
+      postedAt: new Date().toISOString(),
+      entryType,
+      tenantId,
+      description: null,
+      referenceId: null,
+      metadata: null,
+      lines: [{ accountCode: `2000:${tenantId}`, amount, side: "credit" as const }],
+    };
+  }
   return {
-    async credit(
-      tenantId: string,
-      amount: Credit,
-      _type: CreditType,
-      _description?: string,
-      _referenceId?: string,
-      _fundingSource?: string,
-    ): Promise<CreditTransaction> {
+    async post() {
+      throw new Error("post() not implemented in mock");
+    },
+    async credit(tenantId, amount, type, _opts?) {
       const cents = amount.toCents();
       balances.set(tenantId, (balances.get(tenantId) ?? 0) + cents);
-      return {
-        id: "tx-1",
-        tenantId,
-        amount,
-        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
-        type: "signup_grant",
-        description: null,
-        referenceId: null,
-        fundingSource: null,
-        attributedUserId: null,
-        createdAt: new Date().toISOString(),
-        expiresAt: null,
-      };
+      return makeEntry(tenantId, amount, type);
     },
-    async debit(
-      tenantId: string,
-      amount: Credit,
-      _type: DebitType,
-      _description?: string,
-      _referenceId?: string,
-      _allowNegative?: boolean,
-    ): Promise<CreditTransaction> {
+    async debit(tenantId, amount, type, _opts?) {
       const cents = amount.toCents();
       balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
-      return {
-        id: "tx-2",
-        tenantId,
-        amount: amount.multiply(-1),
-        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
-        type: "correction",
-        description: null,
-        referenceId: null,
-        fundingSource: null,
-        attributedUserId: null,
-        createdAt: new Date().toISOString(),
-        expiresAt: null,
-      };
+      return makeEntry(tenantId, amount, type);
     },
-    async balance(tenantId: string): Promise<Credit> {
+    async balance(tenantId) {
       return Credit.fromCents(balances.get(tenantId) ?? 0);
     },
-    async hasReferenceId(_referenceId: string): Promise<boolean> {
+    async hasReferenceId(_referenceId) {
       return false;
     },
-    async history(_tenantId: string, _opts?: HistoryOptions): Promise<CreditTransaction[]> {
+    async history(_tenantId, _opts?) {
       return [];
     },
-    async tenantsWithBalance(): Promise<Array<{ tenantId: string; balance: Credit }>> {
+    async tenantsWithBalance() {
       return [];
     },
-    async expiredCredits(_now: string) {
+    async expiredCredits(_now) {
       return [];
     },
-    async memberUsage(_tenantId: string) {
+    async memberUsage(_tenantId) {
       return [];
     },
-    async lifetimeSpend(_tenantId: string) {
+    async lifetimeSpend(_tenantId) {
       return Credit.fromCents(0);
     },
-    async lifetimeSpendBatch(tenantIds: string[]) {
+    async lifetimeSpendBatch(tenantIds) {
       return new Map(tenantIds.map((id) => [id, Credit.fromCents(0)]));
+    },
+    async trialBalance() {
+      return { totalDebits: Credit.ZERO, totalCredits: Credit.ZERO, balanced: true, difference: Credit.ZERO };
+    },
+    async accountBalance(_code) {
+      return Credit.ZERO;
+    },
+    async seedSystemAccounts() {},
+    async existsByReferenceIdLike(_pattern) {
+      return false;
+    },
+    async sumPurchasesForPeriod(_start, _end) {
+      return Credit.ZERO;
+    },
+    async getActiveTenantIdsInWindow(_start, _end) {
+      return [];
     },
   };
 }
@@ -165,7 +152,7 @@ describe("admin tenant status tRPC routes", () => {
   let pool: PGlite;
   let statusStore: TenantStatusStore;
   let auditLog: AdminAuditLog;
-  let creditLedger: ICreditLedger;
+  let creditLedger: ILedger;
   let botBilling: BotBilling;
 
   beforeAll(async () => {
@@ -421,7 +408,7 @@ describe("admin tenant status tRPC routes", () => {
 
     it("auto-refunds remaining credits", async () => {
       await statusStore.ensureExists("tenant-1");
-      await creditLedger.credit("tenant-1", Credit.fromCents(5000), "signup_grant", "initial credit");
+      await creditLedger.credit("tenant-1", Credit.fromCents(5000), "signup_grant", { description: "initial credit" });
 
       const caller = createCaller(adminContext());
       const result = await caller.admin.banTenant({
@@ -465,7 +452,7 @@ describe("admin tenant status tRPC routes", () => {
 
     it("logs to audit log with details", async () => {
       await statusStore.ensureExists("tenant-1");
-      await creditLedger.credit("tenant-1", Credit.fromCents(3000), "signup_grant", "initial");
+      await creditLedger.credit("tenant-1", Credit.fromCents(3000), "signup_grant", { description: "initial" });
 
       const caller = createCaller(adminContext());
       await caller.admin.banTenant({

@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { AdminAuditLog } from "@wopr-network/platform-core/admin";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { NotificationService } from "@wopr-network/platform-core/email";
 import type { ITenantStatusRepository } from "../tenant-status/tenant-status-repository.js";
@@ -91,7 +91,7 @@ export interface IBulkOperationsStore {
 export class BulkOperationsStore implements IBulkOperationsStore {
   constructor(
     private readonly repo: IBulkOperationsRepository,
-    private readonly creditStore: ICreditLedger,
+    private readonly creditStore: ILedger,
     private readonly tenantStatusStore: ITenantStatusRepository,
     private readonly auditLog: AdminAuditLog,
     private readonly notificationService?: Pick<
@@ -132,15 +132,10 @@ export class BulkOperationsStore implements IBulkOperationsStore {
 
     for (const tenantId of input.tenantIds) {
       try {
-        await this.creditStore.credit(
-          tenantId,
-          Credit.fromCents(input.amountCents),
-          "admin_grant",
-          input.reason,
-          undefined,
-          undefined,
-          adminUser,
-        );
+        await this.creditStore.credit(tenantId, Credit.fromCents(input.amountCents), "admin_grant", {
+          description: input.reason,
+          attributedUserId: adminUser,
+        });
         succeeded++;
         succeededIds.push(tenantId);
       } catch (err) {
@@ -221,12 +216,9 @@ export class BulkOperationsStore implements IBulkOperationsStore {
 
     for (const tenantId of tenantIds) {
       try {
-        await this.creditStore.debit(
-          tenantId,
-          Credit.fromCents(grant.amountCents),
-          "correction",
-          `Undo bulk grant ${operationId}`,
-        );
+        await this.creditStore.debit(tenantId, Credit.fromCents(grant.amountCents), "correction", {
+          description: `Undo bulk grant ${operationId}`,
+        });
         succeeded++;
       } catch (err) {
         errors.push({ tenantId, error: err instanceof Error ? err.message : String(err) });
@@ -454,13 +446,17 @@ export class BulkOperationsStore implements IBulkOperationsStore {
         // limit: 250 is the maximum supported by the credit ledger per call.
         // High-volume tenants with >250 transactions will be silently capped at 250 per call.
         const txns = historyByTenant.get(String(r.tenantId)) ?? [];
+        const tenantAccountCode = `2000:${String(r.tenantId)}`;
         const serialized = JSON.stringify(
-          txns.map((t) => ({
-            type: t.type,
-            amount_cents: t.amount.toCents(),
-            description: t.description,
-            created_at: t.createdAt,
-          })),
+          txns.map((t) => {
+            const tenantLine = t.lines.find((l) => l.accountCode === tenantAccountCode);
+            return {
+              type: t.entryType,
+              amount_cents: (tenantLine?.amount ?? Credit.ZERO).toCents(),
+              description: t.description,
+              created_at: t.postedAt,
+            };
+          }),
         );
         fields.push(csvEscape(serialized));
       }

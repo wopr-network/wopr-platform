@@ -2,7 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/drizzle-sig-penalty-repository";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import { noOpReplayGuard, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
-import { Credit, CreditLedger } from "@wopr-network/platform-core/credits";
+import { Credit, DrizzleLedger } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { BotProfile, BotStatus } from "@wopr-network/platform-core/fleet/types";
 import { DrizzleUsageSummaryRepository, MeterAggregator } from "@wopr-network/platform-core/metering";
@@ -501,7 +501,7 @@ describe("E2E: Billing flow (credit model)", () => {
   let app: Hono;
 
   let tenantRepo: TenantCustomerRepository;
-  let creditLedger: CreditLedger;
+  let creditLedger: DrizzleLedger;
 
   const mockCheckoutCreate = vi.fn();
   const mockPortalCreate = vi.fn();
@@ -534,7 +534,7 @@ describe("E2E: Billing flow (credit model)", () => {
 
     await rollbackTestTransaction(_pool);
     tenantRepo = new TenantCustomerRepository(_db);
-    creditLedger = new CreditLedger(_db);
+    creditLedger = new DrizzleLedger(_db);
 
     // Inject credit ledger for quota routes
     setLedger(creditLedger);

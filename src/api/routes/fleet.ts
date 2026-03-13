@@ -4,7 +4,7 @@ import {
   validateTenantOwnership,
 } from "@wopr-network/platform-core/auth";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import { type IEmailVerifier, requireEmailVerified } from "@wopr-network/platform-core/email";
 import { CAPABILITY_ENV_MAP } from "@wopr-network/platform-core/fleet/capability-env-map";
@@ -129,7 +129,7 @@ const updater = new Proxy({} as ContainerUpdater, {
 // ---------------------------------------------------------------------------
 
 export interface FleetRouteDeps {
-  creditLedger: ICreditLedger;
+  creditLedger: ILedger;
   botBilling: IBotBilling;
   emailVerifier: IEmailVerifier;
 }

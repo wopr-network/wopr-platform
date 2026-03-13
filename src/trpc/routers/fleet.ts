@@ -11,7 +11,7 @@
 import { TRPCError } from "@trpc/server";
 import type { RoleStore } from "@wopr-network/platform-core/admin";
 import { createStripeClient, createVpsCheckoutSession, loadStripeConfig } from "@wopr-network/platform-core/billing";
-import type { ICreditLedger as CreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger as CreditLedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { IBotInstanceRepository } from "@wopr-network/platform-core/fleet/bot-instance-repository";
 import { CAPABILITY_ENV_MAP } from "@wopr-network/platform-core/fleet/capability-env-map";

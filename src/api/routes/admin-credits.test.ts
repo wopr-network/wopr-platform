@@ -6,19 +6,19 @@ vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getCreditLedger: vi.fn(),
 }));
 
-import { DrizzleCreditLedger } from "@wopr-network/platform-core/credits";
+import { DrizzleLedger } from "@wopr-network/platform-core/credits";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { createAdminCreditApiRoutes } from "./admin-credits.js";
 
 describe("admin-credits routes", () => {
   let pool: PGlite;
-  let ledger: DrizzleCreditLedger;
+  let ledger: DrizzleLedger;
   let app: ReturnType<typeof createAdminCreditApiRoutes>;
 
   beforeAll(async () => {
     const { db, pool: p } = await createTestDb();
     pool = p;
-    ledger = new DrizzleCreditLedger(db);
+    ledger = new DrizzleLedger(db);
     app = createAdminCreditApiRoutes(ledger);
   });
 

@@ -16,7 +16,7 @@ import {
   PaymentMethodOwnershipError,
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
 import type { IAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
 import { handlePayRamWebhook } from "@wopr-network/platform-core/monetization/payram/webhook";
@@ -26,7 +26,7 @@ import { z } from "zod";
 
 export interface BillingRouteDeps {
   processor: IPaymentProcessor;
-  creditLedger: ICreditLedger;
+  creditLedger: ILedger;
   meterAggregator: IMeterAggregator;
   sigPenaltyRepo: ISigPenaltyRepository;
   /** Replay guard for Stripe webhook deduplication. */

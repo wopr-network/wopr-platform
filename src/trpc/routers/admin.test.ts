@@ -1,4 +1,4 @@
-import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger, JournalEntry } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { AdminRouterDeps } from "./admin.js";
@@ -16,10 +16,11 @@ function makeMockAuditLog() {
   } as unknown as import("@wopr-network/platform-core/admin").AdminAuditLog;
 }
 
-function makeMockLedger(): ICreditLedger {
+function makeMockLedger(): ILedger {
   return {
-    credit: vi.fn().mockResolvedValue({} as CreditTransaction),
-    debit: vi.fn().mockResolvedValue({} as CreditTransaction),
+    post: vi.fn().mockResolvedValue({} as JournalEntry),
+    credit: vi.fn().mockResolvedValue({} as JournalEntry),
+    debit: vi.fn().mockResolvedValue({} as JournalEntry),
     balance: vi.fn().mockResolvedValue(Credit.ZERO),
     hasReferenceId: vi.fn().mockResolvedValue(false),
     history: vi.fn().mockResolvedValue([]),
@@ -28,6 +29,17 @@ function makeMockLedger(): ICreditLedger {
     memberUsage: vi.fn().mockResolvedValue([]),
     lifetimeSpend: vi.fn().mockResolvedValue(Credit.ZERO),
     lifetimeSpendBatch: vi.fn().mockResolvedValue(new Map()),
+    trialBalance: vi.fn().mockResolvedValue({
+      totalDebits: Credit.ZERO,
+      totalCredits: Credit.ZERO,
+      balanced: true,
+      difference: Credit.ZERO,
+    }),
+    accountBalance: vi.fn().mockResolvedValue(Credit.ZERO),
+    seedSystemAccounts: vi.fn().mockResolvedValue(undefined),
+    existsByReferenceIdLike: vi.fn().mockResolvedValue(false),
+    sumPurchasesForPeriod: vi.fn().mockResolvedValue(Credit.ZERO),
+    getActiveTenantIdsInWindow: vi.fn().mockResolvedValue([]),
   };
 }
 
