@@ -4,21 +4,42 @@ import type { PlatformDb } from "@wopr-network/platform-core/db/index";
 import { sql } from "drizzle-orm";
 
 export interface ILedgerDeletionRepository extends IDeletionExecutorRepository {
-  deleteJournalLines(tenantId: string): Promise<number>;
-  deleteJournalEntries(tenantId: string): Promise<number>;
+  /**
+   * Strip tenant_id and PII fields from journal_entries (description,
+   * reference_id, metadata, created_by) so the financial record survives
+   * for tax/audit purposes but no longer links to a natural person.
+   * journal_lines are untouched — they contain amounts only, no PII.
+   */
+  anonymizeJournalEntries(tenantId: string): Promise<number>;
+
+  /**
+   * Null the tenant_id on tenant-scoped accounts and randomize the code so
+   * the account row survives (preserving journal_line FK integrity) but
+   * cannot be traced back to the deleted tenant.
+   */
+  anonymizeTenantAccounts(tenantId: string): Promise<number>;
+
+  /**
+   * Delete account_balances for tenant-scoped accounts — this is derived
+   * state (the running balance), not a primary financial record, so
+   * deletion is correct. Must run before anonymizeTenantAccounts.
+   */
   deleteTenantAccountBalances(tenantId: string): Promise<number>;
-  deleteTenantAccounts(tenantId: string): Promise<number>;
 }
 
 /**
- * Extends DrizzleDeletionExecutorRepository with deletion of double-entry
- * ledger tables introduced in migration 0072. These tables have no Drizzle
- * schema objects in this repo (they live in platform-core), so raw SQL is used.
+ * Extends DrizzleDeletionExecutorRepository with GDPR-compliant handling of
+ * double-entry ledger tables (migration 0072).
  *
- * Deletion order respects FK constraints:
- *   account_balances → accounts      (balances FK → accounts)
- *   journal_lines   → accounts      (lines FK → accounts via account_id)
- *   journal_lines   → journal_entries  (lines FK → entries)
+ * journal_entries are ANONYMIZED, not deleted. Deleting them would remove
+ * financial records (revenue recognition, cash receipts) that tax law
+ * typically requires retaining for 5–7 years. GDPR only requires removing
+ * the personal data link — anonymizing tenant_id satisfies that obligation
+ * without destroying the accounting record.
+ *
+ * account_balances are deleted (derived state, no audit value).
+ * journal_lines are untouched (amounts + account refs — no PII).
+ * tenant accounts are anonymized so FK integrity from journal_lines holds.
  */
 export class DrizzleLedgerDeletionRepository
   extends DrizzleDeletionExecutorRepository
@@ -31,32 +52,41 @@ export class DrizzleLedgerDeletionRepository
     this._db = args[0];
   }
 
-  private async execDelete(query: ReturnType<typeof sql>): Promise<number> {
+  private async execSql(query: ReturnType<typeof sql>): Promise<number> {
     const result = (await this._db.execute(query)) as { rowCount?: number | null };
     return result.rowCount ?? 0;
   }
 
-  async deleteJournalLines(tenantId: string): Promise<number> {
-    // raw SQL: Drizzle cannot express — schema objects for journal_lines live in platform-core, not this repo
-    return this.execDelete(
-      sql`DELETE FROM journal_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE tenant_id = ${tenantId})`,
-    );
-  }
-
-  async deleteJournalEntries(tenantId: string): Promise<number> {
+  async anonymizeJournalEntries(tenantId: string): Promise<number> {
     // raw SQL: Drizzle cannot express — schema objects for journal_entries live in platform-core, not this repo
-    return this.execDelete(sql`DELETE FROM journal_entries WHERE tenant_id = ${tenantId}`);
+    return this.execSql(sql`
+      UPDATE journal_entries
+      SET tenant_id   = 'gdpr-anonymized',
+          description = NULL,
+          reference_id = NULL,
+          metadata    = NULL,
+          created_by  = NULL
+      WHERE tenant_id = ${tenantId}
+    `);
   }
 
   async deleteTenantAccountBalances(tenantId: string): Promise<number> {
     // raw SQL: Drizzle cannot express — schema objects for account_balances live in platform-core, not this repo
-    return this.execDelete(
+    return this.execSql(
       sql`DELETE FROM account_balances WHERE account_id IN (SELECT id FROM accounts WHERE tenant_id = ${tenantId})`,
     );
   }
 
-  async deleteTenantAccounts(tenantId: string): Promise<number> {
+  async anonymizeTenantAccounts(tenantId: string): Promise<number> {
     // raw SQL: Drizzle cannot express — schema objects for accounts live in platform-core, not this repo
-    return this.execDelete(sql`DELETE FROM accounts WHERE tenant_id = ${tenantId}`);
+    // Set code to 'ANON-<id>' (unique per row) to avoid unique-index conflicts
+    // and null tenant_id so the account no longer appears in tenant queries.
+    return this.execSql(sql`
+      UPDATE accounts
+      SET name      = 'Deleted Account',
+          code      = 'ANON-' || id,
+          tenant_id = NULL
+      WHERE tenant_id = ${tenantId}
+    `);
   }
 }

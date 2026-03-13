@@ -93,14 +93,17 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
   // 3b. credit_adjustments (raw SQL table, not in Drizzle schema)
   await safeDeleteNullable("credit_adjustments", () => repo.deleteCreditAdjustments(tenantId));
 
-  // 3c. Double-entry ledger (migration 0072) — FK order must be:
-  //   account_balances → accounts      (balances FK → accounts)
-  //   journal_lines   → accounts      (lines FK → accounts via account_id)
-  //   journal_lines   → journal_entries  (lines FK → entries)
+  // 3c. Double-entry ledger (migration 0072).
+  //   journal_entries are ANONYMIZED (not deleted) — tax law requires retaining
+  //   financial records 5-7 years; GDPR only requires removing the personal
+  //   data link, so we strip tenant_id + PII fields and keep the amounts.
+  //   journal_lines are left untouched (amounts + account refs, no PII).
+  //   account_balances are deleted (derived state, no audit value).
+  //   tenant accounts are anonymized so FK integrity from journal_lines holds.
+  //   Order: delete balances before anonymizing accounts (FK: balances → accounts).
   await safeDelete("account_balances", () => repo.deleteTenantAccountBalances(tenantId));
-  await safeDelete("journal_lines", () => repo.deleteJournalLines(tenantId));
-  await safeDelete("journal_entries", () => repo.deleteJournalEntries(tenantId));
-  await safeDelete("accounts", () => repo.deleteTenantAccounts(tenantId));
+  await safeDelete("journal_entries_anonymized", () => repo.anonymizeJournalEntries(tenantId));
+  await safeDelete("accounts_anonymized", () => repo.anonymizeTenantAccounts(tenantId));
 
   // 4. Usage & metering
   await safeDelete("meter_events", () => repo.deleteMeterEvents(tenantId));

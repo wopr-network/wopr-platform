@@ -111,10 +111,12 @@ describe("executeDeletion", () => {
       expect(await countRows(pool, "payram_charges", "tenant_id", tenantId)).toBe(0);
       expect(await countRows(pool, "tenant_status", "tenant_id", tenantId)).toBe(0);
       expect(await countRows(pool, "tenant_customers", "tenant", tenantId)).toBe(0);
-      expect(await countRows(pool, "journal_lines", "journal_entry_id", `je-${tenantId}`)).toBe(0);
-      expect(await countRows(pool, "journal_entries", "tenant_id", tenantId)).toBe(0);
-      expect(await countRows(pool, "account_balances", "account_id", `acct-${tenantId}`)).toBe(0);
-      expect(await countRows(pool, "accounts", "tenant_id", tenantId)).toBe(0);
+      // Ledger: financial records are anonymized, not deleted
+      expect(await countRows(pool, "journal_lines", "journal_entry_id", `je-${tenantId}`)).toBe(1); // kept
+      expect(await countRows(pool, "journal_entries", "tenant_id", tenantId)).toBe(0); // anonymized
+      expect(await countRows(pool, "journal_entries", "tenant_id", "gdpr-anonymized")).toBe(1); // survives
+      expect(await countRows(pool, "account_balances", "account_id", `acct-${tenantId}`)).toBe(0); // deleted
+      expect(await countRows(pool, "accounts", "tenant_id", tenantId)).toBe(0); // anonymized (tenant_id nulled)
     });
   });
 
