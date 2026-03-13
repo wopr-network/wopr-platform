@@ -13,7 +13,7 @@ import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
 const { DrizzleSigPenaltyRepository } = await import("@wopr-network/platform-core/api/drizzle-sig-penalty-repository");
-const { CreditLedger } = await import("@wopr-network/platform-core");
+const { DrizzleLedger } = await import("@wopr-network/platform-core");
 const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
 const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
 const { TenantCustomerRepository } = await import("@wopr-network/platform-core/monetization/index");
@@ -59,7 +59,7 @@ describe("integration: billing routes", () => {
     tenantRepo = new TenantCustomerRepository(db);
     setBillingDeps({
       processor: createMockProcessor(),
-      creditLedger: new CreditLedger(db),
+      creditLedger: new DrizzleLedger(db),
       meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
       sigPenaltyRepo: await createTestSigPenaltyRepo(),
       affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -188,7 +188,7 @@ describe("integration: billing routes", () => {
         processor: createMockProcessor({
           createCheckoutSession: vi.fn().mockRejectedValue(new Error("Payment processor unavailable")) as IPaymentProcessor["createCheckoutSession"],
         }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -216,7 +216,7 @@ describe("integration: billing routes", () => {
         processor: createMockProcessor({
           createPortalSession: vi.fn().mockResolvedValue({ url: "https://pay.example.com/portal/session" }) as IPaymentProcessor["createPortalSession"],
         }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -241,7 +241,7 @@ describe("integration: billing routes", () => {
         processor: createMockProcessor({
           supportsPortal: () => false,
         }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -286,7 +286,7 @@ describe("integration: billing routes", () => {
         processor: createMockProcessor({
           handleWebhook: vi.fn().mockRejectedValue(new Error("Webhook signature verification failed")) as IPaymentProcessor["handleWebhook"],
         }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -312,7 +312,7 @@ describe("integration: billing routes", () => {
             creditedCents: 1000,
           }) as IPaymentProcessor["handleWebhook"],
         }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: await createTestSigPenaltyRepo(),
         affiliateRepo: new DrizzleAffiliateRepository(db),

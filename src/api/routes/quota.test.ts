@@ -30,6 +30,7 @@ describe("quota routes", () => {
   beforeEach(async () => {
     await truncateAllTables(pool);
     ledger = new DrizzleLedger(db);
+    await ledger.seedSystemAccounts();
     setLedger(ledger);
   });
 
@@ -174,7 +175,7 @@ describe("quota routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.transactions).toHaveLength(1);
-      expect(body.transactions[0].type).toBe("purchase");
+      expect(body.transactions[0].entryType).toBe("purchase");
     });
   });
 

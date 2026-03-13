@@ -28,6 +28,7 @@ describe("admin-credits routes", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    await ledger.seedSystemAccounts();
   });
 
   // POST /:tenantId/grant

@@ -148,6 +148,13 @@
       "when": 1773301093888,
       "tag": "0071_funny_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1773387603222,
+      "tag": "0072_double_entry_ledger",
+      "breakpoints": true
     }
   ]
 }

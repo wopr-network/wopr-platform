@@ -4,7 +4,7 @@ import type Stripe from "stripe";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { Credit } from "@wopr-network/platform-core";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { DrizzleWebhookSeenRepository, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import { handleWebhookEvent, type WebhookDeps } from "@wopr-network/platform-core/monetization/stripe/webhook";
 import { createTestDb } from "@wopr-network/platform-core/test/db";
@@ -21,7 +21,7 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
   let db: DrizzleDb;
   let pool: PGlite;
   let tenantRepo: TenantCustomerRepository;
-  let creditLedger: CreditLedger;
+  let creditLedger: DrizzleLedger;
   let replayGuard: DrizzleWebhookSeenRepository;
   let deps: WebhookDeps;
 
@@ -35,7 +35,7 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
     CUSTOMER_ID = `cus_${randomUUID().slice(0, 14)}`;
 
     tenantRepo = new TenantCustomerRepository(db);
-    creditLedger = new CreditLedger(db);
+    creditLedger = new DrizzleLedger(db);
     replayGuard = new DrizzleWebhookSeenRepository(db);
 
     deps = {
@@ -119,9 +119,9 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
 
     const history = await creditLedger.history(TENANT_ID, { type: "refund" });
     expect(history).toHaveLength(1);
-    expect(history[0].type).toBe("refund");
-    expect(history[0].amount.toCents()).toBe(-5000);
-    expect(history[0].balanceAfter.isZero()).toBe(true);
+    expect(history[0].entryType).toBe("refund");
+    const refundLine1 = history[0].lines.find((l) => l.side === "debit" && l.accountCode.startsWith("2000:"));
+    expect(refundLine1!.amount.toCents()).toBe(5000);
   });
 
   it("partial refund deducts proportional credits", async () => {
@@ -138,8 +138,8 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
 
     const history = await creditLedger.history(TENANT_ID, { type: "refund" });
     expect(history).toHaveLength(1);
-    expect(history[0].amount.toCents()).toBe(-2000);
-    expect(history[0].balanceAfter.equals(Credit.fromCents(3000))).toBe(true);
+    const refundLine2 = history[0].lines.find((l) => l.side === "debit" && l.accountCode.startsWith("2000:"));
+    expect(refundLine2!.amount.toCents()).toBe(2000);
   });
 
   it("full refund after partial spend results in negative balance", async () => {
@@ -160,10 +160,11 @@ describe("Stripe refund flow — credit deduction and ledger consistency", () =>
     expect(balance.isNegative()).toBe(true);
 
     const allHistory = await creditLedger.history(TENANT_ID);
-    const refundTx = allHistory.find((tx) => tx.type === "refund");
+    const refundTx = allHistory.find((tx) => tx.entryType === "refund");
     expect(refundTx).toBeDefined();
-    expect(refundTx!.amount.toCents()).toBe(-5000);
-    expect(refundTx!.balanceAfter.equals(Credit.fromCents(-3000))).toBe(true);
+    // In double-entry ledger, refund debit amount is on the tenant liability line
+    const refundLine = refundTx!.lines.find((l) => l.side === "debit" && l.accountCode.startsWith("2000:"));
+    expect(refundLine!.amount.toCents()).toBe(5000);
   });
 
   it("two partial refund events with the same charge.id but different event.id both debit the ledger", async () => {

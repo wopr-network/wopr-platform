@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createTestDb } from "@wopr-network/platform-core/test/db";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { TenantCustomerRepository, noOpReplayGuard } from "@wopr-network/platform-core/billing";
 import type { WebhookDeps } from "@wopr-network/platform-core/monetization/stripe/webhook";
 import { handleWebhookEvent } from "@wopr-network/platform-core/monetization/stripe/webhook";
@@ -22,13 +22,13 @@ describe("integration: auth → billing → credit flow", () => {
   let pool: PGlite;
   let db: DrizzleDb;
   let tenantRepo: TenantCustomerRepository;
-  let creditLedger: CreditLedger;
+  let creditLedger: DrizzleLedger;
   let deps: WebhookDeps;
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
     tenantRepo = new TenantCustomerRepository(db);
-    creditLedger = new CreditLedger(db);
+    creditLedger = new DrizzleLedger(db);
     deps = { tenantRepo, creditLedger, replayGuard: noOpReplayGuard };
   });
 

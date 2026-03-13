@@ -6,7 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestDb } from "@wopr-network/platform-core/test/db";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { Credit } from "@wopr-network/platform-core";
 import { DrizzleMeterEmitter as MeterEmitter } from "@wopr-network/platform-core/metering";
 import { DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
@@ -26,7 +26,7 @@ vi.mock("@wopr-network/platform-core/config/logger", () => ({
 describe("E2E: adapter socket — meters capability usage and charges credits correctly", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let ledger: CreditLedger;
+  let ledger: DrizzleLedger;
   let meter: MeterEmitter;
   let socket: AdapterSocket;
   let walPath: string;
@@ -41,7 +41,7 @@ describe("E2E: adapter socket — meters capability usage and charges credits co
     ({ db, pool } = await createTestDb());
 
     TENANT_ID = `e2e-socket-${randomUUID().slice(0, 8)}`;
-    ledger = new CreditLedger(db);
+    ledger = new DrizzleLedger(db);
 
     meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
       flushIntervalMs: 60_000,

@@ -12,14 +12,14 @@ import { Credit } from "@wopr-network/platform-core";
 import { createFeatureGate } from "@wopr-network/platform-core/monetization/feature-gate";
 import { createTestDb } from "@wopr-network/platform-core/test/db";
 
-const { CreditLedger } = await import("@wopr-network/platform-core");
+const { DrizzleLedger } = await import("@wopr-network/platform-core");
 
 // biome-ignore lint/suspicious/noExplicitAny: test helper type for flexible Hono vars
 type AnyEnv = { Variables: Record<string, any> };
 
 const TENANT = "tenant-gate-test";
 
-function createGatedApp(ledger: InstanceType<typeof CreditLedger>) {
+function createGatedApp(ledger: DrizzleLedger) {
 	const { requireBalance } = createFeatureGate({
 		getUserBalance: (tenantId) => ledger.balance(tenantId),
 	});
@@ -46,12 +46,12 @@ function createGatedApp(ledger: InstanceType<typeof CreditLedger>) {
 describe("e2e: feature gate middleware (WOP-1753)", () => {
 	let pool: PGlite;
 	let db: DrizzleDb;
-	let ledger: InstanceType<typeof CreditLedger>;
+	let ledger: DrizzleLedger;
 	let app: ReturnType<typeof createGatedApp>;
 
 	beforeEach(async () => {
 		({ db, pool } = await createTestDb());
-		ledger = new CreditLedger(db);
+		ledger = new DrizzleLedger(db);
 		app = createGatedApp(ledger);
 	});
 

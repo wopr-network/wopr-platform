@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { NewVpsSubscription, VpsStatus } from "@wopr-network/platform-core/fleet/repository-types";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { DrizzleWebhookSeenRepository, TenantCustomerRepository } from "@wopr-network/platform-core/billing";
 import type { WebhookDeps } from "@wopr-network/platform-core/monetization/stripe/webhook";
 import { handleWebhookEvent } from "@wopr-network/platform-core/monetization/stripe/webhook";
@@ -67,7 +67,7 @@ describe.skipIf(!canRun)("Stripe subscription lifecycle (real API)", () => {
 	let db: DrizzleDb;
 	let pool: PGlite;
 	let tenantRepo: TenantCustomerRepository;
-	let creditLedger: CreditLedger;
+	let creditLedger: DrizzleLedger;
 	let deps: WebhookDeps;
 
 	const customersToDelete: string[] = [];
@@ -86,7 +86,8 @@ describe.skipIf(!canRun)("Stripe subscription lifecycle (real API)", () => {
 	beforeEach(async () => {
 		await truncateAllTables(pool);
 		tenantRepo = new TenantCustomerRepository(db);
-		creditLedger = new CreditLedger(db);
+		creditLedger = new DrizzleLedger(db);
+		await creditLedger.seedSystemAccounts();
 		deps = {
 			tenantRepo,
 			creditLedger,
