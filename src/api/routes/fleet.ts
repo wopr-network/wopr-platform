@@ -36,6 +36,7 @@ import Docker from "dockerode";
 import { Hono } from "hono";
 import { z } from "zod";
 import { config } from "../../config/index.js";
+import { removeInstance } from "../../fleet/fleet-remove.js";
 import { getServiceKeyRepo } from "../../fleet/services.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
@@ -471,15 +472,7 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
   }
 
   try {
-    await fleet.remove(botId, c.req.query("removeVolumes") === "true");
-
-    // Revoke per-instance gateway service key after successful removal.
-    // Best-effort: a failed revocation must not block the delete response.
-    try {
-      await getServiceKeyRepo().revokeByInstance(botId);
-    } catch (keyErr) {
-      logger.warn("Gateway service key revocation failed (non-fatal)", { botId, err: keyErr });
-    }
+    await removeInstance(fleet, getServiceKeyRepo(), botId, c.req.query("removeVolumes") === "true");
 
     // Capacity freed -- check if any waiting recovery tenants can now be placed
     Promise.resolve()

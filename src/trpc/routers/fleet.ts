@@ -40,6 +40,7 @@ import { buildResourceLimits } from "@wopr-network/platform-core/monetization/qu
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { adminProcedure, protectedProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
+import { removeInstance } from "../../fleet/fleet-remove.js";
 import { getTenantCustomerRepository } from "../../platform-services.js";
 
 // ---------------------------------------------------------------------------
@@ -281,15 +282,7 @@ export const fleetRouter = router({
             await fleet.restart(input.id);
             break;
           case "destroy": {
-            await fleet.remove(input.id);
-            const keyRepo = deps().getServiceKeyRepo?.();
-            if (keyRepo) {
-              try {
-                await keyRepo.revokeByInstance(input.id);
-              } catch {
-                // Key revocation failed — proceed with instance destruction
-              }
-            }
+            await removeInstance(fleet, deps().getServiceKeyRepo?.(), input.id);
             break;
           }
         }
@@ -828,18 +821,7 @@ export const fleetRouter = router({
         }
       }
       try {
-        await fleet.remove(input.id, input.removeVolumes);
-
-        // Revoke per-instance gateway key after successful removal.
-        // Best-effort: a failed revocation must not block the delete response.
-        const keyRepo = deps().getServiceKeyRepo?.();
-        if (keyRepo) {
-          try {
-            await keyRepo.revokeByInstance(input.id);
-          } catch {
-            // Key revocation failed — proceed with instance removal
-          }
-        }
+        await removeInstance(fleet, deps().getServiceKeyRepo?.(), input.id, input.removeVolumes);
 
         return { ok: true };
       } catch (err) {
