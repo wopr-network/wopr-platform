@@ -252,16 +252,10 @@ describe("admin.creditsGrant", () => {
     const caller = createCaller(adminContext());
     const result = await caller.admin.creditsGrant({ tenantId: "t-1", amount_cents: 1000, reason: "promo" });
     expect(result).toEqual({ id: "txn-1" });
-    expect(mockCreditLedger.credit).toHaveBeenCalledWith(
-      "t-1",
-      expect.any(Credit),
-      "admin_grant",
-      "promo",
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-    );
+    expect(mockCreditLedger.credit).toHaveBeenCalledWith("t-1", expect.any(Credit), "admin_grant", {
+      description: "promo",
+      expiresAt: undefined,
+    });
     expect(mockAuditLog.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "credits.grant", outcome: "success" }),
     );
@@ -299,7 +293,9 @@ describe("admin.creditsRefund", () => {
     const caller = createCaller(adminContext());
     const result = await caller.admin.creditsRefund({ tenantId: "t-1", amount_cents: 500, reason: "overcharge" });
     expect(result).toEqual({ id: "txn-2" });
-    expect(mockCreditLedger.debit).toHaveBeenCalledWith("t-1", expect.any(Credit), "refund", "overcharge");
+    expect(mockCreditLedger.debit).toHaveBeenCalledWith("t-1", expect.any(Credit), "refund", {
+      description: "overcharge",
+    });
     expect(mockAuditLog.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "credits.refund", outcome: "success" }),
     );
@@ -326,21 +322,24 @@ describe("admin.creditsCorrection", () => {
     mockCreditLedger.credit.mockResolvedValue({ id: "txn-3" });
     const caller = createCaller(adminContext());
     await caller.admin.creditsCorrection({ tenantId: "t-1", amount_cents: 100, reason: "fix" });
-    expect(mockCreditLedger.credit).toHaveBeenCalledWith("t-1", Credit.fromCents(100), "promo", "fix");
+    expect(mockCreditLedger.credit).toHaveBeenCalledWith("t-1", Credit.fromCents(100), "promo", {
+      description: "fix",
+    });
   });
 
   it("negative amount calls debit() with correction type", async () => {
     mockCreditLedger.debit.mockResolvedValue({ id: "txn-4" });
     const caller = createCaller(adminContext());
     await caller.admin.creditsCorrection({ tenantId: "t-1", amount_cents: -200, reason: "fix" });
-    expect(mockCreditLedger.debit).toHaveBeenCalledWith("t-1", Credit.fromCents(200), "correction", "fix");
+    expect(mockCreditLedger.debit).toHaveBeenCalledWith("t-1", Credit.fromCents(200), "correction", {
+      description: "fix",
+    });
   });
 
-  it("zero amount calls credit() with 1 cent fallback", async () => {
-    mockCreditLedger.credit.mockResolvedValue({ id: "txn-5" });
+  it("zero amount is rejected", async () => {
     const caller = createCaller(adminContext());
-    await caller.admin.creditsCorrection({ tenantId: "t-1", amount_cents: 0, reason: "fix" });
-    expect(mockCreditLedger.credit).toHaveBeenCalledWith("t-1", Credit.fromCents(1), "promo", "fix");
+    await expect(caller.admin.creditsCorrection({ tenantId: "t-1", amount_cents: 0, reason: "fix" })).rejects.toThrow();
+    expect(mockCreditLedger.credit).not.toHaveBeenCalled();
   });
 });
 

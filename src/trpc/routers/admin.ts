@@ -266,7 +266,10 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        amount_cents: z.number().int(),
+        amount_cents: z
+          .number()
+          .int()
+          .refine((v) => v !== 0, "amount_cents must be non-zero"),
         reason: z.string().min(1),
       }),
     )
@@ -275,7 +278,7 @@ export const adminRouter = router({
       const adminUser = ctx.user?.id ?? "unknown";
       try {
         const result = await (input.amount_cents >= 0
-          ? getCreditLedger().credit(input.tenantId, Credit.fromCents(input.amount_cents || 1), "promo", {
+          ? getCreditLedger().credit(input.tenantId, Credit.fromCents(input.amount_cents), "promo", {
               description: input.reason,
             })
           : getCreditLedger().debit(input.tenantId, Credit.fromCents(Math.abs(input.amount_cents)), "correction", {
@@ -1232,7 +1235,9 @@ export const adminRouter = router({
       };
       const lines = entries.map((r) => {
         const tenantLine = r.lines.find((l) => l.accountCode === `2000:${r.tenantId}`);
-        const amountCents = tenantLine ? tenantLine.amount.toCentsRounded() : 0;
+        const amountCents = tenantLine
+          ? tenantLine.amount.toCentsRounded() * (tenantLine.side === "debit" ? -1 : 1)
+          : 0;
         return [
           csvEscape(r.id),
           csvEscape(r.tenantId),
