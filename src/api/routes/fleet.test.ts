@@ -192,9 +192,16 @@ vi.mock("@wopr-network/platform-core/fleet/services", () => ({
   getTenantCustomerRepository: () => mockTenantCustomerRepo,
 }));
 // Dynamic import in fleet.ts uses the local path for functions not in platform-core
+const mockServiceKeyRepo = {
+  generate: vi.fn().mockResolvedValue("gw-key-abc123"),
+  revokeByInstance: vi.fn().mockResolvedValue(undefined),
+  resolve: vi.fn().mockResolvedValue(null),
+};
+
 vi.mock("../../fleet/services.js", () => ({
   getVpsRepo: () => mockVpsRepo,
   getTenantCustomerRepository: () => mockTenantCustomerRepo,
+  getServiceKeyRepo: () => mockServiceKeyRepo,
 }));
 
 // Import AFTER mocks are set up
@@ -311,6 +318,45 @@ describe("fleet routes", () => {
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.name).toBe("test-bot");
+    });
+
+    it("generates a gateway service key on create and returns it in the response", async () => {
+      fleetMock.create.mockResolvedValue(mockProfile);
+      mockServiceKeyRepo.generate.mockResolvedValue("gw-key-xyz");
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "user-123",
+          name: "test-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServiceKeyRepo.generate).toHaveBeenCalledWith("user-123", TEST_BOT_ID);
+      const body = await res.json();
+      expect(body.gatewayKey).toBe("gw-key-xyz");
+    });
+
+    it("still returns 201 if gateway key generation fails", async () => {
+      fleetMock.create.mockResolvedValue(mockProfile);
+      mockServiceKeyRepo.generate.mockRejectedValue(new Error("DB down"));
+
+      const res = await app.request("/fleet/bots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({
+          tenantId: "user-123",
+          name: "test-bot",
+          image: "ghcr.io/wopr-network/wopr:stable",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.gatewayKey).toBeUndefined();
     });
 
     it("passes resource limits to fleet.create() based on tenant tier", async () => {
@@ -627,6 +673,33 @@ describe("fleet routes", () => {
 
       const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, { method: "DELETE", headers: authHeader });
       expect(res.status).toBe(204);
+    });
+
+    it("revokes gateway service key after successful removal", async () => {
+      fleetMock.remove.mockResolvedValue(undefined);
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, { method: "DELETE", headers: authHeader });
+
+      expect(res.status).toBe(204);
+      expect(mockServiceKeyRepo.revokeByInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+    });
+
+    it("still returns 204 if gateway key revocation fails", async () => {
+      fleetMock.remove.mockResolvedValue(undefined);
+      mockServiceKeyRepo.revokeByInstance.mockRejectedValue(new Error("DB down"));
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, { method: "DELETE", headers: authHeader });
+
+      expect(res.status).toBe(204);
+    });
+
+    it("does not revoke key if fleet.remove() fails", async () => {
+      fleetMock.remove.mockRejectedValue(new Error("container stuck"));
+
+      const res = await app.request(`/fleet/bots/${TEST_BOT_ID}`, { method: "DELETE", headers: authHeader });
+
+      expect(res.status).toBe(500);
+      expect(mockServiceKeyRepo.revokeByInstance).not.toHaveBeenCalled();
     });
 
     it("passes removeVolumes query param", async () => {

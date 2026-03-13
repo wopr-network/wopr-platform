@@ -2,11 +2,7 @@ import { createHmac } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
 import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/drizzle-sig-penalty-repository";
-import {
-  buildTokenMetadataMap,
-  scopedBearerAuthWithTenant,
-  timingSafeMapLookup,
-} from "@wopr-network/platform-core/auth";
+import { buildTokenMetadataMap, scopedBearerAuthWithTenant } from "@wopr-network/platform-core/auth";
 import { DrizzleWebhookSeenRepository } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import { Credit, runCreditExpiryCron, runTrialBalanceCron } from "@wopr-network/platform-core/credits";
@@ -17,7 +13,6 @@ import type { CommandResult } from "@wopr-network/platform-core/fleet/node-comma
 import { DrizzleSpendingCapStore } from "@wopr-network/platform-core/fleet/spending-cap-repository";
 import { mountGateway } from "@wopr-network/platform-core/gateway/index";
 import { createCachedRateLookup } from "@wopr-network/platform-core/gateway/rate-lookup";
-import type { GatewayTenant } from "@wopr-network/platform-core/gateway/types";
 import { DrizzleMeterEventRepository, MeterEmitter, runReconciliation } from "@wopr-network/platform-core/metering";
 import { BudgetChecker } from "@wopr-network/platform-core/monetization/budget/budget-checker";
 import { runDividendCron } from "@wopr-network/platform-core/monetization/credits/dividend-cron";
@@ -98,6 +93,7 @@ import {
   getRateLimitRepo,
   getRegistrationTokenStore,
   getSecretAuditRepo,
+  getServiceKeyRepo,
   getSetupService,
   getSetupSessionRepo,
   getSystemResourceMonitor,
@@ -251,6 +247,9 @@ if (process.env.NODE_ENV !== "test") {
   // after chargeAutoTopup deps are available.
   let usageTopupCallback: ((tenantId: string) => void) | undefined;
 
+  // Per-instance gateway service keys — shared across gateway + fleet router
+  const serviceKeyRepo = getServiceKeyRepo();
+
   {
     // All tables live in platform.db (drizzle-kit migrations target).
     // BILLING_DB_PATH was a legacy holdover — use getDb() throughout.
@@ -307,19 +306,7 @@ if (process.env.NODE_ENV !== "test") {
     const budgetChecker = new BudgetChecker(getDb());
     const creditLedger = getCreditLedger();
 
-    // Build resolveServiceKey from FLEET_TOKEN_<TENANT>=<scope>:<token> env vars.
-    // The same tokens that authenticate the fleet API also authenticate gateway calls.
-    const tokenMetadata = buildTokenMetadataMap();
-    const resolveServiceKey = (key: string): GatewayTenant | null => {
-      const meta = timingSafeMapLookup(tokenMetadata, key);
-      if (!meta?.tenantId) return null;
-      return {
-        id: meta.tenantId,
-        // Unlimited spend limits at key resolution — BudgetChecker enforces per-tenant
-        // limits against actual meter_events at call time.
-        spendLimits: { maxSpendPerHour: null, maxSpendPerMonth: null },
-      };
-    };
+    const resolveServiceKey = (key: string) => serviceKeyRepo.resolve(key);
 
     // Wire hosted credential injection for plugin install route
     const vaultKey = getVaultEncryptionKey(process.env.PLATFORM_SECRET);
@@ -486,7 +473,8 @@ if (process.env.NODE_ENV !== "test") {
         return Math.round((row?.total ?? 0) / 10_000_000);
       },
     });
-    adminHealth.use("*", scopedBearerAuthWithTenant(tokenMetadata, "admin"));
+    const adminTokenMetadata = buildTokenMetadataMap();
+    adminHealth.use("*", scopedBearerAuthWithTenant(adminTokenMetadata, "admin"));
     app.route("/admin/health", adminHealth);
   }
 
@@ -915,6 +903,7 @@ if (process.env.NODE_ENV !== "test") {
       getNodeRepo: () => getNodeRepo(),
       getImagePoller: () => imagePoller,
       getUpdater: () => updater,
+      getServiceKeyRepo: () => getServiceKeyRepo(),
     });
     logger.info("tRPC fleet router initialized");
 

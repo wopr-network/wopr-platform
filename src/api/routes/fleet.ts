@@ -36,6 +36,7 @@ import Docker from "dockerode";
 import { Hono } from "hono";
 import { z } from "zod";
 import { config } from "../../config/index.js";
+import { getServiceKeyRepo } from "../../fleet/services.js";
 
 const DATA_DIR = process.env.FLEET_DATA_DIR || "/data/fleet";
 
@@ -361,6 +362,15 @@ fleetRoutes.post(
     try {
       const profile = await fleet.create({ ...parsed.data, nodeId }, resourceLimits);
 
+      // Generate a per-instance gateway service key for metered inference.
+      // Failures must not block instance creation — the key can be regenerated later.
+      let gatewayKey: string | undefined;
+      try {
+        gatewayKey = await getServiceKeyRepo().generate(parsed.data.tenantId, profile.id);
+      } catch (keyErr) {
+        logger.warn("Gateway service key generation failed (non-fatal)", { botId: profile.id, err: keyErr });
+      }
+
       // Register bot in billing system for lifecycle tracking
       try {
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -384,7 +394,7 @@ fleetRoutes.post(
         });
       }
 
-      return c.json(profile, 201);
+      return c.json({ ...profile, ...(gatewayKey ? { gatewayKey } : {}) }, 201);
     } catch (err) {
       logger.error("Failed to create bot", { err });
       return c.json({ error: "Failed to create bot" }, 500);
@@ -462,6 +472,14 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
 
   try {
     await fleet.remove(botId, c.req.query("removeVolumes") === "true");
+
+    // Revoke per-instance gateway service key after successful removal.
+    // Best-effort: a failed revocation must not block the delete response.
+    try {
+      await getServiceKeyRepo().revokeByInstance(botId);
+    } catch (keyErr) {
+      logger.warn("Gateway service key revocation failed (non-fatal)", { botId, err: keyErr });
+    }
 
     // Capacity freed -- check if any waiting recovery tenants can now be placed
     Promise.resolve()

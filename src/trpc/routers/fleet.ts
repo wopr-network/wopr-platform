@@ -30,6 +30,7 @@ import { getVpsRepo } from "@wopr-network/platform-core/fleet/services";
 import { STORAGE_TIERS, type StorageTierKey } from "@wopr-network/platform-core/fleet/storage-tiers";
 import { createBotSchema, updateBotSchema } from "@wopr-network/platform-core/fleet/types";
 import type { ContainerUpdater } from "@wopr-network/platform-core/fleet/updater";
+import type { IServiceKeyRepository } from "@wopr-network/platform-core/gateway/index";
 import type { IBotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
 import {
   checkInstanceQuota,
@@ -65,6 +66,7 @@ export interface FleetRouterDeps {
   getNodeRepo?: () => INodeRepository | null;
   getImagePoller?: () => ImagePoller | null;
   getUpdater?: () => ContainerUpdater | null;
+  getServiceKeyRepo?: () => IServiceKeyRepository | null;
 }
 
 let _deps: FleetRouterDeps | null = null;
@@ -202,7 +204,20 @@ export const fleetRouter = router({
 
     try {
       const profile = await fleet.create({ ...input, tenantId: ctx.tenantId, nodeId });
-      return profile;
+
+      // Generate a per-instance gateway service key for metered inference.
+      // Failures must not block instance creation — the key can be regenerated later.
+      let gatewayKey: string | undefined;
+      try {
+        const keyRepo = deps().getServiceKeyRepo?.();
+        if (keyRepo) {
+          gatewayKey = await keyRepo.generate(ctx.tenantId, profile.id);
+        }
+      } catch {
+        // Key generation failed — instance is still usable, just without gateway access
+      }
+
+      return { ...profile, ...(gatewayKey ? { gatewayKey } : {}) };
     } catch (err) {
       if (err instanceof TRPCError) throw err;
       throw new TRPCError({
@@ -265,9 +280,18 @@ export const fleetRouter = router({
           case "restart":
             await fleet.restart(input.id);
             break;
-          case "destroy":
+          case "destroy": {
             await fleet.remove(input.id);
+            const keyRepo = deps().getServiceKeyRepo?.();
+            if (keyRepo) {
+              try {
+                await keyRepo.revokeByInstance(input.id);
+              } catch {
+                // Key revocation failed — proceed with instance destruction
+              }
+            }
             break;
+          }
         }
         return { ok: true };
       } catch (err) {
@@ -805,6 +829,18 @@ export const fleetRouter = router({
       }
       try {
         await fleet.remove(input.id, input.removeVolumes);
+
+        // Revoke per-instance gateway key after successful removal.
+        // Best-effort: a failed revocation must not block the delete response.
+        const keyRepo = deps().getServiceKeyRepo?.();
+        if (keyRepo) {
+          try {
+            await keyRepo.revokeByInstance(input.id);
+          } catch {
+            // Key revocation failed — proceed with instance removal
+          }
+        }
+
         return { ok: true };
       } catch (err) {
         if (err instanceof BotNotFoundError) {

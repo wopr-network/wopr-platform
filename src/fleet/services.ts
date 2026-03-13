@@ -149,6 +149,8 @@ import { DrizzleRegistrationTokenRepository } from "@wopr-network/platform-core/
 import { DrizzleSpendingCapStore } from "@wopr-network/platform-core/fleet/spending-cap-repository";
 import type { IVpsRepository } from "@wopr-network/platform-core/fleet/vps-repository";
 import { DrizzleVpsRepository } from "@wopr-network/platform-core/fleet/vps-repository";
+import type { IServiceKeyRepository } from "@wopr-network/platform-core/gateway/index";
+import { DrizzleServiceKeyRepository } from "@wopr-network/platform-core/gateway/index";
 
 const SNAPSHOT_DIR = process.env.SNAPSHOT_DIR || "/data/snapshots";
 
@@ -174,6 +176,7 @@ let _spendingCapStore: ISpendingCapStore | null = null;
 let _gpuNodeRepo: IGpuNodeRepository | null = null;
 let _gpuAllocationRepo: IGpuAllocationRepository | null = null;
 let _gpuConfigurationRepo: IGpuConfigurationRepository | null = null;
+let _serviceKeyRepo: IServiceKeyRepository | null = null;
 
 // WebSocket layer
 let _connectionRegistry: NodeConnectionRegistry | null = null;
@@ -326,6 +329,13 @@ export function getGpuConfigurationRepo(): IGpuConfigurationRepository {
     _gpuConfigurationRepo = new DrizzleGpuConfigurationRepository(getDb());
   }
   return _gpuConfigurationRepo;
+}
+
+export function getServiceKeyRepo(): IServiceKeyRepository {
+  if (!_serviceKeyRepo) {
+    _serviceKeyRepo = new DrizzleServiceKeyRepository(getDb());
+  }
+  return _serviceKeyRepo;
 }
 
 // ---------------------------------------------------------------------------
@@ -960,6 +970,7 @@ export function _resetForTest(): void {
   _gpuNodeRepo = null;
   _gpuAllocationRepo = null;
   _gpuConfigurationRepo = null;
+  _serviceKeyRepo = null;
   _connectionRegistry = null;
   _commandBus = null;
   _heartbeatProcessor = null;
