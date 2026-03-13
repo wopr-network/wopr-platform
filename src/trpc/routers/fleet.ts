@@ -281,6 +281,7 @@ export const fleetRouter = router({
             await fleet.restart(input.id);
             break;
           case "destroy": {
+            await fleet.remove(input.id);
             const keyRepo = deps().getServiceKeyRepo?.();
             if (keyRepo) {
               try {
@@ -289,7 +290,6 @@ export const fleetRouter = router({
                 // Key revocation failed — proceed with instance destruction
               }
             }
-            await fleet.remove(input.id);
             break;
           }
         }
@@ -828,7 +828,10 @@ export const fleetRouter = router({
         }
       }
       try {
-        // Revoke per-instance gateway keys before destroying
+        await fleet.remove(input.id, input.removeVolumes);
+
+        // Revoke per-instance gateway key after successful removal.
+        // Best-effort: a failed revocation must not block the delete response.
         const keyRepo = deps().getServiceKeyRepo?.();
         if (keyRepo) {
           try {
@@ -838,7 +841,6 @@ export const fleetRouter = router({
           }
         }
 
-        await fleet.remove(input.id, input.removeVolumes);
         return { ok: true };
       } catch (err) {
         if (err instanceof BotNotFoundError) {
