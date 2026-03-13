@@ -6,7 +6,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
-import type { CreditTransaction, ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger, JournalEntry } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import type { IDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
@@ -88,13 +88,13 @@ function createMockProcessor(): IPaymentProcessor {
   };
 }
 
-function makeMockLedger(): ICreditLedger {
+function makeMockLedger(): ILedger {
   return {
     async credit() {
-      return {} as CreditTransaction;
+      return {} as JournalEntry;
     },
     async debit() {
-      return {} as CreditTransaction;
+      return {} as JournalEntry;
     },
     async balance() {
       return Credit.ZERO;
@@ -119,6 +119,25 @@ function makeMockLedger(): ICreditLedger {
     },
     async lifetimeSpendBatch(tenantIds: string[]) {
       return new Map(tenantIds.map((id) => [id, Credit.fromCents(0)]));
+    },
+    async post() {
+      throw new Error("not implemented");
+    },
+    async trialBalance() {
+      return { totalDebits: Credit.ZERO, totalCredits: Credit.ZERO, balanced: true, difference: Credit.ZERO };
+    },
+    async accountBalance() {
+      return Credit.ZERO;
+    },
+    async seedSystemAccounts() {},
+    async existsByReferenceIdLike() {
+      return false;
+    },
+    async sumPurchasesForPeriod() {
+      return Credit.ZERO;
+    },
+    async getActiveTenantIdsInWindow() {
+      return [];
     },
   };
 }

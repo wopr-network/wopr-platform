@@ -9,7 +9,7 @@ import {
   PaymentMethodOwnershipError,
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import { CreditLedger } from "@wopr-network/platform-core/credits";
+import { DrizzleLedger } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { meterEvents } from "@wopr-network/platform-core/db/schema/meter-events";
 import { DrizzleUsageSummaryRepository, MeterAggregator } from "@wopr-network/platform-core/metering";
@@ -108,7 +108,7 @@ describe("billing routes", () => {
     sigPenaltyRepo = createTestSigPenaltyRepo(db);
     setBillingDeps({
       processor,
-      creditLedger: new CreditLedger(db),
+      creditLedger: new DrizzleLedger(db),
       meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
       sigPenaltyRepo,
       affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -289,7 +289,7 @@ describe("billing routes", () => {
       const createCheckoutSession = vi.fn().mockRejectedValue(new Error("Payment processor unavailable"));
       setBillingDeps({
         processor: createMockProcessor({ createCheckoutSession }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -323,7 +323,7 @@ describe("billing routes", () => {
       const createPortalSession = vi.fn().mockResolvedValue({ url: "https://pay.example.com/portal/portal_123" });
       setBillingDeps({
         processor: createMockProcessor({ createPortalSession }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -372,7 +372,7 @@ describe("billing routes", () => {
     it("returns 501 when processor does not support portal", async () => {
       setBillingDeps({
         processor: createMockProcessor({ supportsPortal: false }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -400,7 +400,7 @@ describe("billing routes", () => {
       const createPortalSession = vi.fn().mockRejectedValue(new Error("Portal unavailable"));
       setBillingDeps({
         processor: createMockProcessor({ createPortalSession }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -441,7 +441,7 @@ describe("billing routes", () => {
       const handleWebhook = vi.fn().mockRejectedValue(new Error("Webhook signature verification failed"));
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -469,7 +469,7 @@ describe("billing routes", () => {
       });
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -494,7 +494,7 @@ describe("billing routes", () => {
       const handleWebhook = vi.fn().mockResolvedValue({ handled: false, eventType: "customer.subscription.updated" });
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -533,7 +533,7 @@ describe("billing routes", () => {
         });
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -569,7 +569,7 @@ describe("billing routes", () => {
       const handleWebhook = vi.fn().mockResolvedValue({ handled: false, eventType: "payment_intent.succeeded" });
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -591,7 +591,7 @@ describe("billing routes", () => {
       const handleWebhook = vi.fn().mockResolvedValue({ handled: false, eventType: "payment_intent.succeeded" });
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -616,7 +616,7 @@ describe("billing routes", () => {
       const sharedSigPenaltyRepo = createTestSigPenaltyRepo(db);
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -647,7 +647,7 @@ describe("billing routes", () => {
       const sharedSigPenaltyRepo = createTestSigPenaltyRepo(db);
       setBillingDeps({
         processor: createMockProcessor({ handleWebhook }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: sharedSigPenaltyRepo,
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1105,7 +1105,7 @@ describe("billing routes", () => {
       vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
       setBillingDeps({
         processor: createMockProcessor(),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1123,7 +1123,7 @@ describe("billing routes", () => {
       vi.unstubAllEnvs();
       setBillingDeps({
         processor: createMockProcessor(),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1171,7 +1171,7 @@ describe("billing routes", () => {
       vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
       setBillingDeps({
         processor: createMockProcessor(),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1213,7 +1213,7 @@ describe("billing routes", () => {
         vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
         setBillingDeps({
           processor: createMockProcessor(),
-          creditLedger: new CreditLedger(db),
+          creditLedger: new DrizzleLedger(db),
           meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1227,7 +1227,7 @@ describe("billing routes", () => {
         vi.unstubAllEnvs();
         setBillingDeps({
           processor: createMockProcessor(),
-          creditLedger: new CreditLedger(db),
+          creditLedger: new DrizzleLedger(db),
           meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1283,7 +1283,7 @@ describe("billing routes", () => {
         vi.stubEnv("PAYRAM_WEBHOOK_SECRET", "");
         setBillingDeps({
           processor: createMockProcessor(),
-          creditLedger: new CreditLedger(db),
+          creditLedger: new DrizzleLedger(db),
           meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1336,7 +1336,7 @@ describe("billing routes", () => {
         vi.stubEnv("PAYRAM_BASE_URL", "https://payram.example.com");
         setBillingDeps({
           processor: createMockProcessor(),
-          creditLedger: new CreditLedger(db),
+          creditLedger: new DrizzleLedger(db),
           meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1350,7 +1350,7 @@ describe("billing routes", () => {
         vi.unstubAllEnvs();
         setBillingDeps({
           processor: createMockProcessor(),
-          creditLedger: new CreditLedger(db),
+          creditLedger: new DrizzleLedger(db),
           meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1385,7 +1385,7 @@ describe("billing routes", () => {
         vi.unstubAllEnvs();
         setBillingDeps({
           processor: createMockProcessor(),
-          creditLedger: new CreditLedger(db),
+          creditLedger: new DrizzleLedger(db),
           meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
           sigPenaltyRepo: createTestSigPenaltyRepo(db),
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1409,7 +1409,7 @@ describe("billing routes", () => {
 
         setBillingDeps({
           processor: createMockProcessor(),
-          creditLedger: new CreditLedger(db),
+          creditLedger: new DrizzleLedger(db),
           meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
           sigPenaltyRepo: penaltyRepo,
           affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1445,7 +1445,7 @@ describe("billing routes", () => {
       const setupPaymentMethod = vi.fn().mockResolvedValue({ clientSecret: "seti_test_123_secret_abc" });
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1503,7 +1503,7 @@ describe("billing routes", () => {
       const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("No customer found for tenant: t-unknown"));
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1525,7 +1525,7 @@ describe("billing routes", () => {
       const setupPaymentMethod = vi.fn().mockRejectedValue(new Error("Payment processor unavailable"));
       setBillingDeps({
         processor: createMockProcessor({ setupPaymentMethod }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1552,7 +1552,7 @@ describe("billing routes", () => {
       const detachPaymentMethod = vi.fn().mockResolvedValue(undefined);
       setBillingDeps({
         processor: createMockProcessor({ detachPaymentMethod }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1593,7 +1593,7 @@ describe("billing routes", () => {
       const detachPaymentMethod = vi.fn().mockRejectedValue(new PaymentMethodOwnershipError());
       setBillingDeps({
         processor: createMockProcessor({ detachPaymentMethod }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
@@ -1615,7 +1615,7 @@ describe("billing routes", () => {
       const detachPaymentMethod = vi.fn().mockRejectedValue(new Error("Payment processor error"));
       setBillingDeps({
         processor: createMockProcessor({ detachPaymentMethod }),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),

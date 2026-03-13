@@ -8,7 +8,7 @@ import { Credit } from "@wopr-network/platform-core";
 import { buildAddonCosts } from "@wopr-network/platform-core/monetization/addons/addon-cron";
 import { ADDON_CATALOG } from "@wopr-network/platform-core/monetization/addons/addon-catalog";
 import { DrizzleTenantAddonRepository } from "@wopr-network/platform-core/monetization/addons/addon-repository";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { DAILY_BOT_COST, runRuntimeDeductions } from "@wopr-network/platform-core/monetization/credits/runtime-cron";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 
@@ -20,7 +20,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
   const TODAY = "2026-01-15";
   let db: DrizzleDb;
   let pool: PGlite;
-  let ledger: CreditLedger;
+  let ledger: DrizzleLedger;
   let botInstanceRepo: DrizzleBotInstanceRepository;
   let botBilling: BotBilling;
   let addonRepo: DrizzleTenantAddonRepository;
@@ -28,7 +28,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
+    ledger = new DrizzleLedger(db);
     botInstanceRepo = new DrizzleBotInstanceRepository(db);
     botBilling = new BotBilling(botInstanceRepo, null);
     addonRepo = new DrizzleTenantAddonRepository(db);
@@ -41,6 +41,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    await ledger.seedSystemAccounts();
   });
 
   it("charges $0.50/day for gpu_acceleration addon", async () => {
@@ -67,10 +68,12 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
     expect(balance.toCents()).toBe(500 - DAILY_BOT_COST.toCents() - ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
 
     const history = await ledger.history(tenantId);
-    const addonTransactions = history.filter((tx) => tx.type === "addon");
+    const addonTransactions = history.filter((tx) => tx.entryType === "addon");
     expect(addonTransactions).toHaveLength(1);
     expect(addonTransactions[0].description).toContain("add-on");
-    expect(addonTransactions[0].amount.toCents()).toBe(-ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
+    // In double-entry: debit line on tenant liability account = spend amount (always positive)
+    const addonLine = addonTransactions[0].lines.find((l) => l.side === "debit" && l.accountCode.startsWith("2000:"));
+    expect(addonLine!.amount.toCents()).toBe(ADDON_CATALOG.gpu_acceleration.dailyCost.toCents());
   });
 
   it("stacks multiple addon charges ($0.50 + $0.20 = $0.70)", async () => {
@@ -141,7 +144,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
 
     // Verify no addon transaction on day 2
     const history = await ledger.history(tenantId);
-    const addonTxs = history.filter((tx) => tx.type === "addon");
+    const addonTxs = history.filter((tx) => tx.entryType === "addon");
     expect(addonTxs).toHaveLength(1); // Only day 1
   });
 
@@ -175,7 +178,7 @@ describe("E2E: addon billing — daily charges and enable/disable lifecycle", ()
 
     // Verify partial addon debit exists
     const history = await ledger.history(tenantId);
-    const addonTx = history.find((tx) => tx.type === "addon");
+    const addonTx = history.find((tx) => tx.entryType === "addon");
     expect(addonTx).toBeDefined();
     expect(addonTx!.description).toContain("Partial");
   });

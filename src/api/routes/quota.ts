@@ -1,7 +1,7 @@
 import { createQuotaRoutes } from "@wopr-network/platform-core/api/routes/quota";
 import { buildTokenMap, scopedBearerAuth } from "@wopr-network/platform-core/auth";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { Hono } from "hono";
 import { getCreditLedger } from "../../platform-services.js";
 
@@ -10,17 +10,17 @@ export { createQuotaRoutes } from "@wopr-network/platform-core/api/routes/quota"
 
 const quotaTokenMap = buildTokenMap();
 
-let _ledger: ICreditLedger | null = null;
+let _ledger: ILedger | null = null;
 
-function getLedger(): ICreditLedger {
+function getLedger(): ILedger {
   if (!_ledger) {
     _ledger = getCreditLedger();
   }
   return _ledger;
 }
 
-/** Inject a CreditLedger for testing */
-export function setLedger(l: ICreditLedger): void {
+/** Inject an ILedger for testing */
+export function setLedger(l: ILedger): void {
   _ledger = l;
 }
 

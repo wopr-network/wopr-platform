@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { beginTestTransaction, createTestDb, endTestTransaction } from "@wopr-network/platform-core/test/db";
 import { Credit } from "@wopr-network/platform-core";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { DrizzleAffiliateFraudRepository } from "@wopr-network/platform-core/monetization/affiliate/affiliate-fraud-repository";
 import { processAffiliateCreditMatch } from "@wopr-network/platform-core/monetization/affiliate/credit-match";
 import { DrizzleAffiliateRepository } from "@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository";
@@ -12,14 +12,14 @@ import { grantNewUserBonus } from "@wopr-network/platform-core/monetization/affi
 describe("affiliate credit-match e2e", () => {
 	let pool: PGlite;
 	let db: DrizzleDb;
-	let ledger: CreditLedger;
+	let ledger: DrizzleLedger;
 	let affiliateRepo: DrizzleAffiliateRepository;
 	let fraudRepo: DrizzleAffiliateFraudRepository;
 
 	beforeEach(async () => {
 		({ db, pool } = await createTestDb());
 		await beginTestTransaction(pool);
-		ledger = new CreditLedger(db);
+		ledger = new DrizzleLedger(db);
 		affiliateRepo = new DrizzleAffiliateRepository(db);
 		fraudRepo = new DrizzleAffiliateFraudRepository(db);
 	});

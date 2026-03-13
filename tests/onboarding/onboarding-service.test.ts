@@ -262,14 +262,14 @@ describe("OnboardingService", () => {
       await service.inject("s1", "Hello");
 
       expect(ledger.debit).toHaveBeenCalledOnce();
-      const [tenantId, costCredit, type, description, , allowNegative, attributedUserId] = (ledger.debit as ReturnType<typeof vi.fn>).mock.calls[0];
+      const [tenantId, costCredit, type, opts] = (ledger.debit as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(tenantId).toBe("tenant-1");
       expect(typeof costCredit).toBe("object");
       expect(costCredit.toCents()).toBeGreaterThan(0);
       expect(type).toBe("onboarding_llm");
-      expect(description.toLowerCase()).toContain("onboarding");
-      expect(allowNegative).toBe(true);
-      expect(attributedUserId).toBe("u1");
+      expect(opts.description.toLowerCase()).toContain("onboarding");
+      expect(opts.allowNegative).toBe(true);
+      expect(opts.attributedUserId).toBe("u1");
     });
 
     it("skips credit ledger debit for anonymous users", async () => {

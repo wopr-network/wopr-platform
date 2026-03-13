@@ -1,6 +1,6 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger, JournalEntry } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { adminUsers } from "@wopr-network/platform-core/db/schema/admin-users";
@@ -31,7 +31,7 @@ afterAll(async () => {
 });
 
 describe("BulkOperationsStore", () => {
-  let creditStore: ICreditLedger;
+  let creditStore: ILedger;
   let tenantStatusStore: TenantStatusStore;
   let auditLog: AdminAuditLog;
   let store: BulkOperationsStore;
@@ -40,40 +40,31 @@ describe("BulkOperationsStore", () => {
     await rollbackTestTransaction(pool);
 
     const balances = new Map<string, number>();
+    function makeEntry(tenantId: string, amount: Credit, entryType: string): JournalEntry {
+      return {
+        id: crypto.randomUUID(),
+        postedAt: new Date().toISOString(),
+        entryType,
+        tenantId,
+        description: null,
+        referenceId: null,
+        metadata: null,
+        lines: [{ accountCode: `2000:${tenantId}`, amount, side: "credit" as const }],
+      };
+    }
     creditStore = {
-      async credit(tenantId, amount) {
+      async post() {
+        throw new Error("post() not implemented in mock");
+      },
+      async credit(tenantId, amount, type, _opts?) {
         const cents = amount.toCents();
         balances.set(tenantId, (balances.get(tenantId) ?? 0) + cents);
-        return {
-          id: "tx-1",
-          tenantId,
-          amount,
-          balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
-          type: "admin_grant" as const,
-          description: null,
-          referenceId: null,
-          fundingSource: null,
-          attributedUserId: null,
-          createdAt: new Date().toISOString(),
-          expiresAt: null,
-        };
+        return makeEntry(tenantId, amount, type);
       },
-      async debit(tenantId, amount) {
+      async debit(tenantId, amount, type, _opts?) {
         const cents = amount.toCents();
         balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
-        return {
-          id: "tx-2",
-          tenantId,
-          amount: amount.multiply(-1),
-          balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
-          type: "correction" as const,
-          description: null,
-          referenceId: null,
-          fundingSource: null,
-          attributedUserId: null,
-          createdAt: new Date().toISOString(),
-          expiresAt: null,
-        };
+        return makeEntry(tenantId, amount, type);
       },
       async balance(tenantId) {
         return Credit.fromCents(balances.get(tenantId) ?? 0);
@@ -81,21 +72,18 @@ describe("BulkOperationsStore", () => {
       async hasReferenceId() {
         return false;
       },
-      async history(tenantId: string) {
+      async history(tenantId) {
         if (tenantId === "tenant-1") {
           return [
             {
               id: "txn-1",
+              postedAt: "2026-01-01T00:00:00.000Z",
+              entryType: "admin_grant",
               tenantId: "tenant-1",
-              amount: Credit.fromCents(500),
-              balanceAfter: Credit.fromCents(500),
-              type: "admin_grant" as const,
               description: "Welcome grant",
               referenceId: null,
-              fundingSource: null,
-              attributedUserId: null,
-              createdAt: "2026-01-01T00:00:00.000Z",
-              expiresAt: null,
+              metadata: null,
+              lines: [{ accountCode: "2000:tenant-1", amount: Credit.fromCents(500), side: "credit" as const }],
             },
           ];
         }
@@ -104,17 +92,33 @@ describe("BulkOperationsStore", () => {
       async tenantsWithBalance() {
         return [];
       },
-      async expiredCredits(_now: string) {
+      async expiredCredits(_now) {
         return [];
       },
-      async memberUsage(_tenantId: string) {
+      async memberUsage(_tenantId) {
         return [];
       },
-      async lifetimeSpend(_tenantId: string) {
+      async lifetimeSpend(_tenantId) {
         return Credit.fromCents(0);
       },
-      async lifetimeSpendBatch(tenantIds: string[]) {
+      async lifetimeSpendBatch(tenantIds) {
         return new Map(tenantIds.map((id) => [id, Credit.fromCents(0)]));
+      },
+      async trialBalance() {
+        return { totalDebits: Credit.ZERO, totalCredits: Credit.ZERO, balanced: true, difference: Credit.ZERO };
+      },
+      async accountBalance(_code) {
+        return Credit.ZERO;
+      },
+      async seedSystemAccounts() {},
+      async existsByReferenceIdLike(_pattern) {
+        return false;
+      },
+      async sumPurchasesForPeriod(_start, _end) {
+        return Credit.ZERO;
+      },
+      async getActiveTenantIdsInWindow(_start, _end) {
+        return [];
       },
     };
 

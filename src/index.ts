@@ -9,7 +9,7 @@ import {
 } from "@wopr-network/platform-core/auth";
 import { DrizzleWebhookSeenRepository } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import { Credit, runCreditExpiryCron } from "@wopr-network/platform-core/credits";
+import { Credit, runCreditExpiryCron, runTrialBalanceCron } from "@wopr-network/platform-core/credits";
 import { eq, gte, sql } from "@wopr-network/platform-core/db/index";
 import * as schema from "@wopr-network/platform-core/db/schema/index";
 import { NotificationService } from "@wopr-network/platform-core/email";
@@ -75,7 +75,6 @@ import {
   getCommandBus,
   getConnectionRegistry,
   getCreditLedger,
-  getCreditTransactionRepo,
   getDaemonManager,
   getDb,
   getDividendRepo,
@@ -985,11 +984,26 @@ if (process.env.NODE_ENV !== "test") {
     logger.info("Hourly credit expiry cron scheduled (1h interval)");
   }
 
+  // Hourly trial balance cron — verifies double-entry ledger integrity. Logs an error on imbalance but never throws.
+  {
+    const tbLedger = getCreditLedger();
+    const HOURLY_MS = 60 * 60 * 1000;
+    cronIntervals.push(
+      setInterval(() => {
+        void runTrialBalanceCron({ ledger: tbLedger }).catch((err: unknown) => {
+          logger.error("Trial balance cron failed unexpectedly", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }, HOURLY_MS),
+    );
+    logger.info("Hourly trial balance cron scheduled (1h interval)");
+  }
+
   // Daily community dividend distribution — pool = sum(purchases) × matchRate, split among active users.
   // Runs once every 24h. Idempotent: skips if already ran for the target date.
   {
     const dividendMatchRate = config.billing.dividendMatchRate;
-    const dividendTxRepo = getCreditTransactionRepo();
     const dividendLedger = getCreditLedger();
     const DAILY_MS = 24 * 60 * 60 * 1000;
     cronIntervals.push(
@@ -998,7 +1012,6 @@ if (process.env.NODE_ENV !== "test") {
         yesterday.setDate(yesterday.getDate() - 1);
         const targetDate = yesterday.toISOString().slice(0, 10);
         void runDividendCron({
-          creditTransactionRepo: dividendTxRepo,
           ledger: dividendLedger,
           matchRate: dividendMatchRate,
           targetDate,

@@ -8,7 +8,7 @@ import { TRPCError } from "@trpc/server";
 import type { AdminAuditLog, RoleStore } from "@wopr-network/platform-core/admin";
 import type { RateStore } from "@wopr-network/platform-core/admin/rates/rate-store";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { IAutoTopupSettingsRepository, ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { IAutoTopupSettingsRepository, ILedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { INotificationQueueRepository, NotificationService } from "@wopr-network/platform-core/email";
 import type { IGpuAllocationRepository } from "@wopr-network/platform-core/fleet/gpu-allocation-repository";
@@ -41,7 +41,7 @@ import { inferenceAdminRouter, setInferenceAdminDeps } from "./inference-admin.j
 
 export interface AdminRouterDeps {
   getAuditLog: () => AdminAuditLog;
-  getCreditLedger: () => ICreditLedger;
+  getCreditLedger: () => ILedger;
   getRateStore?: () => RateStore;
   getUserStore: () => AdminUserStore;
   getTenantStatusStore: () => ITenantStatusRepository;
@@ -193,11 +193,7 @@ export const adminRouter = router({
           input.tenantId,
           Credit.fromCents(input.amount_cents),
           "admin_grant",
-          input.reason,
-          undefined,
-          undefined,
-          undefined,
-          input.expiresAt,
+          { description: input.reason, expiresAt: input.expiresAt },
         );
         getAuditLog().log({
           adminUser,
@@ -235,12 +231,9 @@ export const adminRouter = router({
       const { getCreditLedger, getAuditLog } = deps();
       const adminUser = ctx.user?.id ?? "unknown";
       try {
-        const result = await getCreditLedger().debit(
-          input.tenantId,
-          Credit.fromCents(input.amount_cents),
-          "refund",
-          input.reason,
-        );
+        const result = await getCreditLedger().debit(input.tenantId, Credit.fromCents(input.amount_cents), "refund", {
+          description: input.reason,
+        });
         getAuditLog().log({
           adminUser,
           action: "credits.refund",
@@ -273,7 +266,10 @@ export const adminRouter = router({
     .input(
       z.object({
         tenantId: tenantIdSchema,
-        amount_cents: z.number().int(),
+        amount_cents: z
+          .number()
+          .int()
+          .refine((v) => v !== 0, "amount_cents must be non-zero"),
         reason: z.string().min(1),
       }),
     )
@@ -282,13 +278,12 @@ export const adminRouter = router({
       const adminUser = ctx.user?.id ?? "unknown";
       try {
         const result = await (input.amount_cents >= 0
-          ? getCreditLedger().credit(input.tenantId, Credit.fromCents(input.amount_cents || 1), "promo", input.reason)
-          : getCreditLedger().debit(
-              input.tenantId,
-              Credit.fromCents(Math.abs(input.amount_cents)),
-              "correction",
-              input.reason,
-            ));
+          ? getCreditLedger().credit(input.tenantId, Credit.fromCents(input.amount_cents), "promo", {
+              description: input.reason,
+            })
+          : getCreditLedger().debit(input.tenantId, Credit.fromCents(Math.abs(input.amount_cents)), "correction", {
+              description: input.reason,
+            }));
         getAuditLog().log({
           adminUser,
           action: "credits.correction",
@@ -558,7 +553,9 @@ export const adminRouter = router({
       let refundedCents = 0;
       const balance = await getCreditLedger().balance(input.tenantId);
       if (balance.greaterThan(Credit.ZERO)) {
-        await getCreditLedger().debit(input.tenantId, balance, "refund", `Auto-refund on account ban: ${input.reason}`);
+        await getCreditLedger().debit(input.tenantId, balance, "refund", {
+          description: `Auto-refund on account ban: ${input.reason}`,
+        });
         refundedCents = balance.toCentsRounded();
       }
 
@@ -1231,22 +1228,26 @@ export const adminRouter = router({
       const { tenantId, ...filters } = input;
       const entries = await getCreditLedger().history(tenantId, { ...filters, limit: 10000 });
 
-      const header = "id,tenantId,type,amountCents,description,referenceId,createdAt";
+      const header = "id,tenantId,type,amountCents,description,referenceId,postedAt";
       const csvEscape = (v: string): string => {
         if (/^[=+\-@]/.test(v)) v = `'${v}`;
         return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
       };
-      const lines = entries.map((r) =>
-        [
+      const lines = entries.map((r) => {
+        const tenantLine = r.lines.find((l) => l.accountCode === `2000:${r.tenantId}`);
+        const amountCents = tenantLine
+          ? tenantLine.amount.toCentsRounded() * (tenantLine.side === "debit" ? -1 : 1)
+          : 0;
+        return [
           csvEscape(r.id),
           csvEscape(r.tenantId),
-          csvEscape(r.type),
-          String(r.amount),
+          csvEscape(r.entryType),
+          String(amountCents),
           csvEscape(r.description ?? ""),
           csvEscape(r.referenceId ?? ""),
-          csvEscape(r.createdAt),
-        ].join(","),
-      );
+          csvEscape(r.postedAt),
+        ].join(",");
+      });
 
       return { csv: [header, ...lines].join("\n") };
     }),

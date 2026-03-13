@@ -1,4 +1,4 @@
-import type { ICreditLedger } from "@wopr-network/platform-core";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { createVerifyEmailRoutes } from "../../../src/api/routes/verify-email.js";
@@ -21,31 +21,21 @@ import { verifyToken } from "@wopr-network/platform-core/email";
 
 const mockVerifyToken = vi.mocked(verifyToken);
 
-function makeLedger(overrides: Partial<ICreditLedger> = {}): ICreditLedger {
+function makeLedger(overrides: Partial<ILedger> = {}): ILedger {
   return {
-    credit: vi.fn().mockResolvedValue({
-      id: "txn-1",
-      tenantId: "user-1",
-      amount: { toRaw: () => 500_000_000, toCents: () => 500 } as any,
-      balanceAfter: { toRaw: () => 500_000_000 } as any,
-      type: "signup_grant",
-      description: null,
-      referenceId: "signup:user-1",
-      fundingSource: null,
-      attributedUserId: null,
-      createdAt: new Date().toISOString(),
-      expiresAt: null,
-    }),
+    credit: vi.fn().mockResolvedValue({ id: "txn-1" }),
     hasReferenceId: vi.fn().mockResolvedValue(false),
     debit: vi.fn(),
     balance: vi.fn().mockResolvedValue({ toRaw: () => 0 } as any),
     history: vi.fn().mockResolvedValue([]),
     tenantsWithBalance: vi.fn().mockResolvedValue([]),
+    post: vi.fn(),
     memberUsage: vi.fn().mockResolvedValue([]),
+    lifetimeSpend: vi.fn().mockResolvedValue({ toCents: () => 0 } as any),
+    lifetimeSpendBatch: vi.fn().mockResolvedValue(new Map()),
     expiredCredits: vi.fn().mockResolvedValue([]),
-    lifetimeSpend: vi.fn().mockResolvedValue({ toCents: () => 0 }),
     ...overrides,
-  };
+  } as unknown as ILedger;
 }
 
 function makePool(): Pool {
@@ -94,8 +84,10 @@ describe("GET /verify", () => {
       "user-1",
       expect.anything(),
       "signup_grant",
-      "Welcome bonus — $5.00 credit on email verification",
-      "signup:user-1",
+      expect.objectContaining({
+        description: "Welcome bonus — $5.00 credit on email verification",
+        referenceId: "signup:user-1",
+      }),
     );
   });
 

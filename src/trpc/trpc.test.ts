@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { AdminAuditLog, DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger, JournalEntry } from "@wopr-network/platform-core/credits";
 import { Credit, DrizzleAutoTopupSettingsRepository } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { DrizzleUsageSummaryRepository } from "@wopr-network/platform-core/metering";
@@ -68,47 +68,43 @@ function createMockProcessor(overrides: Partial<IPaymentProcessor> = {}): IPayme
   };
 }
 
-function makeMockLedger(): ICreditLedger {
+function makeMockLedger(): ILedger {
   const balances = new Map<string, number>();
-  const txns: import("@wopr-network/platform-core/credits").CreditTransaction[] = [];
+  const entries: JournalEntry[] = [];
+
+  function makeEntry(
+    tenantId: string,
+    amount: Credit,
+    entryType: string,
+    opts?: { description?: string; referenceId?: string },
+  ): JournalEntry {
+    return {
+      id: crypto.randomUUID(),
+      postedAt: new Date().toISOString(),
+      entryType,
+      tenantId,
+      description: opts?.description ?? null,
+      referenceId: opts?.referenceId ?? null,
+      metadata: null,
+      lines: [{ accountCode: `2000:${tenantId}`, amount, side: "credit" }],
+    };
+  }
+
   return {
-    async credit(tenantId, amount, type, description) {
-      const cents = amount.toCents();
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) + cents);
-      const tx: import("@wopr-network/platform-core/credits").CreditTransaction = {
-        id: crypto.randomUUID(),
-        tenantId,
-        amount,
-        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
-        type: type ?? "signup_grant",
-        description: description ?? null,
-        referenceId: null,
-        fundingSource: null,
-        attributedUserId: null,
-        createdAt: new Date().toISOString(),
-        expiresAt: null,
-      };
-      txns.push(tx);
-      return tx;
+    async post() {
+      throw new Error("post() not implemented in mock");
     },
-    async debit(tenantId, amount, type, description) {
-      const cents = amount.toCents();
-      balances.set(tenantId, (balances.get(tenantId) ?? 0) - cents);
-      const tx: import("@wopr-network/platform-core/credits").CreditTransaction = {
-        id: crypto.randomUUID(),
-        tenantId,
-        amount: amount.multiply(-1),
-        balanceAfter: Credit.fromCents(balances.get(tenantId) ?? 0),
-        type: type ?? "correction",
-        description: description ?? null,
-        referenceId: null,
-        fundingSource: null,
-        attributedUserId: null,
-        createdAt: new Date().toISOString(),
-        expiresAt: null,
-      };
-      txns.push(tx);
-      return tx;
+    async credit(tenantId, amount, type, opts) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) + amount.toCents());
+      const entry = makeEntry(tenantId, amount, type, opts);
+      entries.push(entry);
+      return entry;
+    },
+    async debit(tenantId, amount, type, opts) {
+      balances.set(tenantId, (balances.get(tenantId) ?? 0) - amount.toCents());
+      const entry = makeEntry(tenantId, amount, type, opts);
+      entries.push(entry);
+      return entry;
     },
     async balance(tenantId) {
       return Credit.fromCents(balances.get(tenantId) ?? 0);
@@ -117,8 +113,8 @@ function makeMockLedger(): ICreditLedger {
       return false;
     },
     async history(tenantId, opts) {
-      return txns
-        .filter((t) => t.tenantId === tenantId)
+      return entries
+        .filter((e) => e.tenantId === tenantId)
         .slice(opts?.offset ?? 0, (opts?.offset ?? 0) + (opts?.limit ?? 50));
     },
     async tenantsWithBalance() {
@@ -135,6 +131,27 @@ function makeMockLedger(): ICreditLedger {
     },
     async lifetimeSpendBatch(tenantIds: string[]) {
       return new Map(tenantIds.map((id) => [id, Credit.fromCents(0)]));
+    },
+    async accountBalance(_code: string) {
+      return Credit.fromCents(0);
+    },
+    async seedSystemAccounts() {},
+    async existsByReferenceIdLike(_pattern: string) {
+      return false;
+    },
+    async sumPurchasesForPeriod(_start: string, _end: string) {
+      return Credit.fromCents(0);
+    },
+    async getActiveTenantIdsInWindow(_start: string, _end: string) {
+      return [];
+    },
+    async trialBalance() {
+      return {
+        totalDebits: Credit.fromCents(0),
+        totalCredits: Credit.fromCents(0),
+        balanced: true,
+        difference: Credit.fromCents(0),
+      };
     },
   };
 }

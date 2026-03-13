@@ -13,7 +13,7 @@ import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 
 const { app } = await import("../../src/api/app.js");
 const { setBillingDeps } = await import("../../src/api/routes/billing.js");
-const { CreditLedger } = await import("@wopr-network/platform-core");
+const { DrizzleLedger } = await import("@wopr-network/platform-core");
 const { MeterAggregator } = await import("@wopr-network/platform-core/metering");
 const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
 const { DrizzleAffiliateRepository } = await import("@wopr-network/platform-core/monetization/affiliate/drizzle-affiliate-repository");
@@ -65,7 +65,7 @@ describe("integration: billing crypto routes", () => {
     vi.clearAllMocks();
     setBillingDeps({
       processor: createMockProcessor(),
-      creditLedger: new CreditLedger(db),
+      creditLedger: new DrizzleLedger(db),
       meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
       affiliateRepo: new DrizzleAffiliateRepository(db),
       replayGuard: noOpReplayGuard,
@@ -137,7 +137,7 @@ describe("integration: billing crypto routes", () => {
       // Re-init deps to pick up the env vars
       setBillingDeps({
         processor: createMockProcessor(),
-        creditLedger: new CreditLedger(db),
+        creditLedger: new DrizzleLedger(db),
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         affiliateRepo: new DrizzleAffiliateRepository(db),
         payramChargeRepo: new DrizzlePayRamChargeRepository(db),

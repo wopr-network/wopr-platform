@@ -3,17 +3,17 @@ import type { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { createTestDb } from "@wopr-network/platform-core/test/db";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { grantSignupCredits, SIGNUP_GRANT } from "@wopr-network/platform-core/credits";
 
 describe("integration: signup grant", () => {
   let db: DrizzleDb;
   let pool: PGlite;
-  let ledger: CreditLedger;
+  let ledger: DrizzleLedger;
 
   beforeEach(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
+    ledger = new DrizzleLedger(db);
   });
 
   afterEach(async () => {
@@ -55,8 +55,10 @@ describe("integration: signup grant", () => {
     expect(history).toHaveLength(1);
 
     const txn = history[0];
-    expect(txn.type).toBe("signup_grant");
-    expect(txn.amount.toCents()).toBe(500);
+    expect(txn.entryType).toBe("signup_grant");
+    // In double-entry: credit line on tenant liability account = grant amount (always positive)
+    const grantLine = txn.lines.find((l) => l.side === "credit" && l.accountCode.startsWith("2000:"));
+    expect(grantLine!.amount.toCents()).toBe(500);
     expect(txn.referenceId).toBe(`signup:${tenantId}`);
     expect(txn.tenantId).toBe(tenantId);
     expect(txn.description).toBe("Welcome bonus — $5.00 credit on email verification");

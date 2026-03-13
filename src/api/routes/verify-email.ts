@@ -14,7 +14,7 @@
  */
 
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { grantSignupCredits } from "@wopr-network/platform-core/credits";
 import { verifyToken, welcomeTemplate } from "@wopr-network/platform-core/email";
 import { getEmailClient } from "@wopr-network/platform-core/email/client";
@@ -27,7 +27,7 @@ const UI_ORIGIN = process.env.UI_ORIGIN || "http://localhost:3001";
 
 export interface VerifyEmailRouteDeps {
   pool: Pool;
-  creditLedger: ICreditLedger;
+  creditLedger: ILedger;
 }
 
 // BOUNDARY(WOP-805): REST is the correct layer for email verification.
@@ -43,7 +43,7 @@ export function createVerifyEmailRoutes(deps: VerifyEmailRouteDeps): Hono {
   );
 }
 
-function buildRoutes(poolFactory: () => Pool, creditLedgerFactory: () => ICreditLedger): Hono {
+function buildRoutes(poolFactory: () => Pool, creditLedgerFactory: () => ILedger): Hono {
   const routes = new Hono();
 
   routes.get("/verify", async (c) => {

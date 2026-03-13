@@ -3,16 +3,21 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { beginTestTransaction, createTestDb, endTestTransaction, rollbackTestTransaction } from "@wopr-network/platform-core/test/db";
 import { DrizzleDividendRepository } from "@wopr-network/platform-core/monetization/credits/dividend-repository";
+import { Credit } from "@wopr-network/platform-core/credits";
 
 describe("DrizzleDividendRepository", () => {
   let pool: PGlite;
   let db: DrizzleDb;
   let repo: DrizzleDividendRepository;
+  let cashAccountId: string;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
     await beginTestTransaction(pool);
     repo = new DrizzleDividendRepository(db);
+    // Look up the cash account id (code '1000') seeded by migration
+    const rows = await pool.query<{ id: string }>("SELECT id FROM accounts WHERE code = '1000'");
+    cashAccountId = rows.rows[0].id;
   });
 
   afterAll(async () => {
@@ -44,9 +49,15 @@ describe("DrizzleDividendRepository", () => {
       yesterday.setUTCHours(12, 0, 0, 0);
       const yesterdayStr = yesterday.toISOString();
 
+      // Insert a journal entry for a purchase by t-other
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        ["tx-1", "t-other", 1000, 1000, "purchase", yesterdayStr],
+        "INSERT INTO journal_entries (id, posted_at, entry_type, tenant_id, description, reference_id, metadata, created_by) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL)",
+        ["je-pool-1", yesterdayStr, "purchase", "t-other"],
+      );
+      // Insert the credit line on the cash account (credit side of purchase)
+      await pool.query(
+        "INSERT INTO journal_lines (id, journal_entry_id, account_id, amount, side) VALUES ($1, $2, $3, $4, $5)",
+        ["jl-pool-1", "je-pool-1", cashAccountId, Credit.fromCents(1000).toRaw(), "credit"],
       );
 
       const stats = await repo.getStats("t-1");
@@ -60,8 +71,8 @@ describe("DrizzleDividendRepository", () => {
       const twoDaysAgoStr = twoDaysAgo.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        ["tx-1", "t-1", 500, 500, "purchase", twoDaysAgoStr],
+        "INSERT INTO journal_entries (id, posted_at, entry_type, tenant_id, description, reference_id, metadata, created_by) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL)",
+        ["je-elig-1", twoDaysAgoStr, "purchase", "t-1"],
       );
 
       const stats = await repo.getStats("t-1");
@@ -78,8 +89,8 @@ describe("DrizzleDividendRepository", () => {
       const tenDaysAgoStr = tenDaysAgo.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        ["tx-1", "t-1", 500, 500, "purchase", tenDaysAgoStr],
+        "INSERT INTO journal_entries (id, posted_at, entry_type, tenant_id, description, reference_id, metadata, created_by) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL)",
+        ["je-inelig-1", tenDaysAgoStr, "purchase", "t-1"],
       );
 
       const stats = await repo.getStats("t-1");

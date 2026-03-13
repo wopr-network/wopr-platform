@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { PGlite } from "@electric-sql/pglite";
 import { Credit } from "@wopr-network/platform-core";
 import { DrizzleBudgetChecker, type SpendLimits } from "@wopr-network/platform-core/monetization/budget/budget-checker";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import { MeterAggregator, MeterEmitter } from "@wopr-network/platform-core/metering";
 import { DrizzleUsageSummaryRepository, DrizzleMeterEventRepository } from "@wopr-network/platform-core/metering";
 import type { MeterEvent } from "@wopr-network/platform-core/monetization/metering/types";
@@ -223,7 +223,7 @@ describe("Billing pipeline load tests", () => {
     });
     const aggregator = new MeterAggregator(new DrizzleUsageSummaryRepository(db), { windowMs: WINDOW });
     const checker = new DrizzleBudgetChecker(db);
-    const ledger = new CreditLedger(db);
+    const ledger = new DrizzleLedger(db);
     const limits: SpendLimits = { maxSpendPerHour: 1000, maxSpendPerMonth: 10000 };
 
     // Pre-fund tenants

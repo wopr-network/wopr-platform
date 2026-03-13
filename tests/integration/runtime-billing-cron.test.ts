@@ -6,7 +6,7 @@ import { DrizzleBotInstanceRepository } from "@wopr-network/platform-core/fleet/
 import { RESOURCE_TIERS } from "@wopr-network/platform-core/fleet/resource-tiers";
 import { Credit } from "@wopr-network/platform-core";
 import { BotBilling } from "@wopr-network/platform-core/monetization/credits/bot-billing";
-import { CreditLedger } from "@wopr-network/platform-core";
+import { DrizzleLedger } from "@wopr-network/platform-core";
 import {
   DAILY_BOT_COST,
   LOW_BALANCE_THRESHOLD,
@@ -23,13 +23,13 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
   const TODAY = "2026-01-15";
   let db: DrizzleDb;
   let pool: PGlite;
-  let ledger: CreditLedger;
+  let ledger: DrizzleLedger;
   let botInstanceRepo: DrizzleBotInstanceRepository;
   let botBilling: BotBilling;
 
   beforeAll(async () => {
     ({ db, pool } = await createTestDb());
-    ledger = new CreditLedger(db);
+    ledger = new DrizzleLedger(db);
     botInstanceRepo = new DrizzleBotInstanceRepository(db);
     botBilling = new BotBilling(botInstanceRepo, null);
   });
@@ -40,6 +40,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
+    await ledger.seedSystemAccounts();
   });
 
   it("deducts $0.17 for a single active bot", async () => {
@@ -63,7 +64,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     expect(balance.toCents()).toBe(500 - DAILY_BOT_COST.toCents());
 
     const history = await ledger.history(tenantId);
-    const debit = history.find((tx) => tx.type === "bot_runtime");
+    const debit = history.find((tx) => tx.entryType === "bot_runtime");
     expect(debit).toBeDefined();
     expect(debit!.description).toContain("1 bot(s)");
   });
@@ -193,7 +194,7 @@ describe("E2E: runtime billing cron — daily bot cost & suspension", () => {
     expect(balance.toCents()).toBe(startBalance - totalExpected);
 
     const history = await ledger.history(tenantId);
-    const types = history.map((tx) => tx.type);
+    const types = history.map((tx) => tx.entryType);
     expect(types).toContain("bot_runtime");
     expect(types).toContain("resource_upgrade");
   });

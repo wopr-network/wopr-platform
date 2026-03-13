@@ -93,8 +93,8 @@ describe("billing.dividend* tRPC procedures", () => {
       const dateStr = recentDate.toISOString();
 
       await pool.query(
-        "INSERT INTO credit_transactions (id, tenant_id, amount_credits, balance_after_credits, type, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-        ["tx-1", "t-1", 500, 500, "purchase", dateStr],
+        "INSERT INTO journal_entries (id, posted_at, entry_type, tenant_id, description, reference_id, metadata, created_by) VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL)",
+        ["je-recent-1", dateStr, "purchase", "t-1"],
       );
 
       const result = await caller.billing.dividendStats({});
