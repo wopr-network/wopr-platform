@@ -471,8 +471,15 @@ fleetRoutes.delete("/bots/:id", writeAuth, async (c) => {
     return ownershipError;
   }
 
+  let keyRepo = null;
   try {
-    await removeInstance(fleet, getServiceKeyRepo(), botId, c.req.query("removeVolumes") === "true");
+    keyRepo = getServiceKeyRepo();
+  } catch {
+    /* non-fatal — proceed without revocation */
+  }
+
+  try {
+    await removeInstance(fleet, keyRepo, botId, c.req.query("removeVolumes") === "true");
 
     // Capacity freed -- check if any waiting recovery tenants can now be placed
     Promise.resolve()
