@@ -1,9 +1,9 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { DrizzleDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { type DeletionExecutorDeps, executeDeletion } from "./deletion-executor.js";
+import { DrizzleLedgerDeletionRepository } from "./drizzle-ledger-deletion-repository.js";
 
 async function seedTenant(pool: PGlite, tenantId: string): Promise<void> {
   await pool.exec(`
@@ -45,6 +45,14 @@ async function seedTenant(pool: PGlite, tenantId: string): Promise<void> {
     VALUES ('${tenantId}', '${tenantId}', 'tenant_admin', 1700000000);
     INSERT INTO backup_status (container_id, node_id)
     VALUES ('tenant_${tenantId}_backup', 'node-1');
+    INSERT INTO accounts (id, code, name, type, normal_side, tenant_id)
+    VALUES ('acct-${tenantId}', 'WALLET-${tenantId}', 'Tenant Credit Wallet', 'asset', 'debit', '${tenantId}');
+    INSERT INTO account_balances (account_id, balance)
+    VALUES ('acct-${tenantId}', 0);
+    INSERT INTO journal_entries (id, entry_type, tenant_id)
+    VALUES ('je-${tenantId}', 'purchase', '${tenantId}');
+    INSERT INTO journal_lines (id, journal_entry_id, account_id, amount, side)
+    VALUES ('jl-${tenantId}', 'je-${tenantId}', 'acct-${tenantId}', 1000, 'debit');
   `);
 }
 
@@ -69,7 +77,7 @@ describe("executeDeletion", () => {
 
   beforeEach(async () => {
     await truncateAllTables(pool);
-    const repo = new DrizzleDeletionExecutorRepository(db);
+    const repo = new DrizzleLedgerDeletionRepository(db);
     deps = { repo };
   });
 
@@ -103,6 +111,10 @@ describe("executeDeletion", () => {
       expect(await countRows(pool, "payram_charges", "tenant_id", tenantId)).toBe(0);
       expect(await countRows(pool, "tenant_status", "tenant_id", tenantId)).toBe(0);
       expect(await countRows(pool, "tenant_customers", "tenant", tenantId)).toBe(0);
+      expect(await countRows(pool, "journal_lines", "journal_entry_id", `je-${tenantId}`)).toBe(0);
+      expect(await countRows(pool, "journal_entries", "tenant_id", tenantId)).toBe(0);
+      expect(await countRows(pool, "account_balances", "account_id", `acct-${tenantId}`)).toBe(0);
+      expect(await countRows(pool, "accounts", "tenant_id", tenantId)).toBe(0);
     });
   });
 
@@ -176,7 +188,7 @@ describe("executeDeletion", () => {
         INSERT INTO email_verification_tokens (id, user_id, token, expires_at) VALUES ('evt-${tenantId}', '${tenantId}', 'tok2', '2099-01-01');
       `);
 
-      const repoWithAuth = new DrizzleDeletionExecutorRepository(db, pool);
+      const repoWithAuth = new DrizzleLedgerDeletionRepository(db, pool);
       const result = await executeDeletion({ repo: repoWithAuth }, tenantId);
 
       expect(result.authUserDeleted).toBe(true);
@@ -190,7 +202,7 @@ describe("executeDeletion", () => {
       const tenantId = "tenant-no-auth";
       await seedTenant(pool, tenantId);
 
-      const repoNoAuth = new DrizzleDeletionExecutorRepository(db);
+      const repoNoAuth = new DrizzleLedgerDeletionRepository(db);
       const result = await executeDeletion({ repo: repoNoAuth }, tenantId);
 
       expect(result.authUserDeleted).toBe(false);

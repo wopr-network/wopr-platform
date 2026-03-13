@@ -1,5 +1,3 @@
-import type { IDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
-import { DrizzleDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
 import { DrizzleAdminAuditLogRepository } from "@wopr-network/platform-core/admin";
 import { DrizzleAuditLogRepository } from "@wopr-network/platform-core/audit/audit-log-repository";
 import { DrizzleBackupStatusRepository } from "@wopr-network/platform-core/backup/backup-status-repository";
@@ -28,6 +26,10 @@ import { DrizzlePhoneNumberRepository } from "@wopr-network/platform-core/moneti
 import { SystemResourceMonitor } from "@wopr-network/platform-core/observability/system-resources";
 import { DrizzleTwoFactorRepository } from "@wopr-network/platform-core/security/two-factor-repository";
 import { Pool } from "pg";
+import {
+  DrizzleLedgerDeletionRepository,
+  type ILedgerDeletionRepository,
+} from "../account/drizzle-ledger-deletion-repository.js";
 // Platform singletons — delegated to platform-services.ts
 import {
   _initPlatformServices,
@@ -720,11 +722,11 @@ export function getVpsRepo(): IVpsRepository {
 // Account / Security repository singletons (WOP-904)
 // ---------------------------------------------------------------------------
 
-let _deletionExecutorRepo: IDeletionExecutorRepository | null = null;
+let _deletionExecutorRepo: ILedgerDeletionRepository | null = null;
 
-export function getDeletionExecutorRepo(): IDeletionExecutorRepository {
+export function getDeletionExecutorRepo(): ILedgerDeletionRepository {
   if (!_deletionExecutorRepo) {
-    _deletionExecutorRepo = new DrizzleDeletionExecutorRepository(getDb(), getPool());
+    _deletionExecutorRepo = new DrizzleLedgerDeletionRepository(getDb(), getPool());
   }
   return _deletionExecutorRepo;
 }
