@@ -19,7 +19,11 @@ export async function removeInstance(
   id: string,
   removeVolumes?: boolean,
 ): Promise<void> {
-  await fleet.remove(id, removeVolumes);
+  if (removeVolumes !== undefined) {
+    await fleet.remove(id, removeVolumes);
+  } else {
+    await fleet.remove(id);
+  }
   if (keyRepo) {
     try {
       await keyRepo.revokeByInstance(id);
