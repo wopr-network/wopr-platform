@@ -19,7 +19,7 @@ function getLedger(): ILedger {
   return _ledger;
 }
 
-/** Inject a CreditLedger for testing */
+/** Inject an ILedger for testing */
 export function setLedger(l: ILedger): void {
   _ledger = l;
 }
