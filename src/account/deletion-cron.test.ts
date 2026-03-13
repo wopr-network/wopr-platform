@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { runDeletionCron } from "./deletion-cron.js";
 import type { DeletionExecutorDeps } from "./deletion-executor.js";
 import { AccountDeletionStore } from "./deletion-store.js";
-import { DrizzleLedgerDeletionRepository } from "./drizzle-ledger-deletion-repository.js";
+import { DrizzleLedgerDeletionRepository } from "./ledger-deletion-repository.js";
 
 let db: DrizzleDb;
 let pool: PGlite;

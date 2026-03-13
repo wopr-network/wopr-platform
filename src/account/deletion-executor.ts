@@ -1,4 +1,4 @@
-import type { ILedgerDeletionRepository } from "./drizzle-ledger-deletion-repository.js";
+import type { ILedgerDeletionRepository } from "./ledger-deletion-repository.js";
 
 export interface DeletionExecutorDeps {
   repo: ILedgerDeletionRepository;
@@ -93,8 +93,10 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
   // 3b. credit_adjustments (raw SQL table, not in Drizzle schema)
   await safeDeleteNullable("credit_adjustments", () => repo.deleteCreditAdjustments(tenantId));
 
-  // 3c. Double-entry ledger (migration 0072) — FK order: lines before entries,
-  //     balances before accounts
+  // 3c. Double-entry ledger (migration 0072) — FK order must be:
+  //   account_balances → accounts      (balances FK → accounts)
+  //   journal_lines   → accounts      (lines FK → accounts via account_id)
+  //   journal_lines   → journal_entries  (lines FK → entries)
   await safeDelete("account_balances", () => repo.deleteTenantAccountBalances(tenantId));
   await safeDelete("journal_lines", () => repo.deleteJournalLines(tenantId));
   await safeDelete("journal_entries", () => repo.deleteJournalEntries(tenantId));

@@ -3,7 +3,7 @@ import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { type DeletionExecutorDeps, executeDeletion } from "./deletion-executor.js";
-import { DrizzleLedgerDeletionRepository } from "./drizzle-ledger-deletion-repository.js";
+import { DrizzleLedgerDeletionRepository } from "./ledger-deletion-repository.js";
 
 async function seedTenant(pool: PGlite, tenantId: string): Promise<void> {
   await pool.exec(`

@@ -45,7 +45,7 @@
           "options": {
             "paths": {
               "drizzle-orm": {
-                "message": "drizzle-orm must only be used in repository implementations (src/fleet/*-repository.ts, src/account/drizzle-ledger-deletion-repository.ts), src/db/, src/fleet/services.ts, or src/test/. See CLAUDE.md Architectural Patterns."
+                "message": "drizzle-orm must only be used in repository implementations (src/fleet/*-repository.ts, src/account/ledger-deletion-repository.ts), src/db/, src/fleet/services.ts, or src/test/. See CLAUDE.md Architectural Patterns."
               },
               "drizzle-orm/sqlite-core": {
                 "message": "drizzle-orm/sqlite-core must only be used in src/db/schema/. See CLAUDE.md Architectural Patterns."
@@ -89,7 +89,7 @@
         "src/fleet/*-repository.ts",
         "src/fleet/registration-token-store.ts",
         "src/fleet/services.ts",
-        "src/account/drizzle-ledger-deletion-repository.ts",
+        "src/account/ledger-deletion-repository.ts",
         "src/admin/users/user-store.ts",
         "src/admin/bulk/bulk-operations-repository.ts",
         "src/admin/notes/admin-notes-repository.ts",

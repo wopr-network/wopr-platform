@@ -16,8 +16,9 @@ export interface ILedgerDeletionRepository extends IDeletionExecutorRepository {
  * schema objects in this repo (they live in platform-core), so raw SQL is used.
  *
  * Deletion order respects FK constraints:
- *   account_balances → accounts  (balances reference accounts)
- *   journal_lines → journal_entries  (lines reference entries)
+ *   account_balances → accounts      (balances FK → accounts)
+ *   journal_lines   → accounts      (lines FK → accounts via account_id)
+ *   journal_lines   → journal_entries  (lines FK → entries)
  */
 export class DrizzleLedgerDeletionRepository
   extends DrizzleDeletionExecutorRepository
@@ -36,26 +37,26 @@ export class DrizzleLedgerDeletionRepository
   }
 
   async deleteJournalLines(tenantId: string): Promise<number> {
-    // raw SQL: Drizzle schema objects for journal_lines live in platform-core, not this repo
+    // raw SQL: Drizzle cannot express — schema objects for journal_lines live in platform-core, not this repo
     return this.execDelete(
       sql`DELETE FROM journal_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE tenant_id = ${tenantId})`,
     );
   }
 
   async deleteJournalEntries(tenantId: string): Promise<number> {
-    // raw SQL: Drizzle schema objects for journal_entries live in platform-core, not this repo
+    // raw SQL: Drizzle cannot express — schema objects for journal_entries live in platform-core, not this repo
     return this.execDelete(sql`DELETE FROM journal_entries WHERE tenant_id = ${tenantId}`);
   }
 
   async deleteTenantAccountBalances(tenantId: string): Promise<number> {
-    // raw SQL: Drizzle schema objects for account_balances live in platform-core, not this repo
+    // raw SQL: Drizzle cannot express — schema objects for account_balances live in platform-core, not this repo
     return this.execDelete(
       sql`DELETE FROM account_balances WHERE account_id IN (SELECT id FROM accounts WHERE tenant_id = ${tenantId})`,
     );
   }
 
   async deleteTenantAccounts(tenantId: string): Promise<number> {
-    // raw SQL: Drizzle schema objects for accounts live in platform-core, not this repo
+    // raw SQL: Drizzle cannot express — schema objects for accounts live in platform-core, not this repo
     return this.execDelete(sql`DELETE FROM accounts WHERE tenant_id = ${tenantId}`);
   }
 }

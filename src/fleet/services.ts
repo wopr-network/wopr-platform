@@ -29,7 +29,7 @@ import { Pool } from "pg";
 import {
   DrizzleLedgerDeletionRepository,
   type ILedgerDeletionRepository,
-} from "../account/drizzle-ledger-deletion-repository.js";
+} from "../account/ledger-deletion-repository.js";
 // Platform singletons — delegated to platform-services.ts
 import {
   _initPlatformServices,
