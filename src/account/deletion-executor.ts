@@ -1,7 +1,7 @@
-import type { IDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
+import type { ILedgerDeletionRepository } from "./ledger-deletion-repository.js";
 
 export interface DeletionExecutorDeps {
-  repo: IDeletionExecutorRepository;
+  repo: ILedgerDeletionRepository;
   stripe?: { customers: { del: (id: string) => Promise<unknown> } };
   tenantStore?: { getByTenant: (tenant: string) => { processor_customer_id: string } | null };
   /** S3-compatible client for deleting snapshot objects during GDPR purge. */
@@ -92,6 +92,18 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
 
   // 3b. credit_adjustments (raw SQL table, not in Drizzle schema)
   await safeDeleteNullable("credit_adjustments", () => repo.deleteCreditAdjustments(tenantId));
+
+  // 3c. Double-entry ledger (migration 0072).
+  //   journal_entries are ARCHIVED (not deleted in place) — tax law requires
+  //   retaining financial records 5-7 years; GDPR only requires removing the
+  //   personal data link. Entries + lines are copied to archived_journal_entries
+  //   (JSONB snapshot, no tenant_id, no FKs) then deleted from the live tables.
+  //   account_balances are deleted (derived state, no audit value).
+  //   accounts are deleted after archive (no live FK deps remain).
+  //   Order: delete balances before accounts (FK: balances → accounts).
+  await safeDelete("account_balances", () => repo.deleteTenantAccountBalances(tenantId));
+  await safeDelete("journal_entries_archived", () => repo.archiveJournalEntries(tenantId));
+  await safeDelete("accounts", () => repo.deleteTenantAccounts(tenantId));
 
   // 4. Usage & metering
   await safeDelete("meter_events", () => repo.deleteMeterEvents(tenantId));

@@ -1,5 +1,4 @@
 import type { PGlite } from "@electric-sql/pglite";
-import { DrizzleDeletionExecutorRepository } from "@wopr-network/platform-core/account/deletion-executor-repository";
 import { DrizzleDeletionRepository } from "@wopr-network/platform-core/account/deletion-repository";
 import type { DrizzleDb } from "@wopr-network/platform-core/db/index";
 import { createTestDb, truncateAllTables } from "@wopr-network/platform-core/test/db";
@@ -7,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { runDeletionCron } from "./deletion-cron.js";
 import type { DeletionExecutorDeps } from "./deletion-executor.js";
 import { AccountDeletionStore } from "./deletion-store.js";
+import { DrizzleLedgerDeletionRepository } from "./ledger-deletion-repository.js";
 
 let db: DrizzleDb;
 let pool: PGlite;
@@ -27,7 +27,7 @@ describe("runDeletionCron", () => {
     await truncateAllTables(pool);
     const deletionRepo = new DrizzleDeletionRepository(db);
     store = new AccountDeletionStore(deletionRepo);
-    const execRepo = new DrizzleDeletionExecutorRepository(db);
+    const execRepo = new DrizzleLedgerDeletionRepository(db);
     executorDeps = { repo: execRepo };
   });
 
