@@ -188,6 +188,18 @@
     },
     {
       "includes": [
+        "scripts/*.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
         "src/index.ts",
         "src/api/routes/activity.ts",
         "src/api/routes/bot-plugins.ts",
