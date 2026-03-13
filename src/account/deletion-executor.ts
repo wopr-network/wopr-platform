@@ -94,16 +94,16 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
   await safeDeleteNullable("credit_adjustments", () => repo.deleteCreditAdjustments(tenantId));
 
   // 3c. Double-entry ledger (migration 0072).
-  //   journal_entries are ANONYMIZED (not deleted) — tax law requires retaining
-  //   financial records 5-7 years; GDPR only requires removing the personal
-  //   data link, so we strip tenant_id + PII fields and keep the amounts.
-  //   journal_lines are left untouched (amounts + account refs, no PII).
+  //   journal_entries are ARCHIVED (not deleted in place) — tax law requires
+  //   retaining financial records 5-7 years; GDPR only requires removing the
+  //   personal data link. Entries + lines are copied to archived_journal_entries
+  //   (JSONB snapshot, no tenant_id, no FKs) then deleted from the live tables.
   //   account_balances are deleted (derived state, no audit value).
-  //   tenant accounts are anonymized so FK integrity from journal_lines holds.
-  //   Order: delete balances before anonymizing accounts (FK: balances → accounts).
+  //   accounts are deleted after archive (no live FK deps remain).
+  //   Order: delete balances before accounts (FK: balances → accounts).
   await safeDelete("account_balances", () => repo.deleteTenantAccountBalances(tenantId));
-  await safeDelete("journal_entries_anonymized", () => repo.anonymizeJournalEntries(tenantId));
-  await safeDelete("accounts_anonymized", () => repo.anonymizeTenantAccounts(tenantId));
+  await safeDelete("journal_entries_archived", () => repo.archiveJournalEntries(tenantId));
+  await safeDelete("accounts", () => repo.deleteTenantAccounts(tenantId));
 
   // 4. Usage & metering
   await safeDelete("meter_events", () => repo.deleteMeterEvents(tenantId));
