@@ -73,17 +73,43 @@ describe("generatePostMortemTemplate", () => {
   });
 
   it("action items derive due dates from resolvedAt (SEV1 = 7 days)", () => {
-    // resolvedAt: 2026-02-24T11:00:00Z + 7 days = 2026-03-03
-    const report = generatePostMortemTemplate(incident);
+    // resolvedAt: 2026-02-24T15:00:00Z + 7 days = 2026-03-03
+    // startedAt is 2026-02-20 — if startedAt were used instead, result would be 2026-02-27
+    const resolvedIncident: IncidentSummary = {
+      ...incident,
+      startedAt: new Date("2026-02-20T10:00:00Z"),
+      resolvedAt: new Date("2026-02-24T15:00:00Z"),
+    };
+    const report = generatePostMortemTemplate(resolvedIncident);
     expect(report.sections.actionItems).toContain("2026-03-03");
+    expect(report.sections.actionItems).not.toContain("2026-02-27");
     expect(report.sections.actionItems).not.toContain("TBD");
   });
 
-  it("action items derive due dates from startedAt for ongoing incidents", () => {
-    const ongoing: IncidentSummary = { ...incident, resolvedAt: null };
-    // startedAt: 2026-02-24T10:00:00Z + 7 days = 2026-03-03
+  it("action items derive due dates from startedAt for ongoing incidents (SEV1 = 7 days)", () => {
+    const ongoing: IncidentSummary = {
+      ...incident,
+      severity: "SEV1",
+      startedAt: new Date("2026-02-20T10:00:00Z"),
+      detectedAt: new Date("2026-02-21T08:00:00Z"),
+      resolvedAt: null,
+    };
+    // startedAt: 2026-02-20T10:00:00Z + 7 days = 2026-02-27
     const report = generatePostMortemTemplate(ongoing);
-    expect(report.sections.actionItems).toContain("2026-03-03");
+    expect(report.sections.actionItems).toContain("2026-02-27");
+    expect(report.sections.actionItems).not.toContain("TBD");
+  });
+
+  it("action items derive due dates from resolvedAt (SEV2 = 14 days)", () => {
+    // resolvedAt: 2026-02-24T15:00:00Z + 14 days = 2026-03-10
+    const sev2Incident: IncidentSummary = {
+      ...incident,
+      severity: "SEV2",
+      startedAt: new Date("2026-02-20T10:00:00Z"),
+      resolvedAt: new Date("2026-02-24T15:00:00Z"),
+    };
+    const report = generatePostMortemTemplate(sev2Incident);
+    expect(report.sections.actionItems).toContain("2026-03-10");
     expect(report.sections.actionItems).not.toContain("TBD");
   });
 
