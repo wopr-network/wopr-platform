@@ -72,6 +72,21 @@ describe("generatePostMortemTemplate", () => {
     expect(report.sections.summary).toContain("TBD");
   });
 
+  it("action items derive due dates from resolvedAt (SEV1 = 7 days)", () => {
+    // resolvedAt: 2026-02-24T11:00:00Z + 7 days = 2026-03-03
+    const report = generatePostMortemTemplate(incident);
+    expect(report.sections.actionItems).toContain("2026-03-03");
+    expect(report.sections.actionItems).not.toContain("TBD");
+  });
+
+  it("action items derive due dates from startedAt for ongoing incidents", () => {
+    const ongoing: IncidentSummary = { ...incident, resolvedAt: null };
+    // startedAt: 2026-02-24T10:00:00Z + 7 days = 2026-03-03
+    const report = generatePostMortemTemplate(ongoing);
+    expect(report.sections.actionItems).toContain("2026-03-03");
+    expect(report.sections.actionItems).not.toContain("TBD");
+  });
+
   it("timeline includes start and detection times", () => {
     const report = generatePostMortemTemplate(incident);
     expect(report.sections.timeline).toContain("2026-02-24T10:00:00.000Z");
