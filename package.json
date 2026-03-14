@@ -21,7 +21,7 @@
     "bench": "vitest bench",
     "test": "vitest run && vitest run --config vitest.config.heartbeat.ts",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage && vitest run --config vitest.config.heartbeat.ts",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
