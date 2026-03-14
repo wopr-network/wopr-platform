@@ -708,13 +708,17 @@ fleetRoutes.get("/bots/:id/logs/stream", readAuth, async (c) => {
       const parsed = parseLogLines(buffer);
       if (parsed.length > 0) {
         const entry = { ...parsed[0], id: `log-${lineIndex++}` };
-        writer.write(`data: ${JSON.stringify(entry)}\n\n`).catch(() => {});
+        writer.write(`data: ${JSON.stringify(entry)}\n\n`).catch(() => {
+          cleanup();
+        });
       }
     }
     writer
       .write(`data: ${JSON.stringify({ type: "closed", reason: "container_stopped" })}\n\n`)
       .then(() => writer.close())
-      .catch(() => {});
+      .catch(() => {
+        cleanup();
+      });
   };
 
   const onError = (err: Error) => {
