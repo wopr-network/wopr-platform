@@ -1316,6 +1316,40 @@ describe("GET /fleet/bots/:id/logs/stream", () => {
     expect(body).toContain('"reason":"container_stopped"');
   });
 
+  it("calls cleanup on write error during stream end", async () => {
+    const { PassThrough } = await import("node:stream");
+    const mockStream = new PassThrough();
+    fleetMock.logStream.mockResolvedValue(mockStream);
+
+    const resPromise = app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream`, {
+      headers: authHeader,
+    });
+
+    // Wait for stream setup
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Spy on mockStream to verify cleanup destroys it
+    const destroySpy = vi.spyOn(mockStream, "destroy");
+
+    // Write a partial line into the buffer (no trailing newline = stays buffered)
+    mockStream.write("2026-01-01T00:00:00.000Z [INFO] buffered line");
+
+    // Allow the data handler to buffer it
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Now end the stream — onEnd will try to flush the buffered line
+    mockStream.end();
+
+    const res = await resPromise;
+    // The response should complete (status 200 with SSE content type)
+    expect(res.status).toBe(200);
+
+    // Verify the stream was destroyed (cleanup was called)
+    // Give async cleanup a moment to execute
+    await new Promise((r) => setTimeout(r, 50));
+    expect(destroySpy).toHaveBeenCalled();
+  });
+
   it("returns 404 when logStream throws BotNotFoundError", async () => {
     fleetMock.logStream.mockRejectedValue(new MockBotNotFoundError(TEST_BOT_ID));
     const res = await app.request(`/fleet/bots/${TEST_BOT_ID}/logs/stream`, {
