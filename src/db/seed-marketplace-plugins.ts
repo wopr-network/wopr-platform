@@ -5,6 +5,7 @@
  * Called by scripts/seed-marketplace-plugins.ts.
  */
 
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { createDb, eq } from "@wopr-network/platform-core/db/index";
 import { marketplacePlugins } from "@wopr-network/platform-core/db/schema/marketplace-plugins";
 import { FIRST_PARTY_PLUGINS } from "@wopr-network/platform-core/marketplace/first-party-plugins";
@@ -14,7 +15,7 @@ export async function seedMarketplacePlugins(pool: Pool): Promise<void> {
   const db = createDb(pool);
   const now = Date.now();
 
-  console.info(`Seeding ${FIRST_PARTY_PLUGINS.length} first-party plugins...`);
+  logger.info(`Seeding ${FIRST_PARTY_PLUGINS.length} first-party plugins...`);
 
   for (const plugin of FIRST_PARTY_PLUGINS) {
     const {
@@ -68,16 +69,16 @@ export async function seedMarketplacePlugins(pool: Pool): Promise<void> {
         discoveredAt: now,
         sortOrder: FIRST_PARTY_PLUGINS.indexOf(plugin),
       });
-      console.info(`  inserted: ${id}`);
+      logger.info(`  inserted: ${id}`);
     } else {
       const npmPackage = install[0] ?? `@wopr-network/wopr-plugin-${id}`;
       await db
         .update(marketplacePlugins)
         .set({ manifest, version, category, npmPackage })
         .where(eq(marketplacePlugins.pluginId, id));
-      console.info(`  updated: ${id}`);
+      logger.info(`  updated: ${id}`);
     }
   }
 
-  console.info("Done.");
+  logger.info("Done.");
 }
