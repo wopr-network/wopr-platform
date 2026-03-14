@@ -19,6 +19,25 @@ const { FakeWebSocket, getWsInstances, resetWsInstances } = vi.hoisted(() => {
       return this;
     }
 
+    once(event: string, fn: (...args: unknown[]) => void) {
+      const wrapper = (...args: unknown[]) => {
+        this.off(event, wrapper);
+        fn(...args);
+      };
+      return this.on(event, wrapper);
+    }
+
+    off(event: string, fn: (...args: unknown[]) => void) {
+      if (this._listeners[event]) {
+        this._listeners[event] = this._listeners[event].filter((f) => f !== fn);
+      }
+      return this;
+    }
+
+    removeListener(event: string, fn: (...args: unknown[]) => void) {
+      return this.off(event, fn);
+    }
+
     emit(event: string, ...args: unknown[]): boolean {
       const fns = this._listeners[event] ?? [];
       for (const fn of fns) fn(...args);
@@ -248,18 +267,22 @@ describe("NodeAgent heartbeat loop", () => {
     const dockerManager = new DockerManager(docker as never);
     const agent = new NodeAgent(config, dockerManager);
 
-    await agent.start();
-    const ws = getWsInstances()[0];
-    ws.emit("open");
-    await vi.advanceTimersByTimeAsync(0);
+    try {
+      await agent.start();
+      const ws = getWsInstances()[0];
+      ws.emit("open");
+      await vi.advanceTimersByTimeAsync(0);
 
-    expect(ws.send).toHaveBeenCalledTimes(1);
+      expect(ws.send).toHaveBeenCalledTimes(1);
 
-    agent.stop();
-    expect(ws.close).toHaveBeenCalled();
+      agent.stop();
+      expect(ws.close).toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(15000);
-    expect(ws.send).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(15000);
+      expect(ws.send).toHaveBeenCalledTimes(1);
+    } finally {
+      agent.stop();
+    }
   });
 
   it("stop() is safe to call multiple times without throwing", async () => {
@@ -268,16 +291,20 @@ describe("NodeAgent heartbeat loop", () => {
     const dockerManager = new DockerManager(docker as never);
     const agent = new NodeAgent(config, dockerManager);
 
-    await agent.start();
-    const ws = getWsInstances()[0];
-    ws.emit("open");
-    await vi.advanceTimersByTimeAsync(0);
+    try {
+      await agent.start();
+      const ws = getWsInstances()[0];
+      ws.emit("open");
+      await vi.advanceTimersByTimeAsync(0);
 
-    expect(() => {
+      expect(() => {
+        agent.stop();
+        agent.stop();
+      }).not.toThrow();
+      expect(ws.close).toHaveBeenCalledTimes(1);
+    } finally {
       agent.stop();
-      agent.stop();
-    }).not.toThrow();
-    expect(ws.close).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("heartbeat timer is cleared when WebSocket closes before reconnect", async () => {
@@ -442,14 +469,18 @@ describe("NodeAgent WebSocket reconnect backoff", () => {
     const dockerManager = new DockerManager(docker as never);
     const agent = new NodeAgent(config, dockerManager);
 
-    await agent.start();
-    expect(getWsInstances()).toHaveLength(1);
+    try {
+      await agent.start();
+      expect(getWsInstances()).toHaveLength(1);
 
-    agent.stop();
-    getWsInstances()[0].emit("close");
+      agent.stop();
+      getWsInstances()[0].emit("close");
 
-    await vi.advanceTimersByTimeAsync(60_000);
-    expect(getWsInstances()).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(getWsInstances()).toHaveLength(1);
+    } finally {
+      agent.stop();
+    }
   });
 
   it("WebSocket error event is handled gracefully without crashing", async () => {

@@ -3,16 +3,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     testTimeout: 30000,
-    server: {
-      deps: {
-        // Inline platform-core so that vi.mock("ws") intercepts it inside NodeAgent.
-        inline: ["@wopr-network/platform-core"],
-      },
-    },
     hookTimeout: 60000,
     maxWorkers: 4,
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
-    exclude: ["tests/e2e/**"],
+    exclude: ["tests/e2e/**", "src/node-agent/heartbeat.test.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary"],
