@@ -329,7 +329,7 @@ if (process.env.NODE_ENV !== "test") {
       metrics,
       providers: {
         openrouter: process.env.OPENROUTER_API_KEY
-          ? { apiKey: process.env.OPENROUTER_API_KEY, baseUrl: process.env.OPENROUTER_BASE_URL }
+          ? { apiKey: process.env.OPENROUTER_API_KEY, baseUrl: process.env.OPENROUTER_BASE_URL || undefined }
           : undefined,
         deepgram: process.env.DEEPGRAM_API_KEY ? { apiKey: process.env.DEEPGRAM_API_KEY } : undefined,
         elevenlabs: process.env.ELEVENLABS_API_KEY ? { apiKey: process.env.ELEVENLABS_API_KEY } : undefined,
