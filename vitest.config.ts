@@ -5,7 +5,7 @@ export default defineConfig({
     testTimeout: 30000,
     hookTimeout: 60000,
     maxWorkers: 4,
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "tests/**/*.test.ts", "scripts/**/*.test.ts"],
     exclude: ["tests/e2e/**", "src/node-agent/heartbeat.test.ts"],
     coverage: {
       provider: "v8",
