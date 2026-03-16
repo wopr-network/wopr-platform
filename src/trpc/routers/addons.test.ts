@@ -55,6 +55,8 @@ beforeAll(async () => {
     deleteInvite: async () => {},
     deleteAllMembers: async () => {},
     deleteAllInvites: async () => {},
+    listOrgsByUser: async () => [],
+    markInviteAccepted: async () => {},
   });
 });
 
@@ -188,6 +190,8 @@ describe("addons router", () => {
         deleteInvite: async () => {},
         deleteAllMembers: async () => {},
         deleteAllInvites: async () => {},
+        listOrgsByUser: async () => [],
+        markInviteAccepted: async () => {},
       });
 
       const ctx = { user: { id: "attacker", roles: ["user"] }, tenantId: "victim-tenant" };
@@ -216,6 +220,8 @@ describe("addons router", () => {
         deleteInvite: async () => {},
         deleteAllMembers: async () => {},
         deleteAllInvites: async () => {},
+        listOrgsByUser: async () => [],
+        markInviteAccepted: async () => {},
       });
     });
   });

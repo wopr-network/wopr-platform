@@ -42,6 +42,8 @@ setTrpcOrgMemberRepo({
   deleteInvite: vi.fn(),
   deleteAllMembers: vi.fn(),
   deleteAllInvites: vi.fn(),
+  listOrgsByUser: vi.fn().mockResolvedValue([]),
+  markInviteAccepted: vi.fn().mockResolvedValue(undefined),
 } as IOrgMemberRepository);
 
 import { AdminUserStore } from "../../admin/users/user-store.js";

@@ -4,7 +4,7 @@ import { DrizzleSigPenaltyRepository } from "@wopr-network/platform-core/api/dri
 import type { ISigPenaltyRepository } from "@wopr-network/platform-core/api/sig-penalty-repository";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import {
-  DrizzlePayRamChargeRepository,
+  DrizzleCryptoChargeRepository,
   noOpReplayGuard,
   PaymentMethodOwnershipError,
 } from "@wopr-network/platform-core/billing";
@@ -1109,7 +1109,7 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+        payramChargeRepo: new DrizzleCryptoChargeRepository(db),
         replayGuard: noOpReplayGuard,
         payramReplayGuard: noOpReplayGuard,
       });
@@ -1175,7 +1175,7 @@ describe("billing routes", () => {
         meterAggregator: new MeterAggregator(new DrizzleUsageSummaryRepository(db)),
         sigPenaltyRepo: createTestSigPenaltyRepo(db),
         affiliateRepo: new DrizzleAffiliateRepository(db),
-        payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+        payramChargeRepo: new DrizzleCryptoChargeRepository(db),
         replayGuard: noOpReplayGuard,
         payramReplayGuard: noOpReplayGuard,
       });
@@ -1219,7 +1219,7 @@ describe("billing routes", () => {
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
           payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
       });
 
@@ -1289,7 +1289,7 @@ describe("billing routes", () => {
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
           payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
 
         const body = JSON.stringify({
@@ -1342,7 +1342,7 @@ describe("billing routes", () => {
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
           payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
       });
 
@@ -1415,7 +1415,7 @@ describe("billing routes", () => {
           affiliateRepo: new DrizzleAffiliateRepository(db),
           replayGuard: noOpReplayGuard,
           payramReplayGuard: noOpReplayGuard,
-          payramChargeRepo: new DrizzlePayRamChargeRepository(db),
+          payramChargeRepo: new DrizzleCryptoChargeRepository(db),
         });
 
         const res = await billingRoutes.request("/crypto/webhook", {

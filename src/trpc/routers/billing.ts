@@ -6,8 +6,8 @@
 
 import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
-import type { IPaymentProcessor, PayRamChargeRepository } from "@wopr-network/platform-core/billing";
-import { createPayRamCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
+import type { BTCPayClient, ICryptoChargeRepository, IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import { createCryptoCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import {
@@ -26,7 +26,6 @@ import type { CreditPriceMap, ITenantCustomerRepository } from "@wopr-network/pl
 import type { PromotionEngine } from "@wopr-network/platform-core/monetization/promotions/engine";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { protectedProcedure, publicProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
-import type { Payram } from "payram";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -157,8 +156,8 @@ export interface BillingRouterDeps {
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
-  payramClient?: Payram;
-  payramChargeRepo?: PayRamChargeRepository;
+  payramClient?: BTCPayClient;
+  payramChargeRepo?: ICryptoChargeRepository;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -293,7 +292,7 @@ export const billingRouter = router({
           message: "Crypto payments not configured",
         });
       }
-      const result = await createPayRamCheckout(payramClient, payramChargeRepo, {
+      const result = await createCryptoCheckout(payramClient, payramChargeRepo, {
         tenant,
         amountUsd: input.amountUsd,
       });

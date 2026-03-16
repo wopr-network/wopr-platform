@@ -1,4 +1,4 @@
-import type { IOrgMemberRepository, OrgMemberRow } from "@wopr-network/platform-core/fleet/org-member-repository";
+import type { IOrgMemberRepository, OrgMemberRow } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import { orgMemberProcedure, router, setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -20,6 +20,8 @@ function makeMockOrgMemberRepo(members: OrgMemberRow[] = []): IOrgMemberReposito
     deleteInvite: vi.fn(),
     deleteAllMembers: vi.fn(),
     deleteAllInvites: vi.fn(),
+    listOrgsByUser: vi.fn().mockResolvedValue([]),
+    markInviteAccepted: vi.fn().mockResolvedValue(undefined),
   } as IOrgMemberRepository;
 }
 

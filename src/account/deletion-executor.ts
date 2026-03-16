@@ -152,8 +152,8 @@ export async function executeDeletion(deps: DeletionExecutorDeps, tenantId: stri
   // backup_status uses containerId (container name pattern "tenant_{id}")
   await safeDeleteNullable("backup_status", () => repo.deleteBackupStatus(tenantId));
 
-  // 9. PayRam charges
-  await safeDelete("payram_charges", () => repo.deletePayramCharges(tenantId));
+  // 9. Crypto charges
+  await safeDelete("crypto_charges", () => repo.deleteCryptoCharges(tenantId));
 
   // 10. Tenant status
   await safeDelete("tenant_status", () => repo.deleteTenantStatus(tenantId));

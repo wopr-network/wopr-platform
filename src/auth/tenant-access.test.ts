@@ -1,5 +1,5 @@
 import { validateTenantAccess } from "@wopr-network/platform-core/auth";
-import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import { describe, expect, it, vi } from "vitest";
 
 function mockOrgMemberRepo(overrides: Partial<IOrgMemberRepository> = {}): IOrgMemberRepository {
@@ -17,6 +17,8 @@ function mockOrgMemberRepo(overrides: Partial<IOrgMemberRepository> = {}): IOrgM
     deleteInvite: vi.fn().mockResolvedValue(undefined),
     deleteAllMembers: vi.fn().mockResolvedValue(undefined),
     deleteAllInvites: vi.fn().mockResolvedValue(undefined),
+    listOrgsByUser: vi.fn().mockResolvedValue([]),
+    markInviteAccepted: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }

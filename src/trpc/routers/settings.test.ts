@@ -6,7 +6,7 @@
  */
 
 import type { INotificationPreferencesRepository, NotificationPrefs } from "@wopr-network/platform-core/email";
-import type { IOrgMemberRepository } from "@wopr-network/platform-core/fleet/org-member-repository";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,6 +41,8 @@ const stubOrgMemberRepo: IOrgMemberRepository = {
   deleteInvite: async () => {},
   deleteAllMembers: async () => {},
   deleteAllInvites: async () => {},
+  listOrgsByUser: async () => [],
+  markInviteAccepted: async () => {},
 };
 
 // ---------------------------------------------------------------------------
@@ -55,6 +57,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
   agent_status_changes: false,
   account_role_changes: true,
   account_team_invites: true,
+  fleet_updates: true,
 };
 
 // ---------------------------------------------------------------------------

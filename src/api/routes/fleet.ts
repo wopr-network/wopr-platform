@@ -536,7 +536,8 @@ fleetRoutes.post("/bots/:id/start", writeAuth, async (c) => {
   }
 
   try {
-    await fleet.start(botId);
+    const instance = await fleet.getInstance(botId);
+    await instance.start();
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);
@@ -554,7 +555,8 @@ fleetRoutes.post("/bots/:id/stop", writeAuth, async (c) => {
   }
 
   try {
-    await fleet.stop(botId);
+    const instance = await fleet.getInstance(botId);
+    await instance.stop();
     return c.json({ ok: true });
   } catch (err) {
     if (err instanceof BotNotFoundError) return c.json({ error: err.message }, 404);

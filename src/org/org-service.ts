@@ -16,7 +16,7 @@ import {
   tenants,
   vpsSubscriptions,
 } from "@wopr-network/platform-core/db/schema/index";
-import type { IOrgMemberRepository, OrgInviteRow } from "@wopr-network/platform-core/fleet/org-member-repository";
+import type { IOrgMemberRepository, OrgInviteRow } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import type { IOrgRepository, Tenant } from "./drizzle-org-repository.js";
 
 // ---------------------------------------------------------------------------
@@ -170,6 +170,8 @@ export class OrgService {
       token,
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       createdAt: Date.now(),
+      acceptedAt: null,
+      revokedAt: null,
     };
     await this.memberRepo.createInvite(invite);
     return invite;

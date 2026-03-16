@@ -272,12 +272,16 @@ export const fleetRouter = router({
       }
       try {
         switch (input.action) {
-          case "start":
-            await fleet.start(input.id);
+          case "start": {
+            const instance = await fleet.getInstance(input.id);
+            await instance.start();
             break;
-          case "stop":
-            await fleet.stop(input.id);
+          }
+          case "stop": {
+            const instance = await fleet.getInstance(input.id);
+            await instance.stop();
             break;
+          }
           case "restart":
             await fleet.restart(input.id);
             break;
@@ -609,19 +613,22 @@ export const fleetRouter = router({
         const status = await fleet.status(input.id);
         const wasRunning = status.state === "running";
         if (status.containerId) {
-          if (wasRunning) await fleet.stop(input.id);
+          if (wasRunning) {
+            const inst = await fleet.getInstance(input.id);
+            await inst.stop();
+          }
           await fleet.remove(input.id, false);
         }
         const { id: _id, ...profileWithoutId } = profile;
         try {
-          const newProfile = await fleet.create({ ...profileWithoutId, id: profile.id }, limits);
-          if (wasRunning) await fleet.start(newProfile.id);
+          const newInstance = await fleet.create({ ...profileWithoutId, id: profile.id }, limits);
+          if (wasRunning) await newInstance.start();
         } catch (createErr) {
           // New container failed — attempt to re-create with old tier limits to restore service
           const oldLimits = tierToResourceLimits(previousTier as ResourceTierKey);
           try {
-            const restoredProfile = await fleet.create({ ...profileWithoutId, id: profile.id }, oldLimits);
-            if (wasRunning) await fleet.start(restoredProfile.id);
+            const restoredInstance = await fleet.create({ ...profileWithoutId, id: profile.id }, oldLimits);
+            if (wasRunning) await restoredInstance.start();
           } catch (recreateErr) {
             // Re-create with old tier also failed — log critical so ops can manually recover
             const { logger } = await import("@wopr-network/platform-core/config/logger");

@@ -123,6 +123,8 @@ beforeEach(() => {
     deleteInvite: async () => {},
     deleteAllMembers: async () => {},
     deleteAllInvites: async () => {},
+    listOrgsByUser: async () => [],
+    markInviteAccepted: async () => {},
   });
 });
 

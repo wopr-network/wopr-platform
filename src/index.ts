@@ -663,7 +663,7 @@ if (process.env.NODE_ENV !== "test") {
     const { StripePaymentProcessor } = await import(
       "@wopr-network/platform-core/monetization/stripe/stripe-payment-processor"
     );
-    const { DrizzlePayRamChargeRepository } = await import("@wopr-network/platform-core/billing");
+    const { DrizzleCryptoChargeRepository } = await import("@wopr-network/platform-core/billing");
 
     const tenantRepo = new DrizzleTenantCustomerRepository(getDb());
     const { DrizzleUsageSummaryRepository } = await import("@wopr-network/platform-core/metering");
@@ -798,14 +798,14 @@ if (process.env.NODE_ENV !== "test") {
       }
 
       if (stripeWebhookSecret) {
-        // Create PayRam deps before tRPC router so both REST and tRPC can share them.
-        const payramChargeRepo = process.env.PAYRAM_API_KEY ? new DrizzlePayRamChargeRepository(getDb()) : undefined;
-        let payramClient: import("payram").Payram | undefined;
-        if (process.env.PAYRAM_API_KEY) {
-          const { createPayRamClient, loadPayRamConfig } = await import("@wopr-network/platform-core/billing");
-          const payramConfig = loadPayRamConfig();
-          if (payramConfig) {
-            payramClient = createPayRamClient(payramConfig);
+        // Create crypto billing deps before tRPC router so both REST and tRPC can share them.
+        const payramChargeRepo = process.env.BTCPAY_API_KEY ? new DrizzleCryptoChargeRepository(getDb()) : undefined;
+        let payramClient: import("@wopr-network/platform-core/billing").BTCPayClient | undefined;
+        if (process.env.BTCPAY_API_KEY) {
+          const { BTCPayClient, loadCryptoConfig } = await import("@wopr-network/platform-core/billing");
+          const cryptoConfig = loadCryptoConfig();
+          if (cryptoConfig) {
+            payramClient = new BTCPayClient(cryptoConfig);
           }
         }
 
