@@ -1274,9 +1274,8 @@ describe("billing routes", () => {
           },
           body,
         });
-        // Should not be 401/403 — either 200 or 400 (if charge not found) is fine
-        expect(res.status).not.toBe(401);
-        expect(res.status).not.toBe(403);
+        // Valid signature should reach handler; allow known business outcomes only.
+        expect([200, 400]).toContain(res.status);
       });
 
       it("rejects request with invalid HMAC signature", async () => {

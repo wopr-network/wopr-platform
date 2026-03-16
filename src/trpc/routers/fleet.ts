@@ -621,14 +621,20 @@ export const fleetRouter = router({
         }
         const { id: _id, ...profileWithoutId } = profile;
         try {
-          const newInstance = await fleet.create({ ...profileWithoutId, id: profile.id }, limits);
-          if (wasRunning) await newInstance.start();
+          await fleet.create({ ...profileWithoutId, id: profile.id }, limits);
+          if (wasRunning) {
+            const newInstance = await fleet.getInstance(profile.id);
+            await newInstance.start();
+          }
         } catch (createErr) {
           // New container failed — attempt to re-create with old tier limits to restore service
           const oldLimits = tierToResourceLimits(previousTier as ResourceTierKey);
           try {
-            const restoredInstance = await fleet.create({ ...profileWithoutId, id: profile.id }, oldLimits);
-            if (wasRunning) await restoredInstance.start();
+            await fleet.create({ ...profileWithoutId, id: profile.id }, oldLimits);
+            if (wasRunning) {
+              const restoredInstance = await fleet.getInstance(profile.id);
+              await restoredInstance.start();
+            }
           } catch (recreateErr) {
             // Re-create with old tier also failed — log critical so ops can manually recover
             const { logger } = await import("@wopr-network/platform-core/config/logger");

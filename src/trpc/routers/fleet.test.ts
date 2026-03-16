@@ -119,6 +119,7 @@ function createFleetMock() {
     stop: vi.fn().mockResolvedValue(undefined),
   };
   return {
+    mockInstance,
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
     create: vi.fn().mockResolvedValue(mockInstance),
@@ -426,6 +427,8 @@ describe("fleet.controlInstance", () => {
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "start" });
     expect(result).toEqual({ ok: true });
     expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.mockInstance.start).toHaveBeenCalled();
+    expect(fleetMock.mockInstance.stop).not.toHaveBeenCalled();
   });
 
   it("calls instance.stop after verifying ownership", async () => {
@@ -433,6 +436,8 @@ describe("fleet.controlInstance", () => {
     const result = await caller.fleet.controlInstance({ id: TEST_BOT_ID, action: "stop" });
     expect(result).toEqual({ ok: true });
     expect(fleetMock.getInstance).toHaveBeenCalledWith(TEST_BOT_ID);
+    expect(fleetMock.mockInstance.stop).toHaveBeenCalled();
+    expect(fleetMock.mockInstance.start).not.toHaveBeenCalled();
   });
 
   it("calls fleet.restart after verifying ownership", async () => {

@@ -536,8 +536,9 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     });
   }
 
-  // BTCPay expects { received: true } as acknowledgement.
-  return c.json({ received: result.handled }, 200);
+  // Transport-level ACK is always affirmative once auth + payload validation pass.
+  // Include handling state separately so callers can distinguish business outcomes.
+  return c.json({ received: true, handled: result.handled }, 200);
 });
 
 /**
