@@ -364,7 +364,7 @@ describe("billingRouter", () => {
   // -------------------------------------------------------------------------
 
   describe("cryptoCheckout", () => {
-    it("throws NOT_IMPLEMENTED when payram not configured", async () => {
+    it("throws NOT_IMPLEMENTED when crypto not configured", async () => {
       injectDeps({ cryptoClient: undefined, cryptoChargeRepo: undefined });
       const caller = makeCaller(makeCtx("user-1", "tenant-1"));
       await expect(caller.cryptoCheckout({ amountUsd: 10 })).rejects.toThrow("Crypto payments not configured");
