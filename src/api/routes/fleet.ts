@@ -1122,4 +1122,4 @@ fleetRoutes.get("/bots/:id/vps-info", readAuth, async (c) => {
 });
 
 /** Export fleet manager and related modules for testing */
-export { fleet, FleetManager, imagePoller, updater };
+export { FleetManager, fleet, imagePoller, updater };

@@ -11,7 +11,7 @@ import type { ITenantStatusRepository } from "./tenant-status-repository.js";
 
 export type { TenantAccountStatus };
 
-export { GRACE_PERIOD_DAYS, BAN_DELETE_DAYS };
+export { BAN_DELETE_DAYS, GRACE_PERIOD_DAYS };
 
 /**
  * Tenant account status manager.
