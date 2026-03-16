@@ -113,13 +113,17 @@ const mockTemplates: ProfileTemplate[] = [
 // ---------------------------------------------------------------------------
 
 function createFleetMock() {
+  const mockInstance = {
+    id: TEST_BOT_ID,
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+  };
   return {
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
-    create: vi.fn().mockResolvedValue(mockProfile),
+    create: vi.fn().mockResolvedValue(mockInstance),
     update: vi.fn().mockResolvedValue(mockProfile),
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
+    getInstance: vi.fn().mockResolvedValue(mockInstance),
     restart: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     logs: vi.fn().mockResolvedValue(`${TEST_TIMESTAMP} log line 1\n`),
