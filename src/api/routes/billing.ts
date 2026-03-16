@@ -437,7 +437,8 @@ billingRoutes.post("/crypto/checkout", adminAuth, async (c) => {
  * Note: No bearer auth — webhook uses BTCPay signature verification.
  */
 billingRoutes.post("/crypto/webhook", async (c) => {
-  if (!cryptoClient) {
+  const { sigPenaltyRepo, creditLedger, cryptoChargeRepo: chargeStore, cryptoReplayGuard } = getDeps();
+  if (!chargeStore) {
     return c.json({ error: "Crypto payments not configured" }, 503);
   }
 
@@ -445,7 +446,6 @@ billingRoutes.post("/crypto/webhook", async (c) => {
   const now = Date.now();
 
   // ── Sig-penalty backoff (mirrors Stripe handler, WOP-477) ──
-  const { sigPenaltyRepo } = getDeps();
   const penalty = await sigPenaltyRepo.get(ip, "crypto");
   if (penalty && now < penalty.blockedUntil) {
     const retryAfterSec = Math.ceil((penalty.blockedUntil - now) / 1000);
@@ -516,13 +516,9 @@ billingRoutes.post("/crypto/webhook", async (c) => {
     return c.json({ received: false }, 400);
   }
 
-  const { creditLedger, cryptoChargeRepo: chargeStore2, cryptoReplayGuard } = getDeps();
-  if (!chargeStore2) {
-    return c.json({ error: "Crypto payments not configured" }, 503);
-  }
   const result = await handleCryptoWebhook(
     {
-      chargeStore: chargeStore2,
+      chargeStore,
       creditLedger,
       replayGuard: cryptoReplayGuard,
     },

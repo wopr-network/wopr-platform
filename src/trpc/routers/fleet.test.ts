@@ -122,7 +122,7 @@ function createFleetMock() {
     mockInstance,
     listByTenant: vi.fn().mockResolvedValue([mockStatus]),
     status: vi.fn().mockResolvedValue(mockStatus),
-    create: vi.fn().mockResolvedValue(mockInstance),
+    create: vi.fn().mockResolvedValue(mockProfile),
     update: vi.fn().mockResolvedValue(mockProfile),
     getInstance: vi.fn().mockResolvedValue(mockInstance),
     restart: vi.fn().mockResolvedValue(undefined),
